@@ -25,7 +25,7 @@ interface ActionState {
   deleting?: boolean
 }
 
-interface RootfsVersionsStore {
+interface SandboxRootfsVersionsStore {
   pinnedVersion: string | null
   installed: RootfsArtifact[]
   /** Releases on GitHub (catalog). Empty array if GitHub was unreachable. */
@@ -101,13 +101,24 @@ function clearAction(
 // immer state because AbortController isn't draftable. Doubles as a
 // guard against double-subscribing.
 let sseController: AbortController | null = null
+// Audit Net3: track reconnect state so a server bounce or 503-cap
+// rejection backs off instead of hot-looping the subscribe call.
+let sseReconnectAttempts = 0
+let sseReconnectTimer: ReturnType<typeof setTimeout> | null = null
+const SSE_MAX_RECONNECT_ATTEMPTS = 5
+const SSE_RECONNECT_DELAY_MS = 3000
 
 function cleanupSse() {
   sseController?.abort()
   sseController = null
+  if (sseReconnectTimer) {
+    clearTimeout(sseReconnectTimer)
+    sseReconnectTimer = null
+  }
+  sseReconnectAttempts = 0
 }
 
-export const useRootfsVersionsStore = create<RootfsVersionsStore>()(
+export const useSandboxRootfsVersionsStore = create<SandboxRootfsVersionsStore>()(
   subscribeWithSelector(
     immer((set, get) => ({
       pinnedVersion: null,
@@ -124,7 +135,7 @@ export const useRootfsVersionsStore = create<RootfsVersionsStore>()(
       sseConnected: false,
 
       __init__: {
-        rootfsVersions: async () => {
+        sandboxRootfsVersions: async () => {
           await get().loadStatus()
           // Open the SSE channel for live install progress. Idempotent
           // via the sseController guard.
@@ -242,82 +253,121 @@ export const useRootfsVersionsStore = create<RootfsVersionsStore>()(
       },
 
       subscribeToInstallProgress: async () => {
-        if (sseController) return // already streaming
-        await ApiClient.CodeSandbox.subscribeRootfsInstallProgress(
-          undefined,
-          {
-            SSE: {
-              __init: ({ abortController }: { abortController: AbortController }) => {
-                sseController = abortController
-              },
-              connected: (_d: SSEInstallConnectedData) => {
-                set(s => {
-                  s.sseConnected = true
-                })
-              },
-              taskStarted: (t: InstallTaskState) => {
-                const key = taskRowKey(t)
-                set(s => {
-                  s.installTasks[key] = t
-                  setAction(s, key, { installing: true })
-                })
-              },
-              taskState: (t: InstallTaskState) => {
-                const key = taskRowKey(t)
-                set(s => {
-                  s.installTasks[key] = t
-                  if (t.status === 'running') {
+        // Audit Net3: hard guard against double-subscribe — both an
+        // already-open stream AND a pending reconnect timer would
+        // result in two SSE sessions racing if a second caller fires
+        // mid-backoff.
+        if (sseController || sseReconnectTimer) return
+        try {
+          await ApiClient.CodeSandbox.subscribeRootfsInstallProgress(
+            undefined,
+            {
+              SSE: {
+                __init: ({ abortController }: { abortController: AbortController }) => {
+                  sseController = abortController
+                  sseReconnectAttempts = 0
+                },
+                connected: (_d: SSEInstallConnectedData) => {
+                  set(s => {
+                    s.sseConnected = true
+                  })
+                },
+                taskStarted: (t: InstallTaskState) => {
+                  const key = taskRowKey(t)
+                  set(s => {
+                    s.installTasks[key] = t
                     setAction(s, key, { installing: true })
-                  }
-                })
-              },
-              progress: (d: SSEInstallProgressData) => {
-                set(s => {
-                  // Walk active tasks to find the matching task_id.
-                  for (const key of Object.keys(s.installTasks)) {
-                    const t = s.installTasks[key]
-                    if (t.task_id === d.task_id) {
-                      t.phase = d.phase
-                      t.message = d.message
+                  })
+                },
+                taskState: (t: InstallTaskState) => {
+                  const key = taskRowKey(t)
+                  set(s => {
+                    s.installTasks[key] = t
+                    if (t.status === 'running') {
+                      setAction(s, key, { installing: true })
                     }
-                  }
-                })
-              },
-              complete: (d: SSEInstallCompleteData) => {
-                set(s => {
-                  for (const key of Object.keys(s.installTasks)) {
-                    const t = s.installTasks[key]
-                    if (t.task_id === d.task_id) {
-                      t.status = 'completed'
-                      t.phase = 'complete'
-                      t.artifact_id = d.artifact_id
-                      t.bytes_downloaded = d.bytes_downloaded
-                      t.duration_ms = d.duration_ms
-                      clearAction(s, key)
+                  })
+                },
+                progress: (d: SSEInstallProgressData) => {
+                  set(s => {
+                    // Walk active tasks to find the matching task_id.
+                    for (const key of Object.keys(s.installTasks)) {
+                      const t = s.installTasks[key]
+                      if (t.task_id === d.task_id) {
+                        t.phase = d.phase
+                        t.message = d.message
+                      }
                     }
-                  }
-                })
-                // Reload the artifact list so the row flips to "Downloaded".
-                void get().loadStatus()
-              },
-              failed: (d: SSEInstallFailedData) => {
-                set(s => {
-                  for (const key of Object.keys(s.installTasks)) {
-                    const t = s.installTasks[key]
-                    if (t.task_id === d.task_id) {
-                      t.status = 'failed'
-                      t.phase = 'failed'
-                      t.error = d.error
-                      clearAction(s, key)
+                  })
+                },
+                complete: (d: SSEInstallCompleteData) => {
+                  set(s => {
+                    for (const key of Object.keys(s.installTasks)) {
+                      const t = s.installTasks[key]
+                      if (t.task_id === d.task_id) {
+                        t.status = 'completed'
+                        t.phase = 'complete'
+                        t.artifact_id = d.artifact_id
+                        t.bytes_downloaded = d.bytes_downloaded
+                        t.duration_ms = d.duration_ms
+                        clearAction(s, key)
+                      }
                     }
-                  }
-                  s.error = d.error
-                })
+                  })
+                  // Reload the artifact list so the row flips to "Downloaded".
+                  void get().loadStatus()
+                },
+                failed: (d: SSEInstallFailedData) => {
+                  set(s => {
+                    for (const key of Object.keys(s.installTasks)) {
+                      const t = s.installTasks[key]
+                      if (t.task_id === d.task_id) {
+                        t.status = 'failed'
+                        t.phase = 'failed'
+                        t.error = d.error
+                        clearAction(s, key)
+                      }
+                    }
+                    s.error = d.error
+                  })
+                },
+                error: (msg: string) => {
+                  set(s => {
+                    s.sseConnected = false
+                    s.error = msg
+                  })
+                },
+                default: (_event: string, _data: unknown) => {},
               },
-              default: (_event: string, _data: unknown) => {},
-            },
-          } as any,
-        )
+            } as any,
+          )
+        } catch (e) {
+          // Audit Net3: server bounce or 503 cap-rejection. Mirror
+          // the LlmModelDownload reconnect pattern: bounded attempts,
+          // fixed delay, give up + surface error after max.
+          sseController = null
+          set(s => {
+            s.sseConnected = false
+          })
+          sseReconnectAttempts += 1
+          if (sseReconnectAttempts < SSE_MAX_RECONNECT_ATTEMPTS) {
+            set(s => {
+              s.error = `SSE disconnected; reconnecting (attempt ${sseReconnectAttempts}/${SSE_MAX_RECONNECT_ATTEMPTS})`
+            })
+            sseReconnectTimer = setTimeout(() => {
+              sseReconnectTimer = null
+              void get().subscribeToInstallProgress()
+            }, SSE_RECONNECT_DELAY_MS)
+          } else {
+            set(s => {
+              s.error =
+                e instanceof Error
+                  ? `SSE failed after ${SSE_MAX_RECONNECT_ATTEMPTS} attempts: ${e.message}`
+                  : `SSE failed after ${SSE_MAX_RECONNECT_ATTEMPTS} attempts`
+            })
+            sseReconnectAttempts = 0
+          }
+        }
       },
     })),
   ),

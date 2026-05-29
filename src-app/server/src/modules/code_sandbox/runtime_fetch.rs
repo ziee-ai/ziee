@@ -8,7 +8,7 @@
 //!
 //! What survives here:
 //!   * `FetchOutcome` + `FetchProgress` + `FetchPhase` — the public
-//!     shapes consumed by the streaming / prefetch / backend code,
+//!     shapes consumed by the streaming / admin-install / backend code,
 //!     kept stable so call sites didn't have to change.
 //!   * `fetch_flavor` / `fetch_flavor_format` / `ensure_fetched` /
 //!     `ensure_fetched_format` — the public entry points, now thin
@@ -28,7 +28,7 @@ use once_cell::sync::Lazy;
 use tokio::sync::Mutex;
 
 // =====================================================================
-// Public surface (preserved from the legacy module)
+// Public surface (preserved from the prior module)
 // =====================================================================
 
 #[derive(Debug, Clone)]
@@ -88,9 +88,9 @@ impl RootfsFormat {
 #[derive(Debug, Clone)]
 pub enum FetchError {
     /// Stable catch-all surfaced from the version_manager — the inner
-    /// message carries the structured error code (`ROOTFS_PIN_UNAVAILABLE`,
-    /// `ROOTFS_VERSION_MISSING`, …). Other variants were retired with
-    /// the legacy TOML-based resolver.
+    /// message carries the structured error code
+    /// (`SANDBOX_ROOTFS_UNAVAILABLE`, `SANDBOX_ROOTFS_VERSION_MISSING`,
+    /// …). Other variants were retired with the prior TOML resolver.
     Install(String),
     /// Download failed for network reasons.
     Download(String),
@@ -115,7 +115,7 @@ impl std::fmt::Display for FetchError {
 
 // =====================================================================
 // Single-flight per-flavor fetch lock (used by both auto-fetch and the
-// admin prefetch path). Lives here for backwards compatibility with
+// admin install path). Lives here for backwards compatibility with
 // the streaming.rs in-flight probe; the underlying download is
 // serialized again inside `version_manager` on its richer
 // `(version, arch, flavor, package)` key.
@@ -196,7 +196,7 @@ pub async fn fetch_flavor_format(
     };
 
     // Bridge progress events from the version manager's InstallProgress
-    // back into the legacy FetchProgress shape used by callers' SSE
+    // back into the FetchProgress shape used by callers' SSE
     // streams.
     let progress = Arc::new(progress);
     let progress_clone = progress.clone();
@@ -265,8 +265,8 @@ pub async fn fetch_flavor_format(
     })
 }
 
-/// Single-flight wrapper: serializes per-flavor downloads so admin
-/// prefetch + in-conversation auto-fetch never collide.
+/// Single-flight wrapper: serializes per-flavor downloads so the
+/// admin "Install" SSE flow + in-conversation auto-fetch never collide.
 pub async fn ensure_fetched(
     cache_dir: &Path,
     flavor: &str,

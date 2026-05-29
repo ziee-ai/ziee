@@ -49,6 +49,14 @@ pub static INSTALL_TASKS: Lazy<DashMap<Uuid, Arc<Mutex<InstallTaskState>>>> =
 
 const TASK_RETENTION: Duration = Duration::from_secs(5 * 60);
 
+/// Audit Net1: cap concurrent SSE subscribers to bound memory + per-
+/// broadcast send work. Each connected client costs one
+/// `UnboundedSender` slot in `SSE_CLIENTS` plus a per-event clone of
+/// every event. A malicious or buggy client that reconnects in a tight
+/// loop without cleaning up could otherwise exhaust the map. 256 is
+/// comfortably above the operator's UI tab + curl-debugging needs.
+pub const MAX_SSE_CLIENTS: usize = 256;
+
 // =====================================================================
 // Typed SSE event payloads
 // =====================================================================
@@ -167,12 +175,21 @@ pub fn get_task(task_id: Uuid) -> Option<InstallTaskState> {
 // SSE client lifecycle
 // =====================================================================
 
-pub fn register_client(tx: ClientSender) -> ClientId {
+pub fn register_client(tx: ClientSender) -> Option<ClientId> {
     let id = Uuid::new_v4();
-    if let Ok(mut g) = SSE_CLIENTS.lock() {
-        g.insert(id, tx);
+    let mut g = SSE_CLIENTS.lock().ok()?;
+    // Audit Net1: refuse new subscribers once cap is hit so a
+    // reconnect storm can't blow up server memory.
+    if g.len() >= MAX_SSE_CLIENTS {
+        tracing::warn!(
+            current = g.len(),
+            cap = MAX_SSE_CLIENTS,
+            "code_sandbox: SSE subscribe rejected — connection cap reached"
+        );
+        return None;
     }
-    id
+    g.insert(id, tx);
+    Some(id)
 }
 
 pub fn remove_client(id: ClientId) {

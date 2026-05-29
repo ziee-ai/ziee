@@ -134,7 +134,14 @@ function phasePercent(phase?: string | null): number {
   }
 }
 
-export function RootfsVersionsSection() {
+export function SandboxRootfsVersionsSection() {
+  // Memory project_stores_proxy_hooks: every `Stores.X.field` access
+  // is `useEffect + useStore` under the hood — read ALL needed fields
+  // at the TOP of the component before any early return, else
+  // "Rendered more hooks than during the previous render" crashes
+  // AppErrorBoundary. `conversationCount` + `mcpServerWorkspaceCount`
+  // are consumed inside `handleSetPin`'s major-bump branch but must
+  // still be subscribed unconditionally on first paint.
   const {
     pinnedVersion,
     installed,
@@ -145,7 +152,9 @@ export function RootfsVersionsSection() {
     error,
     actions,
     installTasks,
-  } = Stores.RootfsVersions
+    conversationCount,
+    mcpServerWorkspaceCount,
+  } = Stores.SandboxRootfsVersions
 
   const canManage = usePermission(MANAGE_PERM)
   const canRead = usePermission(READ_PERM) || canManage
@@ -190,8 +199,8 @@ export function RootfsVersionsSection() {
 
   const handleSetPin = (version: string) => {
     if (isMajorBump(pinnedVersion, version)) {
-      const convCount = Stores.RootfsVersions.conversationCount ?? 0
-      const mcpCount = Stores.RootfsVersions.mcpServerWorkspaceCount ?? 0
+      const convCount = conversationCount ?? 0
+      const mcpCount = mcpServerWorkspaceCount ?? 0
       Modal.confirm({
         title: `Swap to v${version} (major version bump)`,
         content: (
@@ -229,8 +238,9 @@ export function RootfsVersionsSection() {
             </p>
             <p>
               <strong>
-                Running sandboxed MCP servers will be paused / restarted as
-                the swap drains.
+                Running sandboxed MCP servers keep running on the old rootfs
+                until they finish; the next request will start them on the
+                new one.
               </strong>
             </p>
           </div>
@@ -238,11 +248,11 @@ export function RootfsVersionsSection() {
         okText: 'Swap and wipe caches',
         okButtonProps: { danger: true },
         cancelText: 'Cancel',
-        onOk: () => Stores.RootfsVersions.setPin(version),
+        onOk: () => Stores.SandboxRootfsVersions.setPin(version),
         width: 600,
       })
     } else {
-      Stores.RootfsVersions.setPin(version)
+      Stores.SandboxRootfsVersions.setPin(version)
     }
   }
 
@@ -317,7 +327,7 @@ export function RootfsVersionsSection() {
                     icon={<CloudDownloadOutlined />}
                     loading={false}
                     onClick={() =>
-                      Stores.RootfsVersions.installVersion(
+                      Stores.SandboxRootfsVersions.installVersion(
                         row.version,
                         row.arch,
                         row.flavor,
@@ -346,7 +356,7 @@ export function RootfsVersionsSection() {
                 {isInstalled && !isPinned && (
                   <RenderButton
                     canManage={canManage}
-                    label="Set as pin"
+                    label="Pin"
                     icon={<PushpinOutlined />}
                     loading={pinState?.pinning}
                     onClick={() => handleSetPin(row.version)}
@@ -359,7 +369,7 @@ export function RootfsVersionsSection() {
                     okText="Delete"
                     okButtonProps={{ danger: true }}
                     onConfirm={() =>
-                      Stores.RootfsVersions.deleteArtifact(row.artifact!.id)
+                      Stores.SandboxRootfsVersions.deleteArtifact(row.artifact!.id)
                     }
                   >
                     <Button
@@ -395,10 +405,10 @@ export function RootfsVersionsSection() {
       extra={
         <Button
           icon={<ReloadOutlined />}
-          onClick={() => Stores.RootfsVersions.loadStatus()}
+          onClick={() => Stores.SandboxRootfsVersions.loadStatus()}
           data-testid="rootfs-refresh-button"
         >
-          Check for updates
+          Refresh
         </Button>
       }
     >
@@ -427,6 +437,7 @@ export function RootfsVersionsSection() {
           <Alert
             type="info"
             showIcon
+            closable
             title={
               <span data-testid="draining-indicator">
                 {lastSwap.draining_mounts} session
@@ -450,7 +461,7 @@ export function RootfsVersionsSection() {
         <Flex className="flex-col gap-4">
           {rows.length === 0 ? (
             <Empty
-              description="No rootfs versions found. GitHub may be unreachable; check `code_sandbox.enabled` in the server config and ensure the server can reach api.github.com."
+              description="No rootfs versions yet. GitHub may be unreachable; check `code_sandbox.enabled` in the server config and ensure the server can reach api.github.com."
               image={<CloudDownloadOutlined className="text-4xl opacity-50" />}
             />
           ) : (

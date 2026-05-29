@@ -216,17 +216,25 @@ pub async fn ensure_rootfs_ready(
     state: &CodeSandboxState,
     flavor: &str,
 ) -> Result<EnsureOutcome, AppError> {
-    // Plan 5 Phase 2: the READY map is keyed on (version, flavor) so a
+    // The READY map is keyed on (version, flavor) so a
     // pin change invalidates the cached EnsureOutcome — the next call
     // mounts the new version against a fresh cell while live execs
     // continue to read the old cell's mount_dir from their captured
     // EnsureOutcome. Two pinned versions can coexist during drain.
     let pin = match state.pool.as_ref() {
         Some(pool) => {
+            // Audit B8: propagate hard DB errors here. The fn already
+            // returns `Ok(None)` for the soft cases (GitHub
+            // unreachable, no usable releases) so what's left is the
+            // `current_pin` SELECT / `set pin` UPDATE failing — in
+            // either of those we MUST NOT silently fall back to the
+            // legacy unkeyed cell, which would mount a stale rootfs
+            // for the next exec.
             crate::modules::code_sandbox::version_manager::ensure_pin_initialized(pool)
                 .await
-                .ok()
-                .flatten()
+                .map_err(|e| AppError::internal_error(format!(
+                    "code_sandbox: rootfs pin resolution failed: {e}"
+                )))?
                 .unwrap_or_default()
         }
         None => String::new(),
@@ -439,7 +447,7 @@ pub async fn is_flavor_cached(state: &CodeSandboxState, flavor: &str) -> bool {
 /// flavor must coexist in the registry during a swap-drain cycle (the
 /// old version's squashfuse stays alive until inflight==0 even though
 /// the new pin is already serving fresh `execute_command`s), so the
-/// key encodes BOTH coordinates. Plan 5 Phase 2 explicitly: "`MOUNTED`
+/// key encodes BOTH coordinates. Plan 5: "`MOUNTED`
 /// registry key flips from `flavor` to `(version, arch, flavor)`."
 fn mount_key(version: &str, flavor: &str) -> String {
     if version.is_empty() {
@@ -597,7 +605,7 @@ pub async fn shutdown() {
 /// Snapshot of flavors currently mounted (server-spawned squashfuse live).
 /// Empty if no flavor has been mounted yet. Projects the (version,
 /// flavor) composite MOUNTED keys back to a flavor-only set for the
-/// legacy `/code-sandbox/environments` endpoint.
+/// `/code-sandbox/environments` endpoint (removed Phase 2c).
 pub async fn mounted_set() -> std::collections::HashSet<String> {
     match MOUNTED.get() {
         Some(slot) => slot
@@ -723,7 +731,7 @@ pub async fn evict_flavor(cache_dir: &Path, flavor: &str) -> EvictOutcome {
 
 /// Version-aware evict: tear down ONLY the `(version, flavor)`
 /// mount, leaving any sibling version of the same flavor (or any
-/// other flavor) untouched. Plan 5 Phase 3 drain-on-swap path.
+/// other flavor) untouched. drain-on-swap path.
 ///
 /// `version_cache_dir` is the per-version cache subdir
 /// (`<rootfs cache root>/<version>/`) so the cached squashfs at

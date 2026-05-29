@@ -13,7 +13,7 @@
 //! Phase 4 (admin UI) wires these into a streaming SSE channel for
 //! the install progress. For Phase 2c the install handler runs
 //! synchronously — the resulting download blocks the response until
-//! complete, same as the legacy `prefetch` POST. The new pinned-version
+//! complete, same as the prior `prefetch` POST. The new pinned-version
 //! mental model is: admin downloads + pins are deliberate operations
 //! the operator triggers from the UI; the chat-side auto-fetch already
 //! has its own SSE-progress plumbing via `streaming.rs`.
@@ -48,9 +48,7 @@ use crate::modules::permissions::RequirePermissions;
 pub struct InstallVersionRequest {
     /// Semver string (no leading `v`), e.g. `"0.1.0"`.
     pub version: String,
-    /// Host arch — `"x86_64"` or `"aarch64"`. Phase 4 will derive this
-    /// from `std::env::consts::ARCH` in the UI; the admin can override
-    /// for cross-host pre-stages.
+    /// Host arch — `"x86_64"` or `"aarch64"`.
     pub arch: String,
     /// `"minimal"` or `"full"`.
     pub flavor: String,
@@ -61,6 +59,88 @@ pub struct InstallVersionRequest {
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct SetPinRequest {
     pub version: String,
+}
+
+/// Reject any install / set-pin request whose fields could escape the
+/// per-version cache subdir or produce a GitHub asset URL with a
+/// shell-injectable path. The admin endpoints are admin-only, but an
+/// admin token can still be exfiltrated, and a path-traversal write
+/// outside `cache_root` would let an attacker land bytes anywhere the
+/// server uid can write. Plan 5 audit pass — B1.
+fn validate_install_request(
+    version: &str,
+    arch: &str,
+    flavor: &str,
+    package: &str,
+) -> Result<(), (StatusCode, crate::common::AppError)> {
+    fn bad(field: &str, value: &str) -> (StatusCode, crate::common::AppError) {
+        (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            crate::common::AppError::new(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "SANDBOX_ROOTFS_INVALID_REQUEST",
+                format!("invalid {field}: {value:?}"),
+            ),
+        )
+    }
+    // Semver: MAJOR.MINOR.PATCH with optional `-PRERELEASE`. MUST
+    // match `version_manager::is_valid_semver_tag` (minus the leading
+    // `v`) so that anything we accept here actually maps to a
+    // discoverable GitHub release tag. Audit convergence pass:
+    // previously this layer was laxer than is_valid_semver_tag,
+    // letting `01.2.3` and `1.2.3-rc.01` pass the handler only to
+    // bomb out later as `ReleaseMissing` instead of a clean 422.
+    let semver_ok = {
+        let (core, prerelease) = match version.split_once('-') {
+            Some((c, p)) => (c, Some(p)),
+            None => (version, None),
+        };
+        let parts: Vec<&str> = core.split('.').collect();
+        let core_ok = parts.len() == 3
+            && parts.iter().all(|p| {
+                !p.is_empty()
+                    // Semver §2: numeric identifiers — no leading zeros.
+                    && !(p.len() > 1 && p.starts_with('0'))
+                    && p.chars().all(|c| c.is_ascii_digit())
+            });
+        let pre_ok = match prerelease {
+            None => true,
+            Some(pre) if pre.is_empty() => false,
+            Some(pre) => pre.split('.').all(|id| {
+                if id.is_empty() {
+                    return false;
+                }
+                // Numeric prerelease identifiers also forbid leading zeros (semver §9).
+                if id.chars().all(|c| c.is_ascii_digit())
+                    && id.len() > 1
+                    && id.starts_with('0')
+                {
+                    return false;
+                }
+                id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+            }),
+        };
+        core_ok && pre_ok
+    };
+    if !semver_ok {
+        return Err(bad("version", version));
+    }
+    if !matches!(arch, "x86_64" | "aarch64") {
+        return Err(bad("arch", arch));
+    }
+    let safe_token = |s: &str, max_len: usize| {
+        !s.is_empty()
+            && s.len() <= max_len
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    };
+    if !safe_token(flavor, 32) {
+        return Err(bad("flavor", flavor));
+    }
+    if !matches!(package, "squashfs" | "tar.zst") {
+        return Err(bad("package", package));
+    }
+    Ok(())
 }
 
 // =====================================================================
@@ -94,8 +174,11 @@ fn live_pool() -> Result<std::sync::Arc<sqlx::PgPool>, (StatusCode, crate::commo
     Ok(pool.clone())
 }
 
-/// Derive the rootfs cache root (parent of the legacy `current`
-/// symlink — same convention used by the legacy fetch path).
+/// Derive the rootfs cache root (parent of the `current` symlink that
+/// `config.rootfs_path()` points at). Fails loudly on a malformed
+/// `rootfs_path` rather than falling back to `.` (audit B12: the
+/// silent CWD fallback would land downloads in the server process's
+/// working dir if the operator mis-configured the path).
 fn cache_root() -> Result<std::path::PathBuf, (StatusCode, crate::common::AppError)> {
     let state = config::get_state().ok_or_else(|| {
         (
@@ -107,11 +190,26 @@ fn cache_root() -> Result<std::path::PathBuf, (StatusCode, crate::common::AppErr
             ),
         )
     })?;
-    Ok(std::path::PathBuf::from(state.config.rootfs_path())
+    let rootfs_path = state.config.rootfs_path();
+    let cache = std::path::PathBuf::from(rootfs_path)
         .parent()
-        .map(std::path::Path::to_path_buf)
-        .unwrap_or_else(|| std::path::PathBuf::from(".")))
+        .map(std::path::Path::to_path_buf);
+    match cache {
+        Some(p) if !p.as_os_str().is_empty() => Ok(p),
+        _ => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            crate::common::AppError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "SANDBOX_ROOTFS_PATH_MALFORMED",
+                format!(
+                    "code_sandbox.rootfs_path={rootfs_path:?} has no usable parent; \
+                     reconfigure to point at <data_dir>/sandbox-rootfs/current"
+                ),
+            ),
+        )),
+    }
 }
+
 
 fn map_version_err(err: version_manager::VersionError) -> (StatusCode, crate::common::AppError) {
     err.to_app_error().to_api_error()
@@ -133,7 +231,7 @@ pub fn get_versions_docs(
     op: aide::transform::TransformOperation,
 ) -> aide::transform::TransformOperation {
     with_permission::<(CodeSandboxEnvironmentsRead,)>(op)
-        .id("CodeSandbox.getRootfsVersions")
+        .id("CodeSandbox.listRootfsVersions")
         .tag("Code Sandbox")
         .summary("List installed + available rootfs versions")
         .description(
@@ -152,6 +250,7 @@ pub async fn install_version_handler(
     _auth: RequirePermissions<(CodeSandboxEnvironmentsManage,)>,
     Json(body): Json<InstallVersionRequest>,
 ) -> ApiResult<Json<InstallTaskState>> {
+    validate_install_request(&body.version, &body.arch, &body.flavor, &body.package)?;
     let pool = live_pool()?;
     let root = cache_root()?;
     let state = version_install_tasks::start_install_task(
@@ -190,10 +289,25 @@ pub fn install_version_docs(
 
 pub async fn subscribe_install_progress_handler(
     _auth: RequirePermissions<(CodeSandboxEnvironmentsRead,)>,
-) -> ApiResult<Sse<impl Stream<Item = Result<Event, axum::Error>>>> {
+) -> ApiResult<axum::response::Response> {
     use async_stream::stream;
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-    let client_id = version_install_tasks::register_client(tx.clone());
+    // Audit Net1: register_client now returns `None` when the
+    // MAX_SSE_CLIENTS cap is hit. Reject the connection cleanly with
+    // 503 + a typed error so the UI's reconnect loop can back off.
+    let client_id = match version_install_tasks::register_client(tx.clone()) {
+        Some(id) => id,
+        None => {
+            return Err((
+                StatusCode::SERVICE_UNAVAILABLE,
+                crate::common::AppError::new(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "SANDBOX_ROOTFS_SSE_CAPACITY",
+                    "rootfs install SSE subscriber cap reached; retry shortly",
+                ),
+            ));
+        }
+    };
 
     // Connected handshake (typed enum variant → axum Event via
     // `sse_event_enum!`-generated Into).
@@ -221,7 +335,17 @@ pub async fn subscribe_install_progress_handler(
         version_install_tasks::remove_client(client_id);
     };
 
-    Ok((StatusCode::OK, Sse::new(stream).keep_alive(KeepAlive::default())))
+    // Audit Net2: `X-Accel-Buffering: no` tells nginx (and other
+    // reverse proxies that honor it) to forward the SSE stream
+    // un-buffered, otherwise progress events get held until the
+    // proxy's buffer fills — defeating SSE's whole point.
+    use axum::response::IntoResponse;
+    let mut response = Sse::new(stream).keep_alive(KeepAlive::default()).into_response();
+    response.headers_mut().insert(
+        "X-Accel-Buffering",
+        axum::http::HeaderValue::from_static("no"),
+    );
+    Ok((StatusCode::OK, response))
 }
 
 pub fn subscribe_install_progress_docs(
@@ -255,6 +379,8 @@ pub async fn set_pin_handler(
     _auth: RequirePermissions<(CodeSandboxEnvironmentsManage,)>,
     Json(body): Json<SetPinRequest>,
 ) -> ApiResult<Json<SetPinResponse>> {
+    // Re-use the install-request semver check (Plan 5 audit B1).
+    validate_install_request(&body.version, "x86_64", "minimal", "squashfs")?;
     let pool = live_pool()?;
     let state = config::get_state().ok_or_else(|| {
         (

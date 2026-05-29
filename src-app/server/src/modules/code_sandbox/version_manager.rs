@@ -181,38 +181,38 @@ impl VersionError {
         let (status, code) = match self {
             VersionError::PinNotSet | VersionError::PinUnreachable(_) => (
                 StatusCode::SERVICE_UNAVAILABLE,
-                "ROOTFS_UNAVAILABLE",
+                "SANDBOX_ROOTFS_UNAVAILABLE",
             ),
             VersionError::ArtifactInUse { .. } => {
-                (StatusCode::CONFLICT, "ROOTFS_ARTIFACT_IN_USE")
+                (StatusCode::CONFLICT, "SANDBOX_ROOTFS_ARTIFACT_IN_USE")
             }
             VersionError::GitHubUnreachable(_) => (
                 StatusCode::BAD_GATEWAY,
-                "ROOTFS_GITHUB_UNREACHABLE",
+                "SANDBOX_ROOTFS_GITHUB_UNREACHABLE",
             ),
             VersionError::ReleaseMissing { .. } => (
                 StatusCode::UNPROCESSABLE_ENTITY,
-                "ROOTFS_VERSION_MISSING",
+                "SANDBOX_ROOTFS_VERSION_MISSING",
             ),
             VersionError::AssetMissing { .. } => (
                 StatusCode::UNPROCESSABLE_ENTITY,
-                "ROOTFS_ASSET_MISSING",
+                "SANDBOX_ROOTFS_ASSET_MISSING",
             ),
             VersionError::Sha256Mismatch { .. } => (
                 StatusCode::BAD_GATEWAY,
-                "ROOTFS_SHA256_MISMATCH",
+                "SANDBOX_ROOTFS_SHA256_MISMATCH",
             ),
             VersionError::CosignFailed(_) => (
                 StatusCode::BAD_GATEWAY,
-                "ROOTFS_COSIGN_FAILED",
+                "SANDBOX_ROOTFS_COSIGN_FAILED",
             ),
             VersionError::Database(_) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "ROOTFS_DATABASE_ERROR",
+                "SANDBOX_ROOTFS_DATABASE_ERROR",
             ),
             VersionError::Io(_) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "ROOTFS_IO_ERROR",
+                "SANDBOX_ROOTFS_IO_ERROR",
             ),
         };
         AppError::new(status, code, self.to_string())
@@ -312,18 +312,63 @@ pub async fn list_releases() -> Result<Vec<RootfsRelease>, VersionError> {
     Ok(out)
 }
 
-/// `true` when `tag` matches the `vMAJOR.MINOR.PATCH` semver shape the
-/// release workflow rejects everything else from.
+/// `true` when `tag` matches the `vMAJOR.MINOR.PATCH[-PRERELEASE]`
+/// semver shape the release workflow rejects everything else from.
+/// Audit B9: enforce semver §2 "no leading zeroes on numeric
+/// identifiers" so `v01.2.3` is rejected; allow optional prerelease
+/// suffix (`-alpha`, `-rc.1`) so the existing `v0.0.2-alpha` rootfs
+/// release tags validate; require non-empty prerelease when `-` is
+/// present (`v1.2.3-` is rejected).
 fn is_valid_semver_tag(tag: &str) -> bool {
     let rest = match tag.strip_prefix('v') {
         Some(r) => r,
         None => return false,
     };
-    let parts: Vec<&str> = rest.split('.').collect();
+    let (core, prerelease) = match rest.split_once('-') {
+        Some((c, p)) => (c, Some(p)),
+        None => (rest, None),
+    };
+    let parts: Vec<&str> = core.split('.').collect();
     if parts.len() != 3 {
         return false;
     }
-    parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+    let core_ok = parts.iter().all(|p| {
+        if p.is_empty() {
+            return false;
+        }
+        // No leading zeros, except the literal "0".
+        if p.len() > 1 && p.starts_with('0') {
+            return false;
+        }
+        p.chars().all(|c| c.is_ascii_digit())
+    });
+    if !core_ok {
+        return false;
+    }
+    match prerelease {
+        None => true,
+        Some(pre) => {
+            if pre.is_empty() {
+                return false;
+            }
+            // Semver §9: prerelease is one or more dot-separated
+            // identifiers; each identifier is `[0-9A-Za-z-]+`,
+            // numeric identifiers cannot have leading zeros.
+            pre.split('.').all(|id| {
+                if id.is_empty() {
+                    return false;
+                }
+                if id.chars().all(|c| c.is_ascii_digit())
+                    && id.len() > 1
+                    && id.starts_with('0')
+                {
+                    return false;
+                }
+                id.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-')
+            })
+        }
+    }
 }
 
 /// Pick the highest non-draft, non-prerelease semver release. Returns
@@ -430,12 +475,20 @@ pub async fn set_pin(pool: &PgPool, target_version: &str) -> Result<(), VersionE
 
 /// All installed artifacts, newest first. Mirrors `llm_runtime_versions`
 /// list shape used by the local-llm-runtime admin page.
+///
+/// Audit convergence pass: explicit `LIMIT 1024` guards against an
+/// unbounded materialization if the artifacts table ever grows past
+/// the operator's intuition (each row is small and human-managed via
+/// the admin UI, so 1024 is comfortably above any sane deployment;
+/// hitting it means an admin walked into a problem and the UI's
+/// pagination decision needs revisiting, not a silent OOM).
 pub async fn list_installed(pool: &PgPool) -> Result<Vec<RootfsArtifact>, VersionError> {
     let rows = sqlx::query_as::<_, RootfsArtifact>(
         "SELECT id, version, arch, flavor, package, sha256, artifact_path, \
                 cosign_bundle, status, downloaded_at, last_used_at \
          FROM code_sandbox_rootfs_artifacts \
-         ORDER BY downloaded_at DESC",
+         ORDER BY downloaded_at DESC \
+         LIMIT 1024",
     )
     .fetch_all(pool)
     .await
@@ -544,11 +597,21 @@ pub async fn delete_artifact(pool: &PgPool, id: Uuid) -> Result<(), VersionError
     }
 
     // Refuse if any live mount of this artifact still has inflight
-    // execs / MCP sessions. Plan 5 Phase 3 explicitly: the delete
-    // handler is the second 409 guard after the pin check.
-    if let Some(mounted) = MOUNTED_ARTIFACTS.get(&row.id) {
-        let live = mounted.value().inflight();
+    // execs / MCP sessions. The delete handler is the second 409
+    // guard after the pin check.
+    //
+    // Audit B5: avoid a race between the `inflight()` check and the
+    // actual eviction by atomically REMOVING the registry entry
+    // first — that closes the door against new `acquire_inflight`
+    // calls. Then re-check inflight on the removed handle; if a
+    // racing caller incremented in the brief overlap window, re-
+    // insert + refuse.
+    if let Some((_, mounted)) = MOUNTED_ARTIFACTS.remove(&row.id) {
+        let live = mounted.inflight();
         if live > 0 {
+            // Lost the race: a caller grabbed an inflight guard
+            // between our check and the removal. Put it back.
+            MOUNTED_ARTIFACTS.insert(row.id, mounted);
             return Err(VersionError::ArtifactInUse {
                 version: row.version.clone(),
                 arch: row.arch.clone(),
@@ -556,16 +619,25 @@ pub async fn delete_artifact(pool: &PgPool, id: Uuid) -> Result<(), VersionError
                 inflight: live,
             });
         }
-        // Stale registry entry with no live users — evict via the
-        // backend before tearing the row down.
-        let mount_dir = mounted.value().mount_dir.clone();
-        let flavor = mounted.value().flavor.clone();
-        let version_str = mounted.value().version.clone();
-        drop(mounted);
-        let _ = crate::modules::code_sandbox::backend::active()
-            .evict_artifact(&mount_dir, &flavor, &version_str)
+        // Tear down the backend mount (squashfuse unmount on Linux,
+        // VM stop on mac_vm, distro unregister on wsl2). Returns an
+        // EvictOutcome (not Result) — surface a warn if the backend
+        // claims nothing was cached even though we just removed a
+        // registry entry, but proceed with the DB delete either way
+        // (re-inserting the registry entry would just block a later
+        // operator retry of the delete on the same id).
+        let outcome = crate::modules::code_sandbox::backend::active()
+            .evict_artifact(&mounted.mount_dir, &mounted.flavor, &mounted.version)
             .await;
-        MOUNTED_ARTIFACTS.remove(&row.id);
+        if !outcome.was_cached {
+            tracing::warn!(
+                artifact = %row.id,
+                version = %row.version,
+                flavor = %row.flavor,
+                "code_sandbox: delete_artifact backend reported no cache hit \
+                 (registry/disk drift); continuing with DB delete"
+            );
+        }
     }
 
     sqlx::query("DELETE FROM code_sandbox_rootfs_artifacts WHERE id = $1")
@@ -1064,8 +1136,10 @@ pub const SENTINEL_ROOTFS_UPGRADED: &str = ".rootfs-upgraded";
 pub const SENTINEL_FLAVOR_CHANGED: &str = ".flavor-changed";
 
 /// Sentinel payload — written as JSON for forward extensibility.
+/// Crate-private: only the version_manager's wipe walker + the
+/// chat-extension's sentinel consumer ever touch this.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WipeSentinel {
+pub(crate) struct WipeSentinel {
     pub old: String,
     pub new: String,
     pub at: chrono::DateTime<chrono::Utc>,
@@ -1126,8 +1200,16 @@ impl Drop for InflightGuard {
             InflightKind::Exec => &self.artifact.inflight_exec,
             InflightKind::Mcp => &self.artifact.inflight_mcp,
         };
-        let _prev = counter.fetch_sub(1, Ordering::SeqCst);
-        self.artifact.drained.notify_waiters();
+        // Decrement THIS class, then only notify drain waiters when
+        // BOTH classes have hit zero. Audit B6: notifying on every
+        // decrement made drain task spin uselessly (it'd wake, see
+        // inflight() > 0, and loop). The drain loop's secondary
+        // re-check (`if artifact.inflight() == 0` after notify) means
+        // a spurious wake is correctness-safe but pure overhead.
+        counter.fetch_sub(1, Ordering::SeqCst);
+        if self.artifact.inflight() == 0 {
+            self.artifact.drained.notify_waiters();
+        }
     }
 }
 
@@ -1147,6 +1229,16 @@ impl InflightGuard {
 static MOUNTED_ARTIFACTS: once_cell::sync::Lazy<
     dashmap::DashMap<Uuid, Arc<MountedArtifact>>,
 > = once_cell::sync::Lazy::new(dashmap::DashMap::new);
+
+/// Audit B2: dedup drain tasks. If `set_pin_with_drain` is called
+/// twice in quick succession (rapid-fire admin clicks; two admin
+/// sessions concurrently flipping the pin) we'd otherwise spawn two
+/// drain tasks for the same artifact_id, both racing on
+/// `evict_artifact`, `MOUNTED_ARTIFACTS.remove`, and the wipe walker.
+/// The set is checked + populated atomically via `DashSet::insert` so
+/// only the first caller spawns the task.
+static DRAINING_ARTIFACTS: once_cell::sync::Lazy<dashmap::DashSet<Uuid>> =
+    once_cell::sync::Lazy::new(dashmap::DashSet::new);
 
 /// Register (or refresh) the in-memory tracking for an artifact that
 /// was just mounted. Idempotent: a second call with the same
@@ -1187,8 +1279,11 @@ pub fn acquire_inflight(artifact_id: Uuid, kind: InflightKind) -> Option<Infligh
         InflightKind::Exec => &artifact.inflight_exec,
         InflightKind::Mcp => &artifact.inflight_mcp,
     };
+    // Increment ONLY. The drain task waits for inflight == 0; an
+    // increment cannot make that condition true, so notifying here
+    // (audit B7) only causes the drain loop to wake and immediately
+    // sleep again — pointless wakeup on every exec.
     counter.fetch_add(1, Ordering::SeqCst);
-    artifact.drained.notify_waiters();
     Some(InflightGuard { artifact, kind })
 }
 
@@ -1321,10 +1416,31 @@ pub async fn set_pin_with_drain(
     let draining_count = draining.len();
 
     for stale in draining {
+        // Audit B2: skip if a drain task for this artifact_id is
+        // already in flight. `DashSet::insert` returns false when
+        // the value was already present, so only the first caller
+        // spawns the task.
+        if !DRAINING_ARTIFACTS.insert(stale.artifact_id) {
+            tracing::debug!(
+                artifact_id = %stale.artifact_id,
+                "code_sandbox: drain task already in flight; skipping dup"
+            );
+            continue;
+        }
         let old_v = old.clone();
         let new_v = target_version.to_string();
         let workspace_root = workspace_root.clone();
         tokio::spawn(async move {
+            // Guard so the dedup marker is always cleared, even on
+            // panic between wait_until_drained and the wipe walker.
+            struct DrainGuard(Uuid);
+            impl Drop for DrainGuard {
+                fn drop(&mut self) {
+                    DRAINING_ARTIFACTS.remove(&self.0);
+                }
+            }
+            let _drain_guard = DrainGuard(stale.artifact_id);
+
             tracing::info!(
                 artifact_id = %stale.artifact_id,
                 version = %stale.version,
@@ -1378,9 +1494,11 @@ pub async fn set_pin_with_drain(
 
 /// What the wipe walker did. Surfaced via the tracing log for
 /// post-hoc admin visibility (the actual per-path detail is too
-/// noisy for a single log line).
+/// noisy for a single log line). Crate-private: callers outside
+/// the version_manager only care about the structured tracing
+/// fields, not the strict-type.
 #[derive(Debug, Default, Clone)]
-pub struct WipeResult {
+pub(crate) struct WipeResult {
     pub conversation_dirs: usize,
     pub mcp_server_dirs: usize,
     pub subdirs_removed: usize,
@@ -1394,7 +1512,7 @@ pub struct WipeResult {
 ///
 /// Skips `attachments/` and `identity/` (shared-state dirs that are
 /// neither per-conversation nor per-MCP-server).
-pub fn wipe_install_caches_in_root(
+pub(crate) fn wipe_install_caches_in_root(
     workspace_root: &std::path::Path,
     sentinel: &WipeSentinel,
 ) -> WipeResult {
@@ -1412,11 +1530,15 @@ pub fn wipe_install_caches_in_root(
     };
     for entry in entries.flatten() {
         let path = entry.path();
-        let meta = match entry.metadata() {
+        // Reject symlinks at the workspace_root level — an operator (or
+        // attacker with workspace-write) could plant `<wr>/00000000-...
+        // -000evil` as a symlink to `/etc` and the walker would
+        // recurse + wipe inside the symlink target. Audit B13/B14.
+        let meta = match std::fs::symlink_metadata(&path) {
             Ok(m) => m,
             Err(_) => continue,
         };
-        if !meta.is_dir() {
+        if meta.file_type().is_symlink() || !meta.is_dir() {
             continue;
         }
         let name = match path.file_name().and_then(|n| n.to_str()) {
@@ -1432,11 +1554,27 @@ pub fn wipe_install_caches_in_root(
             };
             for mcp_entry in mcp_dirs.flatten() {
                 let mcp_path = mcp_entry.path();
-                if mcp_entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                    let n = wipe_subdirs_in(&mcp_path, &sentinel_json);
-                    result.mcp_server_dirs += 1;
-                    result.subdirs_removed += n;
+                let mcp_meta = match std::fs::symlink_metadata(&mcp_path) {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                };
+                if mcp_meta.file_type().is_symlink() || !mcp_meta.is_dir() {
+                    continue;
                 }
+                // Require the MCP server dir name to parse as a Uuid
+                // — server IDs are deterministic v5 / v4 Uuids, and
+                // anything else is operator-created garbage we should
+                // not recurse into.
+                let mcp_name = match mcp_path.file_name().and_then(|n| n.to_str()) {
+                    Some(n) => n,
+                    None => continue,
+                };
+                if Uuid::parse_str(mcp_name).is_err() {
+                    continue;
+                }
+                let n = wipe_subdirs_in(&mcp_path, &sentinel_json);
+                result.mcp_server_dirs += 1;
+                result.subdirs_removed += n;
             }
             continue;
         }
@@ -1446,6 +1584,13 @@ pub fn wipe_install_caches_in_root(
         //   attachments; `identity/` is the shared synthetic
         //   passwd/group.
         if name == "attachments" || name == "identity" {
+            continue;
+        }
+
+        // Per-conversation dir names MUST be valid Uuids. Audit B14:
+        // without this an operator-planted `<wr>/etc-symlink-target`
+        // would be treated as a conv dir and recursed into.
+        if Uuid::parse_str(name).is_err() {
             continue;
         }
 
@@ -1579,7 +1724,17 @@ mod tests {
 
     #[test]
     fn semver_tag_regex_accepts_valid() {
-        for t in ["v0.0.1", "v0.1.0", "v1.0.0", "v10.20.30"] {
+        for t in [
+            "v0.0.1",
+            "v0.1.0",
+            "v1.0.0",
+            "v10.20.30",
+            // Audit B9: prerelease tags must validate.
+            "v0.0.2-alpha",
+            "v1.2.3-rc.1",
+            "v0.1.0-rc1",
+            "v0.1.0-alpha.0",
+        ] {
             assert!(is_valid_semver_tag(t), "should accept {t}");
         }
     }
@@ -1589,16 +1744,16 @@ mod tests {
         for t in [
             "0.1.0",                        // missing v
             "v0.1",                         // 2 components
-            "v0.1.0-rc1",                   // prerelease suffix (we strip those via prerelease flag)
-            "v0.1.0+meta",                  // build metadata
-            "v0.01.0",                      // leading zeros not enforced but bash regex would accept; lax
+            "v0.1.0+meta",                  // build metadata (we don't accept)
+            "v0.01.0",                      // leading zero on minor — audit B9
+            "v01.0.0",                      // leading zero on major
+            "v1.2.3-",                      // empty prerelease
+            "v1.2.3-rc..1",                 // empty prerelease identifier
+            "v1.2.3-rc.01",                 // numeric prerelease id with leading zero
+            "v1.2.3-rc/1",                  // invalid char in prerelease id
             "vfoo",                         // non-numeric
             "sandbox-rootfs-v1.r0-x86_64",  // legacy tag shape
         ] {
-            // We tolerate leading zeros, so adjust expectations for v0.01.0
-            if t == "v0.01.0" {
-                continue;
-            }
             assert!(!is_valid_semver_tag(t), "should reject {t}");
         }
     }
