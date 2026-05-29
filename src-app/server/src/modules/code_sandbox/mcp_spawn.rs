@@ -306,7 +306,13 @@ async fn spawn_on_linux_host(
 
     let synthetic = SyntheticIdentity::ensure_for(&state.workspace_root)?;
 
-    // Per-server workspace: <workspace_root>/mcp/<server_id>/
+    // Per-server workspace: <workspace_root>/mcp/<server_id>/.
+    // Bwrap runs as --uid 1001, but the host-side dir is owned by the
+    // server's uid → without 0o1777 the sandboxed sandboxuser can't
+    // write its own $HOME. Same bug as the VM path (which already
+    // chmods in `spawn_in_vm_session`); without this `pip install`,
+    // `uvx`, `npm install` and any other write inside the sandbox
+    // fails with EACCES on Linux too.
     let server_workspace = state
         .workspace_root
         .join("mcp")
@@ -314,6 +320,11 @@ async fn spawn_on_linux_host(
     std::fs::create_dir_all(&server_workspace).map_err(|e| {
         AppError::internal_error(format!("create mcp server workspace: {e}"))
     })?;
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&server_workspace, std::fs::Permissions::from_mode(0o1777))
+            .map_err(|e| AppError::internal_error(format!("chmod mcp server workspace: {e}")))?;
+    }
 
     // Bind the embedded uv/bun parent dir (host abs path) into the
     // sandbox at the same absolute path so `resolved_command` resolves
