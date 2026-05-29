@@ -45,6 +45,7 @@ hex.workspace = true
 include_dir.workspace = true
 base64.workspace = true
 sha2.workspace = true
+semver.workspace = true
 url.workspace = true
 http.workspace = true
 tempfile.workspace = true
@@ -52,6 +53,7 @@ mime_guess.workspace = true
 which.workspace = true
 include-flate.workspace = true
 tar.workspace = true
+flate2.workspace = true
 zstd.workspace = true
 lazy_static.workspace = true
 futures-util.workspace = true
@@ -166,9 +168,11 @@ code_sandbox_seccomp = ["dep:sandbox-seccomp"]
 [target.'cfg(target_os = "linux")'.dependencies]
 sandbox-seccomp = { path = "../sandbox-seccomp", optional = true }
 
-# The microVM code-sandbox backends (macOS libkrun, Windows WSL2) talk to the
-# in-guest agent over the shared control protocol.
-[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+# Host<->guest control protocol used by the microVM backends (macOS libkrun,
+# Windows WSL2). `vm_long_lived` references this even on Linux (the type
+# needs to exist so SandboxBackend::open_long_lived_session has a uniform
+# return signature; Linux returns Ok(None)), so the dep is unconditional —
+# the crate is pure-Rust with no platform-specific code.
 sandbox-vm-protocol = { path = "../sandbox-vm-protocol" }
 
 # Windows: AF_HYPERV / SOCKADDR_HV bindings so the WSL2 backend can dial the

@@ -119,3 +119,15 @@ impl PermissionCheck for HubModelsCreate {
     const DESCRIPTION: &'static str = "Download models from hub";
     const MODULE: &'static str = "hub";
 }
+
+/// Administer the unified hub catalog — force refresh, view updates.
+/// Administrators get this via the `*` wildcard; nobody else does by
+/// default.
+pub struct HubAdmin;
+
+impl PermissionCheck for HubAdmin {
+    const NAME: &'static str = "HubAdmin";
+    const PERMISSION: &'static str = "hub::admin";
+    const DESCRIPTION: &'static str = "Administer the hub catalog (refresh, view updates)";
+    const MODULE: &'static str = "hub";
+}

@@ -63,4 +63,22 @@ pub fn hub_router() -> ApiRouter {
             "/hub/models/local-providers",
             get_with(get_hub_local_providers, get_hub_local_providers_docs),
         )
+        // Unified catalog endpoints (Phase 1)
+        .api_route("/hub/index", get_with(get_hub_catalog, get_hub_catalog_docs))
+        .api_route(
+            "/hub/version",
+            get_with(get_hub_catalog_version, get_hub_catalog_version_docs),
+        )
+        .api_route(
+            "/hub/refresh",
+            post_with(refresh_hub_catalog, refresh_hub_catalog_docs),
+        )
+        .api_route(
+            "/hub/updates",
+            get_with(get_hub_updates, get_hub_updates_docs),
+        )
+        .api_route(
+            "/hub/manifest/{id}",
+            get_with(get_hub_manifest, get_hub_manifest_docs),
+        )
 }

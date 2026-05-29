@@ -12842,6 +12842,7 @@ dependencies = [
  "sandbox-seccomp",
  "sandbox-vm-protocol",
  "schemars 0.9.0",
+ "semver",
  "serde",
  "serde_json",
  "serde_yaml",

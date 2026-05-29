@@ -14,11 +14,12 @@ use std::sync::Arc;
 
 use super::{
     events::HubEvent,
-    hub_manager::HubManager,
+    hub_manager::{Catalog, HubManager, HubManifest},
     models::{HubCategory, HubEntityType},
     permissions::*,
     types::*,
 };
+use axum::extract::Path as AxumPath;
 
 // =====================================================
 // Route Handlers
@@ -704,4 +705,189 @@ pub fn get_hub_local_providers_docs(op: TransformOperation) -> TransformOperatio
         .summary("List local providers available for hub model downloads")
         .response::<200, Json<HubLocalProvidersResponse>>()
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+}
+
+// =====================================================
+// UNIFIED CATALOG ENDPOINTS (new in Phase 1)
+// =====================================================
+
+/// GET /api/hub/index — return the full parsed catalog (flat across
+/// all categories). Cheap: reads ~6 KB of JSON. The Phase-2 frontend
+/// will load this once per session and client-side-filter into the
+/// existing three tabs.
+#[debug_handler]
+pub async fn get_hub_catalog(
+    _auth: RequirePermissions<(HubModelsRead,)>,
+) -> ApiResult<Json<Catalog>> {
+    let app_data_dir = crate::core::get_app_data_dir();
+    let hub_manager = HubManager::new(app_data_dir)?;
+    let catalog = hub_manager.catalog().await?;
+    Ok((StatusCode::OK, Json(catalog)))
+}
+
+pub fn get_hub_catalog_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(HubModelsRead,)>(op)
+        .id("Hub.getCatalog")
+        .tag("Hub")
+        .summary("Get the unified hub catalog (index.json)")
+        .response::<200, Json<Catalog>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+}
+
+/// GET /api/hub/version — catalog hub_version, the running server's
+/// own semver (for client-side compat filtering), per-category counts.
+#[debug_handler]
+pub async fn get_hub_catalog_version(
+    _auth: RequirePermissions<(HubModelsRead,)>,
+) -> ApiResult<Json<HubCatalogVersionResponse>> {
+    let app_data_dir = crate::core::get_app_data_dir();
+    let hub_manager = HubManager::new(app_data_dir)?;
+    let catalog = hub_manager.catalog().await?;
+    let mut counts = HubCatalogCounts {
+        models: 0,
+        assistants: 0,
+        mcp_servers: 0,
+    };
+    for item in &catalog.items {
+        match item.category {
+            HubCategory::Model => counts.models += 1,
+            HubCategory::Assistant => counts.assistants += 1,
+            HubCategory::McpServer => counts.mcp_servers += 1,
+        }
+    }
+    Ok((
+        StatusCode::OK,
+        Json(HubCatalogVersionResponse {
+            hub_version: catalog.hub_version,
+            server_version: super::hub_manager::server_version().to_string(),
+            counts,
+        }),
+    ))
+}
+
+pub fn get_hub_catalog_version_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(HubModelsRead,)>(op)
+        .id("Hub.getCatalogVersion")
+        .tag("Hub")
+        .summary("Current hub catalog version + server version + counts")
+        .response::<200, Json<HubCatalogVersionResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+}
+
+/// POST /api/hub/refresh — admin-only force fetch from GitHub.
+/// Cosign + sha256 failure leaves the previous catalog in place.
+#[debug_handler]
+pub async fn refresh_hub_catalog(
+    _auth: RequirePermissions<(HubAdmin,)>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
+) -> ApiResult<Json<HubCatalogRefreshResponse>> {
+    let app_data_dir = crate::core::get_app_data_dir();
+    let hub_manager = HubManager::new(app_data_dir)?;
+    let outcome = hub_manager.refresh().await?;
+
+    if outcome.updated {
+        // Reuse the existing per-category events so any listener wired
+        // to one of them still picks up the change. The new catalog is
+        // unified — three identical events emit at once.
+        let prev = outcome.previous_version.clone().unwrap_or_default();
+        event_bus.emit_async(
+            HubEvent::models_refreshed(prev.clone(), outcome.new_version.clone()).into(),
+        );
+        event_bus.emit_async(
+            HubEvent::assistants_refreshed(prev.clone(), outcome.new_version.clone()).into(),
+        );
+        event_bus.emit_async(
+            HubEvent::mcp_servers_refreshed(prev, outcome.new_version.clone()).into(),
+        );
+    }
+
+    Ok((
+        StatusCode::OK,
+        Json(HubCatalogRefreshResponse {
+            updated: outcome.updated,
+            previous_version: outcome.previous_version,
+            new_version: outcome.new_version,
+            cosign_verified: outcome.cosign_verified,
+        }),
+    ))
+}
+
+pub fn refresh_hub_catalog_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(HubAdmin,)>(op)
+        .id("Hub.refreshCatalog")
+        .tag("Hub")
+        .summary("Force-refresh the hub catalog from GitHub Releases (admin only)")
+        .response::<200, Json<HubCatalogRefreshResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<500, (), _>(|res| {
+            res.description("Fetch / sha256 / cosign verify failure — previous catalog left in place")
+        })
+}
+
+/// GET /api/hub/updates — admin-only. Installed entities whose
+/// `hub_version` lags the catalog. NULL `hub_version` (legacy rows)
+/// counts as behind.
+#[debug_handler]
+pub async fn get_hub_updates(
+    _auth: RequirePermissions<(HubAdmin,)>,
+) -> ApiResult<Json<HubUpdatesResponse>> {
+    let app_data_dir = crate::core::get_app_data_dir();
+    let hub_manager = HubManager::new(app_data_dir)?;
+    let catalog = hub_manager.catalog().await?;
+    let rows = Repos
+        .hub
+        .list_outdated_entities(&catalog.hub_version)
+        .await?;
+    Ok((
+        StatusCode::OK,
+        Json(HubUpdatesResponse {
+            catalog_version: catalog.hub_version.clone(),
+            updates: rows
+                .into_iter()
+                .map(|r| HubUpdateRow {
+                    hub_id: r.hub_id,
+                    hub_category: r.hub_category,
+                    entity_type: r.entity_type,
+                    entity_id: r.entity_id,
+                    installed_version: r.installed_version,
+                    current_version: catalog.hub_version.clone(),
+                })
+                .collect(),
+        }),
+    ))
+}
+
+pub fn get_hub_updates_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(HubAdmin,)>(op)
+        .id("Hub.getUpdates")
+        .tag("Hub")
+        .summary("Installed hub entities behind the current catalog version (admin only)")
+        .response::<200, Json<HubUpdatesResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+}
+
+/// GET /api/hub/manifest/:id?category=... — full YAML manifest for one
+/// item. Backs the detail-drawer view in the Phase-2 frontend so the
+/// list view can stay small (just the index entries).
+#[debug_handler]
+pub async fn get_hub_manifest(
+    _auth: RequirePermissions<(HubModelsRead,)>,
+    AxumPath(id): AxumPath<String>,
+    Query(q): Query<HubManifestQuery>,
+) -> ApiResult<Json<HubManifest>> {
+    let app_data_dir = crate::core::get_app_data_dir();
+    let hub_manager = HubManager::new(app_data_dir)?;
+    let manifest = hub_manager.manifest(q.category, &id).await?;
+    Ok((StatusCode::OK, Json(manifest)))
+}
+
+pub fn get_hub_manifest_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(HubModelsRead,)>(op)
+        .id("Hub.getManifest")
+        .tag("Hub")
+        .summary("Full manifest for one hub item (model / assistant / mcp-server)")
+        .response::<200, Json<HubManifest>>()
+        .response_with::<400, (), _>(|res| res.description("Invalid id"))
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("Manifest not found in catalog"))
 }

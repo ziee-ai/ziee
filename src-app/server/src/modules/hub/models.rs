@@ -177,16 +177,26 @@ impl HubEntityType {
     }
 }
 
-/// Hub category enum
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "lowercase")]
+/// Hub category enum. The JSON wire form uses kebab-case (`"mcp-server"`)
+/// to match the on-disk folder names in the catalog (`mcp-servers/`) and
+/// the index.json shape published by ziee-ai/hub's `release.yml`. The
+/// `as_str()` helper still returns the snake-case form (`"mcp_server"`)
+/// because the `hub_entities` DB column was created with that value
+/// (migration 8's CHECK constraint) — kept for backward compat with
+/// existing rows.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub enum HubCategory {
+    #[serde(rename = "assistant")]
     Assistant,
+    #[serde(rename = "mcp-server", alias = "mcp_server")]
     McpServer,
+    #[serde(rename = "model")]
     Model,
 }
 
 impl HubCategory {
+    /// Snake-case form for DB rows in `hub_entities.hub_category` —
+    /// matches migration 8's CHECK constraint.
     pub fn as_str(&self) -> &'static str {
         match self {
             HubCategory::Assistant => "assistant",

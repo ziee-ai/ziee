@@ -63,6 +63,28 @@ impl HubRepository {
     ) -> Result<(), AppError> {
         delete_hub_tracking(&self.pool, entity_type, entity_id).await
     }
+
+    /// Every hub_entities row whose installed hub_version differs from
+    /// the current catalog version (NULL is also "behind"). Backs
+    /// `GET /api/hub/updates`.
+    pub async fn list_outdated_entities(
+        &self,
+        current_version: &str,
+    ) -> Result<Vec<OutdatedHubEntity>, AppError> {
+        list_outdated_entities(&self.pool, current_version).await
+    }
+}
+
+/// Row returned by `list_outdated_entities` — one installed hub
+/// entity whose version doesn't match the current catalog. The
+/// `installed_version` is None for rows installed before migration 66.
+#[derive(Debug, Clone)]
+pub struct OutdatedHubEntity {
+    pub hub_id: String,
+    pub hub_category: String,
+    pub entity_type: String,
+    pub entity_id: Uuid,
+    pub installed_version: Option<String>,
 }
 
 /// Create hub entity tracking record
@@ -193,6 +215,37 @@ pub async fn get_created_model_ids(pool: &PgPool) -> Result<HashMap<String, Vec<
     }
 
     Ok(map)
+}
+
+/// List entities whose installed hub_version is not the current
+/// catalog version. NULL counts as "behind" so legacy rows always
+/// surface as updatable.
+pub async fn list_outdated_entities(
+    pool: &PgPool,
+    current_version: &str,
+) -> Result<Vec<OutdatedHubEntity>, AppError> {
+    let rows = sqlx::query!(
+        r#"
+        SELECT hub_id, hub_category, entity_type, entity_id, hub_version
+        FROM hub_entities
+        WHERE hub_version IS DISTINCT FROM $1
+        ORDER BY hub_category, hub_id
+        "#,
+        current_version
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| OutdatedHubEntity {
+            hub_id: r.hub_id,
+            hub_category: r.hub_category,
+            entity_type: r.entity_type,
+            entity_id: r.entity_id,
+            installed_version: r.hub_version,
+        })
+        .collect())
 }
 
 /// Delete hub tracking record
