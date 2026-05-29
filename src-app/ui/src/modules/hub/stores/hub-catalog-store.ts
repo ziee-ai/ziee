@@ -6,9 +6,28 @@ import type {
   Catalog,
   HubCategory,
   HubCatalogVersionResponse,
+  HubReleaseInfo,
   IndexItem,
 } from '@/api-client/types'
 import { Stores } from '@/core/stores'
+import { useHubModelsStore } from '@/modules/hub/modules/llm-models/stores/hub-models-store'
+import { useHubAssistantsStore } from '@/modules/hub/modules/assistants/stores/hub-assistants-store'
+import { useHubMcpServersStore } from '@/modules/hub/modules/mcp/stores/hub-mcp-servers-store'
+
+/**
+ * After the active catalog version changes (refresh / activate), the
+ * per-category tab lists are stale — they were loaded against the old
+ * `current/`. Re-pull all three so every tab reflects the new version.
+ * The per-category endpoints serve from the rotated `current/` dir, so
+ * a plain reload picks up the switch.
+ */
+async function reloadAllTabs(): Promise<void> {
+  await Promise.allSettled([
+    useHubModelsStore.getState().loadModels(),
+    useHubAssistantsStore.getState().loadAssistants(),
+    useHubMcpServersStore.getState().loadServers(),
+  ])
+}
 
 /**
  * Result of a per-item compat check (see compatOf below).
@@ -26,10 +45,20 @@ interface HubCatalogState {
   refreshing: boolean
   error: string | null
 
+  // Admin version picker (lazy — only loaded when an admin opens the
+  // dropdown via loadReleases()).
+  releases: HubReleaseInfo[]
+  pinnedVersion: string | null
+  activeVersion: string | null
+  releasesLoading: boolean
+  activating: boolean
+
   // Actions
   loadCatalog: () => Promise<void>
   loadVersion: () => Promise<void>
   refresh: () => Promise<void>
+  loadReleases: () => Promise<void>
+  activateVersion: (version: string | null) => Promise<void>
   itemsByCategory: (category: HubCategory) => IndexItem[]
 
   // Lazy initialization
@@ -52,6 +81,11 @@ export const useHubCatalogStore = create<HubCatalogState>()(
         loading: false,
         refreshing: false,
         error: null,
+        releases: [],
+        pinnedVersion: null,
+        activeVersion: null,
+        releasesLoading: false,
+        activating: false,
 
         loadCatalog: async () => {
           if (get().loading) return
@@ -94,12 +128,52 @@ export const useHubCatalogStore = create<HubCatalogState>()(
             // fresh in the UI.
             await get().loadCatalog()
             await get().loadVersion()
+            await reloadAllTabs()
             set({ refreshing: false })
             return outcome as unknown as void
           } catch (error: any) {
             set({
               error: error?.message || 'Failed to refresh hub catalog',
               refreshing: false,
+            })
+            throw error
+          }
+        },
+
+        loadReleases: async () => {
+          set({ releasesLoading: true, error: null })
+          try {
+            const resp = await ApiClient.Hub.getReleases()
+            set({
+              releases: resp.releases,
+              activeVersion: resp.active_version ?? null,
+              pinnedVersion: resp.pinned_version ?? null,
+              releasesLoading: false,
+            })
+          } catch (error: any) {
+            set({
+              error: error?.message || 'Failed to list hub versions',
+              releasesLoading: false,
+            })
+          }
+        },
+
+        // Activate a specific version server-wide (admin). `null` clears
+        // the pin and tracks latest. On success, re-pulls catalog +
+        // version + releases so the UI reflects the new active version.
+        activateVersion: async (version: string | null) => {
+          set({ activating: true, error: null })
+          try {
+            await ApiClient.Hub.activateVersion({ version: version ?? undefined })
+            await get().loadCatalog()
+            await get().loadVersion()
+            await get().loadReleases()
+            await reloadAllTabs()
+            set({ activating: false })
+          } catch (error: any) {
+            set({
+              error: error?.message || 'Failed to activate hub version',
+              activating: false,
             })
             throw error
           }

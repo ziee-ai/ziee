@@ -165,12 +165,17 @@ pub struct HubCatalogCounts {
 
 /// Response for `GET /api/hub/version` — the catalog's current
 /// hub_version, the server's own version (so the UI can compute
-/// compat client-side), and a count of items per category.
+/// compat client-side), counts per category, where the active catalog
+/// came from (`seed` vs `github`), and when it was installed.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct HubCatalogVersionResponse {
     pub hub_version: String,
     pub server_version: String,
     pub counts: HubCatalogCounts,
+    /// "seed" (embedded boot fallback) or "github" (verified fetch).
+    pub source: super::hub_manager::CatalogProvenance,
+    /// ISO 8601 install time of the active catalog (None if unreadable).
+    pub last_refreshed: Option<String>,
 }
 
 /// Response for `POST /api/hub/refresh` — what changed.
@@ -205,6 +210,25 @@ pub struct HubUpdatesResponse {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct HubManifestQuery {
     pub category: super::models::HubCategory,
+}
+
+/// Response for `GET /api/hub/releases` — the versions published on
+/// GitHub, plus which is currently installed (`active_version`) and the
+/// admin's pin (`pinned_version`, None = tracking latest).
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct HubReleasesResponse {
+    pub active_version: Option<String>,
+    pub pinned_version: Option<String>,
+    pub releases: Vec<super::hub_manager::HubReleaseInfo>,
+}
+
+/// Request body for `POST /api/hub/activate`. `version: null` clears the
+/// pin (track latest); otherwise pins + activates that exact version
+/// (semver without the leading `v`).
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ActivateHubVersionRequest {
+    #[serde(default)]
+    pub version: Option<String>,
 }
 
 /// A local LLM provider available as download target

@@ -3,12 +3,7 @@ import { Input, Select, Typography, Spin, Button } from 'antd'
 import { SearchOutlined, ClearOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { ModelHubCard } from '@/modules/hub/modules/llm-models/components/ModelHubCard'
-import {
-  compatOf,
-  partitionByCompat,
-} from '@/modules/hub/stores/hub-catalog-store'
-import type { IndexItem } from '@/api-client/types'
-import { IncompatibleCollapse } from '@/modules/hub/components/IncompatibleCollapse'
+import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
 
 const { Text } = Typography
 
@@ -164,7 +159,8 @@ export function ModelsHubTab() {
         )}
       </div>
 
-      {/* Models List */}
+      {/* Models List — incompatible items (min_ziee_version > server)
+          are hidden entirely; the backend also rejects installing them. */}
       <div className="flex-1 overflow-auto px-3 pb-3">
         {(() => {
           const indexById = new Map(
@@ -172,46 +168,20 @@ export function ModelsHubTab() {
               .filter(it => it.category === 'model')
               .map(it => [it.id, it]),
           )
-          const { compatible } = partitionByCompat(
-            filteredModels
-              .map(m => indexById.get(m.id))
-              .filter((it): it is IndexItem => !!it),
-            serverVersion,
-          )
-          const compatibleIds = new Set(compatible.map(c => c.id))
-          const compatibleModels = filteredModels.filter(m =>
-            compatibleIds.has(m.id),
-          )
-          const incompatibleModels = filteredModels.filter(
-            m => !compatibleIds.has(m.id) && indexById.has(m.id),
-          )
-          // Models that aren't even in the catalog (legacy / dev) are
-          // treated as compatible so we don't accidentally hide them.
-          const orphanModels = filteredModels.filter(m => !indexById.has(m.id))
+          // Show items that are compatible OR not in the catalog index
+          // (orphans / dev models are never hidden).
+          const visibleModels = filteredModels.filter(m => {
+            const ix = indexById.get(m.id)
+            return !ix || compatOf(ix, serverVersion).status === 'ok'
+          })
           return (
             <>
               <div className="flex flex-col gap-3">
-                {[...compatibleModels, ...orphanModels].map(model => (
+                {visibleModels.map(model => (
                   <ModelHubCard key={model.id} model={model} />
                 ))}
               </div>
-              <IncompatibleCollapse
-                items={incompatibleModels.map(m => {
-                  const ix = indexById.get(m.id)!
-                  return {
-                    id: m.id,
-                    required:
-                      compatOf(ix, serverVersion).status === 'too_old'
-                        ? (compatOf(ix, serverVersion) as {
-                            status: 'too_old'
-                            required: string
-                          }).required
-                        : '',
-                    content: <ModelHubCard model={m} />,
-                  }
-                })}
-              />
-              {filteredModels.length === 0 && (
+              {visibleModels.length === 0 && (
                 <div className="text-center py-12">
                   <Text type="secondary">No models found</Text>
                 </div>

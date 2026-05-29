@@ -9308,6 +9308,406 @@
         ]
       }
     },
+    "/api/code-sandbox/environments": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "List available sandbox environments",
+        "description": "Returns every rootfs flavor this server binary knows about, with description, approximate size, and whether the squashfs is currently cached locally. A `cached: false` flavor will trigger an auto-fetch on the first `execute_command` or `POST /prefetch` for that flavor.",
+        "operationId": "CodeSandbox.listEnvironments",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List available sandbox environments and watch prefetch progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/environments/{flavor}": {
+      "delete": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Evict a flavor's cached rootfs",
+        "description": "Unmounts the flavor's squashfuse (if mounted) and deletes its cached squashfs, freeing disk. Idempotent — a not-cached flavor is a no-op. The next `execute_command` for the flavor re-fetches automatically. Returns the refreshed environments list (the flavor's `cached` flips to false).",
+        "operationId": "CodeSandbox.evictEnvironment",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
+                        "name": "CodeSandboxEnvironmentsManage",
+                        "value": "code_sandbox::environments::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Unknown flavor"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/prefetch": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "List known prefetch tasks",
+        "description": "One entry per flavor; terminal-state entries persist until replaced by the next POST for the same flavor.",
+        "operationId": "CodeSandbox.listPrefetchTasks",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List available sandbox environments and watch prefetch progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListPrefetchTasksResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Start (or join) a rootfs prefetch task",
+        "description": "Idempotent: concurrent POSTs for the same flavor while a task is Running return the same task_id. The returned `events_url` is suitable for the frontend's EventSource. If the flavor is already cached, the returned status is `already_cached` and the task completes immediately.",
+        "operationId": "CodeSandbox.startPrefetch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartPrefetchBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
+                        "name": "CodeSandboxEnvironmentsManage",
+                        "value": "code_sandbox::environments::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartPrefetchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown flavor"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/prefetch/{flavor}/events": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Subscribe to prefetch progress via SSE",
+        "description": "Server-Sent Events stream of prefetch progress for the named flavor. The first event is always `connected`; the stream then replays any buffered `progress` events (so late subscribers catch up) and finally streams live events until the task reaches terminal state (`complete` or `failed`). Declaring the SSEPrefetchEvent enum as the 200 response is what surfaces the discriminated union in the generated TypeScript client.",
+        "operationId": "CodeSandbox.subscribePrefetchEvents",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List available sandbox environments and watch prefetch progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SSEPrefetchEvent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "No task for this flavor"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/resource-limits": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Read the singleton sandbox resource-limits configuration",
+        "description": "Returns the current memory / CPU / PID / prlimit / timeout caps that the sandbox runtime applies on every `execute_command`. Admin-only.",
+        "operationId": "CodeSandbox.getResourceLimits",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read the sandbox resource limits configuration.",
+                        "name": "CodeSandboxResourceLimitsRead",
+                        "value": "code_sandbox::resource_limits::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::resource_limits::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Update the singleton sandbox resource-limits configuration",
+        "description": "PATCH semantics: any field omitted from the body preserves its existing value. Validation rejects out-of-range values with 422; the new limits take effect on the very next `execute_command`.",
+        "operationId": "CodeSandbox.updateResourceLimits",
+        "requestBody": {
+          "description": "Admin PUT payload. All fields optional; absent fields preserve their\n existing value. Mirrors the `llm_provider` admin-update pattern.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCodeSandboxResourceLimits"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update the sandbox memory/CPU/PID caps + per-exec timeout + idle-evict policy.",
+                        "name": "CodeSandboxResourceLimitsManage",
+                        "value": "code_sandbox::resource_limits::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::resource_limits::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Value out of range"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/hub/models": {
       "get": {
         "tags": [
@@ -10190,7 +10590,7 @@
             }
           },
           "200": {
-            "description": "Response for `GET /api/hub/version` — the catalog's current\n hub_version, the server's own version (so the UI can compute\n compat client-side), and a count of items per category.",
+            "description": "Response for `GET /api/hub/version` — the catalog's current\n hub_version, the server's own version (so the UI can compute\n compat client-side), counts per category, where the active catalog\n came from (`seed` vs `github`), and when it was installed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -10363,7 +10763,7 @@
             }
           },
           "200": {
-            "description": "",
+            "description": "Full manifest for one hub item, returned by `GET /api/hub/manifest/:id`.\n\n A struct (not a `#[serde(tag)]` enum) because the tagged-enum +\n `Box<Struct>` form produces an empty OpenAPI schema — clients\n couldn't see the payload fields. Exactly one of `model` /\n `assistant` / `mcp_server` is populated, matching `category`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -10389,14 +10789,14 @@
         ]
       }
     },
-    "/api/code-sandbox/environments": {
+    "/api/hub/releases": {
       "get": {
         "tags": [
-          "Code Sandbox"
+          "Hub"
         ],
-        "summary": "List available sandbox environments",
-        "description": "Returns every rootfs flavor this server binary knows about, with description, approximate size, and whether the squashfs is currently cached locally. A `cached: false` flavor will trigger an auto-fetch on the first `execute_command` or `POST /prefetch` for that flavor.",
-        "operationId": "CodeSandbox.listEnvironments",
+        "summary": "List catalog versions published on GitHub (admin only)",
+        "description": "\n\n**Required Permission:** `hub::admin`\n\nAdminister the hub catalog (refresh, view updates)",
+        "operationId": "Hub.getReleases",
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -10409,30 +10809,33 @@
                   "details": {
                     "required_permissions": [
                       {
-                        "description": "List available sandbox environments and watch prefetch progress.",
-                        "name": "CodeSandboxEnvironmentsRead",
-                        "value": "code_sandbox::environments::read"
+                        "description": "Administer the hub catalog (refresh, view updates)",
+                        "name": "HubAdmin",
+                        "value": "hub::admin"
                       }
                     ]
                   },
-                  "error": "Missing required permission: code_sandbox::environments::read",
+                  "error": "Missing required permission: hub::admin",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
             }
           },
           "200": {
-            "description": "",
+            "description": "Response for `GET /api/hub/releases` — the versions published on\n GitHub, plus which is currently installed (`active_version`) and the\n admin's pin (`pinned_version`, None = tracking latest).",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EnvironmentsResponse"
+                  "$ref": "#/components/schemas/HubReleasesResponse"
                 }
               }
             }
           },
           "401": {
             "description": "Unauthorized"
+          },
+          "500": {
+            "description": "GitHub unreachable"
           }
         },
         "security": [
@@ -10442,126 +10845,20 @@
         ]
       }
     },
-    "/api/code-sandbox/environments/{flavor}": {
-      "delete": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Evict a flavor's cached rootfs",
-        "description": "Unmounts the flavor's squashfuse (if mounted) and deletes its cached squashfs, freeing disk. Idempotent — a not-cached flavor is a no-op. The next `execute_command` for the flavor re-fetches automatically. Returns the refreshed environments list (the flavor's `cached` flips to false).",
-        "operationId": "CodeSandbox.evictEnvironment",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
-                        "name": "CodeSandboxEnvironmentsManage",
-                        "value": "code_sandbox::environments::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EnvironmentsResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "404": {
-            "description": "Unknown flavor"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/prefetch": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "List known prefetch tasks",
-        "description": "One entry per flavor; terminal-state entries persist until replaced by the next POST for the same flavor.",
-        "operationId": "CodeSandbox.listPrefetchTasks",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "List available sandbox environments and watch prefetch progress.",
-                        "name": "CodeSandboxEnvironmentsRead",
-                        "value": "code_sandbox::environments::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ListPrefetchTasksResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
+    "/api/hub/activate": {
       "post": {
         "tags": [
-          "Code Sandbox"
+          "Hub"
         ],
-        "summary": "Start (or join) a rootfs prefetch task",
-        "description": "Idempotent: concurrent POSTs for the same flavor while a task is Running return the same task_id. The returned `events_url` is suitable for the frontend's EventSource. If the flavor is already cached, the returned status is `already_cached` and the task completes immediately.",
-        "operationId": "CodeSandbox.startPrefetch",
+        "summary": "Pin + activate a catalog version server-wide (admin only)",
+        "description": "\n\n**Required Permission:** `hub::admin`\n\nAdminister the hub catalog (refresh, view updates)",
+        "operationId": "Hub.activateVersion",
         "requestBody": {
+          "description": "Request body for `POST /api/hub/activate`. `version: null` clears the\n pin (track latest); otherwise pins + activates that exact version\n (semver without the leading `v`).",
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/StartPrefetchBody"
+                "$ref": "#/components/schemas/ActivateHubVersionRequest"
               }
             }
           },
@@ -10579,207 +10876,36 @@
                   "details": {
                     "required_permissions": [
                       {
-                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
-                        "name": "CodeSandboxEnvironmentsManage",
-                        "value": "code_sandbox::environments::manage"
+                        "description": "Administer the hub catalog (refresh, view updates)",
+                        "name": "HubAdmin",
+                        "value": "hub::admin"
                       }
                     ]
                   },
-                  "error": "Missing required permission: code_sandbox::environments::manage",
+                  "error": "Missing required permission: hub::admin",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
             }
           },
           "200": {
-            "description": "",
+            "description": "Response for `POST /api/hub/refresh` — what changed.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StartPrefetchResponse"
+                  "$ref": "#/components/schemas/HubCatalogRefreshResponse"
                 }
               }
             }
           },
           "400": {
-            "description": "Unknown flavor"
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/prefetch/{flavor}/events": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Subscribe to prefetch progress via SSE",
-        "description": "Server-Sent Events stream of prefetch progress for the named flavor. The first event is always `connected`; the stream then replays any buffered `progress` events (so late subscribers catch up) and finally streams live events until the task reaches terminal state (`complete` or `failed`). Declaring the SSEPrefetchEvent enum as the 200 response is what surfaces the discriminated union in the generated TypeScript client.",
-        "operationId": "CodeSandbox.subscribePrefetchEvents",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "List available sandbox environments and watch prefetch progress.",
-                        "name": "CodeSandboxEnvironmentsRead",
-                        "value": "code_sandbox::environments::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SSEPrefetchEvent"
-                }
-              }
-            }
+            "description": "Invalid version string"
           },
           "401": {
             "description": "Unauthorized"
           },
-          "404": {
-            "description": "No task for this flavor"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/resource-limits": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Read the singleton sandbox resource-limits configuration",
-        "description": "Returns the current memory / CPU / PID / prlimit / timeout caps that the sandbox runtime applies on every `execute_command`. Admin-only.",
-        "operationId": "CodeSandbox.getResourceLimits",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read the sandbox resource limits configuration.",
-                        "name": "CodeSandboxResourceLimitsRead",
-                        "value": "code_sandbox::resource_limits::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::resource_limits::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Update the singleton sandbox resource-limits configuration",
-        "description": "PATCH semantics: any field omitted from the body preserves its existing value. Validation rejects out-of-range values with 422; the new limits take effect on the very next `execute_command`.",
-        "operationId": "CodeSandbox.updateResourceLimits",
-        "requestBody": {
-          "description": "Admin PUT payload. All fields optional; absent fields preserve their\n existing value. Mirrors the `llm_provider` admin-update pattern.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateCodeSandboxResourceLimits"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update the sandbox memory/CPU/PID caps + per-exec timeout + idle-evict policy.",
-                        "name": "CodeSandboxResourceLimitsManage",
-                        "value": "code_sandbox::resource_limits::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::resource_limits::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "422": {
-            "description": "Value out of range"
+          "500": {
+            "description": "Fetch / verify failure — pin not persisted, previous catalog kept"
           }
         },
         "security": [
@@ -12084,6 +12210,19 @@
       }
     },
     "schemas": {
+      "ActivateHubVersionRequest": {
+        "description": "Request body for `POST /api/hub/activate`. `version: null` clears the\n pin (track latest); otherwise pins + activates that exact version\n (semver without the leading `v`).",
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        }
+      },
       "ApprovalMode": {
         "description": "Approval mode for conversation MCP settings",
         "oneOf": [
@@ -12561,6 +12700,21 @@
           "schema_version",
           "hub_version",
           "items"
+        ]
+      },
+      "CatalogProvenance": {
+        "description": "Origin of the active on-disk catalog.",
+        "oneOf": [
+          {
+            "description": "Embedded seed (boot fallback / air-gapped). Trusted (compiled\n into the binary) and installable, but not a live fetch.",
+            "type": "string",
+            "const": "seed"
+          },
+          {
+            "description": "Downloaded + sha256 + cosign-verified from ziee-ai/hub.",
+            "type": "string",
+            "const": "github"
+          }
         ]
       },
       "ChatStreamChunk": {
@@ -15123,7 +15277,7 @@
         ]
       },
       "HubCatalogVersionResponse": {
-        "description": "Response for `GET /api/hub/version` — the catalog's current\n hub_version, the server's own version (so the UI can compute\n compat client-side), and a count of items per category.",
+        "description": "Response for `GET /api/hub/version` — the catalog's current\n hub_version, the server's own version (so the UI can compute\n compat client-side), counts per category, where the active catalog\n came from (`seed` vs `github`), and when it was installed.",
         "type": "object",
         "properties": {
           "counts": {
@@ -15132,14 +15286,30 @@
           "hub_version": {
             "type": "string"
           },
+          "last_refreshed": {
+            "description": "ISO 8601 install time of the active catalog (None if unreadable).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "server_version": {
             "type": "string"
+          },
+          "source": {
+            "description": "\"seed\" (embedded boot fallback) or \"github\" (verified fetch).",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CatalogProvenance"
+              }
+            ]
           }
         },
         "required": [
           "hub_version",
           "server_version",
-          "counts"
+          "counts",
+          "source"
         ]
       },
       "HubCategory": {
@@ -15435,58 +15605,45 @@
         ]
       },
       "HubManifest": {
-        "oneOf": [
-          {
-            "type": "object",
-            "properties": {
-              "category": {
-                "type": "string",
-                "const": "model"
-              }
-            },
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/HubModel"
-              }
-            ],
-            "required": [
-              "category"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "category": {
-                "type": "string",
-                "const": "assistant"
-              }
-            },
-            "allOf": [
+        "description": "Full manifest for one hub item, returned by `GET /api/hub/manifest/:id`.\n\n A struct (not a `#[serde(tag)]` enum) because the tagged-enum +\n `Box<Struct>` form produces an empty OpenAPI schema — clients\n couldn't see the payload fields. Exactly one of `model` /\n `assistant` / `mcp_server` is populated, matching `category`.",
+        "type": "object",
+        "properties": {
+          "assistant": {
+            "anyOf": [
               {
                 "$ref": "#/components/schemas/HubAssistant"
+              },
+              {
+                "type": "null"
               }
-            ],
-            "required": [
-              "category"
             ]
           },
-          {
-            "type": "object",
-            "properties": {
-              "category": {
-                "type": "string",
-                "const": "mcp_server"
-              }
-            },
-            "allOf": [
+          "category": {
+            "$ref": "#/components/schemas/HubCategory"
+          },
+          "mcp_server": {
+            "anyOf": [
               {
                 "$ref": "#/components/schemas/HubMCPServer"
+              },
+              {
+                "type": "null"
               }
-            ],
-            "required": [
-              "category"
+            ]
+          },
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HubModel"
+              },
+              {
+                "type": "null"
+              }
             ]
           }
+        },
+        "required": [
+          "category"
         ]
       },
       "HubManifestQuery": {
@@ -15686,6 +15843,61 @@
         "required": [
           "updated",
           "version"
+        ]
+      },
+      "HubReleaseInfo": {
+        "description": "One published catalog version on GitHub Releases. Surfaced by\n `list_releases()` for the admin version picker.",
+        "type": "object",
+        "properties": {
+          "prerelease": {
+            "type": "boolean"
+          },
+          "published_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tag": {
+            "description": "Full git tag (e.g. `v0.0.2-alpha`).",
+            "type": "string"
+          },
+          "version": {
+            "description": "Version without the leading `v` (e.g. `0.0.2-alpha`).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "tag",
+          "prerelease"
+        ]
+      },
+      "HubReleasesResponse": {
+        "description": "Response for `GET /api/hub/releases` — the versions published on\n GitHub, plus which is currently installed (`active_version`) and the\n admin's pin (`pinned_version`, None = tracking latest).",
+        "type": "object",
+        "properties": {
+          "active_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pinned_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "releases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HubReleaseInfo"
+            }
+          }
+        },
+        "required": [
+          "releases"
         ]
       },
       "HubUpdateRow": {

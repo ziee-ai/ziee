@@ -296,3 +296,173 @@ async fn updates_endpoint_treats_null_version_as_behind() {
         "legacy row should have NULL installed_version: {body}"
     );
 }
+
+// =====================================================================
+// /hub/releases + /hub/activate — admin version pinning
+// =====================================================================
+
+#[tokio::test]
+async fn releases_endpoint_requires_admin() {
+    let server = TestServer::start().await;
+    let reader = create_user_with_permissions(&server, "reader", &["hub::models::read"]).await;
+    let response = reqwest::Client::new()
+        .get(server.api_url("/hub/releases"))
+        .header("Authorization", format!("Bearer {}", reader.token))
+        .send()
+        .await
+        .expect("send releases");
+    assert_eq!(
+        response.status(),
+        403,
+        "non-admin user should be 403'd from /hub/releases"
+    );
+}
+
+#[tokio::test]
+async fn activate_endpoint_requires_admin() {
+    let server = TestServer::start().await;
+    let reader = create_user_with_permissions(&server, "reader", &["hub::models::read"]).await;
+    let response = reqwest::Client::new()
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", reader.token))
+        .json(&serde_json::json!({ "version": "0.0.1-alpha" }))
+        .send()
+        .await
+        .expect("send activate");
+    assert_eq!(
+        response.status(),
+        403,
+        "non-admin user should be 403'd from /hub/activate"
+    );
+}
+
+#[tokio::test]
+async fn activate_rejects_unsafe_version() {
+    let server = TestServer::start().await;
+    let admin = create_user_with_permissions(&server, "admin", &["hub::admin"]).await;
+    // Path-traversal-ish version string must be rejected before any
+    // network fetch (400, not 500).
+    let response = reqwest::Client::new()
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&serde_json::json!({ "version": "../../etc/passwd" }))
+        .send()
+        .await
+        .expect("send activate unsafe");
+    assert_eq!(
+        response.status(),
+        400,
+        "unsafe version should be 400, got {}",
+        response.status()
+    );
+}
+
+// The following two hit the real ziee-ai/hub GitHub Releases. They
+// assert the full pin → fetch → REAL cosign verify → rotate path across
+// the published alpha versions — the one thing the hermetic mock can't
+// cover (it skips cosign). #[ignore]'d so the default run stays
+// network-free; run explicitly with `--ignored` to smoke the real
+// signed releases.
+
+#[tokio::test]
+#[ignore = "hits real ziee-ai/hub GitHub Releases; run with --ignored"]
+async fn releases_endpoint_lists_published_versions() {
+    let server = TestServer::start().await;
+    let admin = create_user_with_permissions(&server, "admin", &["hub::admin"]).await;
+    let response = reqwest::Client::new()
+        .get(server.api_url("/hub/releases"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("send releases");
+    assert_eq!(response.status(), 200, "releases should 200 for admin");
+    let body: Json = response.json().await.expect("parse json");
+    // active_version is the seeded catalog until a refresh happens.
+    assert_eq!(body["active_version"], "0.0.1-alpha");
+    assert!(body["pinned_version"].is_null(), "no pin by default: {body}");
+    let versions: Vec<&str> = body["releases"]
+        .as_array()
+        .expect("releases array")
+        .iter()
+        .filter_map(|r| r["version"].as_str())
+        .collect();
+    assert!(
+        versions.contains(&"0.0.1-alpha") && versions.contains(&"0.0.2-alpha"),
+        "expected both alpha versions, got {versions:?}"
+    );
+}
+
+#[tokio::test]
+#[ignore = "hits real ziee-ai/hub GitHub Releases; run with --ignored"]
+async fn activate_switches_catalog_server_wide() {
+    let server = TestServer::start().await;
+    let admin = create_user_with_permissions(&server, "admin", &["hub::admin"]).await;
+    let client = reqwest::Client::new();
+
+    // Seed install is v0.0.1-alpha (13 items). Activate v0.0.2-alpha.
+    let resp = client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&serde_json::json!({ "version": "0.0.2-alpha" }))
+        .send()
+        .await
+        .expect("activate 0.0.2");
+    assert_eq!(
+        resp.status(),
+        200,
+        "activate 0.0.2-alpha should succeed (cosign verified): {}",
+        resp.text().await.unwrap_or_default()
+    );
+    let body: Json = resp.json().await.expect("parse activate json");
+    assert_eq!(body["new_version"], "0.0.2-alpha");
+    assert_eq!(body["cosign_verified"], true);
+
+    // Catalog is now server-wide v0.0.2-alpha (16 items). A plain
+    // reader sees it too.
+    let reader = create_user_with_permissions(&server, "reader", &["hub::models::read"]).await;
+    let idx: Json = client
+        .get(server.api_url("/hub/index"))
+        .header("Authorization", format!("Bearer {}", reader.token))
+        .send()
+        .await
+        .expect("send index")
+        .json()
+        .await
+        .expect("parse index");
+    assert_eq!(idx["hub_version"], "0.0.2-alpha");
+    assert_eq!(idx["items"].as_array().map(|a| a.len()), Some(16));
+
+    // The pin is persisted + reflected in /releases.
+    let rel: Json = client
+        .get(server.api_url("/hub/releases"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("send releases")
+        .json()
+        .await
+        .expect("parse releases");
+    assert_eq!(rel["pinned_version"], "0.0.2-alpha");
+    assert_eq!(rel["active_version"], "0.0.2-alpha");
+
+    // Activate back to v0.0.1-alpha — catalog shrinks to 13 items.
+    let resp = client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&serde_json::json!({ "version": "0.0.1-alpha" }))
+        .send()
+        .await
+        .expect("activate 0.0.1");
+    assert_eq!(resp.status(), 200);
+    let idx: Json = client
+        .get(server.api_url("/hub/index"))
+        .header("Authorization", format!("Bearer {}", reader.token))
+        .send()
+        .await
+        .expect("send index 2")
+        .json()
+        .await
+        .expect("parse index 2");
+    assert_eq!(idx["hub_version"], "0.0.1-alpha");
+    assert_eq!(idx["items"].as_array().map(|a| a.len()), Some(13));
+}

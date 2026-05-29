@@ -3,12 +3,7 @@ import { Input, Select, Typography, Spin, Button } from 'antd'
 import { SearchOutlined, ClearOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { McpServerHubCard } from '@/modules/hub/modules/mcp/components/McpServerHubCard'
-import {
-  compatOf,
-  partitionByCompat,
-} from '@/modules/hub/stores/hub-catalog-store'
-import type { IndexItem } from '@/api-client/types'
-import { IncompatibleCollapse } from '@/modules/hub/components/IncompatibleCollapse'
+import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
 
 const { Text } = Typography
 
@@ -162,7 +157,7 @@ export function McpServersHubTab() {
         )}
       </div>
 
-      {/* Servers List */}
+      {/* Servers List — incompatible items hidden entirely. */}
       <div className="flex-1 overflow-auto px-3 pb-3">
         {(() => {
           const indexById = new Map(
@@ -170,39 +165,18 @@ export function McpServersHubTab() {
               .filter(it => it.category === 'mcp-server')
               .map(it => [it.id, it]),
           )
-          const { compatible } = partitionByCompat(
-            filteredServers
-              .map(s => indexById.get(s.id))
-              .filter((it): it is IndexItem => !!it),
-            serverVersion,
-          )
-          const compatibleIds = new Set(compatible.map(c => c.id))
-          const compatibleList = filteredServers.filter(s =>
-            compatibleIds.has(s.id),
-          )
-          const incompatibleList = filteredServers.filter(
-            s => !compatibleIds.has(s.id) && indexById.has(s.id),
-          )
-          const orphans = filteredServers.filter(s => !indexById.has(s.id))
+          const visible = filteredServers.filter(s => {
+            const ix = indexById.get(s.id)
+            return !ix || compatOf(ix, serverVersion).status === 'ok'
+          })
           return (
             <>
               <div className="flex flex-col gap-3">
-                {[...compatibleList, ...orphans].map(server => (
+                {visible.map(server => (
                   <McpServerHubCard key={server.id} server={server} />
                 ))}
               </div>
-              <IncompatibleCollapse
-                items={incompatibleList.map(s => {
-                  const ix = indexById.get(s.id)!
-                  const c = compatOf(ix, serverVersion)
-                  return {
-                    id: s.id,
-                    required: c.status === 'too_old' ? c.required : '',
-                    content: <McpServerHubCard server={s} />,
-                  }
-                })}
-              />
-              {filteredServers.length === 0 && (
+              {visible.length === 0 && (
                 <div className="text-center py-12">
                   <Text type="secondary">No MCP servers found</Text>
                 </div>

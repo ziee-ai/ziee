@@ -73,6 +73,20 @@ impl HubRepository {
     ) -> Result<Vec<OutdatedHubEntity>, AppError> {
         list_outdated_entities(&self.pool, current_version).await
     }
+
+    /// The admin-pinned catalog version (without leading `v`), or None
+    /// when tracking latest. Reads the hub_settings singleton.
+    pub async fn get_pinned_version(&self) -> Result<Option<String>, AppError> {
+        get_pinned_version(&self.pool).await
+    }
+
+    /// Set (or clear, with None) the admin-pinned catalog version.
+    pub async fn set_pinned_version(
+        &self,
+        version: Option<&str>,
+    ) -> Result<(), AppError> {
+        set_pinned_version(&self.pool, version).await
+    }
 }
 
 /// Row returned by `list_outdated_entities` — one installed hub
@@ -246,6 +260,28 @@ pub async fn list_outdated_entities(
             installed_version: r.hub_version,
         })
         .collect())
+}
+
+/// Read the pinned catalog version from the hub_settings singleton.
+pub async fn get_pinned_version(pool: &PgPool) -> Result<Option<String>, AppError> {
+    let row = sqlx::query!("SELECT pinned_version FROM hub_settings WHERE id = TRUE")
+        .fetch_optional(pool)
+        .await?;
+    Ok(row.and_then(|r| r.pinned_version))
+}
+
+/// Set or clear the pinned catalog version on the hub_settings singleton.
+pub async fn set_pinned_version(
+    pool: &PgPool,
+    version: Option<&str>,
+) -> Result<(), AppError> {
+    sqlx::query!(
+        "UPDATE hub_settings SET pinned_version = $1, updated_at = NOW() WHERE id = TRUE",
+        version
+    )
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 /// Delete hub tracking record

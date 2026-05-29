@@ -20,6 +20,8 @@ use super::{
     types::*,
 };
 use axum::extract::Path as AxumPath;
+// HubReleaseInfo is re-exported through `types::*` below; the response
+// wrappers (HubReleasesResponse, ActivateHubVersionRequest) live in types.rs.
 
 // =====================================================
 // Route Handlers
@@ -257,6 +259,12 @@ pub async fn create_assistant_from_hub(
         .find(|a| a.id == request.hub_id)
         .ok_or_else(|| AppError::not_found(&format!("Hub assistant '{}'", request.hub_id)))?;
 
+    // 1b. Reject incompatible items (min_ziee_version > server). Mirrors
+    // the UI hiding them; this is the defense-in-depth backstop.
+    hub_manager
+        .ensure_installable(HubCategory::Assistant, &request.hub_id)
+        .await?;
+
     // 2. Build create assistant request (WITHOUT source field)
     let create_request = crate::modules::assistant::types::CreateAssistantRequest {
         name: request.name.unwrap_or(hub_assistant.name.clone()),
@@ -327,6 +335,11 @@ pub async fn create_mcp_server_from_hub(
         .into_iter()
         .find(|s| s.id == request.hub_id)
         .ok_or_else(|| AppError::not_found(&format!("Hub MCP server '{}'", request.hub_id)))?;
+
+    // 1b. Reject incompatible items (min_ziee_version > server).
+    hub_manager
+        .ensure_installable(HubCategory::McpServer, &request.hub_id)
+        .await?;
 
     // 2. Determine transport type
     let transport_type = hub_server
@@ -434,6 +447,11 @@ pub async fn create_model_from_hub(
         .into_iter()
         .find(|m| m.id == request.hub_id)
         .ok_or_else(|| AppError::not_found(&format!("Hub model '{}'", request.hub_id)))?;
+
+    // 1b. Reject incompatible items (min_ziee_version > server).
+    hub_manager
+        .ensure_installable(HubCategory::Model, &request.hub_id)
+        .await?;
 
     // 2. Find repository by URL
     let repository = Repos
@@ -761,6 +779,8 @@ pub async fn get_hub_catalog_version(
             hub_version: catalog.hub_version,
             server_version: super::hub_manager::server_version().to_string(),
             counts,
+            source: hub_manager.provenance(),
+            last_refreshed: hub_manager.last_refreshed().map(|t| t.to_rfc3339()),
         }),
     ))
 }
@@ -775,6 +795,8 @@ pub fn get_hub_catalog_version_docs(op: TransformOperation) -> TransformOperatio
 }
 
 /// POST /api/hub/refresh — admin-only force fetch from GitHub.
+/// Respects the admin-pinned version (hub_settings.pinned_version):
+/// pinned → re-fetch that exact version; unpinned → fetch latest.
 /// Cosign + sha256 failure leaves the previous catalog in place.
 #[debug_handler]
 pub async fn refresh_hub_catalog(
@@ -783,7 +805,8 @@ pub async fn refresh_hub_catalog(
 ) -> ApiResult<Json<HubCatalogRefreshResponse>> {
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
-    let outcome = hub_manager.refresh().await?;
+    let pinned = Repos.hub.get_pinned_version().await?;
+    let outcome = hub_manager.refresh(pinned).await?;
 
     if outcome.updated {
         // Reuse the existing per-category events so any listener wired
@@ -890,4 +913,96 @@ pub fn get_hub_manifest_docs(op: TransformOperation) -> TransformOperation {
         .response_with::<400, (), _>(|res| res.description("Invalid id"))
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("Manifest not found in catalog"))
+}
+
+/// GET /api/hub/releases — admin-only. Lists catalog versions published
+/// on GitHub Releases (newest first), marking the active (currently
+/// installed) one + the admin's pin.
+#[debug_handler]
+pub async fn get_hub_releases(
+    _auth: RequirePermissions<(HubAdmin,)>,
+) -> ApiResult<Json<HubReleasesResponse>> {
+    let app_data_dir = crate::core::get_app_data_dir();
+    let hub_manager = HubManager::new(app_data_dir)?;
+    let releases = hub_manager.list_releases().await?;
+    let active_version = hub_manager.catalog().await.ok().map(|c| c.hub_version);
+    let pinned_version = Repos.hub.get_pinned_version().await?;
+    Ok((
+        StatusCode::OK,
+        Json(HubReleasesResponse {
+            active_version,
+            pinned_version,
+            releases,
+        }),
+    ))
+}
+
+pub fn get_hub_releases_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(HubAdmin,)>(op)
+        .id("Hub.getReleases")
+        .tag("Hub")
+        .summary("List catalog versions published on GitHub (admin only)")
+        .response::<200, Json<HubReleasesResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<500, (), _>(|res| res.description("GitHub unreachable"))
+}
+
+/// POST /api/hub/activate — admin-only. Pin a specific catalog version
+/// (or clear the pin to track latest, by sending `version: null`),
+/// then fetch + verify + rotate `current/` to it. Server-wide: every
+/// user sees the activated version. Cosign / sha256 failure leaves the
+/// previous catalog in place AND does not persist the pin.
+#[debug_handler]
+pub async fn activate_hub_version(
+    _auth: RequirePermissions<(HubAdmin,)>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
+    Json(request): Json<ActivateHubVersionRequest>,
+) -> ApiResult<Json<HubCatalogRefreshResponse>> {
+    let app_data_dir = crate::core::get_app_data_dir();
+    let hub_manager = HubManager::new(app_data_dir)?;
+
+    // Fetch + verify + rotate FIRST. Only persist the pin if it
+    // succeeds — otherwise an admin could pin a bad/yanked version and
+    // brick every subsequent refresh.
+    let outcome = hub_manager.refresh(request.version.clone()).await?;
+    Repos
+        .hub
+        .set_pinned_version(request.version.as_deref())
+        .await?;
+
+    if outcome.updated {
+        let prev = outcome.previous_version.clone().unwrap_or_default();
+        event_bus.emit_async(
+            HubEvent::models_refreshed(prev.clone(), outcome.new_version.clone()).into(),
+        );
+        event_bus.emit_async(
+            HubEvent::assistants_refreshed(prev.clone(), outcome.new_version.clone()).into(),
+        );
+        event_bus.emit_async(
+            HubEvent::mcp_servers_refreshed(prev, outcome.new_version.clone()).into(),
+        );
+    }
+
+    Ok((
+        StatusCode::OK,
+        Json(HubCatalogRefreshResponse {
+            updated: outcome.updated,
+            previous_version: outcome.previous_version,
+            new_version: outcome.new_version,
+            cosign_verified: outcome.cosign_verified,
+        }),
+    ))
+}
+
+pub fn activate_hub_version_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(HubAdmin,)>(op)
+        .id("Hub.activateVersion")
+        .tag("Hub")
+        .summary("Pin + activate a catalog version server-wide (admin only)")
+        .response::<200, Json<HubCatalogRefreshResponse>>()
+        .response_with::<400, (), _>(|res| res.description("Invalid version string"))
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<500, (), _>(|res| {
+            res.description("Fetch / verify failure — pin not persisted, previous catalog kept")
+        })
 }

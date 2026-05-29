@@ -1,4 +1,7 @@
-import { Empty, List, Spin, Tag, Typography } from 'antd'
+import { useState } from 'react'
+import { Button, Empty, List, Spin, Tag, Tooltip, Typography, message } from 'antd'
+import { useNavigate } from 'react-router-dom'
+import { ApiClient } from '@/api-client'
 import { Stores } from '@/core/stores'
 
 const { Text } = Typography
@@ -14,6 +17,33 @@ export function UpdatesHubTab() {
   const loading = Stores.HubUpdates.loading
   const error = Stores.HubUpdates.error
   const catalogVersion = Stores.HubUpdates.catalogVersion
+  const navigate = useNavigate()
+  const [busyId, setBusyId] = useState<string | null>(null)
+
+  // Re-install an assistant / MCP server from the current catalog. Both
+  // only need the hub_id (no provider/quant), so it's a one-click op.
+  // Models need a provider + quantization choice, so those route to the
+  // Models tab instead of installing inline.
+  const reinstall = async (
+    hubId: string,
+    category: string,
+    entityId: string,
+  ) => {
+    setBusyId(entityId)
+    try {
+      if (category === 'assistant') {
+        await ApiClient.Hub.createAssistantFromHub({ hub_id: hubId })
+      } else if (category === 'mcp_server') {
+        await ApiClient.Hub.createMcpServerFromHub({ hub_id: hubId })
+      }
+      message.success(`Re-installed ${hubId} from v${catalogVersion ?? '?'}`)
+      await Stores.HubUpdates.loadUpdates()
+    } catch (e) {
+      message.error(`Failed to re-install ${hubId}: ${(e as Error)?.message ?? e}`)
+    } finally {
+      setBusyId(null)
+    }
+  }
 
   if (loading && updates.length === 0) {
     return (
@@ -70,6 +100,32 @@ export function UpdatesHubTab() {
               <Tag key="current" color="green">
                 current v{row.current_version}
               </Tag>,
+              row.hub_category === 'model' ? (
+                <Tooltip
+                  key="action"
+                  title="Models update via the Models tab (pick a provider + quantization)"
+                >
+                  <Button
+                    size="small"
+                    type="link"
+                    onClick={() => navigate('/hub/models')}
+                  >
+                    Update in Models
+                  </Button>
+                </Tooltip>
+              ) : (
+                <Button
+                  key="action"
+                  size="small"
+                  type="link"
+                  loading={busyId === row.entity_id}
+                  onClick={() =>
+                    reinstall(row.hub_id, row.hub_category, row.entity_id)
+                  }
+                >
+                  Re-install
+                </Button>
+              ),
             ]}
           >
             <List.Item.Meta

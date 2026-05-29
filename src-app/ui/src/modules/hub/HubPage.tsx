@@ -21,6 +21,7 @@ import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { message } from 'antd'
 import { DivScrollY } from '@/components/common/DivScrollY'
+import { VersionPicker } from '@/modules/hub/components/VersionPicker'
 
 export function HubPage() {
   const { activeTab: urlActiveTab } = useParams()
@@ -182,17 +183,23 @@ export function HubPage() {
           )}
 
           <Flex align="center" gap={8}>
-            {hubVersion && !windowMinSize.xs && (
-              <Tooltip
-                title={
-                  serverVersion
-                    ? `Server v${serverVersion} — installed catalog from ziee-ai/hub`
-                    : 'Installed catalog from ziee-ai/hub'
-                }
-              >
-                <Tag>v{hubVersion}</Tag>
-              </Tooltip>
-            )}
+            {!windowMinSize.xs &&
+              (canRefresh ? (
+                // Admins get the version picker (list + activate).
+                <VersionPicker />
+              ) : (
+                hubVersion && (
+                  <Tooltip
+                    title={
+                      serverVersion
+                        ? `Server v${serverVersion} — installed catalog from ziee-ai/hub`
+                        : 'Installed catalog from ziee-ai/hub'
+                    }
+                  >
+                    <Tag>v{hubVersion}</Tag>
+                  </Tooltip>
+                )
+              ))}
             {canRefresh && (
               <Button
                 icon={<ReloadOutlined />}

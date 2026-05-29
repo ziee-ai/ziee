@@ -45,6 +45,49 @@ pub fn cosign_expected_identity(tag: &str) -> String {
 
 pub const COSIGN_OIDC_ISSUER: &str = "https://token.actions.githubusercontent.com";
 
+// =====================================================================
+// Dev/test overrides — physically compiled OUT of release builds via
+// `cfg!(debug_assertions)`, mirroring code_sandbox's dev-mirror pattern.
+// They let the integration suite point the fetcher at a local mock
+// release server (no network, no real cosign signature) without any
+// risk of the mechanism being reachable in a shipped binary.
+// =====================================================================
+
+/// Base for the GitHub REST API (releases list). Override in debug via
+/// `ZIEE_HUB_API_BASE_OVERRIDE` (e.g. `http://127.0.0.1:PORT`).
+fn hub_api_base() -> String {
+    if cfg!(debug_assertions)
+        && let Ok(v) = std::env::var("ZIEE_HUB_API_BASE_OVERRIDE")
+        && !v.is_empty()
+    {
+        return v;
+    }
+    "https://api.github.com".to_string()
+}
+
+/// Base for release asset downloads. Override in debug via
+/// `ZIEE_HUB_DOWNLOAD_BASE_OVERRIDE`.
+fn hub_download_base() -> String {
+    if cfg!(debug_assertions)
+        && let Ok(v) = std::env::var("ZIEE_HUB_DOWNLOAD_BASE_OVERRIDE")
+        && !v.is_empty()
+    {
+        return v;
+    }
+    "https://github.com".to_string()
+}
+
+/// When set in a debug build, the cosign keyless verification step is
+/// skipped (the mock release server can't mint a real Sigstore bundle).
+/// Always false in release — there is no way to disable cosign in a
+/// shipped binary.
+fn allow_unsigned() -> bool {
+    cfg!(debug_assertions)
+        && std::env::var("ZIEE_HUB_ALLOW_UNSIGNED")
+            .map(|v| v == "1")
+            .unwrap_or(false)
+}
+
 /// Hard cap on any single hub artifact. The bundle is ~10 KB at v0.0.1
 /// (13 manifests) and grows linearly with catalog size; 32 MiB leaves
 /// headroom for thousands of items while preventing an upstream
@@ -68,6 +111,22 @@ static HUB_SEED: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/resources/hub-seed"
 /// `resources/hub-seed/` at build time. Bumped whenever a new seed is
 /// staged for a release.
 pub const SEED_HUB_VERSION: &str = "0.0.1-alpha";
+
+/// Marker file dropped into `current/` when the active catalog is the
+/// embedded seed (never fetched + verified from GitHub). A successful
+/// refresh rotates in a fresh dir that lacks it.
+const SEED_MARKER: &str = ".seed";
+
+/// Origin of the active on-disk catalog.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum CatalogProvenance {
+    /// Embedded seed (boot fallback / air-gapped). Trusted (compiled
+    /// into the binary) and installable, but not a live fetch.
+    Seed,
+    /// Downloaded + sha256 + cosign-verified from ziee-ai/hub.
+    Github,
+}
 
 // =====================================================================
 // Catalog types (returned from `catalog()` / consumed by handlers)
@@ -97,12 +156,48 @@ pub struct IndexItem {
     pub manifest_path: String,
 }
 
+/// Full manifest for one hub item, returned by `GET /api/hub/manifest/:id`.
+///
+/// A struct (not a `#[serde(tag)]` enum) because the tagged-enum +
+/// `Box<Struct>` form produces an empty OpenAPI schema — clients
+/// couldn't see the payload fields. Exactly one of `model` /
+/// `assistant` / `mcp_server` is populated, matching `category`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "category", rename_all = "snake_case")]
-pub enum HubManifest {
-    Model(Box<HubModel>),
-    Assistant(Box<HubAssistant>),
-    McpServer(Box<HubMCPServer>),
+pub struct HubManifest {
+    pub category: HubCategory,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<Box<HubModel>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assistant: Option<Box<HubAssistant>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mcp_server: Option<Box<HubMCPServer>>,
+}
+
+impl HubManifest {
+    fn model(m: HubModel) -> Self {
+        Self {
+            category: HubCategory::Model,
+            model: Some(Box::new(m)),
+            assistant: None,
+            mcp_server: None,
+        }
+    }
+    fn assistant(a: HubAssistant) -> Self {
+        Self {
+            category: HubCategory::Assistant,
+            model: None,
+            assistant: Some(Box::new(a)),
+            mcp_server: None,
+        }
+    }
+    fn mcp_server(s: HubMCPServer) -> Self {
+        Self {
+            category: HubCategory::McpServer,
+            model: None,
+            assistant: None,
+            mcp_server: Some(Box::new(s)),
+        }
+    }
 }
 
 /// Result of a `compat(item)` check.
@@ -130,6 +225,18 @@ pub struct RefreshOutcome {
     pub updated: bool,
     pub cosign_verified: bool,
     pub refreshed_at: DateTime<Utc>,
+}
+
+/// One published catalog version on GitHub Releases. Surfaced by
+/// `list_releases()` for the admin version picker.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct HubReleaseInfo {
+    /// Version without the leading `v` (e.g. `0.0.2-alpha`).
+    pub version: String,
+    /// Full git tag (e.g. `v0.0.2-alpha`).
+    pub tag: String,
+    pub prerelease: bool,
+    pub published_at: Option<String>,
 }
 
 // =====================================================================
@@ -176,12 +283,37 @@ impl HubManager {
             ))
         })?;
         Self::dump_dir(&HUB_SEED, &current)?;
+        // Mark provenance: this catalog is the embedded seed, not a
+        // verified GitHub fetch. A successful refresh removes this
+        // marker (the rotated dir never contains it). Surfaced via
+        // CatalogProvenance so the UI can show an "offline / built-in"
+        // indicator.
+        let _ = fs::write(current.join(SEED_MARKER), b"seed\n");
         tracing::info!(
             "hub: installed embedded seed catalog v{} into {}",
             SEED_HUB_VERSION,
             current.display()
         );
         Ok(())
+    }
+
+    /// Where the active catalog came from: the embedded seed (boot
+    /// fallback / air-gapped) or a cosign-verified GitHub fetch.
+    pub fn provenance(&self) -> CatalogProvenance {
+        if self.current_dir().join(SEED_MARKER).exists() {
+            CatalogProvenance::Seed
+        } else {
+            CatalogProvenance::Github
+        }
+    }
+
+    /// Wall-clock time the active catalog was installed — the mtime of
+    /// `current/index.json` (written on seed install + on every fetch
+    /// rotate). None if unreadable.
+    pub fn last_refreshed(&self) -> Option<DateTime<Utc>> {
+        let meta = fs::metadata(self.current_dir().join("index.json")).ok()?;
+        let modified = meta.modified().ok()?;
+        Some(DateTime::<Utc>::from(modified))
     }
 
     /// Read the on-disk `index.json`. Errors are surfaced as
@@ -237,7 +369,7 @@ impl HubManager {
                 let m: HubModel = serde_yaml::from_slice(&bytes).map_err(|e| {
                     AppError::internal_error(format!("hub: parse model {}: {}", id, e))
                 })?;
-                Ok(HubManifest::Model(Box::new(m)))
+                Ok(HubManifest::model(m))
             }
             HubCategory::Assistant => {
                 let a: HubAssistant = serde_yaml::from_slice(&bytes).map_err(|e| {
@@ -246,7 +378,7 @@ impl HubManager {
                         id, e
                     ))
                 })?;
-                Ok(HubManifest::Assistant(Box::new(a)))
+                Ok(HubManifest::assistant(a))
             }
             HubCategory::McpServer => {
                 let s: HubMCPServer = serde_yaml::from_slice(&bytes).map_err(|e| {
@@ -255,7 +387,7 @@ impl HubManager {
                         id, e
                     ))
                 })?;
-                Ok(HubManifest::McpServer(Box::new(s)))
+                Ok(HubManifest::mcp_server(s))
             }
         }
     }
@@ -267,7 +399,7 @@ impl HubManager {
         let catalog = self.catalog().await?;
         let mut out = Vec::new();
         for item in catalog.items.iter().filter(|i| matches!(i.category, HubCategory::Model)) {
-            if let HubManifest::Model(m) = self.manifest(item.category, &item.id).await? {
+            if let Some(m) = self.manifest(item.category, &item.id).await?.model {
                 out.push(*m);
             }
         }
@@ -278,7 +410,7 @@ impl HubManager {
         let catalog = self.catalog().await?;
         let mut out = Vec::new();
         for item in catalog.items.iter().filter(|i| matches!(i.category, HubCategory::Assistant)) {
-            if let HubManifest::Assistant(a) = self.manifest(item.category, &item.id).await? {
+            if let Some(a) = self.manifest(item.category, &item.id).await?.assistant {
                 out.push(*a);
             }
         }
@@ -289,7 +421,7 @@ impl HubManager {
         let catalog = self.catalog().await?;
         let mut out = Vec::new();
         for item in catalog.items.iter().filter(|i| matches!(i.category, HubCategory::McpServer)) {
-            if let HubManifest::McpServer(s) = self.manifest(item.category, &item.id).await? {
+            if let Some(s) = self.manifest(item.category, &item.id).await?.mcp_server {
                 out.push(*s);
             }
         }
@@ -320,6 +452,38 @@ impl HubManager {
     pub async fn get_current_version(&self, _category: &str) -> Result<String, AppError> {
         let catalog = self.catalog().await?;
         Ok(catalog.hub_version)
+    }
+
+    /// Reject installing a hub item whose `min_ziee_version` exceeds the
+    /// running server. Defense-in-depth behind the UI's hiding of
+    /// incompatible items — an API client (or a stale UI) must not be
+    /// able to install one. Items absent from the index (orphans /
+    /// dev) are treated as installable.
+    pub async fn ensure_installable(
+        &self,
+        category: HubCategory,
+        id: &str,
+    ) -> Result<(), AppError> {
+        let catalog = self.catalog().await?;
+        let Some(item) = catalog
+            .items
+            .iter()
+            .find(|it| it.category == category && it.id == id)
+        else {
+            return Ok(());
+        };
+        match Self::compat(item) {
+            Compat::Ok => Ok(()),
+            Compat::TooOld { required } => Err(AppError::unprocessable_entity(
+                "HUB_INCOMPATIBLE",
+                format!(
+                    "hub item '{}' requires ziee-chat >= {} but this server is {}",
+                    id,
+                    required,
+                    server_version()
+                ),
+            )),
+        }
     }
 
     /// Compatibility check for a single index entry.
@@ -363,25 +527,28 @@ impl HubManager {
     /// (`/api/hub/{models,assistants,mcp-servers}/refresh`). The new
     /// catalog model refreshes everything in one shot, so the
     /// `_category` arg is accepted but ignored — each per-category
-    /// endpoint triggers the same full refresh, then emits its own
-    /// category-specific event for any consumers wired to one.
+    /// endpoint triggers the same full refresh (tracking latest), then
+    /// emits its own category-specific event for any consumers wired to
+    /// one.
     pub async fn refresh_hub_category(&self, _category: &str) -> Result<(), AppError> {
-        self.refresh().await.map(|_| ())
+        self.refresh(None).await.map(|_| ())
     }
 
-    /// Force-refresh the catalog from GitHub Releases. Returns the
-    /// previous version (None on first refresh after install) and the
-    /// new version. Cosign + sha256 failure aborts; the previous
-    /// `current/` is left untouched.
-    pub async fn refresh(&self) -> Result<RefreshOutcome, AppError> {
-        let previous_version = self
-            .catalog()
-            .await
-            .ok()
-            .map(|c| c.hub_version);
+    /// Force-refresh the catalog from GitHub Releases.
+    ///
+    /// `target`:
+    ///   - `None` → fetch the latest release (newest stable, else newest
+    ///     prerelease). This is "track latest".
+    ///   - `Some("0.0.2-alpha")` → fetch exactly that version (the tag is
+    ///     `v` + version). This is the admin-pinned path.
+    ///
+    /// Returns the previous + new version. Cosign + sha256 failure
+    /// aborts; the previous `current/` is left untouched.
+    pub async fn refresh(&self, target: Option<String>) -> Result<RefreshOutcome, AppError> {
+        let previous_version = self.catalog().await.ok().map(|c| c.hub_version);
 
         let app_data = self.app_data_dir.clone();
-        let outcome = tokio::task::spawn_blocking(move || refresh_blocking(&app_data))
+        let outcome = tokio::task::spawn_blocking(move || refresh_blocking(&app_data, target))
             .await
             .map_err(|e| AppError::internal_error(format!("hub: refresh join: {}", e)))??;
 
@@ -392,6 +559,23 @@ impl HubManager {
             cosign_verified: outcome.cosign_verified,
             refreshed_at: Utc::now(),
         })
+    }
+
+    /// List the catalog versions published on GitHub Releases. Newest
+    /// first. Used by the admin version picker.
+    pub async fn list_releases(&self) -> Result<Vec<HubReleaseInfo>, AppError> {
+        let releases = tokio::task::spawn_blocking(list_releases_blocking)
+            .await
+            .map_err(|e| AppError::internal_error(format!("hub: list-releases join: {}", e)))??;
+        Ok(releases
+            .into_iter()
+            .map(|r| HubReleaseInfo {
+                version: r.tag_name.trim_start_matches('v').to_string(),
+                tag: r.tag_name,
+                prerelease: r.prerelease,
+                published_at: r.published_at,
+            })
+            .collect())
     }
 
     // ----- helpers -----
@@ -460,15 +644,28 @@ struct BlockingOutcome {
     cosign_verified: bool,
 }
 
-fn refresh_blocking(app_data: &Path) -> Result<BlockingOutcome, AppError> {
+fn refresh_blocking(app_data: &Path, target: Option<String>) -> Result<BlockingOutcome, AppError> {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(60))
         .user_agent(concat!("ziee-chat/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|e| AppError::internal_error(format!("hub: http client: {}", e)))?;
 
-    let latest = resolve_latest_release(&client)?;
-    let tag = latest.tag_name.clone();
+    // Resolve the tag to fetch. A pinned target maps to `v<version>`;
+    // None tracks the latest release.
+    let tag = match target {
+        Some(version) => {
+            let v = version.trim_start_matches('v');
+            if !is_safe_version(v) {
+                return Err(AppError::bad_request(
+                    "HUB_INVALID_VERSION",
+                    "pinned hub version is not a safe semver-ish string",
+                ));
+            }
+            format!("v{}", v)
+        }
+        None => resolve_latest_release(&client)?.tag_name,
+    };
 
     let staging = app_data.join("hub").join(".staging");
     if staging.exists() {
@@ -490,10 +687,21 @@ fn refresh_blocking(app_data: &Path) -> Result<BlockingOutcome, AppError> {
         "hub.index.json.sha256",
         "hub.index.json.cosign.bundle",
     ];
+    // In a debug build with ZIEE_HUB_ALLOW_UNSIGNED=1 the mock server
+    // only publishes the tarball + index + their sha256 (no cosign
+    // bundles). Skip downloading bundles we won't verify.
+    let unsigned = allow_unsigned();
     for asset in assets {
+        if unsigned && asset.ends_with(".cosign.bundle") {
+            continue;
+        }
         let url = format!(
-            "https://github.com/{}/{}/releases/download/{}/{}",
-            HUB_REPO_OWNER, HUB_REPO_NAME, tag, asset
+            "{}/{}/{}/releases/download/{}/{}",
+            hub_download_base(),
+            HUB_REPO_OWNER,
+            HUB_REPO_NAME,
+            tag,
+            asset
         );
         download_to_file(&client, &url, &staging.join(asset))?;
     }
@@ -505,9 +713,20 @@ fn refresh_blocking(app_data: &Path) -> Result<BlockingOutcome, AppError> {
     verify_sha256_sidecar(&tar_path, &staging.join("hub.tar.gz.sha256"))?;
     verify_sha256_sidecar(&index_path, &staging.join("hub.index.json.sha256"))?;
 
-    // cosign keyless both, fail-closed (no signed=false fallback).
+    // cosign keyless both, fail-closed (no signed=false fallback in
+    // release). In a debug build with ZIEE_HUB_ALLOW_UNSIGNED=1 (mock
+    // release server), skip — the mock can't mint a real Sigstore bundle.
+    if unsigned {
+        tracing::warn!(
+            "hub: ZIEE_HUB_ALLOW_UNSIGNED set (debug) — skipping cosign verify for {}",
+            tag
+        );
+    }
     let identity = cosign_expected_identity(&tag);
-    let cosign_verified = match (
+    let cosign_verified = if unsigned {
+        false
+    } else {
+        match (
         verify_cosign_bundle(
             &staging.join("hub.tar.gz.cosign.bundle"),
             &tar_path,
@@ -531,6 +750,7 @@ fn refresh_blocking(app_data: &Path) -> Result<BlockingOutcome, AppError> {
                 "hub: cosign verify failed for {}: {}",
                 tag, e
             )));
+        }
         }
     };
 
@@ -614,17 +834,20 @@ struct GhRelease {
     tag_name: String,
     #[serde(default)]
     prerelease: bool,
+    #[serde(default)]
+    draft: bool,
+    #[serde(default)]
+    published_at: Option<String>,
 }
 
-fn resolve_latest_release(client: &reqwest::blocking::Client) -> Result<GhRelease, AppError> {
-    // List recent releases — `/releases/latest` skips prereleases by
-    // definition, but we still need to surface them when stable hasn't
-    // shipped yet (e.g. during the v0.0.x-alpha window). Strategy:
-    // prefer the most recent non-prerelease tag; fall back to the
-    // newest prerelease if no stable exists.
+/// Fetch the repo's releases (newest first per the GitHub API), drafts
+/// filtered out. Shared by `resolve_latest_release` + `list_releases`.
+fn fetch_releases(client: &reqwest::blocking::Client) -> Result<Vec<GhRelease>, AppError> {
     let url = format!(
-        "https://api.github.com/repos/{}/{}/releases?per_page=20",
-        HUB_REPO_OWNER, HUB_REPO_NAME
+        "{}/repos/{}/{}/releases?per_page=50",
+        hub_api_base(),
+        HUB_REPO_OWNER,
+        HUB_REPO_NAME
     );
     let releases: Vec<GhRelease> = client
         .get(&url)
@@ -635,7 +858,25 @@ fn resolve_latest_release(client: &reqwest::blocking::Client) -> Result<GhReleas
         .map_err(|e| AppError::internal_error(format!("hub: list releases: {}", e)))?
         .json()
         .map_err(|e| AppError::internal_error(format!("hub: parse releases: {}", e)))?;
+    Ok(releases.into_iter().filter(|r| !r.draft).collect())
+}
 
+fn list_releases_blocking() -> Result<Vec<GhRelease>, AppError> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .user_agent(concat!("ziee-chat/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|e| AppError::internal_error(format!("hub: http client: {}", e)))?;
+    fetch_releases(&client)
+}
+
+fn resolve_latest_release(client: &reqwest::blocking::Client) -> Result<GhRelease, AppError> {
+    // `/releases/latest` skips prereleases by definition, but we still
+    // need to surface them when stable hasn't shipped yet (e.g. during
+    // the v0.0.x-alpha window). Strategy: prefer the most recent
+    // non-prerelease tag; fall back to the newest prerelease if no
+    // stable exists.
+    let releases = fetch_releases(client)?;
     if let Some(stable) = releases.iter().find(|r| !r.prerelease) {
         return Ok(stable.clone());
     }
@@ -853,6 +1094,20 @@ fn is_safe_id(id: &str) -> bool {
         && !id.starts_with('.')
 }
 
+/// Guard a pinned version string before it's interpolated into a
+/// GitHub Releases download URL (`releases/download/v<version>/...`).
+/// Rejects anything that could break out of the path or smuggle URL
+/// syntax — must look like `0.0.2` / `1.2.3-alpha.1`.
+fn is_safe_version(v: &str) -> bool {
+    !v.is_empty()
+        && v.len() <= 32
+        && v.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-')
+        && !v.starts_with('.')
+        && !v.starts_with('-')
+        && v.chars().next().is_some_and(|c| c.is_ascii_digit())
+}
+
 // =====================================================================
 // Unit tests
 // =====================================================================
@@ -934,6 +1189,22 @@ mod tests {
     }
 
     #[test]
+    fn is_safe_version_accepts_semver_rejects_injection() {
+        assert!(is_safe_version("0.0.2"));
+        assert!(is_safe_version("1.2.3-alpha.1"));
+        assert!(is_safe_version("0.0.1-alpha"));
+        // leading-v stripped by callers, but bare v must fail the digit gate
+        assert!(!is_safe_version("v0.0.2"));
+        assert!(!is_safe_version("../../etc"));
+        assert!(!is_safe_version("0.0.2/../../x"));
+        assert!(!is_safe_version("0.0.2?foo=bar"));
+        assert!(!is_safe_version(""));
+        assert!(!is_safe_version("-rc1"));
+        assert!(!is_safe_version(".hidden"));
+        assert!(!is_safe_version(&"9".repeat(33)));
+    }
+
+    #[test]
     fn category_folder_is_stable() {
         assert_eq!(category_folder(HubCategory::Model), "models");
         assert_eq!(category_folder(HubCategory::Assistant), "assistants");
@@ -952,6 +1223,60 @@ mod tests {
         assert!(s.contains("ziee-ai/hub"));
         assert!(s.contains("release.yml"));
         assert!(s.ends_with("@refs/tags/v0.0.1-alpha"));
+    }
+
+    #[test]
+    fn seed_manifest_yaml_round_trips_into_structs() {
+        // Pull a real manifest out of the embedded seed and parse it
+        // into the typed struct — guards the YAML field mapping (the
+        // manifests are authored in the hub repo, consumed here).
+        let model_yaml = HUB_SEED
+            .get_file("models/llama-3-1-8b-instruct.yaml")
+            .expect("seed has llama model");
+        let model: HubModel =
+            serde_yaml::from_slice(model_yaml.contents()).expect("parse model yaml");
+        assert_eq!(model.id, "llama-3-1-8b-instruct");
+        assert!(matches!(model.file_format, super::super::models::FileFormat::SafeTensors));
+
+        let asst_yaml = HUB_SEED
+            .get_file("assistants/code-reviewer.yaml")
+            .expect("seed has code-reviewer");
+        let asst: HubAssistant =
+            serde_yaml::from_slice(asst_yaml.contents()).expect("parse assistant yaml");
+        assert_eq!(asst.id, "code-reviewer");
+
+        let mcp_yaml = HUB_SEED
+            .get_file("mcp-servers/github-mcp.yaml")
+            .expect("seed has github-mcp");
+        let mcp: HubMCPServer =
+            serde_yaml::from_slice(mcp_yaml.contents()).expect("parse mcp yaml");
+        assert_eq!(mcp.id, "github-mcp");
+        assert_eq!(mcp.transport_type.as_deref(), Some("http"));
+    }
+
+    #[test]
+    fn sha256_file_and_sidecar_verify() {
+        use std::io::Write;
+        let dir = std::env::temp_dir().join(format!("hub-sha-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let blob = dir.join("blob.bin");
+        let mut f = fs::File::create(&blob).unwrap();
+        f.write_all(b"ziee hub test payload").unwrap();
+        drop(f);
+
+        // Known sha256 of the payload above.
+        let hex = sha256_file(&blob).unwrap();
+        assert_eq!(hex.len(), 64);
+
+        // A matching sidecar verifies; a tampered one fails.
+        let sidecar = dir.join("blob.bin.sha256");
+        fs::write(&sidecar, format!("{}  blob.bin\n", hex)).unwrap();
+        assert!(verify_sha256_sidecar(&blob, &sidecar).is_ok());
+
+        fs::write(&sidecar, format!("{}  blob.bin\n", "0".repeat(64))).unwrap();
+        assert!(verify_sha256_sidecar(&blob, &sidecar).is_err());
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
