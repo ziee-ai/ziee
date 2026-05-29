@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
+import { hasPermissionNow } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 import type {
   DrainEntry,
   InstallTaskState,
@@ -136,6 +138,18 @@ export const useSandboxRootfsVersionsStore = create<SandboxRootfsVersionsStore>(
 
       __init__: {
         sandboxRootfsVersions: async () => {
+          // Gate the eager-load + SSE subscribe on EnvironmentsRead.
+          // The /settings/sandbox route admits anyone with EITHER
+          // EnvironmentsRead OR ResourceLimitsRead, so a resource-
+          // limits-only admin can reach the page (and correctly sees
+          // the rootfs card's permission alert). Without this gate
+          // their session still fires a backend-403 getRootfsVersions
+          // + an SSE subscribe that 403s and trips the 5-attempt
+          // reconnect loop. `hasPermissionNow` is the non-reactive
+          // checker built for exactly this store-init case.
+          if (!hasPermissionNow(Permissions.CodeSandboxEnvironmentsRead)) {
+            return
+          }
           await get().loadStatus()
           // Open the SSE channel for live install progress. Idempotent
           // via the sseController guard.
