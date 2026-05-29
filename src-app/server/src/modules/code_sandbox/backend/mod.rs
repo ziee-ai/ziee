@@ -35,6 +35,12 @@ mod linux_bwrap;
 // AF_HYPERV vsock on Windows) — used by both VM backends.
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod vm_client;
+// Long-lived multiplexed session over a single agent connection —
+// the host side of the MCP-in-sandbox protocol extension. Pure
+// Rust+tokio, intentionally not platform-gated: the type needs to
+// exist on Linux too so `SandboxBackend::open_long_lived_session`
+// can have a uniform return signature (Linux returns Ok(None)).
+pub(crate) mod vm_long_lived;
 #[cfg(target_os = "macos")]
 mod mac_vm;
 // AF_HYPERV (Hyper-V vsock) FFI + WSL utility-VM resolution (HIGH-1 fix).
@@ -114,6 +120,35 @@ pub trait SandboxBackend: Send + Sync {
         rootfs_squashfs: &Path,
         timeout: std::time::Duration,
     ) -> Result<RawExecResult, AppError>;
+
+    /// Open a long-lived multiplexed session for a sandboxed MCP
+    /// stdio server using `flavor`. The MCP client holds the returned
+    /// `LongLivedSession` for the server's lifetime; dropping it tears
+    /// down the underlying connection (and, on VM backends, releases
+    /// the per-flavor inflight guard that keeps the VM warm).
+    ///
+    /// Backends:
+    ///   - **Linux** — `Ok(None)` (default). The Linux MCP path spawns
+    ///     bwrap directly via `Command::new(bwrap_path).args(argv)`;
+    ///     no agent is involved.
+    ///   - **macOS** — ensure the flavor's libkrun VM is warm, dial a
+    ///     fresh `UnixStream` against its vsock bridge socket, wrap in
+    ///     `open_long_lived_with_guard`. Returns `Ok(Some(session))`.
+    ///   - **Windows (WSL2)** — equivalent dial against the AF_HYPERV
+    ///     vsock; same wrap.
+    ///   - **Unsupported** — `Ok(None)` (the caller falls back to a
+    ///     friendly "sandbox not available" error).
+    ///
+    /// Default implementation returns `Ok(None)` so backends that
+    /// can't or shouldn't expose a session don't need to override.
+    async fn open_long_lived_session(
+        &self,
+        state: &CodeSandboxState,
+        flavor: &str,
+    ) -> Result<Option<vm_long_lived::LongLivedSession>, AppError> {
+        let _ = (state, flavor);
+        Ok(None)
+    }
 }
 
 /// Captured output of a raw bwrap execution. Used by tier-4 hardening

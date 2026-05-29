@@ -363,6 +363,10 @@ pub async fn create_mcp_server_from_hub(
         supports_sampling: hub_server.supports_sampling,
         usage_mode: None,
         max_concurrent_sessions: None,
+        // Hub installs are user-scoped (line 369 below), and the
+        // sandbox option only honors admin/system servers — always
+        // off for hub-installed servers.
+        run_in_sandbox: None,
     };
 
     // 4. Create user MCP server (hub interface only creates user servers, not system servers)

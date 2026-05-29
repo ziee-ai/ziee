@@ -13188,6 +13188,13 @@
           "name": {
             "type": "string"
           },
+          "run_in_sandbox": {
+            "description": "Admin/system stdio servers only: launch inside the\n code_sandbox bwrap isolation. See `McpServer::run_in_sandbox`.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "supports_sampling": {
             "type": [
               "boolean",
@@ -16298,6 +16305,10 @@
           "name": {
             "type": "string"
           },
+          "run_in_sandbox": {
+            "description": "Admin opt-in: launch the stdio subprocess inside the\n code_sandbox bwrap isolation. Only honored when\n `is_system && transport_type == Stdio` — the spawn path\n ignores it otherwise; the UI hides the toggle for user-owned\n or non-stdio servers. Defaults to false.",
+            "type": "boolean"
+          },
           "supports_sampling": {
             "type": "boolean"
           },
@@ -16343,6 +16354,7 @@
           "timeout_seconds",
           "supports_sampling",
           "usage_mode",
+          "run_in_sandbox",
           "created_at",
           "updated_at"
         ]
@@ -20503,6 +20515,13 @@
               "null"
             ]
           },
+          "run_in_sandbox": {
+            "description": "Admin/system stdio servers only: launch inside the\n code_sandbox bwrap isolation. See `McpServer::run_in_sandbox`.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "supports_sampling": {
             "type": [
               "boolean",
@@ -20986,6 +21005,14 @@
             "type": "boolean"
           },
           "last_login_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "password_changed_at": {
+            "description": "When the user last rotated their password. NULL means the\n account is still using the bootstrap-issued password (only\n meaningful for the desktop `admin` user). The Remote Access\n module refuses to enable password authentication unless this\n is non-NULL for the admin.",
             "type": [
               "string",
               "null"

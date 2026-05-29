@@ -38,5 +38,12 @@ mod tier4_seccomp;
 // bwrap installed (the harness::enabled_test_server() helper skips
 // cleanly when either is missing).
 mod tier6_http_e2e;
+mod tier6_mcp_sandbox_e2e;
 mod tier6_security_regression;
 mod tier6_hardening;
+
+// Tier 8 — TRULY-PUBLISHED MCP package smoke. Pip-installs
+// `mcp-server-fetch` from PyPI into the sandbox, then exec's it via
+// python3 -m. Real network egress to https://example.com to assert
+// fetch works end-to-end. Rootfs + network-gated. `#[ignore]`'d.
+mod tier8_real_mcp_package;

@@ -1151,6 +1151,37 @@ impl SandboxBackend for Wsl2Backend {
             timed_out: run.timed_out,
         })
     }
+
+    async fn open_long_lived_session(
+        &self,
+        state: &CodeSandboxState,
+        flavor: &str,
+    ) -> Result<Option<super::vm_long_lived::LongLivedSession>, AppError> {
+        // Ensure the per-flavor distro is provisioned + the agent is up
+        // (cold-start path identical to one-shot `run`).
+        let cache = cache_dir(state);
+        let tarball = runtime_fetch::ensure_fetched(&cache, flavor, |_| {})
+            .await
+            .map_err(|e| AppError::internal_error(format!("rootfs fetch failed: {e}")))?
+            .installed_path;
+        let h = self.ensure_distro(state, flavor, &tarball).await?;
+
+        // Hold an inflight count for the session's lifetime so the
+        // distro reaper waits for live MCP sessions to drain before
+        // evicting (same gate the one-shot exec path uses).
+        h.inflight.fetch_add(1, Ordering::SeqCst);
+        let guard = InflightGuard(h.clone());
+        *h.last_used.lock().await = Instant::now();
+
+        let vm_id = self.vm_id()?;
+        let stream = hvsocket::connect(vm_id, h.vsock_port).await?;
+
+        let session = super::vm_long_lived::open_long_lived_with_guard(
+            stream,
+            Some(Box::new(guard)),
+        );
+        Ok(Some(session))
+    }
 }
 
 /// Test-only WSL2 distro pool keyed by tarball path. Used by
