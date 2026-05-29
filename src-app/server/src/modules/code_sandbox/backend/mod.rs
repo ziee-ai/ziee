@@ -48,6 +48,11 @@ mod mac_vm;
 mod hvsocket;
 #[cfg(target_os = "windows")]
 mod wsl2;
+// LocalSystem helper service: brokers the privileged WSL ops (VmId
+// resolution + vsock-port registration) so the unprivileged server never
+// needs Hyper-V Admin or runtime UAC. Mirrors Docker Desktop's model.
+#[cfg(target_os = "windows")]
+pub(crate) mod helper_service;
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 mod unsupported;
 
@@ -175,6 +180,26 @@ pub trait SandboxBackend: Send + Sync {
     ) -> Result<Option<vm_long_lived::LongLivedSession>, AppError> {
         let _ = (state, flavor);
         Ok(None)
+    }
+
+    /// Ensure the per-server MCP workspace exists where the long-lived bwrap
+    /// argv binds it (`/workspace/mcp/<server_id>` → `/home/sandboxuser`).
+    ///
+    /// Default no-op: on macOS the host workspace is virtio-fs-shared at
+    /// `/workspace`, and on the Linux host path bwrap binds the host dir
+    /// directly — so the bind source already exists. The WSL2 backend has no
+    /// virtio-fs, so it overrides this to create + rsync the per-server
+    /// workspace into the distro before the spawn (mirroring the one-shot
+    /// `run` path's `sync_workspace_in`). Without it, bwrap fails with
+    /// "Can't find source path /workspace/mcp/<id>".
+    async fn prepare_mcp_vm_workspace(
+        &self,
+        state: &CodeSandboxState,
+        flavor: &str,
+        server_id: uuid::Uuid,
+    ) -> Result<(), AppError> {
+        let _ = (state, flavor, server_id);
+        Ok(())
     }
 }
 
