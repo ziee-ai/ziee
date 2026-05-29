@@ -5,9 +5,15 @@ import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { useMcpServerDrawerStore } from '@/modules/mcp/stores'
 import {
+  showConnectionTestResult,
+  showConnectionTestError,
+} from '@/modules/mcp/components/common/connectionTestToast'
+import {
   Permissions,
   type CreateMcpServerRequest,
   type UpdateMcpServerRequest,
+  type TestMcpConnectionRequest,
+  type SetMcpServerOAuthConfigRequest,
 } from '@/api-client/types'
 
 const { TextArea } = Input
@@ -40,6 +46,9 @@ export function McpServerDrawer() {
   // Whether the server being edited already has a stored OAuth config — used to
   // decide between keep/replace/remove on save and to label the secret field.
   const [hasExistingOAuth, setHasExistingOAuth] = useState(false)
+
+  // Local loading for the (non-blocking) "Test Connection" probe.
+  const [testing, setTesting] = useState(false)
 
   // OAuth is configurable only for user-owned HTTP servers (the endpoints are
   // owner-scoped). Built-in/system servers authenticate differently.
@@ -137,65 +146,147 @@ export function McpServerDrawer() {
     }
   }, [editingServer, open, mode, form])
 
+  // Parse the JSON-string transport fields (args / env / headers) shared by
+  // save + test. Returns null (after surfacing a message) on malformed input.
+  type ParsedTransport = {
+    args: string[]
+    environmentVariables: Record<string, string>
+    headers: Record<string, string>
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const parseTransportFields = (values: any): ParsedTransport | null => {
+    let args: string[] = []
+    if (values.args && values.args.trim()) {
+      try {
+        const parsed = JSON.parse(values.args)
+        if (!Array.isArray(parsed)) {
+          message.error('Arguments must be a JSON array')
+          return null
+        }
+        args = parsed
+      } catch (_error) {
+        message.error('Invalid JSON in arguments')
+        return null
+      }
+    }
+
+    let environmentVariables: Record<string, string> = {}
+    if (values.env && values.env.trim()) {
+      try {
+        const parsed = JSON.parse(values.env)
+        if (typeof parsed !== 'object' || Array.isArray(parsed)) {
+          message.error('Environment variables must be a JSON object')
+          return null
+        }
+        environmentVariables = parsed
+      } catch (_error) {
+        message.error('Invalid JSON in environment variables')
+        return null
+      }
+    }
+
+    let headers: Record<string, string> = {}
+    if (values.headers && values.headers.trim()) {
+      try {
+        const parsed = JSON.parse(values.headers)
+        if (typeof parsed !== 'object' || Array.isArray(parsed)) {
+          message.error('HTTP Headers must be a JSON object')
+          return null
+        }
+        headers = parsed
+      } catch (_error) {
+        message.error('Invalid JSON in HTTP Headers')
+        return null
+      }
+    }
+
+    return { args, environmentVariables, headers }
+  }
+
+  // Build the inline OAuth block for a test request: only when a secret was
+  // actually typed (user HTTP server). Otherwise the backend falls back to the
+  // stored secret via the server `id` (edit/card flows).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const buildTestOAuth = (
+    values: any,
+  ): SetMcpServerOAuthConfigRequest | undefined => {
+    if (!isUserMode || values.transport_type !== 'http') return undefined
+    const clientId = (values.oauth_client_id ?? '').trim()
+    const clientSecret = values.oauth_client_secret ?? ''
+    if (clientId && clientSecret) {
+      return {
+        client_id: clientId,
+        client_secret: clientSecret,
+        scopes: (values.oauth_scopes ?? '').trim() || null,
+      }
+    }
+    return undefined
+  }
+
+  // Probe the current form values without saving. Non-blocking: a failed test
+  // never prevents saving — it just reports what's wrong.
+  const handleTestConnection = async () => {
+    const values = form.getFieldsValue()
+
+    // Friendly pre-checks (the backend validates too). Don't force unrelated
+    // required fields like display_name just to run a connection test.
+    if (!values.transport_type) {
+      message.warning('Select a transport type first')
+      return
+    }
+    if (values.transport_type === 'stdio' && !values.command?.trim()) {
+      message.warning('Enter a command to test')
+      return
+    }
+    if (
+      (values.transport_type === 'http' || values.transport_type === 'sse') &&
+      !values.url?.trim()
+    ) {
+      message.warning('Enter a URL to test')
+      return
+    }
+
+    const parsed = parseTransportFields(values)
+    if (!parsed) return
+
+    const payload: TestMcpConnectionRequest = {
+      transport_type: values.transport_type,
+      command: values.command || undefined,
+      args: parsed.args,
+      environment_variables: parsed.environmentVariables,
+      url: values.url || undefined,
+      headers: parsed.headers,
+      timeout_seconds: values.timeout_seconds ?? 30,
+      oauth: buildTestOAuth(values),
+      // Lets the backend reuse the stored OAuth secret when editing/testing an
+      // existing server whose URL is unchanged.
+      id: editingServer?.id,
+    }
+
+    setTesting(true)
+    try {
+      const result = isUserMode
+        ? await Stores.McpServer.testMcpServerConnection(payload)
+        : await Stores.SystemMcpServer.testSystemServerConnection(payload)
+      showConnectionTestResult(message, result)
+    } catch (error) {
+      showConnectionTestError(message, error)
+    } finally {
+      setTesting(false)
+    }
+  }
+
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields()
       Stores.McpServerDrawer.setMcpServerDrawerLoading(true)
 
-      // Parse arguments from JSON array string
-      let args: string[] = []
-      if (values.args && values.args.trim()) {
-        try {
-          const parsed = JSON.parse(values.args)
-          if (!Array.isArray(parsed)) {
-            message.error('Arguments must be a JSON array')
-            Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
-            return
-          }
-          args = parsed
-        } catch (_error) {
-          message.error('Invalid JSON in arguments')
-          Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
-          return
-        }
+      const parsed = parseTransportFields(values)
+      if (!parsed) {
+        Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
+        return
       }
-
-      // Parse environment variables from JSON string
-      let environmentVariables = {}
-      if (values.env && values.env.trim()) {
-        try {
-          environmentVariables = JSON.parse(values.env)
-          if (
-            typeof environmentVariables !== 'object' ||
-            Array.isArray(environmentVariables)
-          ) {
-            message.error('Environment variables must be a JSON object')
-            Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
-            return
-          }
-        } catch (_error) {
-          message.error('Invalid JSON in environment variables')
-          Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
-          return
-        }
-      }
-
-      // Parse HTTP headers from JSON string
-      let headers = {}
-      if (values.headers && values.headers.trim()) {
-        try {
-          headers = JSON.parse(values.headers)
-          if (typeof headers !== 'object' || Array.isArray(headers)) {
-            message.error('HTTP Headers must be a JSON object')
-            Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
-            return
-          }
-        } catch (_error) {
-          message.error('Invalid JSON in HTTP Headers')
-          Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
-          return
-        }
-      }
+      const { args, environmentVariables, headers } = parsed
 
       const serverData = {
         name: values.name,
@@ -548,6 +639,15 @@ export function McpServerDrawer() {
         </Form>
 
         <div className="flex gap-2 justify-end">
+          {canManage && !!transportType && (
+            <Button
+              className="mr-auto"
+              loading={testing}
+              onClick={handleTestConnection}
+            >
+              Test Connection
+            </Button>
+          )}
           <Button onClick={handleClose}>
             {canManage ? 'Cancel' : 'Close'}
           </Button>

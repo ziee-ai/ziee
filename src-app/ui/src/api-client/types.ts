@@ -1671,6 +1671,24 @@ export interface TestExtractRequest {
   user_message: string
 }
 
+export interface TestMcpConnectionRequest {
+  args?: string[]
+  command?: string
+  environment_variables?: any
+  headers?: any
+  id?: string
+  oauth?: SetMcpServerOAuthConfigRequest
+  timeout_seconds?: number
+  transport_type: TransportType
+  url?: string
+}
+
+export interface TestMcpConnectionResponse {
+  message: string
+  success: boolean
+  tool_count?: number
+}
+
 export interface TestProviderResponse {
   message: string
   ok: boolean
@@ -2347,6 +2365,7 @@ export const ApiEndpoints = {
   'McpServer.getOAuthConfig': 'GET /api/mcp/servers/{id}/oauth',
   'McpServer.listAccessible': 'GET /api/mcp/servers',
   'McpServer.setOAuthConfig': 'PUT /api/mcp/servers/{id}/oauth',
+  'McpServer.testConnection': 'POST /api/mcp/servers/test-connection',
   'McpServer.update': 'PUT /api/mcp/servers/{id}',
   'McpServerRuntime.callTool': 'POST /api/mcp/servers/{id}/tools/{name}/call',
   'McpServerRuntime.disconnect': 'DELETE /api/mcp/servers/{id}/disconnect',
@@ -2363,6 +2382,7 @@ export const ApiEndpoints = {
   'McpServerSystem.getServerGroups': 'GET /api/mcp/system-servers/{id}/groups',
   'McpServerSystem.list': 'GET /api/mcp/system-servers',
   'McpServerSystem.removeServerFromGroup': 'DELETE /api/mcp/system-servers/{id}/groups/{group_id}',
+  'McpServerSystem.testConnection': 'POST /api/mcp/system-servers/test-connection',
   'McpServerSystem.update': 'PUT /api/mcp/system-servers/{id}',
   'Memory.create': 'POST /api/memories',
   'Memory.delete': 'DELETE /api/memories/{id}',
@@ -2554,6 +2574,7 @@ export type ApiEndpointParameters = {
   'McpServer.getOAuthConfig': { id: string }
   'McpServer.listAccessible': PaginationQuery
   'McpServer.setOAuthConfig': { id: string } & SetMcpServerOAuthConfigRequest
+  'McpServer.testConnection': TestMcpConnectionRequest
   'McpServer.update': { id: string } & UpdateMcpServerRequest
   'McpServerRuntime.callTool': { id: string; name: string } & CallToolRequest
   'McpServerRuntime.disconnect': { id: string }
@@ -2570,6 +2591,7 @@ export type ApiEndpointParameters = {
   'McpServerSystem.getServerGroups': { id: string }
   'McpServerSystem.list': PaginationQuery
   'McpServerSystem.removeServerFromGroup': { id: string; group_id: string }
+  'McpServerSystem.testConnection': TestMcpConnectionRequest
   'McpServerSystem.update': { id: string } & UpdateMcpServerRequest
   'Memory.create': CreateMemoryRequest
   'Memory.delete': { id: string }
@@ -2761,6 +2783,7 @@ export type ApiEndpointResponses = {
   'McpServer.getOAuthConfig': McpServerOAuthConfigResponse | null
   'McpServer.listAccessible': McpServerListResponse
   'McpServer.setOAuthConfig': McpServerOAuthConfigResponse
+  'McpServer.testConnection': TestMcpConnectionResponse
   'McpServer.update': McpServer
   'McpServerRuntime.callTool': CallToolResponse
   'McpServerRuntime.disconnect': any
@@ -2777,6 +2800,7 @@ export type ApiEndpointResponses = {
   'McpServerSystem.getServerGroups': string[]
   'McpServerSystem.list': McpServerListResponse
   'McpServerSystem.removeServerFromGroup': void
+  'McpServerSystem.testConnection': TestMcpConnectionResponse
   'McpServerSystem.update': McpServer
   'Memory.create': UserMemory
   'Memory.delete': void

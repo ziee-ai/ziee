@@ -1,19 +1,35 @@
 import { useState } from 'react'
 import { App, Button, Card, Popconfirm, Tag, Typography, Tooltip, Switch, Flex } from 'antd'
-import { EditOutlined, ToolOutlined, DeleteOutlined } from '@ant-design/icons'
+import {
+  EditOutlined,
+  ToolOutlined,
+  DeleteOutlined,
+  ApiOutlined,
+} from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
-import { Permissions, type McpServer } from '@/api-client/types'
+import {
+  Permissions,
+  type McpServer,
+  type TestMcpConnectionRequest,
+} from '@/api-client/types'
+import {
+  showConnectionTestResult,
+  showConnectionTestError,
+} from '@/modules/mcp/components/common/connectionTestToast'
 
 // System and user MCP servers gate on different permission namespaces.
-// `server.is_system` selects which set applies at render time.
+// `server.is_system` selects which set applies at render time. `test` maps to
+// the create-level permission because the test-connection endpoint requires it.
 const SYSTEM_PERMS = {
   edit: Permissions.McpServersAdminEdit,
   delete: Permissions.McpServersAdminDelete,
+  test: Permissions.McpServersAdminCreate,
 } as const
 const USER_PERMS = {
   edit: Permissions.McpServersEdit,
   delete: Permissions.McpServersDelete,
+  test: Permissions.McpServersCreate,
 } as const
 
 const { Text } = Typography
@@ -31,10 +47,12 @@ export function McpServerCard({
 }: McpServerCardProps) {
   const { message } = App.useApp()
   const [enableLoading, setEnableLoading] = useState(false)
+  const [testing, setTesting] = useState(false)
 
   const perms = server.is_system ? SYSTEM_PERMS : USER_PERMS
   const canEdit = usePermission(perms.edit)
   const canDelete = usePermission(perms.delete)
+  const canTest = usePermission(perms.test)
 
   const handleEdit = () => {
     if (server.is_system) {
@@ -54,6 +72,32 @@ export function McpServerCard({
       message.success('Server deleted successfully')
     } catch (_error) {
       message.error('Failed to delete server')
+    }
+  }
+
+  const handleTest = async () => {
+    setTesting(true)
+    try {
+      // Probe the persisted config. The OAuth secret is write-only, so we send
+      // the server `id` and let the backend reuse the stored secret (URL matches).
+      const payload: TestMcpConnectionRequest = {
+        transport_type: server.transport_type,
+        command: server.command ?? undefined,
+        args: Array.isArray(server.args) ? server.args : [],
+        environment_variables: server.environment_variables ?? {},
+        url: server.url ?? undefined,
+        headers: server.headers ?? {},
+        timeout_seconds: server.timeout_seconds,
+        id: server.id,
+      }
+      const result = server.is_system
+        ? await Stores.SystemMcpServer.testSystemServerConnection(payload)
+        : await Stores.McpServer.testMcpServerConnection(payload)
+      showConnectionTestResult(message, result)
+    } catch (error) {
+      showConnectionTestError(message, error)
+    } finally {
+      setTesting(false)
     }
   }
 
@@ -138,6 +182,22 @@ export function McpServerCard({
                         loading={enableLoading}
                         aria-label={`${server.enabled ? 'Disable' : 'Enable'} ${server.display_name}`}
                       />
+                    </Tooltip>
+                  )}
+                  {canTest && (
+                    <Tooltip title="Test the connection to this server">
+                      <Button
+                        icon={<ApiOutlined />}
+                        loading={testing}
+                        onClick={e => {
+                          e.stopPropagation()
+                          handleTest()
+                        }}
+                        aria-label={`Test connection to ${server.display_name}`}
+                        data-testid="mcp-server-test-btn"
+                      >
+                        Test
+                      </Button>
                     </Tooltip>
                   )}
                   {canEdit && (
