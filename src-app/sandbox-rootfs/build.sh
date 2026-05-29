@@ -197,6 +197,22 @@ build_mmdebstrap() {
   # Write the schema sentinel.
   echo "$SCHEMA" | sudo tee "$STAGE_DIR/.ziee-sandbox-rootfs-schema" >/dev/null
 
+  # /etc/resolv.conf — required for any sandbox tool that does DNS.
+  # mmdebstrap leaves /etc/resolv.conf whatever the host had at build
+  # time (or empty/symlink to systemd-resolved that doesn't exist
+  # inside the sandbox). On the Linux native sandbox path the host's
+  # /etc/resolv.conf is bound in by `build_hardening_prefix`, but the
+  # macOS / WSL2 VM paths route through libkrun's TSI — which
+  # transparently forwards any AF_INET UDP send to the host, so a
+  # baked-in public-resolver line works regardless of the actual VM
+  # network state. Without this, pip / uvx / npx / mcp-server-fetch
+  # inside the VM sandbox fails with EAI_AGAIN (`Errno -3 / Try
+  # again`). 1.1.1.1 (Cloudflare) + 8.8.8.8 (Google) chosen for being
+  # the lowest-latency widely-accessible public resolvers; can be
+  # overridden by binding a different /etc/resolv.conf at runtime.
+  printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' \
+    | sudo tee "$STAGE_DIR/etc/resolv.conf" >/dev/null
+
   # Strip setuid bits (defense in depth).
   sudo find "$STAGE_DIR" -xdev \( -perm /u+s -o -perm /g+s \) -type f \
     -exec chmod u-s,g-s {} \; 2>/dev/null || true

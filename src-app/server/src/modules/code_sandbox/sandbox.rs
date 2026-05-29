@@ -359,6 +359,19 @@ pub(crate) fn build_hardening_prefix(p: &HardeningArgvParams) -> Vec<String> {
         "--ro-bind-try".into(),
         format!("{rootfs}/etc/ssl"),
         "/etc/ssl".into(),
+        // /etc/resolv.conf — required for any sandbox child that does
+        // DNS (`uvx`, `npx`, `pip install`, `mcp-server-fetch`, …).
+        // Prefer the host's resolv.conf (real production nameservers,
+        // including any split-DNS setup); fall through to the rootfs's
+        // baked-in public-resolver fallback. ro-bind-try silently skips
+        // missing sources, so a host or rootfs without /etc/resolv.conf
+        // simply means no DNS in the sandbox — no spawn failure.
+        "--ro-bind-try".into(),
+        "/etc/resolv.conf".into(),
+        "/etc/resolv.conf".into(),
+        "--ro-bind-try".into(),
+        format!("{rootfs}/etc/resolv.conf"),
+        "/etc/resolv.conf".into(),
         "--ro-bind".into(),
         p.passwd_path.display().to_string(),
         "/etc/passwd".into(),
