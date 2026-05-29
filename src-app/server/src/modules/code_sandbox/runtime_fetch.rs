@@ -56,6 +56,11 @@ pub struct FetchOutcome {
     /// Semver string identifying which rootfs release this artifact
     /// belongs to. Surfaced via `fetch_info.version` in the chat UI.
     pub version: String,
+    /// PK of the `code_sandbox_rootfs_artifacts` row corresponding to
+    /// this fetch. Plumbed through so `runtime_mount` can register the
+    /// mount + every caller can `version_manager::acquire_inflight`
+    /// for the drain-on-swap protocol (Plan 5 Phase 3).
+    pub artifact_id: uuid::Uuid,
 }
 
 /// Packaging variant. The squashfs is the universal artifact
@@ -256,6 +261,7 @@ pub async fn fetch_flavor_format(
         duration_ms,
         cosign_verified,
         version: row.version,
+        artifact_id: row.id,
     })
 }
 

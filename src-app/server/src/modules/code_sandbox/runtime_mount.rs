@@ -88,11 +88,19 @@ struct MountedRootfs {
 /// `fetch_info` is populated when THIS call did the auto-fetch; the
 /// chat UI uses it to render a "fetched X (Y MB in Z s)" system
 /// note. `None` when the flavor's squashfs was already in the cache.
+///
+/// `artifact_id` identifies the row in `code_sandbox_rootfs_artifacts`
+/// that this mount corresponds to. Callers that wish to participate
+/// in the drain-on-swap protocol (Plan 5 Phase 3) acquire an
+/// `InflightGuard` against it via
+/// `version_manager::acquire_inflight(artifact_id, kind)`.
 #[derive(Debug, Clone)]
 pub struct EnsureOutcome {
     pub caps: Arc<HardeningCapabilities>,
     pub mount_dir: PathBuf,
     pub fetch_info: Option<FetchOutcome>,
+    pub artifact_id: Option<uuid::Uuid>,
+    pub artifact_version: Option<String>,
 }
 
 // =====================================================================
@@ -277,6 +285,7 @@ async fn do_first_init(state: &CodeSandboxState, flavor: &str) -> ReadyResult {
     })?;
     let sqfs_path = outcome.installed_path.clone();
     let fetch_version = outcome.version.clone();
+    let artifact_id = outcome.artifact_id;
     // Surface `fetch_info` only when this call actually downloaded.
     let fetch_info = if outcome.bytes_downloaded > 0 {
         Some(outcome)
@@ -323,10 +332,25 @@ async fn do_first_init(state: &CodeSandboxState, flavor: &str) -> ReadyResult {
     )
     .map_err(|reason| ReadyError::PidNsDisabled { reason })?;
 
+    // Register the live mount with the version manager so a
+    // subsequent pin-change can drain + evict against the right
+    // inflight counter. Idempotent: a re-mount under the same
+    // artifact_id reuses the existing `MountedArtifact`.
+    let arch = std::env::consts::ARCH.to_string();
+    crate::modules::code_sandbox::version_manager::register_mount(
+        artifact_id,
+        &fetch_version,
+        &arch,
+        flavor,
+        mount_dir.clone(),
+    );
+
     Ok(EnsureOutcome {
         caps: Arc::new(caps),
         mount_dir,
         fetch_info,
+        artifact_id: Some(artifact_id),
+        artifact_version: Some(fetch_version),
     })
 }
 

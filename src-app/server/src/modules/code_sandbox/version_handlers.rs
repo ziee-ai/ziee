@@ -30,7 +30,7 @@ use crate::modules::code_sandbox::permissions::{
     CodeSandboxEnvironmentsManage, CodeSandboxEnvironmentsRead,
 };
 use crate::modules::code_sandbox::version_manager::{
-    self, RootfsArtifact, VersionStatus,
+    self, RootfsArtifact, SwapOutcome, VersionStatus,
 };
 use crate::modules::permissions::openapi::with_permission;
 use crate::modules::permissions::RequirePermissions;
@@ -184,16 +184,36 @@ pub fn install_version_docs(
 // POST /code-sandbox/rootfs/versions/set-pin
 // =====================================================================
 
+#[derive(Debug, Clone, serde::Serialize, JsonSchema)]
+pub struct SetPinResponse {
+    pub swap: SwapOutcome,
+    pub status: VersionStatus,
+}
+
 pub async fn set_pin_handler(
     _auth: RequirePermissions<(CodeSandboxEnvironmentsManage,)>,
     Json(body): Json<SetPinRequest>,
-) -> ApiResult<Json<VersionStatus>> {
+) -> ApiResult<Json<SetPinResponse>> {
     let pool = live_pool()?;
-    version_manager::set_pin(&pool, &body.version)
-        .await
-        .map_err(map_version_err)?;
+    let state = config::get_state().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            crate::common::AppError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "SANDBOX_NOT_INITIALIZED",
+                "code_sandbox is not initialized",
+            ),
+        )
+    })?;
+    let swap = version_manager::set_pin_with_drain(
+        &pool,
+        &body.version,
+        state.workspace_root.clone(),
+    )
+    .await
+    .map_err(map_version_err)?;
     let status = version_manager::status(&pool).await.map_err(map_version_err)?;
-    Ok((StatusCode::OK, Json(status)))
+    Ok((StatusCode::OK, Json(SetPinResponse { swap, status })))
 }
 
 pub fn set_pin_docs(
@@ -204,12 +224,17 @@ pub fn set_pin_docs(
         .tag("Code Sandbox")
         .summary("Change the system-wide rootfs version pin")
         .description(
-            "Validates the target version exists on GitHub, then writes \
-             it into `code_sandbox_settings.current_rootfs_version`. \
-             Phase 2 ships the pin update only; Phase 3 will wrap this \
-             with drain + (on major bump) install-cache wipe.",
+            "Validates the target version exists on GitHub, updates the \
+             pin in `code_sandbox_settings`, then schedules a drain-then- \
+             evict task for every old-version mount. On a major version \
+             bump the workspace install-cache subdirs (`.local`, \
+             `.cache`, `.npm`, ...) are wiped across both per-conversation \
+             and per-MCP-server workspaces AFTER drain; minor + patch \
+             bumps preserve workspace state. Returns the swap outcome \
+             (draining-mount count + cache wipe policy) alongside the \
+             refreshed status snapshot.",
         )
-        .response::<200, Json<VersionStatus>>()
+        .response::<200, Json<SetPinResponse>>()
 }
 
 // =====================================================================

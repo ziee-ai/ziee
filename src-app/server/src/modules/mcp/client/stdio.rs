@@ -79,6 +79,12 @@ pub struct StdioMcpClient {
     /// releases the per-flavor inflight guard so the VM can be reaped.
     /// `None` for non-sandboxed and Linux-sandboxed paths.
     _vm_session: Option<vm_long_lived::LongLivedSession>,
+    /// Inflight guard against the version_manager mount registry
+    /// (Plan 5 Phase 3). Dropping it decrements the per-artifact
+    /// counter so a pending swap-drain can evict the old-version
+    /// mount once every sandboxed MCP server using it shuts down.
+    /// `None` for non-sandboxed paths.
+    _sandbox_inflight: Option<crate::modules::code_sandbox::version_manager::InflightGuard>,
 }
 
 impl StdioMcpClient {
@@ -92,6 +98,7 @@ impl StdioMcpClient {
             server_config: server,
             service: None,
             _vm_session: None,
+            _sandbox_inflight: None,
         })
     }
 
@@ -162,13 +169,14 @@ impl StdioMcpClient {
 
         let transport = mcp_spawn::start_mcp_in_sandbox(&state, req).await?;
         match transport {
-            McpSandboxTransport::LinuxBwrap(child) => {
+            McpSandboxTransport::LinuxBwrap { child, _inflight } => {
                 let service = ().serve(child).await.map_err(|e| {
                     AppError::internal_error(format!("rmcp serve (sandboxed/linux): {}", e))
                 })?;
                 self.service = Some(service);
+                self._sandbox_inflight = _inflight;
             }
-            McpSandboxTransport::VmSession { io, session } => {
+            McpSandboxTransport::VmSession { io, session, _inflight } => {
                 let (rd, wr) = tokio::io::split(io);
                 let transport = rmcp::transport::async_rw::AsyncRwTransport::new_client(rd, wr);
                 let service = ().serve(transport).await.map_err(|e| {
@@ -176,6 +184,7 @@ impl StdioMcpClient {
                 })?;
                 self.service = Some(service);
                 self._vm_session = Some(session);
+                self._sandbox_inflight = _inflight;
             }
         }
         tracing::info!(
@@ -509,6 +518,7 @@ mod tests {
             server_config: s,
             service: None,
             _vm_session: None,
+            _sandbox_inflight: None,
         };
         assert!(!client.should_sandbox());
     }

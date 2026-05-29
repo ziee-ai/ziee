@@ -551,10 +551,26 @@ impl SandboxBackend for MacVmBackend {
             // applies the shared seccomp filter itself; see run().
             seccomp: SeccompMode::NotLinked,
         };
+        let artifact_id = outcome.artifact_id;
+        let artifact_version = outcome.version.clone();
+        // Register with the version-manager mount registry so the
+        // Phase 3 drain task can find this VM-backed mount when the
+        // admin changes the pin. The mount_dir is the guest-side
+        // path; the host backend will tear down the actual VM in
+        // `evict_artifact`.
+        crate::modules::code_sandbox::version_manager::register_mount(
+            artifact_id,
+            &artifact_version,
+            std::env::consts::ARCH,
+            flavor,
+            PathBuf::from(GUEST_ROOTFS_MOUNT),
+        );
         Ok(EnsureOutcome {
             caps: Arc::new(guest_caps),
             mount_dir: PathBuf::from(GUEST_ROOTFS_MOUNT),
             fetch_info: Some(outcome),
+            artifact_id: Some(artifact_id),
+            artifact_version: Some(artifact_version),
         })
     }
 

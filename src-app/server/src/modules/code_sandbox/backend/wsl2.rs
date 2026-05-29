@@ -914,11 +914,22 @@ impl SandboxBackend for Wsl2Backend {
             // The agent builds + applies the shared seccomp filter itself.
             seccomp: SeccompMode::NotLinked,
         };
+        let artifact_id = outcome.artifact_id;
+        let artifact_version = outcome.version.clone();
+        crate::modules::code_sandbox::version_manager::register_mount(
+            artifact_id,
+            &artifact_version,
+            std::env::consts::ARCH,
+            flavor,
+            PathBuf::from(GUEST_ROOTFS_MOUNT),
+        );
         Ok(EnsureOutcome {
             caps: Arc::new(guest_caps),
             // The imported distro filesystem IS the rootfs ⇒ root is "/".
             mount_dir: PathBuf::from(GUEST_ROOTFS_MOUNT),
             fetch_info: Some(outcome),
+            artifact_id: Some(artifact_id),
+            artifact_version: Some(artifact_version),
         })
     }
 

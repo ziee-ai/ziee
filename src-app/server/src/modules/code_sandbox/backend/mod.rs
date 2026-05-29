@@ -97,6 +97,30 @@ pub trait SandboxBackend: Send + Sync {
     /// Evict a flavor from the local cache (unmount + delete). Idempotent.
     async fn evict_flavor(&self, cache_dir: &Path, flavor: &str) -> EvictOutcome;
 
+    /// Evict a specific (version, flavor) mount after the version
+    /// manager's drain task observed the inflight counter hit zero
+    /// (Plan 5 Phase 3). Default impl delegates to `evict_flavor` —
+    /// backends whose mount model is version-blind (just one mount
+    /// per flavor) get correct behavior for free.
+    ///
+    /// Phase 3 lands the trait method + default impl; per-backend
+    /// version-aware overrides (Linux: per-version mount dirs;
+    /// macOS: per-version VM cache; Windows: per-version WSL
+    /// distros) layer on in subsequent commits.
+    async fn evict_artifact(
+        &self,
+        mount_dir: &Path,
+        flavor: &str,
+        version: &str,
+    ) -> EvictOutcome {
+        let _ = version; // default impl ignores version
+        // `mount_dir` is the per-version mount dir for this artifact;
+        // its parent is the conventional `cache_dir` shape the legacy
+        // evict_flavor expects.
+        let cache_dir = mount_dir.parent().unwrap_or(mount_dir);
+        self.evict_flavor(cache_dir, flavor).await
+    }
+
     /// **Test-only seam.** Execute an arbitrary `bwrap` argv against the
     /// given rootfs and return the raw stdout/stderr/exit. Tier-4 tests
     /// use this to verify the hardening primitives the argv builder

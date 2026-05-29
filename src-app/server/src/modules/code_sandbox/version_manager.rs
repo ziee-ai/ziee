@@ -21,9 +21,10 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 use uuid::Uuid;
 
 use crate::common::AppError;
@@ -867,6 +868,553 @@ pub async fn status(pool: &PgPool) -> Result<VersionStatus, VersionError> {
 }
 
 // =====================================================================
+// Phase 3 — swap-while-running mechanics
+// =====================================================================
+//
+// Two coupled mechanisms:
+//
+//   1. Per-artifact inflight counter.  Bumped + decremented around
+//      every live use of a mounted artifact — both `execute_command`
+//      sessions and long-lived sandboxed-MCP-server sessions — via
+//      RAII `InflightGuard`s.  When the counter hits zero AND the
+//      artifact is no longer the pin, the version manager evicts the
+//      mount.
+//
+//   2. Pin-change swap.  `set_pin_with_drain` chooses a wipe policy
+//      from the semver diff (major bump => WipeCachesOnDrain, else
+//      Preserve), updates the pin atomically, and spawns a per-old-
+//      artifact drain task that:
+//        - waits on the artifact's `drained` Notify until inflight==0,
+//        - calls `backend::active().evict_artifact(...)`,
+//        - if WipeCachesOnDrain, walks the workspace tree (both
+//          `<workspace_root>/<conv_uuid>/` and
+//          `<workspace_root>/mcp/<server_id>/`) and `rm -rf`s the
+//          curated install-cache subdir list.  Drops a
+//          `.rootfs-upgraded` sentinel in each so the next
+//          `execute_command` reads + unlinks it and prepends a
+//          system note to the tool result.
+//
+// The actual `backend::active().evict_artifact` plumbing lives in
+// `code_sandbox::backend` (per-backend impls); this module owns the
+// counter + drain coordination.
+
+/// Subdirs that get wiped on a **major** version bump (Trigger A) or
+/// on a per-conversation **flavor switch** (Trigger B).
+///
+/// Curated to exactly the package-manager install targets where ABI
+/// mismatches across rootfs majors crash (Python wheels baked against
+/// the old glibc/Python ABI, node-native modules, cargo binaries, R
+/// libraries). User-generated files (`*.py`, `*.csv`, `plot.png`,
+/// virtualenvs under arbitrary names, etc.) are deliberately
+/// preserved.
+pub const WIPE_ON_MAJOR_BUMP: &[&str] = &[
+    ".local",        // pip --user, npm prefix, cargo install --root binaries
+    ".cache",        // pip cache, uv cache, hf cache, build caches
+    ".npm",          // npm install scratch
+    ".npm-global",   // npm -g
+    ".cargo",        // cargo registry + installed binaries
+    ".rustup",       // rust toolchains
+    ".pyenv",        // pyenv shims (if anyone installs into HOME)
+    "node_modules",  // local node deps (top-level only — don't recursively walk for nested ones)
+];
+
+/// Sentinel filename dropped at the workspace root after a major-bump
+/// or flavor-switch wipe. The next `execute_command` reads + unlinks
+/// it and prepends a system note to the tool result.
+pub const SENTINEL_ROOTFS_UPGRADED: &str = ".rootfs-upgraded";
+
+/// Sentinel filename dropped after a per-conversation flavor-switch
+/// wipe (narrower message than the rootfs-upgrade one).
+pub const SENTINEL_FLAVOR_CHANGED: &str = ".flavor-changed";
+
+/// Sentinel payload — written as JSON for forward extensibility.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WipeSentinel {
+    pub old: String,
+    pub new: String,
+    pub at: chrono::DateTime<chrono::Utc>,
+}
+
+/// One live mount + its inflight counters. The version manager holds
+/// these in a static map keyed by `artifact_id`; the per-backend
+/// `evict_artifact` calls operate against the `mount_dir`.
+pub struct MountedArtifact {
+    pub artifact_id: Uuid,
+    pub version: String,
+    pub arch: String,
+    pub flavor: String,
+    pub mount_dir: PathBuf,
+    inflight_exec: AtomicUsize,
+    inflight_mcp: AtomicUsize,
+    /// Notified whenever `inflight_exec + inflight_mcp` changes.
+    /// Drain tasks `notified().await` until both counters read zero.
+    drained: Notify,
+}
+
+impl MountedArtifact {
+    /// Live count (exec + MCP). Sequentially-consistent so a drain
+    /// task that wakes on `notified()` sees the right value.
+    pub fn inflight(&self) -> usize {
+        self.inflight_exec.load(Ordering::SeqCst)
+            + self.inflight_mcp.load(Ordering::SeqCst)
+    }
+
+    /// Per-class breakdown for the admin UI's "draining" row chip.
+    pub fn inflight_breakdown(&self) -> (usize, usize) {
+        (
+            self.inflight_exec.load(Ordering::SeqCst),
+            self.inflight_mcp.load(Ordering::SeqCst),
+        )
+    }
+}
+
+/// Class of usage the inflight guard represents. Tracked separately so
+/// the admin UI can show "5 execs + 1 MCP server are pinning v0.1.0".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InflightKind {
+    Exec,
+    Mcp,
+}
+
+/// RAII guard: increment on construction, decrement + notify on drop.
+/// `sandbox::run_in_sandbox` holds one for the exec; `mcp_spawn`'s
+/// `McpSandboxTransport` holds one for the MCP server's lifetime.
+pub struct InflightGuard {
+    artifact: Arc<MountedArtifact>,
+    kind: InflightKind,
+}
+
+impl Drop for InflightGuard {
+    fn drop(&mut self) {
+        let counter = match self.kind {
+            InflightKind::Exec => &self.artifact.inflight_exec,
+            InflightKind::Mcp => &self.artifact.inflight_mcp,
+        };
+        let _prev = counter.fetch_sub(1, Ordering::SeqCst);
+        self.artifact.drained.notify_waiters();
+    }
+}
+
+impl InflightGuard {
+    pub fn artifact_id(&self) -> Uuid {
+        self.artifact.artifact_id
+    }
+
+    pub fn version(&self) -> &str {
+        &self.artifact.version
+    }
+}
+
+/// In-memory registry of live mounts. Keyed by artifact_id so a
+/// per-conversation exec can look up its mount in O(1) and the
+/// pin-swap drain task can iterate every stale-version entry.
+static MOUNTED_ARTIFACTS: once_cell::sync::Lazy<
+    dashmap::DashMap<Uuid, Arc<MountedArtifact>>,
+> = once_cell::sync::Lazy::new(dashmap::DashMap::new);
+
+/// Register (or refresh) the in-memory tracking for an artifact that
+/// was just mounted. Idempotent: a second call with the same
+/// `artifact_id` returns the existing `Arc<MountedArtifact>` so
+/// inflight counters carry across a re-mount.
+pub fn register_mount(
+    artifact_id: Uuid,
+    version: &str,
+    arch: &str,
+    flavor: &str,
+    mount_dir: PathBuf,
+) -> Arc<MountedArtifact> {
+    MOUNTED_ARTIFACTS
+        .entry(artifact_id)
+        .or_insert_with(|| {
+            Arc::new(MountedArtifact {
+                artifact_id,
+                version: version.to_string(),
+                arch: arch.to_string(),
+                flavor: flavor.to_string(),
+                mount_dir,
+                inflight_exec: AtomicUsize::new(0),
+                inflight_mcp: AtomicUsize::new(0),
+                drained: Notify::new(),
+            })
+        })
+        .clone()
+}
+
+/// Take an inflight guard against an already-registered artifact.
+/// Caller MUST hold the guard for the entirety of the use (exec
+/// duration / MCP transport lifetime). Returns `None` if the artifact
+/// isn't in the registry — caller should treat that as "no mount yet"
+/// (e.g. a stray call before `runtime_mount::ensure_rootfs_ready`).
+pub fn acquire_inflight(artifact_id: Uuid, kind: InflightKind) -> Option<InflightGuard> {
+    let artifact = MOUNTED_ARTIFACTS.get(&artifact_id)?.value().clone();
+    let counter = match kind {
+        InflightKind::Exec => &artifact.inflight_exec,
+        InflightKind::Mcp => &artifact.inflight_mcp,
+    };
+    counter.fetch_add(1, Ordering::SeqCst);
+    artifact.drained.notify_waiters();
+    Some(InflightGuard { artifact, kind })
+}
+
+/// Look up an already-registered artifact by id (used by drain tasks).
+pub fn mounted_artifact(id: Uuid) -> Option<Arc<MountedArtifact>> {
+    MOUNTED_ARTIFACTS.get(&id).map(|e| e.value().clone())
+}
+
+/// Snapshot of every live mount — read by the admin UI's "draining"
+/// row chips. Cheap to call (clones the `Arc`s, not the structs).
+pub fn list_mounted_artifacts() -> Vec<Arc<MountedArtifact>> {
+    MOUNTED_ARTIFACTS.iter().map(|e| e.value().clone()).collect()
+}
+
+/// Wait on the artifact's `drained` Notify until BOTH inflight
+/// counters read zero. Drain tasks `await` this; in-flight execs +
+/// MCP transports just need to `drop` their guards (which calls
+/// `notify_waiters`) and the drain task wakes naturally.
+async fn wait_until_drained(artifact: &MountedArtifact) {
+    loop {
+        if artifact.inflight() == 0 {
+            return;
+        }
+        // Subscribe BEFORE the recheck so we never miss the wake.
+        let waker = artifact.drained.notified();
+        if artifact.inflight() == 0 {
+            return;
+        }
+        waker.await;
+    }
+}
+
+// =====================================================================
+// Pin-change swap (Phase 3 high-level entry point)
+// =====================================================================
+
+/// Wipe policy chosen by `swap_policy_for_diff`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SwapPolicy {
+    /// Same major version → workspace data is preserved verbatim.
+    Preserve,
+    /// Different majors → wipe install-cache subdirs in every
+    /// conversation- + MCP-server-workspace AFTER drain.
+    WipeCachesOnDrain,
+}
+
+/// Decide whether the pin change implies a workspace install-cache
+/// wipe. Same-major (minor or patch bump) → `Preserve`. Different
+/// majors → `WipeCachesOnDrain`. Unparseable versions fall back to
+/// `Preserve` (least-bad default — never silently nukes user state).
+pub fn swap_policy_for_diff(old: &str, new: &str) -> SwapPolicy {
+    let (om, _, _) = parse_semver(old);
+    let (nm, _, _) = parse_semver(new);
+    if om != nm {
+        SwapPolicy::WipeCachesOnDrain
+    } else {
+        SwapPolicy::Preserve
+    }
+}
+
+/// Result of a pin change. Surfaced via the `set-pin` HTTP handler so
+/// the admin UI can render a "n session(s) draining" indicator.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct SwapOutcome {
+    pub pinned: String,
+    pub was: Option<String>,
+    pub draining_mounts: usize,
+    pub cache_wipe: SwapPolicy,
+}
+
+/// Phase 3 entry point used by the admin handler. Wraps
+/// `set_pin` with:
+///   - the semver-derived workspace policy decision
+///   - a spawned drain-then-evict task per stale-version mount
+///   - the per-server / per-conversation install-cache wipe (on
+///     major bump, after drain)
+///
+/// `workspace_root` is the same value `CodeSandboxState.workspace_root`
+/// holds; passed in explicitly so this function is straightforward to
+/// unit-test against a temp dir.
+pub async fn set_pin_with_drain(
+    pool: &PgPool,
+    target_version: &str,
+    workspace_root: PathBuf,
+) -> Result<SwapOutcome, VersionError> {
+    let old = current_pin(pool).await?;
+    if old.as_deref() == Some(target_version) {
+        return Ok(SwapOutcome {
+            pinned: target_version.to_string(),
+            was: old,
+            draining_mounts: 0,
+            cache_wipe: SwapPolicy::Preserve,
+        });
+    }
+
+    set_pin(pool, target_version).await?;
+
+    let policy = match old.as_deref() {
+        Some(o) => swap_policy_for_diff(o, target_version),
+        None => SwapPolicy::Preserve,
+    };
+
+    // Pick out every live mount that no longer matches the new pin.
+    let draining: Vec<Arc<MountedArtifact>> = MOUNTED_ARTIFACTS
+        .iter()
+        .map(|e| e.value().clone())
+        .filter(|m| m.version != target_version)
+        .collect();
+    let draining_count = draining.len();
+
+    for stale in draining {
+        let old_v = old.clone();
+        let new_v = target_version.to_string();
+        let workspace_root = workspace_root.clone();
+        tokio::spawn(async move {
+            tracing::info!(
+                artifact_id = %stale.artifact_id,
+                version = %stale.version,
+                "code_sandbox: drain task waiting on inflight counters"
+            );
+            wait_until_drained(&stale).await;
+            tracing::info!(
+                artifact_id = %stale.artifact_id,
+                "code_sandbox: drained; evicting"
+            );
+
+            // Evict the mount via the platform backend. Best-effort:
+            // a failure (e.g. fusermount returned non-zero because
+            // another process held a stale open FD) is logged but
+            // doesn't block the wipe below.
+            let evict = crate::modules::code_sandbox::backend::active()
+                .evict_artifact(&stale.mount_dir, &stale.flavor, &stale.version)
+                .await;
+            tracing::info!(
+                artifact_id = %stale.artifact_id,
+                evicted = evict.was_cached,
+                bytes_freed = evict.bytes_freed,
+                "code_sandbox: evict_artifact returned"
+            );
+            MOUNTED_ARTIFACTS.remove(&stale.artifact_id);
+
+            if policy == SwapPolicy::WipeCachesOnDrain {
+                let sentinel = WipeSentinel {
+                    old: old_v.clone().unwrap_or_default(),
+                    new: new_v.clone(),
+                    at: chrono::Utc::now(),
+                };
+                let result = wipe_install_caches_in_root(&workspace_root, &sentinel);
+                tracing::info!(
+                    conversation_dirs = result.conversation_dirs,
+                    mcp_server_dirs = result.mcp_server_dirs,
+                    subdirs_removed = result.subdirs_removed,
+                    "workspace_cleanup: major-bump wipe complete"
+                );
+            }
+        });
+    }
+
+    Ok(SwapOutcome {
+        pinned: target_version.to_string(),
+        was: old,
+        draining_mounts: draining_count,
+        cache_wipe: policy,
+    })
+}
+
+/// What the wipe walker did. Surfaced via the tracing log for
+/// post-hoc admin visibility (the actual per-path detail is too
+/// noisy for a single log line).
+#[derive(Debug, Default, Clone)]
+pub struct WipeResult {
+    pub conversation_dirs: usize,
+    pub mcp_server_dirs: usize,
+    pub subdirs_removed: usize,
+}
+
+/// Walk a workspace_root and `rm -rf` the curated install-cache
+/// subdirs inside every per-conversation and per-MCP-server workspace
+/// directory. Drops a `.rootfs-upgraded` sentinel in each affected
+/// workspace so the next `execute_command` (or next MCP tool call)
+/// can prepend a system note to its tool result.
+///
+/// Skips `attachments/` and `identity/` (shared-state dirs that are
+/// neither per-conversation nor per-MCP-server).
+pub fn wipe_install_caches_in_root(
+    workspace_root: &std::path::Path,
+    sentinel: &WipeSentinel,
+) -> WipeResult {
+    let mut result = WipeResult::default();
+    if !workspace_root.is_dir() {
+        return result;
+    }
+    let sentinel_json = serde_json::to_string(sentinel).unwrap_or_default();
+
+    // Layer 1: per-conversation dirs (children of workspace_root) +
+    //          the `mcp/` subtree.
+    let entries = match std::fs::read_dir(workspace_root) {
+        Ok(e) => e,
+        Err(_) => return result,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let meta = match entry.metadata() {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        if !meta.is_dir() {
+            continue;
+        }
+        let name = match path.file_name().and_then(|n| n.to_str()) {
+            Some(n) => n,
+            None => continue,
+        };
+
+        // Layer 2: MCP per-server dirs under `<workspace_root>/mcp/`.
+        if name == "mcp" {
+            let mcp_dirs = match std::fs::read_dir(&path) {
+                Ok(d) => d,
+                Err(_) => continue,
+            };
+            for mcp_entry in mcp_dirs.flatten() {
+                let mcp_path = mcp_entry.path();
+                if mcp_entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    let n = wipe_subdirs_in(&mcp_path, &sentinel_json);
+                    result.mcp_server_dirs += 1;
+                    result.subdirs_removed += n;
+                }
+            }
+            continue;
+        }
+
+        // Skip shared subsystem dirs (not per-conversation):
+        //   `attachments/` is shared staging for bind-mounted user
+        //   attachments; `identity/` is the shared synthetic
+        //   passwd/group.
+        if name == "attachments" || name == "identity" {
+            continue;
+        }
+
+        let n = wipe_subdirs_in(&path, &sentinel_json);
+        result.conversation_dirs += 1;
+        result.subdirs_removed += n;
+    }
+    result
+}
+
+/// Per-workspace wipe primitive: `rm -rf` each subdir in
+/// `WIPE_ON_MAJOR_BUMP` that exists, then drop a `.rootfs-upgraded`
+/// sentinel. Returns the count of subdirs that were actually removed.
+fn wipe_subdirs_in(workspace_dir: &std::path::Path, sentinel_json: &str) -> usize {
+    let mut removed = 0;
+    for sub in WIPE_ON_MAJOR_BUMP {
+        let target = workspace_dir.join(sub);
+        match std::fs::symlink_metadata(&target) {
+            Ok(_) => {
+                let r = if target.is_dir() {
+                    std::fs::remove_dir_all(&target)
+                } else {
+                    std::fs::remove_file(&target)
+                };
+                if r.is_ok() {
+                    removed += 1;
+                } else if let Err(e) = r {
+                    tracing::warn!(
+                        path = %target.display(),
+                        "workspace_cleanup: failed to remove {sub}: {e}"
+                    );
+                }
+            }
+            Err(_) => continue, // missing — fine
+        }
+    }
+    // Drop the sentinel (best-effort).
+    let sentinel_path = workspace_dir.join(SENTINEL_ROOTFS_UPGRADED);
+    if let Err(e) = std::fs::write(&sentinel_path, sentinel_json) {
+        tracing::warn!(
+            path = %sentinel_path.display(),
+            "workspace_cleanup: failed to drop sentinel: {e}"
+        );
+    }
+    removed
+}
+
+/// Per-conversation flavor-switch wipe (Trigger B). Called
+/// synchronously from `tools/execute.rs` when the LLM changes the
+/// flavor mid-conversation. Wipes only THIS one workspace dir's
+/// install-cache subdirs and drops a `.flavor-changed` sentinel.
+pub fn wipe_install_caches_for_conversation(
+    workspace_dir: &std::path::Path,
+    old_flavor: &str,
+    new_flavor: &str,
+) -> WipeResult {
+    let mut result = WipeResult::default();
+    if !workspace_dir.is_dir() {
+        return result;
+    }
+    let sentinel = WipeSentinel {
+        old: old_flavor.to_string(),
+        new: new_flavor.to_string(),
+        at: chrono::Utc::now(),
+    };
+    let sentinel_json = serde_json::to_string(&sentinel).unwrap_or_default();
+    let n = wipe_subdirs_in(workspace_dir, &sentinel_json);
+    // Overwrite the sentinel name to the flavor-specific one (the
+    // helper drops a `.rootfs-upgraded`; rename to
+    // `.flavor-changed` for this trigger).
+    let _ = std::fs::rename(
+        workspace_dir.join(SENTINEL_ROOTFS_UPGRADED),
+        workspace_dir.join(SENTINEL_FLAVOR_CHANGED),
+    );
+    result.conversation_dirs = 1;
+    result.subdirs_removed = n;
+    result
+}
+
+/// Read + unlink the most-recent wipe sentinel in `workspace_dir`,
+/// formatted as a human-readable system-note string suitable for
+/// prepending to the tool result. Returns `None` if no sentinel is
+/// present.
+///
+/// Looks for `.rootfs-upgraded` first (major-bump), then
+/// `.flavor-changed` (per-conversation flavor switch). Both are
+/// removed after reading so the next call doesn't re-prepend the
+/// same message.
+pub fn consume_workspace_sentinel(workspace_dir: &std::path::Path) -> Option<String> {
+    for (filename, is_major) in [
+        (SENTINEL_ROOTFS_UPGRADED, true),
+        (SENTINEL_FLAVOR_CHANGED, false),
+    ] {
+        let path = workspace_dir.join(filename);
+        let body = match std::fs::read_to_string(&path) {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+        let _ = std::fs::remove_file(&path);
+        let sentinel: WipeSentinel = match serde_json::from_str(&body) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        let msg = if is_major {
+            format!(
+                "Sandbox upgraded from v{} to v{} (major bump). \
+                 Package-manager caches (.local, .cache, .npm, ...) were cleared; \
+                 reinstall (pip / npm / ...) anything you need. \
+                 Your files in /workspace are intact.",
+                sentinel.old, sentinel.new
+            )
+        } else {
+            format!(
+                "Sandbox flavor changed from {} to {} in this conversation. \
+                 Package-manager caches were cleared; reinstall anything you need. \
+                 Your files in /workspace are intact.",
+                sentinel.old, sentinel.new
+            )
+        };
+        return Some(msg);
+    }
+    None
+}
+
+// =====================================================================
 // Tier 1 unit tests
 // =====================================================================
 #[cfg(test)]
@@ -960,6 +1508,157 @@ mod tests {
         assert_eq!(package_extension("squashfs").unwrap(), "squashfs");
         assert_eq!(package_extension("tar.zst").unwrap(), "tar.zst");
         assert!(package_extension("zip").is_err());
+    }
+
+    #[test]
+    fn swap_policy_for_diff_picks_wipe_on_major_bump() {
+        assert_eq!(swap_policy_for_diff("0.1.0", "0.1.1"), SwapPolicy::Preserve);
+        assert_eq!(swap_policy_for_diff("0.1.0", "0.2.0"), SwapPolicy::Preserve);
+        assert_eq!(swap_policy_for_diff("0.9.9", "0.10.0"), SwapPolicy::Preserve);
+        assert_eq!(
+            swap_policy_for_diff("0.1.0", "1.0.0"),
+            SwapPolicy::WipeCachesOnDrain
+        );
+        assert_eq!(
+            swap_policy_for_diff("1.2.3", "2.0.0"),
+            SwapPolicy::WipeCachesOnDrain
+        );
+        // Same version is a no-op (Preserve covers it; callers
+        // short-circuit before this is reached).
+        assert_eq!(swap_policy_for_diff("0.1.0", "0.1.0"), SwapPolicy::Preserve);
+    }
+
+    #[test]
+    fn wipe_walker_drops_install_caches_and_keeps_user_files() {
+        let workspace_root = tempfile::tempdir().unwrap();
+        let conv_a = workspace_root.path().join("00000000-0000-0000-0000-00000000000a");
+        let conv_b = workspace_root.path().join("00000000-0000-0000-0000-00000000000b");
+        std::fs::create_dir_all(conv_a.join(".local")).unwrap();
+        std::fs::create_dir_all(conv_a.join(".cache/pip")).unwrap();
+        std::fs::write(conv_a.join("notes.md"), "user file").unwrap();
+        std::fs::write(conv_a.join("output.csv"), "x,y\n").unwrap();
+        std::fs::create_dir_all(conv_b.join(".npm")).unwrap();
+        std::fs::write(conv_b.join("plot.png"), b"PNG").unwrap();
+        // Shared subsystem dirs the walker must skip.
+        std::fs::create_dir_all(workspace_root.path().join("attachments")).unwrap();
+        std::fs::create_dir_all(workspace_root.path().join("identity")).unwrap();
+        // Per-MCP-server workspace.
+        let mcp_server =
+            workspace_root.path().join("mcp").join("11111111-1111-1111-1111-111111111111");
+        std::fs::create_dir_all(mcp_server.join(".local/lib")).unwrap();
+        std::fs::write(mcp_server.join("server-state.json"), "{}").unwrap();
+
+        let sentinel = WipeSentinel {
+            old: "0.9.0".to_string(),
+            new: "1.0.0".to_string(),
+            at: chrono::Utc::now(),
+        };
+        let result = wipe_install_caches_in_root(workspace_root.path(), &sentinel);
+
+        // Counts.
+        assert_eq!(result.conversation_dirs, 2);
+        assert_eq!(result.mcp_server_dirs, 1);
+        assert!(result.subdirs_removed >= 3); // .local, .cache, .npm (.local from mcp)
+
+        // Conversation workspaces — install caches gone, user files intact.
+        assert!(!conv_a.join(".local").exists());
+        assert!(!conv_a.join(".cache").exists());
+        assert!(conv_a.join("notes.md").exists());
+        assert!(conv_a.join("output.csv").exists());
+        assert!(!conv_b.join(".npm").exists());
+        assert!(conv_b.join("plot.png").exists());
+
+        // MCP server workspace.
+        assert!(!mcp_server.join(".local").exists());
+        assert!(mcp_server.join("server-state.json").exists());
+
+        // Sentinels dropped.
+        assert!(conv_a.join(SENTINEL_ROOTFS_UPGRADED).exists());
+        assert!(conv_b.join(SENTINEL_ROOTFS_UPGRADED).exists());
+        assert!(mcp_server.join(SENTINEL_ROOTFS_UPGRADED).exists());
+    }
+
+    #[test]
+    fn flavor_switch_wipes_only_caller_conversation() {
+        let workspace_root = tempfile::tempdir().unwrap();
+        let conv_a = workspace_root.path().join("00000000-0000-0000-0000-00000000000a");
+        let conv_b = workspace_root.path().join("00000000-0000-0000-0000-00000000000b");
+        std::fs::create_dir_all(conv_a.join(".local/lib")).unwrap();
+        std::fs::create_dir_all(conv_b.join(".local/lib")).unwrap();
+
+        let result = wipe_install_caches_for_conversation(&conv_a, "minimal", "full");
+        assert_eq!(result.conversation_dirs, 1);
+        assert!(result.subdirs_removed >= 1);
+
+        // A wiped, B untouched.
+        assert!(!conv_a.join(".local").exists());
+        assert!(conv_b.join(".local/lib").exists());
+
+        // Sentinel uses the flavor-changed name.
+        assert!(conv_a.join(SENTINEL_FLAVOR_CHANGED).exists());
+        assert!(!conv_a.join(SENTINEL_ROOTFS_UPGRADED).exists());
+    }
+
+    #[test]
+    fn consume_workspace_sentinel_reads_unlinks_returns_message() {
+        let dir = tempfile::tempdir().unwrap();
+        let sentinel = WipeSentinel {
+            old: "0.1.0".to_string(),
+            new: "1.0.0".to_string(),
+            at: chrono::Utc::now(),
+        };
+        let json_text = serde_json::to_string(&sentinel).unwrap();
+        std::fs::write(dir.path().join(SENTINEL_ROOTFS_UPGRADED), &json_text).unwrap();
+
+        let note = consume_workspace_sentinel(dir.path()).expect("sentinel present");
+        assert!(note.contains("v0.1.0"));
+        assert!(note.contains("v1.0.0"));
+        assert!(note.contains("major bump"));
+        assert!(!dir.path().join(SENTINEL_ROOTFS_UPGRADED).exists());
+
+        // Second call: sentinel unlinked, no message.
+        assert!(consume_workspace_sentinel(dir.path()).is_none());
+    }
+
+    #[test]
+    fn consume_workspace_sentinel_handles_flavor_switch() {
+        let dir = tempfile::tempdir().unwrap();
+        let sentinel = WipeSentinel {
+            old: "minimal".to_string(),
+            new: "full".to_string(),
+            at: chrono::Utc::now(),
+        };
+        let json_text = serde_json::to_string(&sentinel).unwrap();
+        std::fs::write(dir.path().join(SENTINEL_FLAVOR_CHANGED), &json_text).unwrap();
+
+        let note = consume_workspace_sentinel(dir.path()).expect("sentinel present");
+        assert!(note.contains("minimal"));
+        assert!(note.contains("full"));
+        assert!(note.contains("flavor"));
+        assert!(!dir.path().join(SENTINEL_FLAVOR_CHANGED).exists());
+    }
+
+    #[test]
+    fn inflight_guard_round_trip() {
+        let id = Uuid::new_v4();
+        let _registry_guard =
+            register_mount(id, "0.1.0", "x86_64", "minimal", std::path::PathBuf::from("/tmp"));
+        let artifact = mounted_artifact(id).unwrap();
+        assert_eq!(artifact.inflight(), 0);
+
+        let exec = acquire_inflight(id, InflightKind::Exec).unwrap();
+        assert_eq!(artifact.inflight(), 1);
+        let mcp = acquire_inflight(id, InflightKind::Mcp).unwrap();
+        assert_eq!(artifact.inflight(), 2);
+        assert_eq!(artifact.inflight_breakdown(), (1, 1));
+
+        drop(exec);
+        assert_eq!(artifact.inflight(), 1);
+        drop(mcp);
+        assert_eq!(artifact.inflight(), 0);
+
+        // Cleanup so a parallel test on this registry doesn't see leftover.
+        MOUNTED_ARTIFACTS.remove(&id);
     }
 
     #[test]
