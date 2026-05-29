@@ -16,6 +16,15 @@ pub async fn generate_openapi_spec(
     // Load configuration
     let config = Config::load_from(config_file)?;
 
+    // Publish the resolved data-dir + caches config into global state before
+    // module init. Module `init` hooks (e.g. DeploymentManager::new) read these
+    // globals via `get_caches_config()`; without this they see the empty
+    // default and panic. Mirrors the boot path in `main.rs` / `lib.rs`.
+    if let Some(app) = &config.app {
+        crate::core::set_app_data_dir(std::path::PathBuf::from(&app.data_dir));
+    }
+    crate::core::set_caches_config(config.caches.clone());
+
     // SECURITY/PERFORMANCE: OpenAPI generation walks the router structure
     // but never executes handlers. The previous implementation called
     // initialize_database which boots the full embedded PostgreSQL (10+

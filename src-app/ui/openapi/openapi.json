@@ -8590,6 +8590,73 @@
         ]
       }
     },
+    "/api/mcp/servers/test-connection": {
+      "post": {
+        "tags": [
+          "MCP Servers - Runtime"
+        ],
+        "summary": "Test MCP server connection",
+        "description": "Probe a candidate MCP server configuration without persisting it: run the initialize handshake and report success/failure plus the discovered tool count.",
+        "operationId": "McpServer.testConnection",
+        "requestBody": {
+          "description": "Request to test an MCP server connection without persisting anything.\n\n Carries the same transport fields as a create/update request so the UI can\n probe the *current form values* before saving. `oauth` is the credentials\n typed into the form (new external server); since the client secret is\n write-only in the edit / list flows, `id` lets the server fall back to the\n stored OAuth config for that existing server.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestMcpConnectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create MCP servers",
+                        "name": "McpServersCreate",
+                        "value": "mcp_servers::create"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers::create",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Result of a connection test — `success` is the only authoritative field.\n On failure `message` carries the underlying error (timeout / 401 / bad\n command). On success `tool_count` is the number of tools the server\n advertised (best-effort; `None` if the handshake succeeded but listing\n tools failed).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestMcpConnectionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid configuration"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/mcp/system-servers": {
       "get": {
         "tags": [
@@ -8723,6 +8790,73 @@
           },
           "409": {
             "description": "Server name already exists"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/mcp/system-servers/test-connection": {
+      "post": {
+        "tags": [
+          "MCP Servers - System"
+        ],
+        "summary": "Test system MCP server connection",
+        "description": "Probe a candidate system MCP server configuration without persisting it: run the initialize handshake and report success/failure plus the discovered tool count.",
+        "operationId": "McpServerSystem.testConnection",
+        "requestBody": {
+          "description": "Request to test an MCP server connection without persisting anything.\n\n Carries the same transport fields as a create/update request so the UI can\n probe the *current form values* before saving. `oauth` is the credentials\n typed into the form (new external server); since the client secret is\n write-only in the edit / list flows, `id` lets the server fall back to the\n stored OAuth config for that existing server.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestMcpConnectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create system MCP servers",
+                        "name": "McpServersAdminCreate",
+                        "value": "mcp_servers_admin::create"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers_admin::create",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Result of a connection test — `success` is the only authoritative field.\n On failure `message` carries the underlying error (timeout / 401 / bad\n command). On success `tool_count` is the number of tools the server\n advertised (best-effort; `None` if the handshake succeeded but listing\n tools failed).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestMcpConnectionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid configuration"
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "security": [
@@ -19434,6 +19568,107 @@
           "user_id",
           "user_message",
           "assistant_message"
+        ]
+      },
+      "TestMcpConnectionRequest": {
+        "description": "Request to test an MCP server connection without persisting anything.\n\n Carries the same transport fields as a create/update request so the UI can\n probe the *current form values* before saving. `oauth` is the credentials\n typed into the form (new external server); since the client secret is\n write-only in the edit / list flows, `id` lets the server fall back to the\n stored OAuth config for that existing server.",
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "command": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "environment_variables": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "headers": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "id": {
+            "description": "Existing server id — used ONLY to recover the stored OAuth secret when\n `oauth` is absent (edit drawer / list card). Access-checked before use.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "oauth": {
+            "description": "OAuth client_credentials typed into the form (new external HTTP server).",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SetMcpServerOAuthConfigRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timeout_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "transport_type": {
+            "$ref": "#/components/schemas/TransportType"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "transport_type"
+        ]
+      },
+      "TestMcpConnectionResponse": {
+        "description": "Result of a connection test — `success` is the only authoritative field.\n On failure `message` carries the underlying error (timeout / 401 / bad\n command). On success `tool_count` is the number of tools the server\n advertised (best-effort; `None` if the handshake succeeded but listing\n tools failed).",
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "tool_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "success",
+          "message"
         ]
       },
       "TestProviderResponse": {

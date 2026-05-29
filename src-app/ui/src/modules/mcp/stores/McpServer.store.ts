@@ -10,6 +10,8 @@ import {
   type UpdateMcpServerRequest,
   type McpServerOAuthConfigResponse,
   type SetMcpServerOAuthConfigRequest,
+  type TestMcpConnectionRequest,
+  type TestMcpConnectionResponse,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
 import { useSystemMcpServersStore } from '@/modules/mcp/stores/SystemMcpServer.store'
@@ -65,6 +67,9 @@ interface McpState {
     config: SetMcpServerOAuthConfigRequest,
   ) => Promise<void>
   deleteMcpServerOAuthConfig: (serverId: string) => Promise<void>
+  testMcpServerConnection: (
+    data: TestMcpConnectionRequest,
+  ) => Promise<TestMcpConnectionResponse>
   clearMcpError: () => void
   getUserServers: (servers: McpServer[]) => McpServer[]
   getSystemServers: (servers: McpServer[]) => McpServer[]
@@ -423,6 +428,15 @@ export const useMcpStore = create<McpState>()(
 
         deleteMcpServerOAuthConfig: async (serverId: string) => {
           await ApiClient.McpServer.deleteOAuthConfig({ id: serverId })
+        },
+
+        // Probe a candidate config (read-only; nothing is persisted). The
+        // backend returns { success, message, tool_count } with HTTP 200 even
+        // on a failed connection, so callers branch on `success`.
+        testMcpServerConnection: async (
+          data: TestMcpConnectionRequest,
+        ): Promise<TestMcpConnectionResponse> => {
+          return await ApiClient.McpServer.testConnection(data)
         },
 
         clearMcpError: () => {
