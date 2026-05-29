@@ -153,6 +153,7 @@ impl StdioMcpClient {
 
         let req = McpSpawnRequest {
             server_id: self.server_id,
+            original_command: cmd.clone(),
             resolved_command,
             prepended_args,
             server_args,

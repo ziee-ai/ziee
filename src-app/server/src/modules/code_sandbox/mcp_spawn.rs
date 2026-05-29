@@ -53,20 +53,39 @@ pub enum McpSandboxTransport {
 pub(crate) const DEFAULT_MCP_FLAVOR: &str = "minimal";
 
 /// Plumbing for one sandboxed MCP spawn. The caller (typically
-/// `mcp::client::stdio::StdioMcpClient::connect`) supplies the
-/// already-resolved command + args; this layer handles rootfs / argv
-/// construction / spawn.
+/// `mcp::client::stdio::StdioMcpClient::connect`) supplies both:
+///   - `original_command` — the verbatim `command` field from
+///     `mcp_servers` ("python3", "uvx", "node", …). The VM path
+///     re-resolves this against rootfs-native paths via
+///     [`resolve_command_for_guest`] because the host's resolver
+///     hands back the embedded uv/bun binary, which is host-arch
+///     and won't execute inside the Linux sandbox VM.
+///   - `resolved_command` + `prepended_args` — the Linux-host
+///     resolution (`uvx → uv tool run`). Used verbatim on the
+///     Linux native path; ignored on the VM path.
+///
+/// This dual-track keeps the Linux path's existing semantics
+/// byte-identical (it stays uv-bind-mounted) and lets the VM path
+/// pick rootfs-native paths without re-doing the host resolution.
 pub struct McpSpawnRequest {
     /// Stable id of the MCP server row this spawn belongs to. Used to
     /// derive a unique per-server workspace under
     /// `<workspace_root>/mcp/<server_id>/`.
     pub server_id: Uuid,
-    /// Already-resolved command (e.g. the embedded uv binary path for
-    /// `uvx`). Path is interpreted on the host (Linux) or in the
-    /// guest (mac/win) — see [`McpSandboxTransport`] for which.
+    /// Verbatim `command` field from the MCP server config. Used by
+    /// the VM path to pick rootfs-native paths (e.g. `python3` → the
+    /// rootfs's `/usr/bin/python3` via PATH, NOT the host's embedded
+    /// uv binary).
+    pub original_command: String,
+    /// Linux-host-resolved command path (e.g. `/Users/x/.ziee/bin/uv`
+    /// for `python3`). Used verbatim on the Linux native sandbox path
+    /// where the parent dir is ro-bind-mounted into the sandbox.
+    /// Ignored on the VM path.
     pub resolved_command: PathBuf,
     /// Args to prepend before the user-supplied args (e.g. `["tool",
     /// "run"]` for the `uvx → uv tool run …` resolution).
+    /// Linux-only; ignored on the VM path (which re-derives via
+    /// [`resolve_command_for_guest`]).
     pub prepended_args: Vec<String>,
     /// User-supplied args from `mcp_servers.args`.
     pub server_args: Vec<String>,
@@ -74,6 +93,40 @@ pub struct McpSpawnRequest {
     /// boundary). Injected as `--setenv` lines in the bwrap argv, NOT
     /// inherited from the host shell.
     pub extra_setenv: Vec<(String, String)>,
+}
+
+/// Re-resolve `command` against the Linux sandbox rootfs, NOT the
+/// host's embedded uv/bun (which are host-arch and don't execute
+/// inside the Linux VM).
+///
+/// v1 supports python3 only on the VM path: the rootfs ships
+/// `python3 + python3-pip + python3-venv`, so any pip-installable MCP
+/// package works via `python3 -m pip install --user <pkg> && python3 -m <pkg>`.
+/// uvx / npx / node / deno are deliberately refused with a clear
+/// error so an operator who toggles `run_in_sandbox` on those gets a
+/// helpful "v1 limitation" message instead of "bwrap: exec: not
+/// found" inside the VM.
+///
+/// Returns `(in_sandbox_command, prepended_args)`.
+pub(crate) fn resolve_command_for_guest(
+    command: &str,
+) -> Result<(String, Vec<String>), AppError> {
+    match command {
+        "python" | "python3" => Ok(("python3".to_string(), Vec::new())),
+        "uvx" | "npx" | "node" | "deno" => Err(AppError::internal_error(format!(
+            "MCP run-in-sandbox VM path (macOS / Windows): command '{}' is \
+             not yet available inside the sandbox VM rootfs in v1. Workarounds: \
+             (1) switch this server to a python-based MCP package and invoke as \
+             `python3 -m pip install <pkg>` + `python3 -m <pkg>`; \
+             (2) run on Linux for full uvx/npx/node/deno support.",
+            command
+        ))),
+        other => Err(AppError::internal_error(format!(
+            "MCP run-in-sandbox VM path: command '{}' is not in the v1 \
+             allowlist. v1 VM supports python3 only.",
+            other
+        ))),
+    }
 }
 
 /// Spawn the MCP server inside the sandbox using whichever backend is
@@ -109,32 +162,32 @@ pub async fn start_mcp_in_sandbox(
 /// sends it through the long-lived agent session as a `StartProcess`.
 /// Returns the [`McpSandboxTransport::VmSession`] holding the session
 /// alive and the per-process duplex stream.
+///
+/// Re-resolves the command against rootfs-native paths via
+/// [`resolve_command_for_guest`] because the caller's `resolved_command`
+/// points at the host's embedded uv binary, which is host-arch and
+/// won't execute inside the Linux VM.
 async fn spawn_in_vm_session(
-    _state: &CodeSandboxState,
+    state: &CodeSandboxState,
     req: McpSpawnRequest,
     session: vm_long_lived::LongLivedSession,
 ) -> Result<McpSandboxTransport, AppError> {
-    // The VM backends (mac libkrun, WSL2) intentionally re-bind the
-    // *guest* uv/bun isn't a thing for v1 — the rootfs supplies the
-    // runtime (python3 ships in 'minimal'; node/uv require a future
-    // rootfs flavor or a virtio-fs bind that's not in this PR).
-    // Surface this loudly so an operator who toggles `run_in_sandbox`
-    // on an npx/uvx/node/deno server learns the v1 limitation instead
-    // of getting a cryptic "bwrap: exec: not found" inside the VM.
-    let resolved = req.resolved_command.to_string_lossy();
-    if !resolved.contains("python") {
-        return Err(AppError::internal_error(format!(
-            "MCP run-in-sandbox VM path (macOS / Windows): only python-based \
-             servers are supported in v1. Command '{}' is not yet available \
-             inside the sandbox VM rootfs. Run on Linux for full support, or \
-             switch this server to a python-based MCP package.",
-            resolved
-        )));
-    }
+    // Re-resolve against the rootfs (rejects uvx/npx/node/deno on v1 VM).
+    let (guest_command, guest_prepended) = resolve_command_for_guest(&req.original_command)?;
 
-    // Build the bwrap argv for the guest. Hardcoded guest paths come
-    // from the agent's mount contract (sandbox-guest-agent/src/main.rs).
-    let guest_argv = build_guest_mcp_argv(&req)?;
+    // Make sure the per-server workspace exists on host so the VM's
+    // virtio-fs share can see it as `/workspace/mcp/<server_id>/`,
+    // then bwrap binds that as `/home/sandboxuser` inside the sandbox.
+    let host_workspace = state
+        .workspace_root
+        .join("mcp")
+        .join(req.server_id.to_string());
+    std::fs::create_dir_all(&host_workspace).map_err(|e| {
+        AppError::internal_error(format!("create mcp vm workspace: {e}"))
+    })?;
+
+    // Build the bwrap argv for the guest with the rootfs-resolved command.
+    let guest_argv = build_guest_mcp_argv(&req, &guest_command, &guest_prepended)?;
     let bwrap_path = "/usr/bin/bwrap".to_string();
 
     let io = session
@@ -151,8 +204,15 @@ async fn spawn_in_vm_session(
 ///   - The guest doesn't have an embedded uv/bun bind to plumb in.
 ///   - prlimit + the rootfs binds match the agent's
 ///     `build_bwrap_argv`-issued one-shot path.
-fn build_guest_mcp_argv(req: &McpSpawnRequest) -> Result<Vec<String>, AppError> {
-    let resolved = req.resolved_command.to_string_lossy().to_string();
+///
+/// `guest_command` and `guest_prepended` come from
+/// [`resolve_command_for_guest`] — rootfs-native paths the bwrap argv
+/// can actually exec inside the Linux VM.
+fn build_guest_mcp_argv(
+    req: &McpSpawnRequest,
+    guest_command: &str,
+    guest_prepended: &[String],
+) -> Result<Vec<String>, AppError> {
     let mut argv: Vec<String> = vec![
         "--clearenv".into(),
         "--unshare-user".into(),
@@ -188,8 +248,8 @@ fn build_guest_mcp_argv(req: &McpSpawnRequest) -> Result<Vec<String>, AppError> 
         argv.push(v.clone());
     }
     argv.push("--".into());
-    argv.push(resolved);
-    for a in &req.prepended_args { argv.push(a.clone()); }
+    argv.push(guest_command.to_string());
+    for a in guest_prepended { argv.push(a.clone()); }
     for a in &req.server_args { argv.push(a.clone()); }
     Ok(argv)
 }
@@ -315,12 +375,13 @@ mod tests {
     fn guest_mcp_argv_emits_clearenv_and_workspace_bind() {
         let req = McpSpawnRequest {
             server_id: Uuid::nil(),
-            resolved_command: PathBuf::from("/usr/bin/python3"),
-            prepended_args: vec!["-m".into(), "mymcp".into()],
-            server_args: vec![],
+            original_command: "python3".into(),
+            resolved_command: PathBuf::from("/host/embedded/uv"),
+            prepended_args: vec!["run".into(), "python3".into()],
+            server_args: vec!["-m".into(), "mymcp".into()],
             extra_setenv: vec![("MY_VAR".into(), "yes".into())],
         };
-        let argv = build_guest_mcp_argv(&req).unwrap();
+        let argv = build_guest_mcp_argv(&req, "python3", &[]).unwrap();
 
         assert!(argv.contains(&"--clearenv".to_string()));
         assert!(argv.contains(&"--die-with-parent".to_string()));
@@ -328,9 +389,10 @@ mod tests {
         assert!(argv.contains(&format!("/workspace/mcp/{}", Uuid::nil())));
         // env vars layered after the static block
         assert!(argv.windows(3).any(|w| w == ["--setenv", "MY_VAR", "yes"]));
-        // resolved command appended after `--`
+        // guest_command appended after `--`, then guest_prepended (empty here),
+        // then server_args.
         let dashdash = argv.iter().position(|s| s == "--").expect("-- terminator");
-        assert_eq!(argv[dashdash + 1], "/usr/bin/python3");
+        assert_eq!(argv[dashdash + 1], "python3");
         assert_eq!(argv[dashdash + 2], "-m");
         assert_eq!(argv[dashdash + 3], "mymcp");
     }
@@ -343,15 +405,43 @@ mod tests {
         // the sandboxed child.
         let req = McpSpawnRequest {
             server_id: Uuid::nil(),
-            resolved_command: PathBuf::from("/usr/bin/python3"),
+            original_command: "python3".into(),
+            resolved_command: PathBuf::from("/host/embedded/uv"),
             prepended_args: vec![],
             server_args: vec![],
             extra_setenv: vec![],
         };
-        let argv = build_guest_mcp_argv(&req).unwrap();
+        let argv = build_guest_mcp_argv(&req, "python3", &[]).unwrap();
         assert!(argv.contains(&"--unshare-pid".to_string()));
         // --proc immediately followed by /proc
         let i = argv.iter().position(|s| s == "--proc").unwrap();
         assert_eq!(argv[i + 1], "/proc");
+    }
+
+    #[test]
+    fn resolve_command_for_guest_passes_python_through() {
+        let (cmd, args) = resolve_command_for_guest("python3").unwrap();
+        assert_eq!(cmd, "python3");
+        assert!(args.is_empty());
+        let (cmd, args) = resolve_command_for_guest("python").unwrap();
+        assert_eq!(cmd, "python3");
+        assert!(args.is_empty());
+    }
+
+    #[test]
+    fn resolve_command_for_guest_rejects_uvx_npx_etc() {
+        // v1 VM is python-only — uvx/npx/node/deno would need a
+        // Linux-arch embedded binary staged into the workspace
+        // (deliberate scope cut). The error must be clear so an
+        // operator who flips the toggle on those gets a useful
+        // message instead of "bwrap: exec: not found".
+        for cmd in &["uvx", "npx", "node", "deno"] {
+            let err = resolve_command_for_guest(cmd).unwrap_err();
+            let msg = format!("{:?}", err);
+            assert!(
+                msg.contains(cmd) && msg.contains("v1"),
+                "expected v1-limitation msg for {cmd}, got {msg}"
+            );
+        }
     }
 }
