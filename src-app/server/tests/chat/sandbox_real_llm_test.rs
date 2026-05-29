@@ -15,7 +15,12 @@
 #![allow(unused_imports)]
 
 use crate::chat::helpers;
-use crate::code_sandbox::harness::{bwrap_available, rootfs_path, stage_test_rootfs_for_e2e};
+use crate::code_sandbox::harness::{bwrap_available, rootfs_path};
+// `stage_test_rootfs_for_e2e` only exists on the VM backends (macOS/WSL2),
+// since Linux mounts its rootfs directly. Gate the import accordingly to
+// stay compatible with this file's `#![allow(unused_imports)]`.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use crate::code_sandbox::harness::stage_test_rootfs_for_e2e;
 use crate::common::{TestServer, TestServerOptions};
 use serde_json::{json, Value};
 use sqlx::postgres::PgPoolOptions;
