@@ -287,10 +287,36 @@ pub struct ServerConfig {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct RateLimitConfig {
+    /// Master on/off switch for the global tower-governor rate limiter.
+    /// Defaults to `true` (preserve the A3 DoS-protection posture).
+    ///
+    /// Set `false` on trusted / non-public deployments. The built-in
+    /// code_sandbox + memory MCP servers are reached over loopback
+    /// (`http://127.0.0.1`), so every internal tool call shares the same
+    /// peer-IP bucket as user traffic and a rapid agent tool loop makes the
+    /// server self-throttle (HTTP 429 "Too Many Requests"). When this is
+    /// `false` the `GovernorLayer` is not installed at all, so NO traffic —
+    /// internal or external — is rate-limited.
+    #[serde(default = "default_rate_limit_enabled")]
+    pub enabled: bool,
     /// Sustained requests-per-second per peer IP.
+    #[serde(default = "default_rate_limit_per_second")]
     pub per_second: u64,
     /// Token-bucket burst capacity.
+    #[serde(default = "default_rate_limit_burst_size")]
     pub burst_size: u32,
+}
+
+fn default_rate_limit_enabled() -> bool {
+    true
+}
+
+fn default_rate_limit_per_second() -> u64 {
+    5
+}
+
+fn default_rate_limit_burst_size() -> u32 {
+    60
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -494,4 +520,42 @@ fn find_available_port(start_port: u16, end_port: u16) -> Option<u16> {
 
     // Fallback to portpicker if range is exhausted
     portpicker::pick_unused_port()
+}
+
+#[cfg(test)]
+mod rate_limit_config_tests {
+    use super::RateLimitConfig;
+
+    // serde_json (not yaml) keeps the test dependency-free; RateLimitConfig
+    // derives Deserialize so the format is irrelevant to what we assert.
+
+    #[test]
+    fn enabled_defaults_true_when_field_omitted() {
+        // The pre-existing block shape (per_second/burst_size only, e.g.
+        // tests/common/mod.rs) must keep the limiter enabled.
+        let cfg: RateLimitConfig =
+            serde_json::from_str(r#"{"per_second":1,"burst_size":2}"#).unwrap();
+        assert!(cfg.enabled, "enabled should default to true");
+        assert_eq!(cfg.per_second, 1);
+        assert_eq!(cfg.burst_size, 2);
+    }
+
+    #[test]
+    fn can_disable_with_just_enabled_flag() {
+        // `enabled: false` alone is enough; per_second/burst_size fall back
+        // to their serde defaults.
+        let cfg: RateLimitConfig = serde_json::from_str(r#"{"enabled":false}"#).unwrap();
+        assert!(!cfg.enabled);
+        assert_eq!(cfg.per_second, 5);
+        assert_eq!(cfg.burst_size, 60);
+    }
+
+    #[test]
+    fn full_block_parses_all_fields() {
+        let cfg: RateLimitConfig =
+            serde_json::from_str(r#"{"enabled":true,"per_second":100,"burst_size":200}"#).unwrap();
+        assert!(cfg.enabled);
+        assert_eq!(cfg.per_second, 100);
+        assert_eq!(cfg.burst_size, 200);
+    }
 }

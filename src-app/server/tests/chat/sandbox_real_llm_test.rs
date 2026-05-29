@@ -117,6 +117,7 @@ async fn enabled_test_server_with_anthropic() -> Option<TestServer> {
         return Some(
             TestServer::start_with_options(TestServerOptions {
                 sandbox_enabled: true,
+                rate_limit: None,
                 sandbox_rootfs: Some(rootfs),
                 sandbox_cgroup_parent: String::new(),
                 extra_env: vec![("ANTHROPIC_API_KEY".into(), api_key)],
@@ -134,6 +135,7 @@ async fn enabled_test_server_with_anthropic() -> Option<TestServer> {
         return Some(
             TestServer::start_with_options(TestServerOptions {
                 sandbox_enabled: true,
+                rate_limit: None,
                 sandbox_rootfs: Some(rootfs_path),
                 sandbox_cgroup_parent: String::new(),
                 extra_env: env,

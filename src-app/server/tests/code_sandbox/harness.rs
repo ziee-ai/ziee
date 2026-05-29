@@ -370,6 +370,7 @@ pub async fn enabled_test_server() -> Option<TestServer> {
         return Some(
             TestServer::start_with_options(TestServerOptions {
                 sandbox_enabled: true,
+                rate_limit: None,
                 sandbox_rootfs: Some(rootfs),
                 sandbox_cgroup_parent: String::new(),
                 extra_env: Vec::new(),
@@ -396,6 +397,7 @@ pub async fn enabled_test_server() -> Option<TestServer> {
         return Some(
             TestServer::start_with_options(TestServerOptions {
                 sandbox_enabled: true,
+                rate_limit: None,
                 sandbox_rootfs: Some(rootfs_path),
                 sandbox_cgroup_parent: String::new(),
                 extra_env: env,

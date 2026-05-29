@@ -125,6 +125,7 @@ async fn e2e_clearenv_wipes_server_env_from_sandbox() {
     // Spin up a server with our sentinel env var visible to it.
     let server = crate::common::TestServer::start_with_options(crate::common::TestServerOptions {
         sandbox_enabled: true,
+        rate_limit: None,
         sandbox_rootfs: Some(rootfs),
         sandbox_cgroup_parent: String::new(),
         extra_env: vec![(

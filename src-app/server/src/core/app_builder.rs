@@ -116,6 +116,49 @@ pub fn build_api_router(
     (api_router, api_doc)
 }
 
+/// Conditionally apply the global rate limiter (tower-governor).
+///
+/// Returns the router unchanged when `server.rate_limit.enabled == false`,
+/// so the `GovernorLayer` is never installed in that case. Called from BOTH
+/// `lib.rs::build_server` and `main.rs::main` so the two stay in sync.
+///
+/// Why the toggle exists: the built-in code_sandbox + memory MCP servers are
+/// reached over loopback (`http://127.0.0.1`), so every internal tool-call
+/// request shares the same `PeerIpKeyExtractor` bucket as real user traffic.
+/// A rapid agent tool loop drains that bucket and the server starts returning
+/// HTTP 429 to itself. Trusted / non-public deployments can set
+/// `enabled: false` to opt out entirely. When enabled (default), the limiter
+/// applies to all traffic as before (default 5 req/s, burst 60).
+pub fn apply_rate_limit_layer(router: axum::Router, config: &Config) -> axum::Router {
+    let (enabled, per_second, burst_size) = config
+        .server
+        .rate_limit
+        .as_ref()
+        .map(|r| (r.enabled, r.per_second, r.burst_size))
+        .unwrap_or((true, 5, 60));
+
+    if !enabled {
+        tracing::warn!(
+            "Rate limiting DISABLED via config (server.rate_limit.enabled=false) — \
+             no per-IP throttling is applied to any route. Safe only for trusted / \
+             non-public deployments."
+        );
+        return router;
+    }
+
+    let governor_conf = Arc::new(
+        tower_governor::governor::GovernorConfigBuilder::default()
+            .per_second(per_second)
+            .burst_size(burst_size)
+            .key_extractor(tower_governor::key_extractor::PeerIpKeyExtractor)
+            .finish()
+            .expect("Failed to build governor config"),
+    );
+    router.layer(tower_governor::GovernorLayer {
+        config: governor_conf,
+    })
+}
+
 /// Create CORS layer from configuration.
 ///
 /// Closes 14-core F-04 (High) at the level of "operator visibility":

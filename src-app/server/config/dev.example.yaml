@@ -56,6 +56,20 @@ server:
   port: 3000  # Use 0 for automatic port selection
   api_prefix: "/api"  # Base path prefix for all API routes
 
+  # Global per-IP rate limiter (tower-governor).
+  #   enabled:     master on/off switch (default true).
+  #   per_second:  sustained requests/sec per peer IP (default 5).
+  #   burst_size:  token-bucket burst capacity (default 60).
+  # NOTE: the built-in code_sandbox + memory MCP servers are reached over
+  # loopback (127.0.0.1) and share one bucket with user traffic, so a rapid
+  # agent tool loop can make the server 429 itself. Set enabled: false on a
+  # trusted/non-public deployment if you hit that (it disables throttling for
+  # ALL traffic, internal and external).
+  rate_limit:
+    enabled: true
+    per_second: 5
+    burst_size: 60
+
   # CORS settings
   cors:
     allow_origins:

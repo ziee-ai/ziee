@@ -98,15 +98,12 @@ pub mod mcp {
 }
 
 // Private pure helpers that integration tests unit-test directly (wire-format
-// grouping + MCP 429 backoff parsing). Kept out of the public docs; the ai_providers
+// grouping). Kept out of the public docs; the ai_providers
 // wire types are re-exported too because that crate is a dependency of `ziee` but
 // not of the integration-test crate.
 #[doc(hidden)]
 pub mod test_internals {
     pub use crate::modules::chat::core::services::streaming::group_assistant_blocks;
-    pub use crate::modules::mcp::client::http::{
-        rate_limit_delay_ms, rate_limit_wait_ms, RL_RETRY_INITIAL_MS, RL_RETRY_MAX_MS,
-    };
     pub use ai_providers::{ChatMessage, ContentBlock, Role};
     // Chat repository surface for the DB-level append_content tests
     // (Tier-2 monotonic / collision-free under concurrent appends).
@@ -276,30 +273,18 @@ async fn setup_server(
     // SECURITY: matches the middleware stack in main.rs::main —
     // 16 MB body limit, 60s timeout, security headers, CORS.
     // Closes 14-core F-01 + 05-file F-09 generalization + A3 headers.
-    // Rate limiter — see main.rs for rationale. 5 req/s per peer IP, burst 60.
-    let (rl_per_sec, rl_burst) = config
-        .server
-        .rate_limit
-        .as_ref()
-        .map(|r| (r.per_second, r.burst_size))
-        .unwrap_or((5, 60));
-    let governor_conf = std::sync::Arc::new(
-        tower_governor::governor::GovernorConfigBuilder::default()
-            .per_second(rl_per_sec)
-            .burst_size(rl_burst)
-            .key_extractor(tower_governor::key_extractor::PeerIpKeyExtractor)
-            .finish()
-            .expect("Failed to build governor config"),
-    );
-    let governor_layer = tower_governor::GovernorLayer {
-        config: governor_conf,
-    };
-
+    // Rate limiter — applied conditionally below (see the comment on
+    // apply_rate_limit_layer). When enabled it is 5 req/s per peer IP, burst 60.
     let app = api_router
         .finish_api(&mut api_doc)
         .layer(axum::extract::DefaultBodyLimit::max(16 * 1024 * 1024))
-        .layer(tower_http::timeout::TimeoutLayer::new(std::time::Duration::from_secs(60)))
-        .layer(governor_layer)
+        .layer(tower_http::timeout::TimeoutLayer::new(std::time::Duration::from_secs(60)));
+    // Rate limiter (tower-governor) — gated on `server.rate_limit.enabled`
+    // (see core::app_builder::apply_rate_limit_layer). The built-in MCP
+    // servers reach this same router over loopback, so disabling the limiter
+    // stops the server from self-throttling its own tool-call traffic.
+    let app = core::app_builder::apply_rate_limit_layer(app, &config);
+    let app = app
         .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
             axum::http::header::HeaderName::from_static("x-content-type-options"),
             axum::http::HeaderValue::from_static("nosniff"),

@@ -1313,8 +1313,13 @@ pub(crate) fn tool_definitions() -> Value {
                 'pip install --user <pkg>' (NOT 'pip install <pkg>'). User-installed packages persist \
                 across calls in this conversation.\n\
                 \n\
-                FILES: Conversation attachments are available in the working directory by their \
-                original filenames.\n\
+                WORKING DIRECTORY: Commands run in /home/sandboxuser (this is also $HOME) — \
+                your writable, per-conversation workspace. Create, read, and write files here; \
+                they persist across calls within this conversation. Do NOT `cd /root` or to \
+                other absolute paths: /root does not exist and the rest of the filesystem is \
+                read-only. Use relative paths (e.g. ./out.png) or paths under /home/sandboxuser.\n\
+                FILES: Conversation attachments are staged in /home/sandboxuser under their \
+                original filenames, so a bare filename (e.g. data.csv) resolves there.\n\
                 TIMEOUT: 10 minutes. Output capped at 1 MiB per stream.",
             "inputSchema": {
                 "type": "object",
@@ -1335,8 +1340,8 @@ pub(crate) fn tool_definitions() -> Value {
         },
         {
             "name": "read_file",
-            "description": "Read a file by filename. Searches first in the sandbox working directory, \
-                then falls back to conversation attachments (loaded transparently from the user's \
+            "description": "Read a file by filename. Searches first in the sandbox working directory \
+                (/home/sandboxuser), then falls back to conversation attachments (loaded transparently from the user's \
                 originals store). Use just the filename (e.g., 'data.csv'), not a full path. \
                 Output includes 1-indexed line numbers in the format 'N: content' — these line numbers \
                 feed directly into edit_file.",
@@ -1363,7 +1368,7 @@ pub(crate) fn tool_definitions() -> Value {
         },
         {
             "name": "write_file",
-            "description": "Write content to a file in the sandbox working directory. Creates or \
+            "description": "Write content to a file in the sandbox working directory (/home/sandboxuser). Creates or \
                 overwrites the file (and any intermediate parent directories). Use a plain filename \
                 (e.g., 'script.py'). If the resulting file needs to be shared with the user or passed \
                 to another MCP server, call get_resource_link.",
@@ -1597,6 +1602,26 @@ mod tests {
                 t["name"]
             );
         }
+    }
+
+    /// Regression: the model must be told the working directory is
+    /// /home/sandboxuser, otherwise it guesses `cd /root` (which doesn't
+    /// exist) and the command fails. Locks the Bug-1 fix in place.
+    #[test]
+    fn execute_command_documents_working_directory() {
+        let tools = super::tool_definitions();
+        let exec = tools
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["name"] == "execute_command")
+            .expect("execute_command tool present");
+        let desc = exec["description"].as_str().unwrap();
+        assert!(
+            desc.contains("/home/sandboxuser"),
+            "execute_command description must name the working directory \
+             (/home/sandboxuser); got: {desc}"
+        );
     }
 
     // Conversation-id extraction tests moved to types.rs alongside

@@ -212,7 +212,9 @@ async fn main() {
     // - Security headers (X-Content-Type-Options, X-Frame-Options,
     //   Referrer-Policy, Permissions-Policy, Strict-Transport-Security).
     //   These are response-only defenses but cheap and audit-recommended.
-    // Rate limiter: 5 req/sec per peer IP, burst-able to 60.
+    // Rate limiter (applied conditionally below — see apply_rate_limit_layer;
+    // gated on `server.rate_limit.enabled`, default on). WHEN ENABLED it is
+    // 5 req/sec per peer IP, burst-able to 60.
     // PeerIpKeyExtractor uses the TCP peer address (not X-Forwarded-For)
     // — appropriate for direct-connect deployments and TestServer.
     // Production behind a reverse proxy should swap for
@@ -223,29 +225,16 @@ async fn main() {
     // Config-driven rate limits — defaults to the A3 production
     // posture (5 req/s, 60-burst). Tests bump these so a sequential
     // test sweep against a single peer-IP bucket doesn't 429 itself.
-    let (rl_per_sec, rl_burst) = config
-        .server
-        .rate_limit
-        .as_ref()
-        .map(|r| (r.per_second, r.burst_size))
-        .unwrap_or((5, 60));
-    let governor_conf = std::sync::Arc::new(
-        tower_governor::governor::GovernorConfigBuilder::default()
-            .per_second(rl_per_sec)
-            .burst_size(rl_burst)
-            .key_extractor(tower_governor::key_extractor::PeerIpKeyExtractor)
-            .finish()
-            .expect("Failed to build governor config"),
-    );
-    let governor_layer = tower_governor::GovernorLayer {
-        config: governor_conf,
-    };
-
     let app = api_router
         .finish_api(&mut api_doc)
         .layer(axum::extract::DefaultBodyLimit::max(16 * 1024 * 1024))
-        .layer(tower_http::timeout::TimeoutLayer::new(std::time::Duration::from_secs(60)))
-        .layer(governor_layer)
+        .layer(tower_http::timeout::TimeoutLayer::new(std::time::Duration::from_secs(60)));
+    // Rate limiter (tower-governor) — gated on `server.rate_limit.enabled`
+    // (see core::app_builder::apply_rate_limit_layer). The built-in MCP
+    // servers reach this same router over loopback, so disabling the limiter
+    // stops the server from self-throttling its own tool-call traffic.
+    let app = core::app_builder::apply_rate_limit_layer(app, &config);
+    let app = app
         .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
             axum::http::header::HeaderName::from_static("x-content-type-options"),
             axum::http::HeaderValue::from_static("nosniff"),
