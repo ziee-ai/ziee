@@ -101,7 +101,8 @@ docker run --rm \
     # production schema v3).
     apk add --quiet --no-cache --root \$STAGE \
       alpine-baselayout busybox musl bash coreutils \
-      util-linux util-linux-misc libsmartcols procps python3 \
+      util-linux util-linux-misc libsmartcols procps python3 py3-pip \
+      ca-certificates \
       bubblewrap rsync >/dev/null
     # usr-merge: production sandbox argv does '--symlink usr/lib /lib'
     # (assumes Debian usrmerged layout). Alpine keeps /lib + /usr/lib
@@ -145,6 +146,15 @@ PYEOF
     done
     # The schema sentinel the boot probe reads.
     echo '$SCHEMA' > \$STAGE/.ziee-sandbox-rootfs-schema
+    # /etc/resolv.conf — libkrun's TSI transparently forwards UDP
+    # connect()/sendto() to the host network, but the guest libc
+    # still needs to know which nameserver IP to use. Without this
+    # file getaddrinfo() returns EAI_AGAIN ('bad address' / Try
+    # again) and any networked tool (pip / uvx / wget / curl /
+    # mcp-server-fetch) fails. Public DNS is fine — TSI doesn't
+    # actually route packets out a guest eth0; the host kernel
+    # resolves and returns the answer.
+    printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > \$STAGE/etc/resolv.conf
     # Pre-create the mount points sandbox bind-binds into (best-effort, agent
     # also tries to create them).
     mkdir -p \$STAGE/proc \$STAGE/sys \$STAGE/dev \$STAGE/tmp \$STAGE/workspace

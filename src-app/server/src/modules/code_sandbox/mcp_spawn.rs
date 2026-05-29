@@ -185,6 +185,22 @@ async fn spawn_in_vm_session(
     std::fs::create_dir_all(&host_workspace).map_err(|e| {
         AppError::internal_error(format!("create mcp vm workspace: {e}"))
     })?;
+    // Bwrap runs the sandbox as `--uid 1001 --gid 1001` (synthetic
+    // sandboxuser). The host-side workspace is created by the server
+    // process (a different uid), and the bind-mount inherits the
+    // host inode's permissions — so without an explicit chmod, the
+    // sandboxed uid 1001 can read but cannot write into its own
+    // `/home/sandboxuser`. Set the sticky-bit "world-writable" mode
+    // 0o1777 (same convention as the per-conversation workspace
+    // tempdirs in the test harness). Single-user workspace, sticky
+    // bit prevents the rare "two MCP servers share this UID" cross-
+    // delete (defense-in-depth — workspaces are already per-server).
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&host_workspace, std::fs::Permissions::from_mode(0o1777))
+            .map_err(|e| AppError::internal_error(format!("chmod mcp vm workspace: {e}")))?;
+    }
 
     // Build the bwrap argv for the guest with the rootfs-resolved command.
     let guest_argv = build_guest_mcp_argv(&req, &guest_command, &guest_prepended)?;
@@ -233,6 +249,18 @@ fn build_guest_mcp_argv(
         "--dev".into(), "/dev".into(),
         "--tmpfs".into(), "/tmp".into(),
         "--proc".into(), "/proc".into(),
+        // DNS + TLS trust roots — required for any MCP server that
+        // talks out (pip-install, uvx, mcp-server-fetch). The
+        // `--share-net` flag above shares the host network NAMESPACE,
+        // but each child must still find a resolver + CA bundle to
+        // make a TLS request. Source paths come from /sandbox-rootfs
+        // (the squashfs) NOT the guest-root /etc — the guest-root is
+        // the agent's filesystem (no resolv.conf), the sandbox rootfs
+        // is what ships the deployment's /etc. ro-bind-try so a
+        // rootfs without these files doesn't fail spawn.
+        "--ro-bind-try".into(), "/sandbox-rootfs/etc/resolv.conf".into(), "/etc/resolv.conf".into(),
+        "--ro-bind-try".into(), "/sandbox-rootfs/etc/ssl".into(), "/etc/ssl".into(),
+        "--ro-bind-try".into(), "/sandbox-rootfs/etc/ca-certificates".into(), "/etc/ca-certificates".into(),
         "--bind".into(), format!("/workspace/mcp/{}", req.server_id), "/home/sandboxuser".into(),
         "--chdir".into(), "/home/sandboxuser".into(),
         "--setenv".into(), "HOME".into(), "/home/sandboxuser".into(),
