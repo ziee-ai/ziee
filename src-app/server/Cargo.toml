@@ -128,6 +128,15 @@ ai-providers = { path = "./ai-providers" }
 # LLM runtime for local model deployment
 llm-runtime = { path = "../llm-runtime" }
 
+# Host<->guest sandbox VM protocol. Used by the macOS/Windows microVM
+# backends but unconditional because the host-side `LongLivedSession`
+# type (in `backend/vm_long_lived.rs`) needs the protocol types on
+# every OS so `SandboxBackend::open_long_lived_session` has a uniform
+# return signature across platforms (the Linux impl just returns
+# `Ok(None)`). The crate is pure-Rust serde glue with no
+# platform-specific code, so shipping it on Linux is free.
+sandbox-vm-protocol = { path = "../sandbox-vm-protocol" }
+
 # MCP client
 rmcp = { version = "0.8", features = ["client", "transport-child-process"] }
 eventsource-client = "0.12"
@@ -166,10 +175,6 @@ code_sandbox_seccomp = ["dep:sandbox-seccomp"]
 [target.'cfg(target_os = "linux")'.dependencies]
 sandbox-seccomp = { path = "../sandbox-seccomp", optional = true }
 
-# The microVM code-sandbox backends (macOS libkrun, Windows WSL2) talk to the
-# in-guest agent over the shared control protocol.
-[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
-sandbox-vm-protocol = { path = "../sandbox-vm-protocol" }
 
 # Windows: AF_HYPERV / SOCKADDR_HV bindings so the WSL2 backend can dial the
 # in-distro agent over the Hyper-V vsock instead of `127.0.0.1` — closing the
