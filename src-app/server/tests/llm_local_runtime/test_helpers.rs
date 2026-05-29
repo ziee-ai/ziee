@@ -6,67 +6,190 @@
 use crate::common::TestServer;
 use reqwest::StatusCode;
 use serde_json::json;
+use sqlx::postgres::PgPoolOptions;
+use sqlx::PgPool;
 use std::path::PathBuf;
 use uuid::Uuid;
 
-/// Downloads and registers a test binary (llama.cpp or mistral.rs)
-///
-/// This helper:
-/// 1. Downloads the binary using llm_runtime::binary_download::ensure_test_binary
-/// 2. Registers it in the database via the API
-/// 3. Returns the runtime version ID and binary path
-///
-/// # Arguments
-/// * `server` - Test server instance
-/// * `token` - Authentication token
-/// * `engine` - Engine type ("llamacpp" or "mistralrs")
-/// * `version` - Version to download (e.g., "b4359" or "latest")
-///
-/// # Returns
-/// (runtime_version_id, binary_path)
-pub async fn setup_test_binary(
+use super::mock_release::MockReleaseServer;
+
+/// Full admin permission set for the local-runtime + model surface.
+/// Use with `create_user_with_permissions` for happy-path tests; use
+/// `create_user_with_only_permissions` with a narrower slice for the
+/// 403 permission-gating tests.
+pub const LOCAL_RUNTIME_ADMIN_PERMS: &[&str] = &[
+    "llm_local_runtime::read",
+    "llm_local_runtime::manage",
+    "llm_local_runtime::logs",
+    "llm_local_runtime::versions_read",
+    "llm_local_runtime::create",
+    "llm_local_runtime::update",
+    "llm_local_runtime::delete",
+    "llm_local_runtime::settings_read",
+    "llm_local_runtime::settings_manage",
+    "llm_providers::create",
+    "llm_providers::read",
+    "llm_providers::edit",
+    "llm_models::create",
+    "llm_models::read",
+    "llm_models::edit",
+    "llm_models::delete",
+    "llm_models::downloads_read",
+    "llm_repositories::read",
+    "llm_repositories::edit",
+];
+
+/// Open a pool against the per-test database. Tests use this to seed
+/// rows (model files, instance state) and to assert on persisted state
+/// directly — the server's in-memory caches (token cache, in-flight
+/// counters, drain flags) are NOT reachable from the test process, so
+/// anything the proxy reads from memory must be driven through the real
+/// server behaviour, not seeded here.
+pub async fn test_pool(server: &TestServer) -> PgPool {
+    PgPoolOptions::new()
+        .max_connections(4)
+        .connect(&server.database_url)
+        .await
+        .expect("connect to test database")
+}
+
+/// Create a local provider and return `(provider_id, proxy_token,
+/// provider_json)`. The proxy token is the one-time `plaintext_api_key`
+/// from the create response — the ONLY way a test can authenticate to
+/// the same-port proxy (the in-memory token cache can't be read from
+/// the test process).
+pub async fn create_local_provider_with_token(
+    server: &TestServer,
+    token: &str,
+) -> (Uuid, String, serde_json::Value) {
+    let name = format!("local-{}", &Uuid::new_v4().to_string()[..8]);
+    let response = reqwest::Client::new()
+        .post(server.api_url("/llm-providers"))
+        .header("Authorization", format!("Bearer {}", token))
+        .json(&json!({ "name": name, "provider_type": "local", "enabled": true }))
+        .send()
+        .await
+        .expect("create local provider");
+
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("provider create body");
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "provider create failed: {body}"
+    );
+
+    // CreateLlmProviderResponse `#[serde(flatten)]`s the provider, so its
+    // fields (id, name, provider_type, …) sit at the TOP LEVEL alongside
+    // plaintext_api_key — there is no nested "provider" object.
+    let provider_id = Uuid::parse_str(body["id"].as_str().expect("provider id"))
+        .expect("provider id uuid");
+    let proxy_token = body["plaintext_api_key"]
+        .as_str()
+        .expect("local provider create must return plaintext_api_key")
+        .to_string();
+
+    (provider_id, proxy_token, body)
+}
+
+/// PUT the runtime-settings singleton. Pass only the fields to change;
+/// each is an `UpdateRuntimeSettingsRequest` Option.
+pub async fn update_runtime_settings(
+    server: &TestServer,
+    token: &str,
+    patch: serde_json::Value,
+) -> reqwest::Response {
+    reqwest::Client::new()
+        .put(server.api_url("/local-runtime/settings"))
+        .header("Authorization", format!("Bearer {}", token))
+        .json(&patch)
+        .send()
+        .await
+        .expect("PUT runtime settings")
+}
+
+/// Download (register) an engine version from the mock release server.
+/// Flips `allow_unsigned_downloads=true` first (the mock serves an
+/// unsigned artifact). Returns the new runtime_version_id.
+pub async fn download_engine_from_mock(
+    mock: &MockReleaseServer,
+    token: &str,
+    engine: &str,
+) -> Uuid {
+    let resp = update_runtime_settings(
+        &mock.server,
+        token,
+        json!({ "allow_unsigned_downloads": true }),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK, "enable unsigned downloads");
+
+    let payload = json!({
+        "engine": engine,
+        "version": mock.version,
+        "platform": mock.platform,
+        "arch": mock.arch,
+        "backend": "cpu",
+    });
+    let response = reqwest::Client::new()
+        .post(mock.server.api_url("/local-runtime/versions/download"))
+        .header("Authorization", format!("Bearer {}", token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("download engine from mock");
+
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("download body");
+    assert_eq!(status, StatusCode::OK, "engine download failed: {body}");
+    let version_id = Uuid::parse_str(body["version"]["id"].as_str().expect("version id"))
+        .expect("version id uuid");
+
+    // `LocalDeployment::start` resolves the engine binary via the SYSTEM
+    // DEFAULT for the engine (not the model's required_runtime_version_id),
+    // so a freshly-downloaded version must be made default before any
+    // instance can spawn it.
+    let set_default = reqwest::Client::new()
+        .post(
+            mock.server
+                .api_url(&format!("/local-runtime/versions/{version_id}/set-default")),
+        )
+        .header("Authorization", format!("Bearer {}", token))
+        .send()
+        .await
+        .expect("set system default");
+    assert_eq!(
+        set_default.status(),
+        StatusCode::OK,
+        "set-default after mock download"
+    );
+
+    version_id
+}
+
+/// Download a real engine binary from the published `ziee-ai` fork
+/// release (hits real github.com — NO mock mirror), extracts it via the
+/// production path, registers it, and makes it the system default.
+/// Returns the runtime_version_id. The release artifacts aren't
+/// cosign-signed, so this flips `allow_unsigned_downloads=true` first.
+pub async fn download_engine_release(
     server: &TestServer,
     token: &str,
     engine: &str,
     version: &str,
-) -> (Uuid, PathBuf) {
-    // 1. Download binary using llm-runtime helper
-    let engine_type = match engine {
-        "llamacpp" => llm_runtime::config::EngineType::Llamacpp,
-        "mistralrs" => llm_runtime::config::EngineType::Mistralrs,
-        _ => panic!("Unknown engine: {}", engine),
-    };
+) -> Uuid {
+    let resp = update_runtime_settings(server, token, json!({ "allow_unsigned_downloads": true })).await;
+    assert_eq!(resp.status(), StatusCode::OK, "enable unsigned downloads");
 
-    println!("Downloading {} binary version {}...", engine, version);
-    let binary_path = llm_runtime::binary_download::ensure_test_binary(engine_type, version)
-        .await
-        .expect("Failed to download test binary");
-    println!("Binary downloaded to: {}", binary_path.display());
-
-    // 2. Register in database via API
-    let platform = if cfg!(target_os = "linux") {
-        "linux"
-    } else if cfg!(target_os = "macos") {
+    let platform = if cfg!(target_os = "macos") {
         "macos"
     } else if cfg!(target_os = "windows") {
         "windows"
     } else {
-        panic!("Unsupported platform")
+        "linux"
     };
-
-    let arch = if cfg!(target_arch = "x86_64") {
-        "x86_64"
-    } else if cfg!(target_arch = "aarch64") {
-        "aarch64"
-    } else {
-        panic!("Unsupported architecture")
-    };
-
-    let backend = if cfg!(target_os = "macos") {
-        "metal"
-    } else {
-        "cpu"
-    };
+    let arch = if cfg!(target_arch = "aarch64") { "aarch64" } else { "x86_64" };
+    let backend = if cfg!(target_os = "macos") { "metal" } else { "cpu" };
 
     let payload = json!({
         "engine": engine,
@@ -75,59 +198,238 @@ pub async fn setup_test_binary(
         "arch": arch,
         "backend": backend,
     });
-
     let response = reqwest::Client::new()
         .post(server.api_url("/local-runtime/versions/download"))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&payload)
+        .send()
+        .await
+        .expect("download engine from release");
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("download body");
+    assert_eq!(status, StatusCode::OK, "engine release download failed: {body}");
+    let version_id =
+        Uuid::parse_str(body["version"]["id"].as_str().expect("version id")).expect("version uuid");
+
+    let set_default = reqwest::Client::new()
+        .post(server.api_url(&format!("/local-runtime/versions/{version_id}/set-default")))
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .expect("set system default");
+    assert_eq!(set_default.status(), StatusCode::OK, "set-default after release download");
+
+    version_id
+}
+
+/// Create a local model row (no files yet). Returns the model_id.
+///
+/// `runtime_version_id` is accepted for caller readability but NOT sent:
+/// `CreateLlmModelRequest` has no such field (and `deny_unknown_fields`),
+/// and `LocalDeployment::start` resolves the engine binary from the
+/// SYSTEM DEFAULT version, not a per-model pin.
+pub async fn create_local_model(
+    server: &TestServer,
+    token: &str,
+    provider_id: Uuid,
+    name: &str,
+    engine_type: &str,
+    _runtime_version_id: Option<Uuid>,
+) -> Uuid {
+    let payload = json!({
+        "provider_id": provider_id.to_string(),
+        "name": name,
+        "display_name": format!("Test Model {name}"),
+        "engine_type": engine_type,
+        "engine_settings": { "ctx_size": 512, "n_gpu_layers": 0 },
+        "file_format": if engine_type == "llamacpp" { "gguf" } else { "safetensors" },
+        "enabled": true,
+    });
+
+    let response = reqwest::Client::new()
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", token))
         .json(&payload)
         .send()
         .await
-        .expect("Failed to register binary");
-
-    // Handle both success and conflict (already exists)
+        .expect("create model");
     let status = response.status();
-    if status != StatusCode::OK && status != StatusCode::CONFLICT {
-        let error_body = response.text().await.unwrap();
-        panic!(
-            "Failed to register binary. Status: {}, Body: {}",
-            status, error_body
-        );
-    }
+    let text = response.text().await.expect("model body text");
+    assert_eq!(status, StatusCode::CREATED, "model create failed ({status}): {text}");
+    let body: serde_json::Value = serde_json::from_str(&text).expect("model json");
+    Uuid::parse_str(body["id"].as_str().expect("model id")).expect("model id uuid")
+}
 
-    let body: serde_json::Value = response.json().await.unwrap();
+/// Insert a completed `llm_model_files` row so `resolve_model_inputs`
+/// can find a path. The file at `file_path` need not exist on disk for
+/// the stub-engine (it ignores `--model`); the row just has to resolve.
+/// Use a `file_path` containing the substring `stub-unhealthy` to make
+/// the spawned stub report `/health` 503 forever (drives the 504 test).
+pub async fn seed_model_file(pool: &PgPool, model_id: Uuid, file_path: &str) {
+    let filename = std::path::Path::new(file_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("model.gguf")
+        .to_string();
+    sqlx::query(
+        "INSERT INTO llm_model_files
+            (model_id, filename, file_path, file_size_bytes, file_type, upload_status)
+         VALUES ($1, $2, $3, 1, 'gguf', 'completed')
+         ON CONFLICT (model_id, filename) DO UPDATE SET file_path = EXCLUDED.file_path",
+    )
+    .bind(model_id)
+    .bind(&filename)
+    .bind(file_path)
+    .execute(pool)
+    .await
+    .expect("seed llm_model_files row");
+}
 
-    // Extract version ID - handle both new registrations and conflicts
-    let version_id = if status == StatusCode::OK {
-        // Response structure: { "version": { "id": "uuid", ... }, "downloaded": true, "message": "..." }
-        Uuid::parse_str(body["version"]["id"].as_str().unwrap()).unwrap()
-    } else {
-        // CONFLICT - need to fetch the existing version
-        let list_response = reqwest::Client::new()
-            .get(server.api_url(&format!("/local-runtime/versions?engine={}", engine)))
-            .header("Authorization", format!("Bearer {}", token))
-            .send()
-            .await
-            .unwrap();
+/// Force a model's validation_status to `valid` so the proxy will
+/// forward to it (the proxy rejects `failed` / `invalid`). Sidesteps the
+/// async validation queue for tests that aren't exercising validation.
+pub async fn mark_model_valid(pool: &PgPool, model_id: Uuid) {
+    sqlx::query("UPDATE llm_models SET validation_status = 'valid' WHERE id = $1")
+        .bind(model_id)
+        .execute(pool)
+        .await
+        .expect("mark model valid");
+}
 
-        let versions: serde_json::Value = list_response.json().await.unwrap();
-        let found = versions
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|v| {
-                v["engine"].as_str().unwrap() == engine
-                    && v["version"].as_str().unwrap() == version
-                    && v["platform"].as_str().unwrap() == platform
-                    && v["arch"].as_str().unwrap() == arch
-                    && v["backend"].as_str().unwrap() == backend
-            })
-            .expect("Should find the conflicting version");
+/// Create a fully startable llamacpp model: row + seeded `.gguf` file +
+/// validation_status=valid. Returns the model_id. The stub-engine will
+/// be spawned with `--model <gguf_path>` (and ignore it).
+pub async fn make_startable_model(
+    server: &TestServer,
+    token: &str,
+    pool: &PgPool,
+    provider_id: Uuid,
+    name: &str,
+    runtime_version_id: Uuid,
+    gguf_path: &str,
+) -> Uuid {
+    let model_id =
+        create_local_model(server, token, provider_id, name, "llamacpp", Some(runtime_version_id))
+            .await;
+    seed_model_file(pool, model_id, gguf_path).await;
+    mark_model_valid(pool, model_id).await;
+    model_id
+}
 
-        Uuid::parse_str(found["id"].as_str().unwrap()).unwrap()
-    };
+// ── instance lifecycle wrappers ─────────────────────────────────────────
 
-    println!("Binary registered with ID: {}", version_id);
-    (version_id, binary_path)
+pub async fn start_instance(server: &TestServer, token: &str, model_id: Uuid) -> reqwest::Response {
+    reqwest::Client::new()
+        .post(server.api_url(&format!("/local-runtime/models/{model_id}/start")))
+        .header("Authorization", format!("Bearer {}", token))
+        .json(&json!({}))
+        .send()
+        .await
+        .expect("start instance")
+}
+
+pub async fn stop_instance(server: &TestServer, token: &str, model_id: Uuid) -> reqwest::Response {
+    reqwest::Client::new()
+        .post(server.api_url(&format!("/local-runtime/models/{model_id}/stop")))
+        .header("Authorization", format!("Bearer {}", token))
+        .send()
+        .await
+        .expect("stop instance")
+}
+
+pub async fn restart_instance(server: &TestServer, token: &str, model_id: Uuid) -> reqwest::Response {
+    reqwest::Client::new()
+        .post(server.api_url(&format!("/local-runtime/models/{model_id}/restart")))
+        .header("Authorization", format!("Bearer {}", token))
+        .send()
+        .await
+        .expect("restart instance")
+}
+
+pub async fn get_status(server: &TestServer, token: &str, model_id: Uuid) -> serde_json::Value {
+    let resp = reqwest::Client::new()
+        .get(server.api_url(&format!("/local-runtime/models/{model_id}/status")))
+        .header("Authorization", format!("Bearer {}", token))
+        .send()
+        .await
+        .expect("get status");
+    assert_eq!(resp.status(), StatusCode::OK, "status endpoint");
+    resp.json().await.expect("status body")
+}
+
+// ── proxy front-door wrappers ───────────────────────────────────────────
+
+/// POST /api/local-llm/v1/chat/completions with a bearer + JSON body.
+pub async fn proxy_chat(
+    server: &TestServer,
+    bearer: &str,
+    body: serde_json::Value,
+) -> reqwest::Response {
+    reqwest::Client::new()
+        .post(server.api_url("/local-llm/v1/chat/completions"))
+        .header("Authorization", format!("Bearer {bearer}"))
+        .json(&body)
+        .send()
+        .await
+        .expect("proxy chat")
+}
+
+/// POST /api/local-llm/v1/embeddings with a bearer + JSON body.
+pub async fn proxy_embeddings(
+    server: &TestServer,
+    bearer: &str,
+    body: serde_json::Value,
+) -> reqwest::Response {
+    reqwest::Client::new()
+        .post(server.api_url("/local-llm/v1/embeddings"))
+        .header("Authorization", format!("Bearer {bearer}"))
+        .json(&body)
+        .send()
+        .await
+        .expect("proxy embeddings")
+}
+
+// ── GGUF fixtures ───────────────────────────────────────────────────────
+
+/// Minimal valid GGUF v3 header: architecture=llama, context_length=4096.
+/// Matches the synthetic bytes the metadata parser accepts, so capability
+/// extraction succeeds on it.
+pub fn tiny_gguf_bytes() -> Vec<u8> {
+    const GGUF_TYPE_U32: u32 = 4;
+    const GGUF_TYPE_STRING: u32 = 8;
+    let mut buf = Vec::new();
+    buf.extend_from_slice(b"GGUF");
+    buf.extend_from_slice(&3u32.to_le_bytes()); // version
+    buf.extend_from_slice(&0u64.to_le_bytes()); // tensor_count
+    buf.extend_from_slice(&2u64.to_le_bytes()); // kv_count
+
+    let key1 = b"general.architecture";
+    buf.extend_from_slice(&(key1.len() as u64).to_le_bytes());
+    buf.extend_from_slice(key1);
+    buf.extend_from_slice(&GGUF_TYPE_STRING.to_le_bytes());
+    let val1 = b"llama";
+    buf.extend_from_slice(&(val1.len() as u64).to_le_bytes());
+    buf.extend_from_slice(val1);
+
+    let key2 = b"llama.context_length";
+    buf.extend_from_slice(&(key2.len() as u64).to_le_bytes());
+    buf.extend_from_slice(key2);
+    buf.extend_from_slice(&GGUF_TYPE_U32.to_le_bytes());
+    buf.extend_from_slice(&4096u32.to_le_bytes());
+
+    buf
+}
+
+/// Truncated/garbage GGUF: valid magic but a header claiming KV pairs
+/// that aren't present, so the parser errors → validation_warning.
+pub fn garbage_gguf_bytes() -> Vec<u8> {
+    let mut buf = Vec::new();
+    buf.extend_from_slice(b"GGUF");
+    buf.extend_from_slice(&3u32.to_le_bytes());
+    buf.extend_from_slice(&999u64.to_le_bytes()); // tensor_count (lie)
+    buf.extend_from_slice(&999u64.to_le_bytes()); // kv_count (lie)
+    // … no actual KV data follows.
+    buf
 }
 
 /// Creates a test provider
@@ -167,7 +469,12 @@ pub async fn create_test_provider(
         );
     }
 
-    response.json().await.unwrap()
+    // POST /llm-providers returns `CreateLlmProviderResponse { provider,
+    // plaintext_api_key }`. Callers that only want the provider object
+    // (and read `["id"]` directly) get the inner object; the fallback
+    // keeps this robust if the response were ever unwrapped.
+    let body: serde_json::Value = response.json().await.unwrap();
+    body.get("provider").cloned().unwrap_or(body)
 }
 
 /// Gets or creates a local provider
@@ -202,53 +509,6 @@ pub async fn get_or_create_local_provider(
 
     // Create a local provider if none exists
     create_test_provider(server, token, "Local Models").await
-}
-
-/// Creates a test model (no actual file - for testing instance management)
-///
-/// # Arguments
-/// * `server` - Test server instance
-/// * `token` - Authentication token
-/// * `provider_id` - Provider UUID
-/// * `runtime_version_id` - Optional runtime version requirement
-/// * `name` - Model name
-///
-/// # Returns
-/// Model JSON object
-pub async fn create_test_model(
-    server: &TestServer,
-    token: &str,
-    provider_id: Uuid,
-    runtime_version_id: Option<Uuid>,
-    name: &str,
-) -> serde_json::Value {
-    let mut payload = json!({
-        "provider_id": provider_id.to_string(),
-        "name": name,
-        "display_name": format!("Test Model: {}", name),
-        "engine_type": "llamacpp",
-        "engine_settings": {
-            "ctx_size": 2048,
-            "n_gpu_layers": 0,
-        },
-        "file_format": "gguf",
-        "enabled": true,
-    });
-
-    if let Some(version_id) = runtime_version_id {
-        payload["required_runtime_version_id"] = json!(version_id.to_string());
-    }
-
-    let response = reqwest::Client::new()
-        .post(server.api_url("/llm-models"))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&payload)
-        .send()
-        .await
-        .expect("Failed to create model");
-
-    assert_eq!(response.status(), StatusCode::CREATED);
-    response.json().await.unwrap()
 }
 
 /// Gets the Hugging Face repository and configures API key
@@ -363,7 +623,17 @@ pub async fn download_test_model(
         "enabled": true,
     });
 
-    println!("Starting tiny-random-gpt2 model download...");
+    let model = run_model_download(server, token, payload).await;
+    (model, PathBuf::new())
+}
+
+/// POST a model-download request and poll until it completes; returns the
+/// committed model JSON. Panics on failure/timeout.
+async fn run_model_download(
+    server: &TestServer,
+    token: &str,
+    payload: serde_json::Value,
+) -> serde_json::Value {
     let response = reqwest::Client::new()
         .post(server.api_url("/llm-models/download"))
         .header("Authorization", format!("Bearer {}", token))
@@ -372,88 +642,94 @@ pub async fn download_test_model(
         .await
         .expect("Failed to start model download");
 
-    // Model download returns 200 OK with download instance, not 201 CREATED
+    // Model download returns 200 OK with a download instance, not 201.
     if response.status() != StatusCode::OK && response.status() != StatusCode::CREATED {
         let status = response.status();
-        let error_body = response.text().await.unwrap_or_else(|_| "Could not read response body".to_string());
-        panic!(
-            "Failed to initiate model download. Status: {}, Body: {}",
-            status, error_body
-        );
+        let error_body = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Could not read response body".to_string());
+        panic!("Failed to initiate model download. Status: {status}, Body: {error_body}");
     }
 
     let download_instance: serde_json::Value = response.json().await.unwrap();
     let download_id = Uuid::parse_str(download_instance["id"].as_str().unwrap()).unwrap();
-    println!("Model download initiated. Download ID: {}", download_id);
+    println!("Model download initiated. Download ID: {download_id}");
 
-    // Wait for download to complete (poll status)
-    // TinyLlama is ~600MB, can take 5-10 minutes on slow connections
-    let max_wait_seconds = 600; // 10 minutes
-    let poll_interval = 5; // 5 seconds
+    // Poll status (large GGUFs can take minutes).
+    let max_wait_seconds = 600;
+    let poll_interval = 5;
     let max_attempts = max_wait_seconds / poll_interval;
 
     for attempt in 0..max_attempts {
         tokio::time::sleep(tokio::time::Duration::from_secs(poll_interval)).await;
 
         let status_response = reqwest::Client::new()
-            .get(server.api_url(&format!("/llm-models/downloads/{}", download_id)))
+            .get(server.api_url(&format!("/llm-models/downloads/{download_id}")))
             .header("Authorization", format!("Bearer {}", token))
             .send()
             .await
             .unwrap();
 
-        // Check response status code
         if !status_response.status().is_success() {
-            println!("ERROR: Download status endpoint returned {}: {}",
-                status_response.status(),
-                status_response.text().await.unwrap_or_else(|_| "Could not read response".to_string()));
-            tokio::time::sleep(tokio::time::Duration::from_secs(poll_interval)).await;
             continue;
         }
 
         let download_data: serde_json::Value = status_response.json().await.unwrap();
-
-        // Debug: Print response structure on first attempt
-        if attempt == 1 {
-            println!("DEBUG: Download response: {}", serde_json::to_string_pretty(&download_data).unwrap_or_else(|_| format!("{:?}", download_data)));
-        }
-
         let status = download_data["status"].as_str().unwrap_or("Unknown");
-
-        println!(
-            "Download status: {} (attempt {}/{})",
-            status,
-            attempt + 1,
-            max_attempts
-        );
+        println!("Download status: {status} (attempt {}/{max_attempts})", attempt + 1);
 
         if status == "completed" {
-            // Get model_id from download instance
-            let model_id = Uuid::parse_str(download_data["model_id"].as_str()
-                .expect("Download instance should have model_id when completed"))
-                .expect("Invalid model_id in download instance");
+            let model_id = Uuid::parse_str(
+                download_data["model_id"]
+                    .as_str()
+                    .expect("Download instance should have model_id when completed"),
+            )
+            .expect("Invalid model_id in download instance");
 
-            // Fetch the actual model data
             let model_response = reqwest::Client::new()
-                .get(server.api_url(&format!("/llm-models/{}", model_id)))
+                .get(server.api_url(&format!("/llm-models/{model_id}")))
                 .header("Authorization", format!("Bearer {}", token))
                 .send()
                 .await
                 .unwrap();
-
-            let model_data: serde_json::Value = model_response.json().await.unwrap();
-
-            println!("Model download completed! Model ID: {}", model_id);
-            // Note: The API response doesn't include storage_path, but that's internal server data
-            // For testing purposes, we just need the model metadata to proceed with instance management
-            return (model_data, PathBuf::new());
+            println!("Model download completed! Model ID: {model_id}");
+            return model_response.json().await.unwrap();
         } else if status == "failed" {
-            panic!("Model download failed: {:?}", download_data);
+            panic!("Model download failed: {download_data:?}");
         }
     }
 
-    panic!(
-        "Model download timed out after {} seconds",
-        max_wait_seconds
-    );
+    panic!("Model download timed out after {max_wait_seconds} seconds");
+}
+
+/// Download a small REAL chat GGUF (TinyLlama-1.1B-Chat Q4_K_M, ~670 MB)
+/// from HuggingFace into `provider_id`, returning the committed model JSON.
+/// Needs `HUGGINGFACE_API_KEY`. Used by the real-engine end-to-end test.
+pub async fn download_test_gguf_model(
+    server: &TestServer,
+    token: &str,
+    provider_id: Uuid,
+) -> serde_json::Value {
+    let repository = get_huggingface_repository(server, token).await;
+    let repository_id = Uuid::parse_str(repository["id"].as_str().unwrap()).unwrap();
+
+    let repo = "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF";
+    let filename = "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf";
+    let payload = json!({
+        "provider_id": provider_id.to_string(),
+        "repository_id": repository_id.to_string(),
+        "repository_path": repo,
+        "repository_branch": "main",
+        "name": "tinyllama-gguf",
+        "display_name": "TinyLlama 1.1B Chat (GGUF)",
+        "file_format": "gguf",
+        "main_filename": filename,
+        "source": { "type": "hub", "id": repo },
+        "engine_type": "llamacpp",
+        "engine_settings": { "ctx_size": 2048, "n_gpu_layers": 0 },
+        "enabled": true,
+    });
+
+    run_model_download(server, token, payload).await
 }

@@ -503,6 +503,95 @@ and the ongoing release workflow.
 
 ---
 
+## Local LLM Runtime — testing
+
+The `llm_local_runtime` module turns local engines (llama.cpp /
+mistral.rs subprocesses) into an OpenAI-compatible provider via a
+same-port reverse proxy at `/api/local-llm/v1/*`. The test suite covers
+the full lifecycle without needing a published engine release.
+
+The engine library code — binary download/extract/cache, GGUF/safetensors
+metadata parsing, the per-engine settings vocabulary (`LlamaCppSettings` /
+`MistralRsSettings`), and the health state machine — lives in
+`src-app/server/src/modules/llm_local_runtime/engine/`, folded in from the
+former standalone `llm-runtime` crate (now deleted; the server was its sole
+consumer). The per-engine CLI arg-builders are in `deployment/local.rs`
+(`llamacpp_argv` / `mistralrs_argv`); a model's `engine_settings` JSONB
+deserializes into the typed settings, and the health state machine is wired
+into `auto_start.rs`'s crash path (exponential backoff + a flap cap that
+gives up after 5 crashes / 60s instead of re-spawning forever).
+
+### Test fixtures
+
+- **`stub-engine`** (`src-app/stub-engine/`, a workspace
+  member, `publish = false`) — a tiny axum OpenAI-compatible server
+  (`/health`, `/v1/chat/completions` incl. SSE, `/v1/embeddings`,
+  `/v1/models`). It's spawned by the *real* deployment path exactly as if
+  it were `llama-server`, so spawn → health → proxy forward → bearer
+  rewrite → SSE all run for real; only token generation is canned. It
+  ignores unknown llama-server flags; behaviour knobs come via the request
+  body (`stub_hang_ms`, `stub_force_status`) or a `stub-unhealthy` path
+  sentinel (env is wiped by the deployment's `env_clear`).
+- **`MockReleaseServer`** (`src-app/server/tests/llm_local_runtime/mock_release.rs`)
+  — packages the stub-engine as a release artifact and serves it from a
+  loopback HTTP server, so `POST /versions/download` exercises the full
+  download → extract → cache → register path. Mirrors
+  `code_sandbox/mirror_fixture.rs`.
+
+### Debug-only test env vars (compiled out of release builds via `cfg!(debug_assertions)`)
+
+- `LLM_RUNTIME_RELEASE_MIRROR` / `LLM_RUNTIME_API_MIRROR` — override the
+  GitHub release/API hosts in `llm_local_runtime/engine/download.rs` so the
+  download path resolves against the mock release server.
+- `LLM_RUNTIME_REAPER_TICK_MS` — shorten the idle-reaper's 60s tick so
+  idle-eviction / drain tests observe behaviour in seconds
+  (`llm_local_runtime/reaper.rs`).
+
+These are the same testability-seam pattern as code_sandbox's
+`CODE_SANDBOX_ROOTFS_MIRROR`; they cannot be set in a release build.
+
+### Test tiers
+
+| Tier | Where | Needs | Notes |
+|---|---|---|---|
+| 1 unit | in-source `#[cfg(test)]` in `proxy.rs`, `engine/{health,metadata,download,error}.rs`, `deployment/local.rs` (argv builders), `ai-providers/model_registry.rs` | nothing (Postgres only to *compile* the server lib) | token cache, state machine, GGUF parse, mirror-default, argv-shape |
+| 2 integration | `server/tests/llm_local_runtime/*_test.rs` | Postgres + stub-engine; `model_files_real_test` also needs `HUGGINGFACE_API_KEY` + network | proxy auth/forward, lifecycle, reaper/drain, settings, token rotation, provider create, gpu-detect, sse-logs, validation, engine download, supervision (flap cap) |
+| gold | `server/tests/llm_local_runtime/gold_smoke.rs` (`#[ignore]`) | a real `llama-server` + tiny GGUF | env-gated: `ZIEE_REAL_LLAMA_SERVER`, `ZIEE_REAL_GGUF` |
+| 3 E2E | `ui/tests/e2e/12-local-runtime/` | Playwright; engine flows need an engine mirror | UI surface specs run engine-free; `04-engine-lifecycle` skips unless `ZIEE_E2E_ENGINE_MIRROR` is set |
+
+```bash
+# Tier 1
+cd src-app && cargo test --lib -p ziee llm_local_runtime:: && cargo test -p ai-providers
+
+# Tier 2 (needs the HF key for the real-download test)
+source src-app/server/tests/.env.test
+cargo test --test integration_tests llm_local_runtime:: -- --test-threads=1 \
+    2>&1 | tee local-runtime-int-$(date +%Y%m%d-%H%M%S).log
+
+# Gold smoke (manual, real engine)
+ZIEE_REAL_LLAMA_SERVER=/path/llama-server ZIEE_REAL_GGUF=/path/tiny.gguf \
+    cargo test --test integration_tests -- --ignored llm_local_runtime::gold_smoke
+
+# E2E (UI surface) — always --workers=1
+cd src-app/ui && npm run test:e2e -- tests/e2e/12-local-runtime --workers=1
+```
+
+**Build the stub first** (the mock fixture builds it on demand, but
+pre-building avoids a nested cargo call during tests):
+`cargo build -p stub-engine`.
+
+**Engine settings (canonical names):** llama.cpp — `ctx_size`,
+`n_gpu_layers`, `batch_size`, `threads`, `embeddings`, `rope_freq_base`,
+`rope_freq_scale`; mistral.rs — `max_seqs`, `prefix_cache_n`, `dtype`,
+`model_format`. These are the keys a model's `engine_settings` JSONB must
+use (NOT the old `context_size`); the arg-builders deserialize + validate
+them. mistral.rs uses the `gguf` / `plain` subcommand form — those flags
+are **not yet verified against a real `mistralrs-server` binary** (no
+binary available), only against the (now-deleted) reference crate + the
+argv-shape unit tests; confirm against `--help` before relying on it.
+
+---
+
 ## Chat Projects
 
 Flat, per-user grouping above conversations. Each project owns:

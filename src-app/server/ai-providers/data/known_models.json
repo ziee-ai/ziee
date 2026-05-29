@@ -1,0 +1,235 @@
+{
+  "_schema_notes": "Curated remote model catalog. Each provider key holds a list of {id, display_name, context_length, max_output_tokens, supports_chat, supports_embeddings, supports_vision, supports_tool_use, deprecated} entries. Extend via PR when a new SKU ships. P1.j of feat/local-llm-runtime.",
+  "openai": [
+    {
+      "id": "gpt-4-turbo",
+      "display_name": "GPT-4 Turbo",
+      "context_length": 128000,
+      "max_output_tokens": 4096,
+      "supports_chat": true,
+      "supports_embeddings": false,
+      "supports_vision": true,
+      "supports_tool_use": true,
+      "deprecated": false
+    },
+    {
+      "id": "gpt-4o",
+      "display_name": "GPT-4o",
+      "context_length": 128000,
+      "max_output_tokens": 16384,
+      "supports_chat": true,
+      "supports_embeddings": false,
+      "supports_vision": true,
+      "supports_tool_use": true,
+      "deprecated": false
+    },
+    {
+      "id": "gpt-4o-mini",
+      "display_name": "GPT-4o mini",
+      "context_length": 128000,
+      "max_output_tokens": 16384,
+      "supports_chat": true,
+      "supports_embeddings": false,
+      "supports_vision": true,
+      "supports_tool_use": true,
+      "deprecated": false
+    },
+    {
+      "id": "gpt-3.5-turbo",
+      "display_name": "GPT-3.5 Turbo",
+      "context_length": 16385,
+      "max_output_tokens": 4096,
+      "supports_chat": true,
+      "supports_embeddings": false,
+      "supports_vision": false,
+      "supports_tool_use": true,
+      "deprecated": true
+    },
+    {
+      "id": "text-embedding-3-small",
+      "display_name": "Embedding 3 Small",
+      "context_length": 8191,
+      "max_output_tokens": null,
+      "supports_chat": false,
+      "supports_embeddings": true,
+      "supports_vision": false,
+      "supports_tool_use": false,
+      "deprecated": false
+    },
+    {
+      "id": "text-embedding-3-large",
+      "display_name": "Embedding 3 Large",
+      "context_length": 8191,
+      "max_output_tokens": null,
+      "supports_chat": false,
+      "supports_embeddings": true,
+      "supports_vision": false,
+      "supports_tool_use": false,
+      "deprecated": false
+    }
+  ],
+  "anthropic": [
+    {
+      "id": "claude-opus-4-7",
+      "display_name": "Claude Opus 4.7",
+      "context_length": 200000,
+      "max_output_tokens": 16384,
+      "supports_chat": true,
+      "supports_embeddings": false,
+      "supports_vision": true,
+      "supports_tool_use": true,
+      "deprecated": false
+    },
+    {
+      "id": "claude-sonnet-4-6",
+      "display_name": "Claude Sonnet 4.6",
+      "context_length": 200000,
+      "max_output_tokens": 16384,
+      "supports_chat": true,
+      "supports_embeddings": false,
+      "supports_vision": true,
+      "supports_tool_use": true,
+      "deprecated": false
+    },
+    {
+      "id": "claude-haiku-4-5-20251001",
+      "display_name": "Claude Haiku 4.5",
+      "context_length": 200000,
+      "max_output_tokens": 16384,
+      "supports_chat": true,
+      "supports_embeddings": false,
+      "supports_vision": true,
+      "supports_tool_use": true,
+      "deprecated": false
+    }
+  ],
+  "gemini": [
+    {
+      "id": "gemini-2.0-flash",
+      "display_name": "Gemini 2.0 Flash",
+      "context_length": 1048576,
+      "max_output_tokens": 8192,
+      "supports_chat": true,
+      "supports_embeddings": false,
+      "supports_vision": true,
+      "supports_tool_use": true,
+      "deprecated": false
+    },
+    {
+      "id": "gemini-1.5-pro",
+      "display_name": "Gemini 1.5 Pro",
+      "context_length": 2097152,
+      "max_output_tokens": 8192,
+      "supports_chat": true,
+      "supports_embeddings": false,
+      "supports_vision": true,
+      "supports_tool_use": true,
+      "deprecated": false
+    },
+    {
+      "id": "text-embedding-004",
+      "display_name": "Embedding 004",
+      "context_length": 2048,
+      "max_output_tokens": null,
+      "supports_chat": false,
+      "supports_embeddings": true,
+      "supports_vision": false,
+      "supports_tool_use": false,
+      "deprecated": false
+    }
+  ],
+  "groq": [
+    {
+      "id": "llama-3.3-70b-versatile",
+      "display_name": "Llama 3.3 70B",
+      "context_length": 128000,
+      "max_output_tokens": 32768,
+      "supports_chat": true,
+      "supports_embeddings": false,
+      "supports_vision": false,
+      "supports_tool_use": true,
+      "deprecated": false
+    },
+    {
+      "id": "llama-3.1-8b-instant",
+      "display_name": "Llama 3.1 8B Instant",
+      "context_length": 128000,
+      "max_output_tokens": 8192,
+      "supports_chat": true,
+      "supports_embeddings": false,
+      "supports_vision": false,
+      "supports_tool_use": true,
+      "deprecated": false
+    }
+  ],
+  "deepseek": [
+    {
+      "id": "deepseek-chat",
+      "display_name": "DeepSeek Chat",
+      "context_length": 64000,
+      "max_output_tokens": 8192,
+      "supports_chat": true,
+      "supports_embeddings": false,
+      "supports_vision": false,
+      "supports_tool_use": true,
+      "deprecated": false
+    },
+    {
+      "id": "deepseek-reasoner",
+      "display_name": "DeepSeek Reasoner",
+      "context_length": 64000,
+      "max_output_tokens": 8192,
+      "supports_chat": true,
+      "supports_embeddings": false,
+      "supports_vision": false,
+      "supports_tool_use": false,
+      "deprecated": false
+    }
+  ],
+  "mistral": [
+    {
+      "id": "mistral-large-latest",
+      "display_name": "Mistral Large",
+      "context_length": 131072,
+      "max_output_tokens": 8192,
+      "supports_chat": true,
+      "supports_embeddings": false,
+      "supports_vision": false,
+      "supports_tool_use": true,
+      "deprecated": false
+    },
+    {
+      "id": "mistral-small-latest",
+      "display_name": "Mistral Small",
+      "context_length": 32768,
+      "max_output_tokens": 8192,
+      "supports_chat": true,
+      "supports_embeddings": false,
+      "supports_vision": false,
+      "supports_tool_use": true,
+      "deprecated": false
+    },
+    {
+      "id": "pixtral-large-latest",
+      "display_name": "Pixtral Large",
+      "context_length": 131072,
+      "max_output_tokens": 8192,
+      "supports_chat": true,
+      "supports_embeddings": false,
+      "supports_vision": true,
+      "supports_tool_use": true,
+      "deprecated": false
+    },
+    {
+      "id": "mistral-embed",
+      "display_name": "Mistral Embed",
+      "context_length": 8192,
+      "max_output_tokens": null,
+      "supports_chat": false,
+      "supports_embeddings": true,
+      "supports_vision": false,
+      "supports_tool_use": false,
+      "deprecated": false
+    }
+  ]
+}

@@ -22,8 +22,9 @@ use super::super::{
     models::LlmProvider,
     permissions::*,
     types::{
-        AssignProviderToGroupRequest, CreateLlmProviderRequest, GroupProvidersResponse,
-        LlmProviderListResponse, UpdateGroupProvidersRequest, UpdateLlmProviderRequest,
+        AssignProviderToGroupRequest, CreateLlmProviderRequest, CreateLlmProviderResponse,
+        GroupProvidersResponse, LlmProviderListResponse, RotateProxyTokenResponse,
+        UpdateGroupProvidersRequest, UpdateLlmProviderRequest,
     },
     utils,
 };
@@ -112,10 +113,30 @@ pub fn get_provider_docs(
 pub async fn create_provider(
     _auth: RequirePermissions<(LlmProvidersCreate,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
-    Json(request): Json<CreateLlmProviderRequest>,
-) -> ApiResult<Json<LlmProvider>> {
+    Json(mut request): Json<CreateLlmProviderRequest>,
+) -> ApiResult<Json<CreateLlmProviderResponse>> {
     // Validate request
     utils::validate_create_request(&request)?;
+
+    // Local-aware enrichment: P1.f wires server-side defaults so the
+    // admin only fills the Name field for a local provider.
+    //  - base_url stays NULL in the DB; the repository's read seam
+    //    injects the live URL from server config + LOCAL_PROXY_PATH
+    //    on every read.
+    //  - api_key is auto-minted as a 32-byte URL-safe random token.
+    //    We return it once in the response body.
+    //  - enabled defaults to true (no extra admin click before first chat).
+    let mut plaintext_token: Option<String> = None;
+    if request.provider_type == "local" {
+        // Force-clear caller-supplied base_url + api_key — they're
+        // server-managed for local providers and would be ignored
+        // anyway at read time.
+        request.base_url = None;
+        let token = crate::modules::llm_local_runtime::proxy::generate_proxy_token();
+        request.api_key = Some(token.clone());
+        plaintext_token = Some(token);
+        request.enabled.get_or_insert(true);
+    }
 
     // Create provider
     let provider = Repos.llm_provider.create(request).await.map_err(|e| {
@@ -123,10 +144,25 @@ pub async fn create_provider(
         AppError::internal_error("Database operation failed")
     })?;
 
+    // Populate the proxy token cache so the proxy front door
+    // recognizes the new token immediately (no wait for next boot
+    // reseed).
+    if provider.provider_type == "local" {
+        if let Some(t) = plaintext_token.as_deref() {
+            crate::modules::llm_local_runtime::proxy::insert_token(t, provider.id).await;
+        }
+    }
+
     // Emit event
     event_bus.emit_async(LlmProviderEvent::created(provider.clone()).into());
 
-    Ok((StatusCode::CREATED, Json(provider)))
+    Ok((
+        StatusCode::CREATED,
+        Json(CreateLlmProviderResponse {
+            provider,
+            plaintext_api_key: plaintext_token,
+        }),
+    ))
 }
 
 pub fn create_provider_docs(
@@ -136,9 +172,94 @@ pub fn create_provider_docs(
         .id("LlmProvider.create")
         .tag("LLM Providers")
         .summary("Create a new LLM provider")
-        .response::<201, Json<LlmProvider>>()
+        .description(concat!(
+            "For provider_type = 'local', base_url + api_key are server-",
+            "derived: the URL is computed from server config + ",
+            "LOCAL_PROXY_PATH on read, and the api_key is auto-minted ",
+            "(returned once as plaintext_api_key on this response)."
+        ))
+        .response::<201, Json<CreateLlmProviderResponse>>()
         .response_with::<400, (), _>(|res| res.description("Invalid input"))
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+}
+
+/// Rotate the PROXY_TOKEN on a local provider. Returns the new
+/// plaintext token; the old token's cache entry is invalidated
+/// AFTER the new one is inserted so in-flight requests using the
+/// old token can finish.
+#[debug_handler]
+pub async fn rotate_proxy_token(
+    _auth: RequirePermissions<(LlmProvidersEdit,)>,
+    Path(provider_id): Path<Uuid>,
+) -> ApiResult<Json<RotateProxyTokenResponse>> {
+    // Confirm the provider exists and is local.
+    let existing = Repos
+        .llm_provider
+        .get_by_id(provider_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get provider {}: {}", provider_id, e);
+            AppError::internal_error("Database operation failed")
+        })?
+        .ok_or_else(|| AppError::not_found("Provider"))?;
+    if existing.provider_type != "local" {
+        return Err(AppError::bad_request(
+            "PROVIDER_NOT_LOCAL",
+            "Token rotation only applies to local providers",
+        )
+        .into());
+    }
+
+    let old_token = existing.api_key.clone();
+    let new_token = crate::modules::llm_local_runtime::proxy::generate_proxy_token();
+
+    let updated = Repos
+        .llm_provider
+        .update(
+            provider_id,
+            UpdateLlmProviderRequest {
+                api_key: Some(new_token.clone()),
+                name: None,
+                enabled: None,
+                base_url: None,
+                proxy_settings: None,
+            },
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to rotate token for {}: {}", provider_id, e);
+            AppError::internal_error("Database operation failed")
+        })?
+        .ok_or_else(|| AppError::not_found("Provider"))?;
+
+    // Insert new before removing old — closes the window where neither
+    // token would validate.
+    crate::modules::llm_local_runtime::proxy::insert_token(&new_token, provider_id).await;
+    if let Some(t) = old_token.as_deref() {
+        if !t.is_empty() {
+            crate::modules::llm_local_runtime::proxy::remove_token(t).await;
+        }
+    }
+
+    Ok((
+        StatusCode::OK,
+        Json(RotateProxyTokenResponse {
+            provider: updated,
+            plaintext_api_key: new_token,
+        }),
+    ))
+}
+
+pub fn rotate_proxy_token_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
+    with_permission::<(LlmProvidersEdit,)>(op)
+        .id("LlmProvider.rotateProxyToken")
+        .tag("LLM Providers")
+        .summary("Rotate the PROXY_TOKEN on a local provider.")
+        .response::<200, Json<RotateProxyTokenResponse>>()
+        .response_with::<400, (), _>(|r| r.description("Not a local provider"))
+        .response_with::<404, (), _>(|r| r.description("Provider not found"))
 }
 
 /// Update an existing LLM provider (requires llm_providers::edit permission)

@@ -118,6 +118,15 @@ async fn main() {
         core::set_app_data_dir(default_data_dir);
     }
     core::set_caches_config(config.caches.clone());
+    // Capture server addr so the llm_local_runtime URL injection
+    // (repository read-time) can derive the live proxy base_url
+    // without holding a reference to the full Config. The api_prefix
+    // is included because module routes are nested under it.
+    core::set_server_addr(
+        config.server.host.clone(),
+        config.server.port,
+        config.server.api_prefix.clone(),
+    );
 
     // Initialize database
     let pool = match core::database::initialize_database(&config).await {

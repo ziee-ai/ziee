@@ -35,15 +35,20 @@ export const useRuntimeUpdateStore = create<RuntimeUpdateState>((set) => ({
       // Get current default version for this engine
       const currentVersion = Stores.RuntimeVersion.getDefaultVersion(engine)
 
-      // Compute additional fields
-      const latestVersion = response.available_versions[0] || ''
-      const hasUpdates = currentVersion
-        ? response.available_versions.some((v: string) => v !== currentVersion.version)
-        : response.available_versions.length > 0
+      // Releases come newest-first. The "latest" we can actually install is
+      // the newest one whose binary is published for this host.
+      const versions = response.versions
+      const latestVersion =
+        versions.find(v => v.binary_ready)?.version || versions[0]?.version || ''
+      // An update is available when there's a ready (built) version we have
+      // not installed yet. Build-pending tags don't count.
+      const hasUpdates = versions.some(v => v.binary_ready && !v.installed)
 
       const updateCheck: RuntimeUpdateCheck = {
         engine: response.engine,
-        available_versions: response.available_versions,
+        platform: response.platform,
+        arch: response.arch,
+        versions,
         current_version: currentVersion?.version,
         latest_version: latestVersion,
         has_updates: hasUpdates

@@ -1,0 +1,145 @@
+import { create } from 'zustand'
+import { ApiClient } from '@/api-client'
+import { Stores } from '@/core/stores'
+import type { VersionUsageResponse } from '@/api-client/types'
+import type { RuntimeEngine } from '../types'
+import { emitRuntimeModelUsageChanged } from '../events/emitters'
+
+interface RuntimeModelUsageState {
+  // Per-engine usage snapshot (versions + the models that resolve to each).
+  usage: Map<RuntimeEngine, VersionUsageResponse>
+  // Per-engine load-in-flight.
+  loading: Map<RuntimeEngine, boolean>
+  // Per-model action-in-flight (start/stop/swap), keyed by model id.
+  acting: Map<string, boolean>
+  error: string | null
+
+  loadUsage: (engine: RuntimeEngine) => Promise<void>
+  startModel: (engine: RuntimeEngine, modelId: string) => Promise<void>
+  stopModel: (engine: RuntimeEngine, modelId: string) => Promise<void>
+  swapVersion: (
+    engine: RuntimeEngine,
+    modelId: string,
+    versionId: string
+  ) => Promise<void>
+  clearError: () => void
+
+  __init__: { __store__: () => void }
+  __destroy__: () => void
+}
+
+export const useRuntimeModelUsageStore = create<RuntimeModelUsageState>(
+  (set, get) => ({
+    usage: new Map(),
+    loading: new Map(),
+    acting: new Map(),
+    error: null,
+
+    loadUsage: async (engine: RuntimeEngine) => {
+      set(state => ({
+        loading: new Map(state.loading).set(engine, true),
+        error: null
+      }))
+      try {
+        const response = await ApiClient.RuntimeVersion.usage({ engine })
+        set(state => {
+          const loading = new Map(state.loading)
+          loading.delete(engine)
+          return {
+            loading,
+            usage: new Map(state.usage).set(engine, response)
+          }
+        })
+      } catch (error) {
+        set(state => {
+          const loading = new Map(state.loading)
+          loading.delete(engine)
+          return {
+            loading,
+            error: error instanceof Error ? error.message : 'Failed to load usage'
+          }
+        })
+      }
+    },
+
+    startModel: async (engine, modelId) => {
+      await act(set, modelId, () =>
+        ApiClient.LocalRuntime.startModel({ model_id: modelId })
+      )
+      await get().loadUsage(engine)
+      await emitRuntimeModelUsageChanged(modelId)
+    },
+
+    stopModel: async (engine, modelId) => {
+      await act(set, modelId, () =>
+        ApiClient.LocalRuntime.stopModel({ model_id: modelId })
+      )
+      await get().loadUsage(engine)
+      await emitRuntimeModelUsageChanged(modelId)
+    },
+
+    swapVersion: async (engine, modelId, versionId) => {
+      await act(set, modelId, () =>
+        ApiClient.LocalRuntime.swapModelVersion({
+          model_id: modelId,
+          version_id: versionId
+        })
+      )
+      await get().loadUsage(engine)
+      await emitRuntimeModelUsageChanged(modelId)
+    },
+
+    clearError: () => set({ error: null }),
+
+    // Re-resolve usage when versions change elsewhere: a download adds a
+    // version, a delete removes one, and a default change alters which
+    // version unpinned models effectively resolve to.
+    __init__: {
+      __store__: () => {
+        const reload = () => {
+          for (const engine of get().usage.keys()) {
+            get().loadUsage(engine)
+          }
+        }
+        const bus = Stores.EventBus
+        bus.on('runtime_version.created', reload, 'RuntimeModelUsageStore')
+        bus.on('runtime_version.deleted', reload, 'RuntimeModelUsageStore')
+        bus.on('runtime_version.default_changed', reload, 'RuntimeModelUsageStore')
+      }
+    },
+
+    __destroy__: () => {
+      Stores.EventBus.removeGroupListeners('RuntimeModelUsageStore')
+    }
+  })
+)
+
+// Run a per-model action with the `acting` flag set + error capture.
+type SetState = (
+  partial:
+    | Partial<RuntimeModelUsageState>
+    | ((s: RuntimeModelUsageState) => Partial<RuntimeModelUsageState>)
+) => void
+
+async function act(
+  set: SetState,
+  modelId: string,
+  fn: () => Promise<unknown>
+) {
+  set(state => ({
+    acting: new Map(state.acting).set(modelId, true),
+    error: null
+  }))
+  try {
+    await fn()
+  } catch (error) {
+    set({ error: error instanceof Error ? error.message : 'Action failed' })
+    throw error
+  } finally {
+    set(state => {
+      const acting = new Map(state.acting)
+      acting.delete(modelId)
+      return { acting }
+    })
+  }
+}

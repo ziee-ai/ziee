@@ -51,17 +51,29 @@ export function RuntimeUpdateChecker({ engine }: Props) {
                 Current: <Tag>{updateCheck.current_version || 'None'}</Tag>
                 Latest: <Tag color="green">{updateCheck.latest_version}</Tag>
               </div>
-              <div>
-                <strong>Available versions:</strong>
-                <div style={{ marginTop: 8 }}>
-                  {updateCheck.available_versions.slice(0, 5).map(version => (
-                    <Tag key={version}>{version}</Tag>
-                  ))}
-                  {updateCheck.available_versions.length > 5 && (
-                    <Tag>+{updateCheck.available_versions.length - 5} more</Tag>
-                  )}
-                </div>
-              </div>
+              {(() => {
+                // Only show releases whose binary is published for this host;
+                // build-pending tags are not surfaced.
+                const ready = updateCheck.versions.filter(v => v.binary_ready)
+                return (
+                  <div>
+                    <strong>
+                      Releases ({updateCheck.platform}/{updateCheck.arch}):
+                    </strong>
+                    <div style={{ marginTop: 8 }}>
+                      {ready.slice(0, 5).map(v => (
+                        <Tag key={v.version} color={v.installed ? 'green' : 'blue'}>
+                          {v.version}
+                          {v.installed ? ' (installed)' : ''}
+                        </Tag>
+                      ))}
+                      {ready.length > 5 && (
+                        <Tag>+{ready.length - 5} more</Tag>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
               <Button
                 type="primary"
                 icon={<CloudSyncOutlined />}

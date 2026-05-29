@@ -2011,7 +2011,7 @@
           "LLM Providers"
         ],
         "summary": "Create a new LLM provider",
-        "description": "\n\n**Required Permission:** `llm_providers::create`\n\nCreate new LLM provider configurations",
+        "description": "For provider_type = 'local', base_url + api_key are server-derived: the URL is computed from server config + LOCAL_PROXY_PATH on read, and the api_key is auto-minted (returned once as plaintext_api_key on this response).",
         "operationId": "LlmProvider.create",
         "requestBody": {
           "content": {
@@ -2048,11 +2048,11 @@
             }
           },
           "201": {
-            "description": "Database entity representing an LLM provider configuration",
+            "description": "Wrapped create response. For local providers, `plaintext_api_key`\n carries the auto-minted PROXY_TOKEN — shown ONCE on create (and\n on rotation). After this response, the value is only accessible\n via the existing \"show api_key\" admin action. For non-local\n providers `plaintext_api_key` is always None — admins typed their\n own key in, which the server just stored.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LlmProvider"
+                  "$ref": "#/components/schemas/CreateLlmProviderResponse"
                 }
               }
             }
@@ -2232,6 +2232,115 @@
           },
           "401": {
             "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Provider not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/llm-providers/{provider_id}/rotate-proxy-token": {
+      "post": {
+        "tags": [
+          "LLM Providers"
+        ],
+        "summary": "Rotate the PROXY_TOKEN on a local provider.",
+        "description": "\n\n**Required Permission:** `llm_providers::edit`\n\nEdit existing LLM provider information and settings",
+        "operationId": "LlmProvider.rotateProxyToken",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit existing LLM provider information and settings",
+                        "name": "LlmProvidersEdit",
+                        "value": "llm_providers::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_providers::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response from `POST /llm-providers/{id}/rotate-proxy-token`.\n Carries the new plaintext token in the same shape as create.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RotateProxyTokenResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not a local provider"
+          },
+          "404": {
+            "description": "Provider not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/llm-providers/{provider_id}/discover-models": {
+      "get": {
+        "tags": [
+          "LLM Providers"
+        ],
+        "summary": "Discover models for a provider: catalog + live /v1/models + override.",
+        "description": "Layered discovery: curated catalog (data/known_models.json), augmented with the provider's live /v1/models response, with notes about anything that fell back. Local providers are not supported here — query /api/llm-models?provider_id= instead.",
+        "operationId": "LlmProvider.discoverModels",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View LLM providers and list available providers",
+                        "name": "LlmProvidersRead",
+                        "value": "llm_providers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_providers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoverModelsResponse"
+                }
+              }
+            }
           },
           "404": {
             "description": "Provider not found"
@@ -3675,6 +3784,55 @@
         ]
       }
     },
+    "/api/local-runtime/models/{model_id}/logs/stream": {
+      "get": {
+        "tags": [
+          "LocalRuntime"
+        ],
+        "description": "Stream instance logs as Server-Sent Events",
+        "operationId": "LocalRuntime.streamLogs",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View runtime instance logs",
+                        "name": "LocalRuntimeLogs",
+                        "value": "llm_local_runtime::logs"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::logs",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SSELogEvent"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/local-runtime/providers/{provider_id}/instances": {
       "get": {
         "tags": [
@@ -3712,6 +3870,55 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProviderInstancesResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/local-runtime/detect-gpu": {
+      "get": {
+        "tags": [
+          "LocalRuntime"
+        ],
+        "description": "Detect available GPU backends + recommended pick for engine downloads",
+        "operationId": "LocalRuntime.detectGpu",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View local LLM runtime instances and their status",
+                        "name": "LocalRuntimeRead",
+                        "value": "llm_local_runtime::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GpuDetectionResponse"
                 }
               }
             }
@@ -4111,6 +4318,157 @@
         ]
       }
     },
+    "/api/local-runtime/settings": {
+      "get": {
+        "tags": [
+          "LLM Local Runtime"
+        ],
+        "summary": "Read runtime singleton settings (idle/auto-start/drain/allow_unsigned).",
+        "description": "\n\n**Required Permission:** `llm_local_runtime::settings_read`\n\nRead runtime singleton settings (idle/auto-start/drain)",
+        "operationId": "LocalRuntime.getRuntimeSettings",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read runtime singleton settings (idle/auto-start/drain)",
+                        "name": "RuntimeSettingsRead",
+                        "value": "llm_local_runtime::settings_read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::settings_read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "LLM Local Runtime"
+        ],
+        "summary": "Update runtime singleton settings (PATCH-style: COALESCE on each field).",
+        "description": "\n\n**Required Permission:** `llm_local_runtime::settings_manage`\n\nModify runtime singleton settings (idle/auto-start/drain/allow_unsigned_downloads)",
+        "operationId": "LocalRuntime.updateRuntimeSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRuntimeSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Modify runtime singleton settings (idle/auto-start/drain/allow_unsigned_downloads)",
+                        "name": "RuntimeSettingsManage",
+                        "value": "llm_local_runtime::settings_manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::settings_manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Out-of-range value"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/local-llm/v1/chat/completions": {
+      "post": {
+        "tags": [
+          "Local LLM Proxy"
+        ],
+        "summary": "OpenAI-compatible /v1/chat/completions proxy.",
+        "description": "Auth via Authorization: Bearer <PROXY_TOKEN> (the api_key of a local llm_provider). Model name from the body's `model` field. Auto-starts the engine if needed.",
+        "operationId": "LocalLlmProxy.chatCompletions",
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {}
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/local-llm/v1/embeddings": {
+      "post": {
+        "tags": [
+          "Local LLM Proxy"
+        ],
+        "summary": "OpenAI-compatible /v1/embeddings proxy.",
+        "operationId": "LocalLlmProxy.embeddings",
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {}
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/local-llm/v1/models": {
+      "get": {
+        "tags": [
+          "Local LLM Proxy"
+        ],
+        "summary": "OpenAI-compatible /v1/models — list models in this provider.",
+        "operationId": "LocalLlmProxy.listModels"
+      }
+    },
     "/api/llm-models": {
       "get": {
         "tags": [
@@ -4410,8 +4768,28 @@
           "LLM Models"
         ],
         "summary": "Delete an LLM model",
-        "description": "\n\n**Required Permission:** `llm_models::delete`\n\nDelete LLM models",
+        "description": "Query: delete_file (default true) controls on-disk file deletion. If delete_file=true and the file_path is outside <app_data>/models, pass force=true to override the safety net.",
         "operationId": "LlmModel.delete",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "delete_file",
+            "schema": {
+              "type": "boolean",
+              "default": true
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "force",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "style": "form"
+          }
+        ],
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -4438,6 +4816,9 @@
           },
           "204": {
             "description": "Model deleted successfully"
+          },
+          "400": {
+            "description": "delete_file refused without force"
           },
           "401": {
             "description": "Unauthorized"
@@ -4553,6 +4934,60 @@
           },
           "401": {
             "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Model not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/llm-models/{model_id}/validate": {
+      "post": {
+        "tags": [
+          "LLM Models"
+        ],
+        "summary": "Manually (re-)run model validation (Tier-3 local / remote API probe).",
+        "description": "\n\n**Required Permission:** `llm_models::edit`\n\nEdit existing LLM models",
+        "operationId": "LlmModel.validate",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit existing LLM models",
+                        "name": "LlmModelsEdit",
+                        "value": "llm_models::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_models::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": true
+              }
+            }
+          },
+          "202": {
+            "description": "Local validation queued"
           },
           "404": {
             "description": "Model not found"
@@ -9308,6 +9743,406 @@
         ]
       }
     },
+    "/api/code-sandbox/environments": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "List available sandbox environments",
+        "description": "Returns every rootfs flavor this server binary knows about, with description, approximate size, and whether the squashfs is currently cached locally. A `cached: false` flavor will trigger an auto-fetch on the first `execute_command` or `POST /prefetch` for that flavor.",
+        "operationId": "CodeSandbox.listEnvironments",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List available sandbox environments and watch prefetch progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/environments/{flavor}": {
+      "delete": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Evict a flavor's cached rootfs",
+        "description": "Unmounts the flavor's squashfuse (if mounted) and deletes its cached squashfs, freeing disk. Idempotent — a not-cached flavor is a no-op. The next `execute_command` for the flavor re-fetches automatically. Returns the refreshed environments list (the flavor's `cached` flips to false).",
+        "operationId": "CodeSandbox.evictEnvironment",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
+                        "name": "CodeSandboxEnvironmentsManage",
+                        "value": "code_sandbox::environments::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Unknown flavor"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/prefetch": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "List known prefetch tasks",
+        "description": "One entry per flavor; terminal-state entries persist until replaced by the next POST for the same flavor.",
+        "operationId": "CodeSandbox.listPrefetchTasks",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List available sandbox environments and watch prefetch progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListPrefetchTasksResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Start (or join) a rootfs prefetch task",
+        "description": "Idempotent: concurrent POSTs for the same flavor while a task is Running return the same task_id. The returned `events_url` is suitable for the frontend's EventSource. If the flavor is already cached, the returned status is `already_cached` and the task completes immediately.",
+        "operationId": "CodeSandbox.startPrefetch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartPrefetchBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
+                        "name": "CodeSandboxEnvironmentsManage",
+                        "value": "code_sandbox::environments::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartPrefetchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown flavor"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/prefetch/{flavor}/events": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Subscribe to prefetch progress via SSE",
+        "description": "Server-Sent Events stream of prefetch progress for the named flavor. The first event is always `connected`; the stream then replays any buffered `progress` events (so late subscribers catch up) and finally streams live events until the task reaches terminal state (`complete` or `failed`). Declaring the SSEPrefetchEvent enum as the 200 response is what surfaces the discriminated union in the generated TypeScript client.",
+        "operationId": "CodeSandbox.subscribePrefetchEvents",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List available sandbox environments and watch prefetch progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SSEPrefetchEvent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "No task for this flavor"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/resource-limits": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Read the singleton sandbox resource-limits configuration",
+        "description": "Returns the current memory / CPU / PID / prlimit / timeout caps that the sandbox runtime applies on every `execute_command`. Admin-only.",
+        "operationId": "CodeSandbox.getResourceLimits",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read the sandbox resource limits configuration.",
+                        "name": "CodeSandboxResourceLimitsRead",
+                        "value": "code_sandbox::resource_limits::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::resource_limits::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Update the singleton sandbox resource-limits configuration",
+        "description": "PATCH semantics: any field omitted from the body preserves its existing value. Validation rejects out-of-range values with 422; the new limits take effect on the very next `execute_command`.",
+        "operationId": "CodeSandbox.updateResourceLimits",
+        "requestBody": {
+          "description": "Admin PUT payload. All fields optional; absent fields preserve their\n existing value. Mirrors the `llm_provider` admin-update pattern.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCodeSandboxResourceLimits"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update the sandbox memory/CPU/PID caps + per-exec timeout + idle-evict policy.",
+                        "name": "CodeSandboxResourceLimitsManage",
+                        "value": "code_sandbox::resource_limits::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::resource_limits::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Value out of range"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/hub/models": {
       "get": {
         "tags": [
@@ -10095,406 +10930,6 @@
           },
           "401": {
             "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/environments": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "List available sandbox environments",
-        "description": "Returns every rootfs flavor this server binary knows about, with description, approximate size, and whether the squashfs is currently cached locally. A `cached: false` flavor will trigger an auto-fetch on the first `execute_command` or `POST /prefetch` for that flavor.",
-        "operationId": "CodeSandbox.listEnvironments",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "List available sandbox environments and watch prefetch progress.",
-                        "name": "CodeSandboxEnvironmentsRead",
-                        "value": "code_sandbox::environments::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EnvironmentsResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/environments/{flavor}": {
-      "delete": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Evict a flavor's cached rootfs",
-        "description": "Unmounts the flavor's squashfuse (if mounted) and deletes its cached squashfs, freeing disk. Idempotent — a not-cached flavor is a no-op. The next `execute_command` for the flavor re-fetches automatically. Returns the refreshed environments list (the flavor's `cached` flips to false).",
-        "operationId": "CodeSandbox.evictEnvironment",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
-                        "name": "CodeSandboxEnvironmentsManage",
-                        "value": "code_sandbox::environments::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EnvironmentsResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "404": {
-            "description": "Unknown flavor"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/prefetch": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "List known prefetch tasks",
-        "description": "One entry per flavor; terminal-state entries persist until replaced by the next POST for the same flavor.",
-        "operationId": "CodeSandbox.listPrefetchTasks",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "List available sandbox environments and watch prefetch progress.",
-                        "name": "CodeSandboxEnvironmentsRead",
-                        "value": "code_sandbox::environments::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ListPrefetchTasksResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "post": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Start (or join) a rootfs prefetch task",
-        "description": "Idempotent: concurrent POSTs for the same flavor while a task is Running return the same task_id. The returned `events_url` is suitable for the frontend's EventSource. If the flavor is already cached, the returned status is `already_cached` and the task completes immediately.",
-        "operationId": "CodeSandbox.startPrefetch",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/StartPrefetchBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
-                        "name": "CodeSandboxEnvironmentsManage",
-                        "value": "code_sandbox::environments::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StartPrefetchResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Unknown flavor"
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/prefetch/{flavor}/events": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Subscribe to prefetch progress via SSE",
-        "description": "Server-Sent Events stream of prefetch progress for the named flavor. The first event is always `connected`; the stream then replays any buffered `progress` events (so late subscribers catch up) and finally streams live events until the task reaches terminal state (`complete` or `failed`). Declaring the SSEPrefetchEvent enum as the 200 response is what surfaces the discriminated union in the generated TypeScript client.",
-        "operationId": "CodeSandbox.subscribePrefetchEvents",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "List available sandbox environments and watch prefetch progress.",
-                        "name": "CodeSandboxEnvironmentsRead",
-                        "value": "code_sandbox::environments::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SSEPrefetchEvent"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "404": {
-            "description": "No task for this flavor"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/resource-limits": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Read the singleton sandbox resource-limits configuration",
-        "description": "Returns the current memory / CPU / PID / prlimit / timeout caps that the sandbox runtime applies on every `execute_command`. Admin-only.",
-        "operationId": "CodeSandbox.getResourceLimits",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read the sandbox resource limits configuration.",
-                        "name": "CodeSandboxResourceLimitsRead",
-                        "value": "code_sandbox::resource_limits::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::resource_limits::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Update the singleton sandbox resource-limits configuration",
-        "description": "PATCH semantics: any field omitted from the body preserves its existing value. Validation rejects out-of-range values with 422; the new limits take effect on the very next `execute_command`.",
-        "operationId": "CodeSandbox.updateResourceLimits",
-        "requestBody": {
-          "description": "Admin PUT payload. All fields optional; absent fields preserve their\n existing value. Mirrors the `llm_provider` admin-update pattern.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateCodeSandboxResourceLimits"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update the sandbox memory/CPU/PID caps + per-exec timeout + idle-evict policy.",
-                        "name": "CodeSandboxResourceLimitsManage",
-                        "value": "code_sandbox::resource_limits::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::resource_limits::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "422": {
-            "description": "Value out of range"
           }
         },
         "security": [
@@ -11787,117 +12222,6 @@
           }
         }
       }
-    },
-    "/api/desktop/backend/status": {
-      "get": {
-        "tags": [
-          "desktop-backend"
-        ],
-        "description": "Get backend server status",
-        "operationId": "DesktopBackend.status",
-        "responses": {
-          "200": {
-            "description": "Backend status response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BackendStatusResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/desktop/settings": {
-      "get": {
-        "tags": [
-          "desktop-settings"
-        ],
-        "description": "Get all desktop settings",
-        "operationId": "DesktopSettings.getAll",
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AllSettingsResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/desktop/settings/{key}": {
-      "get": {
-        "tags": [
-          "desktop-settings"
-        ],
-        "description": "Get a specific desktop setting by key",
-        "operationId": "DesktopSettings.get",
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SettingResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "desktop-settings"
-        ],
-        "description": "Set a desktop setting value",
-        "operationId": "DesktopSettings.set",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetSettingRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuccessResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "desktop-settings"
-        ],
-        "description": "Delete a desktop setting",
-        "operationId": "DesktopSettings.delete",
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuccessResponse"
-                }
-              }
-            }
-          }
-        }
-      }
     }
   },
   "components": {
@@ -11910,20 +12234,6 @@
       }
     },
     "schemas": {
-      "AllSettingsResponse": {
-        "type": "object",
-        "properties": {
-          "settings": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/SettingItem"
-            }
-          }
-        },
-        "required": [
-          "settings"
-        ]
-      },
       "ApprovalMode": {
         "description": "Approval mode for conversation MCP settings",
         "oneOf": [
@@ -12225,26 +12535,6 @@
         "required": [
           "engine",
           "available_versions"
-        ]
-      },
-      "BackendStatusResponse": {
-        "description": "Backend status response",
-        "type": "object",
-        "properties": {
-          "ready": {
-            "type": "boolean"
-          },
-          "running": {
-            "type": "boolean"
-          },
-          "version": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "running",
-          "ready",
-          "version"
         ]
       },
       "BlobType": {
@@ -13204,6 +13494,78 @@
           "provider_type"
         ]
       },
+      "CreateLlmProviderResponse": {
+        "description": "Wrapped create response. For local providers, `plaintext_api_key`\n carries the auto-minted PROXY_TOKEN — shown ONCE on create (and\n on rotation). After this response, the value is only accessible\n via the existing \"show api_key\" admin action. For non-local\n providers `plaintext_api_key` is always None — admins typed their\n own key in, which the server just stored.",
+        "type": "object",
+        "properties": {
+          "api_key": {
+            "description": "API key for upstream provider — write-only.\n\n Deserialize unchanged so admins can POST/PUT the value; Serialize\n suppressed so GET /llm-providers and /llm-providers/{id} no longer\n return the secret. The previous behavior round-tripped the api_key\n to every user with `llm_providers::read` — closes\n 06-llm-provider F-01 (Critical). The deeper at-rest encryption\n (pgcrypto / SecretView) is the follow-up A5-full work.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "writeOnly": true
+          },
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "built_in": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "default_runtime_version_id": {
+            "description": "Default runtime version for local models in this provider",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "plaintext_api_key": {
+            "description": "Plaintext PROXY_TOKEN for newly-created local providers. None\n for any other provider_type.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider_type": {
+            "type": "string"
+          },
+          "proxy_settings": {
+            "$ref": "#/components/schemas/ProxySettings"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "provider_type",
+          "enabled",
+          "built_in",
+          "proxy_settings",
+          "created_at",
+          "updated_at"
+        ]
+      },
       "CreateLlmRepositoryRequest": {
         "type": "object",
         "properties": {
@@ -13549,6 +13911,20 @@
           "deleted"
         ]
       },
+      "DeleteModelQuery": {
+        "description": "Query options for `DELETE /api/llm-models/{id}`.\n\n `delete_file` (default `true`) controls whether the on-disk\n model directory is removed. The frontend pre-fills the\n confirmation checkbox based on whether the model's `file_path`\n is under the managed models directory; operator-managed paths\n (Path 3 pre-stage) default-uncheck.\n\n A safety net (`force`, default `false`) is required if\n `delete_file=true` AND the path resolves outside the managed\n `<app_data>/models/` directory — prevents an admin from\n accidentally clobbering an arbitrary host path.",
+        "type": "object",
+        "properties": {
+          "delete_file": {
+            "type": "boolean",
+            "default": true
+          },
+          "force": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
       "DeleteProviderResponse": {
         "type": "object",
         "properties": {
@@ -13637,6 +14013,91 @@
         "required": [
           "server_id",
           "tools"
+        ]
+      },
+      "DiscoverModelsResponse": {
+        "type": "object",
+        "properties": {
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiscoveredModel"
+            }
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "provider_type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider_type",
+          "models",
+          "notes"
+        ]
+      },
+      "DiscoveredModel": {
+        "type": "object",
+        "properties": {
+          "context_length": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "deprecated": {
+            "type": "boolean"
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "max_output_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "source": {
+            "description": "\"catalog\" | \"discovery\" | \"operator_override\"",
+            "type": "string"
+          },
+          "supports_chat": {
+            "type": "boolean"
+          },
+          "supports_embeddings": {
+            "type": "boolean"
+          },
+          "supports_tool_use": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "supports_vision": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "supports_chat",
+          "supports_embeddings",
+          "supports_vision",
+          "deprecated",
+          "source"
         ]
       },
       "DownloadFromRepositoryRequest": {
@@ -14574,6 +15035,34 @@
         },
         "required": [
           "providers"
+        ]
+      },
+      "GpuDetectionResponse": {
+        "type": "object",
+        "properties": {
+          "arch": {
+            "type": "string"
+          },
+          "available": {
+            "description": "All usable backends on this host. Always includes \"cpu\".",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "platform": {
+            "type": "string"
+          },
+          "recommended": {
+            "description": "Recommended backend (priority winner).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "available",
+          "recommended",
+          "platform",
+          "arch"
         ]
       },
       "Group": {
@@ -18785,6 +19274,59 @@
           "data"
         ]
       },
+      "RotateProxyTokenResponse": {
+        "description": "Response from `POST /llm-providers/{id}/rotate-proxy-token`.\n Carries the new plaintext token in the same shape as create.",
+        "type": "object",
+        "properties": {
+          "plaintext_api_key": {
+            "description": "New plaintext token. Caller should copy + store; only this\n response carries it.",
+            "type": "string"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/LlmProvider"
+          }
+        },
+        "required": [
+          "provider",
+          "plaintext_api_key"
+        ]
+      },
+      "RuntimeSettings": {
+        "type": "object",
+        "properties": {
+          "allow_unsigned_downloads": {
+            "type": "boolean"
+          },
+          "auto_start_timeout_secs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "drain_timeout_secs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "idle_unload_secs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "idle_unload_secs",
+          "auto_start_timeout_secs",
+          "drain_timeout_secs",
+          "allow_unsigned_downloads",
+          "created_at",
+          "updated_at"
+        ]
+      },
       "RuntimeVersionListResponse": {
         "description": "Response containing a list of runtime versions",
         "type": "object",
@@ -19436,6 +19978,64 @@
           }
         ]
       },
+      "SSELogEvent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "log": {
+                "$ref": "#/components/schemas/SSELogLineData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "log"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "lag": {
+                "$ref": "#/components/schemas/SSELogLagData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "lag"
+            ]
+          }
+        ]
+      },
+      "SSELogLagData": {
+        "description": "Emitted when the broadcast buffer overflowed and the subscriber\n missed lines (slow reader).",
+        "type": "object",
+        "properties": {
+          "dropped": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message",
+          "dropped"
+        ]
+      },
+      "SSELogLineData": {
+        "description": "A single captured engine log line.",
+        "type": "object",
+        "properties": {
+          "line": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "line"
+        ]
+      },
       "SSEPrefetchCompleteData": {
         "type": "object",
         "properties": {
@@ -19709,49 +20309,6 @@
           "client_secret"
         ]
       },
-      "SetSettingRequest": {
-        "type": "object",
-        "properties": {
-          "value": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "value"
-        ]
-      },
-      "SettingItem": {
-        "type": "object",
-        "properties": {
-          "key": {
-            "type": "string"
-          },
-          "value": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "key",
-          "value"
-        ]
-      },
-      "SettingResponse": {
-        "type": "object",
-        "properties": {
-          "key": {
-            "type": "string"
-          },
-          "value": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "key"
-        ]
-      },
       "SetupAdminRequest": {
         "type": "object",
         "properties": {
@@ -19849,21 +20406,6 @@
           }
         },
         "required": [
-          "message"
-        ]
-      },
-      "SuccessResponse": {
-        "type": "object",
-        "properties": {
-          "message": {
-            "type": "string"
-          },
-          "success": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "success",
           "message"
         ]
       },
@@ -20920,6 +21462,38 @@
             ],
             "maxLength": 255,
             "minLength": 1
+          }
+        }
+      },
+      "UpdateRuntimeSettingsRequest": {
+        "type": "object",
+        "properties": {
+          "allow_unsigned_downloads": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "auto_start_timeout_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "drain_timeout_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "idle_unload_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
           }
         }
       },

@@ -19,10 +19,27 @@ export interface RuntimeDownloadRequest {
   backend: string
 }
 
-// From backend - simplified response
+// One upstream release in the update-check diff (mirrors backend
+// AvailableVersion): what's installed + whether the binary is published
+// for this host.
+export interface RuntimeAvailableVersion {
+  version: string
+  installed: boolean
+  installed_backends: string[]
+  binary_ready: boolean
+  available_backends: string[]
+  // Suitable backend artifact for this host (GPU-version major match).
+  recommended_backend?: string
+  prerelease: boolean
+  published_at?: string
+}
+
+// From backend - releases diffed against installed, scoped to host platform/arch.
 export interface RuntimeUpdateCheckRaw {
   engine: string
-  available_versions: string[]
+  platform: string
+  arch: string
+  versions: RuntimeAvailableVersion[]
 }
 
 // Enhanced type with computed properties
@@ -33,9 +50,6 @@ export interface RuntimeUpdateCheck extends RuntimeUpdateCheckRaw {
 }
 
 export type RuntimeEngine = 'llamacpp' | 'mistralrs'
-export type RuntimePlatform = 'linux' | 'macos' | 'windows'
-export type RuntimeArch = 'x86_64' | 'aarch64'
-export type RuntimeBackend = 'cpu' | 'cuda' | 'metal'
 
 // Store type declarations
 import type { StoreProxy } from '@/core/stores'
@@ -43,6 +57,8 @@ import type { useRuntimeVersionStore } from './stores/RuntimeVersion.store'
 import type { useRuntimeUpdateStore } from './stores/RuntimeUpdate.store'
 import type { useRuntimeDownloadDrawerStore } from './stores/RuntimeDownloadDrawer.store'
 import type { useRuntimeDeleteConfirmStore } from './stores/RuntimeDeleteConfirm.store'
+import type { useRuntimeConfigStore } from './stores/RuntimeConfig.store'
+import type { useRuntimeModelUsageStore } from './stores/RuntimeModelUsage.store'
 
 declare module '@/core/stores' {
   interface RegisteredStores {
@@ -50,5 +66,7 @@ declare module '@/core/stores' {
     RuntimeUpdate: StoreProxy<ReturnType<typeof useRuntimeUpdateStore.getState>>
     RuntimeDownloadDrawer: StoreProxy<ReturnType<typeof useRuntimeDownloadDrawerStore.getState>>
     RuntimeDeleteConfirm: StoreProxy<ReturnType<typeof useRuntimeDeleteConfirmStore.getState>>
+    RuntimeConfig: StoreProxy<ReturnType<typeof useRuntimeConfigStore.getState>>
+    RuntimeModelUsage: StoreProxy<ReturnType<typeof useRuntimeModelUsageStore.getState>>
   }
 }

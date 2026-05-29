@@ -13,7 +13,6 @@
 //! and routes. No engine flag — provider type IS the engine.
 
 use ai_providers::{EmbeddingsRequest, Provider};
-use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::common::AppError;
@@ -59,10 +58,13 @@ pub async fn embed_batch(
         .map_err(AppError::database_error)?
         .ok_or_else(|| AppError::internal_error("Provider for embedding model not found"))?;
 
-    let vectors = match provider.provider_type.as_str() {
-        "local" => embed_local(&model, texts).await?,
-        _ => embed_remote(&provider, &model, texts).await?,
-    };
+    // P1.g: chat extensions no longer branch on "local" — the proxy
+    // architecture means a local provider's base_url + api_key are
+    // OpenAI-compatible (injected by the llm_provider repository at
+    // read time + minted on create). `embed_remote` works for both
+    // remote AND local providers; the local engine is reached via
+    // the proxy's `/v1/embeddings` endpoint with the PROXY_TOKEN.
+    let vectors = embed_remote(&provider, &model, texts).await?;
 
     // Capability-tag honesty (plan §11). The model row claimed
     // `text_embedding=true` but the engine returned something that
@@ -112,80 +114,11 @@ pub async fn embed_batch(
     Ok(vectors)
 }
 
-/// Local engine — POST to the running llama-server `/embedding` route.
-/// Expects the runtime to have started the model with `--embeddings`.
-async fn embed_local(
-    model: &crate::modules::llm_model::models::LlmModel,
-    texts: &[String],
-) -> Result<Vec<Vec<f32>>, AppError> {
-    let port = model.port.ok_or_else(|| {
-        AppError::internal_error(
-            "local embedding model has no port — instance not started (start the model from the LLM Models page)",
-        )
-    })?;
-
-    let api_key =
-        crate::modules::llm_local_runtime::deployment::local::get_instance_api_key(model.id);
-
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| AppError::internal_error(format!("reqwest build: {e}")))?;
-
-    let mut out = Vec::with_capacity(texts.len());
-    for text in texts {
-        let mut req = client
-            .post(format!("http://127.0.0.1:{port}/embedding"))
-            .json(&serde_json::json!({ "content": text }));
-        if let Some(ref k) = api_key {
-            req = req.bearer_auth(k);
-        }
-
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| AppError::internal_error(format!("llama-server /embedding: {e}")))?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(AppError::internal_error(format!(
-                "llama-server /embedding returned {status}: {body}"
-            ))
-            .into());
-        }
-
-        let body: LlamaEmbeddingResponse = resp
-            .json()
-            .await
-            .map_err(|e| AppError::internal_error(format!("parse embedding json: {e}")))?;
-
-        let vec = body
-            .embedding
-            .or_else(|| body.data.into_iter().next().and_then(|d| d.embedding))
-            .ok_or_else(|| {
-                AppError::internal_error("llama-server /embedding: no embedding in response")
-            })?;
-        out.push(vec);
-    }
-    Ok(out)
-}
-
-/// Llama-server `/embedding` response. Supports both the legacy
-/// `{"embedding": [...]}` shape and the OpenAI-compat `data` shape.
-#[derive(Debug, Deserialize)]
-struct LlamaEmbeddingResponse {
-    #[serde(default)]
-    embedding: Option<Vec<f32>>,
-    #[serde(default)]
-    data: Vec<LlamaEmbeddingData>,
-}
-
-#[derive(Debug, Deserialize)]
-struct LlamaEmbeddingData {
-    #[serde(default)]
-    embedding: Option<Vec<f32>>,
-}
+// P1.g: `embed_local` was the dedicated local-engine path that
+// bypassed the proxy. With the proxy architecture, local providers
+// behave exactly like any OpenAI-compat provider — the chat path
+// uses `embed_remote` for both. Removed; LlamaEmbeddingResponse +
+// LlamaEmbeddingData were only consumed here, also removed.
 
 /// Remote engine — delegate to the existing `AIProvider::embeddings`.
 async fn embed_remote(

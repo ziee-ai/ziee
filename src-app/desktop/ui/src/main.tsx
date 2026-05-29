@@ -2,7 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { App } from '@ziee/ui-core'
 import { loadDesktopModules } from '@ziee/desktop/modules/desktop-loader'
-import { installDecorumTitlebarFix } from '@/core/decorum-titlebar-fix'
+import { installDecorumTitlebarFix } from '@ziee/desktop/core/decorum-titlebar-fix'
 import '@/index.css'
 
 // Posthoc CSS patch for tauri-plugin-decorum's z:100 titlebar overlay

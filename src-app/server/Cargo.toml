@@ -52,6 +52,9 @@ mime_guess.workspace = true
 which.workspace = true
 include-flate.workspace = true
 tar.workspace = true
+# Engine-binary archive extraction (folded in from the llm-runtime crate's
+# binary downloader): tar.gz via flate2 + zip for the Windows path.
+flate2.workspace = true
 zstd.workspace = true
 lazy_static.workspace = true
 futures-util.workspace = true
@@ -59,7 +62,7 @@ futures.workspace = true
 # `json` (catch-all parser for SSE/REST) and `blocking` (used by the
 # embedded-postgres startup probe) are added on top of the workspace's
 # rustls-tls + charset + http2 baseline.
-reqwest = { workspace = true, features = ["json", "blocking"] }
+reqwest = { workspace = true, features = ["json", "blocking", "stream"] }
 
 # Server-specific deps (not shared, kept local)
 tower_governor = "0.7"
@@ -121,9 +124,6 @@ sigstore = { version = "0.13", default-features = false, features = ["bundle", "
 
 # AI providers (local package)
 ai-providers = { path = "./ai-providers" }
-
-# LLM runtime for local model deployment
-llm-runtime = { path = "../llm-runtime" }
 
 # MCP client
 rmcp = { version = "0.8", features = ["client", "transport-child-process"] }
@@ -191,6 +191,10 @@ zstd.workspace = true
 mockall.workspace = true
 tempfile.workspace = true
 serial_test.workspace = true
+# Test fixtures build a .tar.gz on the fly (MockReleaseServer packaging the
+# stub-engine as a release artifact). `tar`, `sha2`, `hex` are already in the
+# main [dependencies]; flate2 is only a build-dependency, so re-declare it here.
+flate2.workspace = true
 # Tests need `cookies` (browser-like session round-trips) on top of the
 # workspace baseline (rustls-tls + charset + http2) plus `json` +
 # `multipart` for request bodies.
