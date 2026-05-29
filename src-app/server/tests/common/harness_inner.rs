@@ -19,6 +19,69 @@ fn database_url() -> String {
         .unwrap_or_else(|_| "postgresql://postgres:password@127.0.0.1:54321/postgres".to_string())
 }
 
+/// (Windows) Ensure the LocalSystem code-sandbox helper service is installed
+/// before any sandbox-enabled test exercises the WSL2 backend. Runs once per
+/// test process.
+///
+/// Delegates to `ziee --install-sandbox-helper`, which is self-checking +
+/// self-elevating: it silently no-ops if the service is already registered,
+/// and only triggers a UAC prompt the first time it actually installs. That's
+/// the exact same code path the desktop app will call on launch, so the tests
+/// exercise it too.
+///
+///   - `ZIEE_WSL_VM_ID` set → dev/CI bypass; no service needed, skip entirely.
+///   - Otherwise → run the installer command; panic on failure (the sandbox
+///     tiers require the helper on Windows — there's no in-process fallback).
+///     In headless/CI runs UAC can't prompt, so set `ZIEE_WSL_VM_ID` there.
+#[cfg(windows)]
+fn ensure_sandbox_helper_for_tests() {
+    use std::sync::Once;
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        if env::var("ZIEE_WSL_VM_ID").is_ok() {
+            return;
+        }
+
+        // Integration-test bins live in `target/<profile>/deps/`; the built
+        // `ziee.exe` sits one level up in `target/<profile>/`.
+        let exe = env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().and_then(|d| d.parent()).map(|d| d.join("ziee.exe")))
+            .filter(|p| p.exists())
+            .expect(
+                "could not locate ziee.exe next to the test binary; \
+                 build it first (`cargo build -p ziee`) so the harness can \
+                 install the sandbox helper",
+            );
+
+        // The command self-checks (silent if already installed) and
+        // self-elevates (one UAC) only when it needs to install.
+        let status = Command::new(&exe)
+            .arg("--install-sandbox-helper")
+            .status();
+
+        match status {
+            Ok(s) if s.success() => {}
+            Ok(s) => panic!(
+                "`ziee --install-sandbox-helper` exited unsuccessfully ({s:?}). \
+                 Install it manually as Administrator, or set ZIEE_WSL_VM_ID."
+            ),
+            Err(e) => panic!(
+                "failed to run `ziee --install-sandbox-helper` ({e}). \
+                 Install it manually as Administrator, or set ZIEE_WSL_VM_ID."
+            ),
+        }
+
+        if !ziee::sandbox_helper_is_running() {
+            panic!(
+                "sandbox helper still not reachable after install. Check the \
+                 Windows Event Log, or run `ziee --install-sandbox-helper` \
+                 manually and confirm the 'Ziee Sandbox Helper' service is running."
+            );
+        }
+    });
+}
+
 pub struct TestServer {
     process: Child,
     pub base_url: String,
@@ -132,6 +195,16 @@ impl TestServer {
         ziee::init_storage_key(Some(
             "test-storage-key-for-pgcrypto-min-32-chars-long".to_string(),
         ));
+
+        // Windows: the WSL2 sandbox backend resolves the utility-VM id through
+        // the LocalSystem helper service. Auto-install it (elevated) the first
+        // time a sandbox-enabled test runs, so the tier6/tier8 suites "just
+        // run" without a manual admin step. No-op on a machine that already
+        // has it (or has ZIEE_WSL_VM_ID set).
+        #[cfg(windows)]
+        if opts.sandbox_enabled {
+            ensure_sandbox_helper_for_tests();
+        }
 
         // Generate unique identifiers
         let test_id = Uuid::new_v4().to_string();

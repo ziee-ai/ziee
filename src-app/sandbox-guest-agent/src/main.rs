@@ -214,8 +214,44 @@ fn init_mounts() {
     // writable /tmp so the seccomp BPF build (which uses `tempfile`) and any
     // other ephemeral guest work has somewhere to land.
     mount_fs("tmpfs", "/tmp", "tmpfs", 0, Some("size=16m,mode=1777"));
-    mount_fs(ROOTFS_DEVICE, ROOTFS_MOUNT, "squashfs", libc::MS_RDONLY, None);
-    mount_fs(WORKSPACE_TAG, WORKSPACE_MOUNT, "virtiofs", 0, None);
+
+    // The two backends differ in HOW the rootfs reaches the guest:
+    //
+    //   - libkrun (macOS): the host attaches the squashfs as a virtio-blk
+    //     disk at /dev/vda and shares the workspace over virtio-fs. We mount
+    //     both here, and bwrap (rootfs = /sandbox-rootfs) chroots into the
+    //     squashfs.
+    //
+    //   - WSL2 (Windows): there is no /dev/vda and no virtio-fs — the
+    //     `wsl --import`ed distro filesystem IS the rootfs, already at `/`.
+    //     bwrap still chroots into /sandbox-rootfs (shared argv), so we
+    //     recursively bind `/` there. Without this, /sandbox-rootfs is empty,
+    //     bwrap chroots into nothing, and any sandboxed exec (e.g. the python
+    //     MCP server) fails to start — surfacing on the host as
+    //     "connection closed: initialize response".
+    //
+    // Detect the backend by the presence of the libkrun rootfs disk.
+    if std::path::Path::new(ROOTFS_DEVICE).exists() {
+        mount_fs(ROOTFS_DEVICE, ROOTFS_MOUNT, "squashfs", libc::MS_RDONLY, None);
+        mount_fs(WORKSPACE_TAG, WORKSPACE_MOUNT, "virtiofs", 0, None);
+    } else {
+        // WSL2: the imported distro filesystem IS the rootfs, already at `/`.
+        //
+        // Do NOT bind `/` into `/sandbox-rootfs`. Binding the mount-namespace
+        // root — even NON-recursively — puts the namespace in a state where a
+        // subsequent `unshare(CLONE_NEWUSER)` fails with EPERM, so bwrap's
+        // `--unshare-user` (and thus every sandboxed exec) would break with
+        // "No permissions to creating new namespace". Verified empirically on
+        // the WSL2 kernel: `mount --bind / X` then `unshare --user` → EPERM.
+        //
+        // Instead the WSL2 backend points bwrap's rootfs directly at `/`
+        // (see `Wsl2Backend::ensure_rootfs_ready`), so bwrap binds the distro's
+        // real /usr, /etc, … into the sandbox. Here we only ensure /workspace
+        // exists (the host rsyncs into it and the bwrap argv binds it as
+        // /home/sandboxuser).
+        let _ = std::fs::create_dir_all(WORKSPACE_MOUNT);
+    }
+
     // Make /workspace world-writable so the sandboxed user (uid 1001
     // via --unshare-user in the bwrap argv) can create files inside
     // it. The virtio-fs share inherits its mode from the host dir,

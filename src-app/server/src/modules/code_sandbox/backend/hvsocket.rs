@@ -258,7 +258,7 @@ pub(crate) fn parse_wsl_vm_id_from_hcsdiag(text: &str) -> Option<GUID> {
 }
 
 /// Parse a GUID from either `aabbccdd-eeff-…` or `{aabbccdd-eeff-…}` form.
-fn parse_guid(s: &str) -> Result<GUID, String> {
+pub(crate) fn parse_guid(s: &str) -> Result<GUID, String> {
     let s = s.trim().trim_start_matches('{').trim_end_matches('}');
     let parts: Vec<&str> = s.split('-').collect();
     if parts.len() != 5 {
@@ -286,7 +286,7 @@ fn parse_guid(s: &str) -> Result<GUID, String> {
     Ok(GUID { data1, data2, data3, data4 })
 }
 
-fn fmt_guid(g: &GUID) -> String {
+pub(crate) fn fmt_guid(g: &GUID) -> String {
     format!(
         "{:08x}-{:04x}-{:04x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
         g.data1,

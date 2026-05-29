@@ -71,16 +71,50 @@ pub fn setup(
         println!("cargo:rerun-if-changed={}", workspace.join(src).display());
     }
 
-    // Cache hit: existing non-empty agent at the destination.
-    if agent_dest.exists()
+    // Cache hit ONLY when the embedded agent is at least as new as every one
+    // of its sources. The `cargo:rerun-if-changed` lines above re-run this
+    // build script when the agent source changes, but a plain
+    // "non-empty file exists" check would still early-return the STALE binary
+    // — freezing the embedded agent at whatever version first populated
+    // `agent_dest`. That bug shipped a pre-long-lived agent (no `StartProcess`
+    // / tag 6 support) into builds whose source already had it, so every
+    // long-lived/MCP sandbox call failed with "unknown frame tag 6". Compare
+    // mtimes and rebuild when any source is newer.
+    let agent_fresh = agent_dest.exists()
         && fs::metadata(&agent_dest).map(|m| m.len() > 0).unwrap_or(false)
-    {
+        && {
+            let dest_mtime = fs::metadata(&agent_dest).and_then(|m| m.modified()).ok();
+            let newest_src = [
+                "sandbox-guest-agent/src/main.rs",
+                "sandbox-guest-agent/Cargo.toml",
+                "sandbox-seccomp/src/lib.rs",
+                "sandbox-vm-protocol/src/lib.rs",
+            ]
+            .iter()
+            .filter_map(|s| {
+                fs::metadata(workspace.join(s)).and_then(|m| m.modified()).ok()
+            })
+            .max();
+            match (dest_mtime, newest_src) {
+                // Embedded agent is newer than (or equal to) every source.
+                (Some(dest), Some(src)) => dest >= src,
+                // Can't determine mtimes → rebuild to be safe.
+                _ => false,
+            }
+        };
+    if agent_fresh {
         println!(
-            "wsl2-agent: agent already at {} ({} bytes); skipping rebuild",
+            "wsl2-agent: agent at {} ({} bytes) is newer than its sources; skipping rebuild",
             agent_dest.display(),
             fs::metadata(&agent_dest)?.len()
         );
         return Ok(());
+    }
+    if agent_dest.exists() {
+        println!(
+            "wsl2-agent: embedded agent is stale relative to sources; \
+             rebuilding (this is the fix for the 'unknown frame tag 6' bug)"
+        );
     }
 
     println!("wsl2-agent: cross-compiling sandbox-guest-agent for x86_64-unknown-linux-musl via {RUST_MUSL_IMAGE}");
