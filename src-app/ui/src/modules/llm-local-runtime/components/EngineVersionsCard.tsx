@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import {
   App,
   Button,
@@ -9,6 +9,7 @@ import {
   Space,
   Spin,
   Tag,
+  theme,
   Typography,
 } from 'antd'
 import { DownloadOutlined, ReloadOutlined } from '@ant-design/icons'
@@ -144,12 +145,9 @@ export function EngineVersionsCard({ engine }: { engine: RuntimeEngine }) {
               {engineVersions.map((v, i) => (
                 <Fragment key={v.id}>
                   {i > 0 && <Divider className="!my-2" />}
-                  {/* Negative inset + padding so the hover background
-                      visually extends past the row content to the
-                      Card body's inner padding edge. */}
-                  <div className="rounded -mx-2 px-2 -my-1 py-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5">
+                  <HoverRow>
                     <RuntimeVersionCard version={v} />
-                  </div>
+                  </HoverRow>
                 </Fragment>
               ))}
             </Flex>
@@ -289,7 +287,7 @@ function BackendsRow({
         {gpu.available.map(b => (
           <Tag
             key={b}
-            bordered
+            variant="filled"
             color={b === gpu.recommended ? 'green' : 'default'}
           >
             {BACKEND_LABEL[b] ?? b}
@@ -318,13 +316,13 @@ function AvailableVersionRow({
   onDownload: () => void
 }) {
   return (
-    <div className="rounded -mx-2 px-2 -my-1 py-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5">
+    <HoverRow>
       <Flex justify="space-between" align="center" gap="small" wrap>
         <Space wrap>
           <Text strong>{v.version}</Text>
-          {isLatest && <Tag color="blue" bordered>latest</Tag>}
-          {v.installed && <Tag color="green" bordered>installed</Tag>}
-          {v.prerelease && <Tag bordered>prerelease</Tag>}
+          {isLatest && <Tag color="blue" variant="filled">latest</Tag>}
+          {v.installed && <Tag color="green" variant="filled">installed</Tag>}
+          {v.prerelease && <Tag variant="filled">prerelease</Tag>}
         </Space>
         <Can permission={Permissions.RuntimeVersionCreate}>
           <Button
@@ -338,6 +336,33 @@ function AvailableVersionRow({
           </Button>
         </Can>
       </Flex>
+    </HoverRow>
+  )
+}
+
+/**
+ * Subtle hover background for list rows, themed via antd's design
+ * tokens (matches the AssistantMenuItem / FileAttachMenuItem pattern
+ * the chat module uses). `colorFillTertiary` is the right step for a
+ * row hover — slightly more present than Quaternary, less than
+ * Secondary (which the codebase reserves for menu items). The negative
+ * inset + padding lets the highlight visually extend to the Card
+ * body's inner padding edge.
+ */
+function HoverRow({ children }: { children: ReactNode }) {
+  const { token } = theme.useToken()
+  return (
+    <div
+      className="rounded -mx-2 px-2 -my-1 py-1"
+      style={{ transition: `background-color ${token.motionDurationMid}` }}
+      onMouseEnter={e => {
+        e.currentTarget.style.backgroundColor = token.colorFillTertiary
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.backgroundColor = 'transparent'
+      }}
+    >
+      {children}
     </div>
   )
 }
