@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { App, Badge, Button, Checkbox, Descriptions, Flex, Popconfirm, Space, Tag, Typography } from 'antd'
+import { App, Badge, Button, Checkbox, Descriptions, Flex, Popconfirm, Space, Tag, Tooltip, Typography } from 'antd'
 import {
   CheckCircleOutlined,
   DeleteOutlined,
@@ -84,13 +84,16 @@ export function RuntimeVersionCard({ version }: Props) {
 
       <Space>
         {canUpdate && !version.is_system_default && (
-          <Button
-            icon={<StarOutlined />}
-            loading={isSettingDefault}
-            onClick={handleSetDefault}
-          >
-            Set as Default
-          </Button>
+          <Tooltip title="Make this version the default for new sessions">
+            <Button
+              icon={<StarOutlined />}
+              loading={isSettingDefault}
+              onClick={handleSetDefault}
+              aria-label={`Set version ${version.version} as default`}
+            >
+              Set as Default
+            </Button>
+          </Tooltip>
         )}
 
         {canDelete && (
@@ -122,6 +125,7 @@ export function RuntimeVersionCard({ version }: Props) {
               danger
               icon={<DeleteOutlined />}
               loading={isDeleting}
+              aria-label={`Delete version ${version.version}`}
             >
               Delete
             </Button>

@@ -10,6 +10,7 @@ import {
   Select,
   Space,
   Tag,
+  Tooltip,
   Typography
 } from 'antd'
 import {
@@ -171,16 +172,25 @@ function ModelRow({
         <Space>
           {canManage && (
             <>
-              <Select
-                className="min-w-[180px]"
-                value={versionId}
-                options={versionOptions}
-                loading={busy}
-                disabled={busy || versionOptions.length < 2}
-                onChange={vid =>
-                  Stores.RuntimeModelUsage.swapVersion(engine, model.id, vid).catch(() => {})
+              <Tooltip
+                title={
+                  versionOptions.length < 2
+                    ? 'Only one engine version installed — download another to swap'
+                    : 'Swap this model to a different engine version'
                 }
-              />
+              >
+                <Select
+                  className="min-w-[180px]"
+                  value={versionId}
+                  options={versionOptions}
+                  loading={busy}
+                  disabled={busy || versionOptions.length < 2}
+                  onChange={vid =>
+                    Stores.RuntimeModelUsage.swapVersion(engine, model.id, vid).catch(() => {})
+                  }
+                  aria-label={`Engine version for ${model.display_name}`}
+                />
+              </Tooltip>
               {model.running ? (
                 <>
                   <Button
@@ -221,6 +231,12 @@ function ModelRow({
               type="text"
               icon={expanded ? <UpOutlined /> : <DownOutlined />}
               onClick={() => setExpanded(e => !e)}
+              aria-label={
+                expanded
+                  ? `Hide logs for ${model.display_name}`
+                  : `Show logs for ${model.display_name}`
+              }
+              aria-expanded={expanded}
             >
               Logs
             </Button>
