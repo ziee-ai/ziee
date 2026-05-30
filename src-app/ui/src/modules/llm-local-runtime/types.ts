@@ -30,6 +30,10 @@ export interface RuntimeAvailableVersion {
   available_backends: string[]
   // Suitable backend artifact for this host (GPU-version major match).
   recommended_backend?: string
+  // Byte size of the asset the Install button would fetch
+  // (recommended backend when set, else the first published
+  // backend). Undefined when no asset matches this host.
+  size_bytes?: number
   prerelease: boolean
   published_at?: string
 }

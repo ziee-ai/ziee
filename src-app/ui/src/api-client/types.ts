@@ -90,6 +90,7 @@ export interface AvailableVersion {
   prerelease: boolean
   published_at?: string
   recommended_backend?: string
+  size_bytes?: number
   version: string
 }
 

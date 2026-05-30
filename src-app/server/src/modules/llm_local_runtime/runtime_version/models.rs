@@ -160,6 +160,13 @@ pub struct AvailableVersion {
     /// GPU/driver versions (the suitable major-version match), if any.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recommended_backend: Option<String>,
+    /// Byte size of the archive the inline Install button would
+    /// fetch (recommended backend when set, else the first
+    /// published backend). `None` when no asset matches this host
+    /// or GitHub omitted the size — UI hides the size label in
+    /// that case.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
     /// GitHub prerelease flag.
     pub prerelease: bool,
     /// ISO-8601 publish timestamp, if present.

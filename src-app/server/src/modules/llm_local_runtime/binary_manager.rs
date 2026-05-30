@@ -9,7 +9,9 @@
 use sqlx::PgPool;
 use crate::modules::llm_local_runtime::runtime_version::repository as version_repo;
 use crate::modules::llm_local_runtime::runtime_version::models::{AvailableVersion, RuntimeVersion};
-use crate::modules::llm_local_runtime::engine::{available_backends, BinaryDownloader, EngineType};
+use crate::modules::llm_local_runtime::engine::{
+    asset_size_for_backend, available_backends, BinaryDownloader, EngineType,
+};
 use std::path::PathBuf;
 use uuid::Uuid;
 
@@ -291,7 +293,7 @@ impl BinaryManager {
             .into_iter()
             .filter(|r| !r.draft)
             .map(|r| {
-                let avail = available_backends(engine_type, platform, arch, &r.asset_names);
+                let avail = available_backends(engine_type, platform, arch, &r.assets);
                 let installed_backends: Vec<String> = installed
                     .iter()
                     .filter(|v| {
@@ -301,6 +303,22 @@ impl BinaryManager {
                     .collect();
                 let recommended_backend =
                     crate::modules::llm_local_runtime::utils::gpu_detect::recommend_backend(&avail);
+                // Size of the asset the inline Install button would
+                // actually fetch: the recommended backend when known,
+                // else the first published backend (matches the
+                // fallback in the UI's `handleDownload`).
+                let size_bytes = recommended_backend
+                    .as_deref()
+                    .or_else(|| avail.first().map(|s| s.as_str()))
+                    .and_then(|backend| {
+                        asset_size_for_backend(
+                            engine_type,
+                            platform,
+                            arch,
+                            backend,
+                            &r.assets,
+                        )
+                    });
                 AvailableVersion {
                     version: r.version,
                     installed: !installed_backends.is_empty(),
@@ -308,6 +326,7 @@ impl BinaryManager {
                     binary_ready: !avail.is_empty(),
                     available_backends: avail,
                     recommended_backend,
+                    size_bytes,
                     prerelease: r.prerelease,
                     published_at: r.published_at,
                 }

@@ -331,6 +331,11 @@ function AvailableVersionRow({
             {isLatest && <Tag color="blue" variant="filled">latest</Tag>}
             {v.installed && <Tag color="green" variant="filled">installed</Tag>}
             {v.prerelease && <Tag variant="filled">prerelease</Tag>}
+            {v.size_bytes != null && !v.installed && (
+              <Text type="secondary" className="text-xs">
+                {formatBytes(v.size_bytes)}
+              </Text>
+            )}
           </Space>
           <Can permission={Permissions.RuntimeVersionCreate}>
             <Button
@@ -338,13 +343,13 @@ function AvailableVersionRow({
               loading={inProgress}
               disabled={v.installed || inProgress}
               onClick={onDownload}
-              aria-label={`Download ${v.version}`}
+              aria-label={`Install ${v.version}`}
             >
               {v.installed
                 ? 'Installed'
                 : inProgress
-                ? 'Downloading…'
-                : 'Download'}
+                ? 'Installing…'
+                : 'Install'}
             </Button>
           </Can>
         </Flex>

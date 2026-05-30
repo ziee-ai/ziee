@@ -107,19 +107,44 @@ fn asset_backend(engine: EngineType, platform: &str, arch: &str, asset: &str) ->
         .map(|s| s.to_string())
 }
 
-/// Backends published for (engine, platform, arch) given a release's asset
-/// names. Empty ⇒ the release exists but its binary for this host is not
-/// (yet) uploaded — the build-pending case.
+/// One release asset, reduced to what update-checking needs:
+/// the filename + GitHub's reported byte size (so the UI can render
+/// the download size up-front and the user can make an informed
+/// pick when CPU vs CUDA builds are very different).
+#[derive(Debug, Clone)]
+pub struct AssetInfo {
+    pub name: String,
+    pub size_bytes: u64,
+}
+
+/// Backends published for (engine, platform, arch) given a release's
+/// assets. Empty ⇒ the release exists but its binary for this host
+/// is not (yet) uploaded — the build-pending case.
 pub fn available_backends(
     engine: EngineType,
     platform: &str,
     arch: &str,
-    asset_names: &[String],
+    assets: &[AssetInfo],
 ) -> Vec<String> {
-    asset_names
+    assets
         .iter()
-        .filter_map(|a| asset_backend(engine, platform, arch, a))
+        .filter_map(|a| asset_backend(engine, platform, arch, &a.name))
         .collect()
+}
+
+/// The byte size of the host-matching binary archive for a specific
+/// backend. Returns `None` when no asset matches (build-pending
+/// case) or when GitHub omitted the `size` field (which it never
+/// does in practice for published assets).
+pub fn asset_size_for_backend(
+    engine: EngineType,
+    platform: &str,
+    arch: &str,
+    backend: &str,
+    assets: &[AssetInfo],
+) -> Option<u64> {
+    let target = archive_name(engine, platform, arch, backend);
+    assets.iter().find(|a| a.name == target).map(|a| a.size_bytes)
 }
 
 /// One upstream release, reduced to what update-checking needs.
@@ -133,8 +158,8 @@ pub struct ReleaseInfo {
     pub prerelease: bool,
     /// ISO-8601 publish timestamp, if present.
     pub published_at: Option<String>,
-    /// All asset filenames attached to the release.
-    pub asset_names: Vec<String>,
+    /// All assets attached to the release (filename + byte size).
+    pub assets: Vec<AssetInfo>,
 }
 
 /// GitHub binary downloader
@@ -436,12 +461,19 @@ impl BinaryDownloader {
             .iter()
             .filter_map(|r| {
                 let version = r["tag_name"].as_str()?.to_string();
-                let asset_names = r["assets"]
+                // GitHub returns `assets[].size` as an integer (bytes).
+                // We thread it through to the UI so the download row
+                // can show "12.3 MB" before the user clicks Download.
+                let assets = r["assets"]
                     .as_array()
                     .map(|assets| {
                         assets
                             .iter()
-                            .filter_map(|a| a["name"].as_str().map(String::from))
+                            .filter_map(|a| {
+                                let name = a["name"].as_str()?.to_string();
+                                let size_bytes = a["size"].as_u64().unwrap_or(0);
+                                Some(AssetInfo { name, size_bytes })
+                            })
                             .collect()
                     })
                     .unwrap_or_default();
@@ -450,7 +482,7 @@ impl BinaryDownloader {
                     draft: r["draft"].as_bool().unwrap_or(false),
                     prerelease: r["prerelease"].as_bool().unwrap_or(false),
                     published_at: r["published_at"].as_str().map(String::from),
-                    asset_names,
+                    assets,
                 })
             })
             .collect())

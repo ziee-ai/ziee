@@ -12868,6 +12868,15 @@
               "null"
             ]
           },
+          "size_bytes": {
+            "description": "Byte size of the archive the inline Install button would\n fetch (recommended backend when set, else the first\n published backend). `None` when no asset matches this host\n or GitHub omitted the size — UI hides the size label in\n that case.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
           "version": {
             "description": "Release tag (e.g. `v0.0.1-alpha`).",
             "type": "string"
