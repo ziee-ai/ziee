@@ -2,6 +2,14 @@
 // Hub Module Tests with Permission Checks and Locale Support
 // ============================================================================
 
+// Phase 1 — unified catalog endpoints (GET /hub/{index,version,manifest},
+// POST /hub/refresh, GET /hub/updates). Kept in a separate file because
+// the legacy suite below is large and locale-focused.
+mod catalog_v1;
+// Hermetic catalog tests (mock release server, no network/cosign).
+mod catalog_hermetic;
+mod mock_release_server;
+
 // ============================================================================
 // Hub Models Tests
 // ============================================================================
@@ -59,7 +67,12 @@ async fn test_get_hub_models_requires_permission() {
     );
 }
 
+// Locale tests are deprecated by the unified catalog: the new hub ships
+// English-only (Phase 1 plan). Localization (per-language manifest
+// overrides) is deferred — until it returns, these tests would fail
+// against the seed catalog where every description is English.
 #[tokio::test]
+#[ignore = "locale support deferred — new catalog is English-only at v1"]
 async fn test_get_hub_models_with_locale() {
     let server = crate::common::TestServer::start().await;
     let user = crate::common::test_helpers::create_user_with_permissions(
