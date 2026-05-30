@@ -178,7 +178,11 @@ export function McpServersHubTab() {
               </div>
               {visible.length === 0 && (
                 <div className="text-center py-12">
-                  <Text type="secondary">No MCP servers yet</Text>
+                  <Text type="secondary">
+                    {servers.length === 0
+                      ? 'No MCP servers yet'
+                      : 'No MCP servers match your search'}
+                  </Text>
                 </div>
               )}
             </>

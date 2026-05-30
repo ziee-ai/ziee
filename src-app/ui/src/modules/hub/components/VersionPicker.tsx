@@ -103,6 +103,7 @@ export function VersionPicker() {
         size="small"
         loading={activating}
         aria-label="Select hub catalog version"
+        data-testid="hub-version-picker"
       >
         <Tag className="!m-0">v{hubVersion ?? '…'}</Tag>
         <DownOutlined />

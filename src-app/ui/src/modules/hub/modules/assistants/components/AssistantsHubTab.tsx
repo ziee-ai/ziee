@@ -179,7 +179,11 @@ export function AssistantsHubTab() {
               </div>
               {visible.length === 0 && (
                 <div className="text-center py-12">
-                  <Text type="secondary">No assistants yet</Text>
+                  <Text type="secondary">
+                    {assistants.length === 0
+                      ? 'No assistants yet'
+                      : 'No assistants match your search'}
+                  </Text>
                 </div>
               )}
             </>

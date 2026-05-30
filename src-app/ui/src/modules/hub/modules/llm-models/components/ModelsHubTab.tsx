@@ -183,7 +183,11 @@ export function ModelsHubTab() {
               </div>
               {visibleModels.length === 0 && (
                 <div className="text-center py-12">
-                  <Text type="secondary">No models yet</Text>
+                  <Text type="secondary">
+                    {models.length === 0
+                      ? 'No models yet'
+                      : 'No models match your search'}
+                  </Text>
                 </div>
               )}
             </>

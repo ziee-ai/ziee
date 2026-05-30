@@ -187,23 +187,27 @@ export function HubPage() {
           )}
 
           <Flex align="center" gap={8}>
-            {!windowMinSize.xs &&
-              (canRefresh ? (
-                // Admins get the version picker (list + activate).
-                <VersionPicker />
-              ) : (
-                hubVersion && (
-                  <Tooltip
-                    title={
-                      serverVersion
-                        ? `Server v${serverVersion} — installed catalog from ziee-ai/hub`
-                        : 'Installed catalog from ziee-ai/hub'
-                    }
-                  >
-                    <Tag>v{hubVersion}</Tag>
-                  </Tooltip>
-                )
-              ))}
+            {/* Version indicator. Gated only on permission (NOT on the
+                xs breakpoint) — the breakpoint flips while the layout
+                settles on first load, and conditionally mounting the
+                picker on it caused the store-subscribed VersionPicker to
+                churn mount/unmount and intermittently fail to render. */}
+            {canRefresh ? (
+              // Admins get the version picker (list + activate).
+              <VersionPicker />
+            ) : (
+              hubVersion && (
+                <Tooltip
+                  title={
+                    serverVersion
+                      ? `Server v${serverVersion} — installed catalog from ziee-ai/hub`
+                      : 'Installed catalog from ziee-ai/hub'
+                  }
+                >
+                  <Tag>v{hubVersion}</Tag>
+                </Tooltip>
+              )
+            )}
             {canRefresh && (
               <Button
                 icon={<ReloadOutlined />}

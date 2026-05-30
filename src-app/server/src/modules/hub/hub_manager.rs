@@ -77,6 +77,23 @@ fn hub_download_base() -> String {
     "https://github.com".to_string()
 }
 
+/// On-disk root of the hub catalog (`current/`, `.staging/`,
+/// `.previous/`). Debug builds honor `ZIEE_HUB_DATA_DIR_OVERRIDE` so
+/// the integration suite can give each test an isolated catalog dir —
+/// the catalog is per-deployment global mutable state, so without
+/// isolation a mutating test (refresh/activate) contaminates every
+/// other test sharing the same app_data dir. Always `app_data/hub` in
+/// release.
+fn hub_root_for(app_data: &Path) -> PathBuf {
+    if cfg!(debug_assertions)
+        && let Ok(d) = std::env::var("ZIEE_HUB_DATA_DIR_OVERRIDE")
+        && !d.is_empty()
+    {
+        return PathBuf::from(d);
+    }
+    app_data.join("hub")
+}
+
 /// When set in a debug build, the cosign keyless verification step is
 /// skipped (the mock release server can't mint a real Sigstore bundle).
 /// Always false in release — there is no way to disable cosign in a
@@ -260,7 +277,7 @@ impl HubManager {
     }
 
     fn hub_root(&self) -> PathBuf {
-        self.app_data_dir.join("hub")
+        hub_root_for(&self.app_data_dir)
     }
 
     fn current_dir(&self) -> PathBuf {
@@ -658,7 +675,8 @@ fn refresh_blocking(app_data: &Path, target: Option<String>) -> Result<BlockingO
         None => resolve_latest_release(&client)?.tag_name,
     };
 
-    let staging = app_data.join("hub").join(".staging");
+    let hub_root = hub_root_for(app_data);
+    let staging = hub_root.join(".staging");
     if staging.exists() {
         let _ = fs::remove_dir_all(&staging);
     }
@@ -782,8 +800,8 @@ fn refresh_blocking(app_data: &Path, target: Option<String>) -> Result<BlockingO
     })?;
 
     // Atomically rotate current/.
-    let current = app_data.join("hub").join("current");
-    let backup = app_data.join("hub").join(".previous");
+    let current = hub_root.join("current");
+    let backup = hub_root.join(".previous");
     if backup.exists() {
         let _ = fs::remove_dir_all(&backup);
     }

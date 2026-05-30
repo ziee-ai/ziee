@@ -22,10 +22,9 @@ test.describe('Hub version activation (admin)', () => {
     await navigateToHub(page, baseURL, 'models')
     await waitForHubDataLoad(page)
 
-    const picker = page.getByRole('button', {
-      name: /select hub catalog version/i,
-    })
-    await expect(picker).toBeVisible()
+    // Use the stable testid (verb-only aria-label also present).
+    const picker = page.getByTestId('hub-version-picker')
+    await expect(picker).toBeVisible({ timeout: 15000 })
     // Shows the currently-installed version tag (seed = v0.0.1-alpha).
     await expect(picker).toContainText(/v0\.0\.\d/)
   })

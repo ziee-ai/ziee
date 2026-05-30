@@ -100,6 +100,12 @@ pub struct TestServer {
     /// TestServer's lifetime; dropped (which deletes the tree) when
     /// the test ends. Unset on Linux.
     _sandbox_cache_tempdir: Option<std::sync::Arc<tempfile::TempDir>>,
+    /// Per-test isolated hub-catalog dir (ZIEE_HUB_DATA_DIR_OVERRIDE).
+    /// The hub catalog (`current/`) is per-deployment global mutable
+    /// state; without a fresh dir per test, a refresh/activate in one
+    /// test contaminates the seed every other test reads. Dropped (tree
+    /// deleted) at test end.
+    _hub_tempdir: tempfile::TempDir,
 }
 
 /// Repo-relative shared cache dir for tests. The test harness injects
@@ -421,11 +427,20 @@ secrets:
                 .unwrap_or_else(|| manifest.join("target/debug").join(&exe_name))
         };
 
+        // Isolate the hub catalog dir per test. The hub catalog
+        // (`<app_data>/hub/current/`) is durable global state shared
+        // across the run's shared app_data dir; a refresh/activate in
+        // one test would otherwise rotate it and break every other
+        // test that reads the seed. ZIEE_HUB_DATA_DIR_OVERRIDE is
+        // debug-gated (compiled out of release). Held until Drop.
+        let hub_tempdir = tempfile::tempdir().expect("create per-test hub dir");
+
         let mut cmd = Command::new(&binary_path);
         cmd.arg("--config-file").arg(&temp_config_path);
         if opts.use_desktop_binary {
             cmd.arg("--headless");
         }
+        cmd.env("ZIEE_HUB_DATA_DIR_OVERRIDE", hub_tempdir.path());
         for (k, v) in &opts.extra_env {
             cmd.env(k, v);
         }
@@ -475,6 +490,7 @@ secrets:
             _workspace_tempdir: workspace_tempdir,
             workspace_root: workspace_root_path,
             _sandbox_cache_tempdir: opts.sandbox_cache_tempdir.clone(),
+            _hub_tempdir: hub_tempdir,
         }
     }
 

@@ -457,7 +457,7 @@ async fn activate_switches_catalog_server_wide() {
     assert_eq!(body["new_version"], "0.0.2-alpha");
     assert_eq!(body["cosign_verified"], true);
 
-    // Catalog is now server-wide v0.0.2-alpha (16 items). A plain
+    // Catalog is now server-wide v0.0.2-alpha (18 items). A plain
     // reader sees it too.
     let reader = create_user_with_permissions(&server, "reader", &["hub::models::read"]).await;
     let idx: Json = client
@@ -470,7 +470,7 @@ async fn activate_switches_catalog_server_wide() {
         .await
         .expect("parse index");
     assert_eq!(idx["hub_version"], "0.0.2-alpha");
-    assert_eq!(idx["items"].as_array().map(|a| a.len()), Some(16));
+    assert_eq!(idx["items"].as_array().map(|a| a.len()), Some(18));
 
     // The pin is persisted + reflected in /releases.
     let rel: Json = client

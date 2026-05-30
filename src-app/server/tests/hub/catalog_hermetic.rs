@@ -47,7 +47,12 @@ async fn activate_then_switch_versions_against_mock() {
         ..Default::default()
     })
     .await;
-    let admin = create_user_with_permissions(&server, "admin", &["hub::catalog::read", "hub::catalog::manage"]).await;
+    let admin = create_user_with_permissions(
+        &server,
+        "admin",
+        &["hub::catalog::read", "hub::catalog::manage", "hub::models::read"],
+    )
+    .await;
     let client = reqwest::Client::new();
 
     // Activate the older mock version (2 items).
