@@ -1,6 +1,8 @@
 import React from 'react'
-import { Button, Card, Empty, Spin, Space, Divider, message } from 'antd'
+import { Button, Card, Empty, Spin, Space, Divider, Typography, message } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
+
+const { Text } = Typography
 import { Stores } from '@/core/stores'
 import { Can, usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -29,7 +31,7 @@ export function RuntimeVersionList({ engine }: Props) {
   if (loading && !versions.length) {
     return (
       <Card>
-        <Spin description="Loading versions..." />
+        <Spin />
       </Card>
     )
   }
@@ -60,9 +62,7 @@ export function RuntimeVersionList({ engine }: Props) {
       title={
         <Space>
           <span>Installed Versions</span>
-          <span style={{ color: '#999', fontWeight: 'normal' }}>
-            ({engineVersions.length})
-          </span>
+          <Text type="secondary">({engineVersions.length})</Text>
         </Space>
       }
       extra={

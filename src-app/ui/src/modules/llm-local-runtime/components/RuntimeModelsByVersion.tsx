@@ -61,7 +61,6 @@ export function RuntimeModelsByVersion({ engine }: Props) {
 
   return (
     <Card
-      size="small"
       title="Models by engine version"
       extra={
         <Button
@@ -74,11 +73,11 @@ export function RuntimeModelsByVersion({ engine }: Props) {
       }
     >
       {!data || (data.versions.length === 0 && data.unresolved.length === 0) ? (
-        <Empty description="No installed versions yet" />
+        <Empty description="No installed versions yet" image={Empty.PRESENTED_IMAGE_SIMPLE} />
       ) : (
         <Flex vertical gap="middle">
-          {data.versions.map(entry => (
-            <div key={entry.version.id}>
+          {data.versions.map((entry, idx) => (
+            <Flex vertical gap="small" key={entry.version.id}>
               <Space>
                 <Typography.Text strong>{entry.version.version}</Typography.Text>
                 <Tag>{entry.version.backend}</Tag>
@@ -91,10 +90,10 @@ export function RuntimeModelsByVersion({ engine }: Props) {
               </Space>
 
               {entry.models.length > 0 && (
-                <div style={{ marginTop: 8 }}>
+                <Flex vertical gap="small">
                   {groupByProvider(entry.models).map(group => (
-                    <div key={group.providerId} style={{ marginBottom: 8 }}>
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    <Flex vertical gap="small" key={group.providerId}>
+                      <Typography.Text type="secondary">
                         {group.providerName}
                       </Typography.Text>
                       {group.models.map(m => (
@@ -108,25 +107,25 @@ export function RuntimeModelsByVersion({ engine }: Props) {
                           canViewLogs={canViewLogs}
                         />
                       ))}
-                    </div>
+                    </Flex>
                   ))}
-                </div>
+                </Flex>
               )}
-              <Divider style={{ margin: '8px 0 0' }} />
-            </div>
+              {idx < data.versions.length - 1 && <Divider className="!my-0" />}
+            </Flex>
           ))}
 
           {data.unresolved.length > 0 && (
-            <div>
+            <Flex vertical gap="small">
               <Typography.Text type="warning">
                 No installed version resolves for these models:
               </Typography.Text>
-              <div style={{ marginTop: 4 }}>
+              <div>
                 {data.unresolved.map(m => (
                   <Tag key={m.id}>{m.display_name}</Tag>
                 ))}
               </div>
-            </div>
+            </Flex>
           )}
         </Flex>
       )}
@@ -162,7 +161,7 @@ function ModelRow({
   }, [expanded, model.running, model.id])
 
   return (
-    <div style={{ padding: '4px 0' }}>
+    <Flex vertical gap="small" className="py-1">
       <Flex align="center" justify="space-between" gap="small">
         <Space>
           <Badge status={model.running ? 'processing' : 'default'} />
@@ -173,8 +172,7 @@ function ModelRow({
           {canManage && (
             <>
               <Select
-                size="small"
-                style={{ minWidth: 180 }}
+                className="min-w-[180px]"
                 value={versionId}
                 options={versionOptions}
                 loading={busy}
@@ -186,7 +184,6 @@ function ModelRow({
               {model.running ? (
                 <>
                   <Button
-                    size="small"
                     icon={<ReloadOutlined />}
                     loading={busy}
                     onClick={() =>
@@ -196,7 +193,6 @@ function ModelRow({
                     Restart
                   </Button>
                   <Button
-                    size="small"
                     danger
                     icon={<PoweroffOutlined />}
                     loading={busy}
@@ -209,7 +205,6 @@ function ModelRow({
                 </>
               ) : (
                 <Button
-                  size="small"
                   icon={<PlayCircleOutlined />}
                   loading={busy}
                   onClick={() =>
@@ -223,7 +218,6 @@ function ModelRow({
           )}
           {model.running && canViewLogs && (
             <Button
-              size="small"
               type="text"
               icon={expanded ? <UpOutlined /> : <DownOutlined />}
               onClick={() => setExpanded(e => !e)}
@@ -235,9 +229,9 @@ function ModelRow({
       </Flex>
 
       {expanded && model.running && (
-        <div style={{ marginTop: 8, paddingLeft: 24 }}>
+        <Flex vertical gap="small" className="pl-6">
           {instance && (
-            <Descriptions size="small" column={2} style={{ marginBottom: 8 }}>
+            <Descriptions size="small" column={2}>
               <Descriptions.Item label="Status">{instance.status}</Descriptions.Item>
               <Descriptions.Item label="Port">{instance.local_port}</Descriptions.Item>
               <Descriptions.Item label="Base URL">{instance.base_url}</Descriptions.Item>
@@ -257,9 +251,9 @@ function ModelRow({
             </Descriptions>
           )}
           <LiveLogsPanel modelId={model.id} />
-        </div>
+        </Flex>
       )}
-    </div>
+    </Flex>
   )
 }
 

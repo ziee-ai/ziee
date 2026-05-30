@@ -24,8 +24,7 @@ export function RuntimeUpdateChecker({ engine }: Props) {
 
   return (
     <Card
-      size="small"
-      style={{ marginBottom: 16 }}
+      title="Updates"
       extra={
         <Button
           icon={<ReloadOutlined />}
@@ -46,7 +45,7 @@ export function RuntimeUpdateChecker({ engine }: Props) {
         <Alert
           title={`Updates available for ${engine}`}
           description={
-            <Flex vertical gap="small" style={{ width: '100%' }}>
+            <Flex vertical gap="small">
               <div>
                 Current: <Tag>{updateCheck.current_version || 'None'}</Tag>
                 Latest: <Tag color="green">{updateCheck.latest_version}</Tag>
@@ -56,11 +55,11 @@ export function RuntimeUpdateChecker({ engine }: Props) {
                 // build-pending tags are not surfaced.
                 const ready = updateCheck.versions.filter(v => v.binary_ready)
                 return (
-                  <div>
+                  <Flex vertical gap="small">
                     <strong>
                       Releases ({updateCheck.platform}/{updateCheck.arch}):
                     </strong>
-                    <div style={{ marginTop: 8 }}>
+                    <div>
                       {ready.slice(0, 5).map(v => (
                         <Tag key={v.version} color={v.installed ? 'green' : 'blue'}>
                           {v.version}
@@ -71,16 +70,18 @@ export function RuntimeUpdateChecker({ engine }: Props) {
                         <Tag>+{ready.length - 5} more</Tag>
                       )}
                     </div>
-                  </div>
+                  </Flex>
                 )
               })()}
-              <Button
-                type="primary"
-                icon={<CloudSyncOutlined />}
-                onClick={() => openDrawer(engine)}
-              >
-                Download Update
-              </Button>
+              <Flex justify="end">
+                <Button
+                  type="primary"
+                  icon={<CloudSyncOutlined />}
+                  onClick={() => openDrawer(engine)}
+                >
+                  Download Update
+                </Button>
+              </Flex>
             </Flex>
           }
           type="warning"

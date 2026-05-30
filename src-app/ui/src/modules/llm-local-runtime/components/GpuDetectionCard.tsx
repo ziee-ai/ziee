@@ -1,5 +1,5 @@
-import { Button, Card, Flex, Space, Spin, Tag, Typography } from 'antd'
-import { ThunderboltOutlined, DownloadOutlined } from '@ant-design/icons'
+import { Button, Card, Flex, Spin, Tag, Typography } from 'antd'
+import { DownloadOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -29,7 +29,7 @@ export function GpuDetectionCard({ engine }: { engine: RuntimeEngine }) {
 
   if (loadingGpu && !gpu) {
     return (
-      <Card size="small">
+      <Card>
         <Spin />
       </Card>
     )
@@ -42,16 +42,8 @@ export function GpuDetectionCard({ engine }: { engine: RuntimeEngine }) {
   const recommendedLabel = BACKEND_LABEL[gpu.recommended] ?? gpu.recommended
 
   return (
-    <Card
-      size="small"
-      title={
-        <Space>
-          <ThunderboltOutlined />
-          <span>Hardware acceleration</span>
-        </Space>
-      }
-    >
-      <Flex vertical gap="small" style={{ width: '100%' }}>
+    <Card title="Hardware acceleration">
+      <Flex vertical gap="small">
         <div>
           <Text type="secondary">Detected platform: </Text>
           <Text strong>
@@ -73,13 +65,15 @@ export function GpuDetectionCard({ engine }: { engine: RuntimeEngine }) {
           Recommended backend for this host: <Text strong>{recommendedLabel}</Text>
         </Text>
         <Can permission={Permissions.RuntimeVersionCreate}>
-          <Button
-            type="primary"
-            icon={<DownloadOutlined />}
-            onClick={() => openDrawer(engine)}
-          >
-            Download recommended ({recommendedLabel})
-          </Button>
+          <Flex justify="end">
+            <Button
+              type="primary"
+              icon={<DownloadOutlined />}
+              onClick={() => openDrawer(engine)}
+            >
+              Download recommended ({recommendedLabel})
+            </Button>
+          </Flex>
         </Can>
       </Flex>
     </Card>

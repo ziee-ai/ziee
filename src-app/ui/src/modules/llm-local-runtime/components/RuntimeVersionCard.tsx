@@ -1,10 +1,12 @@
 import { useState } from 'react'
-import { App, Badge, Button, Checkbox, Descriptions, Popconfirm, Space, Tag } from 'antd'
+import { App, Badge, Button, Checkbox, Descriptions, Flex, Popconfirm, Space, Tag, Typography } from 'antd'
 import {
   CheckCircleOutlined,
   DeleteOutlined,
   StarOutlined
 } from '@ant-design/icons'
+
+const { Text } = Typography
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type RuntimeVersionResponse } from '@/api-client/types'
@@ -46,14 +48,16 @@ export function RuntimeVersionCard({ version }: Props) {
   }
 
   return (
-    <div>
-      <Space style={{ marginBottom: 8 }}>
+    <Flex vertical gap="small">
+      <Space>
         <Badge
           status={version.is_system_default ? 'success' : 'default'}
           text={
-            <span style={{ fontWeight: version.is_system_default ? 600 : 400 }}>
-              Version {version.version}
-            </span>
+            version.is_system_default ? (
+              <Text strong>Version {version.version}</Text>
+            ) : (
+              <Text>Version {version.version}</Text>
+            )
           }
         />
         {version.is_system_default && (
@@ -78,7 +82,7 @@ export function RuntimeVersionCard({ version }: Props) {
         </Descriptions.Item>
       </Descriptions>
 
-      <Space style={{ marginTop: 12 }}>
+      <Space>
         {canUpdate && !version.is_system_default && (
           <Button
             icon={<StarOutlined />}
@@ -93,22 +97,22 @@ export function RuntimeVersionCard({ version }: Props) {
           <Popconfirm
             title="Delete Runtime Version"
             description={
-              <>
-                Are you sure you want to delete version {version.version}?
+              <Flex vertical gap="small">
+                <Text>
+                  Are you sure you want to delete version {version.version}?
+                </Text>
                 {version.is_system_default && (
-                  <div style={{ color: '#ff4d4f', marginTop: 8 }}>
+                  <Text type="danger">
                     Warning: This is the default version.
-                  </div>
+                  </Text>
                 )}
-                <div style={{ marginTop: 8 }}>
-                  <Checkbox
-                    checked={removeBinary}
-                    onChange={e => setRemoveBinary(e.target.checked)}
-                  >
-                    Also remove cached files from disk
-                  </Checkbox>
-                </div>
-              </>
+                <Checkbox
+                  checked={removeBinary}
+                  onChange={e => setRemoveBinary(e.target.checked)}
+                >
+                  Also remove cached files from disk
+                </Checkbox>
+              </Flex>
             }
             onConfirm={handleDelete}
             okText="Delete"
@@ -124,6 +128,6 @@ export function RuntimeVersionCard({ version }: Props) {
           </Popconfirm>
         )}
       </Space>
-    </div>
+    </Flex>
   )
 }
