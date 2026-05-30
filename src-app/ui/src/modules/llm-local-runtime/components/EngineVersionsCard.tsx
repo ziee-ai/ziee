@@ -11,7 +11,7 @@ import {
   Tag,
   Typography,
 } from 'antd'
-import { DownloadOutlined } from '@ant-design/icons'
+import { DownloadOutlined, ReloadOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -127,7 +127,7 @@ export function EngineVersionsCard({ engine }: { engine: RuntimeEngine }) {
         {/* Available backends */}
         <BackendsRow gpu={gpu} loadingGpu={loadingGpu} />
 
-        <Divider className="!my-0" />
+        <Divider className="!my-2" />
 
         {/* Installed versions */}
         <Flex vertical gap="small">
@@ -151,11 +151,25 @@ export function EngineVersionsCard({ engine }: { engine: RuntimeEngine }) {
           )}
         </Flex>
 
-        <Divider className="!my-0" />
+        <Divider className="!my-2" />
 
-        {/* Available versions (upstream) */}
+        {/* Available versions (upstream) — auto-checked on mount; the
+            inline button re-runs the check for operators on a flaky
+            network or after a release they expect lands. */}
         <Flex vertical gap="small">
-          <Text strong>Available versions</Text>
+          <Flex justify="space-between" align="center" gap="small" wrap>
+            <Text strong>Available versions</Text>
+            <Button
+              icon={<ReloadOutlined />}
+              loading={isChecking}
+              onClick={() =>
+                Stores.RuntimeUpdate.checkForUpdates(engine).catch(() => {})
+              }
+              aria-label={`Check for updates for ${engine}`}
+            >
+              Check for updates
+            </Button>
+          </Flex>
           {isChecking && !updateCheck ? (
             <Spin />
           ) : !updateCheck ? (
@@ -227,24 +241,30 @@ function BackendsRow({
 }) {
   if (loadingGpu && !gpu) {
     return (
-      <div>
-        <Text type="secondary">Available backends: </Text>
+      <Flex align="center" gap="small" wrap>
+        <Text type="secondary">Available backends:</Text>
         <Spin size="small" />
-      </div>
+      </Flex>
     )
   }
   if (!gpu) {
     return null
   }
   return (
-    <div>
-      <Text type="secondary">Available backends: </Text>
-      {gpu.available.map(b => (
-        <Tag key={b} color={b === gpu.recommended ? 'green' : undefined}>
-          {BACKEND_LABEL[b] ?? b}
-        </Tag>
-      ))}
-    </div>
+    <Flex align="center" gap="small" wrap>
+      <Text type="secondary">Available backends:</Text>
+      <Space size={[8, 8]} wrap>
+        {gpu.available.map(b => (
+          <Tag
+            key={b}
+            bordered
+            color={b === gpu.recommended ? 'green' : 'default'}
+          >
+            {BACKEND_LABEL[b] ?? b}
+          </Tag>
+        ))}
+      </Space>
+    </Flex>
   )
 }
 
@@ -265,17 +285,13 @@ function AvailableVersionRow({
   downloading: boolean
   onDownload: () => void
 }) {
-  const backendList = v.available_backends
-    .map(b => BACKEND_LABEL[b] ?? b)
-    .join(', ')
   return (
     <Flex justify="space-between" align="center" gap="small" wrap>
       <Space wrap>
         <Text strong>{v.version}</Text>
-        {isLatest && <Tag color="blue">latest</Tag>}
-        {v.installed && <Tag color="green">installed</Tag>}
-        {v.prerelease && <Tag>prerelease</Tag>}
-        <Text type="secondary">backends: {backendList}</Text>
+        {isLatest && <Tag color="blue" bordered>latest</Tag>}
+        {v.installed && <Tag color="green" bordered>installed</Tag>}
+        {v.prerelease && <Tag bordered>prerelease</Tag>}
       </Space>
       <Can permission={Permissions.RuntimeVersionCreate}>
         <Button

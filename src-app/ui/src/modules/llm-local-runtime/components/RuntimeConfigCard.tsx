@@ -3,10 +3,12 @@ import {
   Alert,
   Button,
   Card,
+  Col,
   Divider,
   Flex,
   Form,
   InputNumber,
+  Row,
   Spin,
   Switch,
   Typography,
@@ -76,55 +78,67 @@ export function RuntimeConfigCard() {
   return (
     <Card title="Runtime configuration">
       <Form form={form} layout="vertical" disabled={!canManage}>
-        <Flex vertical gap="middle">
-          <Form.Item
-            label={<Text strong>Idle unload timeout (seconds)</Text>}
-            name="idle_unload_secs"
-            help="Engines idle longer than this are automatically unloaded to free memory. 0 disables idle eviction."
-            rules={[{ required: true, type: 'number', min: 0, max: 86400 }]}
-          >
-            <InputNumber min={0} max={86400} className="!w-[200px]" />
-          </Form.Item>
+        {/* Two-column responsive grid: xs (mobile) stacks to 1 col,
+            md+ (≥768px) flows to 2 cols. Form.Item gets a full-width
+            InputNumber inside each column so the form scales with
+            the column width instead of capping at a fixed pixel. */}
+        <Row gutter={[16, 0]}>
+          <Col xs={24} md={12}>
+            <Form.Item
+              label={<Text strong>Idle unload timeout (seconds)</Text>}
+              name="idle_unload_secs"
+              help="Engines idle longer than this are automatically unloaded to free memory. 0 disables idle eviction."
+              rules={[{ required: true, type: 'number', min: 0, max: 86400 }]}
+            >
+              <InputNumber min={0} max={86400} className="!w-full" />
+            </Form.Item>
+          </Col>
+          <Col xs={24} md={12}>
+            <Form.Item
+              label={<Text strong>Auto-start timeout (seconds)</Text>}
+              name="auto_start_timeout_secs"
+              help="How long the proxy waits for a freshly-spawned engine to become healthy before giving up."
+              rules={[{ required: true, type: 'number', min: 1, max: 600 }]}
+            >
+              <InputNumber min={1} max={600} className="!w-full" />
+            </Form.Item>
+          </Col>
+          <Col xs={24} md={12}>
+            <Form.Item
+              label={<Text strong>Drain timeout (seconds)</Text>}
+              name="drain_timeout_secs"
+              help="When unloading an idle engine, how long to wait for in-flight requests to finish before forcing the stop."
+              rules={[{ required: true, type: 'number', min: 1, max: 600 }]}
+            >
+              <InputNumber min={1} max={600} className="!w-full" />
+            </Form.Item>
+          </Col>
+          <Col xs={24} md={12}>
+            <Form.Item
+              label={<Text strong>Allow unsigned downloads</Text>}
+              name="allow_unsigned_downloads"
+              valuePropName="checked"
+              help="When off (default), engine binary downloads are refused because signature verification is not yet available — pre-stage binaries instead (see the pre-stage runbook). Turn on to accept unverified downloads from the upstream release pipeline during the bootstrap period."
+            >
+              <Switch />
+            </Form.Item>
+          </Col>
+        </Row>
 
-          <Form.Item
-            label={<Text strong>Auto-start timeout (seconds)</Text>}
-            name="auto_start_timeout_secs"
-            help="How long the proxy waits for a freshly-spawned engine to become healthy before giving up."
-            rules={[{ required: true, type: 'number', min: 1, max: 600 }]}
-          >
-            <InputNumber min={1} max={600} className="!w-[200px]" />
-          </Form.Item>
-
-          <Form.Item
-            label={<Text strong>Drain timeout (seconds)</Text>}
-            name="drain_timeout_secs"
-            help="When unloading an idle engine, how long to wait for in-flight requests to finish before forcing the stop."
-            rules={[{ required: true, type: 'number', min: 1, max: 600 }]}
-          >
-            <InputNumber min={1} max={600} className="!w-[200px]" />
-          </Form.Item>
-
-          <Form.Item
-            label={<Text strong>Allow unsigned downloads</Text>}
-            name="allow_unsigned_downloads"
-            valuePropName="checked"
-            help="When off (default), engine binary downloads are refused because signature verification is not yet available — pre-stage binaries instead (see the pre-stage runbook). Turn on to accept unverified downloads from the upstream release pipeline during the bootstrap period."
-          >
-            <Switch />
-          </Form.Item>
-          <Form.Item dependencies={['allow_unsigned_downloads']} noStyle>
-            {({ getFieldValue }) =>
-              getFieldValue('allow_unsigned_downloads') ? (
-                <Alert
-                  type="warning"
-                  showIcon
-                  title="Signed-download verification disabled"
-                  description="Local LLM engine downloads are not cryptographically verified. Only keep this on if you understand the supply-chain risk."
-                />
-              ) : null
-            }
-          </Form.Item>
-        </Flex>
+        {/* Spans full width since the alert is contextual to the
+            unsigned-downloads toggle above. */}
+        <Form.Item dependencies={['allow_unsigned_downloads']} noStyle>
+          {({ getFieldValue }) =>
+            getFieldValue('allow_unsigned_downloads') ? (
+              <Alert
+                type="warning"
+                showIcon
+                title="Signed-download verification disabled"
+                description="Local LLM engine downloads are not cryptographically verified. Only keep this on if you understand the supply-chain risk."
+              />
+            ) : null
+          }
+        </Form.Item>
 
         {canManage && (
           <>
