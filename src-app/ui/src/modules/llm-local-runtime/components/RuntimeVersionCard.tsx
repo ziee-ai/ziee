@@ -1,9 +1,17 @@
 import { useState } from 'react'
-import { App, Badge, Button, Checkbox, Descriptions, Flex, Popconfirm, Space, Tag, Tooltip, Typography } from 'antd'
 import {
-  CheckCircleOutlined,
+  App,
+  Button,
+  Checkbox,
+  Descriptions,
+  Flex,
+  Popconfirm,
+  Tooltip,
+  Typography,
+} from 'antd'
+import {
   DeleteOutlined,
-  StarOutlined
+  StarOutlined,
 } from '@ant-design/icons'
 
 const { Text } = Typography
@@ -15,6 +23,21 @@ interface Props {
   version: RuntimeVersionResponse
 }
 
+/**
+ * One installed-version row, laid out to match the peer-module
+ * settings pattern (UsersSettings, LlmRepositorySettings):
+ *
+ *  - Title row: `Version v…` on the left + a `(Default)` secondary
+ *    tag when applicable; action buttons (`type="text"`) on the
+ *    top-right. No leading status dot — the Badge that previously
+ *    rendered a colored dot before the version label has been
+ *    dropped; the operator can tell a version is the system default
+ *    from the `Default` text tag + the `Set as Default` button
+ *    being absent.
+ *  - Metadata is rendered via a compact `Descriptions` with
+ *    `colon={false}` and 12px gray labels — same look as
+ *    `UsersSettings`'s Email / Last Login / Created strip.
+ */
 export function RuntimeVersionCard({ version }: Props) {
   const { settingDefault, deleting } = Stores.RuntimeVersion
 
@@ -30,7 +53,7 @@ export function RuntimeVersionCard({ version }: Props) {
   const handleSetDefault = async () => {
     try {
       await Stores.RuntimeVersion.setDefaultVersion(version.id)
-    } catch (error) {
+    } catch {
       // Error already handled in store
     }
   }
@@ -47,27 +70,90 @@ export function RuntimeVersionCard({ version }: Props) {
     }
   }
 
-  return (
-    <Flex vertical gap="small">
-      <Space>
-        <Badge
-          status={version.is_system_default ? 'success' : 'default'}
-          text={
-            version.is_system_default ? (
-              <Text strong>Version {version.version}</Text>
-            ) : (
-              <Text>Version {version.version}</Text>
-            )
-          }
-        />
-        {version.is_system_default && (
-          <Tag icon={<CheckCircleOutlined />} color="success">
-            Default
-          </Tag>
-        )}
-      </Space>
+  const actions: React.ReactNode[] = []
+  if (canUpdate && !version.is_system_default) {
+    actions.push(
+      <Tooltip
+        key="set-default"
+        title="Make this version the default for new sessions"
+      >
+        <Button
+          type="text"
+          icon={<StarOutlined />}
+          loading={isSettingDefault}
+          onClick={handleSetDefault}
+          aria-label={`Set version ${version.version} as default`}
+        >
+          Set as Default
+        </Button>
+      </Tooltip>
+    )
+  }
+  if (canDelete) {
+    actions.push(
+      <Popconfirm
+        key="delete"
+        title="Delete Runtime Version"
+        description={
+          <Flex vertical gap="small">
+            <Text>
+              Are you sure you want to delete version {version.version}?
+            </Text>
+            {version.is_system_default && (
+              <Text type="danger">
+                Warning: This is the default version.
+              </Text>
+            )}
+            <Checkbox
+              checked={removeBinary}
+              onChange={e => setRemoveBinary(e.target.checked)}
+            >
+              Also remove cached files from disk
+            </Checkbox>
+          </Flex>
+        }
+        onConfirm={handleDelete}
+        okText="Delete"
+        okButtonProps={{ danger: true }}
+      >
+        <Button
+          type="text"
+          danger
+          icon={<DeleteOutlined />}
+          loading={isDeleting}
+          aria-label={`Delete version ${version.version}`}
+        >
+          Delete
+        </Button>
+      </Popconfirm>
+    )
+  }
 
-      <Descriptions size="small" column={2}>
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
+        <div className="flex-1 min-w-48">
+          <Flex align="center" gap="small">
+            <Text className="font-medium">Version {version.version}</Text>
+            {version.is_system_default && (
+              <Text type="secondary" className="text-xs">
+                (Default)
+              </Text>
+            )}
+          </Flex>
+        </div>
+        <div className="flex gap-1 items-center justify-end">{actions}</div>
+      </div>
+
+      <Descriptions
+        size="small"
+        column={{ xs: 1, sm: 2, md: 4 }}
+        colon={false}
+        styles={{
+          label: { fontSize: '12px', color: '#8c8c8c' },
+          content: { fontSize: '12px' },
+        }}
+      >
         <Descriptions.Item label="Platform">
           {version.platform}
         </Descriptions.Item>
@@ -81,57 +167,6 @@ export function RuntimeVersionCard({ version }: Props) {
           {new Date(version.created_at).toLocaleString()}
         </Descriptions.Item>
       </Descriptions>
-
-      <Space>
-        {canUpdate && !version.is_system_default && (
-          <Tooltip title="Make this version the default for new sessions">
-            <Button
-              icon={<StarOutlined />}
-              loading={isSettingDefault}
-              onClick={handleSetDefault}
-              aria-label={`Set version ${version.version} as default`}
-            >
-              Set as Default
-            </Button>
-          </Tooltip>
-        )}
-
-        {canDelete && (
-          <Popconfirm
-            title="Delete Runtime Version"
-            description={
-              <Flex vertical gap="small">
-                <Text>
-                  Are you sure you want to delete version {version.version}?
-                </Text>
-                {version.is_system_default && (
-                  <Text type="danger">
-                    Warning: This is the default version.
-                  </Text>
-                )}
-                <Checkbox
-                  checked={removeBinary}
-                  onChange={e => setRemoveBinary(e.target.checked)}
-                >
-                  Also remove cached files from disk
-                </Checkbox>
-              </Flex>
-            }
-            onConfirm={handleDelete}
-            okText="Delete"
-            okButtonProps={{ danger: true }}
-          >
-            <Button
-              danger
-              icon={<DeleteOutlined />}
-              loading={isDeleting}
-              aria-label={`Delete version ${version.version}`}
-            >
-              Delete
-            </Button>
-          </Popconfirm>
-        )}
-      </Space>
-    </Flex>
+    </div>
   )
 }

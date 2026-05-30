@@ -130,9 +130,12 @@ export function EngineVersionsCard({ engine }: { engine: RuntimeEngine }) {
 
         <Divider className="!my-2" />
 
-        {/* Installed versions */}
-        <Flex vertical gap="small">
-          <Text strong>Installed versions</Text>
+        {/* Installed versions — section header gets `mb-2` (matches the
+            peer-module pattern: `<Text strong>` sits above the list
+            with deliberate spacing, not packed against the first row
+            by a tight Flex gap). */}
+        <Flex vertical>
+          <Text strong className="!mb-2">Installed versions</Text>
           {loadingVersions && engineVersions.length === 0 ? (
             <Spin />
           ) : engineVersions.length === 0 ? (
@@ -141,16 +144,16 @@ export function EngineVersionsCard({ engine }: { engine: RuntimeEngine }) {
               image={Empty.PRESENTED_IMAGE_SIMPLE}
             />
           ) : (
-            <Flex vertical gap="small">
+            <div>
               {engineVersions.map((v, i) => (
                 <Fragment key={v.id}>
-                  {i > 0 && <Divider className="!my-2" />}
+                  {i > 0 && <Divider className="!my-4" />}
                   <HoverRow>
                     <RuntimeVersionCard version={v} />
                   </HoverRow>
                 </Fragment>
               ))}
-            </Flex>
+            </div>
           )}
         </Flex>
 
@@ -328,14 +331,14 @@ function AvailableVersionRow({
         <Flex justify="space-between" align="center" gap="small" wrap>
           <Space wrap>
             <Text strong>{v.version}</Text>
-            {isLatest && <Tag color="blue" variant="filled">latest</Tag>}
-            {v.installed && <Tag color="green" variant="filled">installed</Tag>}
-            {v.prerelease && <Tag variant="filled">prerelease</Tag>}
             {v.size_bytes != null && !v.installed && (
               <Text type="secondary" className="text-xs">
                 {formatBytes(v.size_bytes)}
               </Text>
             )}
+            {isLatest && <Tag color="blue" variant="filled">latest</Tag>}
+            {v.installed && <Tag color="green" variant="filled">installed</Tag>}
+            {v.prerelease && <Tag variant="filled">prerelease</Tag>}
           </Space>
           <Can permission={Permissions.RuntimeVersionCreate}>
             <Button
