@@ -26,11 +26,15 @@ const HF_KEY = process.env.HUGGINGFACE_API_KEY
 const SWAP_VERSION_A = 'v0.0.1-alpha'
 const SWAP_VERSION_B = 'v0.0.2-alpha' // mistral.rs publishes both
 
-function mbvCard(page: Page) {
+// The standalone "Models by engine version" card was folded into
+// the Installed versions card — each installed-version row now
+// renders its model list (VersionModelsBlock) inline underneath.
+// All assertions are scoped to the Installed versions card.
+function installedCard(page: Page) {
   return page
     .locator('.ant-tabs-tabpane-active')
     .locator('.ant-card')
-    .filter({ hasText: 'Models by engine version' })
+    .filter({ hasText: 'Installed versions' })
 }
 
 // ── engine-free: only local read endpoints, runs anywhere ────────────────
@@ -39,16 +43,16 @@ test.describe('Local Runtime — models by version (engine-free)', () => {
     await loginAsAdmin(page, testInfra.baseURL)
   })
 
-  test('card shows the empty state on both engine tabs', async ({ page, testInfra }) => {
+  test('installed-versions card shows the empty state on both engine tabs', async ({ page, testInfra }) => {
     await gotoRuntimeSettings(page, testInfra.baseURL)
-    const pane = page.locator('.ant-tabs-tabpane-active')
-    await expect(pane.getByText('Models by engine version')).toBeVisible()
-    await expect(pane.getByText('No installed versions yet')).toBeVisible()
+    const card = installedCard(page)
+    await expect(card).toBeVisible()
+    await expect(card.getByText(/No versions installed yet/i)).toBeVisible()
 
     await page.getByRole('tab', { name: 'Mistral.rs' }).click()
-    const mrsPane = page.locator('.ant-tabs-tabpane-active')
-    await expect(mrsPane.getByText('Models by engine version')).toBeVisible()
-    await expect(mrsPane.getByText('No installed versions yet')).toBeVisible()
+    const mrsCard = installedCard(page)
+    await expect(mrsCard).toBeVisible()
+    await expect(mrsCard.getByText(/No versions installed yet/i)).toBeVisible()
   })
 
   test('available-versions section auto-populates (no Check for Updates button)', async ({ page, testInfra }) => {
@@ -95,7 +99,7 @@ test.describe('Local Runtime — running engine (needs HUGGINGFACE_API_KEY)', ()
   test('full lifecycle: start → logs/detail → restart → stop', async ({ page, testInfra }) => {
     const setup = await ensureRunningModel(testInfra.baseURL, await getCurrentUserToken(page))
     await gotoRuntimeSettings(page, testInfra.baseURL)
-    const card = mbvCard(page)
+    const card = installedCard(page)
     // The downloaded GGUF model appears under its engine version.
     await expect(card.getByText(setup.modelName, { exact: false })).toBeVisible({
       timeout: 30000
@@ -186,7 +190,7 @@ test.describe('Local Runtime — version management (needs HUGGINGFACE_API_KEY)'
     await gotoRuntimeSettings(page, testInfra.baseURL)
     // The models-by-version card lives on the per-engine tab → Mistral.rs.
     await page.getByRole('tab', { name: 'Mistral.rs' }).click()
-    const card = mbvCard(page)
+    const card = installedCard(page)
     // The model starts under version A; swap it to version B via the Select.
     await card.locator('.ant-select').first().click()
     await page.locator('.ant-select-item-option').filter({ hasText: SWAP_VERSION_B }).first().click()

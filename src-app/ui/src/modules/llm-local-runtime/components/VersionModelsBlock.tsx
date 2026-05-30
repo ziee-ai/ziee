@@ -2,33 +2,24 @@ import { useEffect, useState } from 'react'
 import {
   Badge,
   Button,
-  Card,
   Descriptions,
-  Divider,
-  Empty,
   Flex,
   Select,
   Space,
   Tag,
   Tooltip,
-  Typography
+  Typography,
 } from 'antd'
 import {
   DownOutlined,
   PlayCircleOutlined,
   PoweroffOutlined,
   ReloadOutlined,
-  UpOutlined
+  UpOutlined,
 } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
-import { usePermission } from '@/core/permissions'
-import { Permissions } from '@/api-client/types'
 import type { RuntimeEngine } from '../types'
 import { LiveLogsPanel } from './LiveLogsPanel'
-
-interface Props {
-  engine: RuntimeEngine
-}
 
 interface ModelInfo {
   id: string
@@ -37,100 +28,75 @@ interface ModelInfo {
   pinned: boolean
 }
 
-export function RuntimeModelsByVersion({ engine }: Props) {
-  const { usage, loading } = Stores.RuntimeModelUsage
-  const canManage = usePermission(Permissions.LocalRuntimeManage)
-  // Logs are a distinct backend permission (`llm_local_runtime::logs`), NOT
-  // bundled under manage — a logs-only operator should see logs, and a
-  // manage-only operator should not see a Logs button that 403s on the stream.
-  const canViewLogs = usePermission(Permissions.LocalRuntimeLogs)
+interface RawModel {
+  id: string
+  display_name: string
+  provider_id: string
+  provider_name: string
+  running: boolean
+  pinned: boolean
+}
 
-  const data = usage.get(engine)
-  const isLoading = loading.get(engine) || false
-
-  useEffect(() => {
-    Stores.RuntimeModelUsage.loadUsage(engine)
-  }, [engine])
-
-  // All versions of this engine — the swap dropdown's option set.
-  const versionOptions = (data?.versions ?? []).map(v => ({
-    value: v.version.id,
-    label: v.version.is_system_default
-      ? `${v.version.version} (${v.version.backend}, default)`
-      : `${v.version.version} (${v.version.backend})`
-  }))
-
+/**
+ * Per-version models block — extracted from the old standalone
+ * RuntimeModelsByVersion card so it can render inline under each
+ * installed-version row in InstalledVersionsCard. Groups the models
+ * by provider, exposes start/stop/restart + version-swap controls
+ * (manage gate) + the Logs disclosure (logs gate, independent
+ * permission so a logs-only operator still sees them on a running
+ * model).
+ *
+ * Receives `versionOptions` from the parent — the swap dropdown's
+ * full set of installed versions for this engine, including the
+ * current one (so the Select shows the active value as well).
+ */
+export function VersionModelsBlock({
+  engine,
+  versionId,
+  models,
+  versionOptions,
+  canManage,
+  canViewLogs,
+}: {
+  engine: RuntimeEngine
+  versionId: string
+  models: RawModel[]
+  versionOptions: { value: string; label: string }[]
+  canManage: boolean
+  canViewLogs: boolean
+}) {
+  if (models.length === 0) {
+    return (
+      <Typography.Text type="secondary" className="text-xs">
+        No models — safe to delete
+      </Typography.Text>
+    )
+  }
+  const groups = groupByProvider(models)
   return (
-    <Card
-      title="Models by engine version"
-      extra={
-        <Button
-          icon={<ReloadOutlined />}
-          loading={isLoading}
-          onClick={() => Stores.RuntimeModelUsage.loadUsage(engine)}
-        >
-          Refresh
-        </Button>
-      }
-    >
-      {!data || (data.versions.length === 0 && data.unresolved.length === 0) ? (
-        <Empty description="No installed versions yet" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-      ) : (
-        <Flex vertical gap="middle">
-          {data.versions.map((entry, idx) => (
-            <Flex vertical gap="small" key={entry.version.id}>
-              <Space>
-                <Typography.Text strong>{entry.version.version}</Typography.Text>
-                <Tag>{entry.version.backend}</Tag>
-                {entry.version.is_system_default && <Tag color="success">Default</Tag>}
-                <Typography.Text type="secondary">
-                  {entry.models.length === 0
-                    ? 'No models — safe to delete'
-                    : `${entry.models.length} model(s)`}
-                </Typography.Text>
-              </Space>
-
-              {entry.models.length > 0 && (
-                <Flex vertical gap="small">
-                  {groupByProvider(entry.models).map(group => (
-                    <Flex vertical gap="small" key={group.providerId}>
-                      <Typography.Text type="secondary">
-                        {group.providerName}
-                      </Typography.Text>
-                      {group.models.map(m => (
-                        <ModelRow
-                          key={m.id}
-                          engine={engine}
-                          model={m}
-                          versionId={entry.version.id}
-                          versionOptions={versionOptions}
-                          canManage={canManage}
-                          canViewLogs={canViewLogs}
-                        />
-                      ))}
-                    </Flex>
-                  ))}
-                </Flex>
-              )}
-              {idx < data.versions.length - 1 && <Divider className="!my-0" />}
-            </Flex>
+    <Flex vertical gap="small">
+      <Typography.Text type="secondary" className="text-xs">
+        {models.length} model{models.length === 1 ? '' : 's'}
+      </Typography.Text>
+      {groups.map(group => (
+        <Flex vertical gap="small" key={group.providerId}>
+          <Typography.Text type="secondary" className="text-xs">
+            {group.providerName}
+          </Typography.Text>
+          {group.models.map(m => (
+            <ModelRow
+              key={m.id}
+              engine={engine}
+              model={m}
+              versionId={versionId}
+              versionOptions={versionOptions}
+              canManage={canManage}
+              canViewLogs={canViewLogs}
+            />
           ))}
-
-          {data.unresolved.length > 0 && (
-            <Flex vertical gap="small">
-              <Typography.Text type="warning">
-                No installed version resolves for these models:
-              </Typography.Text>
-              <div>
-                {data.unresolved.map(m => (
-                  <Tag key={m.id}>{m.display_name}</Tag>
-                ))}
-              </div>
-            </Flex>
-          )}
         </Flex>
-      )}
-    </Card>
+      ))}
+    </Flex>
   )
 }
 
@@ -140,7 +106,7 @@ function ModelRow({
   versionId,
   versionOptions,
   canManage,
-  canViewLogs
+  canViewLogs,
 }: {
   engine: RuntimeEngine
   model: ModelInfo
@@ -175,7 +141,7 @@ function ModelRow({
               <Tooltip
                 title={
                   versionOptions.length < 2
-                    ? 'Only one engine version installed — download another to swap'
+                    ? 'Only one engine version installed — install another to swap'
                     : 'Swap this model to a different engine version'
                 }
               >
@@ -186,7 +152,9 @@ function ModelRow({
                   loading={busy}
                   disabled={busy || versionOptions.length < 2}
                   onChange={vid =>
-                    Stores.RuntimeModelUsage.swapVersion(engine, model.id, vid).catch(() => {})
+                    Stores.RuntimeModelUsage.swapVersion(engine, model.id, vid).catch(
+                      () => {},
+                    )
                   }
                   aria-label={`Engine version for ${model.display_name}`}
                 />
@@ -197,7 +165,9 @@ function ModelRow({
                     icon={<ReloadOutlined />}
                     loading={busy}
                     onClick={() =>
-                      Stores.RuntimeModelUsage.restartModel(engine, model.id).catch(() => {})
+                      Stores.RuntimeModelUsage.restartModel(engine, model.id).catch(
+                        () => {},
+                      )
                     }
                   >
                     Restart
@@ -207,7 +177,9 @@ function ModelRow({
                     icon={<PoweroffOutlined />}
                     loading={busy}
                     onClick={() =>
-                      Stores.RuntimeModelUsage.stopModel(engine, model.id).catch(() => {})
+                      Stores.RuntimeModelUsage.stopModel(engine, model.id).catch(
+                        () => {},
+                      )
                     }
                   >
                     Stop
@@ -218,7 +190,9 @@ function ModelRow({
                   icon={<PlayCircleOutlined />}
                   loading={busy}
                   onClick={() =>
-                    Stores.RuntimeModelUsage.startModel(engine, model.id).catch(() => {})
+                    Stores.RuntimeModelUsage.startModel(engine, model.id).catch(
+                      () => {},
+                    )
                   }
                 >
                   Start
@@ -279,16 +253,7 @@ interface ProviderGroup {
   models: ModelInfo[]
 }
 
-function groupByProvider(
-  models: Array<{
-    id: string
-    display_name: string
-    provider_id: string
-    provider_name: string
-    running: boolean
-    pinned: boolean
-  }>
-): ProviderGroup[] {
+function groupByProvider(models: RawModel[]): ProviderGroup[] {
   const map = new Map<string, ProviderGroup>()
   for (const m of models) {
     let g = map.get(m.provider_id)
@@ -300,7 +265,7 @@ function groupByProvider(
       id: m.id,
       display_name: m.display_name,
       running: m.running,
-      pinned: m.pinned
+      pinned: m.pinned,
     })
   }
   return Array.from(map.values())

@@ -2,31 +2,37 @@ import { Flex, Tabs } from 'antd'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
-import { EngineVersionsCard } from './EngineVersionsCard'
-import { RuntimeModelsByVersion } from './RuntimeModelsByVersion'
+import { InstalledVersionsCard } from './InstalledVersionsCard'
+import { AvailableVersionsCard } from './AvailableVersionsCard'
 import { RuntimeDownloadDrawer } from './drawers/RuntimeDownloadDrawer'
 import { RuntimeConfigCard } from './RuntimeConfigCard'
 import type { RuntimeEngine } from '../types'
 
-// Per-engine sections. EngineVersionsCard consolidates the prior
-// GpuDetection + UpdateChecker + VersionList cards into one — host
-// platform, available backends, installed versions, and upstream
-// available versions (with inline per-version download) all live
-// together. RuntimeModelsByVersion stays separate because it's
-// model-centric (which models pin which engine version), not
-// version-centric.
+// Per-engine sections. Each engine tab stacks two cards:
+//   1. Installed versions  — list of registered binaries; each row
+//                            shows the models that resolve to that
+//                            version inlined directly underneath
+//                            (start/stop/restart/swap + Logs), so
+//                            an operator sees "v0.0.1 — 3 models
+//                            pin it, 1 is running" in one place.
+//                            The unresolved-models warning appears
+//                            as a footer block when applicable.
+//   2. Available versions  — upstream catalog (with Check-for-updates
+//                            in the card's `extra` slot, mirroring
+//                            UsersSettings's `+` create-button
+//                            convention), plus the host platform /
+//                            available-backends context strip.
 //
-// The version catalogue + update-check + per-version model usage all
-// read `llm_local_runtime::versions_read`. The page route only
-// requires `llm_local_runtime::read`, so gate these sections
-// explicitly — otherwise a read-only principal without versions_read
-// sees 403'ing/empty cards.
+// Both read `llm_local_runtime::versions_read`. The page route only
+// requires `llm_local_runtime::read`, so they're wrapped in <Can>
+// here to avoid empty/403 cards for read-only principals without
+// versions_read.
 function VersionSections({ engine }: { engine: RuntimeEngine }) {
   return (
     <Flex className="flex-col gap-3">
       <Can permission={Permissions.RuntimeVersionRead}>
-        <EngineVersionsCard engine={engine} />
-        <RuntimeModelsByVersion engine={engine} />
+        <InstalledVersionsCard engine={engine} />
+        <AvailableVersionsCard engine={engine} />
       </Can>
     </Flex>
   )

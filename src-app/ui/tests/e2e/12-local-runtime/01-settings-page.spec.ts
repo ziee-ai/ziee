@@ -21,35 +21,52 @@ test.describe('Local Runtime — settings page', () => {
     await expect(page.getByRole('tab', { name: 'Mistral.rs' })).toBeVisible()
   })
 
-  test('shows the unified engine-versions card with platform + backends', async ({ page, testInfra }) => {
+  test('shows the available-versions card with platform + backends', async ({ page, testInfra }) => {
     await gotoRuntimeSettings(page, testInfra.baseURL)
     // detect-gpu spawns host probes and can be slow / 502 on a cold backend
-    // (the store retries) — give the card time to render.
-    const card = page.locator('.ant-card').filter({ hasText: /llamacpp versions/i }).first()
+    // (the store retries) — give the card time to render. Platform + Available
+    // backends are now inside the Available versions card (they're the
+    // precondition for "what's installable for this host").
+    const card = page
+      .locator('.ant-card')
+      .filter({ hasText: /Available versions/i })
+      .first()
     await expect(card).toBeVisible({ timeout: 30000 })
     await expect(card.getByText(/Platform:/i)).toBeVisible({ timeout: 30000 })
     await expect(card.getByText(/Available backends:/i)).toBeVisible()
   })
 
-  test('shows installed-versions section with empty state', async ({ page, testInfra }) => {
+  test('shows installed-versions card with empty state', async ({ page, testInfra }) => {
     await gotoRuntimeSettings(page, testInfra.baseURL)
-    // No engine downloaded in a fresh test DB → the "Installed versions"
-    // section shows an empty state hinting at the section below.
-    await expect(page.getByText(/Installed versions/i).first()).toBeVisible()
+    // No engine downloaded in a fresh test DB → the dedicated
+    // "Installed versions" card shows an empty state hinting at the
+    // Available versions card below.
+    const card = page
+      .locator('.ant-card')
+      .filter({ hasText: /Installed versions/i })
+      .first()
+    await expect(card).toBeVisible()
     await expect(
-      page.getByText(/No versions installed yet/i).first(),
+      card.getByText(/No versions installed yet/i),
     ).toBeVisible()
   })
 
-  test('shows available-versions section (auto-update-check)', async ({ page, testInfra }) => {
+  test('available-versions card auto-runs the update check (Check-for-updates lives in the card extra)', async ({ page, testInfra }) => {
     await gotoRuntimeSettings(page, testInfra.baseURL)
-    // The update check runs automatically on mount (no "Check for Updates"
-    // button). On a backend without network access it'll render
-    // "Could not reach the upstream release feed." instead — both are
-    // acceptable signals that the section rendered.
-    await expect(page.getByText(/Available versions/i).first()).toBeVisible({
-      timeout: 30000,
-    })
+    // The update check runs automatically on mount. The
+    // "Check for updates" button now lives in the Available versions
+    // card's `extra` slot for a manual re-run; we just assert the
+    // card renders. On a backend without network access the body
+    // renders "Could not reach the upstream release feed." instead —
+    // both are acceptable signals that the card mounted.
+    const card = page
+      .locator('.ant-card')
+      .filter({ hasText: /Available versions/i })
+      .first()
+    await expect(card).toBeVisible({ timeout: 30000 })
+    await expect(
+      card.getByRole('button', { name: /Check for updates/i }),
+    ).toBeVisible()
   })
 
   test('shows the runtime configuration card', async ({ page, testInfra }) => {
