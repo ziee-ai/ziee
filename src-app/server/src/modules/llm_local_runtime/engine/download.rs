@@ -299,29 +299,29 @@ impl BinaryDownloader {
                 ))
             })?;
 
-        // P1.l: best-effort cosign-keyless verify (closes
-        // 08-llm-local-runtime F-01 HIGH). We download the sibling
-        // `.sig` artifact and check whether it exists; the server
-        // wrapping `binary_manager` checks
-        // `RuntimeSettings.allow_unsigned_downloads` and decides
-        // whether to abort when verify fails. The runtime returns
-        // Ok regardless of verify outcome — the server is the
-        // authority on policy.
+        // Best-effort cosign-keyless artifact fetch. We pull the
+        // sibling `.sig` when published and log the outcome, but the
+        // install proceeds either way — the operator-facing
+        // `allow_unsigned_downloads` gate has been removed (downloads
+        // are always permitted; cryptographic verification will be
+        // re-introduced once the fork CI signs releases). Operators
+        // that need stricter handling pre-stage the binary
+        // out-of-band.
         let sig_url = format!("{}.sig", download_url);
         let sig_path = temp_dir.join(format!("{}.sig", archive_name));
         match self.download_file(&sig_url, &sig_path).await {
             Ok(()) => {
                 tracing::info!(
-                    "cosign sibling .sig downloaded for {} (verification \
-                     handled by binary_manager when allow_unsigned_downloads=false)",
+                    "cosign sibling .sig downloaded for {} (verification not \
+                     yet wired — install proceeds unconditionally)",
                     archive_name
                 );
             }
             Err(e) => {
                 tracing::warn!(
-                    "cosign sibling .sig not available for {} ({e}); engine \
-                     binary install will require allow_unsigned_downloads=true \
-                     until the fork CI publishes signed releases",
+                    "cosign sibling .sig not available for {} ({e}); install \
+                     proceeds unverified (TOFU) until the fork CI publishes \
+                     signed releases",
                     archive_name
                 );
             }
@@ -441,14 +441,13 @@ impl BinaryDownloader {
     /// upstream (e.g. a hijacked GitHub mirror) could redirect to a
     /// /dev/zero stream and fill the host disk.
     ///
-    /// 08-llm-local-runtime F-01 (High) gap: this function does NOT
-    /// cryptographically verify the downloaded binary. The right
-    /// shape is a cosign-keyless verify (matches the
-    /// `sigstore` crate already pulled by code_sandbox) against a
-    /// `.sig` artifact published alongside each engine binary. That
-    /// requires the llm-runtime release pipeline to actually sign
-    /// (Actions OIDC + cosign sign-blob) — until that ships, this
-    /// download path remains TOFU. Operators reading the SBOM should
+    /// Note: this function does NOT cryptographically verify the
+    /// downloaded binary. The right shape is a cosign-keyless verify
+    /// (matches the `sigstore` crate already pulled by code_sandbox)
+    /// against a `.sig` artifact published alongside each engine
+    /// binary. That requires the fork release pipeline to actually
+    /// sign (Actions OIDC + cosign sign-blob) — until that ships,
+    /// this download path is TOFU. Operators reading the SBOM should
     /// confirm the upstream GitHub Releases page hashes match.
     async fn download_file(&self, url: &str, dest: &Path) -> Result<()> {
         const MAX_DOWNLOAD_BYTES: u64 = 2 * 1024 * 1024 * 1024; // 2 GiB

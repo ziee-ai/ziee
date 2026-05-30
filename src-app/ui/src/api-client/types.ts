@@ -1559,7 +1559,6 @@ export interface RotateProxyTokenResponse {
 }
 
 export interface RuntimeSettings {
-  allow_unsigned_downloads: boolean
   auto_start_timeout_secs: number
   created_at: string
   drain_timeout_secs: number
@@ -2020,7 +2019,6 @@ export interface UpdateProjectRequest {
 }
 
 export interface UpdateRuntimeSettingsRequest {
-  allow_unsigned_downloads?: boolean
   auto_start_timeout_secs?: number
   drain_timeout_secs?: number
   idle_unload_secs?: number
@@ -2356,7 +2354,7 @@ export const PermissionDescriptions: Record<string, string> = {
   ProjectsDelete: 'Delete chat projects',
   ProjectsEdit: 'Edit chat projects (incl. attach/detach files)',
   ProjectsRead: 'Read chat projects',
-  RuntimeSettingsManage: 'Modify runtime singleton settings (idle/auto-start/drain/allow_unsigned_downloads)',
+  RuntimeSettingsManage: 'Modify runtime singleton settings (idle/auto-start/drain)',
   RuntimeSettingsRead: 'Read runtime singleton settings (idle/auto-start/drain)',
   RuntimeVersionCreate: 'Download and register new runtime versions',
   RuntimeVersionDelete: 'Delete runtime versions',

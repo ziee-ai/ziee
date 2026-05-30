@@ -114,7 +114,7 @@ export async function downloadEngineViaApi(
     headers,
     // CPU cold-load + first token is slow; the 30s default is too short to
     // reach a healthy instance on a manual start (gold_smoke uses 180s too).
-    body: JSON.stringify({ allow_unsigned_downloads: true, auto_start_timeout_secs: 180 }),
+    body: JSON.stringify({ auto_start_timeout_secs: 180 }),
   })
   const dl = await fetch(`${baseURL}/api/local-runtime/versions/download`, {
     method: 'POST',

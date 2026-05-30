@@ -1,6 +1,5 @@
 import { useEffect } from 'react'
 import {
-  Alert,
   Button,
   Card,
   Divider,
@@ -8,14 +7,9 @@ import {
   Form,
   InputNumber,
   Spin,
-  Switch,
   Typography,
   message,
 } from 'antd'
-// Note: previously imported Title from Typography for in-card headers.
-// Switched to <Text strong> to match peer settings modules (mcp,
-// assistant, llm-provider) — Title.level={4} is reserved for page
-// titles via SettingsPageContainer.
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -23,13 +17,11 @@ import { Permissions } from '@/api-client/types'
 const { Text } = Typography
 
 /**
- * Runtime config card (P1.j): the singleton llm_runtime_settings row.
- * idle_unload_secs / auto_start_timeout_secs / drain_timeout_secs /
- * allow_unsigned_downloads. Mirrors the peer settings module layout
- * (Text strong section header + secondary description + Form.Item;
- * Save in a justify-end flex after a Divider). Form layout="vertical"
- * already handles row spacing — no inline marginTop/marginBottom on
- * Form.Item.
+ * Runtime config card: the singleton llm_runtime_settings row —
+ * idle_unload_secs / auto_start_timeout_secs / drain_timeout_secs.
+ * Mirrors the peer settings module layout (Text strong section header
+ * + secondary description + Form.Item; Save in a justify-end flex
+ * after a Divider).
  */
 export function RuntimeConfigCard() {
   const { settings, loadingSettings, savingSettings, error } =
@@ -43,7 +35,6 @@ export function RuntimeConfigCard() {
         idle_unload_secs: settings.idle_unload_secs,
         auto_start_timeout_secs: settings.auto_start_timeout_secs,
         drain_timeout_secs: settings.drain_timeout_secs,
-        allow_unsigned_downloads: settings.allow_unsigned_downloads,
       })
     }
   }, [settings, form])
@@ -111,35 +102,6 @@ export function RuntimeConfigCard() {
           rules={[{ required: true, type: 'number', min: 1, max: 600 }]}
         >
           <InputNumber min={1} max={600} className="!w-full" />
-        </Form.Item>
-
-        <Form.Item
-          label={<Text strong>Allow unsigned downloads</Text>}
-          name="allow_unsigned_downloads"
-          valuePropName="checked"
-          help="When off (default), engine binary downloads are refused because signature verification is not yet available — pre-stage binaries instead (see the pre-stage runbook). Turn on to accept unverified downloads from the upstream release pipeline during the bootstrap period."
-        >
-          <Switch />
-        </Form.Item>
-
-        {/* Span the full row (label + wrapper). The alert is a banner
-            that supplements the toggle above, not a per-field control. */}
-        <Form.Item
-          dependencies={['allow_unsigned_downloads']}
-          noStyle
-        >
-          {({ getFieldValue }) =>
-            getFieldValue('allow_unsigned_downloads') ? (
-              <Form.Item wrapperCol={{ span: 24 }} className="!mb-0">
-                <Alert
-                  type="warning"
-                  showIcon
-                  title="Signed-download verification disabled"
-                  description="Local LLM engine downloads are not cryptographically verified. Only keep this on if you understand the supply-chain risk."
-                />
-              </Form.Item>
-            ) : null
-          }
         </Form.Item>
 
         {canManage && (

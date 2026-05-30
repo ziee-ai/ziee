@@ -108,22 +108,16 @@ pub async fn update_runtime_settings(
         .expect("PUT runtime settings")
 }
 
-/// Download (register) an engine version from the mock release server.
-/// Flips `allow_unsigned_downloads=true` first (the mock serves an
-/// unsigned artifact). Returns the new runtime_version_id.
+/// Download (register) an engine version from the mock release
+/// server. Returns the new runtime_version_id. The
+/// `allow_unsigned_downloads` opt-in has been removed — downloads now
+/// proceed unconditionally and the mock can serve an unsigned
+/// artifact without any setup PUT.
 pub async fn download_engine_from_mock(
     mock: &MockReleaseServer,
     token: &str,
     engine: &str,
 ) -> Uuid {
-    let resp = update_runtime_settings(
-        &mock.server,
-        token,
-        json!({ "allow_unsigned_downloads": true }),
-    )
-    .await;
-    assert_eq!(resp.status(), StatusCode::OK, "enable unsigned downloads");
-
     let payload = json!({
         "engine": engine,
         "version": mock.version,
@@ -168,19 +162,18 @@ pub async fn download_engine_from_mock(
 }
 
 /// Download a real engine binary from the published `ziee-ai` fork
-/// release (hits real github.com — NO mock mirror), extracts it via the
-/// production path, registers it, and makes it the system default.
-/// Returns the runtime_version_id. The release artifacts aren't
-/// cosign-signed, so this flips `allow_unsigned_downloads=true` first.
+/// release (hits real github.com — NO mock mirror), extracts it via
+/// the production path, registers it, and makes it the system
+/// default. Returns the runtime_version_id. The
+/// `allow_unsigned_downloads` opt-in has been removed; the runtime
+/// always accepts unverified downloads (cosign verify is logged but
+/// no longer blocks).
 pub async fn download_engine_release(
     server: &TestServer,
     token: &str,
     engine: &str,
     version: &str,
 ) -> Uuid {
-    let resp = update_runtime_settings(server, token, json!({ "allow_unsigned_downloads": true })).await;
-    assert_eq!(resp.status(), StatusCode::OK, "enable unsigned downloads");
-
     let platform = if cfg!(target_os = "macos") {
         "macos"
     } else if cfg!(target_os = "windows") {

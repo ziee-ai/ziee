@@ -168,41 +168,6 @@ pub async fn download_runtime_version(
         ));
     }
 
-    // Supply-chain gate (closes the "allow_unsigned_downloads=false is
-    // false assurance" finding). Cosign-keyless verification of engine
-    // binaries is not yet wired (the fork repos publish no signed
-    // releases — see PRE-STAGE-RUNBOOK.md). So when the operator has
-    // NOT opted into unsigned downloads, we REFUSE the network fetch
-    // rather than silently trusting an unverified binary. This makes
-    // the default genuinely safe: operators must either pre-stage the
-    // binary (verified out-of-band) or explicitly flip
-    // allow_unsigned_downloads=true.
-    let allow_unsigned = Repos
-        .local_runtime
-        .get_runtime_settings()
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                AppError::internal_error(format!("settings load: {e}")),
-            )
-        })?
-        .allow_unsigned_downloads;
-
-    if !allow_unsigned {
-        return Err((
-            StatusCode::FORBIDDEN,
-            AppError::forbidden(
-                "UNVERIFIED_DOWNLOAD_REFUSED",
-                "Engine binary downloads are refused because signature \
-                 verification is not yet available. Pre-stage the binary \
-                 (see PRE-STAGE-RUNBOOK.md) or enable \
-                 'allow_unsigned_downloads' in Local Runtime settings to \
-                 accept unverified downloads.",
-            ),
-        ));
-    }
-
     // Download and register
     let version = binary_manager
         .download_and_register(engine, &req.version, &req.platform, &req.arch, &req.backend)

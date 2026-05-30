@@ -27,15 +27,9 @@ test.describe('Local Runtime — engine lifecycle (needs HUGGINGFACE_API_KEY)', 
   })
 
   test('download an engine version via the inline Available versions list', async ({ page, testInfra }) => {
-    // The fork releases aren't cosign-signed → the download path refuses unless
-    // allow_unsigned_downloads is on. Enable it, then drive the UI download.
-    const token = await getCurrentUserToken(page)
-    await fetch(`${testInfra.baseURL}/api/local-runtime/settings`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ allow_unsigned_downloads: true })
-    })
-
+    // The fork releases aren't cosign-signed, but the runtime no longer
+    // gates downloads on a signed-only policy — the install proceeds
+    // unconditionally (cosign verify is logged but doesn't block).
     await gotoRuntimeSettings(page, testInfra.baseURL)
     // EngineVersionsCard auto-checks for updates on mount; wait for the
     // "Available versions" section to populate, then click the Download

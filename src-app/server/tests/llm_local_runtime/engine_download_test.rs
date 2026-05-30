@@ -1,8 +1,8 @@
 //! Tier 2 — engine-binary download from the mock release repo.
 //!
 //! Exercises the FULL download pipeline (resolve → fetch → extract →
-//! cache → register) against the loopback `MockReleaseServer`, plus the
-//! supply-chain gate and version CRUD + permissions.
+//! cache → register) against the loopback `MockReleaseServer`, plus
+//! version CRUD + permissions.
 
 use crate::common::TestServer;
 use crate::common::test_helpers::{create_user_with_permissions, create_user_with_only_permissions};
@@ -11,8 +11,12 @@ use super::test_helpers::{self as lrt, LOCAL_RUNTIME_ADMIN_PERMS};
 use reqwest::StatusCode;
 use serde_json::json;
 
-/// allow_unsigned=true → the engine downloads from the mock, registers a
-/// version row, and shows up in the (engine-filtered) version list.
+/// The engine downloads from the mock, registers a version row, and
+/// shows up in the (engine-filtered) version list. The previous
+/// `allow_unsigned_downloads` supply-chain gate has been removed —
+/// downloads now proceed unconditionally (cosign verify in the runtime
+/// crate logs a warning when the sibling `.sig` is missing but no
+/// longer blocks).
 #[tokio::test]
 async fn download_engine_from_mock_succeeds() {
     let mock = mock_release::setup().await;
@@ -34,35 +38,6 @@ async fn download_engine_from_mock_succeeds() {
             .iter()
             .any(|v| v["id"].as_str() == Some(version_id.to_string().as_str())),
         "downloaded version should appear in the list: {body}"
-    );
-}
-
-/// Default policy (allow_unsigned_downloads=false) REFUSES the network
-/// fetch — the supply-chain gate (no silent TOFU).
-#[tokio::test]
-async fn download_refused_when_unsigned_and_policy_false() {
-    let mock = mock_release::setup().await;
-    let admin = create_user_with_permissions(&mock.server, "admin", LOCAL_RUNTIME_ADMIN_PERMS).await;
-
-    // Note: do NOT enable allow_unsigned_downloads here.
-    let payload = json!({
-        "engine": "llamacpp",
-        "version": mock.version,
-        "platform": mock.platform,
-        "arch": mock.arch,
-        "backend": "cpu",
-    });
-    let resp = reqwest::Client::new()
-        .post(mock.server.api_url("/local-runtime/versions/download"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&payload)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(
-        resp.status(),
-        StatusCode::FORBIDDEN,
-        "unsigned download must be refused by default"
     );
 }
 
