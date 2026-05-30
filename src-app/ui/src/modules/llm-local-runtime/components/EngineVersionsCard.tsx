@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import {
   App,
   Button,
@@ -142,10 +142,15 @@ export function EngineVersionsCard({ engine }: { engine: RuntimeEngine }) {
           ) : (
             <Flex vertical gap="small">
               {engineVersions.map((v, i) => (
-                <div key={v.id}>
+                <Fragment key={v.id}>
                   {i > 0 && <Divider className="!my-2" />}
-                  <RuntimeVersionCard version={v} />
-                </div>
+                  {/* Negative inset + padding so the hover background
+                      visually extends past the row content to the
+                      Card body's inner padding edge. */}
+                  <div className="rounded -mx-2 px-2 -my-1 py-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5">
+                    <RuntimeVersionCard version={v} />
+                  </div>
+                </Fragment>
               ))}
             </Flex>
           )}
@@ -162,9 +167,36 @@ export function EngineVersionsCard({ engine }: { engine: RuntimeEngine }) {
             <Button
               icon={<ReloadOutlined />}
               loading={isChecking}
-              onClick={() =>
-                Stores.RuntimeUpdate.checkForUpdates(engine).catch(() => {})
-              }
+              onClick={async () => {
+                try {
+                  const result =
+                    await Stores.RuntimeUpdate.checkForUpdates(engine)
+                  // The store resolves to the new RuntimeUpdateCheck;
+                  // surface the latest available version (or a clean
+                  // "up to date" if everything ready is installed).
+                  const readyAfter = (result?.versions ?? []).filter(
+                    rv => rv.binary_ready,
+                  )
+                  const newCount = readyAfter.filter(rv => !rv.installed).length
+                  if (newCount === 0) {
+                    message.success(
+                      `No new ${engine} versions — you're up to date.`,
+                    )
+                  } else {
+                    message.success(
+                      `Found ${newCount} new ${engine} ${
+                        newCount === 1 ? 'version' : 'versions'
+                      }.`,
+                    )
+                  }
+                } catch (e) {
+                  message.error(
+                    e instanceof Error
+                      ? `Update check failed: ${e.message}`
+                      : 'Update check failed',
+                  )
+                }
+              }}
               aria-label={`Check for updates for ${engine}`}
             >
               Check for updates
@@ -286,25 +318,27 @@ function AvailableVersionRow({
   onDownload: () => void
 }) {
   return (
-    <Flex justify="space-between" align="center" gap="small" wrap>
-      <Space wrap>
-        <Text strong>{v.version}</Text>
-        {isLatest && <Tag color="blue" bordered>latest</Tag>}
-        {v.installed && <Tag color="green" bordered>installed</Tag>}
-        {v.prerelease && <Tag bordered>prerelease</Tag>}
-      </Space>
-      <Can permission={Permissions.RuntimeVersionCreate}>
-        <Button
-          icon={<DownloadOutlined />}
-          loading={downloading}
-          disabled={v.installed}
-          onClick={onDownload}
-          aria-label={`Download ${v.version}`}
-        >
-          {v.installed ? 'Installed' : 'Download'}
-        </Button>
-      </Can>
-    </Flex>
+    <div className="rounded -mx-2 px-2 -my-1 py-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5">
+      <Flex justify="space-between" align="center" gap="small" wrap>
+        <Space wrap>
+          <Text strong>{v.version}</Text>
+          {isLatest && <Tag color="blue" bordered>latest</Tag>}
+          {v.installed && <Tag color="green" bordered>installed</Tag>}
+          {v.prerelease && <Tag bordered>prerelease</Tag>}
+        </Space>
+        <Can permission={Permissions.RuntimeVersionCreate}>
+          <Button
+            icon={<DownloadOutlined />}
+            loading={downloading}
+            disabled={v.installed}
+            onClick={onDownload}
+            aria-label={`Download ${v.version}`}
+          >
+            {v.installed ? 'Installed' : 'Download'}
+          </Button>
+        </Can>
+      </Flex>
+    </div>
   )
 }
 
