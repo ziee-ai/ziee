@@ -72,7 +72,7 @@ pub use modules::code_sandbox::backend::{active as sandbox_backend, RawExecResul
 
 // Re-export MCP content types for integration tests
 #[doc(hidden)]
-pub use modules::chat::extensions::mcp::content::{McpContentData, RichFile};
+pub use modules::chat::extensions::mcp::content::{McpContentData, ResourceLink, RichFile};
 
 // Re-export memory chat-extension functions for integration tests
 // (tier 5 real-LLM tests need to invoke the extraction + summarizer

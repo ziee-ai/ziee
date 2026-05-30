@@ -288,10 +288,16 @@ impl McpChatExtension {
             // Exception: is_saved=true links already exist in originals storage — skip all processing.
             let mut saved_artifacts: Vec<(Uuid, String, Option<String>)> = Vec::new(); // (artifact_id, display_name, download_url)
             let mut saved_file_urls: Vec<(String, String)> = Vec::new(); // (display_name, download_url) for is_saved links
+            // (link_index, artifact_id) for workspace artifacts saved by this
+            // pipeline. Applied back onto resource_links[i].file_id after the loop
+            // so the browser inline preview can fetch via the authenticated,
+            // same-origin /api/files/{id}/... path (the tool-emitted absolute
+            // loopback URI is unreachable from the browser).
+            let mut artifact_file_ids: Vec<(usize, Uuid)> = Vec::new();
             if let McpContentData::ToolResult { ref resource_links, is_error, .. } = result
                 && !is_error.unwrap_or(false)
                     && let Some(links) = resource_links {
-                        for link in links {
+                        for (link_idx, link) in links.iter().enumerate() {
 
                         // is_saved=true: file already exists in originals storage.
                         // URI is a download-with-token URL — skip fetch/process/save pipeline.
@@ -482,16 +488,11 @@ impl McpChatExtension {
                                                                 )
                                                                 .await;
 
-                                                                use crate::modules::chat::core::models::MessageContentData;
-                                                                tool_results.push(
-                                                                    MessageContentData::FileAttachment {
-                                                                        file_id: artifact_id,
-                                                                        filename: display_name
-                                                                            .to_string(),
-                                                                        mime_type,
-                                                                        file_size,
-                                                                    },
-                                                                );
+                                                                // No FileAttachment block is emitted for artifacts: the
+                                                                // inline preview (resource_link with file_id, stamped
+                                                                // after the loop) is the single UI view. Record the
+                                                                // index→artifact_id mapping to apply below.
+                                                                artifact_file_ids.push((link_idx, artifact_id));
 
                                                                 tracing::info!(
                                                                     "Artifact saved from resource_link: file_id={}, filename={}",
@@ -580,7 +581,18 @@ impl McpChatExtension {
             // but stripped from browser API responses.
             // saved_file_urls holds download-with-token URLs for is_saved=true links (no pipeline needed).
             if (!saved_artifacts.is_empty() || !saved_file_urls.is_empty())
-                && let McpContentData::ToolResult { ref mut content, ref mut hidden_content, .. } = result {
+                && let McpContentData::ToolResult { ref mut content, ref mut hidden_content, ref mut resource_links, .. } = result {
+                    // Stamp each saved artifact's file_id onto its resource_link so
+                    // the UI inline preview fetches the content via the authenticated
+                    // /api/files/{id}/... path instead of the unreachable absolute
+                    // loopback URI emitted by the tool.
+                    if let Some(links) = resource_links {
+                        for (idx, fid) in &artifact_file_ids {
+                            if let Some(l) = links.get_mut(*idx) {
+                                l.file_id = Some(*fid);
+                            }
+                        }
+                    }
                     if !saved_artifacts.is_empty() {
                         let file_descriptions: Vec<String> = saved_artifacts
                             .iter()
@@ -588,7 +600,7 @@ impl McpChatExtension {
                             .collect();
                         *content = format!(
                             "Files from MCP tool have been saved as artifact attachments: {}. \
-                             They will be shown as file cards in the UI — do not embed them inline in your response.",
+                             They will be shown as inline file previews in the UI — do not embed them inline in your response.",
                             file_descriptions.join(", ")
                         );
                     }
@@ -1927,10 +1939,16 @@ impl ChatExtension for McpChatExtension {
             // Exception: is_saved=true links already exist in originals storage — skip all processing.
             let mut saved_artifacts: Vec<(Uuid, String, Option<String>)> = Vec::new(); // (artifact_id, display_name, download_url)
             let mut saved_file_urls: Vec<(String, String)> = Vec::new(); // (display_name, download_url) for is_saved links
+            // (link_index, artifact_id) for workspace artifacts saved by this
+            // pipeline. Applied back onto resource_links[i].file_id after the loop
+            // so the browser inline preview can fetch via the authenticated,
+            // same-origin /api/files/{id}/... path (the tool-emitted absolute
+            // loopback URI is unreachable from the browser).
+            let mut artifact_file_ids: Vec<(usize, Uuid)> = Vec::new();
             if let McpContentData::ToolResult { ref resource_links, is_error, .. } = result
                 && !is_error.unwrap_or(false)
                     && let Some(links) = resource_links {
-                        for link in links {
+                        for (link_idx, link) in links.iter().enumerate() {
 
                         // is_saved=true: file already exists in originals storage.
                         // URI is a download-with-token URL — skip fetch/process/save pipeline.
@@ -2121,16 +2139,11 @@ impl ChatExtension for McpChatExtension {
                                                                 )
                                                                 .await;
 
-                                                                use crate::modules::chat::core::models::MessageContentData;
-                                                                tool_results.push(
-                                                                    MessageContentData::FileAttachment {
-                                                                        file_id: artifact_id,
-                                                                        filename: display_name
-                                                                            .to_string(),
-                                                                        mime_type,
-                                                                        file_size,
-                                                                    },
-                                                                );
+                                                                // No FileAttachment block is emitted for artifacts: the
+                                                                // inline preview (resource_link with file_id, stamped
+                                                                // after the loop) is the single UI view. Record the
+                                                                // index→artifact_id mapping to apply below.
+                                                                artifact_file_ids.push((link_idx, artifact_id));
 
                                                                 tracing::info!(
                                                                     "Artifact saved from resource_link: file_id={}, filename={}",
@@ -2219,7 +2232,18 @@ impl ChatExtension for McpChatExtension {
             // but stripped from browser API responses.
             // saved_file_urls holds download-with-token URLs for is_saved=true links (no pipeline needed).
             if (!saved_artifacts.is_empty() || !saved_file_urls.is_empty())
-                && let McpContentData::ToolResult { ref mut content, ref mut hidden_content, .. } = result {
+                && let McpContentData::ToolResult { ref mut content, ref mut hidden_content, ref mut resource_links, .. } = result {
+                    // Stamp each saved artifact's file_id onto its resource_link so
+                    // the UI inline preview fetches the content via the authenticated
+                    // /api/files/{id}/... path instead of the unreachable absolute
+                    // loopback URI emitted by the tool.
+                    if let Some(links) = resource_links {
+                        for (idx, fid) in &artifact_file_ids {
+                            if let Some(l) = links.get_mut(*idx) {
+                                l.file_id = Some(*fid);
+                            }
+                        }
+                    }
                     if !saved_artifacts.is_empty() {
                         let file_descriptions: Vec<String> = saved_artifacts
                             .iter()
@@ -2227,7 +2251,7 @@ impl ChatExtension for McpChatExtension {
                             .collect();
                         *content = format!(
                             "Files from MCP tool have been saved as artifact attachments: {}. \
-                             They will be shown as file cards in the UI — do not embed them inline in your response.",
+                             They will be shown as inline file previews in the UI — do not embed them inline in your response.",
                             file_descriptions.join(", ")
                         );
                     }

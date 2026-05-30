@@ -35,6 +35,10 @@ export interface MockResourceLink {
   mime_type?: string
   size?: number
   is_saved?: boolean
+  /** Backing File id for backend-owned artifacts. When set, the inline
+   *  preview resolves the File entity and renders via the authenticated
+   *  `/api/files/{id}/...` path (mock those endpoints with `mockBackendFile`). */
+  file_id?: string
 }
 
 export interface SeedToolResultOpts {
@@ -327,4 +331,61 @@ export async function mockResourceLinkUrl(
   opts: { status?: number; contentType?: string } = {},
 ): Promise<ResourceLinkUrlMock> {
   return mockResourceLinkUrls(page, [{ url, body, ...opts }])
+}
+
+export interface MockBackendFileOpts {
+  fileId: string
+  filename: string
+  mimeType?: string
+  /** When set, mocks `GET /api/files/{id}/text` to return this content
+   *  (and reports `text_page_count: 1` on the entity). */
+  textContent?: string
+  fileSize?: number
+}
+
+/**
+ * Mock the backend File endpoints a file-backed inline preview hits:
+ * `GET /api/files/{id}` (the entity, fetched by `getMessageFile`) and,
+ * when `textContent` is given, `GET /api/files/{id}/text` (the body the
+ * text/code/CSV viewers render via the authenticated `{file}` path).
+ *
+ * Register BEFORE seeding so the routes are live when the preview mounts.
+ */
+export async function mockBackendFile(
+  page: Page,
+  opts: MockBackendFileOpts,
+): Promise<void> {
+  const entity = {
+    id: opts.fileId,
+    filename: opts.filename,
+    file_size: opts.fileSize ?? (opts.textContent?.length ?? 0),
+    mime_type: opts.mimeType,
+    has_thumbnail: false,
+    preview_page_count: 0,
+    text_page_count: opts.textContent !== undefined ? 1 : 0,
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+    user_id: '00000000-0000-0000-0000-000000000000',
+    created_by: 'mcp',
+    processing_metadata: null,
+  }
+  // Playwright evaluates routes most-recently-registered first. Register the
+  // broad entity route first and the specific /text route last so /text wins
+  // for the text URL while the entity URL falls through to the entity route.
+  await page.route(`**/api/files/${opts.fileId}`, route =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(entity),
+    }),
+  )
+  if (opts.textContent !== undefined) {
+    await page.route(`**/api/files/${opts.fileId}/text`, route =>
+      route.fulfill({
+        status: 200,
+        contentType: 'text/plain; charset=utf-8',
+        body: opts.textContent!,
+      }),
+    )
+  }
 }
