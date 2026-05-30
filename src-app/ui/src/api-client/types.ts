@@ -449,6 +449,10 @@ export interface DownloadInstanceListResponse {
   total: number
 }
 
+export interface DownloadListResponse {
+  downloads: DownloadSnapshot[]
+}
+
 export interface DownloadPaginationQuery {
   page?: number
   per_page?: number
@@ -496,6 +500,20 @@ export interface DownloadRequestData {
   revision?: string
 }
 
+export interface DownloadSnapshot {
+  backend: string
+  bytes_received: number
+  engine: string
+  error?: string
+  key: string
+  percent?: number
+  result_version_id?: string
+  status: string
+  task_id: string
+  total_bytes?: number
+  version: string
+}
+
 export type DownloadStatus = 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled'
 
 export interface DownloadTokenQuery {
@@ -515,10 +533,14 @@ export interface DownloadVersionRequest {
   version: string
 }
 
-export interface DownloadVersionResponse {
-  downloaded: boolean
-  message: string
-  version: RuntimeVersionResponse
+export interface DownloadVersionStartedResponse {
+  backend: string
+  engine: string
+  events_url: string
+  key: string
+  status: string
+  task_id: string
+  version: string
 }
 
 export interface EditMessageRequest {
@@ -529,6 +551,8 @@ export interface EditMessageResponse {
   branch: Branch
   message: Message
 }
+
+export type EngineDownloadStatus = 'pending' | 'downloading' | 'verifying' | 'extracting' | 'registering' | 'completed' | 'failed'
 
 export type EngineType = 'mistralrs' | 'llamacpp' | 'none'
 
@@ -1674,6 +1698,39 @@ export type SSEDownloadProgressEvent = {
   error: string
 }
 
+export interface SSEEngineDownloadCompleteData {
+  bytes_downloaded: number
+  duration_ms: number
+  version_id: string
+}
+
+export interface SSEEngineDownloadConnectedData {
+  backend: string
+  engine: string
+  key: string
+  status: EngineDownloadStatus
+  task_id: string
+  version: string
+}
+
+export type SSEEngineDownloadEvent = {
+  connected: SSEEngineDownloadConnectedData
+  progress: SSEEngineDownloadProgressData
+  complete: SSEEngineDownloadCompleteData
+  failed: SSEEngineDownloadFailedData
+}
+
+export interface SSEEngineDownloadFailedData {
+  error: string
+}
+
+export interface SSEEngineDownloadProgressData {
+  bytes_received: number
+  percent?: number
+  status: EngineDownloadStatus
+  total_bytes?: number
+}
+
 export interface SSEHardwareUsageConnectedData {
   message: string
 }
@@ -2571,8 +2628,11 @@ export const ApiEndpoints = {
   'RuntimeVersion.delete': 'DELETE /api/local-runtime/versions/{version_id}',
   'RuntimeVersion.download': 'POST /api/local-runtime/versions/download',
   'RuntimeVersion.get': 'GET /api/local-runtime/versions/{version_id}',
+  'RuntimeVersion.getDownload': 'GET /api/local-runtime/versions/downloads/{key}',
   'RuntimeVersion.list': 'GET /api/local-runtime/versions',
+  'RuntimeVersion.listDownloads': 'GET /api/local-runtime/versions/downloads',
   'RuntimeVersion.setDefault': 'POST /api/local-runtime/versions/{version_id}/set-default',
+  'RuntimeVersion.subscribeDownloadEvents': 'GET /api/local-runtime/versions/downloads/{key}/events',
   'RuntimeVersion.syncCache': 'POST /api/local-runtime/versions/sync-cache',
   'RuntimeVersion.usage': 'GET /api/local-runtime/version-usage',
   'User.create': 'POST /api/users',
@@ -2790,8 +2850,11 @@ export type ApiEndpointParameters = {
   'RuntimeVersion.delete': { version_id: string; remove_binary?: boolean }
   'RuntimeVersion.download': DownloadVersionRequest
   'RuntimeVersion.get': { version_id: string }
+  'RuntimeVersion.getDownload': { key: string }
   'RuntimeVersion.list': { engine?: string }
+  'RuntimeVersion.listDownloads': void
   'RuntimeVersion.setDefault': { version_id: string }
+  'RuntimeVersion.subscribeDownloadEvents': { key: string }
   'RuntimeVersion.syncCache': void
   'RuntimeVersion.usage': { engine?: string }
   'User.create': CreateUserRequest
@@ -3007,10 +3070,13 @@ export type ApiEndpointResponses = {
   'Project.uploadAndAttachFile': File
   'RuntimeVersion.checkUpdates': AvailableUpdatesResponse
   'RuntimeVersion.delete': void
-  'RuntimeVersion.download': DownloadVersionResponse
+  'RuntimeVersion.download': DownloadVersionStartedResponse
   'RuntimeVersion.get': RuntimeVersionResponse
+  'RuntimeVersion.getDownload': DownloadSnapshot
   'RuntimeVersion.list': RuntimeVersionListResponse
+  'RuntimeVersion.listDownloads': DownloadListResponse
   'RuntimeVersion.setDefault': RuntimeVersionResponse
+  'RuntimeVersion.subscribeDownloadEvents': SSEEngineDownloadEvent
   'RuntimeVersion.syncCache': SyncCacheResponse
   'RuntimeVersion.usage': VersionUsageResponse
   'User.create': User

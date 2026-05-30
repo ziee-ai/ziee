@@ -198,14 +198,9 @@ impl BinaryDownloader {
         Ok(home.join(".llm-runtime").join("binaries"))
     }
 
-    /// Download a binary from GitHub releases
-    ///
-    /// # Arguments
-    /// * `engine` - Engine type (Llamacpp or Mistralrs)
-    /// * `version` - Version tag (e.g., "v0.7.0", use "latest" for latest release)
-    /// * `platform` - Platform (e.g., "linux", "macos", "windows")
-    /// * `arch` - Architecture (e.g., "x86_64", "aarch64")
-    /// * `backend` - Backend (e.g., "cpu", "cuda", "metal")
+    /// Download a binary from GitHub releases (no progress reporting).
+    /// Thin wrapper around [`Self::download_with_progress`] for callers
+    /// that don't need byte-level progress (tests, idempotent re-installs).
     pub async fn download(
         &self,
         engine: EngineType,
@@ -214,6 +209,34 @@ impl BinaryDownloader {
         arch: &str,
         backend: &str,
     ) -> Result<BinaryInfo> {
+        self.download_with_progress(engine, version, platform, arch, backend, |_, _| {})
+            .await
+    }
+
+    /// Download a binary from GitHub releases with a per-chunk progress
+    /// callback. The callback is invoked synchronously on every chunk
+    /// read with `(bytes_received_so_far, total_bytes)`. `total_bytes`
+    /// is `None` when the upstream omits Content-Length.
+    ///
+    /// # Arguments
+    /// * `engine` - Engine type (Llamacpp or Mistralrs)
+    /// * `version` - Version tag (e.g., "v0.7.0", use "latest" for latest release)
+    /// * `platform` - Platform (e.g., "linux", "macos", "windows")
+    /// * `arch` - Architecture (e.g., "x86_64", "aarch64")
+    /// * `backend` - Backend (e.g., "cpu", "cuda", "metal")
+    /// * `progress` - Progress callback (received_bytes, total_bytes)
+    pub async fn download_with_progress<F>(
+        &self,
+        engine: EngineType,
+        version: &str,
+        platform: &str,
+        arch: &str,
+        backend: &str,
+        progress: F,
+    ) -> Result<BinaryInfo>
+    where
+        F: Fn(u64, Option<u64>) + Send + Sync,
+    {
         // Determine repository and binary name (shared naming helpers, so
         // the download URL and asset-readiness detection never drift).
         let repo = engine_repo(engine);
@@ -288,7 +311,7 @@ impl BinaryDownloader {
         // per-platform binary, so a fetch that 404s means "build pending",
         // not "no such release". Surface that explicitly instead of a bare
         // HTTP error.
-        self.download_file(&download_url, &temp_archive)
+        self.download_file(&download_url, &temp_archive, Some(&progress))
             .await
             .map_err(|e| {
                 RuntimeError::BinaryNotFound(format!(
@@ -309,7 +332,10 @@ impl BinaryDownloader {
         // out-of-band.
         let sig_url = format!("{}.sig", download_url);
         let sig_path = temp_dir.join(format!("{}.sig", archive_name));
-        match self.download_file(&sig_url, &sig_path).await {
+        // Sig fetch doesn't report progress — it's a tiny artifact and
+        // the surrounding download has already left a 100% progress
+        // frame in the SSE replay buffer.
+        match self.download_file(&sig_url, &sig_path, None).await {
             Ok(()) => {
                 tracing::info!(
                     "cosign sibling .sig downloaded for {} (verification not \
@@ -449,7 +475,12 @@ impl BinaryDownloader {
     /// sign (Actions OIDC + cosign sign-blob) — until that ships,
     /// this download path is TOFU. Operators reading the SBOM should
     /// confirm the upstream GitHub Releases page hashes match.
-    async fn download_file(&self, url: &str, dest: &Path) -> Result<()> {
+    async fn download_file(
+        &self,
+        url: &str,
+        dest: &Path,
+        progress: Option<&(dyn Fn(u64, Option<u64>) + Send + Sync)>,
+    ) -> Result<()> {
         const MAX_DOWNLOAD_BYTES: u64 = 2 * 1024 * 1024 * 1024; // 2 GiB
 
         // Get file size from HEAD request
@@ -498,6 +529,11 @@ impl BinaryDownloader {
 
         let mut file = File::create(dest)?;
         let mut received: u64 = 0;
+        let total_for_cb = if total_size > 0 { Some(total_size) } else { None };
+        // Initial 0% frame so subscribers see the bar render at start.
+        if let Some(cb) = progress {
+            cb(0, total_for_cb);
+        }
 
         while let Some(chunk) = response.chunk().await? {
             received = received.saturating_add(chunk.len() as u64);
@@ -510,6 +546,9 @@ impl BinaryDownloader {
                 )));
             }
             file.write_all(&chunk)?;
+            if let Some(cb) = progress {
+                cb(received, total_for_cb);
+            }
         }
 
         tracing::debug!("Downloaded {}", dest.file_name().unwrap().to_string_lossy());

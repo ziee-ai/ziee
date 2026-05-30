@@ -108,11 +108,52 @@ pub async fn update_runtime_settings(
         .expect("PUT runtime settings")
 }
 
+/// Poll a download task's snapshot endpoint until it reaches a
+/// terminal status (Completed or Failed). Returns the
+/// `result_version_id` on Completed; panics with the snapshot body
+/// on Failed or on timeout. The POST endpoint is fire-and-forget
+/// now (detached, page-reload-safe), so tests that need the
+/// resulting version row poll via this helper.
+pub async fn wait_for_download(
+    server: &TestServer,
+    token: &str,
+    key: &str,
+) -> Uuid {
+    use std::time::{Duration, Instant};
+    let deadline = Instant::now() + Duration::from_secs(300); // 5 min cap for real-network tests
+    let client = reqwest::Client::new();
+    loop {
+        let resp = client
+            .get(server.api_url(&format!("/local-runtime/versions/downloads/{key}")))
+            .header("Authorization", format!("Bearer {token}"))
+            .send()
+            .await
+            .expect("snapshot fetch");
+        assert_eq!(resp.status(), StatusCode::OK, "snapshot endpoint must exist");
+        let snap: serde_json::Value = resp.json().await.expect("snapshot body");
+        match snap["status"].as_str() {
+            Some("completed") => {
+                let id = snap["result_version_id"].as_str().unwrap_or_else(|| {
+                    panic!("completed snapshot missing result_version_id: {snap}")
+                });
+                return Uuid::parse_str(id).expect("uuid");
+            }
+            Some("failed") => panic!("download failed: {snap}"),
+            _ => {}
+        }
+        if Instant::now() > deadline {
+            panic!("wait_for_download timeout for {key}: last snapshot {snap}");
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+}
+
 /// Download (register) an engine version from the mock release
 /// server. Returns the new runtime_version_id. The
 /// `allow_unsigned_downloads` opt-in has been removed — downloads now
 /// proceed unconditionally and the mock can serve an unsigned
-/// artifact without any setup PUT.
+/// artifact without any setup PUT. The POST is detached, so we poll
+/// the snapshot endpoint until terminal.
 pub async fn download_engine_from_mock(
     mock: &MockReleaseServer,
     token: &str,
@@ -136,8 +177,8 @@ pub async fn download_engine_from_mock(
     let status = response.status();
     let body: serde_json::Value = response.json().await.expect("download body");
     assert_eq!(status, StatusCode::OK, "engine download failed: {body}");
-    let version_id = Uuid::parse_str(body["version"]["id"].as_str().expect("version id"))
-        .expect("version id uuid");
+    let key = body["key"].as_str().expect("key in response").to_string();
+    let version_id = wait_for_download(&mock.server, token, &key).await;
 
     // `LocalDeployment::start` resolves the engine binary via the SYSTEM
     // DEFAULT for the engine (not the model's required_runtime_version_id),
@@ -201,8 +242,8 @@ pub async fn download_engine_release(
     let status = response.status();
     let body: serde_json::Value = response.json().await.expect("download body");
     assert_eq!(status, StatusCode::OK, "engine release download failed: {body}");
-    let version_id =
-        Uuid::parse_str(body["version"]["id"].as_str().expect("version id")).expect("version uuid");
+    let key = body["key"].as_str().expect("key in response").to_string();
+    let version_id = wait_for_download(server, token, &key).await;
 
     let set_default = reqwest::Client::new()
         .post(server.api_url(&format!("/local-runtime/versions/{version_id}/set-default")))

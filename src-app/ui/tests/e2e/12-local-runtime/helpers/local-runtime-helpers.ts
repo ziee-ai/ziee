@@ -130,7 +130,11 @@ export async function downloadEngineViaApi(
   if (!dl.ok) {
     throw new Error(`downloadEngineViaApi failed: ${dl.status} - ${await dl.text()}`)
   }
-  const versionId = (await dl.json()).version.id
+  // The POST is detached now — it returns a task key immediately and
+  // the download runs in the background. Poll the snapshot endpoint
+  // until terminal to keep the test step blocking.
+  const { key } = (await dl.json()) as { key: string }
+  const versionId = await waitForEngineDownload(baseURL, token, key)
   if (setDefault) {
     await fetch(`${baseURL}/api/local-runtime/versions/${versionId}/set-default`, {
       method: 'POST',
@@ -138,6 +142,46 @@ export async function downloadEngineViaApi(
     })
   }
   return versionId
+}
+
+/**
+ * Poll the engine-download snapshot endpoint until the task reaches a
+ * terminal status. Returns the resulting version id on `completed`;
+ * throws on `failed` or timeout (5 min cap — enough for a real GitHub
+ * fetch on a sluggish connection).
+ */
+export async function waitForEngineDownload(
+  baseURL: string,
+  token: string,
+  key: string,
+  timeoutMs = 300_000
+): Promise<string> {
+  const headers = jsonHeaders(token)
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const resp = await fetch(
+      `${baseURL}/api/local-runtime/versions/downloads/${encodeURIComponent(key)}`,
+      { headers }
+    )
+    if (!resp.ok) {
+      throw new Error(
+        `waitForEngineDownload snapshot ${resp.status}: ${await resp.text()}`
+      )
+    }
+    const snap = (await resp.json()) as {
+      status: string
+      result_version_id?: string | null
+      error?: string | null
+    }
+    if (snap.status === 'completed' && snap.result_version_id) {
+      return snap.result_version_id
+    }
+    if (snap.status === 'failed') {
+      throw new Error(`engine download failed: ${snap.error ?? 'unknown'}`)
+    }
+    await new Promise(r => setTimeout(r, 250))
+  }
+  throw new Error(`waitForEngineDownload timeout for ${key}`)
 }
 
 /**

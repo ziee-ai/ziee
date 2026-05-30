@@ -35,10 +35,9 @@ impl BinaryManager {
         Ok(Self { downloader, pool })
     }
 
-    /// Download and register a new runtime version
-    ///
-    /// Downloads the binary from GitHub releases and creates a database record.
-    /// If the binary is already cached, skips download but still creates the DB record.
+    /// Download and register a new runtime version (no progress
+    /// reporting). Thin wrapper around
+    /// [`Self::download_and_register_with_progress`].
     pub async fn download_and_register(
         &self,
         engine: EngineType,
@@ -46,11 +45,43 @@ impl BinaryManager {
         platform: &str,
         arch: &str,
         backend: &str,
-    ) -> Result<RuntimeVersion, Box<dyn std::error::Error>> {
+    ) -> Result<RuntimeVersion, Box<dyn std::error::Error + Send + Sync>> {
+        self.download_and_register_with_progress(
+            engine,
+            version,
+            platform,
+            arch,
+            backend,
+            |_, _| {},
+        )
+        .await
+    }
+
+    /// Download and register a new runtime version, calling `progress`
+    /// on every chunk read with `(bytes_received, total_bytes)`.
+    /// `total_bytes` is `None` when the upstream omits Content-Length.
+    /// If the binary is already cached, skips the download (and the
+    /// callback) but still creates the DB record.
+    ///
+    /// The `Send + Sync` bounds on the error type let this be called
+    /// from inside a `tokio::spawn`'d future (the detached
+    /// download-task runner).
+    pub async fn download_and_register_with_progress<F>(
+        &self,
+        engine: EngineType,
+        version: &str,
+        platform: &str,
+        arch: &str,
+        backend: &str,
+        progress: F,
+    ) -> Result<RuntimeVersion, Box<dyn std::error::Error + Send + Sync>>
+    where
+        F: Fn(u64, Option<u64>) + Send + Sync,
+    {
         // Download binary (uses cache if available)
         let binary_info = self
             .downloader
-            .download(engine, version, platform, arch, backend)
+            .download_with_progress(engine, version, platform, arch, backend, progress)
             .await?;
 
         // Check if version already exists in database

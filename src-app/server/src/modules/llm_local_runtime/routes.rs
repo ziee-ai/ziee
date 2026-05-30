@@ -81,6 +81,22 @@ pub fn llm_local_runtime_router() -> ApiRouter {
             "/local-runtime/versions/download",
             post_with(version_handlers::download_runtime_version, version_handlers::download_runtime_version_docs),
         )
+        // Detached-download progress surface (page-reload-safe).
+        // `list` returns every task in the in-process registry, `get`
+        // is a single-snapshot polling fallback, `events` is the SSE
+        // stream the UI subscribes to for live progress.
+        .api_route(
+            "/local-runtime/versions/downloads",
+            get_with(version_handlers::list_active_downloads, version_handlers::list_active_downloads_docs),
+        )
+        .api_route(
+            "/local-runtime/versions/downloads/{key}",
+            get_with(version_handlers::get_download_snapshot, version_handlers::get_download_snapshot_docs),
+        )
+        .api_route(
+            "/local-runtime/versions/downloads/{key}/events",
+            get_with(version_handlers::subscribe_download_events, version_handlers::subscribe_download_events_docs),
+        )
         .api_route(
             "/local-runtime/versions/{version_id}",
             delete_with(version_handlers::delete_runtime_version, version_handlers::delete_runtime_version_docs),

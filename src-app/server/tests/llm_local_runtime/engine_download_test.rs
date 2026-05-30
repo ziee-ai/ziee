@@ -42,6 +42,10 @@ async fn download_engine_from_mock_succeeds() {
 }
 
 /// A re-download is idempotent (cache hit) and still returns 200.
+/// With detached tasks, a re-POST joins the existing terminal task
+/// (or replaces it with a fresh one that completes immediately on
+/// the binary cache hit) — either way the resulting version row is
+/// the same one already registered.
 #[tokio::test]
 async fn download_idempotent_on_second_call() {
     let mock = mock_release::setup().await;
@@ -49,7 +53,8 @@ async fn download_idempotent_on_second_call() {
 
     let v1 = lrt::download_engine_from_mock(&mock, &admin.token, "llamacpp").await;
 
-    // Second explicit download of the same coordinates.
+    // Second explicit download of the same coordinates — should map
+    // back to the same version row v1.
     let payload = json!({
         "engine": "llamacpp",
         "version": mock.version,
@@ -64,10 +69,11 @@ async fn download_idempotent_on_second_call() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK, "re-download should be a cache hit");
+    assert_eq!(resp.status(), StatusCode::OK, "re-download should kick off");
     let body: serde_json::Value = resp.json().await.unwrap();
-    // Same coordinates → same registered version row.
-    assert_eq!(body["version"]["id"].as_str(), Some(v1.to_string().as_str()));
+    let key = body["key"].as_str().expect("key").to_string();
+    let v2 = lrt::wait_for_download(&mock.server, &admin.token, &key).await;
+    assert_eq!(v2, v1, "re-download must resolve to the same version row");
 }
 
 /// Full version CRUD: download → get → set-default → delete.

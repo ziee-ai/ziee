@@ -59,6 +59,7 @@ import type { useRuntimeDownloadDrawerStore } from './stores/RuntimeDownloadDraw
 import type { useRuntimeDeleteConfirmStore } from './stores/RuntimeDeleteConfirm.store'
 import type { useRuntimeConfigStore } from './stores/RuntimeConfig.store'
 import type { useRuntimeModelUsageStore } from './stores/RuntimeModelUsage.store'
+import type { useRuntimeDownloadProgressStore } from './stores/RuntimeDownloadProgress.store'
 
 declare module '@/core/stores' {
   interface RegisteredStores {
@@ -68,5 +69,6 @@ declare module '@/core/stores' {
     RuntimeDeleteConfirm: StoreProxy<ReturnType<typeof useRuntimeDeleteConfirmStore.getState>>
     RuntimeConfig: StoreProxy<ReturnType<typeof useRuntimeConfigStore.getState>>
     RuntimeModelUsage: StoreProxy<ReturnType<typeof useRuntimeModelUsageStore.getState>>
+    RuntimeDownloadProgress: StoreProxy<ReturnType<typeof useRuntimeDownloadProgressStore.getState>>
   }
 }

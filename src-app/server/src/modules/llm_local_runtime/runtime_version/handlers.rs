@@ -18,6 +18,10 @@ use super::super::events::LlmLocalRuntimeEvent;
 use super::super::permissions::*;
 use super::models::*;
 use super::super::BinaryManager;
+use super::download_task::{
+    self, DOWNLOAD_TASKS, DownloadTask, SSEEngineDownloadConnectedData,
+    SSEEngineDownloadEvent,
+};
 
 // =====================================================
 // Query Parameters
@@ -110,15 +114,25 @@ pub async fn get_runtime_version(
     Ok((StatusCode::OK, Json(RuntimeVersionResponse::from(version_record))))
 }
 
-/// Download and register a runtime version
+/// Start (or join) a download task for a runtime version.
+///
+/// Returns immediately with the task identifier and an SSE URL the
+/// client subscribes to for live progress; the actual download runs
+/// detached on the server so the client can disconnect / reload the
+/// page without aborting it. Re-POSTs for an already-running
+/// (engine, version, backend) triple join the existing task instead
+/// of spawning a duplicate (DashMap entry-locked).
 pub async fn download_runtime_version(
     _auth: RequirePermissions<(RuntimeVersionCreate,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Json(req): Json<DownloadVersionRequest>,
-) -> ApiResult<Json<DownloadVersionResponse>> {
+) -> ApiResult<Json<DownloadVersionStartedResponse>> {
     let pool = Repos.pool();
-    let binary_manager = BinaryManager::with_cache_dir(pool.clone(), std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()))
-        .map_err(|e| AppError::internal_error(format!("Failed to initialize BinaryManager: {}", e)))?;
+    let binary_manager = BinaryManager::with_cache_dir(
+        pool.clone(),
+        std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()),
+    )
+    .map_err(|e| AppError::internal_error(format!("Failed to initialize BinaryManager: {}", e)))?;
 
     // Parse engine type
     let engine = match req.engine.as_str() {
@@ -168,33 +182,214 @@ pub async fn download_runtime_version(
         ));
     }
 
-    // Download and register
-    let version = binary_manager
-        .download_and_register(engine, &req.version, &req.platform, &req.arch, &req.backend)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to download runtime version: {}", e);
-            AppError::internal_error(format!("Failed to download runtime version: {}", e))
-        })?;
+    // Kick off (or join) the detached download task. The task itself
+    // emits the cache-invalidation event when it finishes; we don't
+    // wait here.
+    let binary_manager = Arc::new(binary_manager);
+    let task = download_task::start_or_join(
+        binary_manager,
+        engine,
+        req.version.clone(),
+        req.platform.clone(),
+        req.arch.clone(),
+        req.backend.clone(),
+    )
+    .await
+    .map_err(|e| e.to_api_error())?;
 
-    // Emit event for cache invalidation
-    event_bus.emit_async(
-        LlmLocalRuntimeEvent::runtime_version_downloaded(
-            version.id,
-            req.engine.clone(),
-            req.version.clone(),
-        )
-        .into(),
-    );
+    // Fire the "started" cache invalidation now so any UI that
+    // listens for runtime_version events refreshes its in-flight
+    // state immediately. The "completed" event is fired from the
+    // task runner once the binary is registered (see download_task).
+    let _ = event_bus; // reserved for a future started-event variant
 
-    let response = DownloadVersionResponse {
-        version: RuntimeVersionResponse::from(version),
-        downloaded: true,
-        message: format!("Successfully downloaded and registered {} {} for {}/{}/{}",
-            req.engine, req.version, req.platform, req.arch, req.backend),
+    let status = format!("{:?}", task.state.lock().await.status).to_lowercase();
+    let response = DownloadVersionStartedResponse {
+        task_id: task.task_id,
+        key: task.key.clone(),
+        engine: task.engine.clone(),
+        version: task.version.clone(),
+        backend: task.backend.clone(),
+        status,
+        // `@` is a valid URL path char (RFC 3986 pchar), and our
+        // version/backend validation rejects `/` + `..`, so the raw
+        // key is safe to inline without percent-encoding.
+        events_url: format!(
+            "/api/local-runtime/versions/downloads/{}/events",
+            task.key
+        ),
     };
 
     Ok((StatusCode::OK, Json(response)))
+}
+
+/// Build a `DownloadSnapshot` from a registry entry. Async because
+/// it locks the per-task state mutex.
+async fn snapshot_of(task: &Arc<DownloadTask>) -> DownloadSnapshot {
+    let guard = task.state.lock().await;
+    let percent = guard.total_bytes.map(|t| {
+        if t == 0 {
+            0.0
+        } else {
+            (guard.bytes_received as f32 / t as f32) * 100.0
+        }
+    });
+    DownloadSnapshot {
+        task_id: task.task_id,
+        key: task.key.clone(),
+        engine: task.engine.clone(),
+        version: task.version.clone(),
+        backend: task.backend.clone(),
+        status: format!("{:?}", guard.status).to_lowercase(),
+        bytes_received: guard.bytes_received,
+        total_bytes: guard.total_bytes,
+        percent,
+        result_version_id: guard.result.as_ref().map(|v| v.id),
+        error: guard.error.clone(),
+    }
+}
+
+/// List every download task in the in-process registry — running OR
+/// terminal-but-not-yet-replaced. The UI calls this on mount to
+/// repaint in-flight progress after a page reload.
+pub async fn list_active_downloads(
+    _auth: RequirePermissions<(RuntimeVersionRead,)>,
+) -> ApiResult<Json<DownloadListResponse>> {
+    let entries: Vec<Arc<DownloadTask>> =
+        DOWNLOAD_TASKS.iter().map(|e| e.value().clone()).collect();
+    let mut downloads = Vec::with_capacity(entries.len());
+    for t in entries {
+        downloads.push(snapshot_of(&t).await);
+    }
+    // Stable order so the UI doesn't reshuffle on every poll/reload.
+    downloads.sort_by(|a, b| a.key.cmp(&b.key));
+    Ok((StatusCode::OK, Json(DownloadListResponse { downloads })))
+}
+
+/// Snapshot of a single download task. 404 when the key isn't in the
+/// registry. Used by tests + the UI as a fallback poll if SSE is
+/// unavailable.
+pub async fn get_download_snapshot(
+    _auth: RequirePermissions<(RuntimeVersionRead,)>,
+    Path(key): Path<String>,
+) -> ApiResult<Json<DownloadSnapshot>> {
+    let task = download_task::get_task(&key).ok_or_else(|| {
+        AppError::not_found(&format!("download task {key:?}"))
+    })?;
+    Ok((StatusCode::OK, Json(snapshot_of(&task).await)))
+}
+
+/// SSE stream of download events for a single task. Sends Connected
+/// (with the current state snapshot) immediately, replays buffered
+/// Progress frames, then live-streams further events until the task
+/// reaches a terminal state and the broadcast closes. Late
+/// subscribers to an already-terminal task see Connected + the
+/// terminal event + close.
+pub async fn subscribe_download_events(
+    _auth: RequirePermissions<(RuntimeVersionRead,)>,
+    Path(key): Path<String>,
+) -> ApiResult<
+    axum::response::Sse<
+        impl futures::Stream<Item = Result<axum::response::sse::Event, axum::Error>>,
+    >,
+> {
+    use axum::response::sse::{Event, KeepAlive, Sse};
+
+    let task = download_task::get_task(&key).ok_or_else(|| {
+        AppError::not_found(&format!("download task {key:?}"))
+    })?;
+
+    // Subscribe BEFORE snapshotting to avoid dropping events that
+    // arrive between the snapshot read and the .subscribe() call.
+    let mut rx = task.events.subscribe();
+    let (initial_status, replay, terminal_complete, terminal_failed) = {
+        let snap = task.state.lock().await;
+        let percent = snap.total_bytes.map(|t| {
+            if t == 0 {
+                0.0
+            } else {
+                (snap.bytes_received as f32 / t as f32) * 100.0
+            }
+        });
+        // If we hold a "current" frame that didn't make the replay
+        // buffer (cap eviction), seed it as the first replay so a
+        // late subscriber sees the latest bytes immediately.
+        let mut replay = snap.progress.clone();
+        if replay
+            .last()
+            .map(|p| p.bytes_received != snap.bytes_received)
+            .unwrap_or(true)
+        {
+            replay.push(super::download_task::SSEEngineDownloadProgressData {
+                status: snap.status,
+                bytes_received: snap.bytes_received,
+                total_bytes: snap.total_bytes,
+                percent,
+            });
+        }
+        let complete = snap.result.as_ref().map(|v| {
+            super::download_task::SSEEngineDownloadCompleteData {
+                version_id: v.id,
+                bytes_downloaded: snap.bytes_received,
+                duration_ms: 0,
+            }
+        });
+        let failed = snap.error.as_ref().map(|e| {
+            super::download_task::SSEEngineDownloadFailedData { error: e.clone() }
+        });
+        (snap.status, replay, complete, failed)
+    };
+
+    let task_clone = task.clone();
+    let stream = async_stream::stream! {
+        // 1. Connected — first event for every subscriber.
+        yield Ok::<Event, axum::Error>(SSEEngineDownloadEvent::Connected(SSEEngineDownloadConnectedData {
+            task_id: task_clone.task_id,
+            key: task_clone.key.clone(),
+            engine: task_clone.engine.clone(),
+            version: task_clone.version.clone(),
+            backend: task_clone.backend.clone(),
+            status: initial_status,
+        }).into());
+
+        // 2. Replay buffered progress so a late subscriber paints
+        //    the current bar position without waiting for the next
+        //    chunk.
+        for p in replay {
+            yield Ok(SSEEngineDownloadEvent::Progress(p).into());
+        }
+
+        // 3. If already terminal, emit the final event + close.
+        if let Some(c) = terminal_complete {
+            yield Ok(SSEEngineDownloadEvent::Complete(c).into());
+            return;
+        }
+        if let Some(f) = terminal_failed {
+            yield Ok(SSEEngineDownloadEvent::Failed(f).into());
+            return;
+        }
+
+        // 4. Stream live events until the broadcast closes.
+        loop {
+            match rx.recv().await {
+                Ok(ev) => {
+                    let is_terminal = matches!(
+                        ev,
+                        SSEEngineDownloadEvent::Complete(_) | SSEEngineDownloadEvent::Failed(_)
+                    );
+                    yield Ok(ev.into());
+                    if is_terminal { break; }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+            }
+        }
+    };
+
+    Ok((
+        StatusCode::OK,
+        Sse::new(stream).keep_alive(KeepAlive::default()),
+    ))
 }
 
 /// Delete a runtime version
@@ -518,12 +713,54 @@ pub fn get_runtime_version_docs(op: aide::transform::TransformOperation) -> aide
 pub fn download_runtime_version_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     with_permission::<(RuntimeVersionCreate,)>(op)
         .id("RuntimeVersion.download")
-        .description("Download and register a runtime version from GitHub releases")
+        .description(
+            "Start (or join) a detached download of a runtime version. \
+             Returns immediately with task identifiers + an SSE URL; the \
+             download keeps running on the server even after the client \
+             disconnects, so a page reload can pick it up via \
+             GET /local-runtime/versions/downloads."
+        )
         .tag("Runtime Versions")
-        .response::<200, Json<DownloadVersionResponse>>()
+        .response::<200, Json<DownloadVersionStartedResponse>>()
         .response_with::<400, (), _>(|res| {
             res.description("Invalid request parameters")
         })
+}
+
+pub fn list_active_downloads_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+    with_permission::<(RuntimeVersionRead,)>(op)
+        .id("RuntimeVersion.listDownloads")
+        .description(
+            "List every download task currently held by the in-process \
+             registry (running OR terminal-but-not-yet-replaced). The UI \
+             calls this on mount to repaint in-flight progress after a \
+             page reload."
+        )
+        .tag("Runtime Versions")
+        .response::<200, Json<DownloadListResponse>>()
+}
+
+pub fn get_download_snapshot_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+    with_permission::<(RuntimeVersionRead,)>(op)
+        .id("RuntimeVersion.getDownload")
+        .description("Snapshot of a single download task by its composite key.")
+        .tag("Runtime Versions")
+        .response::<200, Json<DownloadSnapshot>>()
+        .response_with::<404, (), _>(|res| res.description("No such download task"))
+}
+
+pub fn subscribe_download_events_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+    with_permission::<(RuntimeVersionRead,)>(op)
+        .id("RuntimeVersion.subscribeDownloadEvents")
+        .description(
+            "Subscribe to SSE progress events for one download task. \
+             Sends Connected with the current state snapshot immediately, \
+             replays buffered Progress frames, then live-streams further \
+             events until Complete/Failed."
+        )
+        .tag("Runtime Versions")
+        .response::<200, Json<SSEEngineDownloadEvent>>()
+        .response_with::<404, (), _>(|res| res.description("No such download task"))
 }
 
 pub fn delete_runtime_version_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {

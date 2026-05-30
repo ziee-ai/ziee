@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, type ReactNode } from 'react'
 import {
   App,
   Button,
@@ -6,6 +6,7 @@ import {
   Divider,
   Empty,
   Flex,
+  Progress,
   Space,
   Spin,
   Tag,
@@ -16,6 +17,7 @@ import { DownloadOutlined, ReloadOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
+import type { DownloadSnapshot } from '@/api-client/types'
 import type { RuntimeEngine, RuntimeAvailableVersion } from '../types'
 import { RuntimeVersionCard } from './RuntimeVersionCard'
 
@@ -52,17 +54,20 @@ export function EngineVersionsCard({ engine }: { engine: RuntimeEngine }) {
   const { gpu, loadingGpu } = Stores.RuntimeConfig
   const { versions, loading: loadingVersions } = Stores.RuntimeVersion
   const { updateChecks, checking } = Stores.RuntimeUpdate
+  const { activeByKey } = Stores.RuntimeDownloadProgress
   const { message } = App.useApp()
 
   const updateCheck = updateChecks.get(engine)
   const isChecking = checking.get(engine) || false
 
   const engineVersions = versions.filter(v => v.engine === engine)
-  const installedKey = (v: RuntimeAvailableVersion) =>
-    `${engine}@${v.version}`
-  const [downloadingKeys, setDownloadingKeys] = useState<Set<string>>(
-    new Set(),
-  )
+  // The progress-store keys by `engine@version@backend`; for the
+  // available-version row we don't know the backend up-front, so
+  // resolve via the same fallback `handleDownload` uses.
+  const progressKey = (v: RuntimeAvailableVersion) => {
+    const backend = v.recommended_backend ?? v.available_backends[0] ?? 'cpu'
+    return `${engine}@${v.version}@${backend}`
+  }
 
   // Auto-load gpu + versions + update check on mount.
   useEffect(() => {
@@ -97,25 +102,20 @@ export function EngineVersionsCard({ engine }: { engine: RuntimeEngine }) {
       return
     }
     const backend = v.recommended_backend ?? v.available_backends[0] ?? 'cpu'
-    const key = installedKey(v)
-    setDownloadingKeys(prev => new Set(prev).add(key))
     try {
-      await Stores.RuntimeVersion.downloadVersion({
+      // Detached on the server: this returns as soon as the task is
+      // registered; the SSE subscription opened by the store drives
+      // the progress bar from here on. A page reload re-attaches via
+      // the store's loadActive() on mount, so the bar survives.
+      await Stores.RuntimeDownloadProgress.startDownload({
         engine,
         version: v.version,
         platform,
         arch,
         backend,
       })
-      message.success(`Downloaded ${engine} ${v.version} (${backend})`)
     } catch (e) {
-      message.error(e instanceof Error ? e.message : 'Download failed')
-    } finally {
-      setDownloadingKeys(prev => {
-        const next = new Set(prev)
-        next.delete(key)
-        return next
-      })
+      message.error(e instanceof Error ? e.message : 'Failed to start download')
     }
   }
 
@@ -217,7 +217,7 @@ export function EngineVersionsCard({ engine }: { engine: RuntimeEngine }) {
                   key={v.version}
                   v={v}
                   isLatest={v.version === updateCheck.latest_version}
-                  downloading={downloadingKeys.has(installedKey(v))}
+                  progress={activeByKey.get(progressKey(v))}
                   onDownload={() => handleDownload(v)}
                 />
               ))}
@@ -307,37 +307,98 @@ function useGpu() {
 function AvailableVersionRow({
   v,
   isLatest,
-  downloading,
+  progress,
   onDownload,
 }: {
   v: RuntimeAvailableVersion
   isLatest: boolean
-  downloading: boolean
+  /** Live progress snapshot for this row's (engine, version, backend),
+   *  or `undefined` when no download is active. */
+  progress?: DownloadSnapshot
   onDownload: () => void
 }) {
+  const inProgress =
+    progress != null &&
+    progress.status !== 'completed' &&
+    progress.status !== 'failed'
+  const failed = progress?.status === 'failed'
   return (
     <HoverRow>
-      <Flex justify="space-between" align="center" gap="small" wrap>
-        <Space wrap>
-          <Text strong>{v.version}</Text>
-          {isLatest && <Tag color="blue" variant="filled">latest</Tag>}
-          {v.installed && <Tag color="green" variant="filled">installed</Tag>}
-          {v.prerelease && <Tag variant="filled">prerelease</Tag>}
-        </Space>
-        <Can permission={Permissions.RuntimeVersionCreate}>
-          <Button
-            icon={<DownloadOutlined />}
-            loading={downloading}
-            disabled={v.installed}
-            onClick={onDownload}
-            aria-label={`Download ${v.version}`}
-          >
-            {v.installed ? 'Installed' : 'Download'}
-          </Button>
-        </Can>
+      <Flex vertical gap="small">
+        <Flex justify="space-between" align="center" gap="small" wrap>
+          <Space wrap>
+            <Text strong>{v.version}</Text>
+            {isLatest && <Tag color="blue" variant="filled">latest</Tag>}
+            {v.installed && <Tag color="green" variant="filled">installed</Tag>}
+            {v.prerelease && <Tag variant="filled">prerelease</Tag>}
+          </Space>
+          <Can permission={Permissions.RuntimeVersionCreate}>
+            <Button
+              icon={<DownloadOutlined />}
+              loading={inProgress}
+              disabled={v.installed || inProgress}
+              onClick={onDownload}
+              aria-label={`Download ${v.version}`}
+            >
+              {v.installed
+                ? 'Installed'
+                : inProgress
+                ? 'Downloading…'
+                : 'Download'}
+            </Button>
+          </Can>
+        </Flex>
+        {progress && (
+          <DownloadProgressLine progress={progress} />
+        )}
+        {failed && progress?.error && (
+          <Text type="danger">{progress.error}</Text>
+        )}
       </Flex>
     </HoverRow>
   )
+}
+
+/** Inline progress bar + bytes/percent line under an in-flight row. */
+function DownloadProgressLine({ progress }: { progress: DownloadSnapshot }) {
+  const total = progress.total_bytes ?? 0
+  const recv = progress.bytes_received
+  const pct =
+    progress.percent != null
+      ? Math.round(progress.percent)
+      : total > 0
+      ? Math.round((recv / total) * 100)
+      : undefined
+  return (
+    <Flex vertical gap={4}>
+      <Progress
+        percent={pct ?? 0}
+        status={
+          progress.status === 'failed'
+            ? 'exception'
+            : progress.status === 'completed'
+            ? 'success'
+            : 'active'
+        }
+        // Indeterminate-looking when total_bytes is unknown: keep
+        // the bar at 0% and rely on the byte counter for feedback.
+        showInfo={pct != null}
+        size="small"
+      />
+      <Text type="secondary" className="text-xs">
+        {formatBytes(recv)}
+        {total > 0 ? ` / ${formatBytes(total)}` : ''}
+        {progress.status === 'completed' ? ' — Completed' : ''}
+      </Text>
+    </Flex>
+  )
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`
+  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }
 
 /**
