@@ -97,11 +97,43 @@ pub struct DownloadVersionResponse {
     pub message: String,
 }
 
-/// Response containing available updates from GitHub
+/// One upstream release in the update-check diff, enriched with what we
+/// have installed and whether its binary is published for *this host*.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct AvailableVersion {
+    /// Release tag (e.g. `v0.0.1-alpha`).
+    pub version: String,
+    /// True if at least one backend of this version is installed for the
+    /// host platform/arch.
+    pub installed: bool,
+    /// Backends already installed for the host platform/arch (e.g. `["cpu"]`).
+    pub installed_backends: Vec<String>,
+    /// True if the binary for the host platform/arch is published upstream.
+    /// False ⇒ the release exists but its build for this host is pending.
+    pub binary_ready: bool,
+    /// Backends published upstream for the host platform/arch.
+    pub available_backends: Vec<String>,
+    /// The backend artifact recommended for this host given its detected
+    /// GPU/driver versions (the suitable major-version match), if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recommended_backend: Option<String>,
+    /// GitHub prerelease flag.
+    pub prerelease: bool,
+    /// ISO-8601 publish timestamp, if present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub published_at: Option<String>,
+}
+
+/// Response for the update check: upstream releases diffed against what is
+/// installed, scoped to the host platform/arch. Drafts are omitted.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct AvailableUpdatesResponse {
     pub engine: String,
-    pub available_versions: Vec<String>,
+    /// Host platform the asset-readiness was computed for (`linux`/`macos`/`windows`).
+    pub platform: String,
+    /// Host architecture (`x86_64`/`aarch64`).
+    pub arch: String,
+    pub versions: Vec<AvailableVersion>,
 }
 
 /// Response after syncing cache with database
@@ -109,4 +141,56 @@ pub struct AvailableUpdatesResponse {
 pub struct SyncCacheResponse {
     pub synced_count: usize,
     pub message: String,
+}
+
+// =====================================================
+// Version usage (models-by-version interface)
+// =====================================================
+
+/// A local model and how it relates to a given engine version.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ModelUsageInfo {
+    pub id: Uuid,
+    pub name: String,
+    pub display_name: String,
+    pub provider_id: Uuid,
+    pub provider_name: String,
+    /// Engine type (`llamacpp`/`mistralrs`).
+    pub engine: String,
+    /// Whether a runtime instance is currently running for this model.
+    pub running: bool,
+    /// True if the model is explicitly pinned to this version
+    /// (`required_runtime_version_id`); false if it merely inherits it via
+    /// the provider/system default.
+    pub pinned: bool,
+}
+
+/// One installed engine version + the models that effectively resolve to it.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct VersionUsageEntry {
+    pub version: RuntimeVersionResponse,
+    pub models: Vec<ModelUsageInfo>,
+}
+
+/// Models grouped by the engine version they effectively run on.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct VersionUsageResponse {
+    pub versions: Vec<VersionUsageEntry>,
+    /// Local models whose engine has no installed version to resolve to.
+    pub unresolved: Vec<ModelUsageInfo>,
+}
+
+/// Request to swap a model onto another version of the **same** engine.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SwapRuntimeVersionRequest {
+    pub version_id: Uuid,
+}
+
+/// Result of a version swap.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SwapRuntimeVersionResponse {
+    pub model_id: Uuid,
+    pub version_id: Uuid,
+    /// True if a running instance was restarted onto the new version.
+    pub restarted: bool,
 }

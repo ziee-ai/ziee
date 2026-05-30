@@ -2,27 +2,58 @@ import React from 'react'
 import { Button, Form, Input, message, Select, Space } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
-import { detectPlatform, detectArch, getDefaultBackend } from '../../utils/platform'
 import type { DownloadVersionRequest } from '@/api-client/types'
 
 export function RuntimeDownloadDrawer() {
   const { open, engine, closeDrawer } = Stores.RuntimeDownloadDrawer
+  const { updateChecks, checking } = Stores.RuntimeUpdate
+  // Server-host platform/arch from the GPU-detection store — always available
+  // (local probe), unlike the update check which hits github.com and can fail.
+  const { gpu } = Stores.RuntimeConfig
   const [form] = Form.useForm<DownloadVersionRequest>()
   const [submitting, setSubmitting] = React.useState(false)
 
-  const platform = Form.useWatch('platform', form)
+  // Backend artifacts depend on the SERVER host (where the engine runs), not
+  // the browser. The update check reports the published backends + the
+  // GPU-version-matched recommendation; detect-gpu reports platform/arch.
+  const updateCheck = engine ? updateChecks.get(engine) : undefined
+  const isChecking = engine ? checking.get(engine) || false : false
 
+  const readyVersions = (updateCheck?.versions ?? []).filter(v => v.binary_ready)
+  const backendOptions = Array.from(
+    new Set(readyVersions.flatMap(v => v.available_backends))
+  )
+  const recommended = readyVersions[0]?.recommended_backend
+  const platform = updateCheck?.platform ?? gpu?.platform
+  const arch = updateCheck?.arch ?? gpu?.arch
+
+  // On open: ensure host detection is loaded + kick off the update check.
   React.useEffect(() => {
-    if (open && engine) {
+    if (!open || !engine) return
+    if (!gpu) {
+      Stores.RuntimeConfig.loadGpu().catch(() => {})
+    }
+    if (!updateCheck && !isChecking) {
+      Stores.RuntimeUpdate.checkForUpdates(engine).catch(() => {
+        // Surfaced via the store; the form still seeds from detect-gpu + cpu.
+      })
+    }
+  }, [open, engine, gpu, updateCheck, isChecking])
+
+  // Seed the form as soon as ANY host info is known, so a failed/slow update
+  // check can't strand the user with empty required fields (cpu is always a
+  // valid backend).
+  React.useEffect(() => {
+    if (open && engine && (platform || arch)) {
       form.setFieldsValue({
         engine,
         version: 'latest',
-        platform: detectPlatform(),
-        arch: detectArch(),
-        backend: getDefaultBackend(detectPlatform())
+        platform,
+        arch,
+        backend: recommended ?? backendOptions[0] ?? 'cpu'
       })
     }
-  }, [open, engine, form])
+  }, [open, engine, platform, arch, recommended, backendOptions.length, form])
 
   const handleSubmit = async (values: DownloadVersionRequest) => {
     setSubmitting(true)
@@ -99,16 +130,23 @@ export function RuntimeDownloadDrawer() {
           label="Backend"
           name="backend"
           rules={[{ required: true, message: 'Backend is required' }]}
+          help={
+            backendOptions.length > 0
+              ? `Backends published for your host (${platform ?? '?'}/${arch ?? '?'})`
+              : isChecking
+                ? 'Checking which backends are published for your host…'
+                : 'Only cpu is confirmed; run "Check for Updates" to see GPU builds.'
+          }
         >
-          <Select>
-            <Select.Option value="cpu">CPU</Select.Option>
-            <Select.Option value="cuda" disabled={platform !== 'linux'}>
-              CUDA (Linux only)
-            </Select.Option>
-            <Select.Option value="metal" disabled={platform !== 'macos'}>
-              Metal (macOS only)
-            </Select.Option>
-          </Select>
+          <Select
+            loading={isChecking}
+            options={(backendOptions.length > 0 ? backendOptions : ['cpu']).map(
+              b => ({
+                value: b,
+                label: b === recommended ? `${b} (recommended)` : b
+              })
+            )}
+          />
         </Form.Item>
 
         <Form.Item name="engine" hidden>

@@ -78,7 +78,7 @@ pub fn register_event_handlers(modules: &[Box<dyn AppModule>], pool: Arc<PgPool>
 pub fn build_api_router(
     modules: &[Box<dyn AppModule>],
     api_prefix: &str,
-    _pool: PgPool,
+    pool: PgPool,
 ) -> (ApiRouter, OpenApi) {
     // Build combined router from all modules
     // Modules handle their own state requirements internally
@@ -86,6 +86,13 @@ pub fn build_api_router(
     for module in modules.iter() {
         combined_router = module.register_routes(combined_router);
     }
+
+    // Provide the DB pool as a request extension. Several handlers
+    // (the local-LLM proxy at /local-llm/v1/*, llm_model upload +
+    // validate) extract `Extension<PgPool>` rather than reaching for
+    // the global `Repos`; without this layer those routes 500 on a
+    // missing-extension rejection before their body ever runs.
+    let combined_router = combined_router.layer(axum::Extension(pool));
 
     // Create OpenAPI documentation. Closes 14-core F-24 (Info): adds
     // a `bearerAuth` security scheme so generated clients (and the

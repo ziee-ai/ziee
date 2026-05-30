@@ -2,7 +2,7 @@
 
 use aide::axum::IntoApiResponse;
 use axum::{extract::{Extension, Path, Query}, http::StatusCode, Json};
-use llm_runtime::config::EngineType;
+use crate::modules::llm_local_runtime::engine::EngineType;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -27,6 +27,25 @@ use super::super::BinaryManager;
 pub struct ListVersionsQuery {
     /// Filter by engine (optional)
     pub engine: Option<String>,
+}
+
+/// A backend artifact tag: starts with a lowercase letter, then `[a-z0-9.]`
+/// (e.g. `cpu`, `cuda12.6`, `rocm6.1`). Rejects `..` / path separators.
+fn is_valid_backend(s: &str) -> bool {
+    !s.is_empty()
+        && s.chars().next().is_some_and(|c| c.is_ascii_lowercase())
+        && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.')
+        && !s.contains("..")
+}
+
+/// A release tag: starts alphanumeric, then `[A-Za-z0-9._-]` (e.g.
+/// `v0.0.1-alpha`, `latest`, `b4359`). Rejects `..`, `/`, leading `-`.
+fn is_valid_release_tag(s: &str) -> bool {
+    !s.is_empty()
+        && s.chars().next().is_some_and(|c| c.is_ascii_alphanumeric())
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_')
+        && !s.contains("..")
 }
 
 // =====================================================
@@ -113,6 +132,77 @@ pub async fn download_runtime_version(
         }
     };
 
+    // Validate the remaining free-form fields BEFORE they reach the cache
+    // path + download URL. Unchecked, a `../` in version/platform would
+    // traverse out of the binaries cache dir (and the release URL path) and
+    // the resolved binary_path is later spawned as a child process — so this
+    // is a hard input-validation boundary, not cosmetic.
+    if !matches!(req.platform.as_str(), "linux" | "macos" | "windows") {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            AppError::bad_request("INVALID_PLATFORM", "Platform must be linux, macos, or windows"),
+        ));
+    }
+    if !matches!(req.arch.as_str(), "x86_64" | "aarch64") {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            AppError::bad_request("INVALID_ARCH", "Architecture must be x86_64 or aarch64"),
+        ));
+    }
+    if !is_valid_backend(&req.backend) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            AppError::bad_request(
+                "INVALID_BACKEND",
+                "Backend must start with a lowercase letter and contain only [a-z0-9.] (e.g. cpu, cuda12.6)",
+            ),
+        ));
+    }
+    if !is_valid_release_tag(&req.version) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            AppError::bad_request(
+                "INVALID_VERSION",
+                "Version must be a release tag of [A-Za-z0-9._-] (e.g. v0.0.1-alpha, latest) with no path separators",
+            ),
+        ));
+    }
+
+    // Supply-chain gate (closes the "allow_unsigned_downloads=false is
+    // false assurance" finding). Cosign-keyless verification of engine
+    // binaries is not yet wired (the fork repos publish no signed
+    // releases — see PRE-STAGE-RUNBOOK.md). So when the operator has
+    // NOT opted into unsigned downloads, we REFUSE the network fetch
+    // rather than silently trusting an unverified binary. This makes
+    // the default genuinely safe: operators must either pre-stage the
+    // binary (verified out-of-band) or explicitly flip
+    // allow_unsigned_downloads=true.
+    let allow_unsigned = Repos
+        .local_runtime
+        .get_runtime_settings()
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                AppError::internal_error(format!("settings load: {e}")),
+            )
+        })?
+        .allow_unsigned_downloads;
+
+    if !allow_unsigned {
+        return Err((
+            StatusCode::FORBIDDEN,
+            AppError::forbidden(
+                "UNVERIFIED_DOWNLOAD_REFUSED",
+                "Engine binary downloads are refused because signature \
+                 verification is not yet available. Pre-stage the binary \
+                 (see PRE-STAGE-RUNBOOK.md) or enable \
+                 'allow_unsigned_downloads' in Local Runtime settings to \
+                 accept unverified downloads.",
+            ),
+        ));
+    }
+
     // Download and register
     let version = binary_manager
         .download_and_register(engine, &req.version, &req.platform, &req.arch, &req.backend)
@@ -160,6 +250,62 @@ pub async fn delete_runtime_version(
         .await
         .map_err(|e| AppError::internal_error(format!("Database error: {}", e)))?
         .ok_or_else(|| AppError::not_found("Runtime version"))?;
+
+    // In-use guard. The runtime_version FKs are ON DELETE SET NULL, so the DB
+    // would silently orphan dependents (breaking auto-start) rather than
+    // erroring. Refuse with 409 when any model EFFECTIVELY resolves to this
+    // version (same chain as the usage view: model pin → provider default →
+    // system default → latest), or a provider defaults to it, or a running
+    // instance backs it. A version with no effective dependents is deletable
+    // even if it is the current system default (nothing breaks — unpinned
+    // models just re-resolve to the next default/latest).
+    let local_models =
+        crate::modules::llm_local_runtime::runtime_version::repository::list_local_models_with_status(
+            pool,
+            Some(&version_record.engine),
+        )
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                AppError::internal_error(format!("usage models query: {e}")),
+            )
+        })?;
+    let mut effective_models = 0u32;
+    for m in &local_models {
+        let resolved = binary_manager
+            .select_runtime_version(Some(m.id), Some(m.provider_id), &version_record.engine)
+            .await
+            .ok()
+            .flatten();
+        if resolved.map(|v| v.id) == Some(version_id) {
+            effective_models += 1;
+        }
+    }
+    let usage =
+        crate::modules::llm_local_runtime::runtime_version::repository::usage(pool, version_id)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    AppError::internal_error(format!("usage check: {e}")),
+                )
+            })?;
+    if effective_models > 0 || usage.providers > 0 || usage.running_instances > 0 {
+        return Err((
+            StatusCode::CONFLICT,
+            AppError::new(
+                StatusCode::CONFLICT,
+                "VERSION_IN_USE",
+                format!(
+                    "Cannot delete: this runtime version is used by {} model(s), \
+                     {} provider default(s), and {} running instance(s). Swap them \
+                     to another version (or set a different default) first.",
+                    effective_models, usage.providers, usage.running_instances
+                ),
+            ),
+        ));
+    }
 
     binary_manager
         .delete_version(version_id, remove_binary)
@@ -236,8 +382,14 @@ pub async fn check_for_updates(
     let binary_manager = BinaryManager::with_cache_dir(pool.clone(), std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()))
         .map_err(|e| AppError::internal_error(format!("Failed to initialize BinaryManager: {}", e)))?;
 
-    let available_versions = binary_manager
-        .check_for_updates(&engine)
+    // Asset-readiness is host-specific: a release may ship the cpu binary
+    // for one platform/arch before another. Compute the diff for THIS host,
+    // detected at runtime (not the compile-time target).
+    let platform = super::super::utils::gpu_detect::host_platform();
+    let arch = super::super::utils::gpu_detect::host_arch();
+
+    let versions = binary_manager
+        .check_for_updates(&engine, &platform, &arch)
         .await
         .map_err(|e| {
             tracing::error!("Failed to check for updates: {}", e);
@@ -246,10 +398,99 @@ pub async fn check_for_updates(
 
     let response = AvailableUpdatesResponse {
         engine,
-        available_versions,
+        platform,
+        arch,
+        versions,
     };
 
     Ok((StatusCode::OK, Json(response)))
+}
+
+/// List local models grouped by the engine version they effectively use.
+///
+/// "Effective" follows the same fallback chain the runtime uses to start a
+/// model (model pin → provider default → system default → latest), so the
+/// view reflects what each model actually runs on, not just explicit pins.
+pub async fn list_version_usage(
+    _auth: RequirePermissions<(RuntimeVersionRead,)>,
+    Query(params): Query<ListVersionsQuery>,
+) -> ApiResult<Json<VersionUsageResponse>> {
+    let pool = Repos.pool();
+    let binary_manager = BinaryManager::with_cache_dir(
+        pool.clone(),
+        std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()),
+    )
+    .map_err(|e| AppError::internal_error(format!("Failed to initialize BinaryManager: {}", e)))?;
+
+    let engine = params.engine.as_deref();
+    let models = super::repository::list_local_models_with_status(pool, engine)
+        .await
+        .map_err(|e| AppError::internal_error(format!("usage query: {e}")))?;
+
+    let versions = match engine {
+        Some(e) => super::repository::list_by_engine(pool, e).await,
+        None => super::repository::list_all(pool).await,
+    }
+    .map_err(|e| AppError::internal_error(format!("versions query: {e}")))?;
+
+    let mut by_version: std::collections::HashMap<Uuid, Vec<ModelUsageInfo>> =
+        std::collections::HashMap::new();
+    let mut unresolved: Vec<ModelUsageInfo> = Vec::new();
+
+    for m in models {
+        let effective = binary_manager
+            .select_runtime_version(Some(m.id), Some(m.provider_id), &m.engine)
+            .await
+            .ok()
+            .flatten();
+        let pinned = match &effective {
+            Some(v) => m.required_runtime_version_id == Some(v.id),
+            None => false,
+        };
+        let info = ModelUsageInfo {
+            id: m.id,
+            name: m.name,
+            display_name: m.display_name,
+            provider_id: m.provider_id,
+            provider_name: m.provider_name,
+            engine: m.engine,
+            running: m.running,
+            pinned,
+        };
+        match effective {
+            Some(v) => by_version.entry(v.id).or_default().push(info),
+            None => unresolved.push(info),
+        }
+    }
+
+    let entries = versions
+        .into_iter()
+        .map(|v| {
+            let models = by_version.remove(&v.id).unwrap_or_default();
+            VersionUsageEntry {
+                version: RuntimeVersionResponse::from(v),
+                models,
+            }
+        })
+        .collect();
+
+    Ok((
+        StatusCode::OK,
+        Json(VersionUsageResponse {
+            versions: entries,
+            unresolved,
+        }),
+    ))
+}
+
+pub fn list_version_usage_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
+    with_permission::<(RuntimeVersionRead,)>(op)
+        .id("RuntimeVersion.usage")
+        .description("List local models grouped by the engine version they effectively use")
+        .tag("LocalRuntime")
+        .response::<200, Json<VersionUsageResponse>>()
 }
 
 /// Sync cache with database

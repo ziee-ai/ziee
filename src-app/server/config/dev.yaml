@@ -100,7 +100,7 @@ logging:
 
 # JWT authentication settings
 jwt:
-  secret: "dev-secret-change-in-production-min-32-chars-long"
+  secret: "lPzU20E0jWPYjqpCejZ2ng1v2xNh7veS9T2xj7y3G1OGSUnCAaz5gGXEGF8bdbtO"
   issuer: "ziee-chat"
   audience: "ziee-chat-api"
   access_token_expiry_hours: 24  # Access token expires in 24 hours

@@ -72,3 +72,33 @@ pub enum DeploymentConfig {
         binary_path: Option<String>,
     },
 }
+
+// =====================================================
+// SSE event types for live engine log streaming (P2)
+// =====================================================
+
+/// A single captured engine log line.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct SSELogLineData {
+    pub line: String,
+}
+
+/// Emitted when the broadcast buffer overflowed and the subscriber
+/// missed lines (slow reader).
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct SSELogLagData {
+    pub message: String,
+    pub dropped: u64,
+}
+
+// Typed SSE event stream for `GET /local-runtime/models/{id}/logs/stream`.
+// The macro generates camelCase event names (`Log` → "log",
+// `Lag` → "lag"), `Into<axum::sse::Event>`, and drives the typed
+// `SSECallback` in the generated TS client (no `as never` casts).
+crate::sse_event_enum! {
+    #[derive(Debug, Clone, Serialize, JsonSchema)]
+    pub enum SSELogEvent {
+        Log(SSELogLineData),
+        Lag(SSELogLagData),
+    }
+}

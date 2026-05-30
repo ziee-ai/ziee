@@ -143,7 +143,7 @@ export const useSandboxRootfsVersionsStore = create<SandboxRootfsVersionsStore>(
           // EnvironmentsRead OR ResourceLimitsRead, so a resource-
           // limits-only admin can reach the page (and correctly sees
           // the rootfs card's permission alert). Without this gate
-          // their session still fires a backend-403 getRootfsVersions
+          // their session still fires a backend-403 listRootfsVersions
           // + an SSE subscribe that 403s and trips the 5-attempt
           // reconnect loop. `hasPermissionNow` is the non-reactive
           // checker built for exactly this store-init case.
@@ -167,7 +167,7 @@ export const useSandboxRootfsVersionsStore = create<SandboxRootfsVersionsStore>(
           s.error = null
         })
         try {
-          const res: VersionStatus = await ApiClient.CodeSandbox.getRootfsVersions(
+          const res: VersionStatus = await ApiClient.CodeSandbox.listRootfsVersions(
             undefined,
           )
           set(s => {

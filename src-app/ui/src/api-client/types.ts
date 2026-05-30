@@ -76,8 +76,21 @@ export interface AutoApprovedServer {
 }
 
 export interface AvailableUpdatesResponse {
-  available_versions: string[]
+  arch: string
   engine: string
+  platform: string
+  versions: AvailableVersion[]
+}
+
+export interface AvailableVersion {
+  available_backends: string[]
+  binary_ready: boolean
+  installed: boolean
+  installed_backends: string[]
+  prerelease: boolean
+  published_at?: string
+  recommended_backend?: string
+  version: string
 }
 
 export interface Branch {
@@ -272,6 +285,21 @@ export interface CreateLlmProviderRequest {
   proxy_settings?: ProxySettings
 }
 
+export interface CreateLlmProviderResponse {
+  api_key?: string
+  base_url?: string
+  built_in: boolean
+  created_at: string
+  default_runtime_version_id?: string
+  enabled: boolean
+  id: string
+  name: string
+  plaintext_api_key?: string
+  provider_type: string
+  proxy_settings: ProxySettings
+  updated_at: string
+}
+
 export interface CreateLlmRepositoryRequest {
   auth_config?: RepositoryAuthConfig
   auth_type: string
@@ -343,6 +371,11 @@ export interface DeleteAllResponse {
   deleted: number
 }
 
+export interface DeleteModelQuery {
+  delete_file?: boolean
+  force?: boolean
+}
+
 export interface DeleteProviderResponse {
   affected_user_links: number
   deleted: boolean
@@ -357,6 +390,25 @@ export type DeviceType = 'cpu' | 'cuda' | 'metal' | 'rocm' | 'vulkan' | 'opencl'
 export interface DisabledServer {
   server_id: string
   tools: string[]
+}
+
+export interface DiscoverModelsResponse {
+  models: DiscoveredModel[]
+  notes: string[]
+  provider_type: string
+}
+
+export interface DiscoveredModel {
+  context_length?: number
+  deprecated: boolean
+  display_name?: string
+  id: string
+  max_output_tokens?: number
+  source: string
+  supports_chat: boolean
+  supports_embeddings: boolean
+  supports_tool_use?: boolean
+  supports_vision: boolean
 }
 
 export interface DownloadFromRepositoryRequest {
@@ -560,6 +612,13 @@ export interface GetUserProvidersResponse {
 
 export interface GetUserProvidersResponse2 {
   providers: ProviderWithModels2[]
+}
+
+export interface GpuDetectionResponse {
+  arch: string
+  available: string[]
+  platform: string
+  recommended: string
 }
 
 export interface Group {
@@ -1257,6 +1316,17 @@ export interface ModelParameters {
   top_p?: number
 }
 
+export interface ModelUsageInfo {
+  display_name: string
+  engine: string
+  id: string
+  name: string
+  pinned: boolean
+  provider_id: string
+  provider_name: string
+  running: boolean
+}
+
 export interface OperatingSystemInfo {
   architecture: string
   kernel_version?: string
@@ -1507,6 +1577,20 @@ export interface RootfsRelease {
   version: string
 }
 
+export interface RotateProxyTokenResponse {
+  plaintext_api_key: string
+  provider: LlmProvider
+}
+
+export interface RuntimeSettings {
+  allow_unsigned_downloads: boolean
+  auto_start_timeout_secs: number
+  created_at: string
+  drain_timeout_secs: number
+  idle_unload_secs: number
+  updated_at: string
+}
+
 export interface RuntimeVersionListResponse {
   versions: RuntimeVersionResponse[]
 }
@@ -1656,6 +1740,20 @@ export type SSEInstallTaskEvent = {
   taskState: InstallTaskState
 }
 
+export type SSELogEvent = {
+  log: SSELogLineData
+  lag: SSELogLagData
+}
+
+export interface SSELogLagData {
+  dropped: number
+  message: string
+}
+
+export interface SSELogLineData {
+  line: string
+}
+
 export interface SaveUserApiKeyRequest {
   api_key: string
   provider_id: string
@@ -1720,6 +1818,16 @@ export interface SwapOutcome {
 }
 
 export type SwapPolicy = 'preserve' | 'wipe_caches_on_drain'
+
+export interface SwapRuntimeVersionRequest {
+  version_id: string
+}
+
+export interface SwapRuntimeVersionResponse {
+  model_id: string
+  restarted: boolean
+  version_id: string
+}
 
 export interface SyncCacheResponse {
   message: string
@@ -1946,6 +2054,13 @@ export interface UpdateProjectRequest {
   name?: string
 }
 
+export interface UpdateRuntimeSettingsRequest {
+  allow_unsigned_downloads?: boolean
+  auto_start_timeout_secs?: number
+  drain_timeout_secs?: number
+  idle_unload_secs?: number
+}
+
 export interface UpdateUserMemorySettingsRequest {
   extraction_enabled?: boolean
   extraction_model_id?: string
@@ -2080,6 +2195,16 @@ export interface VersionStatus {
   pinned_version?: string
 }
 
+export interface VersionUsageEntry {
+  models: ModelUsageInfo[]
+  version: RuntimeVersionResponse
+}
+
+export interface VersionUsageResponse {
+  unresolved: ModelUsageInfo[]
+  versions: VersionUsageEntry[]
+}
+
 // =============================================================================
 // PERMISSIONS
 // =============================================================================
@@ -2172,6 +2297,8 @@ export enum Permissions {
   ProjectsDelete = 'projects::delete',
   ProjectsEdit = 'projects::edit',
   ProjectsRead = 'projects::read',
+  RuntimeSettingsManage = 'llm_local_runtime::settings_manage',
+  RuntimeSettingsRead = 'llm_local_runtime::settings_read',
   RuntimeVersionCreate = 'llm_local_runtime::create',
   RuntimeVersionDelete = 'llm_local_runtime::delete',
   RuntimeVersionRead = 'llm_local_runtime::versions_read',
@@ -2199,7 +2326,7 @@ export const PermissionDescriptions: Record<string, string> = {
   BranchesCreate: 'Create message branches for edit/regenerate',
   BranchesSwitch: 'Switch between conversation branches',
   CodeSandboxEnvironmentsManage: 'Trigger pre-fetch + cache management of sandbox rootfs environments.',
-  CodeSandboxEnvironmentsRead: 'List available sandbox environments and watch prefetch progress.',
+  CodeSandboxEnvironmentsRead: 'List rootfs versions and watch install progress.',
   CodeSandboxResourceLimitsManage: 'Update the sandbox memory/CPU/PID caps + per-exec timeout + idle-evict policy.',
   CodeSandboxResourceLimitsRead: 'Read the sandbox resource limits configuration.',
   ConversationsCreate: 'Create new chat conversations',
@@ -2273,6 +2400,8 @@ export const PermissionDescriptions: Record<string, string> = {
   ProjectsDelete: 'Delete chat projects',
   ProjectsEdit: 'Edit chat projects (incl. attach/detach files)',
   ProjectsRead: 'Read chat projects',
+  RuntimeSettingsManage: 'Modify runtime singleton settings (idle/auto-start/drain/allow_unsigned_downloads)',
+  RuntimeSettingsRead: 'Read runtime singleton settings (idle/auto-start/drain)',
   RuntimeVersionCreate: 'Download and register new runtime versions',
   RuntimeVersionDelete: 'Delete runtime versions',
   RuntimeVersionRead: 'View runtime versions and check for updates',
@@ -2326,8 +2455,8 @@ export const ApiEndpoints = {
   'Chat.getUserLlmProviders': 'GET /api/chat/llm-providers',
   'CodeSandbox.deleteRootfsVersion': 'DELETE /api/code-sandbox/rootfs/versions/{id}',
   'CodeSandbox.getResourceLimits': 'GET /api/code-sandbox/resource-limits',
-  'CodeSandbox.getRootfsVersions': 'GET /api/code-sandbox/rootfs/versions',
   'CodeSandbox.installRootfsVersion': 'POST /api/code-sandbox/rootfs/versions/install',
+  'CodeSandbox.listRootfsVersions': 'GET /api/code-sandbox/rootfs/versions',
   'CodeSandbox.setRootfsPin': 'POST /api/code-sandbox/rootfs/versions/set-pin',
   'CodeSandbox.subscribeRootfsInstallProgress': 'GET /api/code-sandbox/rootfs/versions/install/subscribe',
   'CodeSandbox.updateResourceLimits': 'PUT /api/code-sandbox/resource-limits',
@@ -2385,16 +2514,19 @@ export const ApiEndpoints = {
   'LlmModel.subscribeDownloadProgress': 'GET /api/llm-models/downloads/subscribe',
   'LlmModel.update': 'POST /api/llm-models/{model_id}',
   'LlmModel.upload': 'POST /api/llm-models/upload',
+  'LlmModel.validate': 'POST /api/llm-models/{model_id}/validate',
   'LlmProvider.assignGroup': 'POST /api/llm-providers/{provider_id}/groups',
   'LlmProvider.create': 'POST /api/llm-providers',
   'LlmProvider.delete': 'DELETE /api/llm-providers/{provider_id}',
   'LlmProvider.deleteUserApiKey': 'DELETE /api/user-llm-providers/api-keys/{provider_id}',
+  'LlmProvider.discoverModels': 'GET /api/llm-providers/{provider_id}/discover-models',
   'LlmProvider.get': 'GET /api/llm-providers/{provider_id}',
   'LlmProvider.getGroups': 'GET /api/llm-providers/{provider_id}/groups',
   'LlmProvider.getUserLlmProviders': 'GET /api/user-llm-providers',
   'LlmProvider.list': 'GET /api/llm-providers',
   'LlmProvider.listUserApiKeys': 'GET /api/user-llm-providers/api-keys',
   'LlmProvider.removeGroup': 'DELETE /api/llm-providers/{provider_id}/groups/{group_id}',
+  'LlmProvider.rotateProxyToken': 'POST /api/llm-providers/{provider_id}/rotate-proxy-token',
   'LlmProvider.saveUserApiKey': 'POST /api/user-llm-providers/api-keys',
   'LlmProvider.update': 'POST /api/llm-providers/{provider_id}',
   'LlmRepository.create': 'POST /api/llm-repositories',
@@ -2403,14 +2535,22 @@ export const ApiEndpoints = {
   'LlmRepository.list': 'GET /api/llm-repositories',
   'LlmRepository.test': 'POST /api/llm-repositories/test',
   'LlmRepository.update': 'POST /api/llm-repositories/{repository_id}',
+  'LocalLlmProxy.chatCompletions': 'POST /api/local-llm/v1/chat/completions',
+  'LocalLlmProxy.embeddings': 'POST /api/local-llm/v1/embeddings',
+  'LocalLlmProxy.listModels': 'GET /api/local-llm/v1/models',
+  'LocalRuntime.detectGpu': 'GET /api/local-runtime/detect-gpu',
   'LocalRuntime.getInstance': 'GET /api/local-runtime/models/{model_id}/instance',
   'LocalRuntime.getLogs': 'GET /api/local-runtime/models/{model_id}/logs',
   'LocalRuntime.getProviderInstances': 'GET /api/local-runtime/providers/{provider_id}/instances',
+  'LocalRuntime.getRuntimeSettings': 'GET /api/local-runtime/settings',
   'LocalRuntime.getStatus': 'GET /api/local-runtime/models/{model_id}/status',
   'LocalRuntime.healthCheck': 'GET /api/local-runtime/models/{model_id}/health',
   'LocalRuntime.restartModel': 'POST /api/local-runtime/models/{model_id}/restart',
   'LocalRuntime.startModel': 'POST /api/local-runtime/models/{model_id}/start',
   'LocalRuntime.stopModel': 'POST /api/local-runtime/models/{model_id}/stop',
+  'LocalRuntime.streamLogs': 'GET /api/local-runtime/models/{model_id}/logs/stream',
+  'LocalRuntime.swapModelVersion': 'POST /api/local-runtime/models/{model_id}/runtime-version',
+  'LocalRuntime.updateRuntimeSettings': 'PUT /api/local-runtime/settings',
   'Mcp.getDefaults': 'GET /api/mcp/defaults',
   'Mcp.respondToElicitation': 'POST /api/mcp/elicitation/{elicitation_id}/respond',
   'Mcp.updateDefaults': 'PUT /api/mcp/defaults',
@@ -2480,6 +2620,7 @@ export const ApiEndpoints = {
   'RuntimeVersion.list': 'GET /api/local-runtime/versions',
   'RuntimeVersion.setDefault': 'POST /api/local-runtime/versions/{version_id}/set-default',
   'RuntimeVersion.syncCache': 'POST /api/local-runtime/versions/sync-cache',
+  'RuntimeVersion.usage': 'GET /api/local-runtime/version-usage',
   'User.create': 'POST /api/users',
   'User.delete': 'DELETE /api/users/{user_id}',
   'User.get': 'GET /api/users/{user_id}',
@@ -2533,8 +2674,8 @@ export type ApiEndpointParameters = {
   'Chat.getUserLlmProviders': void
   'CodeSandbox.deleteRootfsVersion': { id: string }
   'CodeSandbox.getResourceLimits': void
-  'CodeSandbox.getRootfsVersions': void
   'CodeSandbox.installRootfsVersion': InstallVersionRequest
+  'CodeSandbox.listRootfsVersions': void
   'CodeSandbox.setRootfsPin': SetPinRequest
   'CodeSandbox.subscribeRootfsInstallProgress': void
   'CodeSandbox.updateResourceLimits': UpdateCodeSandboxResourceLimits
@@ -2580,7 +2721,7 @@ export type ApiEndpointParameters = {
   'Hub.refreshModels': void
   'LlmModel.cancelDownload': { download_id: string }
   'LlmModel.create': CreateLlmModelRequest
-  'LlmModel.delete': { model_id: string }
+  'LlmModel.delete': { model_id: string; delete_file?: boolean; force?: boolean }
   'LlmModel.deleteDownload': { download_id: string }
   'LlmModel.disable': { model_id: string }
   'LlmModel.download': DownloadFromRepositoryRequest
@@ -2592,16 +2733,19 @@ export type ApiEndpointParameters = {
   'LlmModel.subscribeDownloadProgress': void
   'LlmModel.update': { model_id: string } & UpdateLlmModelRequest
   'LlmModel.upload': FormData
+  'LlmModel.validate': { model_id: string }
   'LlmProvider.assignGroup': { provider_id: string } & AssignProviderToGroupRequest
   'LlmProvider.create': CreateLlmProviderRequest
   'LlmProvider.delete': { provider_id: string }
   'LlmProvider.deleteUserApiKey': { provider_id: string }
+  'LlmProvider.discoverModels': { provider_id: string }
   'LlmProvider.get': { provider_id: string }
   'LlmProvider.getGroups': { provider_id: string }
   'LlmProvider.getUserLlmProviders': void
   'LlmProvider.list': PaginationQuery
   'LlmProvider.listUserApiKeys': void
   'LlmProvider.removeGroup': { provider_id: string; group_id: string }
+  'LlmProvider.rotateProxyToken': { provider_id: string }
   'LlmProvider.saveUserApiKey': SaveUserApiKeyRequest
   'LlmProvider.update': { provider_id: string } & UpdateLlmProviderRequest
   'LlmRepository.create': CreateLlmRepositoryRequest
@@ -2610,14 +2754,22 @@ export type ApiEndpointParameters = {
   'LlmRepository.list': PaginationQuery
   'LlmRepository.test': TestRepositoryConnectionRequest
   'LlmRepository.update': { repository_id: string } & UpdateLlmRepositoryRequest
+  'LocalLlmProxy.chatCompletions': void
+  'LocalLlmProxy.embeddings': void
+  'LocalLlmProxy.listModels': void
+  'LocalRuntime.detectGpu': void
   'LocalRuntime.getInstance': { model_id: string }
   'LocalRuntime.getLogs': { model_id: string }
   'LocalRuntime.getProviderInstances': { provider_id: string }
+  'LocalRuntime.getRuntimeSettings': void
   'LocalRuntime.getStatus': { model_id: string }
   'LocalRuntime.healthCheck': { model_id: string }
   'LocalRuntime.restartModel': { model_id: string }
   'LocalRuntime.startModel': { model_id: string } & StartInstanceRequest
   'LocalRuntime.stopModel': { model_id: string }
+  'LocalRuntime.streamLogs': { model_id: string }
+  'LocalRuntime.swapModelVersion': { model_id: string } & SwapRuntimeVersionRequest
+  'LocalRuntime.updateRuntimeSettings': UpdateRuntimeSettingsRequest
   'Mcp.getDefaults': void
   'Mcp.respondToElicitation': { elicitation_id: string } & RespondToElicitationRequest
   'Mcp.updateDefaults': UpsertUserMcpDefaultsRequest
@@ -2687,6 +2839,7 @@ export type ApiEndpointParameters = {
   'RuntimeVersion.list': { engine?: string }
   'RuntimeVersion.setDefault': { version_id: string }
   'RuntimeVersion.syncCache': void
+  'RuntimeVersion.usage': { engine?: string }
   'User.create': CreateUserRequest
   'User.delete': { user_id: string }
   'User.get': { user_id: string }
@@ -2740,8 +2893,8 @@ export type ApiEndpointResponses = {
   'Chat.getUserLlmProviders': GetUserProvidersResponse2
   'CodeSandbox.deleteRootfsVersion': VersionStatus
   'CodeSandbox.getResourceLimits': CodeSandboxResourceLimits
-  'CodeSandbox.getRootfsVersions': VersionStatus
   'CodeSandbox.installRootfsVersion': InstallTaskState
+  'CodeSandbox.listRootfsVersions': VersionStatus
   'CodeSandbox.setRootfsPin': SetPinResponse
   'CodeSandbox.subscribeRootfsInstallProgress': SSEInstallTaskEvent
   'CodeSandbox.updateResourceLimits': CodeSandboxResourceLimits
@@ -2799,16 +2952,19 @@ export type ApiEndpointResponses = {
   'LlmModel.subscribeDownloadProgress': SSEDownloadProgressEvent
   'LlmModel.update': LlmModel
   'LlmModel.upload': LlmModel
+  'LlmModel.validate': any
   'LlmProvider.assignGroup': void
-  'LlmProvider.create': LlmProvider
+  'LlmProvider.create': CreateLlmProviderResponse
   'LlmProvider.delete': void
   'LlmProvider.deleteUserApiKey': void
+  'LlmProvider.discoverModels': DiscoverModelsResponse
   'LlmProvider.get': LlmProvider
   'LlmProvider.getGroups': Group[]
   'LlmProvider.getUserLlmProviders': GetUserProvidersResponse
   'LlmProvider.list': LlmProviderListResponse
   'LlmProvider.listUserApiKeys': UserApiKeyListResponse
   'LlmProvider.removeGroup': void
+  'LlmProvider.rotateProxyToken': RotateProxyTokenResponse
   'LlmProvider.saveUserApiKey': void
   'LlmProvider.update': LlmProvider
   'LlmRepository.create': LlmRepository
@@ -2817,14 +2973,22 @@ export type ApiEndpointResponses = {
   'LlmRepository.list': LlmRepositoryListResponse
   'LlmRepository.test': TestRepositoryConnectionResponse
   'LlmRepository.update': LlmRepository
+  'LocalLlmProxy.chatCompletions': void
+  'LocalLlmProxy.embeddings': void
+  'LocalLlmProxy.listModels': void
+  'LocalRuntime.detectGpu': GpuDetectionResponse
   'LocalRuntime.getInstance': InstanceResponse
   'LocalRuntime.getLogs': LogsResponse
   'LocalRuntime.getProviderInstances': ProviderInstancesResponse
+  'LocalRuntime.getRuntimeSettings': RuntimeSettings
   'LocalRuntime.getStatus': InstanceStatusResponse
   'LocalRuntime.healthCheck': HealthCheckResponse
   'LocalRuntime.restartModel': InstanceResponse
   'LocalRuntime.startModel': InstanceResponse
   'LocalRuntime.stopModel': InstanceResponse
+  'LocalRuntime.streamLogs': SSELogEvent
+  'LocalRuntime.swapModelVersion': SwapRuntimeVersionResponse
+  'LocalRuntime.updateRuntimeSettings': RuntimeSettings
   'Mcp.getDefaults': UserMcpDefaultsGetResponse
   'Mcp.respondToElicitation': RespondToElicitationResponse
   'Mcp.updateDefaults': UserMcpDefaultsResponse
@@ -2894,6 +3058,7 @@ export type ApiEndpointResponses = {
   'RuntimeVersion.list': RuntimeVersionListResponse
   'RuntimeVersion.setDefault': RuntimeVersionResponse
   'RuntimeVersion.syncCache': SyncCacheResponse
+  'RuntimeVersion.usage': VersionUsageResponse
   'User.create': User
   'User.delete': void
   'User.get': User

@@ -6,6 +6,7 @@ use aide::axum::{
 };
 
 use super::handlers::admin::*;
+use super::handlers::discover::{discover_models, discover_models_docs};
 use super::handlers::user::*;
 
 /// LLM Provider management routes
@@ -31,6 +32,16 @@ pub fn llm_provider_router() -> ApiRouter {
         .api_route(
             "/llm-providers/{provider_id}",
             delete_with(delete_provider, delete_provider_docs),
+        )
+        // Token rotation for local providers (P1.f).
+        .api_route(
+            "/llm-providers/{provider_id}/rotate-proxy-token",
+            post_with(rotate_proxy_token, rotate_proxy_token_docs),
+        )
+        // Model discovery: catalog + live /v1/models (P1.j).
+        .api_route(
+            "/llm-providers/{provider_id}/discover-models",
+            get_with(discover_models, discover_models_docs),
         )
         // Group assignments (provider-centric - legacy/admin)
         .api_route(

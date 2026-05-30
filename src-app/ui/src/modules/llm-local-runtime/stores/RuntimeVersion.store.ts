@@ -26,7 +26,7 @@ interface RuntimeVersionState {
   loadVersions: (engine?: RuntimeEngine) => Promise<void>
   downloadVersion: (request: DownloadVersionRequest) => Promise<RuntimeVersionResponse>
   setDefaultVersion: (versionId: string) => Promise<void>
-  deleteVersion: (versionId: string) => Promise<void>
+  deleteVersion: (versionId: string, removeBinary?: boolean) => Promise<void>
   syncCache: () => Promise<void>
 
   // Selectors
@@ -138,7 +138,7 @@ export const useRuntimeVersionStore = create<RuntimeVersionState>()(
       }
     },
 
-    deleteVersion: async (versionId: string) => {
+    deleteVersion: async (versionId: string, removeBinary = false) => {
       set(state => ({
         deleting: new Map(state.deleting).set(versionId, true),
         error: null
@@ -146,7 +146,8 @@ export const useRuntimeVersionStore = create<RuntimeVersionState>()(
 
       try {
         await ApiClient.RuntimeVersion.delete({
-          version_id: versionId
+          version_id: versionId,
+          remove_binary: removeBinary
         })
 
         await emitRuntimeVersionDeleted(versionId)
