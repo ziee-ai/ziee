@@ -366,3 +366,194 @@ async fn execute_command_emits_approval_required_sse_event() {
         approval.data
     );
 }
+
+// =====================================================================
+// LLM + a THIRD-PARTY MCP server running INSIDE the sandbox + sandbox.
+//
+// The tests above drive the BUILT-IN code_sandbox MCP server. This one
+// closes the remaining gap: a `run_in_sandbox`-flagged stdio MCP server
+// (a tiny python echo server) is spawned bwrap-isolated, the real LLM
+// discovers its `echo` tool (which only works if the sandboxed child
+// actually spawned + answered tools/list), invokes it, and the echoed
+// result round-trips back through MCP → chat. Full chain:
+//   LLM → MCP → run_in_sandbox spawn (bwrap) → python child → result.
+// =====================================================================
+
+/// Minimal stdio MCP server (echo only). `python3` ships in the
+/// 'minimal' sandbox rootfs on every platform.
+const SANDBOXED_ECHO_PY: &str = r#"
+import json, sys
+def respond(rid, result):
+    sys.stdout.write(json.dumps({"jsonrpc":"2.0","id":rid,"result":result})+"\n")
+    sys.stdout.flush()
+for raw in sys.stdin:
+    raw = raw.strip()
+    if not raw: continue
+    req = json.loads(raw); m = req.get("method"); rid = req.get("id")
+    if m == "initialize":
+        respond(rid, {"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"tier5-echo","version":"0"}})
+    elif m == "notifications/initialized":
+        pass
+    elif m == "tools/list":
+        respond(rid, {"tools":[{"name":"echo","description":"Echo the msg argument straight back.","inputSchema":{"type":"object","properties":{"msg":{"type":"string"}},"required":["msg"]}}]})
+    elif m == "tools/call":
+        p = req.get("params", {})
+        if p.get("name") == "echo":
+            respond(rid, {"content":[{"type":"text","text": p.get("arguments",{}).get("msg","")}], "isError": False})
+        else:
+            respond(rid, {"content":[{"type":"text","text":"unknown tool"}], "isError": True})
+    else:
+        respond(rid, {})
+"#;
+
+/// Create a system stdio MCP server backed by `SANDBOXED_ECHO_PY`, with
+/// `run_in_sandbox=true`. Returns the new server id.
+async fn create_sandboxed_echo_mcp(server: &TestServer, admin_token: &str) -> Uuid {
+    let url = server.api_url("/mcp/system-servers");
+    let resp = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {admin_token}"))
+        .json(&json!({
+            "name": format!("tier5-echo-{}", Uuid::new_v4()),
+            "display_name": "Tier 5 Sandboxed Echo",
+            "enabled": true,
+            "transport_type": "stdio",
+            "command": "python3",
+            "args": ["-c", SANDBOXED_ECHO_PY],
+            "environment_variables": {},
+            "timeout_seconds": 60,
+            "run_in_sandbox": true,
+        }))
+        .send()
+        .await
+        .expect("create system server");
+    let status = resp.status();
+    let body: Value = resp.json().await.expect("json");
+    assert_eq!(status, 201, "create sandboxed echo server failed: {body}");
+    Uuid::parse_str(body["id"].as_str().expect("server id")).unwrap()
+}
+
+/// Assign an MCP server to the custom test group the user belongs to, so
+/// the chat module surfaces its tools to the LLM. Mirrors the group
+/// lookup in `setup_chat_with_anthropic` (must target the
+/// `test_group_%`, NOT the default Users group).
+async fn assign_mcp_server_to_user_group(
+    server: &TestServer,
+    user_id: Uuid,
+    mcp_server_id: Uuid,
+) {
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+    let group_id: Uuid = sqlx::query_scalar(
+        "SELECT g.id FROM groups g \
+         JOIN user_groups ug ON ug.group_id = g.id \
+         WHERE ug.user_id = $1 \
+           AND g.is_default = false AND g.is_system = false \
+           AND g.name LIKE 'test_group_%' \
+         ORDER BY g.created_at DESC LIMIT 1",
+    )
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .expect("user must be in a custom test group");
+    sqlx::query(
+        "INSERT INTO user_group_mcp_servers (group_id, mcp_server_id, assigned_at) \
+         VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING",
+    )
+    .bind(group_id)
+    .bind(mcp_server_id)
+    .execute(&pool)
+    .await
+    .expect("assign mcp server to test group");
+    pool.close().await;
+}
+
+#[tokio::test]
+async fn llm_drives_a_tool_on_a_sandboxed_mcp_server() {
+    let Some(server) = enabled_test_server_with_anthropic().await else { return };
+
+    // One user that can create the system server, see its tools, and chat.
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "tier5_sbxmcp",
+        &[
+            "mcp_servers_admin::create",
+            "mcp_servers_admin::read",
+            "mcp_servers::read",
+            "code_sandbox::execute",
+            "llm_models::read",
+            "llm_providers::read",
+        ],
+    )
+    .await;
+    let user_id = Uuid::parse_str(&user.user_id).unwrap();
+
+    // Spawn-in-sandbox echo MCP server + make it visible to the LLM.
+    let echo_id = create_sandboxed_echo_mcp(&server, &user.token).await;
+    assign_mcp_server_to_user_group(&server, user_id, echo_id).await;
+
+    let model = helpers::get_or_create_test_model(&server, &user.user_id).await;
+    let model_id = Uuid::parse_str(model["id"].as_str().unwrap()).unwrap();
+    let conv = helpers::create_conversation(
+        &server,
+        &user.token,
+        Some(model_id),
+        Some("Tier-5 sandboxed-mcp"),
+    )
+    .await;
+    let conv_id = Uuid::parse_str(conv["id"].as_str().unwrap()).unwrap();
+    let branch_id = Uuid::parse_str(conv["active_branch_id"].as_str().unwrap()).unwrap();
+
+    // Auto-approve `echo` for this conversation so no approval gate fires.
+    set_conversation_mcp_settings(&server, &user.token, conv_id, echo_id, &["echo"]).await;
+
+    let sentinel = "SANDBOXED-ECHO-7F3A";
+    let response = send_with_sandbox_enabled(
+        &server,
+        &user.token,
+        conv_id,
+        branch_id,
+        model_id,
+        echo_id,
+        &format!(
+            "Call the `echo` tool RIGHT NOW with msg=\"{sentinel}\". \
+             Do not reply with text — just invoke the tool."
+        ),
+    )
+    .await;
+    let events = helpers::parse_sse_events(response).await;
+    let event_names: Vec<&str> = events.iter().map(|e| e.event.as_str()).collect();
+
+    // 1. The LLM discovered + invoked the sandboxed server's `echo` tool.
+    //    tools/list only succeeds if the run_in_sandbox child actually
+    //    spawned in bwrap and answered — so this proves the spawn path.
+    let started: Vec<&str> = events
+        .iter()
+        .filter(|e| e.event == "mcpToolStart")
+        .filter_map(|e| e.data["tool_name"].as_str())
+        .collect();
+    assert!(
+        started.contains(&"echo"),
+        "LLM did not call the sandboxed echo tool. starts={started:?} events={event_names:?}"
+    );
+
+    // 2. The echoed sentinel round-tripped from the bwrap-isolated child
+    //    back through MCP → chat (proves real execution, not just discovery).
+    let complete = events
+        .iter()
+        .find(|e| e.event == "mcpToolComplete" && e.data["tool_name"] == "echo")
+        .unwrap_or_else(|| panic!("no mcpToolComplete for echo. events={event_names:?}"));
+    assert_eq!(
+        complete.data["is_error"], false,
+        "sandboxed echo reported an error: {:?}",
+        complete.data
+    );
+    let result = complete.data["result"].as_str().unwrap_or("");
+    assert!(
+        result.contains(sentinel),
+        "echo result did not round-trip the sentinel through the sandbox. result={result:?}"
+    );
+}
