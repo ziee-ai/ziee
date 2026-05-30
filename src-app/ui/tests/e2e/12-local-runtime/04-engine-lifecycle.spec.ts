@@ -31,12 +31,13 @@ test.describe('Local Runtime — engine lifecycle (needs HUGGINGFACE_API_KEY)', 
     // gates downloads on a signed-only policy — the install proceeds
     // unconditionally (cosign verify is logged but doesn't block).
     await gotoRuntimeSettings(page, testInfra.baseURL)
-    // EngineVersionsCard auto-checks for updates on mount; wait for the
-    // "Available versions" section to populate, then click the Download
-    // button on the first available (non-installed) row.
+    // AvailableVersionsCard auto-checks for updates on mount; wait for the
+    // "Available versions" card to populate, then click the Install
+    // button on the first available (non-installed) row. The button label
+    // was renamed Download → Install when the detached SSE pipeline landed.
     const pane = page.locator('.ant-tabs-tabpane-active')
     await expect(pane.getByText(/Available versions/i).first()).toBeVisible({ timeout: 30000 })
-    const firstAvailable = pane.getByRole('button', { name: /^Download$/ }).first()
+    const firstAvailable = pane.getByRole('button', { name: /^Install$/ }).first()
     await expect(firstAvailable).toBeVisible({ timeout: 30000 })
     await firstAvailable.click()
 

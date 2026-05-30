@@ -55,19 +55,22 @@ test.describe('Local Runtime — models by version (engine-free)', () => {
     await expect(mrsCard.getByText(/No versions installed yet/i)).toBeVisible()
   })
 
-  test('available-versions section auto-populates (no Check for Updates button)', async ({ page, testInfra }) => {
+  test('available-versions card auto-populates on mount + has a manual Check-for-updates button in its extra slot', async ({ page, testInfra }) => {
     await gotoRuntimeSettings(page, testInfra.baseURL)
-    // EngineVersionsCard auto-runs the update check on mount. There is no
-    // "Check for Updates" button anymore — the section either lists ready
-    // releases or shows the "Could not reach the upstream release feed."
-    // fallback. Both render the "Available versions" heading.
+    // AvailableVersionsCard auto-runs the update check on mount; the
+    // card either lists ready releases or shows the
+    // "Could not reach the upstream release feed." fallback. The
+    // 'Check for updates' button now lives in the card's `extra`
+    // slot (peer pattern: UsersSettings puts its primary card
+    // action there too), so the *button is present* — but the
+    // initial render doesn't require it to fire.
     const pane = page.locator('.ant-tabs-tabpane-active')
     await expect(pane.getByText(/Available versions/i).first()).toBeVisible({
       timeout: 30000,
     })
     await expect(
-      pane.getByRole('button', { name: /Check for Updates/i })
-    ).toHaveCount(0)
+      pane.getByRole('button', { name: /Check for updates/i })
+    ).toBeVisible()
   })
 })
 
@@ -138,8 +141,8 @@ test.describe('Local Runtime — running engine (needs HUGGINGFACE_API_KEY)', ()
   }) => {
     await gotoRuntimeSettings(page, testInfra.baseURL)
     const pane = page.locator('.ant-tabs-tabpane-active')
-    // EngineVersionsCard auto-checks on mount. The installed v0.0.1 row
-    // should carry an "installed" tag, with the Download button disabled.
+    // AvailableVersionsCard auto-checks on mount. The installed v0.0.1 row
+    // should carry an "installed" tag, with the Install button disabled.
     await expect(pane.getByText(/Available versions/i).first()).toBeVisible({
       timeout: 30000,
     })
