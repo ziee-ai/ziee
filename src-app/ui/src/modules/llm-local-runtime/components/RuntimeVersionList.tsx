@@ -37,10 +37,21 @@ export function RuntimeVersionList({ engine }: Props) {
   }
 
   if (!engineVersions.length) {
+    // Distinguish "no versions across any engine" (first-run) from
+    // "this engine has none, but the user has installed others"
+    // (second-engine onboarding). Different copy + different CTA
+    // emphasis. Matches the empty-state pattern peer modules (mcp,
+    // assistant) use to avoid the same generic "No X" blank screen
+    // for every empty-list reason.
+    const hasOtherEngineVersions = versions.length > 0
     return (
-      <Card>
+      <Card title="Installed Versions">
         <Empty
-          description={`No ${engine} versions installed`}
+          description={
+            hasOtherEngineVersions
+              ? `No ${engine} versions installed yet — other engines have versions.`
+              : `No engine versions installed yet. Download one to get started.`
+          }
           image={Empty.PRESENTED_IMAGE_SIMPLE}
         >
           {canCreate && (
@@ -49,7 +60,7 @@ export function RuntimeVersionList({ engine }: Props) {
               icon={<DownloadOutlined />}
               onClick={() => openDrawer(engine)}
             >
-              Download Version
+              Download {engine} Version
             </Button>
           )}
         </Empty>

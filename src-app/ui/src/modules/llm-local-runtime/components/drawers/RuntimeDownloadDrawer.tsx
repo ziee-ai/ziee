@@ -132,10 +132,10 @@ export function RuntimeDownloadDrawer() {
           rules={[{ required: true, message: 'Backend is required' }]}
           help={
             backendOptions.length > 0
-              ? `Backends published for your host (${platform ?? '?'}/${arch ?? '?'})`
+              ? `Backends published for your host (${platform ?? '?'}/${arch ?? '?'}).`
               : isChecking
                 ? 'Checking which backends are published for your host…'
-                : 'Only cpu is confirmed; run "Check for Updates" to see GPU builds.'
+                : 'Showing CPU as a safe default. Run "Check for Updates" to discover GPU builds for your host.'
           }
         >
           <Select
