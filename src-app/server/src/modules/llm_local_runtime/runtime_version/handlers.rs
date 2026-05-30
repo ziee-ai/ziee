@@ -249,9 +249,19 @@ async fn snapshot_of(task: &Arc<DownloadTask>) -> DownloadSnapshot {
     }
 }
 
-/// List every download task in the in-process registry — running OR
-/// terminal-but-not-yet-replaced. The UI calls this on mount to
-/// repaint in-flight progress after a page reload.
+/// List download tasks the UI should be tracking — i.e. *non-terminal*
+/// entries (pending / downloading / verifying / extracting /
+/// registering). Terminal tasks (completed / failed) are excluded so
+/// a page reload after a download finishes returns to a clean state;
+/// otherwise the UI re-seeds a "0 B — Completed" progress block that
+/// never auto-dismisses (the dismiss timer only fires on a *fresh*
+/// SSE Complete event, which the reload path never sees because we
+/// skip terminal entries when re-subscribing).
+///
+/// The snapshot + SSE endpoints still return terminal state — that's
+/// the contract a *late* SSE subscriber relies on to replay the
+/// final outcome of a download it was tracking. The list endpoint
+/// is the page-reload survivor for *in-flight* work only.
 pub async fn list_active_downloads(
     _auth: RequirePermissions<(RuntimeVersionRead,)>,
 ) -> ApiResult<Json<DownloadListResponse>> {
@@ -259,7 +269,12 @@ pub async fn list_active_downloads(
         DOWNLOAD_TASKS.iter().map(|e| e.value().clone()).collect();
     let mut downloads = Vec::with_capacity(entries.len());
     for t in entries {
-        downloads.push(snapshot_of(&t).await);
+        let snap = snapshot_of(&t).await;
+        // Filter out terminal entries — see the doc-comment above for why.
+        if matches!(snap.status.as_str(), "completed" | "failed") {
+            continue;
+        }
+        downloads.push(snap);
     }
     // Stable order so the UI doesn't reshuffle on every poll/reload.
     downloads.sort_by(|a, b| a.key.cmp(&b.key));

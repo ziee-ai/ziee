@@ -1,12 +1,12 @@
 import { Fragment, useEffect } from 'react'
-import { Card, Divider, Empty, Flex, Spin, Tag, Typography } from 'antd'
+import { Button, Card, Divider, Empty, Flex, Spin, Tag, Typography } from 'antd'
+import { ReloadOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import type { RuntimeEngine } from '../types'
 import { RuntimeVersionCard } from './RuntimeVersionCard'
 import { VersionModelsBlock } from './VersionModelsBlock'
-import { HoverRow } from './_engineVersionsShared'
 
 /**
  * Per-engine "Installed versions" card.
@@ -33,9 +33,19 @@ import { HoverRow } from './_engineVersionsShared'
  */
 export function InstalledVersionsCard({ engine }: { engine: RuntimeEngine }) {
   const { versions, loading: loadingVersions } = Stores.RuntimeVersion
-  const { usage } = Stores.RuntimeModelUsage
+  const { usage, loading: loadingUsage } = Stores.RuntimeModelUsage
   const canManage = usePermission(Permissions.LocalRuntimeManage)
   const canViewLogs = usePermission(Permissions.LocalRuntimeLogs)
+  const refreshing = loadingVersions || (loadingUsage.get(engine) ?? false)
+
+  const handleRefresh = () => {
+    // Reload BOTH stores — the version list (Stores.RuntimeVersion)
+    // and the per-version models (Stores.RuntimeModelUsage).
+    // Fire-and-forget; the loading spinners on the button + spinner
+    // for empty state cover the user-visible state.
+    Stores.RuntimeVersion.loadVersions().catch(() => {})
+    Stores.RuntimeModelUsage.loadUsage(engine).catch(() => {})
+  }
 
   const engineVersions = versions.filter(v => v.engine === engine)
   const engineUsage = usage.get(engine)
@@ -68,7 +78,19 @@ export function InstalledVersionsCard({ engine }: { engine: RuntimeEngine }) {
   }, [engine])
 
   return (
-    <Card title="Installed versions">
+    <Card
+      title="Installed versions"
+      extra={
+        <Button
+          icon={<ReloadOutlined />}
+          loading={refreshing}
+          onClick={handleRefresh}
+          aria-label={`Refresh installed ${engine} versions`}
+        >
+          Refresh
+        </Button>
+      }
+    >
       {loadingVersions && engineVersions.length === 0 ? (
         <Spin />
       ) : engineVersions.length === 0 ? (
@@ -81,19 +103,20 @@ export function InstalledVersionsCard({ engine }: { engine: RuntimeEngine }) {
           {engineVersions.map((v, i) => (
             <Fragment key={v.id}>
               {i > 0 && <Divider className="!my-4" />}
-              <HoverRow>
-                <Flex vertical gap="small">
-                  <RuntimeVersionCard version={v} />
-                  <VersionModelsBlock
-                    engine={engine}
-                    versionId={v.id}
-                    models={modelsByVersion.get(v.id) ?? []}
-                    versionOptions={versionOptions}
-                    canManage={canManage}
-                    canViewLogs={canViewLogs}
-                  />
-                </Flex>
-              </HoverRow>
+              {/* Installed rows are static (not "selectable"), so no
+                  hover background — matches the User / Repository
+                  settings pages, which also don't tint rows on hover. */}
+              <Flex vertical gap="small">
+                <RuntimeVersionCard version={v} />
+                <VersionModelsBlock
+                  engine={engine}
+                  versionId={v.id}
+                  models={modelsByVersion.get(v.id) ?? []}
+                  versionOptions={versionOptions}
+                  canManage={canManage}
+                  canViewLogs={canViewLogs}
+                />
+              </Flex>
             </Fragment>
           ))}
           {engineUsage?.unresolved && engineUsage.unresolved.length > 0 && (

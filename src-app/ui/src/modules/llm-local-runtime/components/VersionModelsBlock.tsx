@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react'
 import {
   Badge,
   Button,
+  Collapse,
   Descriptions,
+  Empty,
   Flex,
   Select,
   Space,
@@ -65,38 +67,51 @@ export function VersionModelsBlock({
   canManage: boolean
   canViewLogs: boolean
 }) {
-  if (models.length === 0) {
-    return (
-      <Typography.Text type="secondary" className="text-xs">
-        No models — safe to delete
-      </Typography.Text>
-    )
-  }
   const groups = groupByProvider(models)
+  const label = (
+    <Typography.Text type="secondary" className="text-xs">
+      Models using this version ({models.length})
+    </Typography.Text>
+  )
   return (
-    <Flex vertical gap="small">
-      <Typography.Text type="secondary" className="text-xs">
-        {models.length} model{models.length === 1 ? '' : 's'}
-      </Typography.Text>
-      {groups.map(group => (
-        <Flex vertical gap="small" key={group.providerId}>
-          <Typography.Text type="secondary" className="text-xs">
-            {group.providerName}
-          </Typography.Text>
-          {group.models.map(m => (
-            <ModelRow
-              key={m.id}
-              engine={engine}
-              model={m}
-              versionId={versionId}
-              versionOptions={versionOptions}
-              canManage={canManage}
-              canViewLogs={canViewLogs}
-            />
-          ))}
-        </Flex>
-      ))}
-    </Flex>
+    <Collapse
+      ghost
+      size="small"
+      items={[
+        {
+          key: 'models',
+          label,
+          children:
+            models.length === 0 ? (
+              <Empty
+                description="No models use this version — safe to delete"
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+              />
+            ) : (
+              <Flex vertical gap="small">
+                {groups.map(group => (
+                  <Flex vertical gap="small" key={group.providerId}>
+                    <Typography.Text type="secondary" className="text-xs">
+                      {group.providerName}
+                    </Typography.Text>
+                    {group.models.map(m => (
+                      <ModelRow
+                        key={m.id}
+                        engine={engine}
+                        model={m}
+                        versionId={versionId}
+                        versionOptions={versionOptions}
+                        canManage={canManage}
+                        canViewLogs={canViewLogs}
+                      />
+                    ))}
+                  </Flex>
+                ))}
+              </Flex>
+            ),
+        },
+      ]}
+    />
   )
 }
 

@@ -245,40 +245,58 @@ async fn version_endpoints_require_permissions() {
 // these tests cover the three companion endpoints the UI uses to follow a
 // running task: the snapshot/list polling surface and the live SSE stream.
 
-/// After a successful download, the task stays in the in-process
-/// registry with status=completed and a populated `result_version_id`
-/// — that's what `GET /versions/downloads` returns to the UI on
-/// mount, which is how page-reload survival re-paints the row.
+/// After a successful download:
+///   - `GET /versions/downloads` (the list endpoint the UI calls on
+///     mount) must NOT return the completed task — otherwise a page
+///     reload re-seeds a stale '0 B — Completed' progress block that
+///     never auto-dismisses (the dismiss timer only fires on a fresh
+///     SSE Complete event).
+///   - `GET /versions/downloads/{key}` (the snapshot endpoint) MUST
+///     still return the terminal entry, so a *late* SSE subscriber
+///     can replay the final outcome (the prefetch contract is
+///     preserved for in-flight work that finishes between subscribe
+///     and the first network read).
 #[tokio::test]
-async fn list_active_downloads_includes_completed_task() {
+async fn list_excludes_terminal_snapshot_retains_it() {
     let mock = mock_release::setup().await;
     let admin = create_user_with_permissions(&mock.server, "admin", LOCAL_RUNTIME_ADMIN_PERMS).await;
 
     let version_id = lrt::download_engine_from_mock(&mock, &admin.token, "llamacpp").await;
+    let key = format!("llamacpp@{}@cpu", mock.version);
+    let client = reqwest::Client::new();
 
-    let resp = reqwest::Client::new()
+    // List endpoint: completed task must be filtered out.
+    let list_resp = client
         .get(mock.server.api_url("/local-runtime/versions/downloads"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body: serde_json::Value = resp.json().await.unwrap();
-    let downloads = body["downloads"].as_array().expect("downloads array");
-    let entry = downloads
+    assert_eq!(list_resp.status(), StatusCode::OK);
+    let list_body: serde_json::Value = list_resp.json().await.unwrap();
+    let downloads = list_body["downloads"].as_array().expect("downloads array");
+    let found_in_list = downloads
         .iter()
-        .find(|d| d["engine"].as_str() == Some("llamacpp") && d["version"].as_str() == Some(mock.version.as_str()))
-        .unwrap_or_else(|| panic!("downloaded task should appear in list: {body}"));
-    assert_eq!(entry["status"].as_str(), Some("completed"));
-    assert_eq!(
-        entry["result_version_id"].as_str(),
-        Some(version_id.to_string().as_str()),
-        "list entry should carry the new version's id"
+        .any(|d| d["key"].as_str() == Some(key.as_str()));
+    assert!(
+        !found_in_list,
+        "completed task must NOT appear in the active-downloads list (page-reload would re-seed it): {list_body}"
     );
-    // Composite key matches the format the SSE endpoint expects.
+
+    // Snapshot endpoint: terminal entry still queryable by key.
+    let snap_resp = client
+        .get(mock.server.api_url(&format!("/local-runtime/versions/downloads/{key}")))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(snap_resp.status(), StatusCode::OK);
+    let snap: serde_json::Value = snap_resp.json().await.unwrap();
+    assert_eq!(snap["status"].as_str(), Some("completed"));
     assert_eq!(
-        entry["key"].as_str(),
-        Some(format!("llamacpp@{}@cpu", mock.version).as_str())
+        snap["result_version_id"].as_str(),
+        Some(version_id.to_string().as_str()),
+        "snapshot endpoint must keep the version id for late SSE replay"
     );
 }
 
