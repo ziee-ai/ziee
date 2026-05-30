@@ -15,12 +15,8 @@
 #![allow(unused_imports)]
 
 use crate::chat::helpers;
-use crate::code_sandbox::harness::{bwrap_available, rootfs_path};
-// `stage_test_rootfs_for_e2e` is mac/windows-only (Linux stages the rootfs
-// as a real FUSE mount), so the import must be cfg-gated to match.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-use crate::code_sandbox::harness::stage_test_rootfs_for_e2e;
-use crate::common::{TestServer, TestServerOptions};
+use crate::code_sandbox::harness::github_fetch_server_options;
+use crate::common::TestServer;
 use serde_json::{json, Value};
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
@@ -93,62 +89,17 @@ async fn send_with_sandbox_enabled(
         .expect("send message")
 }
 
-/// Skip if API key + bwrap + rootfs aren't all available. On Linux uses
-/// the host-mounted production rootfs; on Mac/Windows stages the test
-/// squashfs via the same cross-platform path as Tier-6 `enabled_test_server`.
+/// Skip if API key + bwrap aren't available. The rootfs is fetched from
+/// the GitHub release by the server on first execute_command (shared
+/// e2e cache), same as Tier-6 `enabled_test_server`.
 async fn enabled_test_server_with_anthropic() -> Option<TestServer> {
     if std::env::var("ANTHROPIC_API_KEY").is_err() {
         eprintln!("test skipped: ANTHROPIC_API_KEY not set");
         return None;
     }
     let api_key = std::env::var("ANTHROPIC_API_KEY").unwrap();
-
-    #[cfg(target_os = "linux")]
-    {
-        if !bwrap_available() {
-            eprintln!("test skipped: bwrap not installed");
-            return None;
-        }
-        let Some(rootfs) = rootfs_path() else {
-            eprintln!("test skipped: no rootfs mounted");
-            return None;
-        };
-        return Some(
-            TestServer::start_with_options(TestServerOptions {
-                sandbox_enabled: true,
-                sandbox_rootfs: Some(rootfs),
-                sandbox_cgroup_parent: String::new(),
-                extra_env: vec![("ANTHROPIC_API_KEY".into(), api_key)],
-                sandbox_cache_tempdir: None,
-                use_desktop_binary: false,
-            })
-            .await,
-        );
-    }
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    {
-        let (cache, mut env) = stage_test_rootfs_for_e2e()
-            .expect("stage test rootfs (run `just test-prereqs`)");
-        let rootfs_path = cache.path().join("current");
-        env.push(("ANTHROPIC_API_KEY".into(), api_key));
-        return Some(
-            TestServer::start_with_options(TestServerOptions {
-                sandbox_enabled: true,
-                sandbox_rootfs: Some(rootfs_path),
-                sandbox_cgroup_parent: String::new(),
-                extra_env: env,
-                sandbox_cache_tempdir: Some(std::sync::Arc::new(cache)),
-                use_desktop_binary: false,
-            })
-            .await,
-        );
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    {
-        let _ = api_key;
-        eprintln!("test skipped: unsupported platform");
-        None
-    }
+    let opts = github_fetch_server_options(vec![("ANTHROPIC_API_KEY".into(), api_key)])?;
+    Some(TestServer::start_with_options(opts).await)
 }
 
 /// Setup: register a user, create a conversation with a real

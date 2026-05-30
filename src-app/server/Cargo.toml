@@ -123,7 +123,7 @@ jsonwebtoken = { version = "10.1.0", features = ["rust_crypto"] }
 ldap3 = { version = "0.12.1", default-features = false, features = ["tls-rustls-ring"] }
 oauth2 = "5.0.0"
 openidconnect = "4.0.1"
-sigstore = { version = "0.13", default-features = false, features = ["bundle", "sigstore-trust-root", "rustls-tls"] }
+sigstore = { version = "0.14", default-features = false, features = ["bundle", "sigstore-trust-root", "rustls-tls"] }
 
 # AI providers (local package)
 ai-providers = { path = "./ai-providers" }
@@ -225,7 +225,7 @@ flate2.workspace = true
 # Tests need `cookies` (browser-like session round-trips) on top of the
 # workspace baseline (rustls-tls + charset + http2) plus `json` +
 # `multipart` for request bodies.
-reqwest = { workspace = true, features = ["json", "cookies", "multipart"] }
+reqwest = { workspace = true, features = ["json", "cookies", "multipart", "blocking"] }
 uuid.workspace = true
 rand.workspace = true
 serde_yaml.workspace = true

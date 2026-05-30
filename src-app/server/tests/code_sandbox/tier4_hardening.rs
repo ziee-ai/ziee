@@ -99,12 +99,13 @@ async fn fork_bomb_contained_in_sandbox() {
             "/bin/sh",
             "-c",
             r#"set +m
-for i in $(seq 1 500); do
-  sleep 30 >/dev/null 2>&1 &
-done 2>/dev/null
-# Reap all the children we spawned so the test exits promptly.
-kill -9 $(jobs -p) 2>/dev/null
-wait 2>/dev/null
+# Run the fork bomb inside a subshell so that dash (the rootfs
+# /bin/sh) aborting on a failed background fork — its behavior when
+# RLIMIT_NPROC is hit, unlike busybox ash — is contained and does NOT
+# kill the liveness echo below. The backgrounded sleeps redirect to
+# /dev/null (so they don't hold the stdout pipe) and bwrap's
+# --die-with-parent/--new-session reaps them on session teardown.
+( for i in $(seq 1 500); do sleep 30 >/dev/null 2>&1 & done ) >/dev/null 2>&1 || true
 echo SANDBOX_STILL_RESPONSIVE
 exit 0"#,
         ],

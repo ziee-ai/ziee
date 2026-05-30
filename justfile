@@ -156,26 +156,23 @@ check-rootfs-reproducibility:
 server:
     cd src-app/server && CONFIG_FILE=config/dev.yaml cargo run
 
-# One-time test prerequisites: builds the minimal sandbox squashfs
-# that tier-4/6 tests dispatch into via the libkrun (Mac) / bwrap
-# (Linux) / WSL2 (Windows) backend. Idempotent — skips if cached.
-test-prereqs:
-    scripts/build-test-rootfs.sh
-
 # Run the full backend test suite, including tier-4 (45 tests that
-# now dispatch through SandboxBackend::exec_raw_argv on all platforms).
-# Depends on test-prereqs so the squashfs is always present.
-test: test-prereqs
+# dispatch through SandboxBackend::exec_raw_argv on all platforms).
+# Tier-4/6 fetch the real published rootfs from the
+# `ziee-ai/sandbox-rootfs` GitHub release on demand (cached under
+# `.ziee-cache/sandbox-rootfs`), so there is no local build step — just
+# network access on the first run. Pin a different release via
+# `ZIEE_SANDBOX_TEST_TAG`.
+test:
     cd src-app/server && \
         bash -c 'source tests/.env.test && cargo test --test integration_tests -- --test-threads=1'
 
-# Same as `test` but also runs tier-6 e2e + tier-5 LLM tests (marked
-# `#[ignore]` because they need extra harness setup: tier-6 requires a
-# `enabled_test_server` extension that stages the test rootfs + fakes
-# `known_revisions.toml` on Mac/Windows; tier-5 needs ANTHROPIC_API_KEY
-# and costs ~$0.30/run). Use this in CI / pre-release validation, not
-# routine dev cycles.
-test-all: test-prereqs
+# Same as `test` but also runs tier-6 e2e + tier-5 LLM tests (tier-5 is
+# `#[ignore]` — needs ANTHROPIC_API_KEY and costs ~$0.30/run). Tier-6
+# boots a real server that fetches + cosign-verifies + mounts the rootfs
+# from GitHub. Use this in CI / pre-release validation, not routine dev
+# cycles.
+test-all:
     cd src-app/server && \
         bash -c 'source tests/.env.test && cargo test --test integration_tests -- --test-threads=1 --include-ignored'
 

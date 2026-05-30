@@ -6,8 +6,9 @@
 //! appear in the argv — `/sandbox-rootfs`, `/proc`, `/dev`, `/tmp`,
 //! `/workspace` are the canonical in-sandbox paths.
 //!
-//! Test rootfs squashfs prereq: `just test-prereqs` (one-time setup;
-//! checked by `harness::rootfs_squashfs_path()`).
+//! The rootfs squashfs is fetched from the `ziee-ai/sandbox-rootfs`
+//! GitHub release (cached) by `harness::rootfs_squashfs_path()` and
+//! squashfuse-mounted by `harness::ensure_test_rootfs_mounted()`.
 
 use crate::code_sandbox::harness::run_in_sandbox;
 use std::time::Duration;

@@ -418,6 +418,29 @@ pub async fn ensure_pin_initialized(pool: &PgPool) -> Result<Option<String>, Ver
     if let Some(pin) = current_pin(pool).await? {
         return Ok(Some(pin));
     }
+    // Explicit pin override. Lets an operator (or the test suite) pin a
+    // specific version deterministically instead of relying on
+    // "latest" discovery — required for prerelease-style tags (e.g.
+    // `0.0.2-alpha`) that the semver `pick_latest` comparison can't
+    // order. Trusted as-is here (no GitHub round-trip); a wrong value
+    // surfaces as a clear AssetMissing on the first fetch.
+    if let Ok(forced) = std::env::var("CODE_SANDBOX_PIN_VERSION") {
+        let forced = forced.trim().trim_start_matches('v').to_string();
+        if !forced.is_empty() {
+            sqlx::query(
+                "UPDATE code_sandbox_settings SET current_rootfs_version = $1 WHERE id = TRUE",
+            )
+            .bind(&forced)
+            .execute(pool)
+            .await
+            .map_err(|e| VersionError::Database(e.to_string()))?;
+            tracing::info!(
+                version = %forced,
+                "code_sandbox: rootfs pin set from CODE_SANDBOX_PIN_VERSION"
+            );
+            return Ok(Some(forced));
+        }
+    }
     let releases = match list_releases().await {
         Ok(r) => r,
         Err(e) => {
@@ -715,6 +738,47 @@ pub async fn install_version(
         version_cache_dir.display()
     )))?;
     let out_path = version_cache_dir.join(&asset_name);
+
+    // Pre-staged / air-gapped adoption: if the artifact file is already
+    // on disk but the DB has no matching row (operator manually copied
+    // a squashfs into the cache dir — the documented air-gapped flow —
+    // or a prior install populated the cache and the DB row was later
+    // wiped), adopt it WITHOUT re-downloading. Trust model matches the
+    // air-gapped story: the per-version cache dir is server-owned, so a
+    // file there was placed deliberately; we record its sha256 as the
+    // integrity baseline and re-verify the cosign bundle if one sits
+    // beside it. This is also what lets the test suite share a single
+    // download across many fresh-DB Tier-6 servers.
+    if out_path.is_file() {
+        let p = out_path.clone();
+        let sha = tokio::task::spawn_blocking(move || sha256_file(&p))
+            .await
+            .map_err(|e| VersionError::Io(format!("sha256 task panicked: {e}")))?
+            .map_err(|e| VersionError::Io(format!("sha256 {}: {e}", out_path.display())))?;
+        let bundle = version_cache_dir.join(format!("{asset_name}.cosign.bundle"));
+        let cosign_bundle = bundle
+            .is_file()
+            .then(|| bundle.to_string_lossy().into_owned());
+        let row = RootfsArtifact {
+            id: Uuid::nil(),
+            version: version.to_string(),
+            arch: arch.to_string(),
+            flavor: flavor.to_string(),
+            package: package.to_string(),
+            sha256: sha,
+            artifact_path: out_path.to_string_lossy().into_owned(),
+            cosign_bundle,
+            status: "installed".to_string(),
+            downloaded_at: Utc::now(),
+            last_used_at: None,
+        };
+        let inserted = upsert_artifact(pool, &row).await?;
+        tracing::info!(
+            version, arch, flavor, package,
+            "code_sandbox: adopted pre-staged rootfs artifact from cache (no download)"
+        );
+        return Ok((inserted, None));
+    }
 
     progress(InstallProgress::Resolving { version: version.to_string(), asset: asset_name.clone() });
     let pool_for_blocking = pool.clone();
