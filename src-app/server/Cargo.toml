@@ -52,6 +52,9 @@ mime_guess.workspace = true
 which.workspace = true
 include-flate.workspace = true
 tar.workspace = true
+# Engine-binary archive extraction (folded in from the llm-runtime crate's
+# binary downloader): tar.gz via flate2 + zip for the Windows path.
+flate2.workspace = true
 zstd.workspace = true
 lazy_static.workspace = true
 futures-util.workspace = true
@@ -59,7 +62,7 @@ futures.workspace = true
 # `json` (catch-all parser for SSE/REST) and `blocking` (used by the
 # embedded-postgres startup probe) are added on top of the workspace's
 # rustls-tls + charset + http2 baseline.
-reqwest = { workspace = true, features = ["json", "blocking"] }
+reqwest = { workspace = true, features = ["json", "blocking", "stream"] }
 
 # Server-specific deps (not shared, kept local)
 tower_governor = "0.7"
@@ -125,9 +128,6 @@ sigstore = { version = "0.13", default-features = false, features = ["bundle", "
 # AI providers (local package)
 ai-providers = { path = "./ai-providers" }
 
-# LLM runtime for local model deployment
-llm-runtime = { path = "../llm-runtime" }
-
 # MCP client
 rmcp = { version = "0.8", features = ["client", "transport-child-process"] }
 eventsource-client = "0.12"
@@ -167,8 +167,14 @@ code_sandbox_seccomp = ["dep:sandbox-seccomp"]
 sandbox-seccomp = { path = "../sandbox-seccomp", optional = true }
 
 # The microVM code-sandbox backends (macOS libkrun, Windows WSL2) talk to the
-# in-guest agent over the shared control protocol.
-[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+# in-guest agent over this shared control protocol. The protocol types are ALSO
+# compiled on Linux — `backend/vm_long_lived` is intentionally not platform-gated
+# (it needs to exist on Linux for a uniform `SandboxBackend` return signature),
+# and it imports `sandbox_vm_protocol` unconditionally. So the dep must resolve
+# on every supported OS, not just macOS/Windows. (This was a latent main bug:
+# no CI `cargo build`s the server on Linux, so the macOS/Windows-only
+# declaration never failed to compile.)
+[target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
 sandbox-vm-protocol = { path = "../sandbox-vm-protocol" }
 
 # Windows: AF_HYPERV / SOCKADDR_HV bindings so the WSL2 backend can dial the
@@ -212,6 +218,10 @@ zstd.workspace = true
 mockall.workspace = true
 tempfile.workspace = true
 serial_test.workspace = true
+# Test fixtures build a .tar.gz on the fly (MockReleaseServer packaging the
+# stub-engine as a release artifact). `tar`, `sha2`, `hex` are already in the
+# main [dependencies]; flate2 is only a build-dependency, so re-declare it here.
+flate2.workspace = true
 # Tests need `cookies` (browser-like session round-trips) on top of the
 # workspace baseline (rustls-tls + charset + http2) plus `json` +
 # `multipart` for request bodies.

@@ -3,6 +3,7 @@
 use super::{Deployment, DeploymentResult, InstanceStatus};
 use crate::common::AppError;
 use crate::modules::llm_local_runtime::BinaryManager;
+use crate::modules::llm_local_runtime::engine::{LlamaCppSettings, MistralRsSettings};
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -52,6 +53,12 @@ struct ProcessInfo {
     base_url: String,
     started_at: std::time::Instant,
     logs: std::collections::VecDeque<String>,
+    /// P2: broadcast channel for live log streaming. The capture
+    /// loop fans out each line to BOTH the VecDeque (for snapshot)
+    /// AND this broadcaster (for SSE). Capacity is small —
+    /// `broadcast::Sender::send` drops the oldest on overflow so a
+    /// slow subscriber doesn't pin memory.
+    log_broadcast: tokio::sync::broadcast::Sender<String>,
 }
 
 pub struct LocalDeployment {
@@ -132,93 +139,193 @@ impl LocalDeployment {
         cmd.stderr(Stdio::piped());
     }
 
-    /// Build command for llama.cpp engine.
-    ///
-    /// Closes 08-llm-local-runtime F-04 (High) for llama.cpp's
-    /// HTTP surface: `--api-key TOKEN` makes the engine require
-    /// `Authorization: Bearer TOKEN` on every request. Without this,
-    /// any local process (or an SSRF in a co-located service) can
-    /// reach 127.0.0.1:port and run inferences against the loaded
-    /// model. The chat-side wiring (so authenticated chat requests
-    /// actually present this token to the engine) is the follow-up
-    /// piece — see INSTANCE_API_KEYS getter exposed for future use.
-    fn build_llamacpp_command(
-        binary_path: &str,
-        model_path: &str,
-        port: i32,
-        config: &serde_json::Value,
-        api_key: &str,
-    ) -> Command {
-        let mut cmd = Command::new(binary_path);
-        cmd.arg("--model").arg(model_path);
-        cmd.arg("--port").arg(port.to_string());
-        cmd.arg("--host").arg("127.0.0.1");
-        cmd.arg("--api-key").arg(api_key);
-
-        // Add context size if specified
-        if let Some(ctx_size) = config.get("context_size").and_then(|v| v.as_i64()) {
-            cmd.arg("--ctx-size").arg(ctx_size.to_string());
+    /// Parse a model's `engine_settings` JSON into typed llama.cpp
+    /// settings. A malformed blob or out-of-range value falls back to
+    /// defaults (with a warning) rather than failing the spawn.
+    fn parse_llamacpp_settings(config: &serde_json::Value) -> LlamaCppSettings {
+        let mut s: LlamaCppSettings = serde_json::from_value(config.clone()).unwrap_or_default();
+        if s.validate().is_err() {
+            tracing::warn!("llamacpp: invalid engine_settings {config}; using defaults");
+            s = LlamaCppSettings::default();
         }
-
-        // Add number of GPU layers if specified
-        if let Some(n_gpu_layers) = config.get("n_gpu_layers").and_then(|v| v.as_i64()) {
-            cmd.arg("--n-gpu-layers").arg(n_gpu_layers.to_string());
+        // Embedder models inject `embeddings: true` top-level (from
+        // capabilities) even when it isn't part of the stored settings.
+        if config.get("embeddings").and_then(|v| v.as_bool()).unwrap_or(false) {
+            s.embeddings = true;
         }
-
-        // Embedding mode for memory module + RAG. llama-server's
-        // `--embeddings` flag is mutually exclusive with `--chat-template`
-        // — the engine returns 768-d (or model-specific) float vectors
-        // on POST `/embedding` instead of streaming chat tokens. Memory
-        // dispatcher detects this via `llm_models.capabilities.text_embedding`
-        // and sets `config.embeddings = true` before calling start().
-        if config
-            .get("embeddings")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false)
-        {
-            cmd.arg("--embeddings");
-        }
-
-        Self::apply_hardening(&mut cmd);
-
-        cmd
+        s
     }
 
-    /// Build command for mistral.rs engine.
+    fn parse_mistralrs_settings(config: &serde_json::Value) -> MistralRsSettings {
+        let s: MistralRsSettings = serde_json::from_value(config.clone()).unwrap_or_default();
+        if s.validate().is_err() {
+            tracing::warn!("mistralrs: invalid engine_settings {config}; using defaults");
+            return MistralRsSettings::default();
+        }
+        s
+    }
+
+    /// Build the llama-server argv (everything after the binary).
     ///
-    /// Note: mistral.rs doesn't expose a `--api-key` flag at time of
-    /// writing (verified against v0.x); the api_key parameter is
-    /// accepted to match the llama.cpp signature but ignored, with a
-    /// warn-once log. Closes 08-llm-local-runtime F-04 (High) for
-    /// llama.cpp; mistral.rs requires an upstream feature first.
-    fn build_mistralrs_command(
-        binary_path: &str,
-        model_path: &str,
-        port: i32,
-        config: &serde_json::Value,
-        _api_key: &str,
-    ) -> Command {
-        tracing::warn!(
-            "08-llm-local-runtime F-04: mistral.rs engine has no \
-             built-in --api-key flag; the local 127.0.0.1:{} port is \
-             reachable from any process. Track upstream feature for \
-             bearer-auth support.",
-            port
-        );
+    /// `--api-key TOKEN` makes the engine require `Authorization: Bearer
+    /// TOKEN` (08-llm-local-runtime F-04). GPU offload is controlled by
+    /// `--n-gpu-layers` (0 = CPU); llama.cpp selects its backend at
+    /// compile time and its `--device` flag takes device *IDs* (e.g.
+    /// `CUDA0`) not backend names, so we don't pass it. All flags
+    /// verified against the real `llama-server --help`.
+    fn llamacpp_argv(model_path: &str, port: i32, s: &LlamaCppSettings, api_key: &str) -> Vec<String> {
+        let mut a = vec![
+            "--model".to_string(),
+            model_path.to_string(),
+            "--port".to_string(),
+            port.to_string(),
+            "--host".to_string(),
+            "127.0.0.1".to_string(),
+            "--api-key".to_string(),
+            api_key.to_string(),
+            "--ctx-size".to_string(),
+            s.ctx_size.to_string(),
+            "--batch-size".to_string(),
+            s.batch_size.to_string(),
+            "--n-gpu-layers".to_string(),
+            s.n_gpu_layers.to_string(),
+        ];
+        if let Some(t) = s.threads {
+            a.push("--threads".to_string());
+            a.push(t.to_string());
+        }
+        if let Some(b) = s.rope_freq_base {
+            a.push("--rope-freq-base".to_string());
+            a.push(b.to_string());
+        }
+        if let Some(sc) = s.rope_freq_scale {
+            a.push("--rope-freq-scale".to_string());
+            a.push(sc.to_string());
+        }
+        if s.embeddings {
+            a.push("--embeddings".to_string());
+        }
+        a
+    }
 
-        let mut cmd = Command::new(binary_path);
-        cmd.arg("--model-path").arg(model_path);
-        cmd.arg("--port").arg(port.to_string());
-        cmd.arg("--host").arg("127.0.0.1");
-
-        // Add model type if specified
-        if let Some(model_type) = config.get("model_type").and_then(|v| v.as_str()) {
-            cmd.arg("--model-type").arg(model_type);
+    /// Build the mistralrs-server argv. mistral.rs uses a subcommand
+    /// structure: top-level flags, then `gguf` / `plain` with the model
+    /// id. The engine is loopback-bound + proxy-fronted, so (unlike
+    /// llama.cpp) there's no `--api-key` (P1.g).
+    ///
+    /// NOTE: not yet verified against a real `mistralrs-server` binary —
+    /// confirm the flag/subcommand names against `--help` before relying
+    /// on it (tracked as a mistralrs gold-smoke follow-up). dtype +
+    /// model_format come from the validated `MistralRsSettings`, and the
+    /// numeric flags are typed, so nothing here is argv-injectable.
+    fn mistralrs_argv(model_path: &str, port: i32, s: &MistralRsSettings, device_cpu: bool) -> Vec<String> {
+        let mut a = vec![
+            "--port".to_string(),
+            port.to_string(),
+            "--max-seqs".to_string(),
+            s.max_seqs.to_string(),
+            "--prefix-cache-n".to_string(),
+            s.prefix_cache_n.to_string(),
+        ];
+        if device_cpu {
+            a.push("--cpu".to_string());
         }
 
-        Self::apply_hardening(&mut cmd);
+        let path = std::path::Path::new(model_path);
+        let is_gguf =
+            s.model_format == "gguf" || (s.model_format == "auto" && model_path.ends_with(".gguf"));
+        if is_gguf {
+            // gguf subcommand: model-id = containing dir, filename = the file.
+            let dir = path
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .filter(|d| !d.is_empty())
+                .unwrap_or_else(|| ".".to_string());
+            let file = path
+                .file_name()
+                .map(|f| f.to_string_lossy().to_string())
+                .unwrap_or_else(|| "*.gguf".to_string());
+            a.push("gguf".to_string());
+            a.push("--quantized-model-id".to_string());
+            a.push(dir);
+            a.push("--quantized-filename".to_string());
+            a.push(file);
+        } else {
+            // plain subcommand: a directory / HF id of safetensors weights.
+            a.push("plain".to_string());
+            a.push("--model-id".to_string());
+            a.push(model_path.to_string());
+        }
+        a.push("--dtype".to_string());
+        a.push(s.dtype.clone());
+        a
+    }
 
-        cmd
+    /// Verify after engine start that the listening socket is bound
+    /// to 127.0.0.1 (Linux: /proc/<pid>/net/tcp). Returns true on
+    /// loopback bind, false on anything else (including parse failure
+    /// — be strict since the bind probe is a security boundary).
+    /// Non-Linux: returns true (best-effort).
+    #[cfg(target_os = "linux")]
+    pub(crate) fn verify_loopback_bind(pid: i32, port: i32) -> bool {
+        use std::fs;
+
+        let path = format!("/proc/{pid}/net/tcp");
+        let contents = match fs::read_to_string(&path) {
+            Ok(s) => s,
+            Err(_) => return false, // strict: can't verify, treat as unsafe
+        };
+        // Lines look like:
+        //   sl  local_address rem_address   st tx_queue rx_queue ...
+        //    0: 0100007F:0BB8 00000000:0000 0A ...
+        // local_address is host-order hex (little-endian on x86_64);
+        // 127.0.0.1 is 7F.00.00.01 so the LE bytes are 0100007F.
+        let want_addr = "0100007F"; // 127.0.0.1 little-endian
+        // We also accept 7F000001 in case the kernel ever emits big-endian.
+        let want_addr_be = "7F000001";
+        let want_port_hex = format!("{:04X}", port);
+        for line in contents.lines().skip(1) {
+            // listening rows have state 0A (LISTEN); column index 3
+            // after the sl: prefix.
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() < 4 {
+                continue;
+            }
+            if parts.get(3) != Some(&"0A") {
+                continue;
+            }
+            let local = parts.get(1).copied().unwrap_or("");
+            let mut split = local.split(':');
+            let addr = split.next().unwrap_or("");
+            let port_h = split.next().unwrap_or("");
+            if port_h.eq_ignore_ascii_case(&want_port_hex)
+                && (addr == want_addr || addr == want_addr_be)
+            {
+                return true;
+            }
+            // Any non-loopback listener on this port is a security
+            // violation.
+            if port_h.eq_ignore_ascii_case(&want_port_hex) {
+                tracing::error!(
+                    "engine pid {} bound non-loopback addr {} on port {}",
+                    pid,
+                    addr,
+                    port
+                );
+                return false;
+            }
+        }
+        // No listener found on the expected port — either still
+        // starting or already dead. The caller's /health probe is
+        // the authoritative readiness check; we treat absence as
+        // "can't verify yet → don't fail validation here".
+        true
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    pub(crate) fn verify_loopback_bind(_pid: i32, _port: i32) -> bool {
+        // Best-effort — the spawn args already force --host 127.0.0.1.
+        true
     }
 
     /// Capture logs from process output
@@ -235,6 +342,12 @@ impl LocalDeployment {
                 while let Ok(Some(line)) = lines.next_line().await {
                     let mut procs = processes_clone.write().await;
                     if let Some(proc_info) = procs.get_mut(&model_id) {
+                        // P2: fan out to both the snapshot VecDeque
+                        // (for /logs) and the broadcaster (for SSE).
+                        // broadcast::send is non-blocking and drops
+                        // when buffer fills, so a slow subscriber
+                        // doesn't backpressure capture.
+                        let _ = proc_info.log_broadcast.send(line.clone());
                         push_capped(&mut proc_info.logs, line);
                     }
                 }
@@ -247,13 +360,31 @@ impl LocalDeployment {
                 let reader = BufReader::new(stderr);
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
+                    let line = format!("[stderr] {}", line);
                     let mut procs = processes_clone.write().await;
                     if let Some(proc_info) = procs.get_mut(&model_id) {
-                        push_capped(&mut proc_info.logs, format!("[stderr] {}", line));
+                        let _ = proc_info.log_broadcast.send(line.clone());
+                        push_capped(&mut proc_info.logs, line);
                     }
                 }
             });
         }
+    }
+
+    /// Subscribe to live logs for the given model. Returns a
+    /// broadcast receiver + a snapshot of the existing buffer for
+    /// initial replay. Used by the SSE handler in P2.
+    pub async fn subscribe_logs(
+        &self,
+        model_id: Uuid,
+    ) -> AppResult<(tokio::sync::broadcast::Receiver<String>, Vec<String>)> {
+        let processes = self.processes.read().await;
+        let proc_info = processes
+            .get(&model_id)
+            .ok_or_else(|| AppError::not_found("Process not found"))?;
+        let rx = proc_info.log_broadcast.subscribe();
+        let snapshot: Vec<String> = proc_info.logs.iter().cloned().collect();
+        Ok((rx, snapshot))
     }
 }
 
@@ -380,20 +511,31 @@ impl Deployment for LocalDeployment {
         // dispatching to the local engine. Closes
         // 08-llm-local-runtime F-04 (High) for llama.cpp; chat-side
         // wiring is the follow-up that actually presents the bearer.
-        let api_key = uuid::Uuid::new_v4()
-            .to_string()
-            .replace('-', "");
+        // 256-bit CSPRNG token (matches the proxy's PROXY_TOKEN), not
+        // a 122-bit UUID — the bearer gates the engine's HTTP surface.
+        let api_key = crate::modules::llm_local_runtime::proxy::generate_proxy_token();
         INSTANCE_API_KEYS
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .insert(model_id, api_key.clone());
 
-        // Build command based on engine type
-        let mut cmd = match normalized_engine {
-            "llamacpp" => Self::build_llamacpp_command(&binary_path.to_string_lossy(), model_path, port, config, &api_key),
-            "mistralrs" => Self::build_mistralrs_command(&binary_path.to_string_lossy(), model_path, port, config, &api_key),
+        // Build the engine argv from the model's typed engine_settings,
+        // then assemble + harden the command.
+        let args = match normalized_engine {
+            "llamacpp" => {
+                let s = Self::parse_llamacpp_settings(config);
+                Self::llamacpp_argv(model_path, port, &s, &api_key)
+            }
+            "mistralrs" => {
+                let s = Self::parse_mistralrs_settings(config);
+                let device_cpu = config.get("device").and_then(|v| v.as_str()) == Some("cpu");
+                Self::mistralrs_argv(model_path, port, &s, device_cpu)
+            }
             _ => unreachable!(), // Already validated above
         };
+        let mut cmd = Command::new(&binary_path);
+        cmd.args(&args);
+        Self::apply_hardening(&mut cmd);
 
         // Spawn the process
         let mut child = cmd.spawn().map_err(|e| {
@@ -408,13 +550,17 @@ impl Deployment for LocalDeployment {
         // Start log capture
         Self::capture_logs(model_id, &mut child, self.processes.clone()).await;
 
-        // Store process info
+        // Store process info. The broadcaster capacity 256 is plenty
+        // for live tail UIs; messages are dropped (not blocked) when
+        // a subscriber falls behind.
+        let (log_broadcast, _) = tokio::sync::broadcast::channel::<String>(256);
         let proc_info = ProcessInfo {
             child,
             port,
             base_url: base_url.clone(),
             started_at: std::time::Instant::now(),
             logs: std::collections::VecDeque::new(),
+            log_broadcast,
         };
 
         {
@@ -527,5 +673,99 @@ impl Deployment for LocalDeployment {
         } else {
             Err(AppError::not_found("Process not found"))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn llamacpp_argv_core_flags_plus_optionals() {
+        let s = LlamaCppSettings {
+            ctx_size: 4096,
+            n_gpu_layers: 33,
+            batch_size: 256,
+            threads: Some(8),
+            embeddings: false,
+            rope_freq_base: Some(10000.0),
+            rope_freq_scale: None,
+        };
+        let a = LocalDeployment::llamacpp_argv("/m/x.gguf", 18080, &s, "tok");
+        let joined = a.join(" ");
+        assert!(a.windows(2).any(|w| w[0] == "--model" && w[1] == "/m/x.gguf"));
+        assert!(a.windows(2).any(|w| w[0] == "--api-key" && w[1] == "tok"));
+        assert!(a.windows(2).any(|w| w[0] == "--ctx-size" && w[1] == "4096"));
+        assert!(a.windows(2).any(|w| w[0] == "--batch-size" && w[1] == "256"));
+        assert!(a.windows(2).any(|w| w[0] == "--n-gpu-layers" && w[1] == "33"));
+        assert!(a.windows(2).any(|w| w[0] == "--threads" && w[1] == "8"));
+        assert!(a.windows(2).any(|w| w[0] == "--rope-freq-base" && w[1] == "10000"));
+        // unset optionals + the compile-time-backend posture: absent.
+        assert!(!joined.contains("--rope-freq-scale"));
+        assert!(!joined.contains("--embeddings"));
+        assert!(!joined.contains("--device"));
+    }
+
+    #[test]
+    fn llamacpp_argv_embeddings_flag() {
+        let s = LlamaCppSettings {
+            embeddings: true,
+            ..LlamaCppSettings::default()
+        };
+        let a = LocalDeployment::llamacpp_argv("/m/x.gguf", 1, &s, "t");
+        assert!(a.iter().any(|x| x == "--embeddings"));
+    }
+
+    #[test]
+    fn mistralrs_argv_uses_gguf_subcommand() {
+        let s = MistralRsSettings {
+            model_format: "auto".into(),
+            ..MistralRsSettings::default()
+        };
+        let a = LocalDeployment::mistralrs_argv("/models/qwen/q.gguf", 18081, &s, false);
+        let joined = a.join(" ");
+        assert!(a.windows(2).any(|w| w[0] == "--port" && w[1] == "18081"));
+        assert!(joined.contains("--max-seqs"));
+        assert!(joined.contains("--prefix-cache-n"));
+        assert!(!joined.contains("--cpu"));
+        assert!(a.iter().any(|x| x == "gguf"));
+        assert!(a.windows(2).any(|w| w[0] == "--quantized-model-id" && w[1] == "/models/qwen"));
+        assert!(a.windows(2).any(|w| w[0] == "--quantized-filename" && w[1] == "q.gguf"));
+        assert!(a.windows(2).any(|w| w[0] == "--dtype" && w[1] == "f16"));
+        // The old (broken) flat form must be gone.
+        assert!(!joined.contains("--model-path"));
+        assert!(!joined.contains("--model-type"));
+    }
+
+    #[test]
+    fn mistralrs_argv_plain_subcommand_and_cpu() {
+        let s = MistralRsSettings {
+            model_format: "safetensors".into(),
+            dtype: "bf16".into(),
+            ..MistralRsSettings::default()
+        };
+        let a = LocalDeployment::mistralrs_argv("/models/llama-dir", 1, &s, true);
+        let joined = a.join(" ");
+        assert!(joined.contains("--cpu"));
+        assert!(a.iter().any(|x| x == "plain"));
+        assert!(a.windows(2).any(|w| w[0] == "--model-id" && w[1] == "/models/llama-dir"));
+        assert!(a.windows(2).any(|w| w[0] == "--dtype" && w[1] == "bf16"));
+        assert!(!joined.contains("gguf"));
+    }
+
+    #[test]
+    fn parse_llamacpp_settings_falls_back_on_out_of_range() {
+        let cfg = serde_json::json!({ "ctx_size": 999_999_999u32 });
+        let s = LocalDeployment::parse_llamacpp_settings(&cfg);
+        assert_eq!(s.ctx_size, 8192); // default after validation failure
+    }
+
+    #[test]
+    fn parse_llamacpp_settings_reads_canonical_keys_and_injected_embeddings() {
+        let cfg = serde_json::json!({ "ctx_size": 2048, "n_gpu_layers": 10, "embeddings": true });
+        let s = LocalDeployment::parse_llamacpp_settings(&cfg);
+        assert_eq!(s.ctx_size, 2048);
+        assert_eq!(s.n_gpu_layers, 10);
+        assert!(s.embeddings);
     }
 }

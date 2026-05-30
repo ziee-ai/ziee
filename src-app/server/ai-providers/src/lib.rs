@@ -58,6 +58,7 @@
 
 mod conversion;
 mod error;
+pub mod model_registry;
 mod models;
 mod provider;
 mod providers;
@@ -72,6 +73,9 @@ pub use models::*;
 
 // Re-export individual providers for testing
 pub use providers::{AnthropicProvider, GeminiProvider, OpenAIProvider};
+
+// Re-export the curated catalog (P1.j).
+pub use model_registry::{lookup as registry_lookup, known_ids_for as registry_known_ids};
 
 // Re-export AIProvider trait for testing
 pub use traits::AIProvider;

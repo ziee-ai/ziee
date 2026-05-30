@@ -1,4 +1,5 @@
-import { Badge, Button, Descriptions, Popconfirm, Space, Tag } from 'antd'
+import { useState } from 'react'
+import { App, Badge, Button, Checkbox, Descriptions, Popconfirm, Space, Tag } from 'antd'
 import {
   CheckCircleOutlined,
   DeleteOutlined,
@@ -21,6 +22,9 @@ export function RuntimeVersionCard({ version }: Props) {
   const canUpdate = usePermission(Permissions.RuntimeVersionUpdate)
   const canDelete = usePermission(Permissions.RuntimeVersionDelete)
 
+  const [removeBinary, setRemoveBinary] = useState(false)
+  const { message } = App.useApp()
+
   const handleSetDefault = async () => {
     try {
       await Stores.RuntimeVersion.setDefaultVersion(version.id)
@@ -31,9 +35,13 @@ export function RuntimeVersionCard({ version }: Props) {
 
   const handleDelete = async () => {
     try {
-      await Stores.RuntimeVersion.deleteVersion(version.id)
+      await Stores.RuntimeVersion.deleteVersion(version.id, removeBinary)
     } catch (error) {
-      // Error already handled in store
+      // Surface the in-use guard (409) reason, e.g. which models/providers
+      // still depend on this version.
+      message.error(
+        error instanceof Error ? error.message : 'Failed to delete version'
+      )
     }
   }
 
@@ -92,6 +100,14 @@ export function RuntimeVersionCard({ version }: Props) {
                     Warning: This is the default version.
                   </div>
                 )}
+                <div style={{ marginTop: 8 }}>
+                  <Checkbox
+                    checked={removeBinary}
+                    onChange={e => setRemoveBinary(e.target.checked)}
+                  >
+                    Also remove cached files from disk
+                  </Checkbox>
+                </div>
               </>
             }
             onConfirm={handleDelete}
