@@ -2,8 +2,6 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
-import { hasPermissionNow } from '@/core/permissions'
-import { Permissions } from '@/api-client/types'
 import type {
   DrainEntry,
   InstallTaskState,
@@ -53,7 +51,13 @@ interface SandboxRootfsVersionsStore {
   sseConnected: boolean
 
   __init__: {
-    rootfsVersions?: () => Promise<void>
+    // `__store__` fires once on the first access of ANY store property
+    // (see core/stores.ts) — i.e. when the section first reads
+    // `pinnedVersion`/`installed`/etc. A named key here would only fire
+    // if a component read a property of that exact name, which nothing
+    // does — so the eager-load never ran (page stuck on "No rootfs
+    // versions yet" until a manual Refresh).
+    __store__?: () => Promise<void>
   }
   __destroy__?: () => void
 
@@ -137,22 +141,20 @@ export const useSandboxRootfsVersionsStore = create<SandboxRootfsVersionsStore>(
       sseConnected: false,
 
       __init__: {
-        sandboxRootfsVersions: async () => {
-          // Gate the eager-load + SSE subscribe on EnvironmentsRead.
-          // The /settings/sandbox route admits anyone with EITHER
-          // EnvironmentsRead OR ResourceLimitsRead, so a resource-
-          // limits-only admin can reach the page (and correctly sees
-          // the rootfs card's permission alert). Without this gate
-          // their session still fires a backend-403 listRootfsVersions
-          // + an SSE subscribe that 403s and trips the 5-attempt
-          // reconnect loop. `hasPermissionNow` is the non-reactive
-          // checker built for exactly this store-init case.
-          if (!hasPermissionNow(Permissions.CodeSandboxEnvironmentsRead)) {
-            return
-          }
+        __store__: async () => {
+          // Eager-load the status + open the install-progress SSE on
+          // mount (mirrors the sibling SandboxResourceLimits store).
+          //
+          // NOTE: a previous attempt gated this on a `hasPermissionNow`
+          // snapshot to spare a resource-limits-only admin a couple of
+          // backend-403s. That snapshot runs the instant the component
+          // first reads the store — frequently BEFORE auth populates —
+          // so it returned false and PERMANENTLY skipped the load,
+          // leaving the page empty for legit admins once `usePermission`
+          // reactively caught up. The backend already enforces the
+          // permission, so always loading is correct; the 403s for a
+          // resource-limits-only admin are harmless + backend-rejected.
           await get().loadStatus()
-          // Open the SSE channel for live install progress. Idempotent
-          // via the sseController guard.
           void get().subscribeToInstallProgress()
         },
       },
