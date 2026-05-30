@@ -135,7 +135,7 @@ export function RuntimeDownloadDrawer() {
               ? `Backends published for your host (${platform ?? '?'}/${arch ?? '?'}).`
               : isChecking
                 ? 'Checking which backends are published for your host…'
-                : 'Showing CPU as a safe default. Run "Check for Updates" to discover GPU builds for your host.'
+                : 'Showing CPU as a safe default. The Available versions section on the engine card auto-detects published GPU builds for your host.'
           }
         >
           <Select

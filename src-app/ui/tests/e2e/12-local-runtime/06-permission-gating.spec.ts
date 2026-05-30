@@ -41,22 +41,25 @@ function mbvCard(page: Page) {
 
 // ── engine-free: versions_read gates whole sections ──────────────────────
 test.describe('Local Runtime — permission gating (engine-free)', () => {
-  test('versions_read gates the version / update / usage sections', async ({
+  test('versions_read gates the engine-versions and models-by-version sections', async ({
     page,
     testInfra
   }) => {
     const { baseURL, apiURL } = testInfra
 
-    // read (no versions_read): page loads, GPU card shows, version sections hidden.
+    // read (no versions_read): page loads, but the unified EngineVersionsCard
+    // (platform + backends + installed + available) and the models-by-version
+    // section are both hidden — both depend on `versions_read` reads
+    // (detect-gpu + check-updates + version list all need it).
     await loginWithPerms(page, baseURL, apiURL, BASE_READS, 'lrt-noversions')
     await gotoRuntimeSettings(page, baseURL)
-    await expect(
-      page.locator('.ant-card').filter({ hasText: /Hardware acceleration|GPU/i }).first()
-    ).toBeVisible({ timeout: 30000 })
+    await expect(page.getByRole('tab', { name: 'Llama.cpp' })).toBeVisible()
+    await expect(page.getByText(/Available backends:/i)).toHaveCount(0)
+    await expect(page.getByText(/Available versions/i)).toHaveCount(0)
     await expect(page.getByText('Models by engine version')).toHaveCount(0)
-    await expect(page.getByRole('button', { name: /Check for Updates/i })).toHaveCount(0)
 
-    // + versions_read: the version sections appear.
+    // + versions_read: both sections appear, no "Check for Updates" button
+    // (the update check runs automatically on mount).
     await loginWithPerms(
       page,
       baseURL,
@@ -65,8 +68,12 @@ test.describe('Local Runtime — permission gating (engine-free)', () => {
       'lrt-versions'
     )
     await gotoRuntimeSettings(page, baseURL)
+    await expect(page.getByText(/Available backends:/i).first()).toBeVisible({
+      timeout: 30000,
+    })
+    await expect(page.getByText(/Available versions/i).first()).toBeVisible()
     await expect(page.getByText('Models by engine version')).toBeVisible()
-    await expect(page.getByRole('button', { name: /Check for Updates/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Check for Updates/i })).toHaveCount(0)
   })
 })
 

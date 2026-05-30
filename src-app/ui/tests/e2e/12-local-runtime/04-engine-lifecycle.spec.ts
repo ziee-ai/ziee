@@ -26,7 +26,7 @@ test.describe('Local Runtime — engine lifecycle (needs HUGGINGFACE_API_KEY)', 
     await loginAsAdmin(page, testInfra.baseURL)
   })
 
-  test('download an engine version from GitHub via the drawer', async ({ page, testInfra }) => {
+  test('download an engine version via the inline Available versions list', async ({ page, testInfra }) => {
     // The fork releases aren't cosign-signed → the download path refuses unless
     // allow_unsigned_downloads is on. Enable it, then drive the UI download.
     const token = await getCurrentUserToken(page)
@@ -37,15 +37,19 @@ test.describe('Local Runtime — engine lifecycle (needs HUGGINGFACE_API_KEY)', 
     })
 
     await gotoRuntimeSettings(page, testInfra.baseURL)
-    await page.getByRole('button', { name: /Download Version/i }).click()
-    const drawer = page.locator('.ant-drawer.ant-drawer-open')
-    await expect(drawer).toBeVisible()
-    await drawer.getByRole('button', { name: 'Download' }).click()
+    // EngineVersionsCard auto-checks for updates on mount; wait for the
+    // "Available versions" section to populate, then click the Download
+    // button on the first available (non-installed) row.
+    const pane = page.locator('.ant-tabs-tabpane-active')
+    await expect(pane.getByText(/Available versions/i).first()).toBeVisible({ timeout: 30000 })
+    const firstAvailable = pane.getByRole('button', { name: /^Download$/ }).first()
+    await expect(firstAvailable).toBeVisible({ timeout: 30000 })
+    await firstAvailable.click()
 
     // The downloaded version row appears in the installed-versions list (it
     // becomes the default + a Delete action shows for it).
     await expect(
-      page.locator('.ant-tabs-tabpane-active').getByRole('button', { name: 'Delete' }).first()
+      pane.getByRole('button', { name: 'Delete' }).first()
     ).toBeVisible({ timeout: 120000 })
   })
 

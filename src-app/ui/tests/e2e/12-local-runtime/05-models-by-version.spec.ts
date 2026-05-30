@@ -51,13 +51,19 @@ test.describe('Local Runtime — models by version (engine-free)', () => {
     await expect(mrsPane.getByText('No installed versions yet')).toBeVisible()
   })
 
-  test('update checker exposes a Check for Updates action', async ({ page, testInfra }) => {
+  test('available-versions section auto-populates (no Check for Updates button)', async ({ page, testInfra }) => {
     await gotoRuntimeSettings(page, testInfra.baseURL)
+    // EngineVersionsCard auto-runs the update check on mount. There is no
+    // "Check for Updates" button anymore — the section either lists ready
+    // releases or shows the "Could not reach the upstream release feed."
+    // fallback. Both render the "Available versions" heading.
+    const pane = page.locator('.ant-tabs-tabpane-active')
+    await expect(pane.getByText(/Available versions/i).first()).toBeVisible({
+      timeout: 30000,
+    })
     await expect(
-      page
-        .locator('.ant-tabs-tabpane-active')
-        .getByRole('button', { name: /Check for Updates/i })
-    ).toBeVisible()
+      pane.getByRole('button', { name: /Check for Updates/i })
+    ).toHaveCount(0)
   })
 })
 
@@ -122,16 +128,18 @@ test.describe('Local Runtime — running engine (needs HUGGINGFACE_API_KEY)', ()
     })
   })
 
-  test('check for updates shows the installed version in the diff', async ({
+  test('available-versions section shows the installed tag for the installed version', async ({
     page,
     testInfra
   }) => {
     await gotoRuntimeSettings(page, testInfra.baseURL)
     const pane = page.locator('.ant-tabs-tabpane-active')
-    await pane.getByRole('button', { name: /Check for Updates/i }).click()
-    // The installed v0.0.1 is the latest → the checker reports "up to date";
-    // if a newer ready version existed it would show the "Releases (…)" diff.
-    await expect(pane.getByText(/up to date|Releases \(/i)).toBeVisible({ timeout: 20000 })
+    // EngineVersionsCard auto-checks on mount. The installed v0.0.1 row
+    // should carry an "installed" tag, with the Download button disabled.
+    await expect(pane.getByText(/Available versions/i).first()).toBeVisible({
+      timeout: 30000,
+    })
+    await expect(pane.getByText('installed').first()).toBeVisible({ timeout: 20000 })
   })
 })
 

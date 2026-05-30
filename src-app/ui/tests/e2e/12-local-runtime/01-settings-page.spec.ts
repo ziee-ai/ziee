@@ -4,8 +4,9 @@ import { gotoRuntimeSettings } from './helpers/local-runtime-helpers'
 
 /**
  * Settings → Local Runtimes page surface: the page renders at the
- * correct route (no double-slash bounce), shows both engine tabs, the
- * GPU detection card, the version list, and the runtime config card.
+ * correct route (no double-slash bounce), shows both engine tabs,
+ * the unified engine-versions card (platform + backends + installed
+ * + available), and the runtime config card.
  *
  * Engine-free: exercises only the admin UI + read endpoints.
  */
@@ -20,19 +21,35 @@ test.describe('Local Runtime — settings page', () => {
     await expect(page.getByRole('tab', { name: 'Mistral.rs' })).toBeVisible()
   })
 
-  test('shows the GPU detection card', async ({ page, testInfra }) => {
+  test('shows the unified engine-versions card with platform + backends', async ({ page, testInfra }) => {
     await gotoRuntimeSettings(page, testInfra.baseURL)
     // detect-gpu spawns host probes and can be slow / 502 on a cold backend
     // (the store retries) — give the card time to render.
-    await expect(
-      page.locator('.ant-card').filter({ hasText: /Hardware acceleration|GPU/i }).first(),
-    ).toBeVisible({ timeout: 30000 })
+    const card = page.locator('.ant-card').filter({ hasText: /llamacpp versions/i }).first()
+    await expect(card).toBeVisible({ timeout: 30000 })
+    await expect(card.getByText(/Platform:/i)).toBeVisible({ timeout: 30000 })
+    await expect(card.getByText(/Available backends:/i)).toBeVisible()
   })
 
-  test('shows the installed-versions card (empty state)', async ({ page, testInfra }) => {
+  test('shows installed-versions section with empty state', async ({ page, testInfra }) => {
     await gotoRuntimeSettings(page, testInfra.baseURL)
-    // No engine downloaded in a fresh test DB → empty state + a download CTA.
-    await expect(page.getByRole('button', { name: /Download Version/i })).toBeVisible()
+    // No engine downloaded in a fresh test DB → the "Installed versions"
+    // section shows an empty state hinting at the section below.
+    await expect(page.getByText(/Installed versions/i).first()).toBeVisible()
+    await expect(
+      page.getByText(/No versions installed yet/i).first(),
+    ).toBeVisible()
+  })
+
+  test('shows available-versions section (auto-update-check)', async ({ page, testInfra }) => {
+    await gotoRuntimeSettings(page, testInfra.baseURL)
+    // The update check runs automatically on mount (no "Check for Updates"
+    // button). On a backend without network access it'll render
+    // "Could not reach the upstream release feed." instead — both are
+    // acceptable signals that the section rendered.
+    await expect(page.getByText(/Available versions/i).first()).toBeVisible({
+      timeout: 30000,
+    })
   })
 
   test('shows the runtime configuration card', async ({ page, testInfra }) => {
@@ -40,16 +57,5 @@ test.describe('Local Runtime — settings page', () => {
     await expect(
       page.locator('.ant-card').filter({ hasText: /Runtime configuration/i }).first(),
     ).toBeVisible()
-  })
-
-  test('GPU "Download recommended" opens the download drawer', async ({ page, testInfra }) => {
-    await gotoRuntimeSettings(page, testInfra.baseURL)
-    const cta = page.getByRole('button', { name: /Download recommended/i })
-    if (await cta.isVisible().catch(() => false)) {
-      await cta.click()
-      await expect(
-        page.locator('.ant-drawer-title').filter({ hasText: /Download.*Runtime/i }),
-      ).toBeVisible({ timeout: 5000 })
-    }
   })
 })

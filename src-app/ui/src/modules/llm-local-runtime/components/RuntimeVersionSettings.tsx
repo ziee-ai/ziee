@@ -2,25 +2,30 @@ import { Flex, Tabs } from 'antd'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
-import { RuntimeVersionList } from './RuntimeVersionList'
-import { RuntimeUpdateChecker } from './RuntimeUpdateChecker'
+import { EngineVersionsCard } from './EngineVersionsCard'
 import { RuntimeModelsByVersion } from './RuntimeModelsByVersion'
 import { RuntimeDownloadDrawer } from './drawers/RuntimeDownloadDrawer'
-import { GpuDetectionCard } from './GpuDetectionCard'
 import { RuntimeConfigCard } from './RuntimeConfigCard'
 import type { RuntimeEngine } from '../types'
 
-// The version catalogue, update-checker, and per-version model usage all read
-// `llm_local_runtime::versions_read` endpoints. The page route only requires
-// `llm_local_runtime::read`, so gate these sections explicitly — otherwise a
-// read-only principal without versions_read sees 403'ing/empty cards.
+// Per-engine sections. EngineVersionsCard consolidates the prior
+// GpuDetection + UpdateChecker + VersionList cards into one — host
+// platform, available backends, installed versions, and upstream
+// available versions (with inline per-version download) all live
+// together. RuntimeModelsByVersion stays separate because it's
+// model-centric (which models pin which engine version), not
+// version-centric.
+//
+// The version catalogue + update-check + per-version model usage all
+// read `llm_local_runtime::versions_read`. The page route only
+// requires `llm_local_runtime::read`, so gate these sections
+// explicitly — otherwise a read-only principal without versions_read
+// sees 403'ing/empty cards.
 function VersionSections({ engine }: { engine: RuntimeEngine }) {
   return (
     <Flex className="flex-col gap-3">
-      <GpuDetectionCard engine={engine} />
       <Can permission={Permissions.RuntimeVersionRead}>
-        <RuntimeUpdateChecker engine={engine} />
-        <RuntimeVersionList engine={engine} />
+        <EngineVersionsCard engine={engine} />
         <RuntimeModelsByVersion engine={engine} />
       </Can>
     </Flex>
@@ -32,7 +37,7 @@ export function RuntimeVersionSettings() {
     <>
       <SettingsPageContainer
         title="Local Runtimes"
-        subtitle="Hardware acceleration, engine binary versions, and runtime configuration for local model inference"
+        subtitle="Engine binary versions, available downloads, and runtime configuration for local model inference"
       >
         <Flex className="flex-col gap-3">
           <Tabs
