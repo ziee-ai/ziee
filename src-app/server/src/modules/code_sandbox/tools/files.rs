@@ -393,6 +393,9 @@ pub async fn get_resource_link(
             "mimeType": att.mime_type,
             "description": "User-uploaded attachment (signed URL, expires shortly)",
             "is_saved": true,
+            // File id so the UI inline preview fetches via the authenticated
+            // /api/files/{id}/... path (same as the right-side panel).
+            "file_id": att.file_id,
         }));
     }
 

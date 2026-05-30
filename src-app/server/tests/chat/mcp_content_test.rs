@@ -1,6 +1,6 @@
 //! Integration tests for MCP content data types (McpContentData, etc.)
 
-use ziee::{McpContentData, RichFile};
+use ziee::{McpContentData, ResourceLink, RichFile};
 
 #[test]
 fn test_tool_use_conversion() {
@@ -164,4 +164,66 @@ fn test_tool_result_with_attachment_roundtrip() {
         }
         _ => panic!("Expected ToolResult"),
     }
+}
+
+#[test]
+fn test_resource_link_file_id_roundtrip() {
+    // The UI inline preview reads `resource_links[i].file_id` to render via the
+    // authenticated /api/files/{id}/... path. It must survive the JSON
+    // round-trip (DB persistence) and serialize into the browser-facing JSON.
+    let file_id = uuid::Uuid::new_v4();
+    let tool_result = McpContentData::ToolResult {
+        tool_use_id: "toolu_06".to_string(),
+        name: Some("write_file".to_string()),
+        content: "Saved".to_string(),
+        is_error: Some(false),
+        attachment: None,
+        server_id: None,
+        hidden_content: None,
+        resource_links: Some(vec![ResourceLink {
+            uri: "/api/code-sandbox/file/download?filename=plot.R".to_string(),
+            name: Some("plot.R".to_string()),
+            mime_type: Some("text/plain".to_string()),
+            size: Some(42),
+            is_saved: Some(false),
+            file_id: Some(file_id),
+        }]),
+    };
+
+    let json = serde_json::to_value(&tool_result).expect("Should serialize");
+    assert_eq!(
+        json["resource_links"][0]["file_id"],
+        serde_json::json!(file_id.to_string()),
+        "file_id must serialize into the resource_link JSON sent to the browser"
+    );
+
+    let recovered: McpContentData = serde_json::from_value(json).expect("Should deserialize");
+    match recovered {
+        McpContentData::ToolResult { resource_links, .. } => {
+            let links = resource_links.expect("resource_links should be preserved");
+            assert_eq!(links.len(), 1);
+            assert_eq!(links[0].file_id, Some(file_id));
+            assert_eq!(links[0].name.as_deref(), Some("plot.R"));
+        }
+        _ => panic!("Expected ToolResult"),
+    }
+}
+
+#[test]
+fn test_resource_link_file_id_omitted_when_absent() {
+    // External MCP links have no backing File — file_id must be skipped in JSON
+    // (it's `#[serde(skip_serializing_if = "Option::is_none")]`).
+    let link = ResourceLink {
+        uri: "https://example.com/report.pdf".to_string(),
+        name: Some("report.pdf".to_string()),
+        mime_type: None,
+        size: None,
+        is_saved: None,
+        file_id: None,
+    };
+    let json = serde_json::to_value(&link).expect("Should serialize");
+    assert!(
+        json.get("file_id").is_none(),
+        "file_id should be omitted when None, got: {json}"
+    );
 }

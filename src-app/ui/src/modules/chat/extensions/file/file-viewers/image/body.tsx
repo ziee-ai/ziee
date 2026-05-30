@@ -1,23 +1,40 @@
+import { useState } from 'react'
 import { Spin } from 'antd'
+import { FileImageOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import type { FileViewerSlotProps } from '../../types'
 import { getSource } from '../shared/source'
 
 export function ImageBody(props: FileViewerSlotProps) {
   const { file, url, name } = getSource(props)
+  // Tracks load failure for the inline (external-MCP) <img> path so we can
+  // show a visible placeholder instead of silently falling back to alt-text.
+  const [errored, setErrored] = useState(false)
 
   // ── Inline-in-chat context: no FileEntity, no thumbnail cache.
-  // Just render the image directly from the resource_link URL. The
-  // collapse wrapper handles size clamping (max-width: 100%,
-  // max-height: 400px) at the preview-card level; we still set
-  // object-contain so a wide image scales correctly inside it.
+  // Render the image directly from the resource_link URL (external MCP).
+  // Backend-owned artifacts arrive with a FileEntity and take the
+  // authenticated thumbnail path below instead. The collapse wrapper handles
+  // size clamping; object-contain scales a wide image inside it.
   if (!file) {
+    if (errored) {
+      return (
+        <div
+          className="flex flex-col items-center justify-center gap-1 p-6 text-sm opacity-60"
+          data-testid="inline-file-preview-image-error"
+        >
+          <FileImageOutlined style={{ fontSize: 24 }} />
+          <span>Couldn't load image</span>
+        </div>
+      )
+    }
     return (
       <div className="flex items-center justify-center p-4">
         <img
           src={url}
           alt={name}
           className="max-w-full max-h-[400px] object-contain"
+          onError={() => setErrored(true)}
         />
       </div>
     )
