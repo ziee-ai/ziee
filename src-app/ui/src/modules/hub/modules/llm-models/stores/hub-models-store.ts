@@ -15,7 +15,7 @@ interface HubModelsState {
   localProvidersLoaded: boolean
 
   // Actions
-  loadModels: () => Promise<void>
+  loadModels: (force?: boolean) => Promise<void>
   refreshFromGitHub: () => Promise<void>
   loadLocalProviders: () => Promise<void>
   downloadModelFromHub: (
@@ -45,9 +45,9 @@ export const useHubModelsStore = create<HubModelsState>()(
         localProviders: [],
         localProvidersLoaded: false,
 
-        loadModels: async () => {
+        loadModels: async (force = false) => {
           const state = get()
-          if (state.loading) return
+          if (state.loading && !force) return
 
           set({ loading: true, error: null })
           try {

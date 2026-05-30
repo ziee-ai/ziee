@@ -3,11 +3,14 @@ import { Input, Select, Typography, Spin, Button } from 'antd'
 import { SearchOutlined, ClearOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { McpServerHubCard } from '@/modules/hub/modules/mcp/components/McpServerHubCard'
+import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
 
 const { Text } = Typography
 
 export function McpServersHubTab() {
   const { servers, loading, error } = Stores.HubMcpServers // Auto-loads via __init__
+  const catalog = Stores.HubCatalog.catalog
+  const serverVersion = Stores.HubCatalog.serverVersion
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [sortBy, setSortBy] = useState('popular')
@@ -154,19 +157,37 @@ export function McpServersHubTab() {
         )}
       </div>
 
-      {/* Servers List */}
+      {/* Servers List — incompatible items hidden entirely. */}
       <div className="flex-1 overflow-auto px-3 pb-3">
-        <div className="flex flex-col gap-3">
-          {filteredServers.map(server => (
-            <McpServerHubCard key={server.id} server={server} />
-          ))}
-        </div>
-
-        {filteredServers.length === 0 && (
-          <div className="text-center py-12">
-            <Text type="secondary">No MCP servers found</Text>
-          </div>
-        )}
+        {(() => {
+          const indexById = new Map(
+            (catalog?.items ?? [])
+              .filter(it => it.category === 'mcp-server')
+              .map(it => [it.id, it]),
+          )
+          const visible = filteredServers.filter(s => {
+            const ix = indexById.get(s.id)
+            return !ix || compatOf(ix, serverVersion).status === 'ok'
+          })
+          return (
+            <>
+              <div className="flex flex-col gap-3">
+                {visible.map(server => (
+                  <McpServerHubCard key={server.id} server={server} />
+                ))}
+              </div>
+              {visible.length === 0 && (
+                <div className="text-center py-12">
+                  <Text type="secondary">
+                    {servers.length === 0
+                      ? 'No MCP servers yet'
+                      : 'No MCP servers match your search'}
+                  </Text>
+                </div>
+              )}
+            </>
+          )
+        })()}
       </div>
     </div>
   )

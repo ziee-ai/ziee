@@ -1,10 +1,13 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
+import { ApiClient } from '@/api-client'
 import type { HubMCPServer } from '@/api-client/types'
 
 interface McpServerDetailsDrawerState {
   isOpen: boolean
   selectedServer: HubMCPServer | null
+  /** True while the fresh manifest is being fetched on open. */
+  loading: boolean
 
   // Actions
   open: (server: HubMCPServer) => void
@@ -14,16 +17,32 @@ interface McpServerDetailsDrawerState {
 export const useMcpServerDetailsDrawerStore =
   create<McpServerDetailsDrawerState>()(
     immer(
-      (set): McpServerDetailsDrawerState => ({
+      (set, get): McpServerDetailsDrawerState => ({
         isOpen: false,
         selectedServer: null,
+        loading: false,
 
+        // Show the list copy instantly, then refresh from the
+        // authoritative current/ manifest via /api/hub/manifest.
         open: (server: HubMCPServer) => {
-          set({ isOpen: true, selectedServer: server })
+          set({ isOpen: true, selectedServer: server, loading: true })
+          ApiClient.Hub.getManifest({ id: server.id, category: 'mcp-server' })
+            .then(manifest => {
+              if (
+                get().isOpen &&
+                get().selectedServer?.id === server.id &&
+                manifest.mcp_server
+              ) {
+                set({ selectedServer: manifest.mcp_server, loading: false })
+              } else {
+                set({ loading: false })
+              }
+            })
+            .catch(() => set({ loading: false }))
         },
 
         close: () => {
-          set({ isOpen: false, selectedServer: null })
+          set({ isOpen: false, selectedServer: null, loading: false })
         },
       }),
     ),
