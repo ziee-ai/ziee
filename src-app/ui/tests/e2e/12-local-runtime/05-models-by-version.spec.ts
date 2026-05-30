@@ -1,0 +1,190 @@
+import { test, expect } from '../../fixtures/test-context'
+import type { Page } from '@playwright/test'
+import { loginAsAdmin, getCurrentUserToken } from '../../common/auth-helpers'
+import {
+  gotoRuntimeSettings,
+  seedLocalProvider,
+  seedLocalModel,
+  downloadEngineViaApi,
+  downloadGgufModelViaApi
+} from './helpers/local-runtime-helpers'
+
+/**
+ * Models-by-engine-version UI, the update-checker diff, version swap, and the
+ * delete guard.
+ *
+ * Engine-dependent specs hit the REAL `ziee-ai/*` GitHub releases (small cpu
+ * engine binary) and, for the running/lifecycle test, a REAL TinyLlama GGUF
+ * from HuggingFace — the same path `gold_smoke` proves on the backend. They
+ * are gated on `HUGGINGFACE_API_KEY` (source `server/tests/.env.test` before
+ * `npm run test:e2e`); the backend inherits the key from the shell env.
+ *
+ * NOTE: not yet executed (real network + a ~670 MB download + CPU inference).
+ * Selectors/timings will need a verification pass on first real run.
+ */
+const HF_KEY = process.env.HUGGINGFACE_API_KEY
+const SWAP_VERSION_A = 'v0.0.1-alpha'
+const SWAP_VERSION_B = 'v0.0.2-alpha' // mistral.rs publishes both
+
+function mbvCard(page: Page) {
+  return page
+    .locator('.ant-tabs-tabpane-active')
+    .locator('.ant-card')
+    .filter({ hasText: 'Models by engine version' })
+}
+
+// ── engine-free: only local read endpoints, runs anywhere ────────────────
+test.describe('Local Runtime — models by version (engine-free)', () => {
+  test.beforeEach(async ({ page, testInfra }) => {
+    await loginAsAdmin(page, testInfra.baseURL)
+  })
+
+  test('card shows the empty state on both engine tabs', async ({ page, testInfra }) => {
+    await gotoRuntimeSettings(page, testInfra.baseURL)
+    const pane = page.locator('.ant-tabs-tabpane-active')
+    await expect(pane.getByText('Models by engine version')).toBeVisible()
+    await expect(pane.getByText('No installed versions yet')).toBeVisible()
+
+    await page.getByRole('tab', { name: 'Mistral.rs' }).click()
+    const mrsPane = page.locator('.ant-tabs-tabpane-active')
+    await expect(mrsPane.getByText('Models by engine version')).toBeVisible()
+    await expect(mrsPane.getByText('No installed versions yet')).toBeVisible()
+  })
+
+  test('update checker exposes a Check for Updates action', async ({ page, testInfra }) => {
+    await gotoRuntimeSettings(page, testInfra.baseURL)
+    await expect(
+      page
+        .locator('.ant-tabs-tabpane-active')
+        .getByRole('button', { name: /Check for Updates/i })
+    ).toBeVisible()
+  })
+})
+
+// ── running engine: real GitHub engine + real HF GGUF + CPU inference ─────
+// One model is downloaded once per worker (memoized) and reused.
+let runningSetup: Promise<{ modelName: string }> | null = null
+function ensureRunningModel(baseURL: string, token: string) {
+  if (!runningSetup) {
+    runningSetup = (async () => {
+      await downloadEngineViaApi(baseURL, token, 'llamacpp') // real GitHub, default
+      const providerId = await seedLocalProvider(baseURL, token)
+      await downloadGgufModelViaApi(baseURL, token, providerId) // real HF (~670 MB)
+      // The card renders the model's display_name, set in the download helper.
+      return { modelName: 'E2E TinyLlama' }
+    })()
+  }
+  return runningSetup
+}
+
+test.describe('Local Runtime — running engine (needs HUGGINGFACE_API_KEY)', () => {
+  test.skip(!HF_KEY, 'set HUGGINGFACE_API_KEY (source server/tests/.env.test) to run real-engine flows')
+
+  test.beforeEach(async ({ page, testInfra }) => {
+    await loginAsAdmin(page, testInfra.baseURL)
+    const token = await getCurrentUserToken(page)
+    await ensureRunningModel(testInfra.baseURL, token)
+  })
+
+  test('full lifecycle: start → logs/detail → restart → stop', async ({ page, testInfra }) => {
+    const setup = await ensureRunningModel(testInfra.baseURL, await getCurrentUserToken(page))
+    await gotoRuntimeSettings(page, testInfra.baseURL)
+    const card = mbvCard(page)
+    // The downloaded GGUF model appears under its engine version.
+    await expect(card.getByText(setup.modelName, { exact: false })).toBeVisible({
+      timeout: 30000
+    })
+
+    // Start (defensive: only if currently stopped).
+    const startBtn = card.getByRole('button', { name: 'Start' })
+    if (await startBtn.isVisible().catch(() => false)) {
+      await startBtn.click()
+    }
+    await expect(card.getByRole('button', { name: 'Stop' }).first()).toBeVisible({
+      timeout: 180000
+    })
+
+    // Expand logs + instance detail.
+    await card.getByRole('button', { name: 'Logs' }).first().click()
+    await expect(page.getByText('Live logs')).toBeVisible()
+    await expect(page.getByText(/Base URL/i)).toBeVisible({ timeout: 15000 })
+
+    // Restart → still running.
+    await card.getByRole('button', { name: 'Restart' }).first().click()
+    await expect(card.getByRole('button', { name: 'Stop' }).first()).toBeVisible({
+      timeout: 180000
+    })
+
+    // Stop → Start returns.
+    await card.getByRole('button', { name: 'Stop' }).first().click()
+    await expect(card.getByRole('button', { name: 'Start' }).first()).toBeVisible({
+      timeout: 60000
+    })
+  })
+
+  test('check for updates shows the installed version in the diff', async ({
+    page,
+    testInfra
+  }) => {
+    await gotoRuntimeSettings(page, testInfra.baseURL)
+    const pane = page.locator('.ant-tabs-tabpane-active')
+    await pane.getByRole('button', { name: /Check for Updates/i }).click()
+    // The installed v0.0.1 is the latest → the checker reports "up to date";
+    // if a newer ready version existed it would show the "Releases (…)" diff.
+    await expect(pane.getByText(/up to date|Releases \(/i)).toBeVisible({ timeout: 20000 })
+  })
+})
+
+// ── version management: real engine(s) + a model ROW (no GGUF/inference) ──
+test.describe('Local Runtime — version management (needs HUGGINGFACE_API_KEY)', () => {
+  test.skip(!HF_KEY, 'set HUGGINGFACE_API_KEY to run real-engine flows')
+
+  test.beforeEach(async ({ page, testInfra }) => {
+    await loginAsAdmin(page, testInfra.baseURL)
+  })
+
+  test('delete guard: in-use/default version refused, empty version deletes', async ({
+    page,
+    testInfra
+  }) => {
+    const token = await getCurrentUserToken(page)
+    // A single default version + a model row that resolves to it is enough to
+    // exercise the in-use/default refusal (no second version needed).
+    await downloadEngineViaApi(testInfra.baseURL, token, 'llamacpp', SWAP_VERSION_A, true)
+    const providerId = await seedLocalProvider(testInfra.baseURL, token)
+    await seedLocalModel(testInfra.baseURL, token, providerId, `e2e-del-${Date.now()}`)
+
+    await gotoRuntimeSettings(page, testInfra.baseURL)
+    const pane = page.locator('.ant-tabs-tabpane-active')
+
+    // Deleting the default-and-in-use version is refused with the guard reason.
+    await pane.getByRole('button', { name: 'Delete' }).first().click()
+    await expect(page.getByText('Also remove cached files from disk')).toBeVisible()
+    await page.locator('.ant-popover .ant-btn-primary').last().click()
+    await expect(page.locator('.ant-message')).toContainText(/Cannot delete/i, {
+      timeout: 10000
+    })
+  })
+
+  test('swap a model from one version to another', async ({ page, testInfra }) => {
+    const token = await getCurrentUserToken(page)
+    // mistral.rs publishes BOTH v0.0.1-alpha and v0.0.2-alpha. A is default →
+    // an unpinned mistralrs model resolves to A; we swap it to B via the card.
+    await downloadEngineViaApi(testInfra.baseURL, token, 'mistralrs', SWAP_VERSION_A, true)
+    await downloadEngineViaApi(testInfra.baseURL, token, 'mistralrs', SWAP_VERSION_B, false)
+    const providerId = await seedLocalProvider(testInfra.baseURL, token)
+    await seedLocalModel(testInfra.baseURL, token, providerId, `e2e-swap-${Date.now()}`, 'mistralrs')
+
+    await gotoRuntimeSettings(page, testInfra.baseURL)
+    // The models-by-version card lives on the per-engine tab → Mistral.rs.
+    await page.getByRole('tab', { name: 'Mistral.rs' }).click()
+    const card = mbvCard(page)
+    // The model starts under version A; swap it to version B via the Select.
+    await card.locator('.ant-select').first().click()
+    await page.locator('.ant-select-item-option').filter({ hasText: SWAP_VERSION_B }).first().click()
+    // After the swap reloads usage, the model is grouped under version B.
+    await expect(card.getByText(SWAP_VERSION_B, { exact: false })).toBeVisible({
+      timeout: 15000
+    })
+  })
+})

@@ -77,3 +77,26 @@ impl PermissionCheck for RuntimeVersionDelete {
     const DESCRIPTION: &'static str = "Delete runtime versions";
     const MODULE: &'static str = "llm_local_runtime";
 }
+
+// =====================================================
+// Runtime Settings (singleton row) Permissions
+// =====================================================
+
+/// Permission to read runtime singleton settings.
+pub struct RuntimeSettingsRead;
+impl PermissionCheck for RuntimeSettingsRead {
+    const NAME: &'static str = "RuntimeSettingsRead";
+    const PERMISSION: &'static str = "llm_local_runtime::settings_read";
+    const DESCRIPTION: &'static str = "Read runtime singleton settings (idle/auto-start/drain)";
+    const MODULE: &'static str = "llm_local_runtime";
+}
+
+/// Permission to modify runtime singleton settings.
+pub struct RuntimeSettingsManage;
+impl PermissionCheck for RuntimeSettingsManage {
+    const NAME: &'static str = "RuntimeSettingsManage";
+    const PERMISSION: &'static str = "llm_local_runtime::settings_manage";
+    const DESCRIPTION: &'static str =
+        "Modify runtime singleton settings (idle/auto-start/drain/allow_unsigned_downloads)";
+    const MODULE: &'static str = "llm_local_runtime";
+}

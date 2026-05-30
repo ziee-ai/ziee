@@ -93,7 +93,7 @@ impl HubRepository {
 
 /// Row returned by `list_outdated_entities` — one installed hub
 /// entity whose version doesn't match the current catalog. The
-/// `installed_version` is None for rows installed before migration 66.
+/// `installed_version` is None for rows installed before migration 69.
 #[derive(Debug, Clone)]
 pub struct OutdatedHubEntity {
     pub hub_id: String,
@@ -106,7 +106,7 @@ pub struct OutdatedHubEntity {
 /// Create hub entity tracking record. `hub_version` is the catalog
 /// version the entity was installed from — stamped so `/hub/updates`
 /// can tell whether the install is behind the current catalog. NULL
-/// only for legacy rows that predate migration 67.
+/// only for legacy rows that predate migration 69.
 pub async fn track_hub_entity(
     pool: &PgPool,
     entity_type: HubEntityType,

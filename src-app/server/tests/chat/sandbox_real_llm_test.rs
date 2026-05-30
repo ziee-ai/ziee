@@ -16,9 +16,8 @@
 
 use crate::chat::helpers;
 use crate::code_sandbox::harness::{bwrap_available, rootfs_path};
-// `stage_test_rootfs_for_e2e` only exists on the VM backends (macOS/WSL2),
-// since Linux mounts its rootfs directly. Gate the import accordingly to
-// stay compatible with this file's `#![allow(unused_imports)]`.
+// `stage_test_rootfs_for_e2e` is mac/windows-only (Linux stages the rootfs
+// as a real FUSE mount), so the import must be cfg-gated to match.
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use crate::code_sandbox::harness::stage_test_rootfs_for_e2e;
 use crate::common::{TestServer, TestServerOptions};

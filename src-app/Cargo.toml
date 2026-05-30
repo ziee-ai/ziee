@@ -20,7 +20,7 @@ members = [
     "server/ai-providers",
     "server/macros",
     "desktop/tauri",
-    "llm-runtime",
+    "stub-engine",
     "sandbox-guest-agent",
     "sandbox-vm-launcher",
     "sandbox-vm-protocol",

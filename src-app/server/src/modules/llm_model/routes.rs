@@ -41,6 +41,11 @@ pub fn llm_model_router() -> ApiRouter {
             "/llm-models/{model_id}/disable",
             post_with(disable_model, disable_model_docs),
         )
+        // P1.k: manual (re-)validation trigger ("Run inference test")
+        .api_route(
+            "/llm-models/{model_id}/validate",
+            post_with(validate_model, validate_model_docs),
+        )
         // File upload/download — explicit per-route body limit per
         // 14-core-infrastructure F-01
         .api_route(

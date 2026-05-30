@@ -299,7 +299,7 @@ async fn updates_endpoint_lists_stale_entities() {
 }
 
 // =====================================================================
-// /hub/updates surfaces NULL hub_version (legacy rows pre-migration 67)
+// /hub/updates surfaces NULL hub_version (legacy rows pre-migration 69)
 // =====================================================================
 
 #[tokio::test]

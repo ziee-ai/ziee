@@ -348,6 +348,19 @@ async fn create_model_with_files(
     repo.set_validation_status(model_db.id, "completed", None)
         .await?;
 
+    // P1.k: enqueue a background Tier-2 validation (engine load
+    // probe) for local models. This also extracts + persists
+    // capabilities (P1.i). Non-blocking — the upload returns
+    // immediately; the model card shows "Validating…" until the
+    // worker transitions it to valid / validation_warning.
+    if matches!(model_db.engine_type, EngineType::Llamacpp | EngineType::Mistralrs) {
+        crate::modules::llm_local_runtime::validator::enqueue(
+            model_db.id,
+            crate::modules::llm_local_runtime::validator::ValidationTier::Tier2,
+        )
+        .await;
+    }
+
     // Return the created model directly
     let model = model_db;
 
@@ -1415,6 +1428,19 @@ pub async fn initiate_repository_download_internal(
                                 },
                             )
                             .await;
+
+                        // P1.k: background Tier-2 validation for local
+                        // engine models freshly downloaded from HF.
+                        if matches!(
+                            model.engine_type,
+                            EngineType::Llamacpp | EngineType::Mistralrs
+                        ) {
+                            crate::modules::llm_local_runtime::validator::enqueue(
+                                model.id,
+                                crate::modules::llm_local_runtime::validator::ValidationTier::Tier2,
+                            )
+                            .await;
+                        }
 
                         crate::utils::cancellation::remove_download_tracking(download_id).await;
 
