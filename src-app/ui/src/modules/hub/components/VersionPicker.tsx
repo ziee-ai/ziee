@@ -35,7 +35,7 @@ export function VersionPicker() {
       message.success(
         version
           ? `Activated hub catalog v${version}`
-          : 'Now tracking the latest hub release',
+          : 'Now tracking the latest hub catalog',
       )
     } catch (e) {
       message.error(
@@ -59,7 +59,7 @@ export function VersionPicker() {
     ...(releasesLoading
       ? [{ key: '__loading__', label: 'Loading versions…', disabled: true }]
       : releases.length === 0
-        ? [{ key: '__empty__', label: 'No versions found', disabled: true }]
+        ? [{ key: '__empty__', label: 'No versions available', disabled: true }]
         : releases.map(r => ({
             key: r.version,
             label: (

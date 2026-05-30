@@ -91,7 +91,7 @@ test.describe('Hub version activation (admin)', () => {
     await navigateToHub(page, baseURL, 'models')
     await waitForHubDataLoad(page)
 
-    // The Updates tab is admin-only (gated on hub::admin). It appears in
+    // The Updates tab is admin-only (gated on hub::catalog::read). It appears in
     // the segmented tab control.
     await page.goto(`${baseURL}/hub/updates`)
     await expect(page).toHaveURL(/\/hub\/updates/)

@@ -1,5 +1,15 @@
 import { useState } from 'react'
-import { Button, Empty, List, Spin, Tag, Tooltip, Typography, message } from 'antd'
+import {
+  Button,
+  Empty,
+  List,
+  Popconfirm,
+  Spin,
+  Tag,
+  Tooltip,
+  Typography,
+  message,
+} from 'antd'
 import { useNavigate } from 'react-router-dom'
 import { ApiClient } from '@/api-client'
 import { Stores } from '@/core/stores'
@@ -10,7 +20,7 @@ const { Text } = Typography
  * Installed entities (assistants / MCP servers / models that were
  * created from a hub item) whose `hub_version` lags the current
  * catalog. Admin-only — the underlying endpoint
- * `GET /api/hub/updates` is gated on `hub::admin`.
+ * `GET /api/hub/updates` is gated on `hub::catalog::read`.
  */
 export function UpdatesHubTab() {
   const updates = Stores.HubUpdates.updates
@@ -114,17 +124,24 @@ export function UpdatesHubTab() {
                   </Button>
                 </Tooltip>
               ) : (
-                <Button
+                <Popconfirm
                   key="action"
-                  size="small"
-                  type="link"
-                  loading={busyId === row.entity_id}
-                  onClick={() =>
+                  title="Re-install from current catalog"
+                  description={`Create a fresh "${row.hub_id}" from catalog v${row.current_version}?`}
+                  okText="Re-install"
+                  cancelText="Cancel"
+                  onConfirm={() =>
                     reinstall(row.hub_id, row.hub_category, row.entity_id)
                   }
                 >
-                  Re-install
-                </Button>
+                  <Button
+                    size="small"
+                    type="link"
+                    loading={busyId === row.entity_id}
+                  >
+                    Re-install
+                  </Button>
+                </Popconfirm>
               ),
             ]}
           >

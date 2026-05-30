@@ -9,7 +9,6 @@ import type {
   HubReleaseInfo,
   IndexItem,
 } from '@/api-client/types'
-import { Stores } from '@/core/stores'
 import { useHubModelsStore } from '@/modules/hub/modules/llm-models/stores/hub-models-store'
 import { useHubAssistantsStore } from '@/modules/hub/modules/assistants/stores/hub-assistants-store'
 import { useHubMcpServersStore } from '@/modules/hub/modules/mcp/stores/hub-mcp-servers-store'
@@ -18,21 +17,24 @@ import { useHubMcpServersStore } from '@/modules/hub/modules/mcp/stores/hub-mcp-
  * After the active catalog version changes (refresh / activate), the
  * per-category tab lists are stale — they were loaded against the old
  * `current/`. Re-pull all three so every tab reflects the new version.
- * The per-category endpoints serve from the rotated `current/` dir, so
- * a plain reload picks up the switch.
+ * Forced (true) so an in-flight first-load doesn't make the reload
+ * early-return on the `loading` guard and leave a tab showing the old
+ * version. The per-category endpoints serve from the rotated `current/`
+ * dir, so a reload picks up the switch.
  */
 async function reloadAllTabs(): Promise<void> {
   await Promise.allSettled([
-    useHubModelsStore.getState().loadModels(),
-    useHubAssistantsStore.getState().loadAssistants(),
-    useHubMcpServersStore.getState().loadServers(),
+    useHubModelsStore.getState().loadModels(true),
+    useHubAssistantsStore.getState().loadAssistants(true),
+    useHubMcpServersStore.getState().loadServers(true),
   ])
 }
 
 /**
  * Result of a per-item compat check (see compatOf below).
- * `ok` = no min_ziee_version, or server >= min; `too_old` = surface in
- * the Incompatible(N) footer with install disabled.
+ * `ok` = no min_ziee_version, or server >= min; `too_old` = the item
+ * requires a newer ziee server and is hidden from the tab + rejected
+ * by the install endpoint.
  */
 export type Compat = { status: 'ok' } | { status: 'too_old'; required: string }
 
@@ -54,7 +56,7 @@ interface HubCatalogState {
   activating: boolean
 
   // Actions
-  loadCatalog: () => Promise<void>
+  loadCatalog: (force?: boolean) => Promise<void>
   loadVersion: () => Promise<void>
   refresh: () => Promise<void>
   loadReleases: () => Promise<void>
@@ -87,8 +89,11 @@ export const useHubCatalogStore = create<HubCatalogState>()(
         releasesLoading: false,
         activating: false,
 
-        loadCatalog: async () => {
-          if (get().loading) return
+        loadCatalog: async (force = false) => {
+          // `force` lets refresh/activate bypass the in-flight guard so
+          // a concurrent first-load doesn't make the post-switch reload
+          // a no-op (which would leave the UI on the old catalog).
+          if (get().loading && !force) return
           set({ loading: true, error: null })
           try {
             const catalog = await ApiClient.Hub.getCatalog()
@@ -126,7 +131,7 @@ export const useHubCatalogStore = create<HubCatalogState>()(
             // generated_at timestamp + counts (server might have added
             // a sidecar after staging an air-gapped update) stay
             // fresh in the UI.
-            await get().loadCatalog()
+            await get().loadCatalog(true)
             await get().loadVersion()
             await reloadAllTabs()
             set({ refreshing: false })
@@ -165,7 +170,7 @@ export const useHubCatalogStore = create<HubCatalogState>()(
           set({ activating: true, error: null })
           try {
             await ApiClient.Hub.activateVersion({ version: version ?? undefined })
-            await get().loadCatalog()
+            await get().loadCatalog(true)
             await get().loadVersion()
             await get().loadReleases()
             await reloadAllTabs()
@@ -230,6 +235,13 @@ function semverCompare(a: string, b: string): number {
   return 0
 }
 
+/**
+ * Compat check for one catalog item against the running server. Items
+ * with no `min_ziee_version`, or whose requirement the server meets,
+ * are `ok`; otherwise `too_old`. Tabs hide `too_old` items entirely
+ * (and the install endpoint rejects them server-side). Returns `ok`
+ * when the server version hasn't loaded yet so nothing flickers hidden.
+ */
 export function compatOf(item: IndexItem, serverVersion: string | null): Compat {
   if (!item.min_ziee_version) return { status: 'ok' }
   if (!serverVersion) return { status: 'ok' } // not loaded yet — don't gate
@@ -237,33 +249,3 @@ export function compatOf(item: IndexItem, serverVersion: string | null): Compat 
     ? { status: 'ok' }
     : { status: 'too_old', required: item.min_ziee_version }
 }
-
-/**
- * Partition a category's items into compatible + incompatible buckets.
- * Tabs render compatible as the main list and incompatible inside a
- * collapsed `<Collapse header="Incompatible (N)">` footer with install
- * disabled.
- */
-export function partitionByCompat(
-  items: IndexItem[],
-  serverVersion: string | null,
-): { compatible: IndexItem[]; incompatible: IndexItem[] } {
-  const compatible: IndexItem[] = []
-  const incompatible: IndexItem[] = []
-  for (const it of items) {
-    ;(compatibleStatus(it, serverVersion) ? compatible : incompatible).push(it)
-  }
-  return { compatible, incompatible }
-}
-
-function compatibleStatus(
-  item: IndexItem,
-  serverVersion: string | null,
-): boolean {
-  return compatOf(item, serverVersion).status === 'ok'
-}
-
-// Re-export Stores helper consumer side knows about; nothing here needs
-// the runtime `Stores` object yet, but the import is kept for future
-// use (e.g. listening to hub.catalog_refreshed events).
-export const _StoresRef = Stores

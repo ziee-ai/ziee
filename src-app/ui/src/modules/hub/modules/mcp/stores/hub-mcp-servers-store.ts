@@ -17,7 +17,7 @@ interface HubMcpServersState {
   error: string | null
 
   // Actions
-  loadServers: () => Promise<void>
+  loadServers: (force?: boolean) => Promise<void>
   refreshFromGitHub: () => Promise<void>
   createFromHub: (request: CreateMcpServerFromHubRequest) => Promise<McpServer>
 
@@ -39,9 +39,9 @@ export const useHubMcpServersStore = create<HubMcpServersState>()(
         creating: false,
         error: null,
 
-        loadServers: async () => {
+        loadServers: async (force = false) => {
           const state = get()
-          if (state.loading) return
+          if (state.loading && !force) return
 
           set({ loading: true, error: null })
           try {

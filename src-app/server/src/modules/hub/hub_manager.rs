@@ -117,6 +117,11 @@ pub const SEED_HUB_VERSION: &str = "0.0.1-alpha";
 /// refresh rotates in a fresh dir that lacks it.
 const SEED_MARKER: &str = ".seed";
 
+/// Process-wide lock serializing catalog refresh/activate so concurrent
+/// callers don't clobber the shared `.staging` / `.previous` dirs.
+static HUB_REFRESH_LOCK: once_cell::sync::Lazy<tokio::sync::Mutex<()>> =
+    once_cell::sync::Lazy::new(|| tokio::sync::Mutex::new(()));
+
 /// Origin of the active on-disk catalog.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -448,8 +453,8 @@ impl HubManager {
         })
     }
 
-    /// Read the catalog's `hub_version` without parsing the whole index.
-    pub async fn get_current_version(&self, _category: &str) -> Result<String, AppError> {
+    /// The active catalog's `hub_version`.
+    pub async fn current_version(&self) -> Result<String, AppError> {
         let catalog = self.catalog().await?;
         Ok(catalog.hub_version)
     }
@@ -477,7 +482,7 @@ impl HubManager {
             Compat::TooOld { required } => Err(AppError::unprocessable_entity(
                 "HUB_INCOMPATIBLE",
                 format!(
-                    "hub item '{}' requires ziee-chat >= {} but this server is {}",
+                    "hub item '{}' requires ziee >= {} but this server is {}",
                     id,
                     required,
                     server_version()
@@ -523,17 +528,6 @@ impl HubManager {
         }
     }
 
-    /// Back-compat shim for the old per-category refresh endpoints
-    /// (`/api/hub/{models,assistants,mcp-servers}/refresh`). The new
-    /// catalog model refreshes everything in one shot, so the
-    /// `_category` arg is accepted but ignored — each per-category
-    /// endpoint triggers the same full refresh (tracking latest), then
-    /// emits its own category-specific event for any consumers wired to
-    /// one.
-    pub async fn refresh_hub_category(&self, _category: &str) -> Result<(), AppError> {
-        self.refresh(None).await.map(|_| ())
-    }
-
     /// Force-refresh the catalog from GitHub Releases.
     ///
     /// `target`:
@@ -545,6 +539,12 @@ impl HubManager {
     /// Returns the previous + new version. Cosign + sha256 failure
     /// aborts; the previous `current/` is left untouched.
     pub async fn refresh(&self, target: Option<String>) -> Result<RefreshOutcome, AppError> {
+        // Serialize refreshes process-wide: concurrent refresh/activate
+        // calls share the `.staging` / `.previous` dirs and would clobber
+        // each other's `remove_dir_all` + `rename`. (activate() calls
+        // refresh(), so this guard covers both.)
+        let _guard = HUB_REFRESH_LOCK.lock().await;
+
         let previous_version = self.catalog().await.ok().map(|c| c.hub_version);
 
         let app_data = self.app_data_dir.clone();
@@ -627,15 +627,6 @@ impl HubManager {
 }
 
 // =====================================================================
-// `compat()` static helper — accessible without constructing HubManager
-// (used by handlers gating /install on category at request time).
-// =====================================================================
-
-pub fn compat_of(item: &IndexItem) -> Compat {
-    HubManager::compat(item)
-}
-
-// =====================================================================
 // Refresh path (blocking — runs on spawn_blocking worker thread)
 // =====================================================================
 
@@ -647,7 +638,7 @@ struct BlockingOutcome {
 fn refresh_blocking(app_data: &Path, target: Option<String>) -> Result<BlockingOutcome, AppError> {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(60))
-        .user_agent(concat!("ziee-chat/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("ziee/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|e| AppError::internal_error(format!("hub: http client: {}", e)))?;
 
@@ -864,7 +855,7 @@ fn fetch_releases(client: &reqwest::blocking::Client) -> Result<Vec<GhRelease>, 
 fn list_releases_blocking() -> Result<Vec<GhRelease>, AppError> {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(30))
-        .user_agent(concat!("ziee-chat/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("ziee/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|e| AppError::internal_error(format!("hub: http client: {}", e)))?;
     fetch_releases(&client)
@@ -988,6 +979,16 @@ fn verify_sha256_sidecar(blob: &Path, sidecar: &Path) -> Result<(), AppError> {
         .next()
         .ok_or_else(|| AppError::internal_error("hub: empty sha256 sidecar"))?
         .to_lowercase();
+    // Validate the format up front (matches runtime_fetch.rs). A
+    // malformed sidecar would never match the 64-char hex digest below
+    // anyway, but failing fast with a clear message beats a confusing
+    // mismatch error.
+    if expected_hex.len() != 64 || !expected_hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(AppError::internal_error(format!(
+            "hub: malformed sha256 in sidecar {}",
+            sidecar.display()
+        )));
+    }
     let actual_hex = sha256_file(blob).map_err(|e| {
         AppError::internal_error(format!(
             "hub: hash blob {}: {}",
@@ -1037,12 +1038,47 @@ fn unpack_safely(tar_gz: &Path, dest: &Path) -> Result<(), AppError> {
     })?;
     let gz = flate2::read::GzDecoder::new(f);
     let mut archive = tar::Archive::new(gz);
+    // Decompression-bomb guards: the 32 MiB cap on `download_to_file`
+    // only bounds the COMPRESSED tarball; gzip can expand by orders of
+    // magnitude. Bound the cumulative uncompressed size + entry count
+    // so a malicious/buggy release can't fill the disk.
+    const MAX_UNPACKED_BYTES: u64 = 256 * 1024 * 1024;
+    const MAX_ENTRIES: usize = 100_000;
+    let mut total_unpacked: u64 = 0;
+    let mut entry_count: usize = 0;
+
     for entry in archive.entries().map_err(|e| {
         AppError::internal_error(format!("hub: read archive: {}", e))
     })? {
         let mut entry = entry.map_err(|e| {
             AppError::internal_error(format!("hub: read entry: {}", e))
         })?;
+
+        entry_count += 1;
+        if entry_count > MAX_ENTRIES {
+            return Err(AppError::internal_error(
+                "hub: archive exceeds entry-count cap".to_string(),
+            ));
+        }
+        total_unpacked = total_unpacked.saturating_add(entry.header().size().unwrap_or(0));
+        if total_unpacked > MAX_UNPACKED_BYTES {
+            return Err(AppError::internal_error(
+                "hub: archive exceeds uncompressed-size cap".to_string(),
+            ));
+        }
+
+        // Manifests + schemas + index are all regular files. Reject
+        // symlinks/hardlinks outright — a `link -> /etc` entry followed
+        // by writes through it is the classic tar symlink escape, and
+        // the catalog never legitimately contains links.
+        let kind = entry.header().entry_type();
+        if !(kind.is_file() || kind.is_dir()) {
+            return Err(AppError::internal_error(format!(
+                "hub: refusing non-regular archive entry ({:?})",
+                kind
+            )));
+        }
+
         let path = entry
             .path()
             .map_err(|e| AppError::internal_error(format!("hub: entry path: {}", e)))?
@@ -1294,5 +1330,23 @@ mod tests {
         assert!(names.contains(&"models"));
         assert!(names.contains(&"assistants"));
         assert!(names.contains(&"mcp-servers"));
+    }
+
+    #[test]
+    fn seed_index_version_matches_const() {
+        // SEED_HUB_VERSION is hand-maintained; the embedded index.json
+        // is generated from the hub repo. If they drift, /version +
+        // provenance logic would report the wrong version. Fail the
+        // build on mismatch.
+        let index = HUB_SEED
+            .get_file("index.json")
+            .expect("seed has index.json");
+        let catalog: Catalog =
+            serde_json::from_slice(index.contents()).expect("parse seed index.json");
+        assert_eq!(
+            catalog.hub_version, SEED_HUB_VERSION,
+            "resources/hub-seed/index.json hub_version ({}) != SEED_HUB_VERSION const ({})",
+            catalog.hub_version, SEED_HUB_VERSION
+        );
     }
 }

@@ -179,7 +179,7 @@ export function AssistantsHubTab() {
               </div>
               {visible.length === 0 && (
                 <div className="text-center py-12">
-                  <Text type="secondary">No assistants found</Text>
+                  <Text type="secondary">No assistants yet</Text>
                 </div>
               )}
             </>

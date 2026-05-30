@@ -103,13 +103,13 @@ pub async fn get_hub_models_version(
 ) -> ApiResult<Json<HubVersionResponse>> {
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
-    let version = hub_manager.get_current_version("llm-models").await?;
+    let version = hub_manager.current_version().await?;
 
     Ok((
         StatusCode::OK,
         Json(HubVersionResponse {
             version,
-            last_updated: None,
+            last_updated: hub_manager.last_refreshed().map(|t| t.to_rfc3339()),
         }),
     ))
 }
@@ -121,13 +121,13 @@ pub async fn get_hub_assistants_version(
 ) -> ApiResult<Json<HubVersionResponse>> {
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
-    let version = hub_manager.get_current_version("assistants").await?;
+    let version = hub_manager.current_version().await?;
 
     Ok((
         StatusCode::OK,
         Json(HubVersionResponse {
             version,
-            last_updated: None,
+            last_updated: hub_manager.last_refreshed().map(|t| t.to_rfc3339()),
         }),
     ))
 }
@@ -139,13 +139,13 @@ pub async fn get_hub_mcp_servers_version(
 ) -> ApiResult<Json<HubVersionResponse>> {
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
-    let version = hub_manager.get_current_version("mcp-servers").await?;
+    let version = hub_manager.current_version().await?;
 
     Ok((
         StatusCode::OK,
         Json(HubVersionResponse {
             version,
-            last_updated: None,
+            last_updated: hub_manager.last_refreshed().map(|t| t.to_rfc3339()),
         }),
     ))
 }
@@ -159,9 +159,12 @@ pub async fn refresh_hub_models(
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
 
-    let old_version = hub_manager.get_current_version("llm-models").await?;
-    hub_manager.refresh_hub_category("llm-models").await?;
-    let new_version = hub_manager.get_current_version("llm-models").await?;
+    let old_version = hub_manager.current_version().await?;
+    // Honor the admin pin (same as POST /hub/refresh) — the legacy
+    // per-category endpoints still drive a full unified refresh.
+    let pinned = Repos.hub.get_pinned_version().await?;
+    hub_manager.refresh(pinned).await?;
+    let new_version = hub_manager.current_version().await?;
 
     // Emit event if version changed
     if old_version != new_version {
@@ -188,9 +191,10 @@ pub async fn refresh_hub_assistants(
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
 
-    let old_version = hub_manager.get_current_version("assistants").await?;
-    hub_manager.refresh_hub_category("assistants").await?;
-    let new_version = hub_manager.get_current_version("assistants").await?;
+    let old_version = hub_manager.current_version().await?;
+    let pinned = Repos.hub.get_pinned_version().await?;
+    hub_manager.refresh(pinned).await?;
+    let new_version = hub_manager.current_version().await?;
 
     // Emit event if version changed
     if old_version != new_version {
@@ -217,9 +221,10 @@ pub async fn refresh_hub_mcp_servers(
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
 
-    let old_version = hub_manager.get_current_version("mcp-servers").await?;
-    hub_manager.refresh_hub_category("mcp-servers").await?;
-    let new_version = hub_manager.get_current_version("mcp-servers").await?;
+    let old_version = hub_manager.current_version().await?;
+    let pinned = Repos.hub.get_pinned_version().await?;
+    hub_manager.refresh(pinned).await?;
+    let new_version = hub_manager.current_version().await?;
 
     // Emit event if version changed
     if old_version != new_version {
@@ -287,7 +292,9 @@ pub async fn create_assistant_from_hub(
         .create(Some(auth.user.id), create_request)
         .await?;
 
-    // 4. Track in hub_entities
+    // 4. Track in hub_entities, stamping the catalog version installed
+    // from so /hub/updates can detect when it falls behind.
+    let hub_version = hub_manager.current_version().await.ok();
     let hub_tracking = Repos
         .hub
         .track_hub_entity(
@@ -296,6 +303,7 @@ pub async fn create_assistant_from_hub(
             &request.hub_id,
             HubCategory::Assistant,
             Some(auth.user.id),
+            hub_version.as_deref(),
         )
         .await?;
 
@@ -377,7 +385,7 @@ pub async fn create_mcp_server_from_hub(
         supports_sampling: hub_server.supports_sampling,
         usage_mode: None,
         max_concurrent_sessions: None,
-        // Hub installs are user-scoped (line 369 below), and the
+        // Hub installs are user-scoped, and the
         // sandbox option only honors admin/system servers — always
         // off for hub-installed servers.
         run_in_sandbox: None,
@@ -389,7 +397,8 @@ pub async fn create_mcp_server_from_hub(
         .create_user_server(auth.user.id, create_request)
         .await?;
 
-    // 5. Track in hub_entities
+    // 5. Track in hub_entities (stamp the installed catalog version).
+    let hub_version = hub_manager.current_version().await.ok();
     let hub_tracking = Repos
         .hub
         .track_hub_entity(
@@ -398,6 +407,7 @@ pub async fn create_mcp_server_from_hub(
             &request.hub_id,
             HubCategory::McpServer,
             Some(auth.user.id),
+            hub_version.as_deref(),
         )
         .await?;
 
@@ -543,7 +553,8 @@ pub async fn create_model_from_hub(
         )
     })?;
 
-    // 8. Track in hub_entities
+    // 8. Track in hub_entities (stamp the installed catalog version).
+    let hub_version = hub_manager.current_version().await.ok();
     let hub_tracking = Repos
         .hub
         .track_hub_entity(
@@ -552,6 +563,7 @@ pub async fn create_model_from_hub(
             &request.hub_id,
             HubCategory::Model,
             None, // Models are system-wide, not user-specific
+            hub_version.as_deref(),
         )
         .await?;
 
@@ -666,6 +678,9 @@ pub fn create_assistant_from_hub_docs(op: TransformOperation) -> TransformOperat
         .response::<201, Json<AssistantFromHubResponse>>()
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("Hub assistant not found"))
+        .response_with::<422, (), _>(|res| {
+            res.description("Hub item incompatible with this server version")
+        })
 }
 
 pub fn create_mcp_server_from_hub_docs(op: TransformOperation) -> TransformOperation {
@@ -676,6 +691,9 @@ pub fn create_mcp_server_from_hub_docs(op: TransformOperation) -> TransformOpera
         .response::<201, Json<McpServerFromHubResponse>>()
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("Hub MCP server not found"))
+        .response_with::<422, (), _>(|res| {
+            res.description("Hub item incompatible with this server version")
+        })
 }
 
 pub fn create_model_from_hub_docs(op: TransformOperation) -> TransformOperation {
@@ -686,7 +704,9 @@ pub fn create_model_from_hub_docs(op: TransformOperation) -> TransformOperation 
         .response::<201, Json<ModelFromHubResponse>>()
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("Hub model not found"))
-        .response_with::<501, (), _>(|res| res.description("Not yet implemented"))
+        .response_with::<422, (), _>(|res| {
+            res.description("Hub item incompatible with this server version")
+        })
 }
 
 // =====================================================
@@ -800,7 +820,7 @@ pub fn get_hub_catalog_version_docs(op: TransformOperation) -> TransformOperatio
 /// Cosign + sha256 failure leaves the previous catalog in place.
 #[debug_handler]
 pub async fn refresh_hub_catalog(
-    _auth: RequirePermissions<(HubAdmin,)>,
+    _auth: RequirePermissions<(HubCatalogManage,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
 ) -> ApiResult<Json<HubCatalogRefreshResponse>> {
     let app_data_dir = crate::core::get_app_data_dir();
@@ -836,7 +856,7 @@ pub async fn refresh_hub_catalog(
 }
 
 pub fn refresh_hub_catalog_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(HubAdmin,)>(op)
+    with_permission::<(HubCatalogManage,)>(op)
         .id("Hub.refreshCatalog")
         .tag("Hub")
         .summary("Force-refresh the hub catalog from GitHub Releases (admin only)")
@@ -852,7 +872,7 @@ pub fn refresh_hub_catalog_docs(op: TransformOperation) -> TransformOperation {
 /// counts as behind.
 #[debug_handler]
 pub async fn get_hub_updates(
-    _auth: RequirePermissions<(HubAdmin,)>,
+    _auth: RequirePermissions<(HubCatalogRead,)>,
 ) -> ApiResult<Json<HubUpdatesResponse>> {
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
@@ -881,7 +901,7 @@ pub async fn get_hub_updates(
 }
 
 pub fn get_hub_updates_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(HubAdmin,)>(op)
+    with_permission::<(HubCatalogRead,)>(op)
         .id("Hub.getUpdates")
         .tag("Hub")
         .summary("Installed hub entities behind the current catalog version (admin only)")
@@ -920,7 +940,7 @@ pub fn get_hub_manifest_docs(op: TransformOperation) -> TransformOperation {
 /// installed) one + the admin's pin.
 #[debug_handler]
 pub async fn get_hub_releases(
-    _auth: RequirePermissions<(HubAdmin,)>,
+    _auth: RequirePermissions<(HubCatalogRead,)>,
 ) -> ApiResult<Json<HubReleasesResponse>> {
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
@@ -938,7 +958,7 @@ pub async fn get_hub_releases(
 }
 
 pub fn get_hub_releases_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(HubAdmin,)>(op)
+    with_permission::<(HubCatalogRead,)>(op)
         .id("Hub.getReleases")
         .tag("Hub")
         .summary("List catalog versions published on GitHub (admin only)")
@@ -954,7 +974,7 @@ pub fn get_hub_releases_docs(op: TransformOperation) -> TransformOperation {
 /// previous catalog in place AND does not persist the pin.
 #[debug_handler]
 pub async fn activate_hub_version(
-    _auth: RequirePermissions<(HubAdmin,)>,
+    _auth: RequirePermissions<(HubCatalogManage,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<ActivateHubVersionRequest>,
 ) -> ApiResult<Json<HubCatalogRefreshResponse>> {
@@ -995,7 +1015,7 @@ pub async fn activate_hub_version(
 }
 
 pub fn activate_hub_version_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(HubAdmin,)>(op)
+    with_permission::<(HubCatalogManage,)>(op)
         .id("Hub.activateVersion")
         .tag("Hub")
         .summary("Pin + activate a catalog version server-wide (admin only)")

@@ -77,7 +77,11 @@ export function HubPage() {
   // hooks are still defined on the slot for backwards-compat with the
   // legacy event-bus surface, but the button no longer dispatches
   // through them.
-  const canRefresh = evaluatePermission(user, permissions, Permissions.HubAdmin)
+  const canRefresh = evaluatePermission(
+    user,
+    permissions,
+    Permissions.HubCatalogManage,
+  )
   const hubVersion = Stores.HubCatalog.hubVersion
   const serverVersion = Stores.HubCatalog.serverVersion
 

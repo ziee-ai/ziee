@@ -17,7 +17,7 @@ interface HubAssistantsState {
   error: string | null
 
   // Actions
-  loadAssistants: () => Promise<void>
+  loadAssistants: (force?: boolean) => Promise<void>
   refreshFromGitHub: () => Promise<void>
   createFromHub: (request: CreateAssistantFromHubRequest) => Promise<Assistant>
 
@@ -39,9 +39,9 @@ export const useHubAssistantsStore = create<HubAssistantsState>()(
         creating: false,
         error: null,
 
-        loadAssistants: async () => {
+        loadAssistants: async (force = false) => {
           const state = get()
-          if (state.loading) return
+          if (state.loading && !force) return
 
           set({ loading: true, error: null })
           try {

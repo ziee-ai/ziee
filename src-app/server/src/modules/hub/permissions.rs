@@ -120,14 +120,27 @@ impl PermissionCheck for HubModelsCreate {
     const MODULE: &'static str = "hub";
 }
 
-/// Administer the unified hub catalog — force refresh, view updates.
-/// Administrators get this via the `*` wildcard; nobody else does by
-/// default.
-pub struct HubAdmin;
+/// Read the unified hub catalog's admin views — list published
+/// versions, list installed-items-behind-catalog. Read-only.
+/// Follows the `module::resource::action` convention (mirrors
+/// `code_sandbox::environments::read`).
+pub struct HubCatalogRead;
 
-impl PermissionCheck for HubAdmin {
-    const NAME: &'static str = "HubAdmin";
-    const PERMISSION: &'static str = "hub::admin";
-    const DESCRIPTION: &'static str = "Administer the hub catalog (refresh, view updates)";
+impl PermissionCheck for HubCatalogRead {
+    const NAME: &'static str = "HubCatalogRead";
+    const PERMISSION: &'static str = "hub::catalog::read";
+    const DESCRIPTION: &'static str = "View hub catalog versions + pending updates";
+    const MODULE: &'static str = "hub";
+}
+
+/// Manage the unified hub catalog — force refresh + activate/pin a
+/// catalog version server-wide. Administrators get this via the `*`
+/// wildcard; nobody else does by default.
+pub struct HubCatalogManage;
+
+impl PermissionCheck for HubCatalogManage {
+    const NAME: &'static str = "HubCatalogManage";
+    const PERMISSION: &'static str = "hub::catalog::manage";
+    const DESCRIPTION: &'static str = "Refresh + activate hub catalog versions";
     const MODULE: &'static str = "hub";
 }

@@ -26,6 +26,7 @@ impl HubRepository {
         hub_id: &str,
         hub_category: HubCategory,
         created_by: Option<Uuid>,
+        hub_version: Option<&str>,
     ) -> Result<HubEntity, AppError> {
         track_hub_entity(
             &self.pool,
@@ -34,6 +35,7 @@ impl HubRepository {
             hub_id,
             hub_category,
             created_by,
+            hub_version,
         )
         .await
     }
@@ -101,7 +103,10 @@ pub struct OutdatedHubEntity {
     pub installed_version: Option<String>,
 }
 
-/// Create hub entity tracking record
+/// Create hub entity tracking record. `hub_version` is the catalog
+/// version the entity was installed from — stamped so `/hub/updates`
+/// can tell whether the install is behind the current catalog. NULL
+/// only for legacy rows that predate migration 67.
 pub async fn track_hub_entity(
     pool: &PgPool,
     entity_type: HubEntityType,
@@ -109,23 +114,25 @@ pub async fn track_hub_entity(
     hub_id: &str,
     hub_category: HubCategory,
     created_by: Option<Uuid>,
+    hub_version: Option<&str>,
 ) -> Result<HubEntity, AppError> {
     let entity_type_str = entity_type.as_str();
     let hub_category_str = hub_category.as_str();
 
     let record = sqlx::query!(
         r#"
-        INSERT INTO hub_entities (entity_type, entity_id, hub_id, hub_category, created_by)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO hub_entities (entity_type, entity_id, hub_id, hub_category, created_by, hub_version)
+        VALUES ($1, $2, $3, $4, $5, $6)
         ON CONFLICT (entity_type, entity_id)
-        DO UPDATE SET hub_id = EXCLUDED.hub_id, hub_category = EXCLUDED.hub_category
+        DO UPDATE SET hub_id = EXCLUDED.hub_id, hub_category = EXCLUDED.hub_category, hub_version = EXCLUDED.hub_version
         RETURNING id, entity_type, entity_id, hub_id, hub_category, created_at, created_by
         "#,
         entity_type_str,
         entity_id,
         hub_id,
         hub_category_str,
-        created_by
+        created_by,
+        hub_version
     )
     .fetch_one(pool)
     .await?;

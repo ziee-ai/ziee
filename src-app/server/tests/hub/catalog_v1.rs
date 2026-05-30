@@ -109,24 +109,64 @@ async fn manifest_endpoint_returns_model_yaml() {
         .expect("send manifest GET");
     assert_eq!(response.status(), 200);
     let payload: Json = response.json().await.expect("parse json");
+    // HubManifest is a typed struct: { category, model?, assistant?, mcp_server? }.
     assert_eq!(payload["category"], "model");
-    // serde tag = category puts model fields at the top level except `category`.
-    let model_field = payload
-        .as_object()
-        .expect("manifest is an object")
-        .get("id")
-        .or_else(|| {
-            payload
-                .as_object()
-                .and_then(|m| m.get("Model"))
-                .and_then(|m| m.get("id"))
-        })
-        .expect("model id is somewhere in the payload");
+    assert_eq!(payload["model"]["id"], "llama-3-1-8b-instruct");
+    assert_eq!(payload["model"]["file_format"], "safetensors");
     assert!(
-        model_field.as_str() == Some("llama-3-1-8b-instruct")
-            || payload.to_string().contains("llama-3-1-8b-instruct"),
-        "expected id in payload, got {payload}"
+        payload["assistant"].is_null() && payload["mcp_server"].is_null(),
+        "only the model variant should be populated: {payload}"
     );
+}
+
+#[tokio::test]
+async fn index_endpoint_401_without_token() {
+    // Unauthenticated (no Bearer) → 401, distinct from the 403 a
+    // wrong-permission user gets.
+    let server = TestServer::start().await;
+    let response = reqwest::Client::new()
+        .get(server.api_url("/hub/index"))
+        .send()
+        .await
+        .expect("send /hub/index unauthenticated");
+    assert_eq!(response.status(), 401, "missing token should be 401");
+}
+
+#[tokio::test]
+async fn catalog_read_cannot_activate() {
+    // The read/manage split: a user with only hub::catalog::read can
+    // list releases + updates but NOT refresh/activate (manage).
+    let server = TestServer::start().await;
+    let reader =
+        create_user_with_permissions(&server, "catreader", &["hub::catalog::read"]).await;
+    let client = reqwest::Client::new();
+
+    // read endpoints OK
+    let releases = client
+        .get(server.api_url("/hub/updates"))
+        .header("Authorization", format!("Bearer {}", reader.token))
+        .send()
+        .await
+        .expect("updates");
+    assert_eq!(releases.status(), 200, "catalog::read may view updates");
+
+    // manage endpoints forbidden
+    let refresh = client
+        .post(server.api_url("/hub/refresh"))
+        .header("Authorization", format!("Bearer {}", reader.token))
+        .send()
+        .await
+        .expect("refresh");
+    assert_eq!(refresh.status(), 403, "catalog::read may NOT refresh");
+
+    let activate = client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", reader.token))
+        .json(&serde_json::json!({ "version": "0.0.1-alpha" }))
+        .send()
+        .await
+        .expect("activate");
+    assert_eq!(activate.status(), 403, "catalog::read may NOT activate");
 }
 
 #[tokio::test]
@@ -205,7 +245,7 @@ async fn updates_endpoint_requires_admin() {
 #[tokio::test]
 async fn updates_endpoint_empty_when_no_installs() {
     let server = TestServer::start().await;
-    let admin = create_user_with_permissions(&server, "admin", &["hub::admin"]).await;
+    let admin = create_user_with_permissions(&server, "admin", &["hub::catalog::read", "hub::catalog::manage"]).await;
     let response = reqwest::Client::new()
         .get(server.api_url("/hub/updates"))
         .header("Authorization", format!("Bearer {}", admin.token))
@@ -222,7 +262,7 @@ async fn updates_endpoint_empty_when_no_installs() {
 #[tokio::test]
 async fn updates_endpoint_lists_stale_entities() {
     let server = TestServer::start().await;
-    let admin = create_user_with_permissions(&server, "admin", &["hub::admin"]).await;
+    let admin = create_user_with_permissions(&server, "admin", &["hub::catalog::read", "hub::catalog::manage"]).await;
 
     // Insert a synthetic hub_entities row with an OLD hub_version — the
     // updates query should surface it as behind the catalog.
@@ -259,13 +299,13 @@ async fn updates_endpoint_lists_stale_entities() {
 }
 
 // =====================================================================
-// /hub/updates surfaces NULL hub_version (legacy rows pre-migration 66)
+// /hub/updates surfaces NULL hub_version (legacy rows pre-migration 67)
 // =====================================================================
 
 #[tokio::test]
 async fn updates_endpoint_treats_null_version_as_behind() {
     let server = TestServer::start().await;
-    let admin = create_user_with_permissions(&server, "admin", &["hub::admin"]).await;
+    let admin = create_user_with_permissions(&server, "admin", &["hub::catalog::read", "hub::catalog::manage"]).await;
     let pool = PgPoolOptions::new()
         .max_connections(1)
         .connect(&server.database_url)
@@ -339,7 +379,7 @@ async fn activate_endpoint_requires_admin() {
 #[tokio::test]
 async fn activate_rejects_unsafe_version() {
     let server = TestServer::start().await;
-    let admin = create_user_with_permissions(&server, "admin", &["hub::admin"]).await;
+    let admin = create_user_with_permissions(&server, "admin", &["hub::catalog::read", "hub::catalog::manage"]).await;
     // Path-traversal-ish version string must be rejected before any
     // network fetch (400, not 500).
     let response = reqwest::Client::new()
@@ -368,7 +408,7 @@ async fn activate_rejects_unsafe_version() {
 #[ignore = "hits real ziee-ai/hub GitHub Releases; run with --ignored"]
 async fn releases_endpoint_lists_published_versions() {
     let server = TestServer::start().await;
-    let admin = create_user_with_permissions(&server, "admin", &["hub::admin"]).await;
+    let admin = create_user_with_permissions(&server, "admin", &["hub::catalog::read", "hub::catalog::manage"]).await;
     let response = reqwest::Client::new()
         .get(server.api_url("/hub/releases"))
         .header("Authorization", format!("Bearer {}", admin.token))
@@ -396,7 +436,7 @@ async fn releases_endpoint_lists_published_versions() {
 #[ignore = "hits real ziee-ai/hub GitHub Releases; run with --ignored"]
 async fn activate_switches_catalog_server_wide() {
     let server = TestServer::start().await;
-    let admin = create_user_with_permissions(&server, "admin", &["hub::admin"]).await;
+    let admin = create_user_with_permissions(&server, "admin", &["hub::catalog::read", "hub::catalog::manage"]).await;
     let client = reqwest::Client::new();
 
     // Seed install is v0.0.1-alpha (13 items). Activate v0.0.2-alpha.

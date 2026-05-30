@@ -29,7 +29,7 @@ export default createModule({
         component: UpdatesHubTab,
         order: 40, // after Models (10), Assistants (20), MCP Servers (30)
         permissions: {
-          read: Permissions.HubAdmin,
+          read: Permissions.HubCatalogRead,
         },
         refresh: async () => {
           await useHubUpdatesStore.getState().loadUpdates()

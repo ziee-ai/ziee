@@ -47,7 +47,7 @@ async fn activate_then_switch_versions_against_mock() {
         ..Default::default()
     })
     .await;
-    let admin = create_user_with_permissions(&server, "admin", &["hub::admin"]).await;
+    let admin = create_user_with_permissions(&server, "admin", &["hub::catalog::read", "hub::catalog::manage"]).await;
     let client = reqwest::Client::new();
 
     // Activate the older mock version (2 items).
@@ -124,7 +124,7 @@ async fn install_rejects_incompatible_item() {
     let admin = create_user_with_permissions(
         &server,
         "admin",
-        &["hub::admin", "hub::assistants::create"],
+        &["hub::catalog::read", "hub::catalog::manage", "hub::assistants::create"],
     )
     .await;
     let client = reqwest::Client::new();
@@ -171,4 +171,62 @@ async fn install_rejects_incompatible_item() {
     );
     let body: Json = blocked.json().await.expect("parse 422 body");
     assert_eq!(body["error_code"], "HUB_INCOMPATIBLE");
+}
+
+#[tokio::test]
+async fn install_stamps_current_version_so_updates_stays_empty() {
+    // Directly exercises the hub_version write-back: installing from the
+    // active catalog must stamp hub_entities.hub_version with the current
+    // version, so /hub/updates does NOT immediately flag the fresh install
+    // as "behind". (Regression guard for the bug where every install was
+    // recorded with NULL and showed as needing an update.)
+    let mock = spawn_mock_hub(two_versions()).await;
+    let server = TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: mock.test_env(),
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(
+        &server,
+        "admin",
+        &["hub::catalog::read", "hub::catalog::manage", "hub::assistants::create"],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    // Activate v9.9.1-test, then install a compatible assistant from it.
+    client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "version": "9.9.1-test" }))
+        .send()
+        .await
+        .expect("activate")
+        .error_for_status()
+        .expect("activate ok");
+    client
+        .post(server.api_url("/hub/assistants/create"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-asst-a" }))
+        .send()
+        .await
+        .expect("install")
+        .error_for_status()
+        .expect("install ok");
+
+    // The fresh install was stamped 9.9.1-test == current → not behind.
+    let updates: Json = client
+        .get(server.api_url("/hub/updates"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("updates")
+        .json()
+        .await
+        .expect("parse updates");
+    let rows = updates["updates"].as_array().expect("updates array");
+    assert!(
+        rows.iter().all(|r| r["hub_id"] != "mock-asst-a"),
+        "freshly-installed item must NOT appear in updates: {updates}"
+    );
 }
