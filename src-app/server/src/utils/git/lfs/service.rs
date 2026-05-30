@@ -426,17 +426,44 @@ impl LfsService {
                     &cache_file
                 );
             } else {
-                fs::rename(&temp_file.path(), cache_file.as_path())
-                    .await
-                    .map_err(|e| {
+                // `rename` fails with EXDEV (Cross-device link) when the
+                // temp file's filesystem differs from the cache dir's —
+                // common when the project lives on a secondary volume but
+                // tempfile picks the OS default /tmp on the boot volume.
+                // Fall back to copy+remove in that case; faster path of
+                // a single rename when both live on the same fs.
+                if let Err(e) =
+                    fs::rename(&temp_file.path(), cache_file.as_path()).await
+                {
+                    if e.raw_os_error() == Some(libc::EXDEV) {
+                        info!(
+                            "rename across filesystems failed (EXDEV); falling back to copy+remove for {:?} -> {:?}",
+                            temp_file.path(),
+                            cache_file.as_path(),
+                        );
+                        fs::copy(&temp_file.path(), cache_file.as_path())
+                            .await
+                            .map_err(|e| {
+                                error!(
+                                    "Could not copy {:?} to {:?}: {:?}",
+                                    temp_file.path(),
+                                    cache_file.as_path(),
+                                    &e
+                                );
+                                LfsError::Io(e)
+                            })?;
+                        // Best-effort cleanup; the OS reaps /tmp anyway.
+                        let _ = fs::remove_file(temp_file.path()).await;
+                    } else {
                         error!(
                             "Could not rename {:?} to {:?}: {:?}",
                             temp_file.path(),
                             cache_file.as_path(),
                             &e
                         );
-                        LfsError::Io(e)
-                    })?;
+                        return Err(LfsError::Io(e));
+                    }
+                }
             }
 
             Ok((cache_file, FilePullMode::DownloadedFromRemote))

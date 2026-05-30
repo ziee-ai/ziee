@@ -100,6 +100,10 @@ test.describe('Local Runtime — running engine (needs HUGGINGFACE_API_KEY)', ()
   })
 
   test('full lifecycle: start → logs/detail → restart → stop', async ({ page, testInfra }) => {
+    // Two cold-start cycles in this test (Start → Stop → Restart spawns
+    // another). Cold-CPU first-token after spawn is slow on commodity
+    // Macs; need ~8 min per spawn, so budget 16 min for the whole test.
+    test.setTimeout(960000)
     const setup = await ensureRunningModel(testInfra.baseURL, await getCurrentUserToken(page))
     await gotoRuntimeSettings(page, testInfra.baseURL)
     const card = installedCard(page)
@@ -114,7 +118,7 @@ test.describe('Local Runtime — running engine (needs HUGGINGFACE_API_KEY)', ()
       await startBtn.click()
     }
     await expect(card.getByRole('button', { name: 'Stop' }).first()).toBeVisible({
-      timeout: 180000
+      timeout: 480000
     })
 
     // Expand logs + instance detail.
@@ -125,7 +129,7 @@ test.describe('Local Runtime — running engine (needs HUGGINGFACE_API_KEY)', ()
     // Restart → still running.
     await card.getByRole('button', { name: 'Restart' }).first().click()
     await expect(card.getByRole('button', { name: 'Stop' }).first()).toBeVisible({
-      timeout: 180000
+      timeout: 480000
     })
 
     // Stop → Start returns.

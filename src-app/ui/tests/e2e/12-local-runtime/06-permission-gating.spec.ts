@@ -124,6 +124,9 @@ test.describe('Local Runtime — permission gating (needs HUGGINGFACE_API_KEY)',
   })
 
   test('logs gates the Logs control independently of manage', async ({ page, testInfra }) => {
+    // Full real-engine spawn + cold-CPU first-token; bump the test
+    // budget to 10 min so the 180s locator timeouts aren't truncated.
+    test.setTimeout(600000)
     const { baseURL, apiURL } = testInfra
     // Admin downloads a real engine + GGUF and starts the model so the row
     // exposes the running-state controls (Stop/Restart/Logs).
@@ -141,7 +144,7 @@ test.describe('Local Runtime — permission gating (needs HUGGINGFACE_API_KEY)',
       await startBtn.click()
     }
     await expect(card.getByRole('button', { name: 'Stop' }).first()).toBeVisible({
-      timeout: 180000
+      timeout: 480000
     })
 
     // logs-only (read + versions_read + logs, NO manage): Logs shown, Stop hidden.

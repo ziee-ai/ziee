@@ -112,10 +112,19 @@ export async function downloadEngineViaApi(
   await fetch(`${baseURL}/api/local-runtime/settings`, {
     method: 'PUT',
     headers,
-    // CPU cold-load + first token is slow; the 30s default is too short to
-    // reach a healthy instance on a manual start (gold_smoke uses 180s too).
-    body: JSON.stringify({ auto_start_timeout_secs: 180 }),
+    // CPU cold-load + first token is slow on commodity Macs (TinyLlama
+    // Q4_K_M ~670 MB takes >3 min to reach a healthy instance + first
+    // token). The 30s default is too short for ANY real engine, and
+    // 180s was tight — bump to 600s (10 min) so the spawn doesn't time
+    // out before health.
+    body: JSON.stringify({ auto_start_timeout_secs: 600 }),
   })
+  // Use the GPU-detect endpoint's recommended backend (mirrors the
+  // Rust test_helpers::download_engine_release pattern). The fork
+  // doesn't publish a `cpu` asset for macos/aarch64 — only `metal`
+  // — so hardcoding `cpu` produces an HTTP 404 from GitHub Releases.
+  // Falling back to `cpu` for hosts the gpu-detect can't classify.
+  const backend = gpu?.recommended ?? 'cpu'
   const dl = await fetch(`${baseURL}/api/local-runtime/versions/download`, {
     method: 'POST',
     headers,
@@ -124,7 +133,7 @@ export async function downloadEngineViaApi(
       version,
       platform: gpu.platform,
       arch: gpu.arch,
-      backend: 'cpu',
+      backend,
     }),
   })
   if (!dl.ok) {

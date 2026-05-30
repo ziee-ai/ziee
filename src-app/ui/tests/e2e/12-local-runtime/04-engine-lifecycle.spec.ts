@@ -37,7 +37,10 @@ test.describe('Local Runtime — engine lifecycle (needs HUGGINGFACE_API_KEY)', 
     // was renamed Download → Install when the detached SSE pipeline landed.
     const pane = page.locator('.ant-tabs-tabpane-active')
     await expect(pane.getByText(/Available versions/i).first()).toBeVisible({ timeout: 30000 })
-    const firstAvailable = pane.getByRole('button', { name: /^Install$/ }).first()
+    // The button's accessible name is its aria-label ("Install v0.0.x-alpha"),
+    // not the visible text "Install" — aria-label overrides text per the ARIA
+    // spec, so an `/^Install$/` regex never matches. Match the aria-label shape.
+    const firstAvailable = pane.getByRole('button', { name: /^Install v/i }).first()
     await expect(firstAvailable).toBeVisible({ timeout: 30000 })
     await firstAvailable.click()
 
@@ -49,6 +52,10 @@ test.describe('Local Runtime — engine lifecycle (needs HUGGINGFACE_API_KEY)', 
   })
 
   test('chat auto-starts a stopped engine and streams a reply', async ({ page, testInfra }) => {
+    // Cold-CPU first-token after engine spawn is slow on commodity Macs
+    // (gold_smoke uses the same generous budget). The locator timeouts
+    // below are useless without bumping the test-level budget too.
+    test.setTimeout(600000)
     const { baseURL, apiURL } = testInfra
     const token = await getCurrentUserToken(page)
 
@@ -75,10 +82,12 @@ test.describe('Local Runtime — engine lifecycle (needs HUGGINGFACE_API_KEY)', 
         .filter({ hasText: 'Reply with the single word' })
     ).toBeVisible({ timeout: 15000 })
 
-    // …then the engine auto-starts and streams the assistant reply. CPU
-    // first-token after a cold start is slow — allow several minutes.
+    // …then the engine auto-starts and streams the assistant reply. The
+    // full chain is: auto_start_timeout_secs (up to 600s) → first-token
+    // on CPU (60–180s). Allow 9 minutes to safely fit inside the 10-min
+    // test budget set above.
     await expect(page.locator('[data-testid="chat-message"]').nth(1)).toBeVisible({
-      timeout: 240000
+      timeout: 540000
     })
   })
 })

@@ -77,6 +77,11 @@ export function VersionModelsBlock({
     <Collapse
       ghost
       size="small"
+      // Default open: an operator scrolling the Installed versions
+      // card usually wants to see which models pin each version
+      // (especially when deciding whether to delete a version). They
+      // can always collapse to tidy up.
+      defaultActiveKey="models"
       items={[
         {
           key: 'models',
