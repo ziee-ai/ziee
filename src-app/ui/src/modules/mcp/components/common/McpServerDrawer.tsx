@@ -123,6 +123,7 @@ export function McpServerDrawer() {
         supports_sampling: editingServer.supports_sampling ?? false,
         usage_mode: editingServer.usage_mode ?? 'auto',
         max_concurrent_sessions: editingServer.max_concurrent_sessions ?? undefined,
+        run_in_sandbox: editingServer.run_in_sandbox ?? false,
         timeout_seconds: editingServer.timeout_seconds ?? 30,
       }
       form.setFieldsValue(formValues)
@@ -211,6 +212,10 @@ export function McpServerDrawer() {
         supports_sampling: values.supports_sampling ?? false,
         usage_mode: values.usage_mode ?? 'auto',
         max_concurrent_sessions: values.max_concurrent_sessions ?? null,
+        // Backend ignores `run_in_sandbox` for user-mode + non-stdio
+        // servers; we still send it so the field round-trips through
+        // create + edit unchanged when the toggle is visible.
+        run_in_sandbox: values.run_in_sandbox ?? false,
         timeout_seconds: values.timeout_seconds ?? 30,
       }
 
@@ -257,6 +262,7 @@ export function McpServerDrawer() {
           supports_sampling: values.supports_sampling ?? false,
           usage_mode: values.usage_mode ?? 'auto',
           max_concurrent_sessions: values.max_concurrent_sessions ?? null,
+          run_in_sandbox: values.run_in_sandbox ?? false,
           timeout_seconds: values.timeout_seconds ?? 30,
         }
         await Stores.SystemMcpServer.updateSystemServer(
@@ -545,6 +551,28 @@ export function McpServerDrawer() {
           >
             <InputNumber min={1} placeholder="Unlimited" style={{ width: '100%' }} />
           </Form.Item>
+
+          {/* Run in sandbox (system + stdio only) */}
+          {transportType === 'stdio' &&
+            (mode === 'create-system' || mode === 'edit-system') && (
+              <Form.Item
+                label="Run in sandbox"
+                name="run_in_sandbox"
+                valuePropName="checked"
+                help={
+                  <>
+                    Launch this stdio MCP server inside the code_sandbox
+                    bwrap isolation. On Linux runs natively; on macOS /
+                    Windows it routes through a microVM. The server only
+                    sees an isolated workspace — filesystem-oriented MCP
+                    servers will not see your real files. First use may
+                    download a small sandbox image (~57 MB).
+                  </>
+                }
+              >
+                <Switch />
+              </Form.Item>
+            )}
         </Form>
 
         <div className="flex gap-2 justify-end">

@@ -3,7 +3,6 @@ import { useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import { AuthPage } from '@/modules/auth/AuthPage'
-import type { OnboardingSlot } from '@/modules/onboarding/types/OnboardingSlot'
 
 const { Content } = Layout
 
@@ -12,9 +11,8 @@ interface AuthGuardProps {
 }
 
 export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
-  const { isAuthenticated, isInitializing, user } = Stores.Auth
+  const { isAuthenticated, isInitializing } = Stores.Auth
   const { needsSetup } = Stores.App
-  const guides = (Stores.ModuleSystem.slots.get('onboarding') as OnboardingSlot[]) || []
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -52,16 +50,8 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
     return <AuthPage />
   }
 
-  // Redirect to incomplete guide if user hasn't finished it
-  const isOnGuideRoute = location.pathname.startsWith('/onboarding')
-  if (user && !isOnGuideRoute) {
-    const firstIncomplete = guides.find(g => !user.completed_onboarding_ids.includes(g.id))
-    if (firstIncomplete) {
-      navigate(`/onboarding?id=${firstIncomplete.id}`, { replace: true })
-      return null
-    }
-  }
-
-  // Show the protected content
+  // Show the protected content. Post-auth redirects (onboarding,
+  // etc.) are owned by the contributing module — see the
+  // `routerEffects` slot consumed by RouterComponent.
   return <>{children}</>
 }

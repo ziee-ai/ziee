@@ -22,10 +22,15 @@
 //!  - virtio-fs tag [`WORKSPACE_TAG`] — mounted at [`WORKSPACE_MOUNT`]; the
 //!    host points the workspace bind in the argv at a path under it.
 
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 
-use sandbox_vm_protocol::{encode, CgroupLimits, Decoder, ExitStatus, Frame, PROTOCOL_VERSION};
+use sandbox_vm_protocol::{
+    encode, CgroupLimits, Decoder, ExitStatus, Frame, KillProcessRequest, ProcessExitStatus,
+    ProcessRequest, StartedAck, PROTOCOL_VERSION,
+};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::process::Command;
@@ -209,8 +214,44 @@ fn init_mounts() {
     // writable /tmp so the seccomp BPF build (which uses `tempfile`) and any
     // other ephemeral guest work has somewhere to land.
     mount_fs("tmpfs", "/tmp", "tmpfs", 0, Some("size=16m,mode=1777"));
-    mount_fs(ROOTFS_DEVICE, ROOTFS_MOUNT, "squashfs", libc::MS_RDONLY, None);
-    mount_fs(WORKSPACE_TAG, WORKSPACE_MOUNT, "virtiofs", 0, None);
+
+    // The two backends differ in HOW the rootfs reaches the guest:
+    //
+    //   - libkrun (macOS): the host attaches the squashfs as a virtio-blk
+    //     disk at /dev/vda and shares the workspace over virtio-fs. We mount
+    //     both here, and bwrap (rootfs = /sandbox-rootfs) chroots into the
+    //     squashfs.
+    //
+    //   - WSL2 (Windows): there is no /dev/vda and no virtio-fs — the
+    //     `wsl --import`ed distro filesystem IS the rootfs, already at `/`.
+    //     bwrap still chroots into /sandbox-rootfs (shared argv), so we
+    //     recursively bind `/` there. Without this, /sandbox-rootfs is empty,
+    //     bwrap chroots into nothing, and any sandboxed exec (e.g. the python
+    //     MCP server) fails to start — surfacing on the host as
+    //     "connection closed: initialize response".
+    //
+    // Detect the backend by the presence of the libkrun rootfs disk.
+    if std::path::Path::new(ROOTFS_DEVICE).exists() {
+        mount_fs(ROOTFS_DEVICE, ROOTFS_MOUNT, "squashfs", libc::MS_RDONLY, None);
+        mount_fs(WORKSPACE_TAG, WORKSPACE_MOUNT, "virtiofs", 0, None);
+    } else {
+        // WSL2: the imported distro filesystem IS the rootfs, already at `/`.
+        //
+        // Do NOT bind `/` into `/sandbox-rootfs`. Binding the mount-namespace
+        // root — even NON-recursively — puts the namespace in a state where a
+        // subsequent `unshare(CLONE_NEWUSER)` fails with EPERM, so bwrap's
+        // `--unshare-user` (and thus every sandboxed exec) would break with
+        // "No permissions to creating new namespace". Verified empirically on
+        // the WSL2 kernel: `mount --bind / X` then `unshare --user` → EPERM.
+        //
+        // Instead the WSL2 backend points bwrap's rootfs directly at `/`
+        // (see `Wsl2Backend::ensure_rootfs_ready`), so bwrap binds the distro's
+        // real /usr, /etc, … into the sandbox. Here we only ensure /workspace
+        // exists (the host rsyncs into it and the bwrap argv binds it as
+        // /home/sandboxuser).
+        let _ = std::fs::create_dir_all(WORKSPACE_MOUNT);
+    }
+
     // Make /workspace world-writable so the sandboxed user (uid 1001
     // via --unshare-user in the bwrap argv) can create files inside
     // it. The virtio-fs share inherits its mode from the host dir,
@@ -252,8 +293,13 @@ fn mount_fs(src: &str, target: &str, fstype: &str, flags: libc::c_ulong, data: O
     }
 }
 
-/// Handle one control connection: read a single `Exec` frame, run bwrap, stream
-/// output, send `Exit`.
+/// Handle one control connection. Dispatches on the first structured frame
+/// the host sends:
+/// - `Exec` → one-shot mode: run bwrap, stream output, send `Exit`, close.
+///   Byte-identical with every prior release (audited path).
+/// - `StartProcess` → long-lived mode: enter a multi-process loop; host can
+///   issue further `StartProcess` / `Stdin` / `KillProcess` / `Ping` /
+///   `Shutdown` frames until disconnect. Used by MCP-in-sandbox.
 // handle_conn calls install_seccomp + uses Linux pidfd APIs.
 #[cfg(target_os = "linux")]
 async fn handle_conn<S>(stream: S, bpf: Option<Arc<Vec<u8>>>) -> std::io::Result<()>
@@ -262,12 +308,19 @@ where
 {
     let (mut rd, wr) = tokio::io::split(stream);
 
-    // Read frames until we get the Exec request — or a Shutdown.
+    // Read until we observe a structured frame (Exec, StartProcess, or
+    // Shutdown). Unknown / pre-Exec frames are logged and skipped to
+    // preserve the prior tolerant behaviour.
     let mut decoder = Decoder::new();
     let mut buf = [0u8; READ_CHUNK];
-    let req = loop {
+    enum FirstFrame {
+        OneShot(sandbox_vm_protocol::ExecRequest),
+        LongLived(ProcessRequest),
+    }
+    let first = loop {
         match decoder.next_frame() {
-            Ok(Some(Frame::Exec(req))) => break req,
+            Ok(Some(Frame::Exec(req))) => break FirstFrame::OneShot(req),
+            Ok(Some(Frame::StartProcess(req))) => break FirstFrame::LongLived(req),
             Ok(Some(Frame::Shutdown)) => {
                 // Clean stop requested by the host (WSL2 backend on
                 // distro-evict; macOS could use it too). Exiting this
@@ -294,6 +347,26 @@ where
         decoder.feed(&buf[..n]);
     };
 
+    match first {
+        FirstFrame::OneShot(req) => handle_one_shot(rd, wr, req, bpf).await,
+        FirstFrame::LongLived(req) => handle_long_lived(rd, wr, decoder, req, bpf).await,
+    }
+}
+
+/// Existing one-shot exec path — byte-identical with prior releases.
+/// All hardening lives in the argv the host built; the agent execs it,
+/// streams output, sends `Exit`, closes.
+#[cfg(target_os = "linux")]
+async fn handle_one_shot<R, W>(
+    mut rd: R,
+    wr: W,
+    req: sandbox_vm_protocol::ExecRequest,
+    bpf: Option<Arc<Vec<u8>>>,
+) -> std::io::Result<()>
+where
+    R: AsyncRead + Unpin + Send + 'static,
+    W: AsyncWrite + Unpin + Send + 'static,
+{
     // Reject mismatched protocol versions loudly — defends against operators
     // running a stale agent binary against a fresh server (or vice versa).
     // `#[serde(default)]` on `protocol_version` means peers that predate the
@@ -433,6 +506,325 @@ where
     drop(tx);
     let _ = writer.await;
     Ok(())
+}
+
+/// Long-lived multi-process loop. Each `StartProcess` registers a new
+/// child in `registry`; subsequent `Stdin` / `KillProcess` frames look
+/// the handle up and forward. On host disconnect every live child is
+/// SIGKILL'd (mirrors the one-shot host-EOF cleanup) and the writer
+/// drains before we return.
+#[cfg(target_os = "linux")]
+async fn handle_long_lived<R, W>(
+    mut rd: R,
+    wr: W,
+    mut decoder: Decoder,
+    first: ProcessRequest,
+    bpf: Option<Arc<Vec<u8>>>,
+) -> std::io::Result<()>
+where
+    R: AsyncRead + Unpin + Send + 'static,
+    W: AsyncWrite + Unpin + Send + 'static,
+{
+    let (tx, mut frame_rx) = mpsc::unbounded_channel::<Frame>();
+    let writer = tokio::spawn(async move {
+        let mut wr = wr;
+        while let Some(frame) = frame_rx.recv().await {
+            if wr.write_all(&encode(&frame)).await.is_err() {
+                break;
+            }
+        }
+        let _ = wr.flush().await;
+    });
+
+    // Shared registry of live processes. Per-process tasks (wait task)
+    // remove their own entry on exit; the dispatcher reads for forwarding.
+    let registry: Arc<Mutex<HashMap<u64, HandleEntry>>> = Arc::new(Mutex::new(HashMap::new()));
+
+    // Spawn the first process.
+    spawn_long_lived(first, &registry, &tx, &bpf).await;
+
+    // Main dispatch loop: read frames from the host, dispatch by tag.
+    let mut buf = [0u8; READ_CHUNK];
+    let host_disconnected = loop {
+        // Pull every fully-buffered frame before reading more bytes.
+        loop {
+            match decoder.next_frame() {
+                Ok(Some(Frame::StartProcess(req))) => {
+                    spawn_long_lived(req, &registry, &tx, &bpf).await;
+                }
+                Ok(Some(Frame::Stdin { handle, bytes })) => {
+                    // Empty bytes = EOF (close stdin). Forward via the
+                    // per-process stdin channel; if the receiver was
+                    // already dropped (process exited), silently drop.
+                    let stdin_tx = registry
+                        .lock()
+                        .unwrap()
+                        .get(&handle)
+                        .map(|e| e.stdin_tx.clone());
+                    if let Some(s) = stdin_tx {
+                        let _ = s.send(if bytes.is_empty() { None } else { Some(bytes) });
+                    }
+                }
+                Ok(Some(Frame::KillProcess(KillProcessRequest { handle }))) => {
+                    let pid = registry.lock().unwrap().get(&handle).map(|e| e.pid);
+                    if let Some(pid) = pid {
+                        kill_pid(pid);
+                    }
+                }
+                Ok(Some(Frame::Ping)) => {
+                    let _ = tx.send(Frame::Pong);
+                }
+                Ok(Some(Frame::Shutdown)) => {
+                    tracing::info!("agent: shutdown requested mid-session; exiting");
+                    // Kill every live process before we exit so output
+                    // doesn't get cut off and then we go away anyway.
+                    for (_, entry) in registry.lock().unwrap().drain() {
+                        kill_pid(entry.pid);
+                    }
+                    std::process::exit(0);
+                }
+                Ok(Some(other)) => {
+                    tracing::warn!("agent: long-lived: ignoring unexpected frame: {other:?}");
+                }
+                Ok(None) => break,
+                Err(e) => {
+                    tracing::warn!("agent: long-lived protocol error: {e}");
+                    break;
+                }
+            }
+        }
+        let n = rd.read(&mut buf).await.unwrap_or(0);
+        if n == 0 {
+            break true; // host disconnected
+        }
+        decoder.feed(&buf[..n]);
+    };
+
+    if host_disconnected {
+        tracing::info!("agent: host disconnected; killing all live long-lived processes");
+        for (_, entry) in registry.lock().unwrap().drain() {
+            kill_pid(entry.pid);
+        }
+    }
+
+    // Drop the dispatcher's tx clone so the writer task drains and exits
+    // once every per-process pump finishes flushing.
+    drop(tx);
+    let _ = writer.await;
+    Ok(())
+}
+
+/// Per-process state held in the long-lived registry.
+#[cfg(target_os = "linux")]
+struct HandleEntry {
+    /// `Some(bytes)` → write `bytes` to the child's stdin; `None` → close stdin.
+    stdin_tx: mpsc::UnboundedSender<Option<Vec<u8>>>,
+    /// Child PID so the dispatcher can SIGKILL on `KillProcess` /
+    /// host-disconnect without holding the `Child` (which is owned by
+    /// the wait task).
+    pid: u32,
+}
+
+/// SIGKILL a pid, swallowing `ESRCH` (already-exited race with the wait task).
+#[cfg(target_os = "linux")]
+fn kill_pid(pid: u32) {
+    let rc = unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) };
+    if rc != 0 {
+        let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+        if errno != libc::ESRCH {
+            tracing::warn!("agent: kill pid {pid} failed: errno {errno}");
+        }
+    }
+}
+
+/// Spawn one long-lived bwrap process. On success: registers the handle
+/// in `registry`, sends `Started { ok: true }`, and starts per-process
+/// stdin / stdout / stderr / wait tasks. On failure: sends
+/// `Started { ok: false, err: Some(...) }` and registers nothing.
+#[cfg(target_os = "linux")]
+async fn spawn_long_lived(
+    req: ProcessRequest,
+    registry: &Arc<Mutex<HashMap<u64, HandleEntry>>>,
+    tx: &mpsc::UnboundedSender<Frame>,
+    bpf: &Option<Arc<Vec<u8>>>,
+) {
+    let handle = req.handle;
+
+    if req.protocol_version != PROTOCOL_VERSION {
+        let _ = tx.send(Frame::Started(StartedAck {
+            handle,
+            ok: false,
+            err: Some(format!(
+                "protocol version mismatch (peer={}, agent={PROTOCOL_VERSION})",
+                req.protocol_version
+            )),
+        }));
+        return;
+    }
+
+    if req.seccomp_fd.is_some() && bpf.is_none() {
+        let _ = tx.send(Frame::Started(StartedAck {
+            handle,
+            ok: false,
+            err: Some("seccomp requested but the guest filter failed to build".into()),
+        }));
+        return;
+    }
+
+    // Refuse handle collisions explicitly so the host learns to retry
+    // with a fresh ID rather than silently overwriting state.
+    if registry.lock().unwrap().contains_key(&handle) {
+        let _ = tx.send(Frame::Started(StartedAck {
+            handle,
+            ok: false,
+            err: Some("handle already in use on this connection".into()),
+        }));
+        return;
+    }
+
+    let mut cmd = Command::new(&req.bwrap_path);
+    cmd.args(&req.argv)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+
+    let seccomp_read_fd = match (req.seccomp_fd, bpf.as_ref()) {
+        (Some(fd), Some(bytes)) => match install_seccomp(&mut cmd, fd, bytes.clone()) {
+            Ok(rfd) => Some(rfd),
+            Err(e) => {
+                let _ = tx.send(Frame::Started(StartedAck {
+                    handle,
+                    ok: false,
+                    err: Some(format!("seccomp setup failed: {e}")),
+                }));
+                return;
+            }
+        },
+        _ => None,
+    };
+
+    let spawned = cmd.spawn();
+    if let Some(rfd) = seccomp_read_fd {
+        unsafe { libc::close(rfd) };
+    }
+    let mut child = match spawned {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = tx.send(Frame::Started(StartedAck {
+                handle,
+                ok: false,
+                err: Some(format!("spawn bwrap: {e}")),
+            }));
+            return;
+        }
+    };
+
+    let pid = match child.id() {
+        Some(p) => p,
+        None => {
+            let _ = child.start_kill();
+            let _ = tx.send(Frame::Started(StartedAck {
+                handle,
+                ok: false,
+                err: Some("spawned child had no pid".into()),
+            }));
+            return;
+        }
+    };
+
+    // In-guest cgroup (defense-in-depth; prlimit in the argv is the backstop).
+    let cgroup = match &req.cgroup {
+        Some(limits) => match GuestCgroup::create(handle, limits) {
+            Ok(cg) => {
+                cg.attach(pid);
+                Some(cg)
+            }
+            Err(e) => {
+                tracing::warn!("agent: cgroup create failed for handle {handle}: {e}");
+                None
+            }
+        },
+        None => None,
+    };
+
+    let stdout = child.stdout.take().expect("stdout piped");
+    let stderr = child.stderr.take().expect("stderr piped");
+    let stdin = child.stdin.take().expect("stdin piped");
+
+    // Per-process stdin pump: drains the unbounded channel into the
+    // child's stdin. `None` closes stdin (by dropping the writer).
+    let (stdin_tx, mut stdin_rx) = mpsc::unbounded_channel::<Option<Vec<u8>>>();
+    tokio::spawn(async move {
+        let mut stdin = stdin;
+        while let Some(msg) = stdin_rx.recv().await {
+            match msg {
+                Some(bytes) => {
+                    if stdin.write_all(&bytes).await.is_err() {
+                        break;
+                    }
+                }
+                None => break, // EOF
+            }
+        }
+        let _ = stdin.shutdown().await;
+        drop(stdin);
+    });
+
+    // stdout/stderr pumps fan into the shared writer via tagged frames.
+    let out_tx = tx.clone();
+    let err_tx = tx.clone();
+    tokio::spawn(pump_handle(stdout, out_tx, handle, true));
+    tokio::spawn(pump_handle(stderr, err_tx, handle, false));
+
+    registry.lock().unwrap().insert(handle, HandleEntry { stdin_tx, pid });
+    let _ = tx.send(Frame::Started(StartedAck { handle, ok: true, err: None }));
+
+    // Wait task: when the child exits, send ProcessExit and remove the
+    // registry entry so future Stdin / KillProcess frames no-op cleanly.
+    let exit_tx = tx.clone();
+    let registry_for_wait = registry.clone();
+    tokio::spawn(async move {
+        let _cgroup = cgroup; // held until exit so Drop rmdir's the cgroup
+        let status = child.wait().await;
+        let code = status.as_ref().ok().and_then(|s| s.code()).unwrap_or(-1);
+        // Remove BEFORE sending the exit so any concurrent KillProcess
+        // observes the missing entry instead of racing with a freshly
+        // reused pid (kernel can recycle PIDs quickly under WSL2).
+        registry_for_wait.lock().unwrap().remove(&handle);
+        let _ = exit_tx.send(Frame::ProcessExit(ProcessExitStatus {
+            handle,
+            status: ExitStatus { code, timed_out: false },
+        }));
+    });
+}
+
+/// Stream a long-lived child pipe into tagged per-process protocol frames.
+#[cfg(target_os = "linux")]
+async fn pump_handle<R: AsyncReadExt + Unpin>(
+    mut reader: R,
+    tx: mpsc::UnboundedSender<Frame>,
+    handle: u64,
+    is_stdout: bool,
+) {
+    let mut buf = [0u8; READ_CHUNK];
+    loop {
+        match reader.read(&mut buf).await {
+            Ok(0) => break,
+            Ok(n) => {
+                let bytes = buf[..n].to_vec();
+                let frame = if is_stdout {
+                    Frame::ProcessStdout { handle, bytes }
+                } else {
+                    Frame::ProcessStderr { handle, bytes }
+                };
+                if tx.send(frame).is_err() {
+                    break;
+                }
+            }
+            Err(_) => break,
+        }
+    }
 }
 
 /// One-time cgroup v2 setup: ensure cgroup2 is mounted and enable the
@@ -577,5 +969,258 @@ async fn pump<R: AsyncReadExt + Unpin>(mut reader: R, tx: mpsc::UnboundedSender<
             }
             Err(_) => break,
         }
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+    use sandbox_vm_protocol::{Decoder, Frame, KillProcessRequest, ProcessRequest, StartedAck};
+    use tokio::io::{duplex, AsyncWriteExt};
+
+    /// Build a tiny PYTHON-FREE ProcessRequest that invokes `/bin/cat`
+    /// directly (no bwrap). We point `bwrap_path` at `/bin/cat` so the
+    /// agent simply execs cat with the given argv. cat with no args
+    /// copies stdin → stdout; perfect for testing the long-lived
+    /// stdin/stdout multiplex without depending on a rootfs.
+    fn cat_request(handle: u64) -> ProcessRequest {
+        ProcessRequest {
+            protocol_version: PROTOCOL_VERSION,
+            handle,
+            bwrap_path: "/bin/cat".into(),
+            argv: vec![],
+            seccomp_fd: None,
+            cgroup: None,
+        }
+    }
+
+    /// Drive a duplex pair: host writes frames to `host_wr`, agent reads
+    /// from `agent_rd`; agent writes to `agent_wr`, host reads from
+    /// `host_rd`. The harness simulates the host side.
+    async fn run_long_lived_with_frames(
+        host_input: Vec<Frame>,
+        wait_for: impl Fn(&[Frame]) -> bool + Send + 'static,
+    ) -> Vec<Frame> {
+        let (host_side, agent_side) = duplex(64 * 1024);
+        let (mut host_rd, mut host_wr) = tokio::io::split(host_side);
+
+        // Spawn the agent's long-lived handler on agent_side.
+        let agent_task = tokio::spawn(async move {
+            let _ = handle_conn(agent_side, None).await;
+        });
+
+        // Host sends every frame in order.
+        tokio::spawn(async move {
+            for f in host_input {
+                let bytes = encode(&f);
+                if host_wr.write_all(&bytes).await.is_err() {
+                    break;
+                }
+            }
+            // Close the writer so the agent observes EOF after the test
+            // has read what it expected.
+            let _ = host_wr.shutdown().await;
+        });
+
+        // Host reads frames into a buffer; stop when `wait_for` returns true.
+        let mut decoder = Decoder::new();
+        let mut collected = Vec::new();
+        let mut buf = [0u8; 4096];
+        loop {
+            if wait_for(&collected) {
+                break;
+            }
+            let n = host_rd.read(&mut buf).await.unwrap_or(0);
+            if n == 0 {
+                break;
+            }
+            decoder.feed(&buf[..n]);
+            while let Ok(Some(f)) = decoder.next_frame() {
+                collected.push(f);
+                if wait_for(&collected) {
+                    break;
+                }
+            }
+        }
+
+        let _ = agent_task.await;
+        collected
+    }
+
+    #[tokio::test]
+    async fn long_lived_echoes_stdin_to_stdout_then_exits() {
+        let frames = run_long_lived_with_frames(
+            vec![
+                Frame::StartProcess(cat_request(1)),
+                Frame::Stdin { handle: 1, bytes: b"hello\n".to_vec() },
+                Frame::Stdin { handle: 1, bytes: Vec::new() }, // EOF
+            ],
+            |frames| frames.iter().any(|f| matches!(f, Frame::ProcessExit(_))),
+        )
+        .await;
+
+        let started = frames.iter().any(|f| matches!(f, Frame::Started(StartedAck { handle: 1, ok: true, .. })));
+        assert!(started, "expected Started{{handle:1,ok:true}}, got {frames:?}");
+
+        let stdout: Vec<u8> = frames
+            .iter()
+            .filter_map(|f| match f {
+                Frame::ProcessStdout { handle: 1, bytes } => Some(bytes.clone()),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        assert_eq!(stdout, b"hello\n", "stdout chunks did not match input");
+
+        let exit = frames.iter().find_map(|f| match f {
+            Frame::ProcessExit(ProcessExitStatus { handle: 1, status }) => Some(*status),
+            _ => None,
+        });
+        assert!(matches!(exit, Some(s) if s.code == 0 && !s.timed_out));
+    }
+
+    #[tokio::test]
+    async fn long_lived_two_handles_multiplex_independently() {
+        let frames = run_long_lived_with_frames(
+            vec![
+                Frame::StartProcess(cat_request(1)),
+                Frame::StartProcess(cat_request(2)),
+                Frame::Stdin { handle: 1, bytes: b"AAA".to_vec() },
+                Frame::Stdin { handle: 2, bytes: b"BBB".to_vec() },
+                Frame::Stdin { handle: 1, bytes: Vec::new() }, // EOF h1
+                Frame::Stdin { handle: 2, bytes: Vec::new() }, // EOF h2
+            ],
+            |frames| {
+                let exits = frames
+                    .iter()
+                    .filter(|f| matches!(f, Frame::ProcessExit(_)))
+                    .count();
+                exits >= 2
+            },
+        )
+        .await;
+
+        let h1_stdout: Vec<u8> = frames
+            .iter()
+            .filter_map(|f| match f {
+                Frame::ProcessStdout { handle: 1, bytes } => Some(bytes.clone()),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        let h2_stdout: Vec<u8> = frames
+            .iter()
+            .filter_map(|f| match f {
+                Frame::ProcessStdout { handle: 2, bytes } => Some(bytes.clone()),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        assert_eq!(h1_stdout, b"AAA");
+        assert_eq!(h2_stdout, b"BBB");
+    }
+
+    #[tokio::test]
+    async fn long_lived_kill_terminates_handle() {
+        // Spawn cat that will never receive EOF and never exit on its
+        // own; verify KillProcess produces a ProcessExit.
+        let frames = run_long_lived_with_frames(
+            vec![
+                Frame::StartProcess(cat_request(7)),
+                Frame::KillProcess(KillProcessRequest { handle: 7 }),
+            ],
+            |frames| frames.iter().any(|f| matches!(f, Frame::ProcessExit(_))),
+        )
+        .await;
+
+        let exit = frames.iter().find_map(|f| match f {
+            Frame::ProcessExit(ProcessExitStatus { handle: 7, status }) => Some(*status),
+            _ => None,
+        });
+        assert!(exit.is_some(), "expected ProcessExit for handle 7, got {frames:?}");
+    }
+
+    #[tokio::test]
+    async fn long_lived_ping_responds_with_pong() {
+        let frames = run_long_lived_with_frames(
+            vec![
+                Frame::StartProcess(cat_request(1)),
+                Frame::Ping,
+                Frame::Stdin { handle: 1, bytes: Vec::new() }, // EOF → cat exits
+            ],
+            |frames| {
+                let saw_pong = frames.iter().any(|f| matches!(f, Frame::Pong));
+                let saw_exit = frames.iter().any(|f| matches!(f, Frame::ProcessExit(_)));
+                saw_pong && saw_exit
+            },
+        )
+        .await;
+        assert!(frames.iter().any(|f| matches!(f, Frame::Pong)));
+    }
+
+    #[tokio::test]
+    async fn long_lived_rejects_duplicate_handle() {
+        let frames = run_long_lived_with_frames(
+            vec![
+                Frame::StartProcess(cat_request(1)),
+                Frame::StartProcess(cat_request(1)), // collision
+                Frame::Stdin { handle: 1, bytes: Vec::new() }, // EOF first cat
+            ],
+            |frames| {
+                let oks = frames.iter().filter(|f| matches!(f, Frame::Started(s) if s.ok)).count();
+                let errs = frames.iter().filter(|f| matches!(f, Frame::Started(s) if !s.ok)).count();
+                let exits = frames.iter().filter(|f| matches!(f, Frame::ProcessExit(_))).count();
+                oks >= 1 && errs >= 1 && exits >= 1
+            },
+        )
+        .await;
+
+        let errs: Vec<_> = frames
+            .iter()
+            .filter_map(|f| match f {
+                Frame::Started(s) if !s.ok => Some(s.err.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(errs.len(), 1, "expected exactly one error Started, got {frames:?}");
+        assert!(errs[0].as_deref().unwrap_or("").contains("already in use"));
+    }
+
+    #[tokio::test]
+    async fn long_lived_rejects_protocol_version_mismatch() {
+        // Build a ProcessRequest with the wrong version (mimics a stale host).
+        let bad = ProcessRequest {
+            protocol_version: 999, // not PROTOCOL_VERSION
+            handle: 1,
+            bwrap_path: "/bin/cat".into(),
+            argv: vec![],
+            seccomp_fd: None,
+            cgroup: None,
+        };
+        let frames = run_long_lived_with_frames(
+            vec![Frame::StartProcess(bad)],
+            |frames| frames.iter().any(|f| matches!(f, Frame::Started(s) if !s.ok)),
+        )
+        .await;
+        let err = frames.iter().find_map(|f| match f {
+            Frame::Started(s) if !s.ok => s.err.clone(),
+            _ => None,
+        });
+        assert!(err.unwrap_or_default().contains("protocol version mismatch"));
+    }
+
+    #[tokio::test]
+    async fn kill_pid_swallows_esrch_for_dead_process() {
+        // Pid 1 belongs to init on Linux; we lack the right to kill it,
+        // but EPERM is *not* the ESRCH path we want to verify. Use a
+        // freshly-spawned-then-reaped pid: spawn `/bin/true`, wait, then
+        // try to kill its (now-reaped) pid. The OS returns ESRCH; our
+        // helper must silently swallow it without panicking.
+        let mut child = Command::new("/bin/true").spawn().expect("spawn /bin/true");
+        let pid = child.id().expect("pid");
+        let _ = child.wait().await;
+        // Should not panic, should not log a warn (we can't easily
+        // assert no-warn but the call returning cleanly is the contract).
+        kill_pid(pid);
     }
 }

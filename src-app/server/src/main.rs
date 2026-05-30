@@ -22,11 +22,74 @@ struct Cli {
     /// If no value is provided, defaults to ../ui/openapi
     #[arg(long, value_name = "OUTPUT_DIR", num_args = 0..=1, default_missing_value = "../ui/openapi")]
     generate_openapi: Option<String>,
+
+    /// (Windows, internal) Run as the LocalSystem code-sandbox helper service.
+    /// Invoked by the Service Control Manager — not meant to be run by hand.
+    #[cfg(windows)]
+    #[arg(long, hide = true)]
+    run_sandbox_helper_service: bool,
+
+    /// (Windows) Install the code-sandbox helper as a LocalSystem service.
+    /// Must be run as Administrator. Registers the vsock GUIDs + restarts WSL.
+    #[cfg(windows)]
+    #[arg(long)]
+    install_sandbox_helper: bool,
+
+    /// (Windows) Stop + remove the code-sandbox helper service.
+    /// Must be run as Administrator.
+    #[cfg(windows)]
+    #[arg(long)]
+    uninstall_sandbox_helper: bool,
+
+    /// (Windows, internal) Set on the elevated child that
+    /// `--install-sandbox-helper` spawns, so it performs the install instead
+    /// of trying to elevate again (prevents a UAC loop).
+    #[cfg(windows)]
+    #[arg(long, hide = true)]
+    sandbox_helper_elevated: bool,
 }
 
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
+
+    // Windows code-sandbox helper service dispatch. These short-circuit the
+    // normal server boot. Gated to Windows — the helper brokers privileged
+    // WSL ops (see modules::code_sandbox::backend::helper_service).
+    #[cfg(windows)]
+    {
+        use crate::modules::code_sandbox::backend::helper_service;
+
+        if cli.run_sandbox_helper_service {
+            // Launched by the SCM: hand control to the service dispatcher.
+            if let Err(e) = helper_service::service::run() {
+                eprintln!("ziee sandbox helper service failed: {e}");
+                std::process::exit(1);
+            }
+            return;
+        }
+        if cli.install_sandbox_helper {
+            // Self-checking + self-elevating: silent no-op if already
+            // installed, one UAC prompt if it needs installing. Safe to call
+            // on every app launch.
+            match helper_service::install::install(cli.sandbox_helper_elevated) {
+                Ok(()) => std::process::exit(0),
+                Err(e) => {
+                    eprintln!("install-sandbox-helper failed: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        if cli.uninstall_sandbox_helper {
+            match helper_service::install::uninstall() {
+                Ok(()) => std::process::exit(0),
+                Err(e) => {
+                    eprintln!("uninstall-sandbox-helper failed: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+    }
 
     // Check for OpenAPI generation flag
     if cli.generate_openapi.is_some() {

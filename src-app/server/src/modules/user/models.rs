@@ -31,6 +31,12 @@ pub struct User {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub last_login_at: Option<DateTime<Utc>>,
+    /// When the user last rotated their password. NULL means the
+    /// account is still using the bootstrap-issued password (only
+    /// meaningful for the desktop `admin` user). The Remote Access
+    /// module refuses to enable password authentication unless this
+    /// is non-NULL for the admin.
+    pub password_changed_at: Option<DateTime<Utc>>,
 }
 
 impl AuthUserTrait for User {

@@ -10,6 +10,10 @@
 // TYPE DEFINITIONS
 // =============================================================================
 
+export interface AllSettingsResponse {
+  settings: SettingItem[]
+}
+
 export type ApprovalMode = 'disabled' | 'auto_approve' | 'manual_approve'
 
 export interface AssignProviderToGroupRequest {
@@ -49,6 +53,12 @@ export interface AttachFileRequest {
   file_id: string
 }
 
+export interface AuthConfigResponse {
+  hide_username: boolean
+  magic_link_enabled: boolean
+  password_auth_enabled: boolean
+}
+
 export interface AuthProviderResponse {
   config: any
   created_at: string
@@ -78,6 +88,12 @@ export interface AutoApprovedServer {
 export interface AvailableUpdatesResponse {
   available_versions: string[]
   engine: string
+}
+
+export interface BackendStatusResponse {
+  ready: boolean
+  running: boolean
+  version: string
 }
 
 export interface Branch {
@@ -111,6 +127,11 @@ export interface CallToolRequest {
 export interface CallToolResponse {
   content: ToolContent[]
   is_error: boolean
+}
+
+export interface ChangePasswordRequest {
+  current_password: string
+  new_password: string
 }
 
 export interface ChatStreamChunk {
@@ -272,21 +293,6 @@ export interface CreateLlmProviderRequest {
   proxy_settings?: ProxySettings
 }
 
-export interface CreateLlmProviderResponse {
-  api_key?: string
-  base_url?: string
-  built_in: boolean
-  created_at: string
-  default_runtime_version_id?: string
-  enabled: boolean
-  id: string
-  name: string
-  plaintext_api_key?: string
-  provider_type: string
-  proxy_settings: ProxySettings
-  updated_at: string
-}
-
 export interface CreateLlmRepositoryRequest {
   auth_config?: RepositoryAuthConfig
   auth_type: string
@@ -357,11 +363,6 @@ export interface DeleteAllResponse {
   deleted: number
 }
 
-export interface DeleteModelQuery {
-  delete_file?: boolean
-  force?: boolean
-}
-
 export interface DeleteProviderResponse {
   affected_user_links: number
   deleted: boolean
@@ -376,25 +377,6 @@ export type DeviceType = 'cpu' | 'cuda' | 'metal' | 'rocm' | 'vulkan' | 'opencl'
 export interface DisabledServer {
   server_id: string
   tools: string[]
-}
-
-export interface DiscoverModelsResponse {
-  models: DiscoveredModel[]
-  notes: string[]
-  provider_type: string
-}
-
-export interface DiscoveredModel {
-  context_length?: number
-  deprecated: boolean
-  display_name?: string
-  id: string
-  max_output_tokens?: number
-  source: string
-  supports_chat: boolean
-  supports_embeddings: boolean
-  supports_tool_use?: boolean
-  supports_vision: boolean
 }
 
 export interface DownloadFromRepositoryRequest {
@@ -604,13 +586,6 @@ export interface GetUserProvidersResponse {
 
 export interface GetUserProvidersResponse2 {
   providers: ProviderWithModels2[]
-}
-
-export interface GpuDetectionResponse {
-  arch: string
-  available: string[]
-  platform: string
-  recommended: string
 }
 
 export interface Group {
@@ -999,6 +974,15 @@ export interface LoopSettings {
   stop_when_tools_called?: ToolIdentifier[]
 }
 
+export interface MagicLinkExchangeRequest {
+  token: string
+}
+
+export interface MagicLinkIssueResponse {
+  expires_at: string
+  token: string
+}
+
 export interface McpConfig {
   mcp_servers: McpServerConfig[]
 }
@@ -1320,6 +1304,10 @@ export interface PaginationQuery5 {
   project_id?: string
 }
 
+export interface PasswordOnlyLoginRequest {
+  password: string
+}
+
 export interface PendingApprovalsResponse {
   approvals: ToolUseApproval[]
 }
@@ -1484,6 +1472,27 @@ export interface RegisterRequest {
   username: string
 }
 
+export interface RemoteAccessSettingsResponse {
+  auth_token_set: boolean
+  auto_start_tunnel: boolean
+  created_at: string
+  ngrok_domain?: string
+  password_auth_enabled: boolean
+  updated_at: string
+}
+
+export interface RemoteAccessStatusResponse {
+  auth_token_set: boolean
+  auto_start_tunnel: boolean
+  last_error?: string
+  ngrok_domain?: string
+  password_auth_enabled: boolean
+  password_rotated: boolean
+  public_url?: string
+  started_at?: string
+  tunnel_state: TunnelStateKind
+}
+
 export interface RepositoryAuthConfig {
   api_key?: string
   auth_test_api_endpoint?: string
@@ -1525,20 +1534,6 @@ export interface RichFile {
   data: string
   filename: string
   mime_type: string
-}
-
-export interface RotateProxyTokenResponse {
-  plaintext_api_key: string
-  provider: LlmProvider
-}
-
-export interface RuntimeSettings {
-  allow_unsigned_downloads: boolean
-  auto_start_timeout_secs: number
-  created_at: string
-  drain_timeout_secs: number
-  idle_unload_secs: number
-  updated_at: string
 }
 
 export interface RuntimeVersionListResponse {
@@ -1658,20 +1653,6 @@ export type SSEHardwareUsageEvent = {
   update: HardwareUsageUpdate
 }
 
-export type SSELogEvent = {
-  log: SSELogLineData
-  lag: SSELogLagData
-}
-
-export interface SSELogLagData {
-  dropped: number
-  message: string
-}
-
-export interface SSELogLineData {
-  line: string
-}
-
 export interface SSEPrefetchCompleteData {
   bytes_downloaded: number
   cosign_verified: boolean
@@ -1723,11 +1704,29 @@ export interface ServerGroupsRequest {
   group_ids: string[]
 }
 
+export interface SetAdminPasswordRequest {
+  new_password: string
+}
+
 export interface SetMcpServerOAuthConfigRequest {
   client_id: string
   client_secret: string
   resource?: string
   scopes?: string
+}
+
+export interface SetSettingRequest {
+  value: string
+}
+
+export interface SettingItem {
+  key: string
+  value: string
+}
+
+export interface SettingResponse {
+  key: string
+  value?: string
 }
 
 export interface SetupAdminRequest {
@@ -1758,6 +1757,11 @@ export interface StartPrefetchResponse {
 export interface StreamError {
   code?: string
   message: string
+}
+
+export interface SuccessResponse {
+  message: string
+  success: boolean
 }
 
 export interface SyncCacheResponse {
@@ -1847,6 +1851,13 @@ export interface ToolUseApproval {
 }
 
 export type TransportType = 'stdio' | 'http' | 'sse'
+
+export interface TunnelStartResponse {
+  public_url: string
+  started_at: string
+}
+
+export type TunnelStateKind = 'idle' | 'starting' | 'connected' | 'error'
 
 export interface UpdateAssistantRequest {
   description?: string
@@ -1982,11 +1993,11 @@ export interface UpdateProjectRequest {
   name?: string
 }
 
-export interface UpdateRuntimeSettingsRequest {
-  allow_unsigned_downloads?: boolean
-  auto_start_timeout_secs?: number
-  drain_timeout_secs?: number
-  idle_unload_secs?: number
+export interface UpdateRemoteAccessSettingsRequest {
+  auto_start_tunnel?: boolean
+  ngrok_auth_token?: string
+  ngrok_domain?: string
+  password_auth_enabled?: boolean
 }
 
 export interface UpdateUserMemorySettingsRequest {
@@ -2043,6 +2054,7 @@ export interface User {
   is_active: boolean
   is_admin: boolean
   last_login_at?: string
+  password_changed_at?: string
   permissions: string[]
   updated_at: string
   username: string
@@ -2205,8 +2217,8 @@ export enum Permissions {
   ProjectsDelete = 'projects::delete',
   ProjectsEdit = 'projects::edit',
   ProjectsRead = 'projects::read',
-  RuntimeSettingsManage = 'llm_local_runtime::settings_manage',
-  RuntimeSettingsRead = 'llm_local_runtime::settings_read',
+  RemoteAccessManage = 'remote_access::manage',
+  RemoteAccessRead = 'remote_access::read',
   RuntimeVersionCreate = 'llm_local_runtime::create',
   RuntimeVersionDelete = 'llm_local_runtime::delete',
   RuntimeVersionRead = 'llm_local_runtime::versions_read',
@@ -2308,8 +2320,8 @@ export const PermissionDescriptions: Record<string, string> = {
   ProjectsDelete: 'Delete chat projects',
   ProjectsEdit: 'Edit chat projects (incl. attach/detach files)',
   ProjectsRead: 'Read chat projects',
-  RuntimeSettingsManage: 'Modify runtime singleton settings (idle/auto-start/drain/allow_unsigned_downloads)',
-  RuntimeSettingsRead: 'Read runtime singleton settings (idle/auto-start/drain)',
+  RemoteAccessManage: 'Save the ngrok auth token / custom domain, toggle auto-start, toggle password authentication, start/stop the tunnel, and issue magic-link login tokens.',
+  RemoteAccessRead: 'Read remote-access settings, tunnel status, and current public URL.',
   RuntimeVersionCreate: 'Download and register new runtime versions',
   RuntimeVersionDelete: 'Delete runtime versions',
   RuntimeVersionRead: 'View runtime versions and check for updates',
@@ -2343,10 +2355,14 @@ export const ApiEndpoints = {
   'AssistantTemplate.getDefault': 'GET /api/assistant-templates/default',
   'AssistantTemplate.list': 'GET /api/assistant-templates',
   'AssistantTemplate.update': 'PUT /api/assistant-templates/{id}',
+  'Auth.getConfig': 'GET /api/auth/config',
   'Auth.linkAccount': 'POST /api/auth/link-account',
   'Auth.listProviders': 'GET /api/auth/providers',
   'Auth.login': 'POST /api/auth/login',
+  'Auth.loginPasswordOnly': 'POST /api/auth/login-password-only',
   'Auth.logout': 'POST /api/auth/logout',
+  'Auth.magicLinkExchange': 'POST /api/auth/magic-link/exchange',
+  'Auth.magicLinkIssue': 'POST /api/auth/magic-link/issue',
   'Auth.me': 'GET /api/auth/me',
   'Auth.refresh': 'POST /api/auth/refresh',
   'Auth.register': 'POST /api/auth/register',
@@ -2378,6 +2394,11 @@ export const ApiEndpoints = {
   'CoreMemory.delete': 'DELETE /api/assistants/{assistant_id}/core-memory/{block_label}',
   'CoreMemory.list': 'GET /api/assistants/{assistant_id}/core-memory',
   'CoreMemory.upsert': 'PUT /api/assistants/core-memory',
+  'DesktopBackend.status': 'GET /api/desktop/backend/status',
+  'DesktopSettings.delete': 'DELETE /api/desktop/settings/{key}',
+  'DesktopSettings.get': 'GET /api/desktop/settings/{key}',
+  'DesktopSettings.getAll': 'GET /api/desktop/settings',
+  'DesktopSettings.set': 'PUT /api/desktop/settings/{key}',
   'File.delete': 'DELETE /api/files/{file_id}',
   'File.download': 'GET /api/files/{file_id}/download',
   'File.downloadWithToken': 'GET /api/files/{file_id}/download-with-token',
@@ -2422,19 +2443,16 @@ export const ApiEndpoints = {
   'LlmModel.subscribeDownloadProgress': 'GET /api/llm-models/downloads/subscribe',
   'LlmModel.update': 'POST /api/llm-models/{model_id}',
   'LlmModel.upload': 'POST /api/llm-models/upload',
-  'LlmModel.validate': 'POST /api/llm-models/{model_id}/validate',
   'LlmProvider.assignGroup': 'POST /api/llm-providers/{provider_id}/groups',
   'LlmProvider.create': 'POST /api/llm-providers',
   'LlmProvider.delete': 'DELETE /api/llm-providers/{provider_id}',
   'LlmProvider.deleteUserApiKey': 'DELETE /api/user-llm-providers/api-keys/{provider_id}',
-  'LlmProvider.discoverModels': 'GET /api/llm-providers/{provider_id}/discover-models',
   'LlmProvider.get': 'GET /api/llm-providers/{provider_id}',
   'LlmProvider.getGroups': 'GET /api/llm-providers/{provider_id}/groups',
   'LlmProvider.getUserLlmProviders': 'GET /api/user-llm-providers',
   'LlmProvider.list': 'GET /api/llm-providers',
   'LlmProvider.listUserApiKeys': 'GET /api/user-llm-providers/api-keys',
   'LlmProvider.removeGroup': 'DELETE /api/llm-providers/{provider_id}/groups/{group_id}',
-  'LlmProvider.rotateProxyToken': 'POST /api/llm-providers/{provider_id}/rotate-proxy-token',
   'LlmProvider.saveUserApiKey': 'POST /api/user-llm-providers/api-keys',
   'LlmProvider.update': 'POST /api/llm-providers/{provider_id}',
   'LlmRepository.create': 'POST /api/llm-repositories',
@@ -2443,21 +2461,14 @@ export const ApiEndpoints = {
   'LlmRepository.list': 'GET /api/llm-repositories',
   'LlmRepository.test': 'POST /api/llm-repositories/test',
   'LlmRepository.update': 'POST /api/llm-repositories/{repository_id}',
-  'LocalLlmProxy.chatCompletions': 'POST /api/local-llm/v1/chat/completions',
-  'LocalLlmProxy.embeddings': 'POST /api/local-llm/v1/embeddings',
-  'LocalLlmProxy.listModels': 'GET /api/local-llm/v1/models',
-  'LocalRuntime.detectGpu': 'GET /api/local-runtime/detect-gpu',
   'LocalRuntime.getInstance': 'GET /api/local-runtime/models/{model_id}/instance',
   'LocalRuntime.getLogs': 'GET /api/local-runtime/models/{model_id}/logs',
   'LocalRuntime.getProviderInstances': 'GET /api/local-runtime/providers/{provider_id}/instances',
-  'LocalRuntime.getRuntimeSettings': 'GET /api/local-runtime/settings',
   'LocalRuntime.getStatus': 'GET /api/local-runtime/models/{model_id}/status',
   'LocalRuntime.healthCheck': 'GET /api/local-runtime/models/{model_id}/health',
   'LocalRuntime.restartModel': 'POST /api/local-runtime/models/{model_id}/restart',
   'LocalRuntime.startModel': 'POST /api/local-runtime/models/{model_id}/start',
   'LocalRuntime.stopModel': 'POST /api/local-runtime/models/{model_id}/stop',
-  'LocalRuntime.streamLogs': 'GET /api/local-runtime/models/{model_id}/logs/stream',
-  'LocalRuntime.updateRuntimeSettings': 'PUT /api/local-runtime/settings',
   'Mcp.getDefaults': 'GET /api/mcp/defaults',
   'Mcp.respondToElicitation': 'POST /api/mcp/elicitation/{elicitation_id}/respond',
   'Mcp.updateDefaults': 'PUT /api/mcp/defaults',
@@ -2520,6 +2531,12 @@ export const ApiEndpoints = {
   'Project.update': 'PUT /api/projects/{id}',
   'Project.updateMcpSettings': 'PUT /api/projects/{id}/mcp-settings',
   'Project.uploadAndAttachFile': 'POST /api/projects/{id}/files/upload',
+  'RemoteAccess.getSettings': 'GET /api/remote-access/settings',
+  'RemoteAccess.getStatus': 'GET /api/remote-access/status',
+  'RemoteAccess.setAdminPassword': 'POST /api/remote-access/admin-password',
+  'RemoteAccess.startTunnel': 'POST /api/remote-access/tunnel/start',
+  'RemoteAccess.stopTunnel': 'POST /api/remote-access/tunnel/stop',
+  'RemoteAccess.updateSettings': 'PUT /api/remote-access/settings',
   'RuntimeVersion.checkUpdates': 'GET /api/local-runtime/versions/{engine}/check-updates',
   'RuntimeVersion.delete': 'DELETE /api/local-runtime/versions/{version_id}',
   'RuntimeVersion.download': 'POST /api/local-runtime/versions/download',
@@ -2541,7 +2558,8 @@ export const ApiEndpoints = {
   'UserGroup.getMembers': 'GET /api/groups/{group_id}/members',
   'UserGroup.list': 'GET /api/groups',
   'UserGroup.removeUser': 'DELETE /api/groups/{user_id}/{group_id}/remove',
-  'UserGroup.update': 'POST /api/groups/{group_id}'
+  'UserGroup.update': 'POST /api/groups/{group_id}',
+  'Users.changeOwnPassword': 'POST /api/users/me/password'
 } as const
 
 // API endpoint parameters
@@ -2560,10 +2578,14 @@ export type ApiEndpointParameters = {
   'AssistantTemplate.getDefault': void
   'AssistantTemplate.list': { limit: number; page: number }
   'AssistantTemplate.update': { id: string } & UpdateAssistantRequest
+  'Auth.getConfig': void
   'Auth.linkAccount': LinkAccountRequest
   'Auth.listProviders': void
   'Auth.login': LoginRequest
+  'Auth.loginPasswordOnly': PasswordOnlyLoginRequest
   'Auth.logout': void
+  'Auth.magicLinkExchange': MagicLinkExchangeRequest
+  'Auth.magicLinkIssue': void
   'Auth.me': void
   'Auth.refresh': RefreshTokenRequest
   'Auth.register': RegisterRequest
@@ -2595,6 +2617,11 @@ export type ApiEndpointParameters = {
   'CoreMemory.delete': { assistant_id: string; block_label: string }
   'CoreMemory.list': { assistant_id: string }
   'CoreMemory.upsert': UpsertCoreMemoryBlockRequest
+  'DesktopBackend.status': void
+  'DesktopSettings.delete': { key: string }
+  'DesktopSettings.get': { key: string }
+  'DesktopSettings.getAll': void
+  'DesktopSettings.set': { key: string } & SetSettingRequest
   'File.delete': { file_id: string }
   'File.download': { file_id: string }
   'File.downloadWithToken': { file_id: string; token: string }
@@ -2627,7 +2654,7 @@ export type ApiEndpointParameters = {
   'Hub.refreshModels': void
   'LlmModel.cancelDownload': { download_id: string }
   'LlmModel.create': CreateLlmModelRequest
-  'LlmModel.delete': { model_id: string; delete_file?: boolean; force?: boolean }
+  'LlmModel.delete': { model_id: string }
   'LlmModel.deleteDownload': { download_id: string }
   'LlmModel.disable': { model_id: string }
   'LlmModel.download': DownloadFromRepositoryRequest
@@ -2639,19 +2666,16 @@ export type ApiEndpointParameters = {
   'LlmModel.subscribeDownloadProgress': void
   'LlmModel.update': { model_id: string } & UpdateLlmModelRequest
   'LlmModel.upload': FormData
-  'LlmModel.validate': { model_id: string }
   'LlmProvider.assignGroup': { provider_id: string } & AssignProviderToGroupRequest
   'LlmProvider.create': CreateLlmProviderRequest
   'LlmProvider.delete': { provider_id: string }
   'LlmProvider.deleteUserApiKey': { provider_id: string }
-  'LlmProvider.discoverModels': { provider_id: string }
   'LlmProvider.get': { provider_id: string }
   'LlmProvider.getGroups': { provider_id: string }
   'LlmProvider.getUserLlmProviders': void
   'LlmProvider.list': PaginationQuery
   'LlmProvider.listUserApiKeys': void
   'LlmProvider.removeGroup': { provider_id: string; group_id: string }
-  'LlmProvider.rotateProxyToken': { provider_id: string }
   'LlmProvider.saveUserApiKey': SaveUserApiKeyRequest
   'LlmProvider.update': { provider_id: string } & UpdateLlmProviderRequest
   'LlmRepository.create': CreateLlmRepositoryRequest
@@ -2660,21 +2684,14 @@ export type ApiEndpointParameters = {
   'LlmRepository.list': PaginationQuery
   'LlmRepository.test': TestRepositoryConnectionRequest
   'LlmRepository.update': { repository_id: string } & UpdateLlmRepositoryRequest
-  'LocalLlmProxy.chatCompletions': void
-  'LocalLlmProxy.embeddings': void
-  'LocalLlmProxy.listModels': void
-  'LocalRuntime.detectGpu': void
   'LocalRuntime.getInstance': { model_id: string }
   'LocalRuntime.getLogs': { model_id: string }
   'LocalRuntime.getProviderInstances': { provider_id: string }
-  'LocalRuntime.getRuntimeSettings': void
   'LocalRuntime.getStatus': { model_id: string }
   'LocalRuntime.healthCheck': { model_id: string }
   'LocalRuntime.restartModel': { model_id: string }
   'LocalRuntime.startModel': { model_id: string } & StartInstanceRequest
   'LocalRuntime.stopModel': { model_id: string }
-  'LocalRuntime.streamLogs': { model_id: string }
-  'LocalRuntime.updateRuntimeSettings': UpdateRuntimeSettingsRequest
   'Mcp.getDefaults': void
   'Mcp.respondToElicitation': { elicitation_id: string } & RespondToElicitationRequest
   'Mcp.updateDefaults': UpsertUserMcpDefaultsRequest
@@ -2737,6 +2754,12 @@ export type ApiEndpointParameters = {
   'Project.update': { id: string } & UpdateProjectRequest
   'Project.updateMcpSettings': { id: string } & UpdateProjectMcpSettingsRequest
   'Project.uploadAndAttachFile': { id: string } & FormData
+  'RemoteAccess.getSettings': void
+  'RemoteAccess.getStatus': void
+  'RemoteAccess.setAdminPassword': SetAdminPasswordRequest
+  'RemoteAccess.startTunnel': void
+  'RemoteAccess.stopTunnel': void
+  'RemoteAccess.updateSettings': UpdateRemoteAccessSettingsRequest
   'RuntimeVersion.checkUpdates': { engine: string }
   'RuntimeVersion.delete': { version_id: string; remove_binary?: boolean }
   'RuntimeVersion.download': DownloadVersionRequest
@@ -2759,6 +2782,7 @@ export type ApiEndpointParameters = {
   'UserGroup.list': PaginationQuery
   'UserGroup.removeUser': { user_id: string; group_id: string }
   'UserGroup.update': { group_id: string } & UpdateGroupRequest
+  'Users.changeOwnPassword': ChangePasswordRequest
 }
 
 // API endpoint responses
@@ -2777,10 +2801,14 @@ export type ApiEndpointResponses = {
   'AssistantTemplate.getDefault': Assistant
   'AssistantTemplate.list': AssistantListResponse
   'AssistantTemplate.update': Assistant
+  'Auth.getConfig': AuthConfigResponse
   'Auth.linkAccount': AuthResponse
   'Auth.listProviders': PublicProvidersResponse
   'Auth.login': AuthResponse
+  'Auth.loginPasswordOnly': AuthResponse
   'Auth.logout': void
+  'Auth.magicLinkExchange': AuthResponse
+  'Auth.magicLinkIssue': MagicLinkIssueResponse
   'Auth.me': MeResponse
   'Auth.refresh': TokenPair
   'Auth.register': AuthResponse
@@ -2812,6 +2840,11 @@ export type ApiEndpointResponses = {
   'CoreMemory.delete': void
   'CoreMemory.list': CoreMemoryBlock[]
   'CoreMemory.upsert': CoreMemoryBlock
+  'DesktopBackend.status': BackendStatusResponse
+  'DesktopSettings.delete': SuccessResponse
+  'DesktopSettings.get': SettingResponse
+  'DesktopSettings.getAll': AllSettingsResponse
+  'DesktopSettings.set': SuccessResponse
   'File.delete': void
   'File.download': Blob
   'File.downloadWithToken': Blob
@@ -2856,19 +2889,16 @@ export type ApiEndpointResponses = {
   'LlmModel.subscribeDownloadProgress': SSEDownloadProgressEvent
   'LlmModel.update': LlmModel
   'LlmModel.upload': LlmModel
-  'LlmModel.validate': any
   'LlmProvider.assignGroup': void
-  'LlmProvider.create': CreateLlmProviderResponse
+  'LlmProvider.create': LlmProvider
   'LlmProvider.delete': void
   'LlmProvider.deleteUserApiKey': void
-  'LlmProvider.discoverModels': DiscoverModelsResponse
   'LlmProvider.get': LlmProvider
   'LlmProvider.getGroups': Group[]
   'LlmProvider.getUserLlmProviders': GetUserProvidersResponse
   'LlmProvider.list': LlmProviderListResponse
   'LlmProvider.listUserApiKeys': UserApiKeyListResponse
   'LlmProvider.removeGroup': void
-  'LlmProvider.rotateProxyToken': RotateProxyTokenResponse
   'LlmProvider.saveUserApiKey': void
   'LlmProvider.update': LlmProvider
   'LlmRepository.create': LlmRepository
@@ -2877,21 +2907,14 @@ export type ApiEndpointResponses = {
   'LlmRepository.list': LlmRepositoryListResponse
   'LlmRepository.test': TestRepositoryConnectionResponse
   'LlmRepository.update': LlmRepository
-  'LocalLlmProxy.chatCompletions': void
-  'LocalLlmProxy.embeddings': void
-  'LocalLlmProxy.listModels': void
-  'LocalRuntime.detectGpu': GpuDetectionResponse
   'LocalRuntime.getInstance': InstanceResponse
   'LocalRuntime.getLogs': LogsResponse
   'LocalRuntime.getProviderInstances': ProviderInstancesResponse
-  'LocalRuntime.getRuntimeSettings': RuntimeSettings
   'LocalRuntime.getStatus': InstanceStatusResponse
   'LocalRuntime.healthCheck': HealthCheckResponse
   'LocalRuntime.restartModel': InstanceResponse
   'LocalRuntime.startModel': InstanceResponse
   'LocalRuntime.stopModel': InstanceResponse
-  'LocalRuntime.streamLogs': SSELogEvent
-  'LocalRuntime.updateRuntimeSettings': RuntimeSettings
   'Mcp.getDefaults': UserMcpDefaultsGetResponse
   'Mcp.respondToElicitation': RespondToElicitationResponse
   'Mcp.updateDefaults': UserMcpDefaultsResponse
@@ -2954,6 +2977,12 @@ export type ApiEndpointResponses = {
   'Project.update': Project
   'Project.updateMcpSettings': Project
   'Project.uploadAndAttachFile': File
+  'RemoteAccess.getSettings': RemoteAccessSettingsResponse
+  'RemoteAccess.getStatus': RemoteAccessStatusResponse
+  'RemoteAccess.setAdminPassword': void
+  'RemoteAccess.startTunnel': TunnelStartResponse
+  'RemoteAccess.stopTunnel': void
+  'RemoteAccess.updateSettings': RemoteAccessSettingsResponse
   'RuntimeVersion.checkUpdates': AvailableUpdatesResponse
   'RuntimeVersion.delete': void
   'RuntimeVersion.download': DownloadVersionResponse
@@ -2976,6 +3005,7 @@ export type ApiEndpointResponses = {
   'UserGroup.list': GroupListResponse
   'UserGroup.removeUser': void
   'UserGroup.update': Group
+  'Users.changeOwnPassword': void
 }
 
 // Type helpers

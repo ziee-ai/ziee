@@ -279,6 +279,26 @@ fn runtime_dir() -> std::io::Result<PathBuf> {
     Ok(dir)
 }
 
+/// True if `launcher` can find `libkrun.1.dylib` via its rpath search
+/// from the current location. Checks the two app-bundle conventions
+/// (`<exe-dir>/../lib` and `<exe-dir>/../Frameworks`) — matches the
+/// `LC_RPATH` entries that `build_helper/sandbox_runtime.rs` installs
+/// via `install_name_tool` on the bundled launcher. The raw cargo-
+/// built launcher has `/opt/homebrew/lib` instead, which is *not*
+/// `@executable_path/...`-relative, so this returns false for it
+/// even if homebrew is installed — that's correct because:
+///   1. dyld evaluates rpath search lazily at LOAD time, and
+///   2. the homebrew rpath only works on dev machines that have
+///      `brew install libkrun` — production deployments don't.
+/// Falling through to the embedded extracted launcher is always the
+/// safer choice when this returns false.
+fn launcher_can_load_libkrun(launcher: &Path) -> bool {
+    let Some(exe_dir) = launcher.parent() else { return false; };
+    let lib = exe_dir.join("..").join("lib").join("libkrun.1.dylib");
+    let fw = exe_dir.join("..").join("Frameworks").join("libkrun.1.dylib");
+    lib.exists() || fw.exists()
+}
+
 pub struct MacVmBackend;
 
 impl MacVmBackend {
@@ -305,8 +325,20 @@ impl MacVmBackend {
             .ok()
             .and_then(|e| e.parent().map(Path::to_path_buf))
             .map(|dir| dir.join("ziee-sandbox-vm-launcher"));
+        // The sibling-of-current-exe path is the production app-bundle
+        // layout (launcher next to server inside Contents/MacOS). In
+        // dev / cargo-test environments a cargo-built launcher may
+        // also exist at <workspace>/target/debug/ziee-sandbox-vm-launcher
+        // because the launcher is a workspace member — that copy is
+        // NOT post-processed by `build_helper/sandbox_runtime.rs` and
+        // its `@rpath/libkrun.1.dylib` resolves to non-existent paths
+        // (libkrun is at <embedded>/lib/, not <workspace>/target/lib/).
+        // Picking it up makes libkrun fail with EINVAL → vsock-never-
+        // appears → 30s timeout. Only trust the sibling if libkrun
+        // is actually reachable via its rpath search.
         if let Some(p) = sibling.as_ref()
             && p.exists()
+            && launcher_can_load_libkrun(p)
         {
             return p.clone();
         }
@@ -683,6 +715,37 @@ impl SandboxBackend for MacVmBackend {
             stderr: run.stderr.into_bytes(),
             timed_out: run.timed_out,
         })
+    }
+
+    async fn open_long_lived_session(
+        &self,
+        state: &CodeSandboxState,
+        flavor: &str,
+    ) -> Result<Option<super::vm_long_lived::LongLivedSession>, AppError> {
+        // Make sure the flavor's rootfs is on disk and a VM is warm
+        // (cold-start path identical to one-shot `run`).
+        let cache = cache_dir(state);
+        let disk = runtime_fetch::ensure_fetched(&cache, flavor, |_| {})
+            .await
+            .map_err(|e| AppError::internal_error(format!("rootfs fetch failed: {e}")))?
+            .installed_path;
+        let vm = self.ensure_vm(state, flavor, &disk).await?;
+
+        // Hold an inflight count for the session's lifetime so the
+        // reaper waits for live MCP sessions to drain before evicting.
+        vm.inflight.fetch_add(1, Ordering::SeqCst);
+        let guard = InflightGuard(vm.clone());
+        *vm.last_used.lock().await = Instant::now();
+
+        let stream = UnixStream::connect(&vm.socket_path)
+            .await
+            .map_err(|e| AppError::internal_error(format!("connect VM socket: {e}")))?;
+
+        let session = super::vm_long_lived::open_long_lived_with_guard(
+            stream,
+            Some(Box::new(guard)),
+        );
+        Ok(Some(session))
     }
 
     async fn evict_flavor(&self, cache_dir: &Path, flavor: &str) -> EvictOutcome {

@@ -11,6 +11,10 @@ tier3-prefetch-*.log
 # Sourced by `just test` via tests/.env.test; never committed.
 **/.env.test
 
+# Local-only credentials for Tier 8 real-ngrok integration tests.
+# Sourced by `just check-remote-access-real-ngrok`; never committed.
+.ngrok-test-credentials.env
+
 # Cross-compile target dir for sandbox-guest-agent (built inside an
 # aarch64-musl Docker container so the host Mac can produce the in-VM agent
 # binary). Cargo doesn't auto-place a .gitignore here because the path is

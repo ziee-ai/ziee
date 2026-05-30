@@ -141,6 +141,9 @@ impl AppModule for AuthModule {
             let auth_router = ApiRouter::new()
                 .nest("/auth", auth_routes())
                 .merge(auth_admin_routes());
+            // NOTE: `/users/me/password` (change_password) lives in the
+            // desktop tunnel_auth crate now — only the desktop feature
+            // (Remote Access password-auth gate) needs it.
             router.merge(auth_router)
         } else {
             tracing::error!("AuthModule: Pool not initialized during route registration");

@@ -82,6 +82,9 @@ linkme = "0.3"
 dashmap = "6"
 config = "0.15.18"
 
+# (ngrok dep moved to desktop/tauri/Cargo.toml — the remote_access
+# module that uses it lives entirely in the desktop crate now.)
+
 # Utilities
 time = "0.3"
 bcrypt = "0.17.1"
@@ -164,8 +167,14 @@ code_sandbox_seccomp = ["dep:sandbox-seccomp"]
 sandbox-seccomp = { path = "../sandbox-seccomp", optional = true }
 
 # The microVM code-sandbox backends (macOS libkrun, Windows WSL2) talk to the
-# in-guest agent over the shared control protocol.
-[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+# in-guest agent over this shared control protocol. The protocol types are ALSO
+# compiled on Linux — `backend/vm_long_lived` is intentionally not platform-gated
+# (it needs to exist on Linux for a uniform `SandboxBackend` return signature),
+# and it imports `sandbox_vm_protocol` unconditionally. So the dep must resolve
+# on every supported OS, not just macOS/Windows. (This was a latent main bug:
+# no CI `cargo build`s the server on Linux, so the macOS/Windows-only
+# declaration never failed to compile.)
+[target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
 sandbox-vm-protocol = { path = "../sandbox-vm-protocol" }
 
 # Windows: AF_HYPERV / SOCKADDR_HV bindings so the WSL2 backend can dial the
@@ -175,7 +184,25 @@ sandbox-vm-protocol = { path = "../sandbox-vm-protocol" }
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
     "Win32_Networking_WinSock",
+    # Named-pipe IPC for the LocalSystem sandbox-helper service: create the
+    # pipe with an SDDL security descriptor (Authorization), accept/connect
+    # (Pipes), and the backing file handle (Storage_FileSystem).
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_System_Pipes",
+    "Win32_Storage_FileSystem",
+    # ConnectNamedPipe's signature references OVERLAPPED, so windows-sys gates
+    # it behind the IO feature too.
+    "Win32_System_IO",
 ] }
+# Windows service scaffolding for the LocalSystem sandbox-helper: SCM
+# dispatcher + install/uninstall. The helper resolves the WSL utility VM's
+# VmId (needs Hyper-V Admin / SYSTEM) and registers the vsock GUIDs (HKLM
+# write) so the unprivileged server never needs those rights — mirrors how
+# Docker Desktop brokers privileged WSL work through a LocalSystem service.
+windows-service = "0.7"
+# Safe HKLM access for the GuestCommunicationServices vsock-port registration.
+winreg = "0.52"
 
 [build-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

@@ -15,4 +15,4 @@ pub use app_state::{
     set_server_addr,
 };
 pub use events::{AppEvent, EventBus, EventHandler};
-pub use repository::{Repos, init_repositories};
+pub use repository::{Repos, init_repositories, is_repos_initialized};

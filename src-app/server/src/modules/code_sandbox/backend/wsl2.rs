@@ -67,6 +67,7 @@ use sandbox_vm_protocol::{CgroupLimits, ExecRequest, PROTOCOL_VERSION};
 use tokio::sync::{Mutex, Semaphore};
 use windows_sys::core::GUID;
 
+use super::helper_service;
 use super::hvsocket;
 
 use super::SandboxBackend;
@@ -324,14 +325,31 @@ impl Wsl2Backend {
         Self { wsl_vm_id: OnceLock::new() }
     }
 
-    /// Resolve + cache the WSL2 utility VM's VmId. First call may shell out
-    /// to `hcsdiag list` (sub-second). Returns the cached GUID on every call
-    /// after that. Errors propagate (we can't connect without the VmId).
+    /// Resolve + cache the WSL2 utility VM's VmId. Resolution order:
+    ///   1. cached value (every call after the first),
+    ///   2. `ZIEE_WSL_VM_ID=<guid>` env override — the dev/test bypass that
+    ///      needs neither the helper service nor Hyper-V Admin,
+    ///   3. the LocalSystem **helper service** (`helper_service::client`),
+    ///      which does the privileged `hcsdiag`/HCS call as SYSTEM so the
+    ///      unprivileged server never needs Hyper-V Admin (no log-out/in).
+    ///
+    /// When neither the env override nor the helper service is available, this
+    /// hard-fails with an install instruction — the sandbox **requires** the
+    /// helper on Windows (design decision: no silent fallback to an
+    /// in-process `hcsdiag` that would demand Hyper-V Admin on the user token).
     fn vm_id(&self) -> Result<GUID, AppError> {
         if let Some(g) = self.wsl_vm_id.get() {
             return Ok(*g);
         }
-        let g = hvsocket::wsl_utility_vm_id()?;
+        // (2) Dev/test bypass: explicit VmId, no privileged path at all.
+        let g = if let Ok(s) = std::env::var("ZIEE_WSL_VM_ID") {
+            hvsocket::parse_guid(&s).map_err(|e| {
+                AppError::internal_error(format!("ZIEE_WSL_VM_ID malformed: {e}"))
+            })?
+        } else {
+            // (3) Normal path: broker through the LocalSystem helper service.
+            helper_service::client::resolve_vm_id()?
+        };
         // Race-tolerant: another caller may have set it concurrently; we just
         // get our own copy back. set() only fails if already set.
         let _ = self.wsl_vm_id.set(g);
@@ -912,7 +930,14 @@ impl SandboxBackend for Wsl2Backend {
         };
         Ok(EnsureOutcome {
             caps: Arc::new(guest_caps),
-            // The imported distro filesystem IS the rootfs ⇒ root is "/".
+            // The imported distro filesystem IS the rootfs. The rootfs image
+            // ships a `/sandbox-rootfs -> .` symlink, so the bwrap argv's
+            // `/sandbox-rootfs/usr` resolves to the distro's real `/usr`
+            // WITHOUT any bind mount. We deliberately do NOT bind `/` to
+            // `/sandbox-rootfs` in the agent (as the macOS libkrun path mounts
+            // a squashfs there): binding the mount-ns root makes
+            // `unshare(CLONE_NEWUSER)` fail with EPERM, breaking bwrap's
+            // `--unshare-user`.
             mount_dir: PathBuf::from(GUEST_ROOTFS_MOUNT),
             fetch_info: Some(outcome),
         })
@@ -1149,6 +1174,78 @@ impl SandboxBackend for Wsl2Backend {
             stdout: run.stdout.into_bytes(),
             stderr: run.stderr.into_bytes(),
             timed_out: run.timed_out,
+        })
+    }
+
+    async fn open_long_lived_session(
+        &self,
+        state: &CodeSandboxState,
+        flavor: &str,
+    ) -> Result<Option<super::vm_long_lived::LongLivedSession>, AppError> {
+        // Ensure the per-flavor distro is provisioned + the agent is up
+        // (cold-start path identical to one-shot `run`). MUST fetch the
+        // `.tar.zst` packaging, not the squashfs: `wsl --import` only accepts
+        // a tarball, and `ensure_distro` passes this straight to it. Using the
+        // squashfs-defaulting `ensure_fetched` here (as this previously did)
+        // made every long-lived/MCP sandbox spawn fail with
+        // `bsdtar: Unrecognized archive format`, while the one-shot `run`
+        // path — which already used `TarZst` — worked.
+        let cache = cache_dir(state);
+        let tarball =
+            runtime_fetch::ensure_fetched_format(&cache, flavor, RootfsFormat::TarZst, |_| {})
+                .await
+                .map_err(|e| AppError::internal_error(format!("rootfs fetch failed: {e}")))?
+                .installed_path;
+        let h = self.ensure_distro(state, flavor, &tarball).await?;
+
+        // Hold an inflight count for the session's lifetime so the
+        // distro reaper waits for live MCP sessions to drain before
+        // evicting (same gate the one-shot exec path uses).
+        h.inflight.fetch_add(1, Ordering::SeqCst);
+        let guard = InflightGuard(h.clone());
+        *h.last_used.lock().await = Instant::now();
+
+        let vm_id = self.vm_id()?;
+        let stream = hvsocket::connect(vm_id, h.vsock_port).await?;
+
+        let session = super::vm_long_lived::open_long_lived_with_guard(
+            stream,
+            Some(Box::new(guard)),
+        );
+        Ok(Some(session))
+    }
+
+    /// WSL2: the long-lived MCP bwrap argv binds `/workspace/mcp/<server_id>`
+    /// as `/home/sandboxuser`, but there's no virtio-fs to surface the host
+    /// workspace there. Create that dir in the distro and rsync the host
+    /// workspace into it (mirrors `sync_workspace_in` for the one-shot path).
+    /// Without this, bwrap fails with "Can't find source path
+    /// /workspace/mcp/<id>" and the MCP child never starts.
+    async fn prepare_mcp_vm_workspace(
+        &self,
+        state: &CodeSandboxState,
+        flavor: &str,
+        server_id: uuid::Uuid,
+    ) -> Result<(), AppError> {
+        let distro = Self::distro_name(flavor);
+        let host_workspace = state
+            .workspace_root
+            .join("mcp")
+            .join(server_id.to_string());
+        let _ = std::fs::create_dir_all(&host_workspace);
+        let host_mnt = win_to_wsl_path(&host_workspace);
+        // Bind path is `/workspace/mcp/<server_id>` (see
+        // mcp_spawn::build_guest_mcp_argv). chmod 1777 so the sandboxed
+        // uid 1001 can write into its own /home/sandboxuser (rsync -a would
+        // otherwise carry the host dir's perms).
+        let dest = format!("/workspace/mcp/{server_id}");
+        let script = format!(
+            "mkdir -p '{dest}' && rsync -a --delete '{src}/' '{dest}/' && chmod 1777 '{dest}'",
+            dest = dest,
+            src = host_mnt,
+        );
+        run_in_distro(&distro, &script).await.map_err(|e| {
+            AppError::internal_error(format!("mcp vm workspace sync-in failed: {e}"))
         })
     }
 }

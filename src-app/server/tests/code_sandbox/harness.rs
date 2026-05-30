@@ -408,6 +408,7 @@ pub async fn enabled_test_server() -> Option<TestServer> {
                 sandbox_cgroup_parent: String::new(),
                 extra_env: Vec::new(),
                 sandbox_cache_tempdir: None,
+                use_desktop_binary: false,
             })
             .await,
         );
@@ -434,6 +435,7 @@ pub async fn enabled_test_server() -> Option<TestServer> {
                 sandbox_cgroup_parent: String::new(),
                 extra_env: env,
                 sandbox_cache_tempdir: Some(std::sync::Arc::new(cache)),
+                use_desktop_binary: false,
             })
             .await,
         );

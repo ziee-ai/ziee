@@ -550,4 +550,64 @@ test.describe('MCP - Admin System Servers', () => {
     const numeric = parseInt(finalVal || '0', 10)
     expect(numeric).toBeGreaterThanOrEqual(1)
   })
+
+  // -------------------------------------------------------------------
+  // Run-in-sandbox toggle (Tier 7)
+  //
+  // The toggle is gated to admin + stdio (create-system | edit-system).
+  // We verify:
+  //   - It IS visible when transport=stdio in the create-system drawer
+  //   - It is NOT visible when transport=http in the same drawer
+  //   - It persists through create + edit-system round-trip
+  // -------------------------------------------------------------------
+  test('run-in-sandbox toggle is visible only for stdio in create-system mode', async ({ page }) => {
+    await openAddServerDrawer(page, true)
+    // Default transport is stdio → toggle should be visible.
+    const stdioToggle = page.getByLabel('Run in sandbox')
+    await expect(stdioToggle).toBeVisible()
+
+    // Switch to HTTP → toggle should hide.
+    await page.getByLabel('Transport Type').click({ force: true })
+    await page.click('.ant-select-item-option:has-text("HTTP")')
+    await expect(stdioToggle).not.toBeVisible()
+
+    // Back to stdio → re-appears.
+    await page.getByLabel('Transport Type').click({ force: true })
+    await page.click('.ant-select-item-option:has-text("stdio")')
+    await expect(stdioToggle).toBeVisible()
+  })
+
+  test('run-in-sandbox persists through create + edit', async ({ page }) => {
+    const name = `test-sandbox-${Date.now()}`
+    const displayName = `Test Sandbox ${Date.now()}`
+
+    // CREATE with sandbox on.
+    await openAddServerDrawer(page, true)
+    await page.getByLabel('Name', { exact: true }).fill(name)
+    await page.getByLabel('Display Name').fill(displayName)
+    await page.getByLabel('Command').fill('python3')
+    // Toggle on.
+    const toggle = page.getByLabel('Run in sandbox')
+    await expect(toggle).toBeVisible()
+    const checkedBefore = await toggle.evaluate(el => el.classList.contains('ant-switch-checked'))
+    if (!checkedBefore) await toggle.click()
+
+    await submitMcpServerForm(page, 'create', true)
+    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
+    await verifyServerExists(page, displayName)
+
+    // EDIT — toggle should be hydrated to checked.
+    await clickEditServerButton(page, displayName, true)
+    const editToggle = page.getByLabel('Run in sandbox')
+    await expect(editToggle).toBeVisible()
+    const checkedNow = await editToggle.evaluate(el => el.classList.contains('ant-switch-checked'))
+    expect(checkedNow).toBe(true)
+  })
+
+  test('run-in-sandbox help text mentions filesystem isolation', async ({ page }) => {
+    await openAddServerDrawer(page, true)
+    // The help text is rendered under the Switch.
+    await expect(page.getByText(/isolated workspace/i)).toBeVisible()
+    await expect(page.getByText(/filesystem-oriented/i)).toBeVisible()
+  })
 })

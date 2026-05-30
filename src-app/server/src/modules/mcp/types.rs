@@ -36,6 +36,10 @@ pub struct CreateMcpServerRequest {
     pub supports_sampling: Option<bool>,
     pub usage_mode: Option<UsageMode>,
     pub max_concurrent_sessions: Option<i32>,
+
+    /// Admin/system stdio servers only: launch inside the
+    /// code_sandbox bwrap isolation. See `McpServer::run_in_sandbox`.
+    pub run_in_sandbox: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -61,6 +65,10 @@ pub struct UpdateMcpServerRequest {
     pub supports_sampling: Option<bool>,
     pub usage_mode: Option<UsageMode>,
     pub max_concurrent_sessions: Option<i32>,
+
+    /// Admin/system stdio servers only: launch inside the
+    /// code_sandbox bwrap isolation. See `McpServer::run_in_sandbox`.
+    pub run_in_sandbox: Option<bool>,
 }
 
 // =====================================================

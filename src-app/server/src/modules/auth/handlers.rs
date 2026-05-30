@@ -1765,3 +1765,11 @@ async fn run_test_for_row(
         },
     }
 }
+
+// NOTE: `get_auth_config`, `login_password_only`, and `change_password`
+// all live in the desktop tauri crate (`desktop/tauri/src/modules/
+// tunnel_auth/`) now — they're all part of the Remote Access feature
+// which depends on the desktop-only `remote_access_settings` table
+// and the `users.password_changed_at` column added by a desktop
+// migration. Keeping them in this crate would orphan unreachable
+// routes in server-only deployments.

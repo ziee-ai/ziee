@@ -51,6 +51,11 @@ const HIDDEN_ITEMS = new Set([
   'user-llm-providers',
 ])
 
+// Re-export so the Remote Access desktop module (and any future
+// desktop-only module) can verify against the filter set during
+// tests without depending on the page component.
+export { HIDDEN_ITEMS as DESKTOP_HIDDEN_SETTING_IDS }
+
 export default function SettingsPage() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -164,12 +169,16 @@ export default function SettingsPage() {
           {useMobileLayout && (
             <div className="flex flex-1 items-center px-2">
               <Dropdown
-                overlayStyle={{
-                  border: '1px solid ' + token.colorBorderSecondary,
+                styles={{
+                  root: {
+                    border: '1px solid ' + token.colorBorderSecondary,
+                  },
                 }}
-                overlayClassName={`
+                classNames={{
+                  root: `
                   rounded-md
-                  `}
+                  `,
+                }}
                 menu={{
                   items: menuItems.map((item: any) => {
                     if ('type' in item && item.type === 'divider') {

@@ -2,6 +2,10 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { App } from '@ziee/ui-core'
 import { loadDesktopModules } from '@ziee/desktop/modules/desktop-loader'
+// Use the explicit `@ziee/desktop/*` alias — `@/*` resolves against
+// core UI per tsconfig `paths`, so a desktop-only file isn't reachable
+// via `@/core/...` at typecheck time even though Vite's
+// localOverridePlugin handles it at runtime.
 import { installDecorumTitlebarFix } from '@ziee/desktop/core/decorum-titlebar-fix'
 import '@/index.css'
 

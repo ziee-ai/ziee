@@ -11,7 +11,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 // Re-export types for desktop/external use
-pub use core::config::{Config, JwtConfig};
+pub use core::config::{Config, CorsConfig, JwtConfig};
 pub use core::{Repos, EventBus, EventHandler, AppEvent};
 // Re-exported so integration tests (which construct repositories directly
 // against the test DB pool) can initialise the same at-rest storage_key
@@ -22,16 +22,38 @@ pub use core::{Repos, EventBus, EventHandler, AppEvent};
 pub use core::secrets::{init_storage_key, storage_key};
 pub use module_api::ModuleContext as ServerContext;
 pub use modules::auth::{JwtService, AuthResponse, hash_password};
+pub use modules::auth::jwt_extractor::JwtAuth;
+pub use modules::auth::refresh_tokens;
 pub use modules::user::models::User;
 pub use modules::llm_provider::events::LlmProviderEvent;
 pub use modules::llm_provider::UserKeyRepository;
 pub use modules::chat::core::ai_provider::resolve_api_key_for_user;
-pub use common::AppError;
+pub use common::{ApiResult, AppError};
+// Re-export the at-rest secret helpers so out-of-crate consumers
+// (notably the desktop tauri crate's remote_access module) can
+// encrypt/decrypt rows without re-implementing pgcrypto plumbing.
+pub use common::secret::{decrypt_secret, encrypt_secret, resolve_optional_secret, SecretView};
+// Re-export password helpers so the desktop crate's remote_access
+// module can validate + hash passwords without reaching into private
+// auth internals.
+pub mod password {
+    pub use crate::modules::auth::password::{
+        hash_password, validate_password_strength, verify_password,
+    };
+}
+// Re-export the permissions surface so desktop modules can gate
+// their HTTP handlers with `RequirePermissions<(...)>` and define
+// their own `PermissionCheck` permission types.
+pub mod permissions {
+    pub use crate::modules::permissions::{RequirePermissions, with_permission};
+    pub use crate::modules::permissions::types::{PermissionCheck, PermissionList};
+}
 // Re-export async_trait for consistent EventHandler implementations
 pub use async_trait::async_trait;
 
 // Re-export MCP client types for integration tests
 pub use modules::mcp::client::http::HttpMcpClient;
+pub use modules::mcp::client::stdio::StdioMcpClient;
 pub use modules::mcp::client::auth::{
     OAuthClientConfig, StoredToken, refresh_token as oauth_refresh_token,
 };
@@ -108,9 +130,12 @@ pub use aide::axum::routing::{get_with, post_with, put_with, delete_with};
 pub use aide::transform::TransformOperation;
 
 // Re-export app_builder functions for desktop OpenAPI generation
-pub use core::app_builder::{create_modules, build_api_router, initialize_modules};
+// and for desktop crates that need to re-apply CORS / security-header
+// layers to their own merged-in routes (axum's `.merge()` does NOT
+// propagate parent layers onto merged routes).
+pub use core::app_builder::{create_cors_layer, create_modules, build_api_router, initialize_modules};
 pub use core::database::initialize_database;
-pub use core::init_repositories;
+pub use core::{init_repositories, is_repos_initialized};
 pub use module_api::AppModule;
 
 /// Server setup result containing components needed for customization
@@ -388,6 +413,16 @@ where
 /// Find an available port in the given range
 pub fn find_available_port(start: u16, end: u16) -> Option<u16> {
     (start..=end).find(|&port| std::net::TcpListener::bind(("127.0.0.1", port)).is_ok())
+}
+
+/// (Windows) True iff the LocalSystem code-sandbox helper service is reachable
+/// (answers a `Ping`). Exposed so the integration-test harness — and, later,
+/// desktop onboarding — can decide whether to trigger an elevated install
+/// before the sandbox is exercised. See
+/// `modules::code_sandbox::backend::helper_service`.
+#[cfg(windows)]
+pub fn sandbox_helper_is_running() -> bool {
+    modules::code_sandbox::backend::helper_service::client::is_running()
 }
 
 /// Cleanup server resources
