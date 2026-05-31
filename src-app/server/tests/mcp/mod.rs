@@ -1218,6 +1218,7 @@ mod conformance_cancellation_test; // Plan-3 Phase-2 (C3): client notifications/
 mod elicitation_route_test;       // HTTP route tests for /mcp/elicitation/{id}/respond
 mod rate_limit_test;              // Global rate-limiter on/off regression (governor toggle)
 mod test_connection_test;         // Connection-test endpoints (user + system test-connection)
+mod http_headers_test;            // Custom-header transmission + trim/validation (create/update/test)
 
 // ============================================================================
 // Sampling Field CRUD Tests

@@ -56,6 +56,10 @@ pub(crate) fn validate(req: &TestMcpConnectionRequest) -> Result<(), AppError> {
         }
         TransportType::Sse => {}
     }
+    // Reject interior-invalid header values up front (trailing whitespace is
+    // trimmed, not rejected) so a bad Authorization token surfaces as a clear
+    // 400 here instead of being silently dropped when we probe the server.
+    super::super::normalize_and_validate_headers(&req.headers)?;
     Ok(())
 }
 
@@ -89,11 +93,14 @@ pub(crate) fn build_ephemeral_server(
             .map(|e| serde_json::json!(e))
             .unwrap_or_else(|| serde_json::json!({})),
         url: req.url.clone(),
-        headers: req
-            .headers
-            .as_ref()
-            .map(|h| serde_json::json!(h))
-            .unwrap_or_else(|| serde_json::json!({})),
+        // Store the trimmed/validated header map so the in-memory probe mirrors
+        // exactly what would be persisted. `validate()` runs before this in the
+        // handlers, so normalization can't error here; `unwrap_or_default()` is a
+        // safe fallback that also keeps the unit test (which calls this directly)
+        // honest.
+        headers: serde_json::json!(
+            super::super::normalize_and_validate_headers(&req.headers).unwrap_or_default()
+        ),
         timeout_seconds: req.timeout_seconds.unwrap_or(30),
         supports_sampling: false,
         usage_mode: UsageMode::Auto,
