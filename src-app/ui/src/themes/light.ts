@@ -1,15 +1,17 @@
-import { theme, ThemeConfig } from 'antd'
+import { ThemeConfig } from 'antd'
 import tinycolor from 'tinycolor2'
+import {
+  ComponentOverrides,
+  LightAlgorithm,
+  TokenOverrides,
+} from '@/themes/override.ts'
 
 const BaseBackgroundColor = tinycolor('#f0f2f5').lighten(2.5).toString() // Light background color for the light theme
 
 const baseTheme = {
-  algorithm: [theme.defaultAlgorithm, theme.compactAlgorithm],
+  algorithm: LightAlgorithm,
   token: {
-    fontSize: 16,
-    fontSizeIcon: 16,
-    borderRadius: 6,
-    padding: 6,
+    ...TokenOverrides,
     colorBgLayout: BaseBackgroundColor,
     colorBgContainer: '#ffffff', // Light background for layout
     colorBgBase: BaseBackgroundColor, // Base background color for components
@@ -37,7 +39,9 @@ const baseTheme = {
     colorTextPlaceholder: '#737373', // Improves contrast to ~4.62:1
   },
   components: {
+    ...ComponentOverrides,
     Button: {
+      ...ComponentOverrides.Button,
       // Fix color contrast for primary button (WCAG AA requires 4.5:1)
       // Changed from #1677ff to darker blue for better contrast with white text
       colorPrimary: '#0958d9', // Darker blue improves contrast from 4.1 to 5.2

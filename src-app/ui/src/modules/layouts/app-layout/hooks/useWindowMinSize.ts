@@ -1,6 +1,20 @@
-import { useEffect, useState } from 'react'
+import { type RefObject, useEffect, useRef, useState } from 'react'
 import { useWindowSize } from 'react-use'
 import { useAppLayoutStore } from '@/modules/layouts/app-layout/AppLayout.store'
+
+// Note: `useEffect` and `useState` are still imported because
+// `useMainContentMinSize` below uses them. `useRef` is used by
+// the hysteresis tracker in `useWindowMinSize`.
+
+/**
+ * Hysteresis buffer (px) for breakpoint flips. Once a breakpoint
+ * has crossed in one direction, the viewport must move BEYOND
+ * that breakpoint by this much in the opposite direction before
+ * it flips back. Without it, slow window drags right at the
+ * threshold cause the sidebar's mode to flip-flop many times,
+ * which reads as the panel "appearing and disappearing".
+ */
+const HYSTERESIS_PX = 24
 
 export type Breakpoint =
   | 'xxs'
@@ -57,7 +71,111 @@ const calculateMinSize = (width: number): MinSize => ({
 
 export const useWindowMinSize = (): MinSize => {
   const { width } = useWindowSize()
-  return calculateMinSize(width)
+  const prevRef = useRef<MinSize | null>(null)
+
+  const next = calculateMinSize(width)
+
+  // First call: no previous state, return the raw breakpoints.
+  if (!prevRef.current) {
+    prevRef.current = next
+    return next
+  }
+
+  // Apply hysteresis per breakpoint. A boolean flips only when
+  // width has moved PAST the threshold by HYSTERESIS_PX in the
+  // opposite direction from the current state.
+  //
+  //   - Was true (width was ≤ bp), stays true while width ≤ bp + HYSTERESIS_PX
+  //   - Was false (width was > bp), stays false while width > bp - HYSTERESIS_PX
+  //
+  // Anywhere in the buffer band [bp - HYSTERESIS_PX, bp + HYSTERESIS_PX]
+  // the previous value sticks.
+  const prev = prevRef.current
+  const resolved: MinSize = { ...next }
+  ;(Object.keys(breakpointValues) as Breakpoint[]).forEach(bp => {
+    const threshold = breakpointValues[bp]
+    if (prev[bp]) {
+      // Was "at or below" → only release when width > threshold + buffer
+      resolved[bp] = width <= threshold + HYSTERESIS_PX
+    } else {
+      // Was "above" → only engage when width <= threshold
+      // (no buffer needed to enter, only to exit — entering at the
+      // raw threshold matches user intuition: "I crossed 480, mobile
+      // mode should engage").
+      resolved[bp] = width <= threshold
+    }
+  })
+
+  prevRef.current = resolved
+  return resolved
+}
+
+// Apply the same per-breakpoint hysteresis used by useWindowMinSize.
+// Takes the raw width-derived booleans `next` and the previously
+// committed booleans `prev`, returns the booleans that should
+// actually be exposed (sticky in the buffer band).
+function applyHysteresis(
+  width: number,
+  next: MinSize,
+  prev: MinSize | null,
+): MinSize {
+  if (!prev) return next
+  const resolved: MinSize = { ...next }
+  ;(Object.keys(breakpointValues) as Breakpoint[]).forEach(bp => {
+    const threshold = breakpointValues[bp]
+    resolved[bp] = prev[bp]
+      ? width <= threshold + HYSTERESIS_PX
+      : width <= threshold
+  })
+  return resolved
+}
+
+/**
+ * Observe a specific element's width and return MinSize booleans
+ * derived from it. Use when a page wants to lay itself out based
+ * on ITS OWN container width — not the viewport, not the AppLayout
+ * main-content. Pass a ref to the element to observe.
+ *
+ * Applies the same hysteresis as `useWindowMinSize` so dragging
+ * the surrounding container across a threshold doesn't flip-flop
+ * the booleans.
+ */
+export const useElementMinSize = (
+  ref: RefObject<HTMLElement | null>,
+): MinSize => {
+  const [minSize, setMinSize] = useState<MinSize>(() => calculateMinSize(0))
+  const prevRef = useRef<MinSize | null>(null)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+
+    const apply = (width: number) => {
+      const resolved = applyHysteresis(
+        width,
+        calculateMinSize(width),
+        prevRef.current,
+      )
+      prevRef.current = resolved
+      setMinSize(prev => {
+        const isEqual = (Object.keys(resolved) as Breakpoint[]).every(
+          k => prev[k] === resolved[k],
+        )
+        return isEqual ? prev : resolved
+      })
+    }
+
+    // Seed with the current width before subscribing.
+    apply(el.getBoundingClientRect().width)
+
+    const ro = new ResizeObserver(entries => {
+      for (const entry of entries) apply(entry.contentRect.width)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [ref])
+
+  return minSize
 }
 
 export const useMainContentMinSize = (): MinSize => {
@@ -68,16 +186,13 @@ export const useMainContentMinSize = (): MinSize => {
 
   useEffect(() => {
     const updateMinSize = (state: any) => {
-      const newMinSize = calculateMinSize(state.mainContentWidth)
-
-      // Only update if the new minSize is different from the current one
-      setMinSize(prevMinSize => {
-        const isEqual = Object.keys(newMinSize).every(
-          key =>
-            prevMinSize[key as keyof MinSize] ===
-            newMinSize[key as keyof MinSize],
+      const width: number = state.mainContentWidth
+      setMinSize(prev => {
+        const resolved = applyHysteresis(width, calculateMinSize(width), prev)
+        const isEqual = (Object.keys(resolved) as Breakpoint[]).every(
+          k => prev[k] === resolved[k],
         )
-        return isEqual ? prevMinSize : newMinSize
+        return isEqual ? prev : resolved
       })
     }
 

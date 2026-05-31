@@ -160,6 +160,13 @@ pub struct McpServer {
     pub usage_mode: UsageMode,
     pub max_concurrent_sessions: Option<i32>,
 
+    /// Admin opt-in: launch the stdio subprocess inside the
+    /// code_sandbox bwrap isolation. Only honored when
+    /// `is_system && transport_type == Stdio` — the spawn path
+    /// ignores it otherwise; the UI hides the toggle for user-owned
+    /// or non-stdio servers. Defaults to false.
+    pub run_in_sandbox: bool,
+
     // Metadata
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

@@ -24,6 +24,11 @@
     /* Path mapping - resolves imports for type checking
        Vite uses its own resolution at build time */
     "baseUrl": ".",
+    /* TS 6 deprecates baseUrl (removed in TS 7). We still need it
+       because the path-mapping below uses paths relative to baseUrl;
+       silence the deprecation until we migrate to a baseUrl-free
+       path layout. */
+    "ignoreDeprecations": "6.0",
     "paths": {
       "@/api-client/types": ["./src/api-client/types.ts"],
       "@ziee/desktop": ["./src"],

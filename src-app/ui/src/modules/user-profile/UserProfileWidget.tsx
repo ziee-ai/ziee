@@ -38,7 +38,7 @@ function SidebarItem({
       </div>
       <span
         style={{
-          fontSize: 15,
+          fontSize: token.fontSize,
           opacity: collapsed ? 0 : 1,
           maxWidth: collapsed ? 0 : 200,
           overflow: 'hidden',

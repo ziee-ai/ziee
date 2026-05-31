@@ -88,14 +88,134 @@ pub fn rootfs_path() -> Option<PathBuf> {
     None
 }
 
-/// Returns the test rootfs squashfs FILE path (not a mount dir).
-/// Used by `run_in_sandbox()` on Mac/Windows where the backend
-/// passes the squashfs to libkrun/WSL2 as a virtio-blk disk; on
-/// Linux the backend ignores it (host bwrap reads the mount).
+/// The published rootfs repo + the release tag the tests pin to.
+/// Override the tag with `ZIEE_SANDBOX_TEST_TAG` to test a different
+/// release. Tests fetch the real GitHub-published, cosign-signed rootfs
+/// — there is no locally-built fixture anymore.
+pub const TEST_ROOTFS_REPO: &str = "ziee-ai/sandbox-rootfs";
+pub const TEST_ROOTFS_TAG: &str = "v0.0.3-alpha";
+
+pub fn test_rootfs_tag() -> String {
+    std::env::var("ZIEE_SANDBOX_TEST_TAG").unwrap_or_else(|_| TEST_ROOTFS_TAG.to_string())
+}
+
+/// Our arch token as it appears in the published asset names.
+pub fn test_arch_token() -> &'static str {
+    match std::env::consts::ARCH {
+        "x86_64" => "x86_64",
+        "aarch64" => "aarch64",
+        other => panic!("unsupported test arch {other:?} (need x86_64 or aarch64)"),
+    }
+}
+
+/// Shared, persistent cache dir under the repo root. Both the
+/// bwrap-direct (Tier 4) download and the server-fetched (Tier 6) cache
+/// live here so a single download serves the whole suite.
+pub fn test_cache_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("repo root")
+        .join(".ziee-cache")
+        .join("sandbox-rootfs")
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(bytes);
+    format!("{:x}", h.finalize())
+}
+
+/// Blocking HTTP GET, run on a fresh thread so `reqwest::blocking`
+/// never sees the ambient `#[tokio::test]` runtime (which would panic
+/// with "Cannot start a runtime from within a runtime").
+fn http_get_blocking(url: &str) -> Result<Vec<u8>, String> {
+    let url = url.to_string();
+    std::thread::spawn(move || -> Result<Vec<u8>, String> {
+        let client = reqwest::blocking::Client::builder()
+            .user_agent("ziee-sandbox-tests")
+            .timeout(std::time::Duration::from_secs(300))
+            .build()
+            .map_err(|e| format!("build client: {e}"))?;
+        let resp = client.get(&url).send().map_err(|e| format!("GET {url}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("GET {url}: HTTP {}", resp.status()));
+        }
+        resp.bytes()
+            .map(|b| b.to_vec())
+            .map_err(|e| format!("read body {url}: {e}"))
+    })
+    .join()
+    .map_err(|_| "download thread panicked".to_string())?
+}
+
+/// Download (once, cached) a published rootfs asset from the
+/// `ziee-ai/sandbox-rootfs` GitHub release for the pinned tag, verifying
+/// it against the published `.sha256` sidecar. Returns the cached file
+/// path. The cached file is reused on subsequent runs (sha-checked), so
+/// the 74 MB minimal squashfs is fetched at most once per machine/tag.
 ///
-/// Built by `scripts/build-test-rootfs.sh` (`just test-prereqs`).
-/// Panics with a clear message if missing — tests must not silently
-/// skip; the runner ensures the prereq is present.
+/// Panics with actionable guidance on network / verification failure —
+/// tests must not silently skip just because GitHub was unreachable.
+pub fn ensure_github_asset(flavor: &str, ext: &str) -> PathBuf {
+    let tag = test_rootfs_tag();
+    let arch = test_arch_token();
+    let asset = format!("ziee-sandbox-rootfs-{arch}-{flavor}.{ext}");
+    let cache = test_cache_dir();
+    std::fs::create_dir_all(&cache).expect("create test cache dir");
+    // Tag-prefixed so two pinned tags don't clobber each other.
+    let dest = cache.join(format!("{tag}-{asset}"));
+
+    let base = format!("https://github.com/{TEST_ROOTFS_REPO}/releases/download/{tag}");
+
+    // The `.sha256` sidecar is `sha256sum` format: `<hex>␠␠<path>`.
+    let sidecar = http_get_blocking(&format!("{base}/{asset}.sha256")).unwrap_or_else(|e| {
+        panic!(
+            "could not fetch sha256 sidecar for {asset} from {TEST_ROOTFS_REPO}@{tag}: {e}\n  \
+             (the integration tests download the real published rootfs; ensure network access \
+             and that the tag exists, or set ZIEE_SANDBOX_TEST_TAG / ZIEE_SANDBOX_TEST_SQUASHFS)"
+        )
+    });
+    let expected_sha = String::from_utf8_lossy(&sidecar)
+        .split_whitespace()
+        .next()
+        .unwrap_or_default()
+        .to_lowercase();
+    assert_eq!(expected_sha.len(), 64, "malformed sha256 sidecar for {asset}");
+
+    // Cache hit?
+    if dest.is_file() {
+        if let Ok(bytes) = std::fs::read(&dest) {
+            if sha256_hex(&bytes) == expected_sha {
+                return dest;
+            }
+        }
+    }
+
+    // Download + verify + atomic-rename into place.
+    let bytes = http_get_blocking(&format!("{base}/{asset}"))
+        .unwrap_or_else(|e| panic!("download {asset} from {TEST_ROOTFS_REPO}@{tag}: {e}"));
+    let actual = sha256_hex(&bytes);
+    assert_eq!(
+        actual, expected_sha,
+        "sha256 mismatch for {asset} (expected {expected_sha}, got {actual})"
+    );
+    let tmp = dest.with_extension("download.tmp");
+    std::fs::write(&tmp, &bytes).expect("write downloaded asset");
+    std::fs::rename(&tmp, &dest).expect("rename downloaded asset into cache");
+    dest
+}
+
+/// Returns the test rootfs squashfs FILE path (not a mount dir).
+/// Used by `run_in_sandbox()` on Mac/Windows where the backend passes
+/// the squashfs to libkrun/WSL2 as a virtio-blk disk; on Linux the
+/// backend mounts it via squashfuse.
+///
+/// Fetches the real published `minimal` squashfs from the
+/// `ziee-ai/sandbox-rootfs` GitHub release (cached). Override the file
+/// with `ZIEE_SANDBOX_TEST_SQUASHFS` or the flavor with
+/// `ZIEE_SANDBOX_FLAVOR`.
 pub fn rootfs_squashfs_path() -> PathBuf {
     if let Ok(p) = std::env::var("ZIEE_SANDBOX_TEST_SQUASHFS") {
         let pb = PathBuf::from(p);
@@ -103,23 +223,8 @@ pub fn rootfs_squashfs_path() -> PathBuf {
             return pb;
         }
     }
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let candidate = manifest_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .expect("repo root")
-        .join(".ziee-cache")
-        .join("sandbox-rootfs")
-        .join("test-minimal.squashfs");
-    if !candidate.is_file() {
-        panic!(
-            "test rootfs squashfs missing at {}.\n  \
-             Build it with: just test-prereqs\n  \
-             Or directly: scripts/build-test-rootfs.sh",
-            candidate.display()
-        );
-    }
-    candidate
+    let flavor = std::env::var("ZIEE_SANDBOX_FLAVOR").unwrap_or_else(|_| "minimal".to_string());
+    ensure_github_asset(&flavor, "squashfs")
 }
 
 /// `true` when bwrap is on PATH and runnable. Linux-only check;
@@ -141,17 +246,75 @@ pub fn bwrap_available() -> bool {
 ///   - `/workspace/<file>` (the agent mounts the virtio-fs share there)
 ///   - `/proc`, `/dev`, `/tmp` (Linux primitives; exist inside the VM)
 ///
-/// On Linux the active backend translates `/sandbox-rootfs` to the
-/// mounted FUSE path. On Mac/Windows the in-VM agent has the rootfs
-/// at `/sandbox-rootfs` already.
+/// On Linux the harness squashfuse-mounts the downloaded rootfs and
+/// rewrites the `/sandbox-rootfs` argv prefix to that mount point
+/// (the Linux `exec_raw_argv` runs the argv verbatim). On Mac/Windows
+/// the in-VM agent has the rootfs at `/sandbox-rootfs` already, so the
+/// argv is passed through unchanged with the squashfs file handed to
+/// the VM backend.
 pub async fn run_in_sandbox(
     argv: Vec<String>,
     timeout: std::time::Duration,
 ) -> Result<ziee::RawExecResult, ziee::AppError> {
-    let rootfs = rootfs_squashfs_path();
-    ziee::sandbox_backend()
-        .exec_raw_argv(argv, &rootfs, timeout)
-        .await
+    #[cfg(target_os = "linux")]
+    {
+        let mount = ensure_test_rootfs_mounted();
+        let mount_str = mount.to_string_lossy().into_owned();
+        // The tier-4 argv references the rootfs as `/sandbox-rootfs`
+        // (the canonical in-sandbox path). On the host that path
+        // doesn't exist, so rewrite any argv element whose prefix is
+        // `/sandbox-rootfs` to the actual squashfuse mount dir.
+        let argv: Vec<String> = argv
+            .into_iter()
+            .map(|a| match a.strip_prefix("/sandbox-rootfs") {
+                Some(rest) => format!("{mount_str}{rest}"),
+                None => a,
+            })
+            .collect();
+        return ziee::sandbox_backend()
+            .exec_raw_argv(argv, &mount, timeout)
+            .await;
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let rootfs = rootfs_squashfs_path();
+        ziee::sandbox_backend()
+            .exec_raw_argv(argv, &rootfs, timeout)
+            .await
+    }
+}
+
+/// Linux: squashfuse-mount the downloaded rootfs squashfs to a shared,
+/// persistent dir and return the mount point. Idempotent — reuses an
+/// existing mount (detected by a visible `usr/`). `run_in_sandbox`
+/// rewrites the tier-4 `/sandbox-rootfs` argv prefix to this path.
+#[cfg(target_os = "linux")]
+pub fn ensure_test_rootfs_mounted() -> PathBuf {
+    let sqfs = rootfs_squashfs_path();
+    // Tag-specific mount point so a tag bump doesn't reuse a stale
+    // mount of the previous release's squashfs.
+    let mount = test_cache_dir().join(format!("test-mount-{}", test_rootfs_tag()));
+    std::fs::create_dir_all(&mount).expect("create test mount dir");
+    if mount.join("usr").is_dir() {
+        return mount; // already mounted
+    }
+    let status = Command::new("squashfuse")
+        .arg(&sqfs)
+        .arg(&mount)
+        .status()
+        .expect("spawn squashfuse (apt install squashfuse fuse3)");
+    assert!(
+        status.success(),
+        "squashfuse mount of {} at {} failed",
+        sqfs.display(),
+        mount.display()
+    );
+    assert!(
+        mount.join("usr").is_dir(),
+        "rootfs mounted at {} but no usr/ inside — wrong squashfs?",
+        mount.display()
+    );
+    mount
 }
 
 /// Runtime skip helper for tests that need the FULL flavor (numpy /
@@ -290,127 +453,70 @@ pub fn test_server_jwt(user_id: Uuid) -> String {
     .expect("sign test-server jwt")
 }
 
-/// Stage the test squashfs as a "minimal" flavor in a fresh cache dir
-/// + write a matching `known_revisions.dev.toml`. Returns the cache
-/// TempDir (held by caller so it outlives the TestServer) and the env
-/// vars to pass to TestServer. Mac/Windows path — bypasses the
-/// `runtime_fetch` network path via cache-hit + sha256 short-circuit.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-pub fn stage_test_rootfs_for_e2e() -> Option<(tempfile::TempDir, Vec<(String, String)>)> {
-    let source = rootfs_squashfs_path();
-    let cache = tempfile::tempdir().ok()?;
-    let arch = std::env::consts::ARCH;
-    let asset = format!("ziee-sandbox-rootfs-v1.r0-{arch}-minimal.squashfs");
-    std::fs::copy(&source, cache.path().join(&asset)).ok()?;
-    let sha256 = {
-        use sha2::{Digest, Sha256};
-        use std::io::Read;
-        let mut f = std::fs::File::open(&source).ok()?;
-        let mut h = Sha256::new();
-        let mut buf = vec![0u8; 64 * 1024];
-        loop {
-            let n = f.read(&mut buf).ok()?;
-            if n == 0 { break; }
-            h.update(&buf[..n]);
-        }
-        format!("{:x}", h.finalize())
-    };
-    let dev_toml = format!(
-        r#"
-[[revision]]
-schema = 1
-revision = "r0"
-arch = "{arch}"
-flavor = "minimal"
-sha256 = "{sha256}"
-signed = false
-yanked = false
-"#
-    );
-    let dev_toml_path = cache.path().join("known_revisions.dev.toml");
-    std::fs::write(&dev_toml_path, dev_toml).ok()?;
-    let env = vec![
-        (
-            "CODE_SANDBOX_KNOWN_REVISIONS_OVERRIDE".to_string(),
-            dev_toml_path.to_string_lossy().into_owned(),
-        ),
-    ];
-    Some((cache, env))
-}
-
-/// Boot a TestServer with code_sandbox enabled. Cross-platform:
-///   - Linux: requires bwrap + a host-mounted rootfs (existing path).
-///   - Mac/Windows: stages the test squashfs into a TempDir cache +
-///     writes `known_revisions.dev.toml` so `runtime_fetch` hits the
-///     cache without going to the network; the active backend
-///     (libkrun on Mac, WSL2 on Windows) then dispatches bwrap
-///     inside the VM/distro.
-/// Returns None only when the test rootfs isn't built — caller
-/// should panic with `just test-prereqs` guidance (we no longer skip
-/// silently).
+/// Boot a TestServer with code_sandbox enabled, letting the server
+/// fetch the pinned rootfs from the `ziee-ai/sandbox-rootfs` GitHub
+/// release on its first `execute_command` — the real production path
+/// (GitHub Releases discovery → download → sha256 + cosign verify →
+/// squashfuse/VM mount). No local fixture, no fake `known_revisions`
+/// staging.
+///
+/// Speed: all Tier-6 servers share ONE persistent cache dir
+/// (`.ziee-cache/sandbox-rootfs/e2e`). The FIRST test in a run does the
+/// real download + cosign verify; every later test (fresh DB) finds the
+/// cached squashfs and `install_version`'s on-disk adoption mounts it
+/// without re-downloading the 74 MB asset.
+///
+/// Returns `None` (skips cleanly) only when the host genuinely can't
+/// run the sandbox — on Linux, when bwrap isn't installed. On
+/// macOS/Windows the bwrap runs inside the libkrun/WSL2 guest, so the
+/// host bwrap check doesn't apply.
 ///
 /// Use at the top of every Tier-6 test:
 /// ```ignore
 /// let Some(server) = enabled_test_server().await else { return };
 /// ```
 pub async fn enabled_test_server() -> Option<TestServer> {
+    Some(TestServer::start_with_options(github_fetch_server_options(Vec::new())?).await)
+}
+
+/// Build the sandbox-enabled `TestServerOptions` that let the server
+/// fetch the pinned rootfs from the GitHub release (shared e2e cache).
+/// Callers append their own `extra_env` (API keys, sentinels). Returns
+/// `None` to skip when the host can't run the sandbox (Linux w/o bwrap).
+///
+/// `runtime_mount::derive_cache_dir` takes `.parent()` of `rootfs_path`,
+/// so `<e2e>/current` makes the derived cache dir `<e2e>` — where the
+/// server downloads (and later adopts via `install_version`)
+/// `<version>/ziee-sandbox-rootfs-<arch>-<flavor>.<ext>`.
+pub fn github_fetch_server_options(
+    mut extra_env: Vec<(String, String)>,
+) -> Option<TestServerOptions> {
     #[cfg(target_os = "linux")]
-    {
-        if !bwrap_available() {
-            eprintln!("test skipped: bwrap not installed");
-            return None;
-        }
-        let Some(rootfs) = rootfs_path() else {
-            eprintln!(
-                "test skipped: no rootfs mounted. Run `just sandbox-build && \
-                 just sandbox-mount` first."
-            );
-            return None;
-        };
-        return Some(
-            TestServer::start_with_options(TestServerOptions {
-                sandbox_enabled: true,
-                rate_limit: None,
-                sandbox_rootfs: Some(rootfs),
-                sandbox_cgroup_parent: String::new(),
-                extra_env: Vec::new(),
-                sandbox_cache_tempdir: None,
-            })
-            .await,
-        );
+    if !bwrap_available() {
+        eprintln!("test skipped: bwrap not installed (apt install bubblewrap)");
+        return None;
     }
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    {
-        // Stage the test squashfs as the "minimal" flavor in a fresh
-        // cache + write a matching known_revisions.toml. The cache
-        // TempDir must outlive TestServer — we pass it in via the
-        // sandbox_cache_tempdir field on TestServerOptions, and
-        // TestServer holds it through the test lifetime.
-        //
-        // `runtime_mount::derive_cache_dir` does `.parent()` on
-        // `rootfs_path` (it expects `<cache>/current`-shape), so we
-        // hand it `<tempdir>/current` and stage the squashfs in
-        // `<tempdir>` so the derived cache dir resolves correctly.
-        let (cache, env) = stage_test_rootfs_for_e2e()
-            .expect("stage test rootfs (run `just test-prereqs`)");
-        let rootfs_path = cache.path().join("current");
-        return Some(
-            TestServer::start_with_options(TestServerOptions {
-                sandbox_enabled: true,
-                rate_limit: None,
-                sandbox_rootfs: Some(rootfs_path),
-                sandbox_cgroup_parent: String::new(),
-                extra_env: env,
-                sandbox_cache_tempdir: Some(std::sync::Arc::new(cache)),
-            })
-            .await,
-        );
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    {
-        eprintln!("test skipped: unsupported platform");
-        None
-    }
+
+    let e2e_cache = test_cache_dir().join("e2e");
+    std::fs::create_dir_all(&e2e_cache).ok()?;
+    let rootfs_path = e2e_cache.join("current");
+
+    // Pin discovery to the tested tag so the suite doesn't drift onto a
+    // newer release the moment one is published.
+    extra_env.push((
+        "CODE_SANDBOX_PIN_VERSION".to_string(),
+        test_rootfs_tag().trim_start_matches('v').to_string(),
+    ));
+
+    Some(TestServerOptions {
+        sandbox_enabled: true,
+        rate_limit: None,
+        sandbox_rootfs: Some(rootfs_path),
+        sandbox_cgroup_parent: String::new(),
+        extra_env,
+        sandbox_cache_tempdir: None,
+        use_desktop_binary: false,
+    })
 }
 
 /// Conversation owned by a specific user. Inserts the row directly

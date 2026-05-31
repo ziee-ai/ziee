@@ -67,6 +67,20 @@ where
                 }
                 Ok(Some(Frame::Exec(_))) => {} // not expected from the guest
                 Ok(Some(Frame::Shutdown)) => {} // host-only frame; ignore if echoed
+                // Long-lived frames don't belong on a one-shot Exec
+                // connection; the guest only emits them when the host
+                // sent StartProcess first. Ignore defensively.
+                Ok(Some(
+                    Frame::StartProcess(_)
+                    | Frame::Started(_)
+                    | Frame::Stdin { .. }
+                    | Frame::ProcessStdout { .. }
+                    | Frame::ProcessStderr { .. }
+                    | Frame::ProcessExit(_)
+                    | Frame::KillProcess(_)
+                    | Frame::Ping
+                    | Frame::Pong,
+                )) => {}
                 Ok(None) => break,
                 Err(e) => return Err(AppError::internal_error(format!("guest protocol error: {e}"))),
             }

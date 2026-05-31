@@ -196,10 +196,18 @@ fn require_cmd(name: &str, hint: &str) -> Result<(), Box<dyn std::error::Error>>
 }
 
 fn make_executable(p: &Path) -> std::io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    let mut perms = fs::metadata(p)?.permissions();
-    perms.set_mode(0o755);
-    fs::set_permissions(p, perms)
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(p)?.permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(p, perms)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = p;
+        Ok(())
+    }
 }
 
 /// Copy pinned dylibs from /opt/homebrew/Cellar into <stage>/lib/.
@@ -227,10 +235,13 @@ fn fetch_dylibs(lib_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
         let real = fs::canonicalize(&src)?;
         fs::copy(&real, &dst)?;
         // Strip read-only bit so install_name_tool can rewrite it.
-        let mut perms = fs::metadata(&dst)?.permissions();
-        use std::os::unix::fs::PermissionsExt;
-        perms.set_mode(0o644);
-        fs::set_permissions(&dst, perms)?;
+        #[cfg(unix)]
+        {
+            let mut perms = fs::metadata(&dst)?.permissions();
+            use std::os::unix::fs::PermissionsExt;
+            perms.set_mode(0o644);
+            fs::set_permissions(&dst, perms)?;
+        }
         println!("sandbox-runtime: vendored {} ({} bytes)", leaf, fs::metadata(&dst)?.len());
     }
     Ok(())

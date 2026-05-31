@@ -3,6 +3,7 @@ import {
   Alert,
   Button,
   Card,
+  Divider,
   Flex,
   Form,
   Input,
@@ -85,7 +86,11 @@ export function SummarizerSection() {
       <Form
         name="memory-admin-summarizer-form"
         form={form}
-        layout="vertical"
+        layout="horizontal"
+        labelCol={{ flex: '280px' }}
+        wrapperCol={{ flex: 'auto' }}
+        labelAlign="left"
+        colon={false}
         onFinish={handleSubmit}
         disabled={!canManage}
       >
@@ -94,7 +99,7 @@ export function SummarizerSection() {
           label="Summarize after N messages"
           extra="When a conversation branch exceeds this many user/assistant messages, the summarizer condenses the earliest ones into a single system block. Lower = sooner summarization (smaller prompts, more LLM cost); higher = longer verbatim history."
         >
-          <InputNumber min={10} max={1000} />
+          <InputNumber min={10} max={1000} style={{ width: 160 }} />
         </Form.Item>
         <Form.Item
           name="summarizer_keep_recent"
@@ -117,7 +122,7 @@ export function SummarizerSection() {
             }),
           ]}
         >
-          <InputNumber min={2} max={999} />
+          <InputNumber min={2} max={999} style={{ width: 160 }} />
         </Form.Item>
 
         <Form.Item
@@ -190,11 +195,14 @@ export function SummarizerSection() {
         </Form.Item>
 
         {canManage && (
-          <Flex justify="end">
-            <Button type="primary" htmlType="submit" loading={saving}>
-              Save
-            </Button>
-          </Flex>
+          <>
+            <Divider className="!my-3" />
+            <Flex justify="end">
+              <Button type="primary" htmlType="submit" loading={saving}>
+                Save
+              </Button>
+            </Flex>
+          </>
         )}
       </Form>
     </Card>

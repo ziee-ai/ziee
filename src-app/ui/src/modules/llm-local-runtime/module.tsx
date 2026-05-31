@@ -8,6 +8,9 @@ import {
   useRuntimeUpdateStore,
   useRuntimeDownloadDrawerStore,
   useRuntimeDeleteConfirmStore,
+  useRuntimeConfigStore,
+  useRuntimeModelUsageStore,
+  useRuntimeDownloadProgressStore,
 } from './stores'
 import './types' // Register event types
 
@@ -49,6 +52,18 @@ export default createModule({
     {
       name: 'RuntimeDeleteConfirm',
       store: useRuntimeDeleteConfirmStore,
+    },
+    {
+      name: 'RuntimeConfig',
+      store: useRuntimeConfigStore,
+    },
+    {
+      name: 'RuntimeModelUsage',
+      store: useRuntimeModelUsageStore,
+    },
+    {
+      name: 'RuntimeDownloadProgress',
+      store: useRuntimeDownloadProgressStore,
     }
   ],
 
@@ -58,7 +73,13 @@ export default createModule({
         id: 'llm-runtime',
         icon: <CloudServerOutlined />,
         label: 'Local Runtimes',
-        path: '/settings/llm-runtime',
+        // SettingsPage prepends /settings/ to the slot key, so this MUST be
+        // a relative segment. The previous absolute path produced
+        // /settings//settings/llm-runtime — the URL regex on line 81 of
+        // SettingsPage.tsx missed the double slash and bounced users to
+        // the first available page. Every other settings module (llm-providers,
+        // sandbox, hardware, etc.) uses a relative path here.
+        path: 'llm-runtime',
         order: 52, // After LLM Providers (51), before LLM Repositories (53)
         permission: Permissions.LocalRuntimeRead,
       }

@@ -8,9 +8,10 @@
 
 use sqlx::PgPool;
 use crate::modules::llm_local_runtime::runtime_version::repository as version_repo;
-use crate::modules::llm_local_runtime::runtime_version::models::RuntimeVersion;
-use llm_runtime::binary_download::BinaryDownloader;
-use llm_runtime::config::EngineType;
+use crate::modules::llm_local_runtime::runtime_version::models::{AvailableVersion, RuntimeVersion};
+use crate::modules::llm_local_runtime::engine::{
+    asset_size_for_backend, available_backends, BinaryDownloader, EngineType,
+};
 use std::path::PathBuf;
 use uuid::Uuid;
 
@@ -36,10 +37,9 @@ impl BinaryManager {
         Ok(Self { downloader, pool })
     }
 
-    /// Download and register a new runtime version
-    ///
-    /// Downloads the binary from GitHub releases and creates a database record.
-    /// If the binary is already cached, skips download but still creates the DB record.
+    /// Download and register a new runtime version (no progress
+    /// reporting). Thin wrapper around
+    /// [`Self::download_and_register_with_progress`].
     pub async fn download_and_register(
         &self,
         engine: EngineType,
@@ -47,11 +47,43 @@ impl BinaryManager {
         platform: &str,
         arch: &str,
         backend: &str,
-    ) -> Result<RuntimeVersion, Box<dyn std::error::Error>> {
+    ) -> Result<RuntimeVersion, Box<dyn std::error::Error + Send + Sync>> {
+        self.download_and_register_with_progress(
+            engine,
+            version,
+            platform,
+            arch,
+            backend,
+            |_, _| {},
+        )
+        .await
+    }
+
+    /// Download and register a new runtime version, calling `progress`
+    /// on every chunk read with `(bytes_received, total_bytes)`.
+    /// `total_bytes` is `None` when the upstream omits Content-Length.
+    /// If the binary is already cached, skips the download (and the
+    /// callback) but still creates the DB record.
+    ///
+    /// The `Send + Sync` bounds on the error type let this be called
+    /// from inside a `tokio::spawn`'d future (the detached
+    /// download-task runner).
+    pub async fn download_and_register_with_progress<F>(
+        &self,
+        engine: EngineType,
+        version: &str,
+        platform: &str,
+        arch: &str,
+        backend: &str,
+        progress: F,
+    ) -> Result<RuntimeVersion, Box<dyn std::error::Error + Send + Sync>>
+    where
+        F: Fn(u64, Option<u64>) + Send + Sync,
+    {
         // Download binary (uses cache if available)
         let binary_info = self
             .downloader
-            .download(engine, version, platform, arch, backend)
+            .download_with_progress(engine, version, platform, arch, backend, progress)
             .await?;
 
         // Check if version already exists in database
@@ -226,47 +258,79 @@ impl BinaryManager {
         Ok(())
     }
 
-    /// Check for available versions from GitHub without downloading
+    /// Check for available versions upstream and diff against what is
+    /// installed, scoped to a host (`platform`, `arch`).
     ///
-    /// This queries GitHub API for available releases.
-    /// Future implementation could compare with database to show what's new.
+    /// Release discovery is delegated to [`BinaryDownloader::list_releases`]
+    /// so it is **mirror-aware** (honours `LLM_RUNTIME_API_MIRROR`, unlike
+    /// the previous hardcoded `api.github.com` call) and shares the engine
+    /// archive-naming with the download path.
+    ///
+    /// Per release we compute:
+    /// - `available_backends` — backends whose binary is published upstream
+    ///   for this host. Empty ⇒ the tag exists but the build is pending
+    ///   (`binary_ready=false`), so it is surfaced but not installable.
+    /// - `installed_backends` — backends already in the DB for this
+    ///   version + host platform/arch.
+    ///
+    /// Drafts are omitted (not public). Prereleases are kept but flagged.
     pub async fn check_for_updates(
         &self,
         engine: &str,
-    ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-        // GitHub repo mapping
-        let repo = match engine {
-            "llamacpp" => "ziee-ai/llama.cpp",
-            "mistralrs" => "ziee-ai/mistral.rs",
+        platform: &str,
+        arch: &str,
+    ) -> Result<Vec<AvailableVersion>, Box<dyn std::error::Error>> {
+        let engine_type = match engine {
+            "llamacpp" => EngineType::Llamacpp,
+            "mistralrs" => EngineType::Mistralrs,
             _ => return Err(format!("Unknown engine: {}", engine).into()),
         };
 
-        // Query GitHub API for releases. Bound the client with explicit
-        // timeouts so a slow/hung response can't tie up the worker
-        // forever. Closes a piece of 08-llm-local-runtime F-09 (Medium).
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .connect_timeout(std::time::Duration::from_secs(10))
-            .https_only(true)
-            .build()?;
-        let url = format!("https://api.github.com/repos/{}/releases", repo);
+        let releases = self.downloader.list_releases(engine_type).await?;
+        let installed = version_repo::list_by_engine(&self.pool, engine).await?;
 
-        let response = client
-            .get(&url)
-            .header("Accept", "application/vnd.github.v3+json")
-            .header("User-Agent", "ziee/1.0")
-            .send()
-            .await?;
-
-        if !response.status().is_success() {
-            return Err(format!("Failed to fetch releases: HTTP {}", response.status()).into());
-        }
-
-        let releases: Vec<serde_json::Value> = response.json().await?;
-
-        let versions: Vec<String> = releases
-            .iter()
-            .filter_map(|r| r["tag_name"].as_str().map(String::from))
+        let versions = releases
+            .into_iter()
+            .filter(|r| !r.draft)
+            .map(|r| {
+                let avail = available_backends(engine_type, platform, arch, &r.assets);
+                let installed_backends: Vec<String> = installed
+                    .iter()
+                    .filter(|v| {
+                        v.version == r.version && v.platform == platform && v.arch == arch
+                    })
+                    .map(|v| v.backend.clone())
+                    .collect();
+                let recommended_backend =
+                    crate::modules::llm_local_runtime::utils::gpu_detect::recommend_backend(&avail);
+                // Size of the asset the inline Install button would
+                // actually fetch: the recommended backend when known,
+                // else the first published backend (matches the
+                // fallback in the UI's `handleDownload`).
+                let size_bytes = recommended_backend
+                    .as_deref()
+                    .or_else(|| avail.first().map(|s| s.as_str()))
+                    .and_then(|backend| {
+                        asset_size_for_backend(
+                            engine_type,
+                            platform,
+                            arch,
+                            backend,
+                            &r.assets,
+                        )
+                    });
+                AvailableVersion {
+                    version: r.version,
+                    installed: !installed_backends.is_empty(),
+                    installed_backends,
+                    binary_ready: !avail.is_empty(),
+                    available_backends: avail,
+                    recommended_backend,
+                    size_bytes,
+                    prerelease: r.prerelease,
+                    published_at: r.published_at,
+                }
+            })
             .collect();
 
         Ok(versions)

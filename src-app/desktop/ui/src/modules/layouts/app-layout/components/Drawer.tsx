@@ -1,10 +1,29 @@
 /**
- * Desktop Override: Drawer
+ * DELIBERATE DIVERGENCE from core's Drawer.
  *
- * Adds Tauri-specific features:
- * - TauriDragRegion in title for window movement
- * - Position monitoring to adjust title padding for macOS traffic lights
- * - Tauri-aware wrapper styles (maxWidth, border, borderRadius)
+ * Desktop is a superset of core: the underlying AntDrawer config,
+ * size/width resolution, footer normalization, mask + body styling
+ * all match core 1:1. The desktop-only additions are:
+ *
+ *   - Manual `startDragging()` mousedown on the drawer title strip
+ *     (with interactive-target exemption for the close Button and
+ *     any future controls). Prior version used a `<TauriDragRegion>`
+ *     overlay layered absolutely on top of the title content; that
+ *     captured every pointer event and made the Close button
+ *     unclickable. The manual approach matches HeaderBarContainer.
+ *   - `titleRef` + ResizeObserver effect that watches the drawer's
+ *     left edge and adds left padding when the drawer would sit
+ *     under the macOS traffic-light controls (clears 72px on Mac).
+ *   - `resizeMaxWidth` passed to ResizeHandle so dragging the left
+ *     edge can't push the drawer under the traffic lights either.
+ *   - `wrapper.maxWidth` and `wrapper.border` formulas that account
+ *     for Tauri window chrome (90px reserve on Mac).
+ *
+ * If you find behavior that core has and desktop doesn't (a real
+ * regression rather than a deliberate addition), copy core's logic
+ * into the matching place here. `just desktop-drift-check` will flag
+ * the file as long as it differs at all — the marker above tells the
+ * recipe the difference is intentional.
  */
 
 import {
@@ -14,14 +33,17 @@ import {
   theme,
   Typography,
 } from 'antd'
-import React, { useEffect, useRef } from 'react'
+import React, { useCallback, useEffect, useRef } from 'react'
 import { ResizeHandle } from '@/modules/layouts/app-layout/components/ResizeHandle'
 import tinycolor from 'tinycolor2'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { IoIosArrowBack } from 'react-icons/io'
 import { DivScrollY } from '@/components/common/DivScrollY'
-import { isTauriView, isMacOS } from '@ziee/desktop/core/platform'
-import { TauriDragRegion } from '@ziee/desktop/components/TauriDragRegion'
+import { isTauriView, isMacOS, isLinux } from '@ziee/desktop/core/platform'
+import { getCurrentWindow } from '@tauri-apps/api/window'
+
+const INTERACTIVE_SEL =
+  'button, a, input, textarea, select, [role="button"], [role="link"], [role="menuitem"], [role="combobox"], [contenteditable="true"], .ant-select, .ant-dropdown-trigger, .ant-segmented, .ant-segmented-item'
 
 export interface DrawerProps extends AntDrawerProps {
   children?: React.ReactNode
@@ -70,11 +92,37 @@ export const Drawer: React.FC<DrawerProps> = props => {
   const resizeMaxWidth =
     isTauriView && isMacOS ? window.innerWidth - 90 : window.innerWidth - 24
 
+  // Window-drag handlers for the title strip — same pattern as
+  // HeaderBarContainer. Bail on interactive descendants so the
+  // close Button (and any future header controls) keep working.
+  const handleTitleMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!isTauriView) return
+      // Linux: WM-native chrome handles drag — see TauriDragRegion.tsx.
+      if (isLinux) return
+      if (e.button !== 0) return
+      const target = e.target as Element
+      if (target.closest?.(INTERACTIVE_SEL)) return
+      e.preventDefault()
+      void getCurrentWindow().startDragging()
+    },
+    [],
+  )
+
+  const handleTitleDoubleClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!isTauriView) return
+      if (isLinux) return
+      const target = e.target as Element
+      if (target.closest?.(INTERACTIVE_SEL)) return
+      void getCurrentWindow().toggleMaximize()
+    },
+    [],
+  )
+
   const {
     placement = 'right',
     size = 520,
-    width, // deprecated - for backwards compatibility
-    maskClosable = true,
     children,
     styles: propsStyles,
     ...restProps
@@ -84,14 +132,13 @@ export const Drawer: React.FC<DrawerProps> = props => {
   const resolvedPropsStyles =
     typeof propsStyles === 'function' ? propsStyles({ props }) : propsStyles
 
-  // Use size, fallback to width for backwards compatibility
-  const drawerSize = width !== undefined ? width : size
-
-  // Determine if we should use size or width prop
+  // antd 6 `size` accepts number | 'default' | 'large' | string.
+  // On the smallest breakpoint we want the panel to fill the
+  // viewport — antd's `size` doesn't accept '100%', so route through
+  // `width` only in that case (still a supported antd prop, not
+  // deprecated; just less convenient than `size` for the common case).
   const useSizeProp =
-    typeof drawerSize === 'number' ||
-    drawerSize === 'default' ||
-    drawerSize === 'large'
+    typeof size === 'number' || size === 'default' || size === 'large'
 
   if (Array.isArray(restProps.footer)) {
     restProps.footer = (
@@ -107,9 +154,8 @@ export const Drawer: React.FC<DrawerProps> = props => {
     <AntDrawer
       placement={placement}
       {...(useSizeProp
-        ? { size: drawerSize as number | 'default' | 'large' }
-        : { width: windowMinSize.xs ? '100%' : drawerSize })}
-      maskClosable={maskClosable}
+        ? { size: size as number | 'default' | 'large' }
+        : { width: windowMinSize.xs ? '100%' : size })}
       {...restProps}
       closable={false}
       classNames={{
@@ -129,10 +175,9 @@ export const Drawer: React.FC<DrawerProps> = props => {
               paddingLeft:
                 windowMinSize.xs && isTauriView && isMacOS ? 74 : undefined,
             }}
+            onMouseDown={handleTitleMouseDown}
+            onDoubleClick={handleTitleDoubleClick}
           >
-            <TauriDragRegion
-              className={'h-full w-full absolute top-0 left-0'}
-            />
             <Button
               type={'text'}
               onClick={props.onClose}
@@ -215,7 +260,11 @@ export const Drawer: React.FC<DrawerProps> = props => {
       <DivScrollY className={'flex w-full h-full'}>
         <div className={'flex w-full h-full pr-3'}>
           {React.Children.map(children, child => {
-            if (React.isValidElement(child)) {
+            // Sync from core: typed narrowing so child.props.className
+            // is `string | undefined` instead of `unknown` (avoids the
+            // `child.props is of type unknown` TS error against React 19
+            // types).
+            if (React.isValidElement<{ className?: string }>(child)) {
               return React.cloneElement(child, {
                 ...child.props,
                 className: `w-full ${child.props.className || ''}`.trim(),

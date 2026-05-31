@@ -1,0 +1,20 @@
+# Test-only OpenAI-compatible stub engine. Stands in for
+# llama-server / mistralrs-server in local-runtime integration + E2E
+# tests: real process spawn, real /health, real HTTP, canned inference.
+# NEVER published or shipped.
+[package]
+name = "stub-engine"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = ""
+
+[[bin]]
+name = "stub-engine"
+path = "src/main.rs"
+
+[dependencies]
+tokio.workspace = true
+axum.workspace = true
+serde_json.workspace = true
+futures.workspace = true

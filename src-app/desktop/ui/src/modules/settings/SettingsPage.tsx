@@ -1,39 +1,85 @@
 /**
- * Desktop Override: SettingsPage
+ * DELIBERATE DIVERGENCE from core's SettingsPage.
  *
- * Filters out admin settings that are not relevant for desktop app:
- * - Users
- * - User Groups
- * - Assistants
+ * Why: desktop is single-admin. No need for the web's "User Settings"
+ * vs "Admin Settings" sectioning, no need for permission-based filtering
+ * (the bootstrapped admin has every permission), no need for the inline
+ * 403 panel core renders on forbidden deep-links.
+ *
+ * What this file does differently:
+ *   1. Collapses both `settingsUserPages` and `settingsAdminPages` into a
+ *      single flat menu (no section divider, no "Admin Settings" header).
+ *   2. Filters BOTH slot lists through `HIDDEN_ITEMS` — entries whose `id`
+ *      is in the set never appear in the menu.
+ *   3. Combined desktop modules (memory-desktop, llm-providers-desktop)
+ *      register their own entry; HIDDEN_ITEMS removes the equivalent
+ *      core entries so the user sees one combined "Memory" and one
+ *      "LLM Providers" instead of duplicates.
+ *
+ * If core's SettingsPage gains a feature that ALL settings UIs need
+ * (e.g. a new layout primitive), re-sync the layout shell below — keep
+ * the filter list + flat menu logic.
  */
 
 import { Button, Dropdown, Flex, Menu, theme, Typography } from 'antd'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
+import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { IoIosArrowDown, IoMdSettings } from 'react-icons/io'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { Stores } from '@/core/stores'
 
-// Admin settings to hide in desktop app
-const HIDDEN_ADMIN_ITEMS = ['users', 'user-groups', 'assistants', 'mcp-admin']
+// Slot entries (in EITHER `settingsUserPages` or `settingsAdminPages`)
+// whose `id` is in this set are hidden from the desktop menu.
+//
+//  - Multi-user RBAC surfaces (no role on a single-admin desktop):
+//    users, user-groups, assistants, mcp-admin, auth-providers.
+//  - Core's user+admin pair for Memory (both register id='memory'):
+//    hidden so the combined `memory-desktop` slot is the only one shown.
+//  - `user-llm-providers`: lets a non-admin OVERRIDE the admin-set API
+//    key with their own. On single-admin desktop there's no admin/user
+//    split — the admin sets keys directly on the admin LLM Providers
+//    page. The user-side entry is therefore redundant.
+const HIDDEN_ITEMS = new Set([
+  'users',
+  'user-groups',
+  'assistants',
+  'mcp-admin',
+  'auth-providers',
+  'memory',
+  'memory-admin',
+  'user-llm-providers',
+])
+
+// Re-export so the Remote Access desktop module (and any future
+// desktop-only module) can verify against the filter set during
+// tests without depending on the page component.
+export { HIDDEN_ITEMS as DESKTOP_HIDDEN_SETTING_IDS }
 
 export default function SettingsPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const windowMinSize = useWindowMinSize()
+  // Layout flips based on the settings page's OWN width via
+  // ResizeObserver on `containerRef` (not the viewport, not the
+  // AppLayout main-content). `sm` (≤640px) is the threshold: the
+  // side menu (~180px) + a usable content column (~440px) needs
+  // ~620px total. Below that, fold the menu into the mobile
+  // dropdown so the page stops feeling cramped.
+  const containerRef = useRef<HTMLDivElement>(null)
+  const minSize = useElementMinSize(containerRef)
+  const useMobileLayout = minSize.sm
   const { token } = theme.useToken()
 
   const { slots } = Stores.ModuleSystem
 
-  // Get and sort user settings from slots
-  const userSettingsItems = (slots.get('settingsUserPages') || []).sort(
-    (a, b) => (a.order ?? 0) - (b.order ?? 0),
-  )
+  // Apply HIDDEN_ITEMS to BOTH slot lists (single-admin desktop doesn't
+  // care about the user/admin distinction; what matters is the id).
+  const userSettingsItems = (slots.get('settingsUserPages') || [])
+    .filter(item => !HIDDEN_ITEMS.has(item.id))
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
 
-  // Get and sort admin settings from slots, filtering out hidden items
   const adminSettingsItems = (slots.get('settingsAdminPages') || [])
-    .filter(item => !HIDDEN_ADMIN_ITEMS.includes(item.id))
+    .filter(item => !HIDDEN_ITEMS.has(item.id))
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
 
   // Build final menu (no sections in desktop app)
@@ -110,22 +156,29 @@ export default function SettingsPage() {
   )
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div
+      ref={containerRef}
+      className="h-full flex flex-col overflow-hidden"
+    >
       {/* Page Header */}
       <HeaderBarContainer>
         <div className="h-full flex items-center justify-between w-full">
           <Typography.Title level={4} className="!m-0 !leading-tight truncate">
             Settings
           </Typography.Title>
-          {windowMinSize.xs && (
+          {useMobileLayout && (
             <div className="flex flex-1 items-center px-2">
               <Dropdown
-                overlayStyle={{
-                  border: '1px solid ' + token.colorBorderSecondary,
+                styles={{
+                  root: {
+                    border: '1px solid ' + token.colorBorderSecondary,
+                  },
                 }}
-                overlayClassName={`
+                classNames={{
+                  root: `
                   rounded-md
-                  `}
+                  `,
+                }}
                 menu={{
                   items: menuItems.map((item: any) => {
                     if ('type' in item && item.type === 'divider') {
@@ -177,7 +230,7 @@ export default function SettingsPage() {
       {/* Page Content */}
       <div className="flex flex-1 overflow-hidden">
         {/* Desktop Sidebar */}
-        {!windowMinSize.xs && (
+        {!useMobileLayout && (
           <div className="w-fit">
             <SettingsMenu />
           </div>

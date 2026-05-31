@@ -1,24 +1,72 @@
 [package]
 name = "ziee"
-version = "0.1.0"
 description = "Ziee Server"
-authors = ["Ziee Team"]
-license = ""
-repository = ""
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 # Local proc-macro crates
 macros = { path = "./macros" }
 
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.141"
-toml = "0.8"
-tokio = { version = "1.47.1", features = ["full"] }
-tokio-stream = "0.1"
-axum = { version = "0.8.4", features = ["macros", "multipart"] }
-tower = "0.5"
-tower-http = { version = "0.6.2", features = ["cors", "timeout", "set-header"] }
+# Inherited from workspace catalog — bumping happens in
+# `src-app/Cargo.toml::[workspace.dependencies]`.
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+aide.workspace = true
+schemars.workspace = true
+once_cell.workspace = true
+paste.workspace = true
+libc.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+async-trait.workspace = true
+async-stream.workspace = true
+serde_yaml.workspace = true
+sqlx.workspace = true
+postgresql_embedded.workspace = true
+portpicker.workspace = true
+pgvector.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+dirs.workspace = true
+rand.workspace = true
+clap.workspace = true
+hex.workspace = true
+include_dir.workspace = true
+base64.workspace = true
+sha2.workspace = true
+semver.workspace = true
+url.workspace = true
+http.workspace = true
+tempfile.workspace = true
+mime_guess.workspace = true
+which.workspace = true
+include-flate.workspace = true
+tar.workspace = true
+# Engine-binary archive extraction (folded in from the llm-runtime crate's
+# binary downloader): tar.gz via flate2 + zip for the Windows path. Also
+# used by the hub catalog tarball unpack (modules/hub/hub_manager.rs).
+flate2.workspace = true
+zstd.workspace = true
+lazy_static.workspace = true
+futures-util.workspace = true
+futures.workspace = true
+# `json` (catch-all parser for SSE/REST) and `blocking` (used by the
+# embedded-postgres startup probe) are added on top of the workspace's
+# rustls-tls + charset + http2 baseline.
+reqwest = { workspace = true, features = ["json", "blocking", "stream"] }
+
+# Server-specific deps (not shared, kept local)
 tower_governor = "0.7"
 # tower-sessions is pulled transitively by axum-login. Direct declaration
 # is redundant but currently load-bearing for sqlx's feature resolver
@@ -32,37 +80,16 @@ tower_governor = "0.7"
 tower-sessions = "0.14.0"
 tower-sessions-sqlx-store = { version = "0.15.0", features = ["postgres"] }
 axum-login = "0.18.0"
-aide = { version = "0.15", features = ["axum", "axum-json", "axum-extra-json-deserializer", "axum-extra-query", "axum-extra", "axum-extra-headers", "axum-multipart", "axum-query", "macros", "redoc"] }
-schemars = { version = "0.9.0", features = ["chrono04", "uuid1"] }
-once_cell = "1.21.3"
-paste = "1.0"
 linkme = "0.3"
 dashmap = "6"
-libc = "0.2"
-thiserror = "2.0.12"
-tracing = "0.1"
-tracing-subscriber = "0.3"
-async-trait = "0.1"
 config = "0.15.18"
-serde_yaml = "0.9"
 
-# Database
-sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid", "json", "macros", "migrate"] }
-postgresql_embedded = { version = "0.20.0", default-features = false, features = ["bundled", "theseus", "rustls"] }
-portpicker = "0.1"
-pgvector = { version = "0.4", features = ["postgres", "halfvec", "sqlx"] }
+# (ngrok dep moved to desktop/tauri/Cargo.toml — the remote_access
+# module that uses it lives entirely in the desktop crate now.)
 
 # Utilities
-chrono = { version = "0.4", features = ["serde"] }
 time = "0.3"
-uuid = { version = "1.18", features = ["serde", "v4", "v5"] }
-dirs = "6.0.0"
 bcrypt = "0.17.1"
-rand = "0.9.2"
-clap = { version = "4.5", features = ["derive"] }
-hex = "0.4"
-include_dir = "0.7"
-base64 = "0.22"
 
 # Git/LFS utilities. `vendored-openssl` statically links openssl into
 # the binary so a target machine doesn't need a system openssl dylib;
@@ -70,37 +97,21 @@ base64 = "0.22"
 # the reqwest/ldap3/sigstore rustls switch below, the server binary
 # has zero external TLS/crypto runtime deps.
 git2 = { version = "0.20.2", default-features = false, features = ["https", "vendored-openssl", "vendored-libgit2"] }
-sha2 = "0.10"
-url = "2.5"
-http = "1.2"
-tempfile = "3.15"
 
 # File processing
 image = "0.25"
 imageproc = "0.25"
 ab_glyph = "0.2"
 encoding_rs = "0.8"
-mime_guess = "2.0"
 pdfium-render = "0.8"
 pdf-extract = "0.10.0"
 calamine = "0.31.0"
 # Zip walker for decompression-bomb pre-validation on OOXML files
 # (DOCX/XLSX/PPTX). See modules/file/utils/zipbomb. Closes 05-file F-05.
 zip = "6.0.0"
-which = "8.0.0"
-include-flate = "0.3"
-# Runtime extraction of the embedded mac sandbox-runtime bundle
-# (see modules/code_sandbox/embedded.rs). Transitively present via
-# llm-runtime/postgresql_archive but declared explicitly so the import
-# is stable.
-tar = "0.4"
-zstd = "0.13"
 
 # Hardware monitoring
 sysinfo = "0.37.2"
-lazy_static = "1.4"
-async-stream = "0.3"
-futures-util = "0.3"
 nvml-wrapper = { version = "0.11.0", optional = true }
 opencl3 = { version = "0.12.0", optional = true }
 ash = { version = "0.38", optional = true }
@@ -114,23 +125,14 @@ jsonwebtoken = { version = "10.1.0", features = ["rust_crypto"] }
 ldap3 = { version = "0.12.1", default-features = false, features = ["tls-rustls-ring"] }
 oauth2 = "5.0.0"
 openidconnect = "4.0.1"
-# `default-features = false` strips reqwest's default `default-tls`
-# (= native-tls = openssl) and `rustls-tls` swaps it for rustls.
-# `charset` and `http2` were on by default; explicitly listed to
-# preserve behavior.
-reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "rustls-tls", "charset", "http2"] }
-sigstore = { version = "0.13", default-features = false, features = ["bundle", "sigstore-trust-root", "rustls-tls"] }
+sigstore = { version = "0.14", default-features = false, features = ["bundle", "sigstore-trust-root", "rustls-tls"] }
 
 # AI providers (local package)
 ai-providers = { path = "./ai-providers" }
 
-# LLM runtime for local model deployment
-llm-runtime = { path = "../llm-runtime" }
-
 # MCP client
 rmcp = { version = "0.8", features = ["client", "transport-child-process"] }
 eventsource-client = "0.12"
-futures = "0.3"
 
 [lib]
 name = "ziee"
@@ -167,8 +169,14 @@ code_sandbox_seccomp = ["dep:sandbox-seccomp"]
 sandbox-seccomp = { path = "../sandbox-seccomp", optional = true }
 
 # The microVM code-sandbox backends (macOS libkrun, Windows WSL2) talk to the
-# in-guest agent over the shared control protocol.
-[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+# in-guest agent over this shared control protocol. The protocol types are ALSO
+# compiled on Linux — `backend/vm_long_lived` is intentionally not platform-gated
+# (it needs to exist on Linux for a uniform `SandboxBackend` return signature),
+# and it imports `sandbox_vm_protocol` unconditionally. So the dep must resolve
+# on every supported OS, not just macOS/Windows. (This was a latent main bug:
+# no CI `cargo build`s the server on Linux, so the macOS/Windows-only
+# declaration never failed to compile.)
+[target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
 sandbox-vm-protocol = { path = "../sandbox-vm-protocol" }
 
 # Windows: AF_HYPERV / SOCKADDR_HV bindings so the WSL2 backend can dial the
@@ -178,28 +186,53 @@ sandbox-vm-protocol = { path = "../sandbox-vm-protocol" }
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
     "Win32_Networking_WinSock",
+    # Named-pipe IPC for the LocalSystem sandbox-helper service: create the
+    # pipe with an SDDL security descriptor (Authorization), accept/connect
+    # (Pipes), and the backing file handle (Storage_FileSystem).
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_System_Pipes",
+    "Win32_Storage_FileSystem",
+    # ConnectNamedPipe's signature references OVERLAPPED, so windows-sys gates
+    # it behind the IO feature too.
+    "Win32_System_IO",
 ] }
+# Windows service scaffolding for the LocalSystem sandbox-helper: SCM
+# dispatcher + install/uninstall. The helper resolves the WSL utility VM's
+# VmId (needs Hyper-V Admin / SYSTEM) and registers the vsock GUIDs (HKLM
+# write) so the unprivileged server never needs those rights — mirrors how
+# Docker Desktop brokers privileged WSL work through a LocalSystem service.
+windows-service = "0.7"
+# Safe HKLM access for the GuestCommunicationServices vsock-port registration.
+winreg = "0.52"
 
 [build-dependencies]
-tokio = { version = "1.47.1", features = ["rt-multi-thread", "macros"] }
-sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "migrate"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+sqlx.workspace = true
 ureq = "3.1.4"
-zip = "6.0.0"
-flate2 = "1.0"
-tar = "0.4"
+zip.workspace = true
+flate2.workspace = true
+tar.workspace = true
 # zstd for the mac sandbox-runtime bundle (level-19 compression).
-zstd = "0.13"
+zstd.workspace = true
 
 [dev-dependencies]
-mockall = "0.13"
-tempfile = "3.15"
-serial_test = "3.2"
-reqwest = { version = "0.12", default-features = false, features = ["json", "cookies", "multipart", "rustls-tls", "charset", "http2"] }
-uuid = { version = "1.18", features = ["v4"] }
-rand = "0.9.2"
-serde_yaml = "0.9"
-sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres"] }
-postgresql_embedded = { version = "0.20.0", default-features = false, features = ["bundled", "theseus", "rustls"] }
+mockall.workspace = true
+tempfile.workspace = true
+serial_test.workspace = true
+# Test fixtures build a .tar.gz on the fly (MockReleaseServer packaging the
+# stub-engine as a release artifact). `tar`, `sha2`, `hex` are already in the
+# main [dependencies]; flate2 is only a build-dependency, so re-declare it here.
+flate2.workspace = true
+# Tests need `cookies` (browser-like session round-trips) on top of the
+# workspace baseline (rustls-tls + charset + http2) plus `json` +
+# `multipart` for request bodies.
+reqwest = { workspace = true, features = ["json", "cookies", "multipart", "blocking"] }
+uuid.workspace = true
+rand.workspace = true
+serde_yaml.workspace = true
+sqlx.workspace = true
+postgresql_embedded.workspace = true
 testcontainers = "0.25.2"
 wiremock = "0.6"
 rsa = { version = "0.9", features = ["pem"] }

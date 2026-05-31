@@ -45,6 +45,7 @@ fn server_config(url: String) -> McpServer {
         supports_sampling: false,
         usage_mode: UsageMode::Auto,
         max_concurrent_sessions: None,
+        run_in_sandbox: false,
         is_built_in: false,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),

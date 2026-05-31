@@ -25,6 +25,28 @@ fn to_chrono(ts: time::OffsetDateTime) -> DateTime<Utc> {
     DateTime::from_timestamp_nanos(ts.unix_timestamp_nanos() as i64)
 }
 
+/// Read-time injection for local providers: replace the stored
+/// `base_url` (which is NULL for locals) with the live URL derived
+/// from the server's listen config + `LOCAL_PROXY_PATH`. This is
+/// the single source of truth for chat code's outbound call. If
+/// `LOCAL_PROXY_PATH` ever changes (e.g. `/v1` → `/v2`), all
+/// existing local provider rows pick up the new URL on the next
+/// read — zero migrations needed.
+///
+/// Called from every read site (get_by_id, list, list_local_providers).
+fn inject_runtime_fields(p: &mut LlmProvider) {
+    if p.provider_type == "local" {
+        let (host, port, api_prefix) = crate::core::get_server_addr();
+        p.base_url = Some(
+            crate::modules::llm_local_runtime::proxy::derive_proxy_url(
+                &host,
+                port,
+                &api_prefix,
+            ),
+        );
+    }
+}
+
 // =====================================================
 // Repository Struct
 // =====================================================
@@ -132,7 +154,7 @@ pub async fn get_llm_provider_by_id(
     // plaintext for rows written before A5 / when storage_key is
     // unconfigured. See common::secret::resolve_optional_secret.
     let api_key = resolve_optional_secret(pool, r.api_key_encrypted, r.api_key).await;
-    Ok(Some(LlmProvider {
+    let mut p = LlmProvider {
         id: r.id,
         name: r.name,
         provider_type: r.provider_type,
@@ -147,7 +169,9 @@ pub async fn get_llm_provider_by_id(
         created_at: to_chrono(r.created_at),
         updated_at: to_chrono(r.updated_at),
         default_runtime_version_id: r.default_runtime_version_id,
-    }))
+    };
+    inject_runtime_fields(&mut p);
+    Ok(Some(p))
 }
 
 pub async fn list_llm_providers(pool: &PgPool) -> Result<Vec<LlmProvider>, sqlx::Error> {
@@ -163,7 +187,7 @@ pub async fn list_llm_providers(pool: &PgPool) -> Result<Vec<LlmProvider>, sqlx:
     let mut providers = Vec::with_capacity(rows.len());
     for r in rows {
         let api_key = resolve_optional_secret(pool, r.api_key_encrypted, r.api_key).await;
-        providers.push(LlmProvider {
+        let mut p = LlmProvider {
             id: r.id,
             name: r.name,
             provider_type: r.provider_type,
@@ -178,7 +202,9 @@ pub async fn list_llm_providers(pool: &PgPool) -> Result<Vec<LlmProvider>, sqlx:
             created_at: to_chrono(r.created_at),
             updated_at: to_chrono(r.updated_at),
             default_runtime_version_id: r.default_runtime_version_id,
-        });
+        };
+        inject_runtime_fields(&mut p);
+        providers.push(p);
     }
     Ok(providers)
 }
@@ -197,7 +223,7 @@ pub async fn list_local_providers(pool: &PgPool) -> Result<Vec<LlmProvider>, sql
     let mut providers = Vec::with_capacity(rows.len());
     for r in rows {
         let api_key = resolve_optional_secret(pool, r.api_key_encrypted, r.api_key).await;
-        providers.push(LlmProvider {
+        let mut p = LlmProvider {
             id: r.id,
             name: r.name,
             provider_type: r.provider_type,
@@ -212,7 +238,9 @@ pub async fn list_local_providers(pool: &PgPool) -> Result<Vec<LlmProvider>, sql
             created_at: to_chrono(r.created_at),
             updated_at: to_chrono(r.updated_at),
             default_runtime_version_id: r.default_runtime_version_id,
-        });
+        };
+        inject_runtime_fields(&mut p);
+        providers.push(p);
     }
     Ok(providers)
 }
@@ -271,7 +299,7 @@ pub async fn create_llm_provider(
 
     let resolved_api_key = resolve_optional_secret(pool, row.api_key_encrypted, row.api_key).await;
 
-    Ok(LlmProvider {
+    let mut p = LlmProvider {
         id: row.id,
         name: row.name,
         provider_type: row.provider_type,
@@ -286,7 +314,9 @@ pub async fn create_llm_provider(
         default_runtime_version_id: row.default_runtime_version_id,
         created_at: to_chrono(row.created_at),
         updated_at: to_chrono(row.updated_at),
-    })
+    };
+    inject_runtime_fields(&mut p);
+    Ok(p)
 }
 
 pub async fn update_llm_provider(

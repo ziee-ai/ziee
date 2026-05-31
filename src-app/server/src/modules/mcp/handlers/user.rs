@@ -8,11 +8,13 @@ use axum::{
     extract::{Extension, Path, Query},
     http::StatusCode,
 };
+use schemars::JsonSchema;
+use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
-    common::{ApiResult, AppError, PaginationQuery},
+    common::{ApiResult, AppError},
     core::EventBus,
     modules::permissions::{RequirePermissions, with_permission},
 };
@@ -28,15 +30,62 @@ use super::super::{
 // User Handlers
 // =====================================================
 
+/// Query params for the user-accessible MCP server list.
+///
+/// Extends `PaginationQuery` with server-side filters that match
+/// the UI's controls 1-to-1:
+///   - `search` → ILIKE on name / display_name / description
+///   - `status` → one of `enabled` | `disabled` | `system` | `user`
+///                (translated here to enabled/is_system bool predicates)
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ListAccessibleServersQuery {
+    #[serde(default = "default_page")]
+    pub page: u32,
+    #[serde(default = "default_per_page")]
+    pub per_page: u32,
+    #[serde(default)]
+    pub search: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+}
+
+fn default_page() -> u32 {
+    1
+}
+
+fn default_per_page() -> u32 {
+    20
+}
+
 /// List user's accessible MCP servers (own + group-assigned system servers)
 #[debug_handler]
 pub async fn list_accessible_servers(
     auth: RequirePermissions<(McpServersRead,)>,
-    Query(params): Query<PaginationQuery>,
+    Query(params): Query<ListAccessibleServersQuery>,
 ) -> ApiResult<Json<McpServerListResponse>> {
+    let search = params
+        .search
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let (enabled, is_system) = match params.status.as_deref() {
+        Some("enabled") => (Some(true), None),
+        Some("disabled") => (Some(false), None),
+        Some("system") => (None, Some(true)),
+        Some("user") => (None, Some(false)),
+        _ => (None, None),
+    };
+
     let response = Repos
         .mcp
-        .list_accessible(auth.user.id, params.page as i64, params.per_page as i64)
+        .list_accessible(
+            auth.user.id,
+            params.page as i64,
+            params.per_page as i64,
+            search,
+            enabled,
+            is_system,
+        )
         .await?;
 
     Ok((StatusCode::OK, Json(response)))

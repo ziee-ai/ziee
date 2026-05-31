@@ -105,6 +105,8 @@ pub(crate) fn build_ephemeral_server(
         supports_sampling: false,
         usage_mode: UsageMode::Auto,
         max_concurrent_sessions: None,
+        // Connectivity probe only — never routed through the code_sandbox.
+        run_in_sandbox: false,
         created_at: now,
         updated_at: now,
     }

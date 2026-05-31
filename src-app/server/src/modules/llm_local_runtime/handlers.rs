@@ -29,13 +29,28 @@ pub async fn start_model_instance(
     Path(model_id): Path<Uuid>,
     Json(_req): Json<StartInstanceRequest>,
 ) -> ApiResult<Json<InstanceResponse>> {
-    // Check if instance already exists
-    let existing = Repos.local_runtime.get_instance_by_model(model_id).await?;
-    if let Some(_instance) = existing {
-        return Err((
-            StatusCode::CONFLICT,
-            AppError::conflict("Model instance already running"),
-        ));
+    // Only a genuinely-running, healthy instance blocks a new start. A
+    // leftover row in a non-running state — e.g. the `status='stopped'` row
+    // that validation's probe leaves behind (validator::teardown_validation_instance),
+    // or a prior manual stop, or a crashed engine — must NOT 409 with
+    // "already running"; clean it up and start fresh. This mirrors the proxy
+    // auto-start path (auto_start::probe_liveness), which only treats a
+    // running + health-checked instance as live.
+    if let Some(existing) = Repos.local_runtime.get_instance_by_model(model_id).await? {
+        if existing.status == "running" {
+            let dep = get_deployment_manager()
+                .get_deployment(&DeploymentConfig::Local { binary_path: None })
+                .await?;
+            if dep.health_check(&existing.base_url).await.unwrap_or(false) {
+                return Err((
+                    StatusCode::CONFLICT,
+                    AppError::conflict("Model instance already running"),
+                ));
+            }
+        }
+        // Stale / stopped / unhealthy row → drop it so create_instance
+        // (model_id is UNIQUE) can re-insert below.
+        Repos.local_runtime.delete_instance(model_id).await?;
     }
 
     // Get model details
@@ -57,27 +72,16 @@ pub async fn start_model_instance(
     let deployment_manager = get_deployment_manager();
     let deployment = deployment_manager.get_deployment(&DeploymentConfig::Local { binary_path: None }).await?;
 
-    // Use model name as the path/identifier
-    let model_path = model.name.clone();
-
-    // Build engine config. When the model is flagged as an embedder
-    // (capabilities.text_embedding=true) we set `embeddings: true` so
-    // build_llamacpp_command adds the `--embeddings` flag. Without
-    // this, llama-server boots in chat mode and `/embedding` POSTs
-    // return 404 / empty vectors. Plan §8 "Local-runtime embedding proxy".
-    let mut engine_config = serde_json::json!({});
-    if model.capabilities.text_embedding.unwrap_or(false) {
-        engine_config["embeddings"] = serde_json::Value::Bool(true);
-    }
+    // Resolve the real model file path + typed engine_settings (incl.
+    // the embedder `--embeddings` flag derived from capabilities) the
+    // same way the proxy auto-start path does — `model.name` is NOT a
+    // file path, and the engine knobs live in `engine_settings`.
+    let (engine_type, model_path, engine_config) =
+        super::auto_start::resolve_model_inputs(Repos.pool(), model_id).await?;
 
     // Start the deployment
     let result = deployment
-        .start(
-            model_id,
-            model.engine_type.as_str(),
-            &model_path,
-            &engine_config,
-        )
+        .start(model_id, &engine_type, &model_path, &engine_config)
         .await?;
 
     // Create database record
@@ -227,24 +231,14 @@ pub async fn restart_model_instance(
     // Delete the instance record
     Repos.local_runtime.delete_instance(model_id).await?;
 
-    // Get model details for restart
-    let model = Repos
-        .llm_model
-        .get_by_id(model_id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Model"))?;
-
-    // Use model name as the path/identifier
-    let model_path = model.name.clone();
+    // Resolve the real model file path + typed engine_settings (same
+    // source as the auto-start path); 404s if the model/files are gone.
+    let (engine_type, model_path, engine_config) =
+        super::auto_start::resolve_model_inputs(Repos.pool(), model_id).await?;
 
     // Start new deployment
     let result = deployment
-        .start(
-            model_id,
-            model.engine_type.as_str(),
-            &model_path,
-            &serde_json::json!({}),
-        )
+        .start(model_id, &engine_type, &model_path, &engine_config)
         .await?;
 
     // Create new database record
@@ -302,6 +296,110 @@ pub fn restart_model_instance_docs(op: aide::transform::TransformOperation) -> a
         .description("Restart an instance")
         .tag("LocalRuntime")
         .response::<200, Json<InstanceResponse>>()
+}
+
+/// Swap a model onto another version **of the same engine** (the engine type
+/// itself cannot change). Pins the model's `required_runtime_version_id`; if
+/// the model is currently running, restarts it on the new version so the
+/// change takes effect immediately.
+pub async fn swap_model_runtime_version(
+    _auth: RequirePermissions<(LocalRuntimeManage,)>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
+    Path(model_id): Path<Uuid>,
+    Json(req): Json<super::runtime_version::models::SwapRuntimeVersionRequest>,
+) -> ApiResult<Json<super::runtime_version::models::SwapRuntimeVersionResponse>> {
+    let pool = Repos.pool();
+
+    // The model's engine (as stored text) — read directly so we don't depend
+    // on the model entity's enum representation.
+    let model_engine: String = sqlx::query_scalar!(
+        "SELECT engine_type FROM llm_models WHERE id = $1",
+        model_id
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| AppError::internal_error(format!("model lookup: {e}")))?
+    .ok_or_else(|| AppError::not_found("Model"))?;
+
+    // Target version must be the SAME engine — swap version, not engine.
+    let target = super::runtime_version::repository::get_by_id(pool, req.version_id)
+        .await
+        .map_err(|e| AppError::internal_error(format!("version lookup: {e}")))?
+        .ok_or_else(|| AppError::not_found("Runtime version"))?;
+    if target.engine != model_engine {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            AppError::bad_request(
+                "ENGINE_MISMATCH",
+                format!(
+                    "Cannot swap a '{model_engine}' model onto a '{}' version; \
+                     only the engine version may change, not the engine.",
+                    target.engine
+                ),
+            ),
+        ));
+    }
+
+    // Pin the model to the target version.
+    super::runtime_version::repository::set_model_runtime_version(
+        pool,
+        model_id,
+        Some(req.version_id),
+    )
+    .await
+    .map_err(|e| AppError::internal_error(format!("set version: {e}")))?;
+
+    // If a running instance exists, restart it onto the new version (mirrors
+    // restart_model_instance: stop → drop record → re-resolve → start).
+    let mut restarted = false;
+    if let Some(instance) = Repos.local_runtime.get_instance_by_model(model_id).await? {
+        let provider_id = instance.provider_id;
+        let deployment_manager = get_deployment_manager();
+        let deployment = deployment_manager
+            .get_deployment(&DeploymentConfig::Local { binary_path: None })
+            .await?;
+        deployment.stop(model_id).await?;
+        Repos.local_runtime.delete_instance(model_id).await?;
+
+        let (engine_type, model_path, engine_config) =
+            super::auto_start::resolve_model_inputs(pool, model_id).await?;
+        let result = deployment
+            .start(model_id, &engine_type, &model_path, &engine_config)
+            .await?;
+        Repos
+            .local_runtime
+            .create_instance(model_id, provider_id, result.port, &result.base_url, None)
+            .await?;
+        Repos
+            .local_runtime
+            .update_instance_status(model_id, "running", None)
+            .await?;
+        restarted = true;
+
+        event_bus.emit_async(
+            LlmLocalRuntimeEvent::instance_restarted(instance.id, model_id).into(),
+        );
+    }
+
+    Ok((
+        StatusCode::OK,
+        Json(super::runtime_version::models::SwapRuntimeVersionResponse {
+            model_id,
+            version_id: req.version_id,
+            restarted,
+        }),
+    ))
+}
+
+pub fn swap_model_runtime_version_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
+    use crate::modules::permissions::with_permission;
+    with_permission::<(LocalRuntimeManage,)>(op)
+        .id("LocalRuntime.swapModelVersion")
+        .description("Swap a model onto another version of the same engine (restarts if running)")
+        .tag("LocalRuntime")
+        .response::<200, Json<super::runtime_version::models::SwapRuntimeVersionResponse>>()
 }
 
 pub async fn get_model_instance(
@@ -469,6 +567,113 @@ pub fn get_model_logs_docs(op: aide::transform::TransformOperation) -> aide::tra
         .description("Get instance logs")
         .tag("LocalRuntime")
         .response::<200, Json<LogsResponse>>()
+}
+
+// =====================================================
+// P3: GPU detection
+// =====================================================
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+pub struct GpuDetectionResponse {
+    /// All usable backends on this host. Always includes "cpu".
+    pub available: Vec<String>,
+    /// Recommended backend (priority winner).
+    pub recommended: String,
+    pub platform: String,
+    pub arch: String,
+}
+
+/// GET /api/local-runtime/detect-gpu
+///
+/// Powers the settings-page GPU detection card: surfaces which
+/// engine backend(s) the host supports + the recommended pick so
+/// the runtime download drawer can pre-fill backend + arch.
+pub async fn detect_gpu(
+    _auth: RequirePermissions<(LocalRuntimeRead,)>,
+) -> ApiResult<Json<GpuDetectionResponse>> {
+    let d = super::utils::gpu_detect::detect_all();
+    Ok((
+        StatusCode::OK,
+        Json(GpuDetectionResponse {
+            available: d.available,
+            recommended: d.recommended,
+            platform: d.platform,
+            arch: d.arch,
+        }),
+    ))
+}
+
+pub fn detect_gpu_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+    use crate::modules::permissions::with_permission;
+    with_permission::<(LocalRuntimeRead,)>(op)
+        .id("LocalRuntime.detectGpu")
+        .description("Detect available GPU backends + recommended pick for engine downloads")
+        .tag("LocalRuntime")
+        .response::<200, Json<GpuDetectionResponse>>()
+}
+
+/// P2: SSE log streaming. Subscribes to the per-instance log
+/// broadcaster + replays the existing snapshot on connect. Events are
+/// the typed `SSELogEvent` enum (`log` / `lag`) so the generated TS
+/// client gets a fully-typed `SSECallback` — no `as never` casts.
+pub async fn stream_model_logs(
+    _auth: RequirePermissions<(LocalRuntimeLogs,)>,
+    Path(model_id): Path<Uuid>,
+) -> ApiResult<
+    axum::response::Sse<
+        impl futures::Stream<Item = Result<axum::response::sse::Event, axum::Error>>,
+    >,
+> {
+    use axum::response::sse::{Event, KeepAlive, Sse};
+
+    let deployment_manager = get_deployment_manager();
+    let dep = deployment_manager
+        .get_deployment(&DeploymentConfig::Local { binary_path: None })
+        .await?;
+    let (mut rx, snapshot) = dep.subscribe_logs(model_id).await?;
+
+    let stream = async_stream::stream! {
+        // Replay the buffered snapshot first.
+        for line in snapshot {
+            let ev: Event = SSELogEvent::Log(SSELogLineData { line }).into();
+            yield Ok(ev);
+        }
+        // Then stream live lines from the broadcaster.
+        loop {
+            match rx.recv().await {
+                Ok(line) => {
+                    let ev: Event = SSELogEvent::Log(SSELogLineData { line }).into();
+                    yield Ok(ev);
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                    let ev: Event = SSELogEvent::Lag(SSELogLagData {
+                        message: format!("dropped {skipped} log line(s)"),
+                        dropped: skipped,
+                    })
+                    .into();
+                    yield Ok(ev);
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    };
+
+    Ok((
+        StatusCode::OK,
+        Sse::new(stream)
+            .keep_alive(KeepAlive::new().interval(std::time::Duration::from_secs(30))),
+    ))
+}
+
+pub fn stream_model_logs_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
+    use crate::modules::permissions::with_permission;
+    with_permission::<(LocalRuntimeLogs,)>(op)
+        .id("LocalRuntime.streamLogs")
+        .description("Stream instance logs as Server-Sent Events")
+        .tag("LocalRuntime")
+        .response::<200, Json<SSELogEvent>>()
 }
 
 // =====================================================

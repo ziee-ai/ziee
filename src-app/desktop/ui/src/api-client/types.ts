@@ -49,6 +49,29 @@ export interface AssistantListResponse {
   total: number
 }
 
+export interface AttachFileRequest {
+  file_id: string
+}
+
+export interface AuthConfigResponse {
+  hide_username: boolean
+  magic_link_enabled: boolean
+  password_auth_enabled: boolean
+}
+
+export interface AuthProviderResponse {
+  config: any
+  created_at: string
+  enabled: boolean
+  id: string
+  last_test_at?: string
+  last_test_message?: string
+  last_test_ok?: boolean
+  name: string
+  provider_type: string
+  updated_at: string
+}
+
 export interface AuthResponse {
   access_token: string
   expires_in: number
@@ -62,10 +85,9 @@ export interface AutoApprovedServer {
   tools: string[]
 }
 
-export interface AutoLoginResponse {
-  access_token: string
-  refresh_token: string
-  user: User
+export interface AvailableUpdatesResponse {
+  available_versions: string[]
+  engine: string
 }
 
 export interface BackendStatusResponse {
@@ -78,6 +100,7 @@ export interface Branch {
   conversation_id: string
   created_at: string
   created_from_message_id?: string
+  fork_level: string
   id: string
   parent_branch_id?: string
 }
@@ -106,6 +129,11 @@ export interface CallToolResponse {
   is_error: boolean
 }
 
+export interface ChangePasswordRequest {
+  current_password: string
+  new_password: string
+}
+
 export interface ChatStreamChunk {
   branch_id?: string
   content?: ContentBlockDelta[]
@@ -114,6 +142,25 @@ export interface ChatStreamChunk {
   finish_reason?: string
   message_id?: string
   usage?: Usage
+}
+
+export interface CodeSandboxResourceLimits {
+  address_space_bytes: number
+  cpu_max: string
+  cpu_secs_max: number
+  created_at: string
+  fsize_bytes: number
+  mac_vm_ram_mib: number
+  mac_vm_vcpus: number
+  memory_max_bytes: number
+  memory_swap_max_bytes: number
+  nofile_max: number
+  nproc_max: number
+  pids_max: number
+  timeout_secs: number
+  updated_at: string
+  vm_idle_evict_secs: number
+  vm_max_concurrent_execs: number
 }
 
 export type ContentBlockDelta = {
@@ -137,7 +184,9 @@ export interface Conversation {
   active_branch_id?: string
   created_at: string
   id: string
+  memory_mode: string
   model_id?: string
+  project_id?: string
   updated_at: string
   user_id: string
 }
@@ -159,8 +208,21 @@ export interface ConversationResponse {
   active_branch_id?: string
   created_at: string
   id: string
+  memory_mode: string
   message_count: number
   model_id?: string
+  project_id?: string
+  updated_at: string
+  user_id: string
+}
+
+export interface CoreMemoryBlock {
+  assistant_id: string
+  block_label: string
+  char_limit: number
+  content: string
+  created_at: string
+  id: string
   updated_at: string
   user_id: string
 }
@@ -185,13 +247,22 @@ export interface CreateAssistantRequest {
   parameters?: ModelParameters
 }
 
+export interface CreateAuthProviderRequest {
+  config: any
+  enabled?: boolean
+  name: string
+  provider_type: string
+}
+
 export interface CreateBranchRequest {
+  fork_level?: string
   from_message_id: string
 }
 
 export interface CreateConversationRequest {
   title?: string
   model_id?: string
+  project_id?: string
 }
 
 export interface CreateGroupRequest {
@@ -245,10 +316,20 @@ export interface CreateMcpServerRequest {
   enabled?: boolean
   environment_variables?: any
   headers?: any
+  max_concurrent_sessions?: number
   name: string
+  supports_sampling?: boolean
   timeout_seconds?: number
   transport_type: TransportType
   url?: string
+  usage_mode?: UsageMode
+}
+
+export interface CreateMemoryRequest {
+  content: string
+  importance?: number
+  kind?: string
+  metadata?: any
 }
 
 export interface CreateModelFromHubRequest {
@@ -259,12 +340,36 @@ export interface CreateModelFromHubRequest {
   quantization_name?: string
 }
 
+export interface CreateProjectRequest {
+  description?: string
+  default_assistant_id?: string
+  default_model_id?: string
+  instructions?: string
+  mcp_approval_mode?: string
+  mcp_auto_approved_tools?: McpServerToolEntry[]
+  mcp_disabled_servers?: McpServerToolEntry[]
+  name?: string
+}
+
 export interface CreateUserRequest {
   display_name?: string
   email: string
   password: string
   permissions?: string[]
   username: string
+}
+
+export interface DeleteAllResponse {
+  deleted: number
+}
+
+export interface DeleteProviderResponse {
+  affected_user_links: number
+  deleted: boolean
+}
+
+export interface DeleteVersionQuery {
+  remove_binary?: boolean
 }
 
 export type DeviceType = 'cpu' | 'cuda' | 'metal' | 'rocm' | 'vulkan' | 'opencl' | 'auto'
@@ -277,7 +382,6 @@ export interface DisabledServer {
 export interface DownloadFromRepositoryRequest {
   description?: string
   capabilities?: ModelCapabilities
-  clear_cache?: boolean
   display_name: string
   engine_settings?: ModelEngineSettings
   engine_type?: EngineType
@@ -371,6 +475,20 @@ export interface DownloadTokenResponse {
   token: string
 }
 
+export interface DownloadVersionRequest {
+  arch: string
+  backend: string
+  engine: string
+  platform: string
+  version: string
+}
+
+export interface DownloadVersionResponse {
+  downloaded: boolean
+  message: string
+  version: RuntimeVersionResponse
+}
+
 export interface EditMessageRequest {
   content: string
 }
@@ -382,9 +500,25 @@ export interface EditMessageResponse {
 
 export type EngineType = 'mistralrs' | 'llamacpp' | 'none'
 
+export interface EnvironmentInfo {
+  description: string
+  approximate_size_mb: number
+  cached: boolean
+  cached_size_bytes?: number
+  flavor: string
+  mounted: boolean
+}
+
+export interface EnvironmentsResponse {
+  available: EnvironmentInfo[]
+}
+
+export type FetchPhase = 'resolving' | 'downloading' | 'verifying_sha256' | 'verifying_cosign' | 'installing'
+
 export interface File {
   checksum?: string
   created_at: string
+  created_by: string
   file_size: number
   filename: string
   has_thumbnail: boolean
@@ -436,8 +570,22 @@ export interface GPUUsage {
   utilization_percentage?: number
 }
 
+export interface GetPromptRequest {
+  arguments?: any
+  name: string
+}
+
+export interface GetPromptResponse {
+  description?: string
+  messages: any[]
+}
+
 export interface GetUserProvidersResponse {
   providers: ProviderWithModels[]
+}
+
+export interface GetUserProvidersResponse2 {
+  providers: ProviderWithModels2[]
 }
 
 export interface Group {
@@ -486,6 +634,12 @@ export interface HardwareUsageUpdate {
   timestamp: string
 }
 
+export interface HealthCheckResponse {
+  healthy: boolean
+  message?: string
+  response_time_ms?: number
+}
+
 export interface HealthResponse {
   status: string
 }
@@ -518,6 +672,15 @@ export interface HubEntity {
   id: string
 }
 
+export interface HubLocalProvider {
+  id: string
+  name: string
+}
+
+export interface HubLocalProvidersResponse {
+  providers: HubLocalProvider[]
+}
+
 export interface HubMCPServer {
   description?: string
   args?: string[]
@@ -543,6 +706,7 @@ export interface HubMCPServer {
   rating?: number
   repository_url?: string
   requires_desktop?: boolean
+  supports_sampling?: boolean
   tags?: string[]
   tool_categories?: string[]
   tool_count?: number
@@ -611,18 +775,85 @@ export type ImageSource = {
   file_id: string
 }
 
+export interface InstanceResponse {
+  base_url: string
+  error_message?: string
+  id: string
+  last_health_check?: string
+  local_port: number
+  model_id: string
+  provider_id: string
+  runtime_version_id?: string
+  started_at: string
+  status: string
+  stopped_at?: string
+}
+
+export interface InstanceStatusResponse {
+  base_url?: string
+  model_id: string
+  status: string
+  uptime_seconds?: number
+}
+
+export interface LinkAccountRequest {
+  link_token: string
+  password: string
+}
+
+export interface ListAccessibleServersQuery {
+  page?: number
+  per_page?: number
+  search?: string
+  status?: string
+}
+
+export interface ListAuditLogQuery {
+  limit?: number
+}
+
+export interface ListMemoriesQuery {
+  kind?: string
+  limit?: number
+  offset?: number
+  page?: number
+  per_page?: number
+  search?: string
+  source?: string
+}
+
 export interface ListModelsQuery {
+  capability?: string
   page?: number
   perPage?: number
   providerId?: string
+}
+
+export interface ListPrefetchTasksResponse {
+  tasks: PrefetchTaskSummary[]
+}
+
+export interface ListPromptsResponse {
+  prompts: Prompt[]
 }
 
 export interface ListResourcesResponse {
   resources: Resource[]
 }
 
+export interface ListSystemServersQuery {
+  page?: number
+  per_page?: number
+  search?: string
+  status?: string
+}
+
 export interface ListToolsResponse {
   tools: Tool[]
+}
+
+export interface ListVersionsQuery {
+  engine?: string
 }
 
 export interface LlamaCppSettings {
@@ -671,6 +902,7 @@ export interface LlmModel {
   pid?: number
   port?: number
   provider_id: string
+  required_runtime_version_id?: string
   updated_at: string
   validation_issues?: string[]
   validation_status?: string
@@ -688,6 +920,7 @@ export interface LlmProvider {
   base_url?: string
   built_in: boolean
   created_at: string
+  default_runtime_version_id?: string
   enabled: boolean
   id: string
   name: string
@@ -728,12 +961,26 @@ export interface LoginRequest {
   username: string
 }
 
+export interface LogsResponse {
+  logs: string[]
+  model_id: string
+}
+
 export interface LoopSettings {
   force_final_answer?: boolean
   max_iteration?: number
   per_tool_max_iteration?: PerToolLimit[]
   stop_when_no_tool_calling?: boolean
   stop_when_tools_called?: ToolIdentifier[]
+}
+
+export interface MagicLinkExchangeRequest {
+  token: string
+}
+
+export interface MagicLinkIssueResponse {
+  expires_at: string
+  token: string
 }
 
 export interface McpConfig {
@@ -750,12 +997,16 @@ export interface McpServer {
   environment_variables: any
   headers: any
   id: string
+  is_built_in: boolean
   is_system: boolean
+  max_concurrent_sessions?: number
   name: string
+  supports_sampling: boolean
   timeout_seconds: number
   transport_type: TransportType
   updated_at: string
   url?: string
+  usage_mode: UsageMode
   user_id?: string
 }
 
@@ -777,6 +1028,21 @@ export interface McpServerListResponse {
   total_pages: number
 }
 
+export interface McpServerOAuthConfigResponse {
+  client_id: string
+  created_at: string
+  has_client_secret: boolean
+  resource?: string
+  scopes?: string
+  server_id: string
+  updated_at: string
+}
+
+export interface McpServerToolEntry {
+  server_id: string
+  tools?: string[]
+}
+
 export interface McpSettingsResponse {
   settings?: ConversationMcpSettingsResponse
 }
@@ -786,9 +1052,45 @@ export interface MeResponse {
   user: User
 }
 
+export interface MemoryAdminSettings {
+  cosine_threshold: number
+  daily_extraction_quota: number
+  default_extraction_model_id?: string
+  default_top_k: number
+  embedding_dimensions: number
+  embedding_model_id?: string
+  enabled: boolean
+  full_summary_prompt?: string
+  id: number
+  incremental_summary_prompt?: string
+  soft_delete_grace_days: number
+  summarize_after_n_messages: number
+  summarizer_keep_recent: number
+  updated_at: string
+}
+
+export interface MemoryAuditEntry {
+  actor_kind: string
+  content_snapshot?: string
+  created_at: string
+  id: number
+  memory_id?: string
+  metadata: any
+  op: string
+  source: string
+  user_id: string
+}
+
 export interface MemoryInfo {
   total_ram: number
   total_swap?: number
+}
+
+export interface MemoryListResponse {
+  items: UserMemory[]
+  page: number
+  per_page: number
+  total: number
 }
 
 export interface MemoryUsage {
@@ -800,9 +1102,12 @@ export interface MemoryUsage {
 }
 
 export interface Message {
+  assistant_id?: string
   created_at: string
   edit_count: number
   id: string
+  mcp_server_ids?: string[]
+  model_id?: string
   originated_from_id: string
   role: string
 }
@@ -847,19 +1152,35 @@ export interface MessageContentDataToolUse {
 }
 export interface MessageContentDataToolResult {
   type: 'tool_result'
+  attachment?: RichFile | null
   content: string
+  hidden_content?: string | null
   is_error?: boolean | null
   name?: string | null
+  resource_links?: ResourceLink[] | null
+  server_id?: string | null
   tool_use_id: string
 }
+export interface MessageContentDataElicitationRequest {
+  type: 'elicitation_request'
+  elicitation_id: string
+  message: string
+  requested_schema: any
+  response_content?: any
+  server: string
+  status: string
+}
 
-export type MessageContentData = MessageContentDataText | MessageContentDataThinking | MessageContentDataImage | MessageContentDataFileAttachment | MessageContentDataToolUse | MessageContentDataToolResult
+export type MessageContentData = MessageContentDataText | MessageContentDataThinking | MessageContentDataImage | MessageContentDataFileAttachment | MessageContentDataToolUse | MessageContentDataToolResult | MessageContentDataElicitationRequest
 
 export interface MessageWithContent {
+  assistant_id?: string
   contents: MessageContent[]
   created_at: string
   edit_count: number
   id: string
+  mcp_server_ids?: string[]
+  model_id?: string
   originated_from_id: string
   role: string
 }
@@ -968,13 +1289,23 @@ export interface PaginationQuery2 {
 }
 
 export interface PaginationQuery3 {
-  limit?: number
-  page?: number
+  limit: number
+  page: number
 }
 
 export interface PaginationQuery4 {
   limit?: number
   page?: number
+}
+
+export interface PaginationQuery5 {
+  limit?: number
+  page?: number
+  project_id?: string
+}
+
+export interface PasswordOnlyLoginRequest {
+  password: string
 }
 
 export interface PendingApprovalsResponse {
@@ -1003,15 +1334,91 @@ export interface PermissionErrorDetails {
   required_permissions: PermissionDetail[]
 }
 
+export interface PingResponse {
+  ok: boolean
+}
+
+export type PrefetchStatus = 'running' | 'completed' | 'failed' | 'already_cached'
+
+export interface PrefetchTaskSummary {
+  error?: string
+  flavor: string
+  last_phase?: FetchPhase
+  outcome?: SSEPrefetchCompleteData
+  started_at: string
+  status: PrefetchStatus
+  task_id: string
+}
+
 export interface PreviewQuery {
   page?: number
 }
 
+export interface Project {
+  description?: string
+  created_at: string
+  default_assistant_id?: string
+  default_model_id?: string
+  id: string
+  instructions?: string
+  mcp_approval_mode: string
+  mcp_auto_approved_tools?: any
+  mcp_disabled_servers?: any
+  mcp_loop_settings?: any
+  name: string
+  updated_at: string
+  user_id: string
+}
+
+export interface ProjectFileListResponse {
+  files: File[]
+  total: number
+}
+
+export interface ProjectListResponse {
+  projects: Project[]
+  total: number
+}
+
+export interface Prompt {
+  description?: string
+  arguments?: PromptArgument[]
+  name: string
+}
+
+export interface PromptArgument {
+  description?: string
+  name: string
+  required?: boolean
+}
+
+export interface ProviderInstancesResponse {
+  instances: InstanceResponse[]
+  provider_id: string
+}
+
 export interface ProviderWithModels {
+  api_key?: string
+  api_key_configured: boolean
+  base_url?: string
+  built_in: boolean
+  created_at: string
+  default_runtime_version_id?: string
+  enabled: boolean
+  id: string
+  llm_models: LlmModel[]
+  name: string
+  provider_type: string
+  proxy_settings: ProxySettings
+  updated_at: string
+}
+
+export interface ProviderWithModels2 {
   api_key?: string
   base_url?: string
   built_in: boolean
   created_at: string
+  default_runtime_version_id?: string
   enabled: boolean
   id: string
   llm_models: LlmModel[]
@@ -1030,12 +1437,28 @@ export interface ProxySettings {
   username?: string
 }
 
+export interface PublicProvider {
+  display_name: string
+  name: string
+  provider_type: string
+}
+
+export interface PublicProvidersResponse {
+  providers: PublicProvider[]
+}
+
 export interface ReadResourceRequest {
   uri: string
 }
 
 export interface ReadResourceResponse {
   content: any
+}
+
+export interface RebuildStatus {
+  in_progress: boolean
+  model_name?: string
+  pending_count: number
 }
 
 export interface RefreshTokenRequest {
@@ -1047,6 +1470,27 @@ export interface RegisterRequest {
   email: string
   password: string
   username: string
+}
+
+export interface RemoteAccessSettingsResponse {
+  auth_token_set: boolean
+  auto_start_tunnel: boolean
+  created_at: string
+  ngrok_domain?: string
+  password_auth_enabled: boolean
+  updated_at: string
+}
+
+export interface RemoteAccessStatusResponse {
+  auth_token_set: boolean
+  auto_start_tunnel: boolean
+  last_error?: string
+  ngrok_domain?: string
+  password_auth_enabled: boolean
+  password_rotated: boolean
+  public_url?: string
+  started_at?: string
+  tunnel_state: TunnelStateKind
 }
 
 export interface RepositoryAuthConfig {
@@ -1069,6 +1513,52 @@ export interface Resource {
   uri: string
 }
 
+export interface ResourceLink {
+  is_saved?: boolean
+  mime_type?: string
+  name?: string
+  size?: number
+  uri: string
+}
+
+export interface RespondToElicitationRequest {
+  action: string
+  content?: any
+}
+
+export interface RespondToElicitationResponse {
+  success: boolean
+}
+
+export interface RichFile {
+  data: string
+  filename: string
+  mime_type: string
+}
+
+export interface RuntimeVersionListResponse {
+  versions: RuntimeVersionResponse[]
+}
+
+export interface RuntimeVersionResponse {
+  arch: string
+  backend: string
+  binary_path: string
+  created_at: string
+  engine: string
+  id: string
+  is_system_default: boolean
+  platform: string
+  version: string
+}
+
+export interface SSEChatStreamArtifactCreatedData {
+  file_id: string
+  file_size: number
+  filename: string
+  mime_type?: string
+}
+
 export interface SSEChatStreamCompleteData {
   finish_reason: string
   usage?: Usage
@@ -1087,6 +1577,9 @@ export type SSEChatStreamEvent = {
   mcpToolStart: SSEChatStreamMcpToolStartData
   mcpToolComplete: SSEChatStreamMcpToolCompleteData
   mcpApprovalRequired: SSEChatStreamMcpApprovalRequiredData
+  mcpElicitationRequired: SSEChatStreamMcpElicitationRequiredData
+  mcpToolProgress: SSEChatStreamMcpToolProgressData
+  artifactCreated: SSEChatStreamArtifactCreatedData
   titleUpdated: SSEChatStreamTitleUpdatedData
 }
 
@@ -1098,14 +1591,33 @@ export interface SSEChatStreamMcpApprovalRequiredData {
   tool_use_id: string
 }
 
+export interface SSEChatStreamMcpElicitationRequiredData {
+  elicitation_id: string
+  message: string
+  message_id?: string
+  requested_schema: any
+  server: string
+}
+
 export interface SSEChatStreamMcpToolCompleteData {
   is_error: boolean
+  result?: string
   server: string
   tool_name: string
   tool_use_id: string
 }
 
+export interface SSEChatStreamMcpToolProgressData {
+  message?: string
+  message_id?: string
+  progress: number
+  progress_token?: any
+  server: string
+  total?: number
+}
+
 export interface SSEChatStreamMcpToolStartData {
+  input: any
   server: string
   tool_name: string
   tool_use_id: string
@@ -1141,6 +1653,40 @@ export type SSEHardwareUsageEvent = {
   update: HardwareUsageUpdate
 }
 
+export interface SSEPrefetchCompleteData {
+  bytes_downloaded: number
+  cosign_verified: boolean
+  duration_ms: number
+}
+
+export interface SSEPrefetchConnectedData {
+  expected_size_mb: number
+  flavor: string
+  status: PrefetchStatus
+  task_id: string
+}
+
+export type SSEPrefetchEvent = {
+  connected: SSEPrefetchConnectedData
+  progress: SSEPrefetchProgressData
+  complete: SSEPrefetchCompleteData
+  failed: SSEPrefetchFailedData
+}
+
+export interface SSEPrefetchFailedData {
+  error: string
+}
+
+export interface SSEPrefetchProgressData {
+  message: string
+  phase: FetchPhase
+}
+
+export interface SaveUserApiKeyRequest {
+  api_key: string
+  provider_id: string
+}
+
 export interface SendMessageRequest {
   assistant_id?: string
   branch_id: string
@@ -1148,6 +1694,7 @@ export interface SendMessageRequest {
   create_branch_from_message_id?: string
   enable_mcp?: boolean
   file_ids?: string[]
+  fork_level?: string
   mcp_config?: McpConfig
   model_id: string
   tool_approvals?: ToolApprovalDecision[]
@@ -1155,6 +1702,17 @@ export interface SendMessageRequest {
 
 export interface ServerGroupsRequest {
   group_ids: string[]
+}
+
+export interface SetAdminPasswordRequest {
+  new_password: string
+}
+
+export interface SetMcpServerOAuthConfigRequest {
+  client_id: string
+  client_secret: string
+  resource?: string
+  scopes?: string
 }
 
 export interface SetSettingRequest {
@@ -1179,9 +1737,21 @@ export interface SetupAdminRequest {
 }
 
 export interface SetupStatusResponse {
-  app_name: string
   needs_setup: boolean
-  version: string
+}
+
+export type StartInstanceRequest = any
+
+export interface StartPrefetchBody {
+  flavor: string
+}
+
+export interface StartPrefetchResponse {
+  events_url: string
+  expected_size_mb: number
+  flavor: string
+  status: PrefetchStatus
+  task_id: string
 }
 
 export interface StreamError {
@@ -1194,6 +1764,22 @@ export interface SuccessResponse {
   success: boolean
 }
 
+export interface SyncCacheResponse {
+  message: string
+  synced_count: number
+}
+
+export interface TestExtractRequest {
+  assistant_message: string
+  user_id: string
+  user_message: string
+}
+
+export interface TestProviderResponse {
+  message: string
+  ok: boolean
+}
+
 export interface TestRepositoryConnectionRequest {
   auth_config?: RepositoryAuthConfig
   auth_type: string
@@ -1204,6 +1790,11 @@ export interface TestRepositoryConnectionRequest {
 export interface TestRepositoryConnectionResponse {
   message: string
   success: boolean
+}
+
+export interface TestSummarizeRequest {
+  branch_id: string
+  model_id: string
 }
 
 export interface TextPageQuery {
@@ -1261,6 +1852,13 @@ export interface ToolUseApproval {
 
 export type TransportType = 'stdio' | 'http' | 'sse'
 
+export interface TunnelStartResponse {
+  public_url: string
+  started_at: string
+}
+
+export type TunnelStateKind = 'idle' | 'starting' | 'connected' | 'error'
+
 export interface UpdateAssistantRequest {
   description?: string
   enabled?: boolean
@@ -1270,8 +1868,33 @@ export interface UpdateAssistantRequest {
   parameters?: ModelParameters
 }
 
+export interface UpdateAuthProviderRequest {
+  config?: any
+  enabled?: boolean
+  name?: string
+}
+
+export interface UpdateCodeSandboxResourceLimits {
+  address_space_bytes?: number
+  cpu_max?: string
+  cpu_secs_max?: number
+  fsize_bytes?: number
+  mac_vm_ram_mib?: number
+  mac_vm_vcpus?: number
+  memory_max_bytes?: number
+  memory_swap_max_bytes?: number
+  nofile_max?: number
+  nproc_max?: number
+  pids_max?: number
+  timeout_secs?: number
+  vm_idle_evict_secs?: number
+  vm_max_concurrent_execs?: number
+}
+
 export interface UpdateConversationRequest {
   title?: string
+  memory_mode?: string
+  project_id?: string
 }
 
 export interface UpdateGroupProvidersRequest {
@@ -1326,17 +1949,76 @@ export interface UpdateMcpServerRequest {
   enabled?: boolean
   environment_variables?: any
   headers?: any
+  max_concurrent_sessions?: number
   name?: string
+  supports_sampling?: boolean
   timeout_seconds?: number
   url?: string
+  usage_mode?: UsageMode
+}
+
+export interface UpdateMemoryAdminSettingsRequest {
+  cosine_threshold?: number
+  daily_extraction_quota?: number
+  default_extraction_model_id?: string
+  default_top_k?: number
+  embedding_model_id?: string
+  enabled?: boolean
+  full_summary_prompt?: string
+  incremental_summary_prompt?: string
+  soft_delete_grace_days?: number
+  summarize_after_n_messages?: number
+  summarizer_keep_recent?: number
+}
+
+export interface UpdateMemoryRequest {
+  content?: string
+  importance?: number
+  kind?: string
+  metadata?: any
+}
+
+export interface UpdateProjectMcpSettingsRequest {
+  approval_mode: string
+  auto_approved_tools: McpServerToolEntry[]
+  disabled_servers: McpServerToolEntry[]
+  loop_settings?: any
+}
+
+export interface UpdateProjectRequest {
+  description?: string
+  default_assistant_id?: string
+  default_model_id?: string
+  instructions?: string
+  name?: string
+}
+
+export interface UpdateRemoteAccessSettingsRequest {
+  auto_start_tunnel?: boolean
+  ngrok_auth_token?: string
+  ngrok_domain?: string
+  password_auth_enabled?: boolean
+}
+
+export interface UpdateUserMemorySettingsRequest {
+  extraction_enabled?: boolean
+  extraction_model_id?: string
+  max_memories?: number
+  retention_days?: number
+  retrieval_enabled?: boolean
 }
 
 export interface UpdateUserRequest {
   display_name?: string
-  email?: string
   is_active?: boolean
-  permissions?: string[]
   username?: string
+}
+
+export interface UpsertCoreMemoryBlockRequest {
+  assistant_id: string
+  block_label: string
+  char_limit?: number
+  content: string
 }
 
 export interface UpsertMcpSettingsRequest {
@@ -1358,15 +2040,21 @@ export interface Usage {
   output_tokens?: number
 }
 
+export type UsageMode = 'auto' | 'always'
+
 export interface User {
   avatar_url?: string
+  completed_onboarding_ids: string[]
+  completed_onboarding_step_ids: string[]
   created_at: string
   display_name?: string
   email: string
   email_verified: boolean
   id: string
   is_active: boolean
+  is_admin: boolean
   last_login_at?: string
+  password_changed_at?: string
   permissions: string[]
   updated_at: string
   username: string
@@ -1375,6 +2063,15 @@ export interface User {
 export interface UserActiveStatusResponse {
   is_active: boolean
   user_id: string
+}
+
+export interface UserApiKeyEntry {
+  masked_key: string
+  provider_id: string
+}
+
+export interface UserApiKeyListResponse {
+  keys: UserApiKeyEntry[]
 }
 
 export interface UserListResponse {
@@ -1400,27 +2097,74 @@ export interface UserMcpDefaultsResponse {
   user_id: string
 }
 
+export interface UserMemory {
+  confidence: number
+  content: string
+  created_at: string
+  embedding_model?: string
+  id: string
+  importance: number
+  kind: string
+  last_recalled_at?: string
+  metadata: any
+  recall_count: number
+  source: string
+  source_message_id?: string
+  updated_at: string
+  user_id: string
+}
+
+export interface UserMemorySettings {
+  created_at: string
+  extraction_enabled: boolean
+  extraction_model_id?: string
+  max_memories: number
+  retention_days?: number
+  retrieval_enabled: boolean
+  updated_at: string
+  user_id: string
+}
+
 // =============================================================================
 // PERMISSIONS
 // =============================================================================
 
 export enum Permissions {
+  AssistantsCreate = 'assistants::create',
+  AssistantsDelete = 'assistants::delete',
+  AssistantsEdit = 'assistants::edit',
+  AssistantsRead = 'assistants::read',
+  AssistantsTemplateCreate = 'assistant_templates::create',
+  AssistantsTemplateDelete = 'assistant_templates::delete',
+  AssistantsTemplateEdit = 'assistant_templates::edit',
+  AssistantsTemplateRead = 'assistant_templates::read',
+  AuthProvidersManage = 'auth_providers::manage',
+  AuthProvidersRead = 'auth_providers::read',
   BranchesCreate = 'branches::create',
   BranchesSwitch = 'branches::switch',
+  CodeSandboxEnvironmentsManage = 'code_sandbox::environments::manage',
+  CodeSandboxEnvironmentsRead = 'code_sandbox::environments::read',
+  CodeSandboxResourceLimitsManage = 'code_sandbox::resource_limits::manage',
+  CodeSandboxResourceLimitsRead = 'code_sandbox::resource_limits::read',
   ConversationsCreate = 'conversations::create',
   ConversationsDelete = 'conversations::delete',
   ConversationsEdit = 'conversations::edit',
   ConversationsRead = 'conversations::read',
+  CoreMemoryRead = 'memory::core::read',
+  CoreMemoryWrite = 'memory::core::write',
   FilesDelete = 'files::delete',
   FilesDownload = 'files::download',
   FilesGenerateToken = 'files::generate_token',
   FilesPreview = 'files::preview',
   FilesRead = 'files::read',
+  FilesUpload = 'files::upload',
   GroupsAssignUsers = 'groups::assign_users',
   GroupsCreate = 'groups::create',
   GroupsDelete = 'groups::delete',
   GroupsEdit = 'groups::edit',
   GroupsRead = 'groups::read',
+  HardwareMonitor = 'hardware::monitor',
+  HardwareRead = 'hardware::read',
   HubAssistantsCreate = 'hub::assistants::create',
   HubAssistantsRead = 'hub::assistants::read',
   HubAssistantsRefresh = 'hub::assistants::refresh',
@@ -1435,6 +2179,9 @@ export enum Permissions {
   HubModelsVersionRead = 'hub::models::read_version',
   LlmModelsCreate = 'llm_models::create',
   LlmModelsDelete = 'llm_models::delete',
+  LlmModelsDownloadsCancel = 'llm_models::downloads_cancel',
+  LlmModelsDownloadsDelete = 'llm_models::downloads_delete',
+  LlmModelsDownloadsRead = 'llm_models::downloads_read',
   LlmModelsEdit = 'llm_models::edit',
   LlmModelsRead = 'llm_models::read',
   LlmProvidersAssignGroups = 'llm_providers::assign_groups',
@@ -1446,6 +2193,9 @@ export enum Permissions {
   LlmRepositoriesDelete = 'llm_repositories::delete',
   LlmRepositoriesEdit = 'llm_repositories::edit',
   LlmRepositoriesRead = 'llm_repositories::read',
+  LocalRuntimeLogs = 'llm_local_runtime::logs',
+  LocalRuntimeManage = 'llm_local_runtime::manage',
+  LocalRuntimeRead = 'llm_local_runtime::read',
   McpServersAdminCreate = 'mcp_servers_admin::create',
   McpServersAdminDelete = 'mcp_servers_admin::delete',
   McpServersAdminEdit = 'mcp_servers_admin::edit',
@@ -1454,9 +2204,26 @@ export enum Permissions {
   McpServersDelete = 'mcp_servers::delete',
   McpServersEdit = 'mcp_servers::edit',
   McpServersRead = 'mcp_servers::read',
+  MemoryAdminManage = 'memory::admin::manage',
+  MemoryAdminRead = 'memory::admin::read',
+  MemoryRead = 'memory::read',
+  MemoryWrite = 'memory::write',
   MessagesCreate = 'messages::create',
   MessagesDelete = 'messages::delete',
   MessagesRead = 'messages::read',
+  ProfileEdit = 'profile::edit',
+  ProfileRead = 'profile::read',
+  ProjectsCreate = 'projects::create',
+  ProjectsDelete = 'projects::delete',
+  ProjectsEdit = 'projects::edit',
+  ProjectsRead = 'projects::read',
+  RemoteAccessManage = 'remote_access::manage',
+  RemoteAccessRead = 'remote_access::read',
+  RuntimeVersionCreate = 'llm_local_runtime::create',
+  RuntimeVersionDelete = 'llm_local_runtime::delete',
+  RuntimeVersionRead = 'llm_local_runtime::versions_read',
+  RuntimeVersionUpdate = 'llm_local_runtime::update',
+  UserLlmProvidersRead = 'user_llm_providers::read',
   UsersCreate = 'users::create',
   UsersDelete = 'users::delete',
   UsersEdit = 'users::edit',
@@ -1466,22 +2233,41 @@ export enum Permissions {
 }
 
 export const PermissionDescriptions: Record<string, string> = {
+  AssistantsCreate: 'Create user assistants',
+  AssistantsDelete: 'Delete user assistants',
+  AssistantsEdit: 'Edit user assistants',
+  AssistantsRead: 'Read user assistants',
+  AssistantsTemplateCreate: 'Create system-wide template assistants',
+  AssistantsTemplateDelete: 'Delete system-wide template assistants',
+  AssistantsTemplateEdit: 'Edit system-wide template assistants',
+  AssistantsTemplateRead: 'Read system-wide template assistants',
+  AuthProvidersManage: 'Create, update, delete, enable/disable, and test auth providers.',
+  AuthProvidersRead: 'List configured auth providers and view their (masked) config.',
   BranchesCreate: 'Create message branches for edit/regenerate',
   BranchesSwitch: 'Switch between conversation branches',
+  CodeSandboxEnvironmentsManage: 'Trigger pre-fetch + cache management of sandbox rootfs environments.',
+  CodeSandboxEnvironmentsRead: 'List available sandbox environments and watch prefetch progress.',
+  CodeSandboxResourceLimitsManage: 'Update the sandbox memory/CPU/PID caps + per-exec timeout + idle-evict policy.',
+  CodeSandboxResourceLimitsRead: 'Read the sandbox resource limits configuration.',
   ConversationsCreate: 'Create new chat conversations',
   ConversationsDelete: 'Delete chat conversations',
   ConversationsEdit: 'Edit conversation titles and metadata',
   ConversationsRead: 'View chat conversations',
+  CoreMemoryRead: 'Read own assistant core memory blocks.',
+  CoreMemoryWrite: 'Upsert / delete own assistant core memory blocks.',
   FilesDelete: 'Delete files',
   FilesDownload: 'Download file content',
   FilesGenerateToken: 'Generate download tokens',
   FilesPreview: 'View file thumbnails and previews',
   FilesRead: 'View file metadata and list files',
+  FilesUpload: 'Upload new files',
   GroupsAssignUsers: 'Assign users to groups and remove users from groups',
   GroupsCreate: 'Create new groups',
   GroupsDelete: 'Delete non-system groups',
   GroupsEdit: 'Edit existing group information and permissions',
   GroupsRead: 'View groups and group information',
+  HardwareMonitor: 'Monitor real-time hardware usage',
+  HardwareRead: 'View hardware information',
   HubAssistantsCreate: 'Create assistants from hub',
   HubAssistantsRead: 'View hub assistants',
   HubAssistantsRefresh: 'Refresh hub assistants from GitHub',
@@ -1496,6 +2282,9 @@ export const PermissionDescriptions: Record<string, string> = {
   HubModelsVersionRead: 'View hub models version information',
   LlmModelsCreate: 'Create new LLM models',
   LlmModelsDelete: 'Delete LLM models',
+  LlmModelsDownloadsCancel: 'Cancel active downloads',
+  LlmModelsDownloadsDelete: 'Delete download instances',
+  LlmModelsDownloadsRead: 'Read download instances',
   LlmModelsEdit: 'Edit existing LLM models',
   LlmModelsRead: 'Read LLM models',
   LlmProvidersAssignGroups: 'Assign LLM providers to user groups',
@@ -1507,6 +2296,9 @@ export const PermissionDescriptions: Record<string, string> = {
   LlmRepositoriesDelete: 'Delete non-built-in LLM repositories',
   LlmRepositoriesEdit: 'Edit existing LLM repository information and authentication',
   LlmRepositoriesRead: 'View LLM repositories and list repositories',
+  LocalRuntimeLogs: 'View runtime instance logs',
+  LocalRuntimeManage: 'Start, stop, and restart local LLM runtime instances',
+  LocalRuntimeRead: 'View local LLM runtime instances and their status',
   McpServersAdminCreate: 'Create system MCP servers',
   McpServersAdminDelete: 'Delete system MCP servers',
   McpServersAdminEdit: 'Edit system MCP servers and manage group assignments',
@@ -1515,9 +2307,26 @@ export const PermissionDescriptions: Record<string, string> = {
   McpServersDelete: 'Delete MCP servers',
   McpServersEdit: 'Edit MCP servers',
   McpServersRead: 'View MCP servers',
+  MemoryAdminManage: 'Update memory admin settings (embedding model, enable/disable).',
+  MemoryAdminRead: 'Read memory admin settings (embedding model, defaults).',
+  MemoryRead: 'List and read own memories.',
+  MemoryWrite: 'Create, edit, and delete own memories.',
   MessagesCreate: 'Send messages in conversations',
   MessagesDelete: 'Delete messages from conversations',
   MessagesRead: 'Read messages in conversations',
+  ProfileEdit: 'Edit own profile information',
+  ProfileRead: 'View own profile information',
+  ProjectsCreate: 'Create chat projects',
+  ProjectsDelete: 'Delete chat projects',
+  ProjectsEdit: 'Edit chat projects (incl. attach/detach files)',
+  ProjectsRead: 'Read chat projects',
+  RemoteAccessManage: 'Save the ngrok auth token / custom domain, toggle auto-start, toggle password authentication, start/stop the tunnel, and issue magic-link login tokens.',
+  RemoteAccessRead: 'Read remote-access settings, tunnel status, and current public URL.',
+  RuntimeVersionCreate: 'Download and register new runtime versions',
+  RuntimeVersionDelete: 'Delete runtime versions',
+  RuntimeVersionRead: 'View runtime versions and check for updates',
+  RuntimeVersionUpdate: 'Update runtime version settings and defaults',
+  UserLlmProvidersRead: 'View available LLM providers and models',
   UsersCreate: 'Create new user accounts',
   UsersDelete: 'Delete user accounts',
   UsersEdit: 'Edit existing user information',
@@ -1546,16 +2355,35 @@ export const ApiEndpoints = {
   'AssistantTemplate.getDefault': 'GET /api/assistant-templates/default',
   'AssistantTemplate.list': 'GET /api/assistant-templates',
   'AssistantTemplate.update': 'PUT /api/assistant-templates/{id}',
+  'Auth.getConfig': 'GET /api/auth/config',
+  'Auth.linkAccount': 'POST /api/auth/link-account',
+  'Auth.listProviders': 'GET /api/auth/providers',
   'Auth.login': 'POST /api/auth/login',
+  'Auth.loginPasswordOnly': 'POST /api/auth/login-password-only',
   'Auth.logout': 'POST /api/auth/logout',
+  'Auth.magicLinkExchange': 'POST /api/auth/magic-link/exchange',
+  'Auth.magicLinkIssue': 'POST /api/auth/magic-link/issue',
   'Auth.me': 'GET /api/auth/me',
   'Auth.refresh': 'POST /api/auth/refresh',
   'Auth.register': 'POST /api/auth/register',
+  'AuthProviders.create': 'POST /api/admin/auth-providers',
+  'AuthProviders.delete': 'DELETE /api/admin/auth-providers/{id}',
+  'AuthProviders.list': 'GET /api/admin/auth-providers',
+  'AuthProviders.test': 'POST /api/admin/auth-providers/{id}/test',
+  'AuthProviders.testConfig': 'POST /api/admin/auth-providers/test-config',
+  'AuthProviders.update': 'PUT /api/admin/auth-providers/{id}',
   'Branch.activate': 'POST /api/conversations/{id}/branches/{branch_id}/activate',
   'Branch.create': 'POST /api/conversations/{id}/branches',
   'Branch.getPendingApprovals': 'GET /api/branches/{branch_id}/pending-approvals',
   'Branch.list': 'GET /api/conversations/{id}/branches',
   'Chat.getUserLlmProviders': 'GET /api/chat/llm-providers',
+  'CodeSandbox.evictEnvironment': 'DELETE /api/code-sandbox/environments/{flavor}',
+  'CodeSandbox.getResourceLimits': 'GET /api/code-sandbox/resource-limits',
+  'CodeSandbox.listEnvironments': 'GET /api/code-sandbox/environments',
+  'CodeSandbox.listPrefetchTasks': 'GET /api/code-sandbox/prefetch',
+  'CodeSandbox.startPrefetch': 'POST /api/code-sandbox/prefetch',
+  'CodeSandbox.subscribePrefetchEvents': 'GET /api/code-sandbox/prefetch/{flavor}/events',
+  'CodeSandbox.updateResourceLimits': 'PUT /api/code-sandbox/resource-limits',
   'Conversation.create': 'POST /api/conversations',
   'Conversation.delete': 'DELETE /api/conversations/{id}',
   'Conversation.get': 'GET /api/conversations/{id}',
@@ -1563,7 +2391,9 @@ export const ApiEndpoints = {
   'Conversation.list': 'GET /api/conversations',
   'Conversation.update': 'PUT /api/conversations/{id}',
   'Conversation.updateMcpSettings': 'PUT /api/conversations/{id}/mcp-settings',
-  'DesktopAuth.autoLogin': 'POST /api/desktop/auth/auto-login',
+  'CoreMemory.delete': 'DELETE /api/assistants/{assistant_id}/core-memory/{block_label}',
+  'CoreMemory.list': 'GET /api/assistants/{assistant_id}/core-memory',
+  'CoreMemory.upsert': 'PUT /api/assistants/core-memory',
   'DesktopBackend.status': 'GET /api/desktop/backend/status',
   'DesktopSettings.delete': 'DELETE /api/desktop/settings/{key}',
   'DesktopSettings.get': 'GET /api/desktop/settings/{key}',
@@ -1591,6 +2421,7 @@ export const ApiEndpoints = {
   'Hub.createModelFromHub': 'POST /api/hub/models/download',
   'Hub.getAssistants': 'GET /api/hub/assistants',
   'Hub.getAssistantsVersion': 'GET /api/hub/assistants/version',
+  'Hub.getLocalProviders': 'GET /api/hub/models/local-providers',
   'Hub.getMCPServers': 'GET /api/hub/mcp-servers',
   'Hub.getMCPServersVersion': 'GET /api/hub/mcp-servers/version',
   'Hub.getModels': 'GET /api/hub/models',
@@ -1615,10 +2446,14 @@ export const ApiEndpoints = {
   'LlmProvider.assignGroup': 'POST /api/llm-providers/{provider_id}/groups',
   'LlmProvider.create': 'POST /api/llm-providers',
   'LlmProvider.delete': 'DELETE /api/llm-providers/{provider_id}',
+  'LlmProvider.deleteUserApiKey': 'DELETE /api/user-llm-providers/api-keys/{provider_id}',
   'LlmProvider.get': 'GET /api/llm-providers/{provider_id}',
   'LlmProvider.getGroups': 'GET /api/llm-providers/{provider_id}/groups',
+  'LlmProvider.getUserLlmProviders': 'GET /api/user-llm-providers',
   'LlmProvider.list': 'GET /api/llm-providers',
+  'LlmProvider.listUserApiKeys': 'GET /api/user-llm-providers/api-keys',
   'LlmProvider.removeGroup': 'DELETE /api/llm-providers/{provider_id}/groups/{group_id}',
+  'LlmProvider.saveUserApiKey': 'POST /api/user-llm-providers/api-keys',
   'LlmProvider.update': 'POST /api/llm-providers/{provider_id}',
   'LlmRepository.create': 'POST /api/llm-repositories',
   'LlmRepository.delete': 'DELETE /api/llm-repositories/{repository_id}',
@@ -1626,17 +2461,32 @@ export const ApiEndpoints = {
   'LlmRepository.list': 'GET /api/llm-repositories',
   'LlmRepository.test': 'POST /api/llm-repositories/test',
   'LlmRepository.update': 'POST /api/llm-repositories/{repository_id}',
+  'LocalRuntime.getInstance': 'GET /api/local-runtime/models/{model_id}/instance',
+  'LocalRuntime.getLogs': 'GET /api/local-runtime/models/{model_id}/logs',
+  'LocalRuntime.getProviderInstances': 'GET /api/local-runtime/providers/{provider_id}/instances',
+  'LocalRuntime.getStatus': 'GET /api/local-runtime/models/{model_id}/status',
+  'LocalRuntime.healthCheck': 'GET /api/local-runtime/models/{model_id}/health',
+  'LocalRuntime.restartModel': 'POST /api/local-runtime/models/{model_id}/restart',
+  'LocalRuntime.startModel': 'POST /api/local-runtime/models/{model_id}/start',
+  'LocalRuntime.stopModel': 'POST /api/local-runtime/models/{model_id}/stop',
   'Mcp.getDefaults': 'GET /api/mcp/defaults',
+  'Mcp.respondToElicitation': 'POST /api/mcp/elicitation/{elicitation_id}/respond',
   'Mcp.updateDefaults': 'PUT /api/mcp/defaults',
   'McpServer.create': 'POST /api/mcp/servers',
   'McpServer.delete': 'DELETE /api/mcp/servers/{id}',
+  'McpServer.deleteOAuthConfig': 'DELETE /api/mcp/servers/{id}/oauth',
   'McpServer.get': 'GET /api/mcp/servers/{id}',
+  'McpServer.getOAuthConfig': 'GET /api/mcp/servers/{id}/oauth',
   'McpServer.listAccessible': 'GET /api/mcp/servers',
+  'McpServer.setOAuthConfig': 'PUT /api/mcp/servers/{id}/oauth',
   'McpServer.update': 'PUT /api/mcp/servers/{id}',
   'McpServerRuntime.callTool': 'POST /api/mcp/servers/{id}/tools/{name}/call',
   'McpServerRuntime.disconnect': 'DELETE /api/mcp/servers/{id}/disconnect',
+  'McpServerRuntime.getPrompt': 'POST /api/mcp/servers/{id}/prompts/get',
+  'McpServerRuntime.listPrompts': 'GET /api/mcp/servers/{id}/prompts',
   'McpServerRuntime.listResources': 'GET /api/mcp/servers/{id}/resources',
   'McpServerRuntime.listTools': 'GET /api/mcp/servers/{id}/tools',
+  'McpServerRuntime.ping': 'POST /api/mcp/servers/{id}/ping',
   'McpServerRuntime.readResource': 'POST /api/mcp/servers/{id}/resources/read',
   'McpServerSystem.assignServerToGroups': 'POST /api/mcp/system-servers/{id}/groups',
   'McpServerSystem.create': 'POST /api/mcp/system-servers',
@@ -1646,11 +2496,54 @@ export const ApiEndpoints = {
   'McpServerSystem.list': 'GET /api/mcp/system-servers',
   'McpServerSystem.removeServerFromGroup': 'DELETE /api/mcp/system-servers/{id}/groups/{group_id}',
   'McpServerSystem.update': 'PUT /api/mcp/system-servers/{id}',
+  'Memory.create': 'POST /api/memories',
+  'Memory.delete': 'DELETE /api/memories/{id}',
+  'Memory.deleteAll': 'DELETE /api/memories/all',
+  'Memory.get': 'GET /api/memories/{id}',
+  'Memory.list': 'GET /api/memories',
+  'Memory.update': 'PATCH /api/memories/{id}',
+  'MemoryAdmin.get': 'GET /api/memory/admin-settings',
+  'MemoryAdmin.rebuildStatus': 'GET /api/memory/admin-settings/rebuild-status',
+  'MemoryAdmin.reembed': 'POST /api/memory/admin-settings/reembed',
+  'MemoryAdmin.update': 'PUT /api/memory/admin-settings',
+  'MemoryAudit.list': 'GET /api/memory/audit-log',
+  'MemorySettings.get': 'GET /api/memory/settings',
+  'MemorySettings.update': 'PUT /api/memory/settings',
+  'MemoryTest.extract': 'POST /api/_test/memory/extract',
+  'MemoryTest.summarize': 'POST /api/_test/memory/summarize',
   'Message.delete': 'DELETE /api/messages/{id}',
   'Message.edit': 'PUT /api/conversations/{conversation_id}/messages/{message_id}',
   'Message.get': 'GET /api/messages/{id}',
   'Message.getHistory': 'GET /api/conversations/{id}/messages',
   'Message.sendStream': 'POST /api/conversations/{id}/messages/stream',
+  'Onboarding.complete': 'POST /api/onboarding/{guide_id}/complete',
+  'Onboarding.completeStep': 'POST /api/onboarding/{guide_id}/steps/{step_id}/complete',
+  'Project.attachFile': 'POST /api/projects/{id}/files',
+  'Project.create': 'POST /api/projects',
+  'Project.delete': 'DELETE /api/projects/{id}',
+  'Project.detachFile': 'DELETE /api/projects/{id}/files/{file_id}',
+  'Project.duplicate': 'POST /api/projects/{id}/duplicate',
+  'Project.get': 'GET /api/projects/{id}',
+  'Project.getMcpSettings': 'GET /api/projects/{id}/mcp-settings',
+  'Project.list': 'GET /api/projects',
+  'Project.listConversations': 'GET /api/projects/{id}/conversations',
+  'Project.listFiles': 'GET /api/projects/{id}/files',
+  'Project.update': 'PUT /api/projects/{id}',
+  'Project.updateMcpSettings': 'PUT /api/projects/{id}/mcp-settings',
+  'Project.uploadAndAttachFile': 'POST /api/projects/{id}/files/upload',
+  'RemoteAccess.getSettings': 'GET /api/remote-access/settings',
+  'RemoteAccess.getStatus': 'GET /api/remote-access/status',
+  'RemoteAccess.setAdminPassword': 'POST /api/remote-access/admin-password',
+  'RemoteAccess.startTunnel': 'POST /api/remote-access/tunnel/start',
+  'RemoteAccess.stopTunnel': 'POST /api/remote-access/tunnel/stop',
+  'RemoteAccess.updateSettings': 'PUT /api/remote-access/settings',
+  'RuntimeVersion.checkUpdates': 'GET /api/local-runtime/versions/{engine}/check-updates',
+  'RuntimeVersion.delete': 'DELETE /api/local-runtime/versions/{version_id}',
+  'RuntimeVersion.download': 'POST /api/local-runtime/versions/download',
+  'RuntimeVersion.get': 'GET /api/local-runtime/versions/{version_id}',
+  'RuntimeVersion.list': 'GET /api/local-runtime/versions',
+  'RuntimeVersion.setDefault': 'POST /api/local-runtime/versions/{version_id}/set-default',
+  'RuntimeVersion.syncCache': 'POST /api/local-runtime/versions/sync-cache',
   'User.create': 'POST /api/users',
   'User.delete': 'DELETE /api/users/{user_id}',
   'User.get': 'GET /api/users/{user_id}',
@@ -1665,7 +2558,8 @@ export const ApiEndpoints = {
   'UserGroup.getMembers': 'GET /api/groups/{group_id}/members',
   'UserGroup.list': 'GET /api/groups',
   'UserGroup.removeUser': 'DELETE /api/groups/{user_id}/{group_id}/remove',
-  'UserGroup.update': 'POST /api/groups/{group_id}'
+  'UserGroup.update': 'POST /api/groups/{group_id}',
+  'Users.changeOwnPassword': 'POST /api/users/me/password'
 } as const
 
 // API endpoint parameters
@@ -1676,32 +2570,53 @@ export type ApiEndpointParameters = {
   'Assistant.delete': { id: string }
   'Assistant.get': { id: string }
   'Assistant.getDefault': void
-  'Assistant.list': { limit?: number; page?: number }
+  'Assistant.list': { limit: number; page: number }
   'Assistant.update': { id: string } & UpdateAssistantRequest
   'AssistantTemplate.create': CreateAssistantRequest
   'AssistantTemplate.delete': { id: string }
   'AssistantTemplate.get': { id: string }
   'AssistantTemplate.getDefault': void
-  'AssistantTemplate.list': { limit?: number; page?: number }
+  'AssistantTemplate.list': { limit: number; page: number }
   'AssistantTemplate.update': { id: string } & UpdateAssistantRequest
+  'Auth.getConfig': void
+  'Auth.linkAccount': LinkAccountRequest
+  'Auth.listProviders': void
   'Auth.login': LoginRequest
+  'Auth.loginPasswordOnly': PasswordOnlyLoginRequest
   'Auth.logout': void
+  'Auth.magicLinkExchange': MagicLinkExchangeRequest
+  'Auth.magicLinkIssue': void
   'Auth.me': void
   'Auth.refresh': RefreshTokenRequest
   'Auth.register': RegisterRequest
+  'AuthProviders.create': CreateAuthProviderRequest
+  'AuthProviders.delete': { id: string }
+  'AuthProviders.list': void
+  'AuthProviders.test': { id: string }
+  'AuthProviders.testConfig': CreateAuthProviderRequest
+  'AuthProviders.update': { id: string } & UpdateAuthProviderRequest
   'Branch.activate': { id: string; branch_id: string }
   'Branch.create': { id: string } & CreateBranchRequest
   'Branch.getPendingApprovals': { branch_id: string }
   'Branch.list': { id: string }
   'Chat.getUserLlmProviders': void
+  'CodeSandbox.evictEnvironment': { flavor: string }
+  'CodeSandbox.getResourceLimits': void
+  'CodeSandbox.listEnvironments': void
+  'CodeSandbox.listPrefetchTasks': void
+  'CodeSandbox.startPrefetch': StartPrefetchBody
+  'CodeSandbox.subscribePrefetchEvents': { flavor: string }
+  'CodeSandbox.updateResourceLimits': UpdateCodeSandboxResourceLimits
   'Conversation.create': CreateConversationRequest
   'Conversation.delete': { id: string }
   'Conversation.get': { id: string }
   'Conversation.getMcpSettings': { id: string }
-  'Conversation.list': { limit?: number; page?: number }
+  'Conversation.list': { limit?: number; page?: number; project_id?: string }
   'Conversation.update': { id: string } & UpdateConversationRequest
   'Conversation.updateMcpSettings': { id: string } & UpsertMcpSettingsRequest
-  'DesktopAuth.autoLogin': void
+  'CoreMemory.delete': { assistant_id: string; block_label: string }
+  'CoreMemory.list': { assistant_id: string }
+  'CoreMemory.upsert': UpsertCoreMemoryBlockRequest
   'DesktopBackend.status': void
   'DesktopSettings.delete': { key: string }
   'DesktopSettings.get': { key: string }
@@ -1729,6 +2644,7 @@ export type ApiEndpointParameters = {
   'Hub.createModelFromHub': CreateModelFromHubRequest
   'Hub.getAssistants': { lang?: string }
   'Hub.getAssistantsVersion': void
+  'Hub.getLocalProviders': void
   'Hub.getMCPServers': { lang?: string }
   'Hub.getMCPServersVersion': void
   'Hub.getModels': { lang?: string }
@@ -1745,7 +2661,7 @@ export type ApiEndpointParameters = {
   'LlmModel.enable': { model_id: string }
   'LlmModel.get': { model_id: string }
   'LlmModel.getDownload': { download_id: string }
-  'LlmModel.list': { page?: number; perPage?: number; providerId?: string }
+  'LlmModel.list': { capability?: string; page?: number; perPage?: number; providerId?: string }
   'LlmModel.listDownloads': { page?: number; per_page?: number; status?: string }
   'LlmModel.subscribeDownloadProgress': void
   'LlmModel.update': { model_id: string } & UpdateLlmModelRequest
@@ -1753,10 +2669,14 @@ export type ApiEndpointParameters = {
   'LlmProvider.assignGroup': { provider_id: string } & AssignProviderToGroupRequest
   'LlmProvider.create': CreateLlmProviderRequest
   'LlmProvider.delete': { provider_id: string }
+  'LlmProvider.deleteUserApiKey': { provider_id: string }
   'LlmProvider.get': { provider_id: string }
   'LlmProvider.getGroups': { provider_id: string }
+  'LlmProvider.getUserLlmProviders': void
   'LlmProvider.list': PaginationQuery
+  'LlmProvider.listUserApiKeys': void
   'LlmProvider.removeGroup': { provider_id: string; group_id: string }
+  'LlmProvider.saveUserApiKey': SaveUserApiKeyRequest
   'LlmProvider.update': { provider_id: string } & UpdateLlmProviderRequest
   'LlmRepository.create': CreateLlmRepositoryRequest
   'LlmRepository.delete': { repository_id: string }
@@ -1764,31 +2684,89 @@ export type ApiEndpointParameters = {
   'LlmRepository.list': PaginationQuery
   'LlmRepository.test': TestRepositoryConnectionRequest
   'LlmRepository.update': { repository_id: string } & UpdateLlmRepositoryRequest
+  'LocalRuntime.getInstance': { model_id: string }
+  'LocalRuntime.getLogs': { model_id: string }
+  'LocalRuntime.getProviderInstances': { provider_id: string }
+  'LocalRuntime.getStatus': { model_id: string }
+  'LocalRuntime.healthCheck': { model_id: string }
+  'LocalRuntime.restartModel': { model_id: string }
+  'LocalRuntime.startModel': { model_id: string } & StartInstanceRequest
+  'LocalRuntime.stopModel': { model_id: string }
   'Mcp.getDefaults': void
+  'Mcp.respondToElicitation': { elicitation_id: string } & RespondToElicitationRequest
   'Mcp.updateDefaults': UpsertUserMcpDefaultsRequest
   'McpServer.create': CreateMcpServerRequest
   'McpServer.delete': { id: string }
+  'McpServer.deleteOAuthConfig': { id: string }
   'McpServer.get': { id: string }
-  'McpServer.listAccessible': PaginationQuery
+  'McpServer.getOAuthConfig': { id: string }
+  'McpServer.listAccessible': { page?: number; per_page?: number; search?: string; status?: string }
+  'McpServer.setOAuthConfig': { id: string } & SetMcpServerOAuthConfigRequest
   'McpServer.update': { id: string } & UpdateMcpServerRequest
   'McpServerRuntime.callTool': { id: string; name: string } & CallToolRequest
   'McpServerRuntime.disconnect': { id: string }
+  'McpServerRuntime.getPrompt': { id: string } & GetPromptRequest
+  'McpServerRuntime.listPrompts': { id: string }
   'McpServerRuntime.listResources': { id: string }
   'McpServerRuntime.listTools': { id: string }
+  'McpServerRuntime.ping': { id: string }
   'McpServerRuntime.readResource': { id: string } & ReadResourceRequest
   'McpServerSystem.assignServerToGroups': { id: string } & ServerGroupsRequest
   'McpServerSystem.create': CreateMcpServerRequest
   'McpServerSystem.delete': { id: string }
   'McpServerSystem.get': { id: string }
   'McpServerSystem.getServerGroups': { id: string }
-  'McpServerSystem.list': PaginationQuery
+  'McpServerSystem.list': { page?: number; per_page?: number; search?: string; status?: string }
   'McpServerSystem.removeServerFromGroup': { id: string; group_id: string }
   'McpServerSystem.update': { id: string } & UpdateMcpServerRequest
+  'Memory.create': CreateMemoryRequest
+  'Memory.delete': { id: string }
+  'Memory.deleteAll': void
+  'Memory.get': { id: string }
+  'Memory.list': { kind?: string; limit?: number; offset?: number; page?: number; per_page?: number; search?: string; source?: string }
+  'Memory.update': { id: string } & UpdateMemoryRequest
+  'MemoryAdmin.get': void
+  'MemoryAdmin.rebuildStatus': void
+  'MemoryAdmin.reembed': void
+  'MemoryAdmin.update': UpdateMemoryAdminSettingsRequest
+  'MemoryAudit.list': { limit?: number }
+  'MemorySettings.get': void
+  'MemorySettings.update': UpdateUserMemorySettingsRequest
+  'MemoryTest.extract': TestExtractRequest
+  'MemoryTest.summarize': TestSummarizeRequest
   'Message.delete': { id: string }
   'Message.edit': { conversation_id: string; message_id: string } & EditMessageRequest
   'Message.get': { id: string }
   'Message.getHistory': { id: string }
   'Message.sendStream': { id: string } & SendMessageRequest
+  'Onboarding.complete': { guide_id: string }
+  'Onboarding.completeStep': { guide_id: string; step_id: string }
+  'Project.attachFile': { id: string } & AttachFileRequest
+  'Project.create': CreateProjectRequest
+  'Project.delete': { id: string }
+  'Project.detachFile': { id: string; file_id: string }
+  'Project.duplicate': { id: string }
+  'Project.get': { id: string }
+  'Project.getMcpSettings': { id: string }
+  'Project.list': { limit?: number; page?: number }
+  'Project.listConversations': { id: string; limit?: number; page?: number }
+  'Project.listFiles': { id: string }
+  'Project.update': { id: string } & UpdateProjectRequest
+  'Project.updateMcpSettings': { id: string } & UpdateProjectMcpSettingsRequest
+  'Project.uploadAndAttachFile': { id: string } & FormData
+  'RemoteAccess.getSettings': void
+  'RemoteAccess.getStatus': void
+  'RemoteAccess.setAdminPassword': SetAdminPasswordRequest
+  'RemoteAccess.startTunnel': void
+  'RemoteAccess.stopTunnel': void
+  'RemoteAccess.updateSettings': UpdateRemoteAccessSettingsRequest
+  'RuntimeVersion.checkUpdates': { engine: string }
+  'RuntimeVersion.delete': { version_id: string; remove_binary?: boolean }
+  'RuntimeVersion.download': DownloadVersionRequest
+  'RuntimeVersion.get': { version_id: string }
+  'RuntimeVersion.list': { engine?: string }
+  'RuntimeVersion.setDefault': { version_id: string }
+  'RuntimeVersion.syncCache': void
   'User.create': CreateUserRequest
   'User.delete': { user_id: string }
   'User.get': { user_id: string }
@@ -1804,6 +2782,7 @@ export type ApiEndpointParameters = {
   'UserGroup.list': PaginationQuery
   'UserGroup.removeUser': { user_id: string; group_id: string }
   'UserGroup.update': { group_id: string } & UpdateGroupRequest
+  'Users.changeOwnPassword': ChangePasswordRequest
 }
 
 // API endpoint responses
@@ -1822,16 +2801,35 @@ export type ApiEndpointResponses = {
   'AssistantTemplate.getDefault': Assistant
   'AssistantTemplate.list': AssistantListResponse
   'AssistantTemplate.update': Assistant
+  'Auth.getConfig': AuthConfigResponse
+  'Auth.linkAccount': AuthResponse
+  'Auth.listProviders': PublicProvidersResponse
   'Auth.login': AuthResponse
+  'Auth.loginPasswordOnly': AuthResponse
   'Auth.logout': void
+  'Auth.magicLinkExchange': AuthResponse
+  'Auth.magicLinkIssue': MagicLinkIssueResponse
   'Auth.me': MeResponse
   'Auth.refresh': TokenPair
   'Auth.register': AuthResponse
+  'AuthProviders.create': AuthProviderResponse
+  'AuthProviders.delete': DeleteProviderResponse
+  'AuthProviders.list': AuthProviderResponse[]
+  'AuthProviders.test': TestProviderResponse
+  'AuthProviders.testConfig': TestProviderResponse
+  'AuthProviders.update': AuthProviderResponse
   'Branch.activate': void
   'Branch.create': Branch
   'Branch.getPendingApprovals': PendingApprovalsResponse
   'Branch.list': Branch[]
-  'Chat.getUserLlmProviders': GetUserProvidersResponse
+  'Chat.getUserLlmProviders': GetUserProvidersResponse2
+  'CodeSandbox.evictEnvironment': EnvironmentsResponse
+  'CodeSandbox.getResourceLimits': CodeSandboxResourceLimits
+  'CodeSandbox.listEnvironments': EnvironmentsResponse
+  'CodeSandbox.listPrefetchTasks': ListPrefetchTasksResponse
+  'CodeSandbox.startPrefetch': StartPrefetchResponse
+  'CodeSandbox.subscribePrefetchEvents': SSEPrefetchEvent
+  'CodeSandbox.updateResourceLimits': CodeSandboxResourceLimits
   'Conversation.create': Conversation
   'Conversation.delete': void
   'Conversation.get': Conversation
@@ -1839,7 +2837,9 @@ export type ApiEndpointResponses = {
   'Conversation.list': ConversationResponse[]
   'Conversation.update': Conversation
   'Conversation.updateMcpSettings': ConversationMcpSettingsResponse
-  'DesktopAuth.autoLogin': AutoLoginResponse
+  'CoreMemory.delete': void
+  'CoreMemory.list': CoreMemoryBlock[]
+  'CoreMemory.upsert': CoreMemoryBlock
   'DesktopBackend.status': BackendStatusResponse
   'DesktopSettings.delete': SuccessResponse
   'DesktopSettings.get': SettingResponse
@@ -1867,6 +2867,7 @@ export type ApiEndpointResponses = {
   'Hub.createModelFromHub': ModelFromHubResponse
   'Hub.getAssistants': HubAssistant[]
   'Hub.getAssistantsVersion': HubVersionResponse
+  'Hub.getLocalProviders': HubLocalProvidersResponse
   'Hub.getMCPServers': HubMCPServer[]
   'Hub.getMCPServersVersion': HubVersionResponse
   'Hub.getModels': HubModel[]
@@ -1891,10 +2892,14 @@ export type ApiEndpointResponses = {
   'LlmProvider.assignGroup': void
   'LlmProvider.create': LlmProvider
   'LlmProvider.delete': void
+  'LlmProvider.deleteUserApiKey': void
   'LlmProvider.get': LlmProvider
   'LlmProvider.getGroups': Group[]
+  'LlmProvider.getUserLlmProviders': GetUserProvidersResponse
   'LlmProvider.list': LlmProviderListResponse
+  'LlmProvider.listUserApiKeys': UserApiKeyListResponse
   'LlmProvider.removeGroup': void
+  'LlmProvider.saveUserApiKey': void
   'LlmProvider.update': LlmProvider
   'LlmRepository.create': LlmRepository
   'LlmRepository.delete': void
@@ -1902,17 +2907,32 @@ export type ApiEndpointResponses = {
   'LlmRepository.list': LlmRepositoryListResponse
   'LlmRepository.test': TestRepositoryConnectionResponse
   'LlmRepository.update': LlmRepository
+  'LocalRuntime.getInstance': InstanceResponse
+  'LocalRuntime.getLogs': LogsResponse
+  'LocalRuntime.getProviderInstances': ProviderInstancesResponse
+  'LocalRuntime.getStatus': InstanceStatusResponse
+  'LocalRuntime.healthCheck': HealthCheckResponse
+  'LocalRuntime.restartModel': InstanceResponse
+  'LocalRuntime.startModel': InstanceResponse
+  'LocalRuntime.stopModel': InstanceResponse
   'Mcp.getDefaults': UserMcpDefaultsGetResponse
+  'Mcp.respondToElicitation': RespondToElicitationResponse
   'Mcp.updateDefaults': UserMcpDefaultsResponse
   'McpServer.create': McpServer
   'McpServer.delete': void
+  'McpServer.deleteOAuthConfig': void
   'McpServer.get': McpServer
+  'McpServer.getOAuthConfig': McpServerOAuthConfigResponse | null
   'McpServer.listAccessible': McpServerListResponse
+  'McpServer.setOAuthConfig': McpServerOAuthConfigResponse
   'McpServer.update': McpServer
   'McpServerRuntime.callTool': CallToolResponse
   'McpServerRuntime.disconnect': any
+  'McpServerRuntime.getPrompt': GetPromptResponse
+  'McpServerRuntime.listPrompts': ListPromptsResponse
   'McpServerRuntime.listResources': ListResourcesResponse
   'McpServerRuntime.listTools': ListToolsResponse
+  'McpServerRuntime.ping': PingResponse
   'McpServerRuntime.readResource': ReadResourceResponse
   'McpServerSystem.assignServerToGroups': void
   'McpServerSystem.create': McpServer
@@ -1922,11 +2942,54 @@ export type ApiEndpointResponses = {
   'McpServerSystem.list': McpServerListResponse
   'McpServerSystem.removeServerFromGroup': void
   'McpServerSystem.update': McpServer
+  'Memory.create': UserMemory
+  'Memory.delete': void
+  'Memory.deleteAll': DeleteAllResponse
+  'Memory.get': UserMemory
+  'Memory.list': MemoryListResponse
+  'Memory.update': UserMemory
+  'MemoryAdmin.get': MemoryAdminSettings
+  'MemoryAdmin.rebuildStatus': RebuildStatus
+  'MemoryAdmin.reembed': any
+  'MemoryAdmin.update': MemoryAdminSettings
+  'MemoryAudit.list': MemoryAuditEntry[]
+  'MemorySettings.get': UserMemorySettings
+  'MemorySettings.update': UserMemorySettings
+  'MemoryTest.extract': any
+  'MemoryTest.summarize': any
   'Message.delete': void
   'Message.edit': EditMessageResponse
   'Message.get': MessageWithContent
   'Message.getHistory': MessageWithContent[]
   'Message.sendStream': SSEChatStreamEvent
+  'Onboarding.complete': User
+  'Onboarding.completeStep': User
+  'Project.attachFile': void
+  'Project.create': Project
+  'Project.delete': void
+  'Project.detachFile': void
+  'Project.duplicate': Project
+  'Project.get': Project
+  'Project.getMcpSettings': UpdateProjectMcpSettingsRequest
+  'Project.list': ProjectListResponse
+  'Project.listConversations': ConversationResponse[]
+  'Project.listFiles': ProjectFileListResponse
+  'Project.update': Project
+  'Project.updateMcpSettings': Project
+  'Project.uploadAndAttachFile': File
+  'RemoteAccess.getSettings': RemoteAccessSettingsResponse
+  'RemoteAccess.getStatus': RemoteAccessStatusResponse
+  'RemoteAccess.setAdminPassword': void
+  'RemoteAccess.startTunnel': TunnelStartResponse
+  'RemoteAccess.stopTunnel': void
+  'RemoteAccess.updateSettings': RemoteAccessSettingsResponse
+  'RuntimeVersion.checkUpdates': AvailableUpdatesResponse
+  'RuntimeVersion.delete': void
+  'RuntimeVersion.download': DownloadVersionResponse
+  'RuntimeVersion.get': RuntimeVersionResponse
+  'RuntimeVersion.list': RuntimeVersionListResponse
+  'RuntimeVersion.setDefault': RuntimeVersionResponse
+  'RuntimeVersion.syncCache': SyncCacheResponse
   'User.create': User
   'User.delete': void
   'User.get': User
@@ -1942,6 +3005,7 @@ export type ApiEndpointResponses = {
   'UserGroup.list': GroupListResponse
   'UserGroup.removeUser': void
   'UserGroup.update': Group
+  'Users.changeOwnPassword': void
 }
 
 // Type helpers

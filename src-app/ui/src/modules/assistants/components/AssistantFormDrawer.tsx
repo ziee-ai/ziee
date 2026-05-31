@@ -223,7 +223,7 @@ export function AssistantFormDrawer() {
         <Form.Item
           name="parameters"
           label="Parameters"
-          tooltip="Model parameters in JSON format (e.g., temperature, max_tokens, top_p)"
+          extra="Model parameters in JSON format (e.g., temperature, max_tokens, top_p)"
           rules={[{ validator: validateJSON }]}
         >
           <TextArea
@@ -238,7 +238,7 @@ export function AssistantFormDrawer() {
           name="enabled"
           label="Enabled"
           valuePropName="checked"
-          tooltip="Whether this assistant is enabled"
+          extra="Whether this assistant is enabled"
         >
           <Switch />
         </Form.Item>
@@ -247,7 +247,7 @@ export function AssistantFormDrawer() {
           name="is_default"
           label="Set as Default"
           valuePropName="checked"
-          tooltip={
+          extra={
             isTemplate
               ? 'Set as the default template assistant for all users'
               : 'Set as your default assistant'

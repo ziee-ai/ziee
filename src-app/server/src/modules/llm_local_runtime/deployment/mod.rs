@@ -33,6 +33,21 @@ pub trait Deployment: Send + Sync {
 
     /// Get logs
     async fn get_logs(&self, model_id: Uuid, lines: usize) -> AppResult<Vec<String>>;
+
+    /// P2: Subscribe to live logs. Returns a broadcast receiver +
+    /// a snapshot of the existing buffer for initial replay.
+    /// Default impl is a stub that returns the snapshot via
+    /// `get_logs` and a closed receiver — concrete deployments
+    /// (LocalDeployment) override for real live streaming.
+    async fn subscribe_logs(
+        &self,
+        model_id: Uuid,
+    ) -> AppResult<(tokio::sync::broadcast::Receiver<String>, Vec<String>)> {
+        let snapshot = self.get_logs(model_id, 1000).await?;
+        // Empty broadcaster — recv will immediately return Closed.
+        let (_, rx) = tokio::sync::broadcast::channel::<String>(1);
+        Ok((rx, snapshot))
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -57,12 +57,22 @@ async fn e2e_nproc_rlimit_enforced_via_http() {
         &jwt,
         conv_id,
         "execute_command",
-        json!({ "command": "for i in $(seq 1 500); do (sleep 30) & done 2>/dev/null; kill -9 $(jobs -p) 2>/dev/null; wait 2>/dev/null; echo DONE-$?" }),
+        // Subshell-isolate the bomb so dash (the rootfs /bin/sh)
+        // aborting on a failed background fork (nproc / pids.max clamp)
+        // doesn't kill the liveness echo. Sleeps redirect to /dev/null
+        // so they don't hold the stdout pipe (the call returns as soon
+        // as the shell echoes; bwrap teardown reaps the sleeps).
+        json!({ "command": "( for i in $(seq 1 500); do sleep 30 >/dev/null 2>&1 & done ) >/dev/null 2>&1 || true; echo DONE-0" }),
     )
     .await;
     let elapsed = started.elapsed();
+    // Wedge-detector: on Linux the call completes in <1s; on macOS in <5s.
+    // Windows WSL2 adds ~30s of vmcompute / hvsocket warmup on the first
+    // connect to a freshly-spawned agent (see `wsl2.rs` ensure_distro
+    // connect-wait — same 60s deadline). 90s catches a genuinely wedged
+    // sandbox while accommodating that warmup.
     assert!(
-        elapsed < std::time::Duration::from_secs(30),
+        elapsed < std::time::Duration::from_secs(90),
         "fork-bomb call took {:?} — sandbox likely wedged",
         elapsed
     );

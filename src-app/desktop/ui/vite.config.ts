@@ -42,35 +42,12 @@ export default defineConfig(async () => {
         '@ziee/desktop': path.resolve(__dirname, './src'),
         // Resolve @ziee/ui-core to core UI source files
         '@ziee/ui-core': path.resolve(__dirname, '../../ui/src'),
-        // Force resolve packages from desktop UI's node_modules
-        // This is needed because core UI files import these and resolver looks relative to their location
-        'react-icons': path.resolve(__dirname, './node_modules/react-icons'),
-        'react-markdown': path.resolve(
-          __dirname,
-          './node_modules/react-markdown',
-        ),
-        'react-use': path.resolve(__dirname, './node_modules/react-use'),
-        'overlayscrollbars/overlayscrollbars.css': path.resolve(
-          __dirname,
-          './node_modules/overlayscrollbars/styles/overlayscrollbars.css',
-        ),
-        overlayscrollbars: path.resolve(
-          __dirname,
-          './node_modules/overlayscrollbars',
-        ),
-        'overlayscrollbars-react': path.resolve(
-          __dirname,
-          './node_modules/overlayscrollbars-react',
-        ),
-        mermaid: path.resolve(__dirname, './node_modules/mermaid'),
-        katex: path.resolve(__dirname, './node_modules/katex'),
-        'highlight.js': path.resolve(__dirname, './node_modules/highlight.js'),
-        dayjs: path.resolve(__dirname, './node_modules/dayjs'),
-        tinycolor2: path.resolve(__dirname, './node_modules/tinycolor2'),
-        immer: path.resolve(__dirname, './node_modules/immer'),
       },
-      // Ensure shared dependencies are resolved from desktop UI's node_modules
-      // This is needed because core UI source files import these packages
+      // With npm workspaces, shared deps hoist to the root node_modules
+      // and dedupe ensures only one copy ends up in the final bundle.
+      // The list mirrors `src-app/desktop/ui/package.json` runtime deps
+      // that are also imported from `src-app/ui/src/` (since the
+      // localOverridePlugin falls back into core source).
       dedupe: [
         'react',
         'react-dom',
@@ -81,13 +58,14 @@ export default defineConfig(async () => {
         'i18next',
         'react-i18next',
         'react-icons',
-        'react-markdown',
         'react-use',
         'dayjs',
         'immer',
         'tinycolor2',
         'overlayscrollbars',
         'overlayscrollbars-react',
+        'streamdown',
+        'mermaid',
       ],
     },
 

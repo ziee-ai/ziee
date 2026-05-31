@@ -1,0 +1,23 @@
+{
+  "name": "ziee",
+  "description": "Ziee monorepo root — npm workspaces let `npm install` resolve both UI packages from one place. See CLAUDE.md for the Cargo equivalent at src-app/Cargo.toml.",
+  "version": "0.1.0",
+  "devDependencies": {
+    "concurrently": "^10.0.0",
+    "syncpack": "^13.0.4"
+  },
+  "overrides": {
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "typescript": "~6.0.3"
+  },
+  "private": true,
+  "scripts": {
+    "sync:check": "syncpack lint",
+    "sync:fix": "syncpack fix-mismatches"
+  },
+  "workspaces": [
+    "src-app/ui",
+    "src-app/desktop/ui"
+  ]
+}

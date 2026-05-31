@@ -203,6 +203,26 @@ fn build_pgvector_extension(
         // paths. Verbatim from the reference (Lines 227-321) — see
         // /home/pbya/projects/ziee-chat-ref/build-helpers/src/pgvector.rs.
         apply_macos_sdk_wrapper(pgvector_dir, &pg_config_path, &mut cmd)?;
+
+        // theseus-rs's `postgresql-18.3.0/lib/pgxs/src/Makefile.global`
+        // bakes the SDK path of THEIR build machine into `PG_SYSROOT`
+        // (e.g. `/Applications/Xcode_16.4.app/.../MacOSX15.5.sdk`).
+        // pg_config / the wrapper never touch Makefile.global, so the
+        // -isysroot in every compile command points at a stale SDK and
+        // `<inttypes.h>` resolution fails with "file not found".
+        // Override at `make` invocation time — command-line vars beat
+        // Makefile assignments.
+        if let Ok(out) = Command::new("xcrun")
+            .args(["--sdk", "macosx", "--show-sdk-path"])
+            .output()
+        {
+            if out.status.success() {
+                let sdk = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !sdk.is_empty() {
+                    cmd.arg(format!("PG_SYSROOT={sdk}"));
+                }
+            }
+        }
     } else if target.contains("windows") {
         cmd.args(["/f", "Makefile.win"]);
         let pgroot = postgres_dir.display().to_string();
@@ -253,6 +273,10 @@ fn apply_macos_sdk_wrapper(
     fs::create_dir_all(&wrapper_dir)?;
     let wrapper_script = wrapper_dir.join("pg_config");
     let original = pg_config_path.display();
+    // Match ANY path ending in `MacOSX<N.N>.sdk` (CommandLineTools,
+    // Xcode.app, or older Xcode_<version>.app installs whose baked-in
+    // pg_config encodes the build machine's SDK path). Replace with the
+    // current machine's actual SDK from `xcrun`.
     let wrapper_content = format!(
         r#"#!/bin/bash
 case "$1" in
@@ -260,10 +284,10 @@ case "$1" in
         echo "-isysroot {sdk_path} -I/opt/homebrew/opt/icu4c/include -I/opt/homebrew/opt/openssl/include"
         ;;
     --cflags)
-        "{original}" "$@" | sed 's|-isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX[0-9]*\.[0-9]*\.sdk|-isysroot {sdk_path}|g'
+        "{original}" "$@" | sed -E 's|-isysroot [^[:space:]]*MacOSX[0-9]+\.[0-9]+\.sdk|-isysroot {sdk_path}|g'
         ;;
     *)
-        "{original}" "$@" | sed 's|/Library/Developer/CommandLineTools/SDKs/MacOSX[0-9]*\.[0-9]*\.sdk|{sdk_path}|g'
+        "{original}" "$@" | sed -E 's|[^[:space:]]*MacOSX[0-9]+\.[0-9]+\.sdk|{sdk_path}|g'
         ;;
 esac
 "#,

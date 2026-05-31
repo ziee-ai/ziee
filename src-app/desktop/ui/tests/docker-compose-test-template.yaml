@@ -1,0 +1,39 @@
+name: ziee-test-${RUN_ID}
+
+services:
+  postgres-test-${RUN_ID}:
+    image: pgvector/pgvector:pg18
+    container_name: ziee-test-postgres-${RUN_ID}
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: postgres
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    # Increase shared memory for PostgreSQL
+    shm_size: 256mb
+    command:
+      - "postgres"
+      # Connection settings - allow more concurrent connections for parallel tests
+      - "-c"
+      - "max_connections=200"
+      - "-c"
+      - "shared_buffers=128MB"
+      # Performance tuning for test workload (many short-lived connections)
+      - "-c"
+      - "fsync=off"  # Faster but unsafe for production - OK for dev/test
+      - "-c"
+      - "synchronous_commit=off"  # Faster commits - OK for dev/test
+      - "-c"
+      - "full_page_writes=off"  # Skip full page writes - OK for dev/test
+      # Logging
+      - "-c"
+      - "log_connections=on"
+      - "-c"
+      - "log_disconnections=on"

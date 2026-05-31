@@ -75,6 +75,27 @@ pub fn get_caches_config() -> CachesConfig {
         .clone()
 }
 
+/// Server-side host + port + api_prefix, captured from `Config::server`
+/// at boot. Used by the llm_local_runtime URL injection to derive the
+/// proxy base_url at read time. The api_prefix matters because module
+/// routes are nested under it (`app_builder.rs`), so the externally
+/// reachable proxy URL is `http://host:port{api_prefix}/local-llm/v1`.
+/// Default `("127.0.0.1", 3000, "/api")` so pre-boot reads work in tests.
+pub static SERVER_ADDR: Lazy<Mutex<(String, u16, String)>> =
+    Lazy::new(|| Mutex::new(("127.0.0.1".to_string(), 3000, "/api".to_string())));
+
+pub fn set_server_addr(host: String, port: u16, api_prefix: String) {
+    let mut guard = SERVER_ADDR.lock().unwrap_or_else(|p| p.into_inner());
+    *guard = (host, port, api_prefix);
+}
+
+pub fn get_server_addr() -> (String, u16, String) {
+    SERVER_ADDR
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .clone()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

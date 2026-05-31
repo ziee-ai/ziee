@@ -142,8 +142,21 @@ export function RouterComponent() {
     )
   }
 
+  // Effect-only components contributed by other modules that need to
+  // mount INSIDE the router (so they can use `useNavigate` /
+  // `useLocation`). Each slot entry is a `ComponentType` rendered
+  // alongside <Routes>. The component should return null and do its
+  // work in a useEffect. Used by e.g. the onboarding module to handle
+  // its own redirect logic without auth or router needing to know
+  // about it.
+  const routerEffects = (Stores.ModuleSystem.slots.get('routerEffects') ||
+    []) as Array<{ id: string; component: React.ComponentType }>
+
   return (
     <BrowserRouter>
+      {routerEffects.map(({ id, component: Effect }) => (
+        <Effect key={id} />
+      ))}
       <Routes>
         {/* Protected routes with AuthGuard */}
         {protectedRoutes.length > 0 && (

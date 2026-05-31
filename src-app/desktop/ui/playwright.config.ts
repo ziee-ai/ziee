@@ -64,8 +64,12 @@ export default defineConfig({
     },
   ],
 
-  // Global timeout for each test
-  timeout: 120000, // 2 minutes per test
+  // Global timeout for each test. Bumped from 120s so the first
+  // real-backend test (which has to wait for `cargo run --bin ziee`
+  // cold-build) doesn't fail purely on build time. Subsequent tests
+  // benefit from cargo's incremental cache. Pre-warm with
+  // `cd src-app && cargo build -p ziee` if you want fast first runs.
+  timeout: 300000, // 5 minutes per test
 
   // Timeout for expect() assertions
   expect: {

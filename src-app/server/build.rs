@@ -11,6 +11,8 @@ mod uv;
 mod bun;
 #[path = "build_helper/sandbox_runtime.rs"]
 mod sandbox_runtime;
+#[path = "build_helper/wsl2_agent.rs"]
+mod wsl2_agent;
 #[path = "build_helper/pgvector.rs"]
 mod pgvector_build;
 
@@ -85,15 +87,49 @@ async fn main() {
         .await
         .ok();
 
-    // Run migrations
-    let migrations_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("migrations");
-    let migrator = sqlx::migrate::Migrator::new(migrations_path)
-        .await
-        .expect("Failed to create migrator");
+    // Run migrations — server's own AND the desktop tauri crate's.
+    // The desktop crate's `remote_access` + `magic_link` modules
+    // use `sqlx::query_as!()` macros that need the build DB to
+    // include their schema (remote_access_settings, magic_link_tokens).
+    // Folding both migration dirs into a single Migrator means the
+    // shared build DB on port 54321 has every table both crates
+    // touch, and macro validation succeeds for either crate.
+    for migrations_dir_rel in ["migrations", "../desktop/tauri/migrations"] {
+        let migrations_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join(migrations_dir_rel);
+        if !migrations_path.exists() {
+            // Desktop migrations are an optional second source — log
+            // and skip if the directory hasn't been created yet.
+            eprintln!(
+                "build.rs: skipping migrations path {} (not present)",
+                migrations_path.display()
+            );
+            continue;
+        }
+        // Tell cargo to re-run build.rs whenever migration files
+        // change in EITHER directory.
+        println!("cargo:rerun-if-changed={}", migrations_path.display());
 
-    if let Err(e) = migrator.run(&pool).await {
-        eprintln!("\nERROR: Migration failed: {}", e);
-        panic!("Migration failed");
+        let display = migrations_path.display().to_string();
+        let mut migrator = sqlx::migrate::Migrator::new(migrations_path)
+            .await
+            .unwrap_or_else(|e| {
+                panic!("Failed to create migrator for {}: {}", display, e)
+            });
+        // Each migrator's source dir only knows about its own migrations.
+        // After the first migrator runs server's, the second migrator
+        // (for desktop) sees server's version rows in _sqlx_migrations
+        // and would error with "previously applied but is missing in
+        // the resolved migrations". `set_ignore_missing(true)` tells
+        // it to ignore versions outside its source dir — the same flag
+        // run_desktop_migrations() in backend/mod.rs uses at runtime
+        // for the same reason.
+        migrator.set_ignore_missing(true);
+
+        if let Err(e) = migrator.run(&pool).await {
+            eprintln!("\nERROR: Migration failed for {}: {}", display, e);
+            panic!("Migration failed");
+        }
     }
 
     pool.close().await;
@@ -152,6 +188,15 @@ fn setup_external_binaries() {
     // fallbacks in mac_vm.rs cover the dev path).
     if let Err(e) = sandbox_runtime::setup(&target, &binaries_dir, &out_dir) {
         eprintln!("Warning: Failed to assemble sandbox-runtime bundle: {}", e);
+    }
+
+    // Cross-compile the Linux sandbox-guest-agent for Windows release
+    // builds (no-op on every other target). Same fail-soft contract as
+    // the mac path: a dev box without Docker still builds the server;
+    // the runtime falls back to the sibling-of-exe agent path that
+    // `scripts/build-sandbox-agent-linux.sh` produces.
+    if let Err(e) = wsl2_agent::setup(&target, &binaries_dir, &out_dir) {
+        eprintln!("Warning: Failed to bundle WSL2 sandbox-guest-agent: {}", e);
     }
 
     // Setup pgvector — fail-soft. If the build fails (missing make,

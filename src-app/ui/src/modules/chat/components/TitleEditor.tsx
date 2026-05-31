@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Form, Input, Button, Typography } from 'antd'
+import { Form, Input, Button, Tooltip, Typography } from 'antd'
 import { EditOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons'
 import { IoIosArrowBack } from 'react-icons/io'
 import { useNavigate } from 'react-router-dom'
@@ -100,7 +100,14 @@ export function TitleEditor() {
       >
         {conversation?.title || 'Untitled Conversation'}
       </Typography.Title>
-      <Button type="text" icon={<EditOutlined />} onClick={handleEditClick} />
+      <Tooltip title="Edit title">
+        <Button
+          type="text"
+          icon={<EditOutlined />}
+          onClick={handleEditClick}
+          aria-label="Edit conversation title"
+        />
+      </Tooltip>
     </div>
   )
 }

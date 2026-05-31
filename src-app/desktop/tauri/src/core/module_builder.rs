@@ -5,8 +5,9 @@
 
 use crate::module_api::DesktopModule;
 use crate::modules::{
-    auth::AuthModule, backend::BackendModule, settings::SettingsModule, tray::TrayModule,
-    updater::UpdaterModule,
+    auth::AuthModule, backend::BackendModule, magic_link::MagicLinkModule,
+    remote_access::RemoteAccessModule, settings::SettingsModule, tray::TrayModule,
+    tunnel_auth::TunnelAuthModule, updater::UpdaterModule,
 };
 use anyhow::Result;
 use tauri::App;
@@ -25,6 +26,13 @@ pub fn create_desktop_modules(config_file: Option<String>) -> Vec<Box<dyn Deskto
         Box::new(SettingsModule::new()),
         Box::new(TrayModule::new()),
         Box::new(UpdaterModule::new()),
+        // Remote-access tunnel + magic-link + tunnel-aware auth.
+        // Order matters relative to BackendModule: BackendModule
+        // sets up the pool + repo factory + JWT service; these
+        // three must come after.
+        Box::new(RemoteAccessModule::new()),
+        Box::new(MagicLinkModule::new()),
+        Box::new(TunnelAuthModule::new()),
     ]
 }
 

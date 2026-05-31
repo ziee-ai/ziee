@@ -1,4 +1,4 @@
-import { Button, Upload, message } from 'antd'
+import { Button, Tooltip, Upload, message } from 'antd'
 import { PaperClipOutlined } from '@ant-design/icons'
 import type { UploadProps } from 'antd'
 import { Stores } from '@/core/stores'
@@ -55,12 +55,14 @@ export function FileUploadButton() {
       beforeUpload={handleBeforeUpload}
       accept="*/*"
     >
-      <Button
-        type="text"
-        icon={<PaperClipOutlined />}
-        title="Attach files"
-        data-testid="file-upload-button"
-      />
+      <Tooltip title="Attach files">
+        <Button
+          type="text"
+          icon={<PaperClipOutlined />}
+          aria-label="Attach files"
+          data-testid="file-upload-button"
+        />
+      </Tooltip>
     </Upload>
   )
 }

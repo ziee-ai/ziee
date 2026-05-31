@@ -2011,7 +2011,7 @@
           "LLM Providers"
         ],
         "summary": "Create a new LLM provider",
-        "description": "\n\n**Required Permission:** `llm_providers::create`\n\nCreate new LLM provider configurations",
+        "description": "For provider_type = 'local', base_url + api_key are server-derived: the URL is computed from server config + LOCAL_PROXY_PATH on read, and the api_key is auto-minted (returned once as plaintext_api_key on this response).",
         "operationId": "LlmProvider.create",
         "requestBody": {
           "content": {
@@ -2048,11 +2048,11 @@
             }
           },
           "201": {
-            "description": "Database entity representing an LLM provider configuration",
+            "description": "Wrapped create response. For local providers, `plaintext_api_key`\n carries the auto-minted PROXY_TOKEN — shown ONCE on create (and\n on rotation). After this response, the value is only accessible\n via the existing \"show api_key\" admin action. For non-local\n providers `plaintext_api_key` is always None — admins typed their\n own key in, which the server just stored.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LlmProvider"
+                  "$ref": "#/components/schemas/CreateLlmProviderResponse"
                 }
               }
             }
@@ -2232,6 +2232,115 @@
           },
           "401": {
             "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Provider not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/llm-providers/{provider_id}/rotate-proxy-token": {
+      "post": {
+        "tags": [
+          "LLM Providers"
+        ],
+        "summary": "Rotate the PROXY_TOKEN on a local provider.",
+        "description": "\n\n**Required Permission:** `llm_providers::edit`\n\nEdit existing LLM provider information and settings",
+        "operationId": "LlmProvider.rotateProxyToken",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit existing LLM provider information and settings",
+                        "name": "LlmProvidersEdit",
+                        "value": "llm_providers::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_providers::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response from `POST /llm-providers/{id}/rotate-proxy-token`.\n Carries the new plaintext token in the same shape as create.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RotateProxyTokenResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not a local provider"
+          },
+          "404": {
+            "description": "Provider not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/llm-providers/{provider_id}/discover-models": {
+      "get": {
+        "tags": [
+          "LLM Providers"
+        ],
+        "summary": "Discover models for a provider: catalog + live /v1/models + override.",
+        "description": "Layered discovery: curated catalog (data/known_models.json), augmented with the provider's live /v1/models response, with notes about anything that fell back. Local providers are not supported here — query /api/llm-models?provider_id= instead.",
+        "operationId": "LlmProvider.discoverModels",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View LLM providers and list available providers",
+                        "name": "LlmProvidersRead",
+                        "value": "llm_providers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_providers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoverModelsResponse"
+                }
+              }
+            }
           },
           "404": {
             "description": "Provider not found"
@@ -3479,6 +3588,66 @@
         ]
       }
     },
+    "/api/local-runtime/models/{model_id}/runtime-version": {
+      "post": {
+        "tags": [
+          "LocalRuntime"
+        ],
+        "description": "Swap a model onto another version of the same engine (restarts if running)",
+        "operationId": "LocalRuntime.swapModelVersion",
+        "requestBody": {
+          "description": "Request to swap a model onto another version of the **same** engine.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SwapRuntimeVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Start, stop, and restart local LLM runtime instances",
+                        "name": "LocalRuntimeManage",
+                        "value": "llm_local_runtime::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Result of a version swap.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SwapRuntimeVersionResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/local-runtime/models/{model_id}/instance": {
       "get": {
         "tags": [
@@ -3675,6 +3844,55 @@
         ]
       }
     },
+    "/api/local-runtime/models/{model_id}/logs/stream": {
+      "get": {
+        "tags": [
+          "LocalRuntime"
+        ],
+        "description": "Stream instance logs as Server-Sent Events",
+        "operationId": "LocalRuntime.streamLogs",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View runtime instance logs",
+                        "name": "LocalRuntimeLogs",
+                        "value": "llm_local_runtime::logs"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::logs",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SSELogEvent"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/local-runtime/providers/{provider_id}/instances": {
       "get": {
         "tags": [
@@ -3712,6 +3930,55 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProviderInstancesResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/local-runtime/detect-gpu": {
+      "get": {
+        "tags": [
+          "LocalRuntime"
+        ],
+        "description": "Detect available GPU backends + recommended pick for engine downloads",
+        "operationId": "LocalRuntime.detectGpu",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View local LLM runtime instances and their status",
+                        "name": "LocalRuntimeRead",
+                        "value": "llm_local_runtime::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GpuDetectionResponse"
                 }
               }
             }
@@ -3776,6 +4043,70 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RuntimeVersionListResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/local-runtime/version-usage": {
+      "get": {
+        "tags": [
+          "LocalRuntime"
+        ],
+        "description": "List local models grouped by the engine version they effectively use",
+        "operationId": "RuntimeVersion.usage",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "engine",
+            "description": "Filter by engine (optional)",
+            "schema": {
+              "description": "Filter by engine (optional)",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View runtime versions and check for updates",
+                        "name": "RuntimeVersionRead",
+                        "value": "llm_local_runtime::versions_read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::versions_read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Models grouped by the engine version they effectively run on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionUsageResponse"
                 }
               }
             }
@@ -3903,7 +4234,7 @@
         "tags": [
           "Runtime Versions"
         ],
-        "description": "Download and register a runtime version from GitHub releases",
+        "description": "Start (or join) a detached download of a runtime version. Returns immediately with task identifiers + an SSE URL; the download keeps running on the server even after the client disconnects, so a page reload can pick it up via GET /local-runtime/versions/downloads.",
         "operationId": "RuntimeVersion.download",
         "requestBody": {
           "description": "Request to download and register a runtime version",
@@ -3941,17 +4272,170 @@
             }
           },
           "200": {
-            "description": "Response after downloading and registering a version",
+            "description": "Response when a download task is started (or joined for an\n already-running download of the same engine/version/backend).\n Detached: the download keeps running on the server even after the\n HTTP request returns or the client disconnects, so a page reload\n can pick up the in-flight task via `GET /versions/downloads`.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DownloadVersionResponse"
+                  "$ref": "#/components/schemas/DownloadVersionStartedResponse"
                 }
               }
             }
           },
           "400": {
             "description": "Invalid request parameters"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/local-runtime/versions/downloads": {
+      "get": {
+        "tags": [
+          "Runtime Versions"
+        ],
+        "description": "List every download task currently held by the in-process registry (running OR terminal-but-not-yet-replaced). The UI calls this on mount to repaint in-flight progress after a page reload.",
+        "operationId": "RuntimeVersion.listDownloads",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View runtime versions and check for updates",
+                        "name": "RuntimeVersionRead",
+                        "value": "llm_local_runtime::versions_read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::versions_read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "`GET /local-runtime/versions/downloads` response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadListResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/local-runtime/versions/downloads/{key}": {
+      "get": {
+        "tags": [
+          "Runtime Versions"
+        ],
+        "description": "Snapshot of a single download task by its composite key.",
+        "operationId": "RuntimeVersion.getDownload",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View runtime versions and check for updates",
+                        "name": "RuntimeVersionRead",
+                        "value": "llm_local_runtime::versions_read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::versions_read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One entry returned by `GET /local-runtime/versions/downloads`.\n Lists every download task currently held by the in-process\n registry (running OR terminal-but-not-replaced). Used by the UI\n on mount to repaint in-flight progress after a page reload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadSnapshot"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such download task"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/local-runtime/versions/downloads/{key}/events": {
+      "get": {
+        "tags": [
+          "Runtime Versions"
+        ],
+        "description": "Subscribe to SSE progress events for one download task. Sends Connected with the current state snapshot immediately, replays buffered Progress frames, then live-streams further events until Complete/Failed.",
+        "operationId": "RuntimeVersion.subscribeDownloadEvents",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View runtime versions and check for updates",
+                        "name": "RuntimeVersionRead",
+                        "value": "llm_local_runtime::versions_read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::versions_read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SSEEngineDownloadEvent"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such download task"
           }
         },
         "security": [
@@ -4045,7 +4529,7 @@
             }
           },
           "200": {
-            "description": "Response containing available updates from GitHub",
+            "description": "Response for the update check: upstream releases diffed against what is\n installed, scoped to the host platform/arch. Drafts are omitted.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4109,6 +4593,157 @@
             "bearerAuth": []
           }
         ]
+      }
+    },
+    "/api/local-runtime/settings": {
+      "get": {
+        "tags": [
+          "LLM Local Runtime"
+        ],
+        "summary": "Read runtime singleton settings (idle/auto-start/drain/allow_unsigned).",
+        "description": "\n\n**Required Permission:** `llm_local_runtime::settings_read`\n\nRead runtime singleton settings (idle/auto-start/drain)",
+        "operationId": "LocalRuntime.getRuntimeSettings",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read runtime singleton settings (idle/auto-start/drain)",
+                        "name": "RuntimeSettingsRead",
+                        "value": "llm_local_runtime::settings_read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::settings_read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "LLM Local Runtime"
+        ],
+        "summary": "Update runtime singleton settings (PATCH-style: COALESCE on each field).",
+        "description": "\n\n**Required Permission:** `llm_local_runtime::settings_manage`\n\nModify runtime singleton settings (idle/auto-start/drain)",
+        "operationId": "LocalRuntime.updateRuntimeSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRuntimeSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Modify runtime singleton settings (idle/auto-start/drain)",
+                        "name": "RuntimeSettingsManage",
+                        "value": "llm_local_runtime::settings_manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::settings_manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Out-of-range value"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/local-llm/v1/chat/completions": {
+      "post": {
+        "tags": [
+          "Local LLM Proxy"
+        ],
+        "summary": "OpenAI-compatible /v1/chat/completions proxy.",
+        "description": "Auth via Authorization: Bearer <PROXY_TOKEN> (the api_key of a local llm_provider). Model name from the body's `model` field. Auto-starts the engine if needed.",
+        "operationId": "LocalLlmProxy.chatCompletions",
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {}
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/local-llm/v1/embeddings": {
+      "post": {
+        "tags": [
+          "Local LLM Proxy"
+        ],
+        "summary": "OpenAI-compatible /v1/embeddings proxy.",
+        "operationId": "LocalLlmProxy.embeddings",
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {}
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/local-llm/v1/models": {
+      "get": {
+        "tags": [
+          "Local LLM Proxy"
+        ],
+        "summary": "OpenAI-compatible /v1/models — list models in this provider.",
+        "operationId": "LocalLlmProxy.listModels"
       }
     },
     "/api/llm-models": {
@@ -4410,8 +5045,28 @@
           "LLM Models"
         ],
         "summary": "Delete an LLM model",
-        "description": "\n\n**Required Permission:** `llm_models::delete`\n\nDelete LLM models",
+        "description": "Query: delete_file (default true) controls on-disk file deletion. If delete_file=true and the file_path is outside <app_data>/models, pass force=true to override the safety net.",
         "operationId": "LlmModel.delete",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "delete_file",
+            "schema": {
+              "type": "boolean",
+              "default": true
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "force",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "style": "form"
+          }
+        ],
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -4438,6 +5093,9 @@
           },
           "204": {
             "description": "Model deleted successfully"
+          },
+          "400": {
+            "description": "delete_file refused without force"
           },
           "401": {
             "description": "Unauthorized"
@@ -4553,6 +5211,60 @@
           },
           "401": {
             "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Model not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/llm-models/{model_id}/validate": {
+      "post": {
+        "tags": [
+          "LLM Models"
+        ],
+        "summary": "Manually (re-)run model validation (Tier-3 local / remote API probe).",
+        "description": "\n\n**Required Permission:** `llm_models::edit`\n\nEdit existing LLM models",
+        "operationId": "LlmModel.validate",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit existing LLM models",
+                        "name": "LlmModelsEdit",
+                        "value": "llm_models::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_models::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": true
+              }
+            }
+          },
+          "202": {
+            "description": "Local validation queued"
           },
           "404": {
             "description": "Model not found"
@@ -7657,8 +8369,9 @@
             "name": "page",
             "schema": {
               "type": "integer",
-              "format": "int32",
-              "default": 1
+              "format": "uint32",
+              "default": 1,
+              "minimum": 0
             },
             "style": "form"
           },
@@ -7667,8 +8380,33 @@
             "name": "per_page",
             "schema": {
               "type": "integer",
-              "format": "int32",
-              "default": 20
+              "format": "uint32",
+              "default": 20,
+              "minimum": 0
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
             },
             "style": "form"
           }
@@ -8671,8 +9409,9 @@
             "name": "page",
             "schema": {
               "type": "integer",
-              "format": "int32",
-              "default": 1
+              "format": "uint32",
+              "default": 1,
+              "minimum": 0
             },
             "style": "form"
           },
@@ -8681,8 +9420,33 @@
             "name": "per_page",
             "schema": {
               "type": "integer",
-              "format": "int32",
-              "default": 20
+              "format": "uint32",
+              "default": 20,
+              "minimum": 0
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
             },
             "style": "form"
           }
@@ -9390,288 +10154,6 @@
         ]
       }
     },
-    "/api/code-sandbox/environments": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "List available sandbox environments",
-        "description": "Returns every rootfs flavor this server binary knows about, with description, approximate size, and whether the squashfs is currently cached locally. A `cached: false` flavor will trigger an auto-fetch on the first `execute_command` or `POST /prefetch` for that flavor.",
-        "operationId": "CodeSandbox.listEnvironments",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "List available sandbox environments and watch prefetch progress.",
-                        "name": "CodeSandboxEnvironmentsRead",
-                        "value": "code_sandbox::environments::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EnvironmentsResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/environments/{flavor}": {
-      "delete": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Evict a flavor's cached rootfs",
-        "description": "Unmounts the flavor's squashfuse (if mounted) and deletes its cached squashfs, freeing disk. Idempotent — a not-cached flavor is a no-op. The next `execute_command` for the flavor re-fetches automatically. Returns the refreshed environments list (the flavor's `cached` flips to false).",
-        "operationId": "CodeSandbox.evictEnvironment",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
-                        "name": "CodeSandboxEnvironmentsManage",
-                        "value": "code_sandbox::environments::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EnvironmentsResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "404": {
-            "description": "Unknown flavor"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/prefetch": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "List known prefetch tasks",
-        "description": "One entry per flavor; terminal-state entries persist until replaced by the next POST for the same flavor.",
-        "operationId": "CodeSandbox.listPrefetchTasks",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "List available sandbox environments and watch prefetch progress.",
-                        "name": "CodeSandboxEnvironmentsRead",
-                        "value": "code_sandbox::environments::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ListPrefetchTasksResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "post": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Start (or join) a rootfs prefetch task",
-        "description": "Idempotent: concurrent POSTs for the same flavor while a task is Running return the same task_id. The returned `events_url` is suitable for the frontend's EventSource. If the flavor is already cached, the returned status is `already_cached` and the task completes immediately.",
-        "operationId": "CodeSandbox.startPrefetch",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/StartPrefetchBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
-                        "name": "CodeSandboxEnvironmentsManage",
-                        "value": "code_sandbox::environments::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StartPrefetchResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Unknown flavor"
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/prefetch/{flavor}/events": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Subscribe to prefetch progress via SSE",
-        "description": "Server-Sent Events stream of prefetch progress for the named flavor. The first event is always `connected`; the stream then replays any buffered `progress` events (so late subscribers catch up) and finally streams live events until the task reaches terminal state (`complete` or `failed`). Declaring the SSEPrefetchEvent enum as the 200 response is what surfaces the discriminated union in the generated TypeScript client.",
-        "operationId": "CodeSandbox.subscribePrefetchEvents",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "List available sandbox environments and watch prefetch progress.",
-                        "name": "CodeSandboxEnvironmentsRead",
-                        "value": "code_sandbox::environments::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SSEPrefetchEvent"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "404": {
-            "description": "No task for this flavor"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
     "/api/code-sandbox/resource-limits": {
       "get": {
         "tags": [
@@ -9781,6 +10263,276 @@
           },
           "422": {
             "description": "Value out of range"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/rootfs/versions": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "List installed + available rootfs versions",
+        "description": "Returns the system-wide pin, every downloaded artifact, and (best-effort) the GitHub Releases catalog. The UI uses this single call to render the rootfs-versions admin page.",
+        "operationId": "CodeSandbox.listRootfsVersions",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List rootfs versions and watch install progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Snapshot returned by `status()` for the admin UI's \"Rootfs\n versions\" page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionStatus"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/rootfs/versions/install": {
+      "post": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Spawn a background install task for a rootfs artifact",
+        "description": "Spawns a background task to download the matching artifact from the GitHub release, sha256 + cosign verify it, and record the row in `code_sandbox_rootfs_artifacts`. Returns 202 Accepted immediately with the task's initial state; live progress is available via `GET .../install/subscribe` (SSE).",
+        "operationId": "CodeSandbox.installRootfsVersion",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
+                        "name": "CodeSandboxEnvironmentsManage",
+                        "value": "code_sandbox::environments::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallTaskState"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/rootfs/versions/install/subscribe": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Subscribe to rootfs install task progress (SSE)",
+        "description": "Server-Sent Events stream of `connected | taskStarted | progress | complete | failed | taskState` events for every install task. On connect the stream emits a `connected` event then replays the current registry (recent terminal states + in-flight tasks) so a fresh subscriber doesn't have to wait for the next tick.",
+        "operationId": "CodeSandbox.subscribeRootfsInstallProgress",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List rootfs versions and watch install progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SSEInstallTaskEvent"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/rootfs/versions/set-pin": {
+      "post": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Change the system-wide rootfs version pin",
+        "description": "Validates the target version exists on GitHub, updates the pin in `code_sandbox_settings`, then schedules a drain-then- evict task for every old-version mount. On a major version bump the workspace install-cache subdirs (`.local`, `.cache`, `.npm`, ...) are wiped across both per-conversation and per-MCP-server workspaces AFTER drain; minor + patch bumps preserve workspace state. Returns the swap outcome (draining-mount count + cache wipe policy) alongside the refreshed status snapshot.",
+        "operationId": "CodeSandbox.setRootfsPin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPinRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
+                        "name": "CodeSandboxEnvironmentsManage",
+                        "value": "code_sandbox::environments::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetPinResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/rootfs/versions/{id}": {
+      "delete": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Delete an installed rootfs artifact",
+        "description": "Deletes the DB row + the on-disk artifact + sidecars. Refused with 409 when the row is the currently-pinned version (change the pin first).",
+        "operationId": "CodeSandbox.deleteRootfsVersion",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
+                        "name": "CodeSandboxEnvironmentsManage",
+                        "value": "code_sandbox::environments::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Snapshot returned by `status()` for the admin UI's \"Rootfs\n versions\" page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionStatus"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -10382,6 +11134,9 @@
           },
           "404": {
             "description": "Hub assistant not found"
+          },
+          "422": {
+            "description": "Hub item incompatible with this server version"
           }
         },
         "security": [
@@ -10449,6 +11204,9 @@
           },
           "404": {
             "description": "Hub MCP server not found"
+          },
+          "422": {
+            "description": "Hub item incompatible with this server version"
           }
         },
         "security": [
@@ -10522,8 +11280,8 @@
           "404": {
             "description": "Hub model not found"
           },
-          "501": {
-            "description": "Not yet implemented"
+          "422": {
+            "description": "Hub item incompatible with this server version"
           }
         },
         "security": [
@@ -10577,6 +11335,417 @@
           },
           "401": {
             "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/index": {
+      "get": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "Get the unified hub catalog (index.json)",
+        "description": "\n\n**Required Permission:** `hub::models::read`\n\nView hub models",
+        "operationId": "Hub.getCatalog",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View hub models",
+                        "name": "HubModelsRead",
+                        "value": "hub::models::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::models::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Catalog"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/version": {
+      "get": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "Current hub catalog version + server version + counts",
+        "description": "\n\n**Required Permission:** `hub::models::read`\n\nView hub models",
+        "operationId": "Hub.getCatalogVersion",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View hub models",
+                        "name": "HubModelsRead",
+                        "value": "hub::models::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::models::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response for `GET /api/hub/version` — the catalog's current\n hub_version, the server's own version (so the UI can compute\n compat client-side), counts per category, where the active catalog\n came from (`seed` vs `github`), and when it was installed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubCatalogVersionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/refresh": {
+      "post": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "Force-refresh the hub catalog from GitHub Releases (admin only)",
+        "description": "\n\n**Required Permission:** `hub::catalog::manage`\n\nRefresh + activate hub catalog versions",
+        "operationId": "Hub.refreshCatalog",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Refresh + activate hub catalog versions",
+                        "name": "HubCatalogManage",
+                        "value": "hub::catalog::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::catalog::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response for `POST /api/hub/refresh` — what changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubCatalogRefreshResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Fetch / sha256 / cosign verify failure — previous catalog left in place"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/updates": {
+      "get": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "Installed hub entities behind the current catalog version (admin only)",
+        "description": "\n\n**Required Permission:** `hub::catalog::read`\n\nView hub catalog versions + pending updates",
+        "operationId": "Hub.getUpdates",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View hub catalog versions + pending updates",
+                        "name": "HubCatalogRead",
+                        "value": "hub::catalog::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::catalog::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubUpdatesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/manifest/{id}": {
+      "get": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "Full manifest for one hub item (model / assistant / mcp-server)",
+        "description": "\n\n**Required Permission:** `hub::models::read`\n\nView hub models",
+        "operationId": "Hub.getManifest",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "category",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/HubCategory"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View hub models",
+                        "name": "HubModelsRead",
+                        "value": "hub::models::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::models::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Full manifest for one hub item, returned by `GET /api/hub/manifest/:id`.\n\n A struct (not a `#[serde(tag)]` enum) because the tagged-enum +\n `Box<Struct>` form produces an empty OpenAPI schema — clients\n couldn't see the payload fields. Exactly one of `model` /\n `assistant` / `mcp_server` is populated, matching `category`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubManifest"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid id"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Manifest not found in catalog"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/releases": {
+      "get": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "List catalog versions published on GitHub (admin only)",
+        "description": "\n\n**Required Permission:** `hub::catalog::read`\n\nView hub catalog versions + pending updates",
+        "operationId": "Hub.getReleases",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View hub catalog versions + pending updates",
+                        "name": "HubCatalogRead",
+                        "value": "hub::catalog::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::catalog::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response for `GET /api/hub/releases` — the versions published on\n GitHub, plus which is currently installed (`active_version`) and the\n admin's pin (`pinned_version`, None = tracking latest).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubReleasesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "GitHub unreachable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/activate": {
+      "post": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "Pin + activate a catalog version server-wide (admin only)",
+        "description": "\n\n**Required Permission:** `hub::catalog::manage`\n\nRefresh + activate hub catalog versions",
+        "operationId": "Hub.activateVersion",
+        "requestBody": {
+          "description": "Request body for `POST /api/hub/activate`. `version: null` clears the\n pin (track latest); otherwise pins + activates that exact version\n (semver without the leading `v`).",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivateHubVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Refresh + activate hub catalog versions",
+                        "name": "HubCatalogManage",
+                        "value": "hub::catalog::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::catalog::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response for `POST /api/hub/refresh` — what changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubCatalogRefreshResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid version string"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Fetch / verify failure — pin not persisted, previous catalog kept"
           }
         },
         "security": [
@@ -10724,17 +11893,36 @@
         "tags": [
           "Memory"
         ],
-        "summary": "List the caller's own memories",
+        "summary": "List the caller's own memories (paginated)",
         "description": "\n\n**Required Permission:** `memory::read`\n\nList and read own memories.",
         "operationId": "Memory.list",
         "parameters": [
           {
             "in": "query",
-            "name": "limit",
+            "name": "kind",
+            "description": "Exact-match filter on `kind`. None = no filter.",
             "schema": {
-              "type": "integer",
+              "description": "Exact-match filter on `kind`. None = no filter.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "description": "Legacy: when `page`/`per_page` are absent, fall back to\n `limit`/`offset` (clamped to safe ranges).",
+            "schema": {
+              "description": "Legacy: when `page`/`per_page` are absent, fall back to\n `limit`/`offset` (clamped to safe ranges).",
+              "type": [
+                "integer",
+                "null"
+              ],
               "format": "int64",
-              "default": 50
+              "default": null
             },
             "style": "form"
           },
@@ -10742,9 +11930,66 @@
             "in": "query",
             "name": "offset",
             "schema": {
-              "type": "integer",
+              "type": [
+                "integer",
+                "null"
+              ],
               "format": "int64",
-              "default": 0
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "description": "Substring search on `content` (case-insensitive). Trimmed +\n empty-string normalized to None.",
+            "schema": {
+              "description": "Substring search on `content` (case-insensitive). Trimmed +\n empty-string normalized to None.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "description": "Exact-match filter on `source`. None = no filter.",
+            "schema": {
+              "description": "Exact-match filter on `source`. None = no filter.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
             },
             "style": "form"
           }
@@ -10774,14 +12019,11 @@
             }
           },
           "200": {
-            "description": "",
+            "description": "Paginated response shape for the per-user memory list — matches\n the convention used by `McpServerListResponse` /\n `LlmRepositoryListResponse`, so the UI can drive a standard\n antd `<Pagination>` from the response (current_page, total).",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/UserMemory"
-                  }
+                  "$ref": "#/components/schemas/MemoryListResponse"
                 }
               }
             }
@@ -11808,6 +13050,19 @@
       }
     },
     "schemas": {
+      "ActivateHubVersionRequest": {
+        "description": "Request body for `POST /api/hub/activate`. `version: null` clears the\n pin (track latest); otherwise pins + activates that exact version\n (semver without the leading `v`).",
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        }
+      },
       "ApprovalMode": {
         "description": "Approval mode for conversation MCP settings",
         "oneOf": [
@@ -12093,22 +13348,99 @@
         ]
       },
       "AvailableUpdatesResponse": {
-        "description": "Response containing available updates from GitHub",
+        "description": "Response for the update check: upstream releases diffed against what is\n installed, scoped to the host platform/arch. Drafts are omitted.",
         "type": "object",
         "properties": {
-          "available_versions": {
+          "arch": {
+            "description": "Host architecture (`x86_64`/`aarch64`).",
+            "type": "string"
+          },
+          "engine": {
+            "type": "string"
+          },
+          "platform": {
+            "description": "Host platform the asset-readiness was computed for (`linux`/`macos`/`windows`).",
+            "type": "string"
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AvailableVersion"
+            }
+          }
+        },
+        "required": [
+          "engine",
+          "platform",
+          "arch",
+          "versions"
+        ]
+      },
+      "AvailableVersion": {
+        "description": "One upstream release in the update-check diff, enriched with what we\n have installed and whether its binary is published for *this host*.",
+        "type": "object",
+        "properties": {
+          "available_backends": {
+            "description": "Backends published upstream for the host platform/arch.",
             "type": "array",
             "items": {
               "type": "string"
             }
           },
-          "engine": {
+          "binary_ready": {
+            "description": "True if the binary for the host platform/arch is published upstream.\n False ⇒ the release exists but its build for this host is pending.",
+            "type": "boolean"
+          },
+          "installed": {
+            "description": "True if at least one backend of this version is installed for the\n host platform/arch.",
+            "type": "boolean"
+          },
+          "installed_backends": {
+            "description": "Backends already installed for the host platform/arch (e.g. `[\"cpu\"]`).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "prerelease": {
+            "description": "GitHub prerelease flag.",
+            "type": "boolean"
+          },
+          "published_at": {
+            "description": "ISO-8601 publish timestamp, if present.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recommended_backend": {
+            "description": "The backend artifact recommended for this host given its detected\n GPU/driver versions (the suitable major-version match), if any.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "size_bytes": {
+            "description": "Byte size of the archive the inline Install button would\n fetch (recommended backend when set, else the first\n published backend). `None` when no asset matches this host\n or GitHub omitted the size — UI hides the size label in\n that case.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "version": {
+            "description": "Release tag (e.g. `v0.0.1-alpha`).",
             "type": "string"
           }
         },
         "required": [
-          "engine",
-          "available_versions"
+          "version",
+          "installed",
+          "installed_backends",
+          "binary_ready",
+          "available_backends",
+          "prerelease"
         ]
       },
       "BlobType": {
@@ -12254,6 +13586,52 @@
         "required": [
           "content",
           "is_error"
+        ]
+      },
+      "Catalog": {
+        "type": "object",
+        "properties": {
+          "generated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "hub_version": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IndexItem"
+            }
+          },
+          "schema_version": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "schema_version",
+          "hub_version",
+          "items"
+        ]
+      },
+      "CatalogProvenance": {
+        "description": "Origin of the active on-disk catalog.",
+        "oneOf": [
+          {
+            "description": "Embedded seed (boot fallback / air-gapped). Trusted (compiled\n into the binary) and installable, but not a live fetch.",
+            "type": "string",
+            "const": "seed"
+          },
+          {
+            "description": "Downloaded + sha256 + cosign-verified from ziee-ai/hub.",
+            "type": "string",
+            "const": "github"
+          }
         ]
       },
       "ChatStreamChunk": {
@@ -13068,6 +14446,78 @@
           "provider_type"
         ]
       },
+      "CreateLlmProviderResponse": {
+        "description": "Wrapped create response. For local providers, `plaintext_api_key`\n carries the auto-minted PROXY_TOKEN — shown ONCE on create (and\n on rotation). After this response, the value is only accessible\n via the existing \"show api_key\" admin action. For non-local\n providers `plaintext_api_key` is always None — admins typed their\n own key in, which the server just stored.",
+        "type": "object",
+        "properties": {
+          "api_key": {
+            "description": "API key for upstream provider — write-only.\n\n Deserialize unchanged so admins can POST/PUT the value; Serialize\n suppressed so GET /llm-providers and /llm-providers/{id} no longer\n return the secret. The previous behavior round-tripped the api_key\n to every user with `llm_providers::read` — closes\n 06-llm-provider F-01 (Critical). The deeper at-rest encryption\n (pgcrypto / SecretView) is the follow-up A5-full work.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "writeOnly": true
+          },
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "built_in": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "default_runtime_version_id": {
+            "description": "Default runtime version for local models in this provider",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "plaintext_api_key": {
+            "description": "Plaintext PROXY_TOKEN for newly-created local providers. None\n for any other provider_type.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider_type": {
+            "type": "string"
+          },
+          "proxy_settings": {
+            "$ref": "#/components/schemas/ProxySettings"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "provider_type",
+          "enabled",
+          "built_in",
+          "proxy_settings",
+          "created_at",
+          "updated_at"
+        ]
+      },
       "CreateLlmRepositoryRequest": {
         "type": "object",
         "properties": {
@@ -13196,6 +14646,13 @@
           },
           "name": {
             "type": "string"
+          },
+          "run_in_sandbox": {
+            "description": "Admin/system stdio servers only: launch inside the\n code_sandbox bwrap isolation. See `McpServer::run_in_sandbox`.",
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "supports_sampling": {
             "type": [
@@ -13413,6 +14870,20 @@
           "deleted"
         ]
       },
+      "DeleteModelQuery": {
+        "description": "Query options for `DELETE /api/llm-models/{id}`.\n\n `delete_file` (default `true`) controls whether the on-disk\n model directory is removed. The frontend pre-fills the\n confirmation checkbox based on whether the model's `file_path`\n is under the managed models directory; operator-managed paths\n (Path 3 pre-stage) default-uncheck.\n\n A safety net (`force`, default `false`) is required if\n `delete_file=true` AND the path resolves outside the managed\n `<app_data>/models/` directory — prevents an admin from\n accidentally clobbering an arbitrary host path.",
+        "type": "object",
+        "properties": {
+          "delete_file": {
+            "type": "boolean",
+            "default": true
+          },
+          "force": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
       "DeleteProviderResponse": {
         "type": "object",
         "properties": {
@@ -13501,6 +14972,91 @@
         "required": [
           "server_id",
           "tools"
+        ]
+      },
+      "DiscoverModelsResponse": {
+        "type": "object",
+        "properties": {
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiscoveredModel"
+            }
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "provider_type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider_type",
+          "models",
+          "notes"
+        ]
+      },
+      "DiscoveredModel": {
+        "type": "object",
+        "properties": {
+          "context_length": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "deprecated": {
+            "type": "boolean"
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "max_output_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "source": {
+            "description": "\"catalog\" | \"discovery\" | \"operator_override\"",
+            "type": "string"
+          },
+          "supports_chat": {
+            "type": "boolean"
+          },
+          "supports_embeddings": {
+            "type": "boolean"
+          },
+          "supports_tool_use": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "supports_vision": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "supports_chat",
+          "supports_embeddings",
+          "supports_vision",
+          "deprecated",
+          "source"
         ]
       },
       "DownloadFromRepositoryRequest": {
@@ -13690,6 +15246,21 @@
           "total",
           "page",
           "per_page"
+        ]
+      },
+      "DownloadListResponse": {
+        "description": "`GET /local-runtime/versions/downloads` response.",
+        "type": "object",
+        "properties": {
+          "downloads": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DownloadSnapshot"
+            }
+          }
+        },
+        "required": [
+          "downloads"
         ]
       },
       "DownloadPaginationQuery": {
@@ -13942,6 +15513,76 @@
           "model_name"
         ]
       },
+      "DownloadSnapshot": {
+        "description": "One entry returned by `GET /local-runtime/versions/downloads`.\n Lists every download task currently held by the in-process\n registry (running OR terminal-but-not-replaced). Used by the UI\n on mount to repaint in-flight progress after a page reload.",
+        "type": "object",
+        "properties": {
+          "backend": {
+            "type": "string"
+          },
+          "bytes_received": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "engine": {
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "percent": {
+            "description": "0..=100 when `total_bytes` is set.",
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "result_version_id": {
+            "description": "Result version when terminal=Completed; null otherwise.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "total_bytes": {
+            "description": "`None` when the upstream omitted Content-Length.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "key",
+          "engine",
+          "version",
+          "backend",
+          "status",
+          "bytes_received"
+        ]
+      },
       "DownloadStatus": {
         "description": "Download status enum",
         "type": "string",
@@ -14015,24 +15656,81 @@
           "backend"
         ]
       },
-      "DownloadVersionResponse": {
-        "description": "Response after downloading and registering a version",
+      "DownloadVersionStartedResponse": {
+        "description": "Response when a download task is started (or joined for an\n already-running download of the same engine/version/backend).\n Detached: the download keeps running on the server even after the\n HTTP request returns or the client disconnects, so a page reload\n can pick up the in-flight task via `GET /versions/downloads`.",
         "type": "object",
         "properties": {
-          "downloaded": {
-            "type": "boolean"
-          },
-          "message": {
+          "backend": {
             "type": "string"
           },
+          "engine": {
+            "type": "string"
+          },
+          "events_url": {
+            "description": "Ready-to-use SSE URL for the frontend's EventSource (relative\n to the API root). Includes the encoded key.",
+            "type": "string"
+          },
+          "key": {
+            "description": "Composite key `{engine}@{version}@{backend}` — also the path\n segment for the events / snapshot endpoints.",
+            "type": "string"
+          },
+          "status": {
+            "description": "Current status snapshot at the moment the task was started or\n joined. The SSE stream sends Connected immediately with the\n same value so a late subscriber doesn't have to round-trip.",
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
           "version": {
-            "$ref": "#/components/schemas/RuntimeVersionResponse"
+            "type": "string"
           }
         },
         "required": [
+          "task_id",
+          "key",
+          "engine",
           "version",
-          "downloaded",
-          "message"
+          "backend",
+          "status",
+          "events_url"
+        ]
+      },
+      "DrainEntry": {
+        "description": "Per-mount snapshot exposed via `status()` and the admin UI.",
+        "type": "object",
+        "properties": {
+          "arch": {
+            "type": "string"
+          },
+          "artifact_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "flavor": {
+            "type": "string"
+          },
+          "inflight_exec": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "inflight_mcp": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "version",
+          "arch",
+          "flavor",
+          "inflight_exec",
+          "inflight_mcp"
         ]
       },
       "EditMessageRequest": {
@@ -14063,75 +15761,24 @@
           "branch"
         ]
       },
+      "EngineDownloadStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "downloading",
+          "verifying",
+          "extracting",
+          "registering",
+          "completed",
+          "failed"
+        ]
+      },
       "EngineType": {
         "type": "string",
         "enum": [
           "mistralrs",
           "llamacpp",
           "none"
-        ]
-      },
-      "EnvironmentInfo": {
-        "type": "object",
-        "properties": {
-          "description": {
-            "type": "string"
-          },
-          "approximate_size_mb": {
-            "type": "integer",
-            "format": "uint64",
-            "minimum": 0
-          },
-          "cached": {
-            "type": "boolean"
-          },
-          "cached_size_bytes": {
-            "description": "Actual on-disk size of the flavor's cached squashfs file(s). `None`\n when the flavor is not cached.",
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "uint64",
-            "minimum": 0
-          },
-          "flavor": {
-            "type": "string"
-          },
-          "mounted": {
-            "description": "Whether the flavor is currently mounted (a server-spawned squashfuse\n is live, i.e. it may be in use by an in-flight execute_command).",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "flavor",
-          "description",
-          "approximate_size_mb",
-          "cached",
-          "mounted"
-        ]
-      },
-      "EnvironmentsResponse": {
-        "type": "object",
-        "properties": {
-          "available": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/EnvironmentInfo"
-            }
-          }
-        },
-        "required": [
-          "available"
-        ]
-      },
-      "FetchPhase": {
-        "type": "string",
-        "enum": [
-          "resolving",
-          "downloading",
-          "verifying_sha256",
-          "verifying_cosign",
-          "installing"
         ]
       },
       "File": {
@@ -14438,6 +16085,34 @@
         },
         "required": [
           "providers"
+        ]
+      },
+      "GpuDetectionResponse": {
+        "type": "object",
+        "properties": {
+          "arch": {
+            "type": "string"
+          },
+          "available": {
+            "description": "All usable backends on this host. Always includes \"cpu\".",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "platform": {
+            "type": "string"
+          },
+          "recommended": {
+            "description": "Recommended backend (priority winner).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "available",
+          "recommended",
+          "platform",
+          "arch"
         ]
       },
       "Group": {
@@ -14756,6 +16431,103 @@
           "parameters"
         ]
       },
+      "HubCatalogCounts": {
+        "description": "Per-category counts inside the unified catalog. Surfaced from\n `GET /api/hub/version` so the UI can show \"X models, Y assistants,\n Z MCP servers\" without re-reading the index.",
+        "type": "object",
+        "properties": {
+          "assistants": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "mcp_servers": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "models": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "models",
+          "assistants",
+          "mcp_servers"
+        ]
+      },
+      "HubCatalogRefreshResponse": {
+        "description": "Response for `POST /api/hub/refresh` — what changed.",
+        "type": "object",
+        "properties": {
+          "cosign_verified": {
+            "type": "boolean"
+          },
+          "new_version": {
+            "type": "string"
+          },
+          "previous_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "updated",
+          "new_version",
+          "cosign_verified"
+        ]
+      },
+      "HubCatalogVersionResponse": {
+        "description": "Response for `GET /api/hub/version` — the catalog's current\n hub_version, the server's own version (so the UI can compute\n compat client-side), counts per category, where the active catalog\n came from (`seed` vs `github`), and when it was installed.",
+        "type": "object",
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/HubCatalogCounts"
+          },
+          "hub_version": {
+            "type": "string"
+          },
+          "last_refreshed": {
+            "description": "ISO 8601 install time of the active catalog (None if unreadable).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "server_version": {
+            "type": "string"
+          },
+          "source": {
+            "description": "\"seed\" (embedded boot fallback) or \"github\" (verified fetch).",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CatalogProvenance"
+              }
+            ]
+          }
+        },
+        "required": [
+          "hub_version",
+          "server_version",
+          "counts",
+          "source"
+        ]
+      },
+      "HubCategory": {
+        "description": "Hub category enum. The JSON wire form uses kebab-case (`\"mcp-server\"`)\n to match the on-disk folder names in the catalog (`mcp-servers/`) and\n the index.json shape published by ziee-ai/hub's `release.yml`. The\n `as_str()` helper still returns the snake-case form (`\"mcp_server\"`)\n because the `hub_entities` DB column was created with that value\n (migration 8's CHECK constraint) — kept for backward compat with\n existing rows.",
+        "type": "string",
+        "enum": [
+          "assistant",
+          "mcp-server",
+          "model"
+        ]
+      },
       "HubEntity": {
         "description": "Hub entity tracking record",
         "type": "object",
@@ -15039,6 +16811,60 @@
           "display_name"
         ]
       },
+      "HubManifest": {
+        "description": "Full manifest for one hub item, returned by `GET /api/hub/manifest/:id`.\n\n A struct (not a `#[serde(tag)]` enum) because the tagged-enum +\n `Box<Struct>` form produces an empty OpenAPI schema — clients\n couldn't see the payload fields. Exactly one of `model` /\n `assistant` / `mcp_server` is populated, matching `category`.",
+        "type": "object",
+        "properties": {
+          "assistant": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HubAssistant"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "category": {
+            "$ref": "#/components/schemas/HubCategory"
+          },
+          "mcp_server": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HubMCPServer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HubModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "category"
+        ]
+      },
+      "HubManifestQuery": {
+        "description": "Query parameters for `GET /api/hub/manifest/:id`.",
+        "type": "object",
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/HubCategory"
+          }
+        },
+        "required": [
+          "category"
+        ]
+      },
       "HubModel": {
         "description": "Hub model entry",
         "type": "object",
@@ -15226,6 +17052,114 @@
           "version"
         ]
       },
+      "HubReleaseInfo": {
+        "description": "One published catalog version on GitHub Releases. Surfaced by\n `list_releases()` for the admin version picker.",
+        "type": "object",
+        "properties": {
+          "prerelease": {
+            "type": "boolean"
+          },
+          "published_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tag": {
+            "description": "Full git tag (e.g. `v0.0.2-alpha`).",
+            "type": "string"
+          },
+          "version": {
+            "description": "Version without the leading `v` (e.g. `0.0.2-alpha`).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "tag",
+          "prerelease"
+        ]
+      },
+      "HubReleasesResponse": {
+        "description": "Response for `GET /api/hub/releases` — the versions published on\n GitHub, plus which is currently installed (`active_version`) and the\n admin's pin (`pinned_version`, None = tracking latest).",
+        "type": "object",
+        "properties": {
+          "active_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pinned_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "releases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HubReleaseInfo"
+            }
+          }
+        },
+        "required": [
+          "releases"
+        ]
+      },
+      "HubUpdateRow": {
+        "description": "Single row in `GET /api/hub/updates` — one installed hub entity\n that's behind the current catalog (either NULL hub_version or\n a hub_version different from the catalog).",
+        "type": "object",
+        "properties": {
+          "current_version": {
+            "type": "string"
+          },
+          "entity_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "entity_type": {
+            "type": "string"
+          },
+          "hub_category": {
+            "type": "string"
+          },
+          "hub_id": {
+            "type": "string"
+          },
+          "installed_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "hub_id",
+          "hub_category",
+          "entity_type",
+          "entity_id",
+          "current_version"
+        ]
+      },
+      "HubUpdatesResponse": {
+        "type": "object",
+        "properties": {
+          "catalog_version": {
+            "type": "string"
+          },
+          "updates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HubUpdateRow"
+            }
+          }
+        },
+        "required": [
+          "catalog_version",
+          "updates"
+        ]
+      },
       "HubVersionResponse": {
         "description": "Version response",
         "type": "object",
@@ -15299,6 +17233,168 @@
               "file_id"
             ]
           }
+        ]
+      },
+      "IndexItem": {
+        "type": "object",
+        "properties": {
+          "added_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "category": {
+            "$ref": "#/components/schemas/HubCategory"
+          },
+          "id": {
+            "type": "string"
+          },
+          "manifest_path": {
+            "type": "string"
+          },
+          "min_ziee_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "default": [],
+            "items": {
+              "type": "string"
+            }
+          },
+          "verified": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "id",
+          "category",
+          "name",
+          "summary",
+          "manifest_path"
+        ]
+      },
+      "InstallTaskState": {
+        "type": "object",
+        "properties": {
+          "arch": {
+            "type": "string"
+          },
+          "artifact_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "bytes_downloaded": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "flavor": {
+            "type": "string"
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "package": {
+            "type": "string"
+          },
+          "phase": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "version",
+          "arch",
+          "flavor",
+          "package",
+          "status",
+          "started_at"
+        ]
+      },
+      "InstallVersionRequest": {
+        "type": "object",
+        "properties": {
+          "arch": {
+            "description": "Host arch — `\"x86_64\"` or `\"aarch64\"`.",
+            "type": "string"
+          },
+          "flavor": {
+            "description": "`\"minimal\"` or `\"full\"`.",
+            "type": "string"
+          },
+          "package": {
+            "description": "`\"squashfs\"` (Linux/macOS) or `\"tar.zst\"` (Windows WSL).",
+            "type": "string"
+          },
+          "version": {
+            "description": "Semver string (no leading `v`), e.g. `\"0.1.0\"`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "arch",
+          "flavor",
+          "package"
         ]
       },
       "InstanceResponse": {
@@ -15424,6 +17520,38 @@
           "password"
         ]
       },
+      "ListAccessibleServersQuery": {
+        "description": "Query params for the user-accessible MCP server list.\n\n Extends `PaginationQuery` with server-side filters that match\n the UI's controls 1-to-1:\n   - `search` → ILIKE on name / display_name / description\n   - `status` → one of `enabled` | `disabled` | `system` | `user`\n                (translated here to enabled/is_system bool predicates)",
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "format": "uint32",
+            "default": 1,
+            "minimum": 0
+          },
+          "per_page": {
+            "type": "integer",
+            "format": "uint32",
+            "default": 20,
+            "minimum": 0
+          },
+          "search": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        }
+      },
       "ListAuditLogQuery": {
         "description": "Optional `?limit=N` query param for the audit-log endpoint.\n Clamp 1..=500 happens in the repo. Audit R7-#2.",
         "type": "object",
@@ -15436,18 +17564,65 @@
         }
       },
       "ListMemoriesQuery": {
-        "description": "List/page query params.",
+        "description": "List/page query params. Accepts `page` + `per_page` (1-based)\n plus optional server-side filters that get pushed all the way\n down to the SQL WHERE clause:\n\n   - `search` — case-insensitive substring match on `content`\n   - `kind`   — exact match on the memory kind\n                (preference / fact / goal / relationship / other)\n   - `source` — exact match on the source\n                (manual / extraction / mcp_tool)\n\n `limit`/`offset` are still accepted as legacy fallback for\n scripted callers — the standard page/per_page path is preferred.",
         "type": "object",
         "properties": {
+          "kind": {
+            "description": "Exact-match filter on `kind`. None = no filter.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
           "limit": {
-            "type": "integer",
+            "description": "Legacy: when `page`/`per_page` are absent, fall back to\n `limit`/`offset` (clamped to safe ranges).",
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64",
-            "default": 50
+            "default": null
           },
           "offset": {
-            "type": "integer",
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64",
-            "default": 0
+            "default": null
+          },
+          "page": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "default": null
+          },
+          "per_page": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "default": null
+          },
+          "search": {
+            "description": "Substring search on `content` (case-insensitive). Trimmed +\n empty-string normalized to None.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "source": {
+            "description": "Exact-match filter on `source`. None = no filter.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
           }
         }
       },
@@ -15484,20 +17659,6 @@
           }
         }
       },
-      "ListPrefetchTasksResponse": {
-        "type": "object",
-        "properties": {
-          "tasks": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/PrefetchTaskSummary"
-            }
-          }
-        },
-        "required": [
-          "tasks"
-        ]
-      },
       "ListPromptsResponse": {
         "type": "object",
         "properties": {
@@ -15525,6 +17686,38 @@
         "required": [
           "resources"
         ]
+      },
+      "ListSystemServersQuery": {
+        "description": "Query params for the system MCP server list — extends pagination\n with server-side `search` (name/display_name/description ILIKE)\n and `status` (enabled / disabled, translated to a bool predicate).",
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "format": "uint32",
+            "default": 1,
+            "minimum": 0
+          },
+          "per_page": {
+            "type": "integer",
+            "format": "uint32",
+            "default": 20,
+            "minimum": 0
+          },
+          "search": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        }
       },
       "ListToolsResponse": {
         "type": "object",
@@ -16196,6 +18389,10 @@
           "name": {
             "type": "string"
           },
+          "run_in_sandbox": {
+            "description": "Admin opt-in: launch the stdio subprocess inside the\n code_sandbox bwrap isolation. Only honored when\n `is_system && transport_type == Stdio` — the spawn path\n ignores it otherwise; the UI hides the toggle for user-owned\n or non-stdio servers. Defaults to false.",
+            "type": "boolean"
+          },
           "supports_sampling": {
             "type": "boolean"
           },
@@ -16241,6 +18438,7 @@
           "timeout_seconds",
           "supports_sampling",
           "usage_mode",
+          "run_in_sandbox",
           "created_at",
           "updated_at"
         ]
@@ -16587,6 +18785,36 @@
         },
         "required": [
           "total_ram"
+        ]
+      },
+      "MemoryListResponse": {
+        "description": "Paginated response shape for the per-user memory list — matches\n the convention used by `McpServerListResponse` /\n `LlmRepositoryListResponse`, so the UI can drive a standard\n antd `<Pagination>` from the response (current_page, total).",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserMemory"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "per_page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "per_page"
         ]
       },
       "MemoryUsage": {
@@ -17563,6 +19791,51 @@
           }
         }
       },
+      "ModelUsageInfo": {
+        "description": "A local model and how it relates to a given engine version.",
+        "type": "object",
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "engine": {
+            "description": "Engine type (`llamacpp`/`mistralrs`).",
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pinned": {
+            "description": "True if the model is explicitly pinned to this version\n (`required_runtime_version_id`); false if it merely inherits it via\n the provider/system default.",
+            "type": "boolean"
+          },
+          "provider_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "provider_name": {
+            "type": "string"
+          },
+          "running": {
+            "description": "Whether a runtime instance is currently running for this model.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "display_name",
+          "provider_id",
+          "provider_name",
+          "engine",
+          "running",
+          "pinned"
+        ]
+      },
       "OperatingSystemInfo": {
         "type": "object",
         "properties": {
@@ -17788,66 +20061,6 @@
         },
         "required": [
           "ok"
-        ]
-      },
-      "PrefetchStatus": {
-        "type": "string",
-        "enum": [
-          "running",
-          "completed",
-          "failed",
-          "already_cached"
-        ]
-      },
-      "PrefetchTaskSummary": {
-        "type": "object",
-        "properties": {
-          "error": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "flavor": {
-            "type": "string"
-          },
-          "last_phase": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/FetchPhase"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "outcome": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SSEPrefetchCompleteData"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "started_at": {
-            "description": "RFC 3339 UTC timestamp of task start.",
-            "type": "string"
-          },
-          "status": {
-            "$ref": "#/components/schemas/PrefetchStatus"
-          },
-          "task_id": {
-            "type": "string",
-            "format": "uuid"
-          }
-        },
-        "required": [
-          "task_id",
-          "flavor",
-          "status",
-          "started_at"
         ]
       },
       "PreviewQuery": {
@@ -18421,6 +20634,14 @@
         "description": "A reference to a resource returned by a tool (MCP resource_link content type)\n\n Used when a tool creates or references a file that is already persisted on the server.\n The URI follows the pattern `/api/files/{file_id}` for files stored in the file system.",
         "type": "object",
         "properties": {
+          "file_id": {
+            "description": "File id of the server-saved artifact backing this link, when the backend\n persisted it as a `File` (workspace artifacts and user attachments). Lets\n the UI fetch the content via the authenticated `/api/files/{id}/...`\n endpoints (the same path the right-side panel uses) instead of\n dereferencing the raw `uri`. `None` for external MCP links with no\n backing File.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "is_saved": {
             "description": "Whether the file is already persisted in originals storage (user-attached).\n true  → URI is a download-with-token URL; skip fetch-and-save pipeline.\n false → workspace file; run full processing pipeline.\n None  → external MCP server; run full processing pipeline.",
             "type": [
@@ -18506,6 +20727,149 @@
           "filename",
           "mime_type",
           "data"
+        ]
+      },
+      "RootfsArtifact": {
+        "description": "One downloaded artifact in `code_sandbox_rootfs_artifacts`.\n Field order mirrors the SQL column order so the sqlx `FromRow`\n derive matches without explicit `column()` annotations.",
+        "type": "object",
+        "properties": {
+          "arch": {
+            "type": "string"
+          },
+          "artifact_path": {
+            "type": "string"
+          },
+          "cosign_bundle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "downloaded_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "flavor": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "last_used_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "package": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "arch",
+          "flavor",
+          "package",
+          "sha256",
+          "artifact_path",
+          "status",
+          "downloaded_at"
+        ]
+      },
+      "RootfsRelease": {
+        "description": "One semver tag visible on GitHub. The version-manager surfaces these\n in the admin UI's \"available\" list, distinct from the \"installed\"\n list which comes from the DB.",
+        "type": "object",
+        "properties": {
+          "asset_names": {
+            "description": "Raw asset names attached to the release — useful for the UI to\n surface \"only x86_64 published\" cases before the admin clicks\n \"Install\".",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "draft": {
+            "type": "boolean"
+          },
+          "prerelease": {
+            "type": "boolean"
+          },
+          "published_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "description": "Semver string with the leading `v` stripped (`\"0.1.0\"`).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "draft",
+          "prerelease",
+          "asset_names"
+        ]
+      },
+      "RotateProxyTokenResponse": {
+        "description": "Response from `POST /llm-providers/{id}/rotate-proxy-token`.\n Carries the new plaintext token in the same shape as create.",
+        "type": "object",
+        "properties": {
+          "plaintext_api_key": {
+            "description": "New plaintext token. Caller should copy + store; only this\n response carries it.",
+            "type": "string"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/LlmProvider"
+          }
+        },
+        "required": [
+          "provider",
+          "plaintext_api_key"
+        ]
+      },
+      "RuntimeSettings": {
+        "type": "object",
+        "properties": {
+          "auto_start_timeout_secs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "drain_timeout_secs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "idle_unload_secs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "idle_unload_secs",
+          "auto_start_timeout_secs",
+          "drain_timeout_secs",
+          "created_at",
+          "updated_at"
         ]
       },
       "RuntimeVersionListResponse": {
@@ -19120,6 +21484,159 @@
           }
         ]
       },
+      "SSEEngineDownloadCompleteData": {
+        "type": "object",
+        "properties": {
+          "bytes_downloaded": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "duration_ms": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "version_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "version_id",
+          "bytes_downloaded",
+          "duration_ms"
+        ]
+      },
+      "SSEEngineDownloadConnectedData": {
+        "type": "object",
+        "properties": {
+          "backend": {
+            "type": "string"
+          },
+          "engine": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EngineDownloadStatus"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "key",
+          "engine",
+          "version",
+          "backend",
+          "status"
+        ]
+      },
+      "SSEEngineDownloadEvent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "connected": {
+                "$ref": "#/components/schemas/SSEEngineDownloadConnectedData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "connected"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "progress": {
+                "$ref": "#/components/schemas/SSEEngineDownloadProgressData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "progress"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "complete": {
+                "$ref": "#/components/schemas/SSEEngineDownloadCompleteData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "complete"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "failed": {
+                "$ref": "#/components/schemas/SSEEngineDownloadFailedData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "failed"
+            ]
+          }
+        ]
+      },
+      "SSEEngineDownloadFailedData": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "SSEEngineDownloadProgressData": {
+        "type": "object",
+        "properties": {
+          "bytes_received": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "percent": {
+            "description": "`None` when `total_bytes` is None; otherwise 0.0..=100.0.",
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EngineDownloadStatus"
+          },
+          "total_bytes": {
+            "description": "May be `None` when the upstream omits Content-Length (rare\n for GitHub Releases). The UI shows an indeterminate bar.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "status",
+          "bytes_received"
+        ]
+      },
       "SSEHardwareUsageConnectedData": {
         "type": "object",
         "properties": {
@@ -19159,9 +21676,13 @@
           }
         ]
       },
-      "SSEPrefetchCompleteData": {
+      "SSEInstallCompleteData": {
         "type": "object",
         "properties": {
+          "artifact_id": {
+            "type": "string",
+            "format": "uuid"
+          },
           "bytes_downloaded": {
             "type": "integer",
             "format": "uint64",
@@ -19174,28 +21695,6 @@
             "type": "integer",
             "format": "uint64",
             "minimum": 0
-          }
-        },
-        "required": [
-          "bytes_downloaded",
-          "duration_ms",
-          "cosign_verified"
-        ]
-      },
-      "SSEPrefetchConnectedData": {
-        "type": "object",
-        "properties": {
-          "expected_size_mb": {
-            "description": "Total expected size from `KNOWN_FLAVORS` metadata — lets the\n admin UI render a progress-bar denominator before any\n download bytes have arrived.",
-            "type": "integer",
-            "format": "uint64",
-            "minimum": 0
-          },
-          "flavor": {
-            "type": "string"
-          },
-          "status": {
-            "$ref": "#/components/schemas/PrefetchStatus"
           },
           "task_id": {
             "type": "string",
@@ -19203,19 +21702,67 @@
           }
         },
         "required": [
-          "flavor",
           "task_id",
-          "status",
-          "expected_size_mb"
+          "artifact_id",
+          "bytes_downloaded",
+          "duration_ms",
+          "cosign_verified"
         ]
       },
-      "SSEPrefetchEvent": {
+      "SSEInstallConnectedData": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "SSEInstallFailedData": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "task_id",
+          "error"
+        ]
+      },
+      "SSEInstallProgressData": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "task_id",
+          "phase",
+          "message"
+        ]
+      },
+      "SSEInstallTaskEvent": {
         "oneOf": [
           {
             "type": "object",
             "properties": {
               "connected": {
-                "$ref": "#/components/schemas/SSEPrefetchConnectedData"
+                "$ref": "#/components/schemas/SSEInstallConnectedData"
               }
             },
             "additionalProperties": false,
@@ -19226,8 +21773,20 @@
           {
             "type": "object",
             "properties": {
+              "taskStarted": {
+                "$ref": "#/components/schemas/InstallTaskState"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "taskStarted"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
               "progress": {
-                "$ref": "#/components/schemas/SSEPrefetchProgressData"
+                "$ref": "#/components/schemas/SSEInstallProgressData"
               }
             },
             "additionalProperties": false,
@@ -19239,7 +21798,7 @@
             "type": "object",
             "properties": {
               "complete": {
-                "$ref": "#/components/schemas/SSEPrefetchCompleteData"
+                "$ref": "#/components/schemas/SSEInstallCompleteData"
               }
             },
             "additionalProperties": false,
@@ -19251,40 +21810,84 @@
             "type": "object",
             "properties": {
               "failed": {
-                "$ref": "#/components/schemas/SSEPrefetchFailedData"
+                "$ref": "#/components/schemas/SSEInstallFailedData"
               }
             },
             "additionalProperties": false,
             "required": [
               "failed"
             ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "taskState": {
+                "$ref": "#/components/schemas/InstallTaskState"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "taskState"
+            ]
           }
         ]
       },
-      "SSEPrefetchFailedData": {
-        "type": "object",
-        "properties": {
-          "error": {
-            "type": "string"
+      "SSELogEvent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "log": {
+                "$ref": "#/components/schemas/SSELogLineData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "log"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "lag": {
+                "$ref": "#/components/schemas/SSELogLagData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "lag"
+            ]
           }
-        },
-        "required": [
-          "error"
         ]
       },
-      "SSEPrefetchProgressData": {
+      "SSELogLagData": {
+        "description": "Emitted when the broadcast buffer overflowed and the subscriber\n missed lines (slow reader).",
         "type": "object",
         "properties": {
+          "dropped": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
           "message": {
             "type": "string"
-          },
-          "phase": {
-            "$ref": "#/components/schemas/FetchPhase"
           }
         },
         "required": [
-          "phase",
-          "message"
+          "message",
+          "dropped"
+        ]
+      },
+      "SSELogLineData": {
+        "description": "A single captured engine log line.",
+        "type": "object",
+        "properties": {
+          "line": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "line"
         ]
       },
       "SaveUserApiKeyRequest": {
@@ -19432,6 +22035,32 @@
           "client_secret"
         ]
       },
+      "SetPinRequest": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version"
+        ]
+      },
+      "SetPinResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/VersionStatus"
+          },
+          "swap": {
+            "$ref": "#/components/schemas/SwapOutcome"
+          }
+        },
+        "required": [
+          "swap",
+          "status"
+        ]
+      },
       "SetupAdminRequest": {
         "type": "object",
         "properties": {
@@ -19472,48 +22101,6 @@
       "StartInstanceRequest": {
         "type": "object"
       },
-      "StartPrefetchBody": {
-        "type": "object",
-        "properties": {
-          "flavor": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "flavor"
-        ]
-      },
-      "StartPrefetchResponse": {
-        "type": "object",
-        "properties": {
-          "events_url": {
-            "description": "Ready-to-use SSE URL for the frontend's EventSource (relative\n to the API root).",
-            "type": "string"
-          },
-          "expected_size_mb": {
-            "type": "integer",
-            "format": "uint64",
-            "minimum": 0
-          },
-          "flavor": {
-            "type": "string"
-          },
-          "status": {
-            "$ref": "#/components/schemas/PrefetchStatus"
-          },
-          "task_id": {
-            "type": "string",
-            "format": "uuid"
-          }
-        },
-        "required": [
-          "task_id",
-          "flavor",
-          "expected_size_mb",
-          "status",
-          "events_url"
-        ]
-      },
       "StreamError": {
         "description": "Stream error information",
         "type": "object",
@@ -19532,6 +22119,85 @@
           "message"
         ]
       },
+      "SwapOutcome": {
+        "description": "Result of a pin change. Surfaced via the `set-pin` HTTP handler so\n the admin UI can render a \"n session(s) draining\" indicator.",
+        "type": "object",
+        "properties": {
+          "cache_wipe": {
+            "$ref": "#/components/schemas/SwapPolicy"
+          },
+          "draining_mounts": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "pinned": {
+            "type": "string"
+          },
+          "was": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "pinned",
+          "draining_mounts",
+          "cache_wipe"
+        ]
+      },
+      "SwapPolicy": {
+        "description": "Wipe policy chosen by `swap_policy_for_diff`.",
+        "oneOf": [
+          {
+            "description": "Same major version → workspace data is preserved verbatim.",
+            "type": "string",
+            "const": "preserve"
+          },
+          {
+            "description": "Different majors → wipe install-cache subdirs in every\n conversation- + MCP-server-workspace AFTER drain.",
+            "type": "string",
+            "const": "wipe_caches_on_drain"
+          }
+        ]
+      },
+      "SwapRuntimeVersionRequest": {
+        "description": "Request to swap a model onto another version of the **same** engine.",
+        "type": "object",
+        "properties": {
+          "version_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "version_id"
+        ]
+      },
+      "SwapRuntimeVersionResponse": {
+        "description": "Result of a version swap.",
+        "type": "object",
+        "properties": {
+          "model_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "restarted": {
+            "description": "True if a running instance was restarted onto the new version.",
+            "type": "boolean"
+          },
+          "version_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "model_id",
+          "version_id",
+          "restarted"
+        ]
+      },
       "SyncCacheResponse": {
         "description": "Response after syncing cache with database",
         "type": "object",
@@ -19548,6 +22214,14 @@
         "required": [
           "synced_count",
           "message"
+        ]
+      },
+      "TaskStatus": {
+        "type": "string",
+        "enum": [
+          "running",
+          "completed",
+          "failed"
         ]
       },
       "TestExtractRequest": {
@@ -20472,6 +23146,13 @@
               "null"
             ]
           },
+          "run_in_sandbox": {
+            "description": "Admin/system stdio servers only: launch inside the\n code_sandbox bwrap isolation. See `McpServer::run_in_sandbox`.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "supports_sampling": {
             "type": [
               "boolean",
@@ -20686,6 +23367,32 @@
             ],
             "maxLength": 255,
             "minLength": 1
+          }
+        }
+      },
+      "UpdateRuntimeSettingsRequest": {
+        "type": "object",
+        "properties": {
+          "auto_start_timeout_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "drain_timeout_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "idle_unload_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -20955,6 +23662,14 @@
             "type": "boolean"
           },
           "last_login_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "password_changed_at": {
+            "description": "When the user last rotated their password. NULL means the\n account is still using the bootstrap-issued password (only\n meaningful for the desktop `admin` user). The Remote Access\n module refuses to enable password authentication unless this\n is non-NULL for the admin.",
             "type": [
               "string",
               "null"
@@ -21277,6 +23992,99 @@
           "max_memories",
           "created_at",
           "updated_at"
+        ]
+      },
+      "VersionStatus": {
+        "description": "Snapshot returned by `status()` for the admin UI's \"Rootfs\n versions\" page.",
+        "type": "object",
+        "properties": {
+          "available": {
+            "description": "Only populated when GitHub is reachable (best-effort).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RootfsRelease"
+            }
+          },
+          "conversation_count": {
+            "description": "Count of per-conversation workspace dirs that would be\n touched by a major-bump wipe. Read by the major-bump confirm\n modal so the admin sees blast radius before clicking through.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "draining": {
+            "description": "One entry per live mount (registered after a successful\n `runtime_mount::ensure_rootfs_ready`). The admin UI uses\n this to render per-row \"in-flight\" counts + draining\n indicators on rows being phased out by a set-pin.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DrainEntry"
+            }
+          },
+          "installed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RootfsArtifact"
+            }
+          },
+          "mcp_server_workspace_count": {
+            "description": "Same as above, for per-MCP-server workspaces under\n `<workspace_root>/mcp/<server_id>/`.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "pinned_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "installed",
+          "available",
+          "draining",
+          "conversation_count",
+          "mcp_server_workspace_count"
+        ]
+      },
+      "VersionUsageEntry": {
+        "description": "One installed engine version + the models that effectively resolve to it.",
+        "type": "object",
+        "properties": {
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelUsageInfo"
+            }
+          },
+          "version": {
+            "$ref": "#/components/schemas/RuntimeVersionResponse"
+          }
+        },
+        "required": [
+          "version",
+          "models"
+        ]
+      },
+      "VersionUsageResponse": {
+        "description": "Models grouped by the engine version they effectively run on.",
+        "type": "object",
+        "properties": {
+          "unresolved": {
+            "description": "Local models whose engine has no installed version to resolve to.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelUsageInfo"
+            }
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VersionUsageEntry"
+            }
+          }
+        },
+        "required": [
+          "versions",
+          "unresolved"
         ]
       }
     }

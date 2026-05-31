@@ -67,7 +67,8 @@ async fn test_injection_string_stored_as_data_not_executed() {
         .send()
         .await
         .unwrap();
-    let rows: Vec<Value> = res.json().await.unwrap();
+    let body: Value = res.json().await.unwrap();
+    let rows = body["items"].as_array().cloned().unwrap_or_default();
     assert_eq!(
         rows.len(),
         3,

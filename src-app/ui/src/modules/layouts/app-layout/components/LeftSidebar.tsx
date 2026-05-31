@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom'
 import { theme, Typography, Divider, Tooltip } from 'antd'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
+import { SidebarHeaderSpacer } from '@/modules/layouts/app-layout/components/SidebarHeaderSpacer'
 import { Stores } from '@/core/stores'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import { evaluatePermission } from '@/core/permissions'
@@ -61,7 +62,7 @@ function SidebarItem({ icon, label, isActive, to, onClick, collapsed }: SidebarI
       <Text
         style={{
           color: 'inherit',
-          fontSize: 15,
+          fontSize: token.fontSize,
           opacity: collapsed ? 0 : 1,
           maxWidth: collapsed ? 0 : 200,
           overflow: 'hidden',
@@ -105,7 +106,7 @@ function SectionHeader({ children, collapsed }: SectionHeaderProps) {
       <Text
         className="px-3 pb-0.5 block font-semibold tracking-wide"
         style={{
-          fontSize: '11px',
+          fontSize: token.fontSizeSM,
           color: token.colorTextSecondary,
         }}
       >
@@ -163,7 +164,7 @@ export function LeftSidebar() {
         backgroundColor: token.colorBgContainer,
       }}
     >
-      <div className={'h-[50px]'} />
+      <SidebarHeaderSpacer />
       {/* Sidebar content - always rendered */}
 
       {/* Primary Actions */}

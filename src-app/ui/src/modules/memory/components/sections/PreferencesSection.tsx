@@ -3,6 +3,7 @@ import {
   Alert,
   Button,
   Card,
+  Divider,
   Flex,
   Form,
   InputNumber,
@@ -84,21 +85,31 @@ export function PreferencesSection() {
   }
 
   return (
-    <Card title="Preferences">
+    <>
       {adminDisabled && (
         <Alert
           type="warning"
           showIcon
           title="Memory is currently disabled by the administrator."
           description="Settings here will be saved but have no effect until the administrator enables memory."
-          className="mb-4"
         />
       )}
-
+      <Card title="Preferences">
+        {/*
+        Horizontal layout: label + description on the left, the
+        control on the right. Compact enough that Switch /
+        InputNumber controls don't drown in vertical whitespace.
+        `labelCol`/`wrapperCol` proportions match the typical
+        settings-form rhythm used elsewhere in the codebase.
+      */}
       <Form
         name="memory-preferences-form"
         form={form}
-        layout="vertical"
+        layout="horizontal"
+        labelCol={{ flex: '280px' }}
+        wrapperCol={{ flex: 'auto' }}
+        labelAlign="left"
+        colon={false}
         onFinish={handleSubmit}
         disabled={!canWrite}
       >
@@ -112,7 +123,7 @@ export function PreferencesSection() {
         </Form.Item>
         <Form.Item
           name="retrieval_enabled"
-          label="Inject relevant memories on retrieval"
+          label="Inject relevant memories"
           valuePropName="checked"
           extra="Before each LLM call, your latest message is embedded and the top-K most-similar memories are added to the system prompt."
         >
@@ -123,7 +134,7 @@ export function PreferencesSection() {
           label="Max memories stored"
           extra="When this cap is reached the reaper soft-deletes the oldest."
         >
-          <InputNumber min={1} max={100000} />
+          <InputNumber min={1} max={100000} style={{ width: 160 }} />
         </Form.Item>
         <Form.Item
           label="Retention (days)"
@@ -131,10 +142,9 @@ export function PreferencesSection() {
         >
           <Space>
             <Form.Item name="retention_days" noStyle>
-              <InputNumber min={1} max={3650} />
+              <InputNumber min={1} max={3650} style={{ width: 160 }} />
             </Form.Item>
             <Button
-              size="small"
               disabled={!canWrite}
               onClick={() => form.setFieldValue('retention_days', null)}
             >
@@ -144,13 +154,17 @@ export function PreferencesSection() {
         </Form.Item>
 
         {canWrite && (
-          <Flex justify="end">
-            <Button type="primary" htmlType="submit" loading={saving}>
-              Save
-            </Button>
-          </Flex>
+          <>
+            <Divider className="!my-3" />
+            <Flex justify="end">
+              <Button type="primary" htmlType="submit" loading={saving}>
+                Save
+              </Button>
+            </Flex>
+          </>
         )}
       </Form>
-    </Card>
+      </Card>
+    </>
   )
 }

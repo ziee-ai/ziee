@@ -107,8 +107,18 @@ impl Provider {
             }
         };
 
+        // Total-request timeout. Sized for the slow path: local CPU
+        // inference (no GPU, small model) can take >2 min for cold
+        // first-token, and the streaming chat case keeps the
+        // connection open for the duration of generation. The
+        // previous 120s ceiling cut chat streams off mid-response on
+        // commodity hardware. Cloud providers respond well within
+        // this anyway, so the wider budget is safe. Connect itself
+        // is bounded by `connect_timeout` (defaulted by reqwest) to
+        // keep "host unreachable" failures snappy.
         let client = Client::builder()
-            .timeout(Duration::from_secs(120))
+            .timeout(Duration::from_secs(600))
+            .connect_timeout(Duration::from_secs(10))
             .build()
             .map_err(|e| ProviderError::InvalidRequest(format!("Failed to create HTTP client: {}", e)))?;
 

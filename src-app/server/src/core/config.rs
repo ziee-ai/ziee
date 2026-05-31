@@ -264,9 +264,11 @@ pub struct ServerConfig {
     #[serde(default)]
     pub cors: Option<CorsConfig>,
     /// Rate-limit configuration (tower-governor). Optional — defaults
-    /// match the A3 hardening posture (5 req/s sustained, 60-burst).
-    /// Tests override with much higher numbers since they run many
-    /// sequential requests against 127.0.0.1 (single peer-IP bucket).
+    /// to 50 req/s sustained, 500-burst (enough for a normal SPA
+    /// cold-load without 429s). Hardened deployments behind a real
+    /// reverse proxy should override downward here; tests override
+    /// upward since sequential sweeps against 127.0.0.1 share a
+    /// single peer-IP bucket.
     #[serde(default)]
     pub rate_limit: Option<RateLimitConfig>,
     /// Honor X-Forwarded-Host / X-Forwarded-Proto in OAuth
@@ -312,11 +314,11 @@ fn default_rate_limit_enabled() -> bool {
 }
 
 fn default_rate_limit_per_second() -> u64 {
-    5
+    50
 }
 
 fn default_rate_limit_burst_size() -> u32 {
-    60
+    500
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -546,8 +548,8 @@ mod rate_limit_config_tests {
         // to their serde defaults.
         let cfg: RateLimitConfig = serde_json::from_str(r#"{"enabled":false}"#).unwrap();
         assert!(!cfg.enabled);
-        assert_eq!(cfg.per_second, 5);
-        assert_eq!(cfg.burst_size, 60);
+        assert_eq!(cfg.per_second, 50);
+        assert_eq!(cfg.burst_size, 500);
     }
 
     #[test]

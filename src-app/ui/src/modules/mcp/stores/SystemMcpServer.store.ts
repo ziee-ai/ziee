@@ -16,6 +16,9 @@ import {
 } from '@/modules/mcp/events'
 import { Stores } from '@/core/stores'
 
+/** Debounce timer for system MCP search-term reloads (250ms). */
+let sysMcpSearchDebounce: ReturnType<typeof setTimeout> | null = null
+
 interface SystemMcpServersState {
   // System servers data
   systemServers: McpServer[]
@@ -23,6 +26,11 @@ interface SystemMcpServersState {
   systemServersPage: number
   systemServersPageSize: number
   systemServersInitialized: boolean
+
+  // Server-side filter state. Search is debounced; status fires
+  // an immediate reload.
+  searchTerm: string
+  statusFilter: string // 'all' | 'enabled' | 'disabled'
 
   // Loading states
   systemServersLoading: boolean
@@ -53,6 +61,8 @@ interface SystemMcpServersState {
 
   // Actions
   loadSystemServers: (page?: number, pageSize?: number) => Promise<void>
+  setSearchTerm: (q: string) => void
+  setStatusFilter: (status: string) => void
   createSystemServer: (data: CreateMcpServerRequest) => Promise<McpServer>
   updateSystemServer: (
     id: string,
@@ -84,6 +94,10 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
       systemServersPage: 1,
       systemServersPageSize: 20,
       systemServersInitialized: false,
+
+      // Filter state (server-side).
+      searchTerm: '',
+      statusFilter: 'all',
 
       // Loading states
       systemServersLoading: false,
@@ -182,6 +196,10 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
           const response = await ApiClient.McpServerSystem.list({
             page: requestPage,
             per_page: requestPageSize,
+            ...(state.searchTerm ? { search: state.searchTerm } : {}),
+            ...(state.statusFilter !== 'all'
+              ? { status: state.statusFilter }
+              : {}),
           })
 
           set({
@@ -204,6 +222,20 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
           })
           throw error
         }
+      },
+
+      // Filter setters — both reset to page 1 and reload. Search
+      // debounced; status fires immediately.
+      setSearchTerm: (q: string) => {
+        set({ searchTerm: q, systemServersPage: 1 })
+        if (sysMcpSearchDebounce) clearTimeout(sysMcpSearchDebounce)
+        sysMcpSearchDebounce = setTimeout(() => {
+          void get().loadSystemServers(1)
+        }, 250)
+      },
+      setStatusFilter: (status: string) => {
+        set({ statusFilter: status, systemServersPage: 1 })
+        void get().loadSystemServers(1)
       },
 
       createSystemServer: async (

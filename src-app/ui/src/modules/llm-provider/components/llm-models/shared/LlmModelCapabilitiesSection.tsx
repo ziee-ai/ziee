@@ -17,7 +17,7 @@ export function LlmModelCapabilitiesSection() {
             type="info"
             showIcon
             className="!mb-1"
-            message="This model is flagged as an embedder; chat capabilities are hidden because they don't apply."
+            title="This model is flagged as an embedder; chat capabilities are hidden because they don't apply."
           />
         )}
 
