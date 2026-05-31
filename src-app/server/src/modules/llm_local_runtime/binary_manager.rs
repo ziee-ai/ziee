@@ -9,7 +9,9 @@
 use sqlx::PgPool;
 use crate::modules::llm_local_runtime::runtime_version::repository as version_repo;
 use crate::modules::llm_local_runtime::runtime_version::models::{AvailableVersion, RuntimeVersion};
-use crate::modules::llm_local_runtime::engine::{available_backends, BinaryDownloader, EngineType};
+use crate::modules::llm_local_runtime::engine::{
+    asset_size_for_backend, available_backends, BinaryDownloader, EngineType,
+};
 use std::path::PathBuf;
 use uuid::Uuid;
 
@@ -35,10 +37,9 @@ impl BinaryManager {
         Ok(Self { downloader, pool })
     }
 
-    /// Download and register a new runtime version
-    ///
-    /// Downloads the binary from GitHub releases and creates a database record.
-    /// If the binary is already cached, skips download but still creates the DB record.
+    /// Download and register a new runtime version (no progress
+    /// reporting). Thin wrapper around
+    /// [`Self::download_and_register_with_progress`].
     pub async fn download_and_register(
         &self,
         engine: EngineType,
@@ -46,11 +47,43 @@ impl BinaryManager {
         platform: &str,
         arch: &str,
         backend: &str,
-    ) -> Result<RuntimeVersion, Box<dyn std::error::Error>> {
+    ) -> Result<RuntimeVersion, Box<dyn std::error::Error + Send + Sync>> {
+        self.download_and_register_with_progress(
+            engine,
+            version,
+            platform,
+            arch,
+            backend,
+            |_, _| {},
+        )
+        .await
+    }
+
+    /// Download and register a new runtime version, calling `progress`
+    /// on every chunk read with `(bytes_received, total_bytes)`.
+    /// `total_bytes` is `None` when the upstream omits Content-Length.
+    /// If the binary is already cached, skips the download (and the
+    /// callback) but still creates the DB record.
+    ///
+    /// The `Send + Sync` bounds on the error type let this be called
+    /// from inside a `tokio::spawn`'d future (the detached
+    /// download-task runner).
+    pub async fn download_and_register_with_progress<F>(
+        &self,
+        engine: EngineType,
+        version: &str,
+        platform: &str,
+        arch: &str,
+        backend: &str,
+        progress: F,
+    ) -> Result<RuntimeVersion, Box<dyn std::error::Error + Send + Sync>>
+    where
+        F: Fn(u64, Option<u64>) + Send + Sync,
+    {
         // Download binary (uses cache if available)
         let binary_info = self
             .downloader
-            .download(engine, version, platform, arch, backend)
+            .download_with_progress(engine, version, platform, arch, backend, progress)
             .await?;
 
         // Check if version already exists in database
@@ -260,7 +293,7 @@ impl BinaryManager {
             .into_iter()
             .filter(|r| !r.draft)
             .map(|r| {
-                let avail = available_backends(engine_type, platform, arch, &r.asset_names);
+                let avail = available_backends(engine_type, platform, arch, &r.assets);
                 let installed_backends: Vec<String> = installed
                     .iter()
                     .filter(|v| {
@@ -270,6 +303,22 @@ impl BinaryManager {
                     .collect();
                 let recommended_backend =
                     crate::modules::llm_local_runtime::utils::gpu_detect::recommend_backend(&avail);
+                // Size of the asset the inline Install button would
+                // actually fetch: the recommended backend when known,
+                // else the first published backend (matches the
+                // fallback in the UI's `handleDownload`).
+                let size_bytes = recommended_backend
+                    .as_deref()
+                    .or_else(|| avail.first().map(|s| s.as_str()))
+                    .and_then(|backend| {
+                        asset_size_for_backend(
+                            engine_type,
+                            platform,
+                            arch,
+                            backend,
+                            &r.assets,
+                        )
+                    });
                 AvailableVersion {
                     version: r.version,
                     installed: !installed_backends.is_empty(),
@@ -277,6 +326,7 @@ impl BinaryManager {
                     binary_ready: !avail.is_empty(),
                     available_backends: avail,
                     recommended_backend,
+                    size_bytes,
                     prerelease: r.prerelease,
                     published_at: r.published_at,
                 }

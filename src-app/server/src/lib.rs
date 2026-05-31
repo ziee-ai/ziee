@@ -309,7 +309,12 @@ async fn setup_server(
     let app = api_router
         .finish_api(&mut api_doc)
         .layer(axum::extract::DefaultBodyLimit::max(16 * 1024 * 1024))
-        .layer(tower_http::timeout::TimeoutLayer::new(std::time::Duration::from_secs(60)));
+        // 660s — MUST exceed auto_start_timeout_secs ceiling (600s).
+        // The local-runtime proxy (/api/local-llm/v1/*) waits for
+        // engine auto-start synchronously before returning a
+        // Response, so this layer caps the whole spawn + first-byte
+        // window. See main.rs for the full rationale.
+        .layer(tower_http::timeout::TimeoutLayer::new(std::time::Duration::from_secs(660)));
     let app = match governor_layer {
         Some(layer) => app.layer(layer),
         None => app,

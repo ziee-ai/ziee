@@ -269,6 +269,13 @@ jwt:
       ? `${process.env.USERPROFILE}\\.cargo\\bin\\cargo`
       : `${process.env.HOME}/.cargo/bin/cargo`
 
+    // Isolate the hub catalog dir per test. The hub catalog
+    // (`current/`) is durable global state; a refresh/activate in one
+    // spec would otherwise rotate the shared dir and leak the new
+    // version into other specs (and across runs). The override is
+    // debug-gated in the server (compiled out of release).
+    const hubDataDir = resolve(configDir, `hub-${testId}`)
+
     const serverProcess = spawn(
       cargoPath,
       ['run', '--bin', 'ziee', '--', '--config-file', configPath],
@@ -278,6 +285,15 @@ jwt:
         detached: false,
         env: {
           ...process.env,
+          ZIEE_HUB_DATA_DIR_OVERRIDE: hubDataDir,
+          // E2E tests drive engine start/stop themselves; the model
+          // validator's 90s spawn-and-kill cycle (TIER2_HEALTH_DEADLINE_SECS)
+          // races with the test's Start click — backend returns 409
+          // "already running" if Start fires while the validator
+          // owns the engine, and Stop button toggles unstably.
+          // Short-circuit validation to a no-op (debug-only env;
+          // compiled out of release builds).
+          ZIEE_DISABLE_MODEL_VALIDATION: '1',
           PATH: process.platform === 'win32'
             ? `${process.env.USERPROFILE}\\.cargo\\bin;${process.env.PATH}`
             : `${process.env.HOME}/.cargo/bin:${process.env.PATH}`,
@@ -490,6 +506,11 @@ export default defineConfig({
       rmSync(viteConfigPath, { force: true })
       // Per-test Vite cacheDir; safe to nuke after the test ends.
       rmSync(resolve(projectRoot, 'node_modules/.vite-test', testId), {
+        recursive: true,
+        force: true,
+      })
+      // Per-test isolated hub catalog dir.
+      rmSync(resolve(configDir, `hub-${testId}`), {
         recursive: true,
         force: true,
       })

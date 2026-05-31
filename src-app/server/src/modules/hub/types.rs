@@ -149,6 +149,88 @@ pub struct ModelFromHubResponse {
     pub hub_tracking: HubEntity,
 }
 
+// =====================================================
+// UNIFIED CATALOG TYPES (new in Phase 1)
+// =====================================================
+
+/// Per-category counts inside the unified catalog. Surfaced from
+/// `GET /api/hub/version` so the UI can show "X models, Y assistants,
+/// Z MCP servers" without re-reading the index.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct HubCatalogCounts {
+    pub models: usize,
+    pub assistants: usize,
+    pub mcp_servers: usize,
+}
+
+/// Response for `GET /api/hub/version` — the catalog's current
+/// hub_version, the server's own version (so the UI can compute
+/// compat client-side), counts per category, where the active catalog
+/// came from (`seed` vs `github`), and when it was installed.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct HubCatalogVersionResponse {
+    pub hub_version: String,
+    pub server_version: String,
+    pub counts: HubCatalogCounts,
+    /// "seed" (embedded boot fallback) or "github" (verified fetch).
+    pub source: super::hub_manager::CatalogProvenance,
+    /// ISO 8601 install time of the active catalog (None if unreadable).
+    pub last_refreshed: Option<String>,
+}
+
+/// Response for `POST /api/hub/refresh` — what changed.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct HubCatalogRefreshResponse {
+    pub updated: bool,
+    pub previous_version: Option<String>,
+    pub new_version: String,
+    pub cosign_verified: bool,
+}
+
+/// Single row in `GET /api/hub/updates` — one installed hub entity
+/// that's behind the current catalog (either NULL hub_version or
+/// a hub_version different from the catalog).
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct HubUpdateRow {
+    pub hub_id: String,
+    pub hub_category: String,
+    pub entity_type: String,
+    pub entity_id: Uuid,
+    pub installed_version: Option<String>,
+    pub current_version: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct HubUpdatesResponse {
+    pub catalog_version: String,
+    pub updates: Vec<HubUpdateRow>,
+}
+
+/// Query parameters for `GET /api/hub/manifest/:id`.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct HubManifestQuery {
+    pub category: super::models::HubCategory,
+}
+
+/// Response for `GET /api/hub/releases` — the versions published on
+/// GitHub, plus which is currently installed (`active_version`) and the
+/// admin's pin (`pinned_version`, None = tracking latest).
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct HubReleasesResponse {
+    pub active_version: Option<String>,
+    pub pinned_version: Option<String>,
+    pub releases: Vec<super::hub_manager::HubReleaseInfo>,
+}
+
+/// Request body for `POST /api/hub/activate`. `version: null` clears the
+/// pin (track latest); otherwise pins + activates that exact version
+/// (semver without the leading `v`).
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ActivateHubVersionRequest {
+    #[serde(default)]
+    pub version: Option<String>,
+}
+
 /// A local LLM provider available as download target
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct HubLocalProvider {

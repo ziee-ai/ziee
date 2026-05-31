@@ -4234,7 +4234,7 @@
         "tags": [
           "Runtime Versions"
         ],
-        "description": "Download and register a runtime version from GitHub releases",
+        "description": "Start (or join) a detached download of a runtime version. Returns immediately with task identifiers + an SSE URL; the download keeps running on the server even after the client disconnects, so a page reload can pick it up via GET /local-runtime/versions/downloads.",
         "operationId": "RuntimeVersion.download",
         "requestBody": {
           "description": "Request to download and register a runtime version",
@@ -4272,17 +4272,170 @@
             }
           },
           "200": {
-            "description": "Response after downloading and registering a version",
+            "description": "Response when a download task is started (or joined for an\n already-running download of the same engine/version/backend).\n Detached: the download keeps running on the server even after the\n HTTP request returns or the client disconnects, so a page reload\n can pick up the in-flight task via `GET /versions/downloads`.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DownloadVersionResponse"
+                  "$ref": "#/components/schemas/DownloadVersionStartedResponse"
                 }
               }
             }
           },
           "400": {
             "description": "Invalid request parameters"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/local-runtime/versions/downloads": {
+      "get": {
+        "tags": [
+          "Runtime Versions"
+        ],
+        "description": "List every download task currently held by the in-process registry (running OR terminal-but-not-yet-replaced). The UI calls this on mount to repaint in-flight progress after a page reload.",
+        "operationId": "RuntimeVersion.listDownloads",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View runtime versions and check for updates",
+                        "name": "RuntimeVersionRead",
+                        "value": "llm_local_runtime::versions_read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::versions_read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "`GET /local-runtime/versions/downloads` response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadListResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/local-runtime/versions/downloads/{key}": {
+      "get": {
+        "tags": [
+          "Runtime Versions"
+        ],
+        "description": "Snapshot of a single download task by its composite key.",
+        "operationId": "RuntimeVersion.getDownload",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View runtime versions and check for updates",
+                        "name": "RuntimeVersionRead",
+                        "value": "llm_local_runtime::versions_read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::versions_read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One entry returned by `GET /local-runtime/versions/downloads`.\n Lists every download task currently held by the in-process\n registry (running OR terminal-but-not-replaced). Used by the UI\n on mount to repaint in-flight progress after a page reload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadSnapshot"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such download task"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/local-runtime/versions/downloads/{key}/events": {
+      "get": {
+        "tags": [
+          "Runtime Versions"
+        ],
+        "description": "Subscribe to SSE progress events for one download task. Sends Connected with the current state snapshot immediately, replays buffered Progress frames, then live-streams further events until Complete/Failed.",
+        "operationId": "RuntimeVersion.subscribeDownloadEvents",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View runtime versions and check for updates",
+                        "name": "RuntimeVersionRead",
+                        "value": "llm_local_runtime::versions_read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::versions_read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SSEEngineDownloadEvent"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such download task"
           }
         },
         "security": [
@@ -4496,7 +4649,7 @@
           "LLM Local Runtime"
         ],
         "summary": "Update runtime singleton settings (PATCH-style: COALESCE on each field).",
-        "description": "\n\n**Required Permission:** `llm_local_runtime::settings_manage`\n\nModify runtime singleton settings (idle/auto-start/drain/allow_unsigned_downloads)",
+        "description": "\n\n**Required Permission:** `llm_local_runtime::settings_manage`\n\nModify runtime singleton settings (idle/auto-start/drain)",
         "operationId": "LocalRuntime.updateRuntimeSettings",
         "requestBody": {
           "content": {
@@ -4520,7 +4673,7 @@
                   "details": {
                     "required_permissions": [
                       {
-                        "description": "Modify runtime singleton settings (idle/auto-start/drain/allow_unsigned_downloads)",
+                        "description": "Modify runtime singleton settings (idle/auto-start/drain)",
                         "name": "RuntimeSettingsManage",
                         "value": "llm_local_runtime::settings_manage"
                       }
@@ -10459,6 +10612,9 @@
           },
           "404": {
             "description": "Hub assistant not found"
+          },
+          "422": {
+            "description": "Hub item incompatible with this server version"
           }
         },
         "security": [
@@ -10526,6 +10682,9 @@
           },
           "404": {
             "description": "Hub MCP server not found"
+          },
+          "422": {
+            "description": "Hub item incompatible with this server version"
           }
         },
         "security": [
@@ -10599,8 +10758,8 @@
           "404": {
             "description": "Hub model not found"
           },
-          "501": {
-            "description": "Not yet implemented"
+          "422": {
+            "description": "Hub item incompatible with this server version"
           }
         },
         "security": [
@@ -10654,6 +10813,417 @@
           },
           "401": {
             "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/index": {
+      "get": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "Get the unified hub catalog (index.json)",
+        "description": "\n\n**Required Permission:** `hub::models::read`\n\nView hub models",
+        "operationId": "Hub.getCatalog",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View hub models",
+                        "name": "HubModelsRead",
+                        "value": "hub::models::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::models::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Catalog"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/version": {
+      "get": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "Current hub catalog version + server version + counts",
+        "description": "\n\n**Required Permission:** `hub::models::read`\n\nView hub models",
+        "operationId": "Hub.getCatalogVersion",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View hub models",
+                        "name": "HubModelsRead",
+                        "value": "hub::models::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::models::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response for `GET /api/hub/version` — the catalog's current\n hub_version, the server's own version (so the UI can compute\n compat client-side), counts per category, where the active catalog\n came from (`seed` vs `github`), and when it was installed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubCatalogVersionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/refresh": {
+      "post": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "Force-refresh the hub catalog from GitHub Releases (admin only)",
+        "description": "\n\n**Required Permission:** `hub::catalog::manage`\n\nRefresh + activate hub catalog versions",
+        "operationId": "Hub.refreshCatalog",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Refresh + activate hub catalog versions",
+                        "name": "HubCatalogManage",
+                        "value": "hub::catalog::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::catalog::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response for `POST /api/hub/refresh` — what changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubCatalogRefreshResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Fetch / sha256 / cosign verify failure — previous catalog left in place"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/updates": {
+      "get": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "Installed hub entities behind the current catalog version (admin only)",
+        "description": "\n\n**Required Permission:** `hub::catalog::read`\n\nView hub catalog versions + pending updates",
+        "operationId": "Hub.getUpdates",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View hub catalog versions + pending updates",
+                        "name": "HubCatalogRead",
+                        "value": "hub::catalog::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::catalog::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubUpdatesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/manifest/{id}": {
+      "get": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "Full manifest for one hub item (model / assistant / mcp-server)",
+        "description": "\n\n**Required Permission:** `hub::models::read`\n\nView hub models",
+        "operationId": "Hub.getManifest",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "category",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/HubCategory"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View hub models",
+                        "name": "HubModelsRead",
+                        "value": "hub::models::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::models::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Full manifest for one hub item, returned by `GET /api/hub/manifest/:id`.\n\n A struct (not a `#[serde(tag)]` enum) because the tagged-enum +\n `Box<Struct>` form produces an empty OpenAPI schema — clients\n couldn't see the payload fields. Exactly one of `model` /\n `assistant` / `mcp_server` is populated, matching `category`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubManifest"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid id"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Manifest not found in catalog"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/releases": {
+      "get": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "List catalog versions published on GitHub (admin only)",
+        "description": "\n\n**Required Permission:** `hub::catalog::read`\n\nView hub catalog versions + pending updates",
+        "operationId": "Hub.getReleases",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View hub catalog versions + pending updates",
+                        "name": "HubCatalogRead",
+                        "value": "hub::catalog::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::catalog::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response for `GET /api/hub/releases` — the versions published on\n GitHub, plus which is currently installed (`active_version`) and the\n admin's pin (`pinned_version`, None = tracking latest).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubReleasesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "GitHub unreachable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/activate": {
+      "post": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "Pin + activate a catalog version server-wide (admin only)",
+        "description": "\n\n**Required Permission:** `hub::catalog::manage`\n\nRefresh + activate hub catalog versions",
+        "operationId": "Hub.activateVersion",
+        "requestBody": {
+          "description": "Request body for `POST /api/hub/activate`. `version: null` clears the\n pin (track latest); otherwise pins + activates that exact version\n (semver without the leading `v`).",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivateHubVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Refresh + activate hub catalog versions",
+                        "name": "HubCatalogManage",
+                        "value": "hub::catalog::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::catalog::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response for `POST /api/hub/refresh` — what changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubCatalogRefreshResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid version string"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Fetch / verify failure — pin not persisted, previous catalog kept"
           }
         },
         "security": [
@@ -12346,6 +12916,19 @@
       }
     },
     "schemas": {
+      "ActivateHubVersionRequest": {
+        "description": "Request body for `POST /api/hub/activate`. `version: null` clears the\n pin (track latest); otherwise pins + activates that exact version\n (semver without the leading `v`).",
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        }
+      },
       "ApprovalMode": {
         "description": "Approval mode for conversation MCP settings",
         "oneOf": [
@@ -12703,6 +13286,15 @@
               "null"
             ]
           },
+          "size_bytes": {
+            "description": "Byte size of the archive the inline Install button would\n fetch (recommended backend when set, else the first\n published backend). `None` when no asset matches this host\n or GitHub omitted the size — UI hides the size label in\n that case.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
           "version": {
             "description": "Release tag (e.g. `v0.0.1-alpha`).",
             "type": "string"
@@ -12860,6 +13452,52 @@
         "required": [
           "content",
           "is_error"
+        ]
+      },
+      "Catalog": {
+        "type": "object",
+        "properties": {
+          "generated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "hub_version": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IndexItem"
+            }
+          },
+          "schema_version": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "schema_version",
+          "hub_version",
+          "items"
+        ]
+      },
+      "CatalogProvenance": {
+        "description": "Origin of the active on-disk catalog.",
+        "oneOf": [
+          {
+            "description": "Embedded seed (boot fallback / air-gapped). Trusted (compiled\n into the binary) and installable, but not a live fetch.",
+            "type": "string",
+            "const": "seed"
+          },
+          {
+            "description": "Downloaded + sha256 + cosign-verified from ziee-ai/hub.",
+            "type": "string",
+            "const": "github"
+          }
         ]
       },
       "ChatStreamChunk": {
@@ -14476,6 +15114,21 @@
           "per_page"
         ]
       },
+      "DownloadListResponse": {
+        "description": "`GET /local-runtime/versions/downloads` response.",
+        "type": "object",
+        "properties": {
+          "downloads": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DownloadSnapshot"
+            }
+          }
+        },
+        "required": [
+          "downloads"
+        ]
+      },
       "DownloadPaginationQuery": {
         "type": "object",
         "properties": {
@@ -14726,6 +15379,76 @@
           "model_name"
         ]
       },
+      "DownloadSnapshot": {
+        "description": "One entry returned by `GET /local-runtime/versions/downloads`.\n Lists every download task currently held by the in-process\n registry (running OR terminal-but-not-replaced). Used by the UI\n on mount to repaint in-flight progress after a page reload.",
+        "type": "object",
+        "properties": {
+          "backend": {
+            "type": "string"
+          },
+          "bytes_received": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "engine": {
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "percent": {
+            "description": "0..=100 when `total_bytes` is set.",
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "result_version_id": {
+            "description": "Result version when terminal=Completed; null otherwise.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "total_bytes": {
+            "description": "`None` when the upstream omitted Content-Length.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "key",
+          "engine",
+          "version",
+          "backend",
+          "status",
+          "bytes_received"
+        ]
+      },
       "DownloadStatus": {
         "description": "Download status enum",
         "type": "string",
@@ -14799,24 +15522,44 @@
           "backend"
         ]
       },
-      "DownloadVersionResponse": {
-        "description": "Response after downloading and registering a version",
+      "DownloadVersionStartedResponse": {
+        "description": "Response when a download task is started (or joined for an\n already-running download of the same engine/version/backend).\n Detached: the download keeps running on the server even after the\n HTTP request returns or the client disconnects, so a page reload\n can pick up the in-flight task via `GET /versions/downloads`.",
         "type": "object",
         "properties": {
-          "downloaded": {
-            "type": "boolean"
-          },
-          "message": {
+          "backend": {
             "type": "string"
           },
+          "engine": {
+            "type": "string"
+          },
+          "events_url": {
+            "description": "Ready-to-use SSE URL for the frontend's EventSource (relative\n to the API root). Includes the encoded key.",
+            "type": "string"
+          },
+          "key": {
+            "description": "Composite key `{engine}@{version}@{backend}` — also the path\n segment for the events / snapshot endpoints.",
+            "type": "string"
+          },
+          "status": {
+            "description": "Current status snapshot at the moment the task was started or\n joined. The SSE stream sends Connected immediately with the\n same value so a late subscriber doesn't have to round-trip.",
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
           "version": {
-            "$ref": "#/components/schemas/RuntimeVersionResponse"
+            "type": "string"
           }
         },
         "required": [
+          "task_id",
+          "key",
+          "engine",
           "version",
-          "downloaded",
-          "message"
+          "backend",
+          "status",
+          "events_url"
         ]
       },
       "DrainEntry": {
@@ -14882,6 +15625,18 @@
         "required": [
           "message",
           "branch"
+        ]
+      },
+      "EngineDownloadStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "downloading",
+          "verifying",
+          "extracting",
+          "registering",
+          "completed",
+          "failed"
         ]
       },
       "EngineType": {
@@ -15542,6 +16297,103 @@
           "parameters"
         ]
       },
+      "HubCatalogCounts": {
+        "description": "Per-category counts inside the unified catalog. Surfaced from\n `GET /api/hub/version` so the UI can show \"X models, Y assistants,\n Z MCP servers\" without re-reading the index.",
+        "type": "object",
+        "properties": {
+          "assistants": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "mcp_servers": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "models": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "models",
+          "assistants",
+          "mcp_servers"
+        ]
+      },
+      "HubCatalogRefreshResponse": {
+        "description": "Response for `POST /api/hub/refresh` — what changed.",
+        "type": "object",
+        "properties": {
+          "cosign_verified": {
+            "type": "boolean"
+          },
+          "new_version": {
+            "type": "string"
+          },
+          "previous_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "updated",
+          "new_version",
+          "cosign_verified"
+        ]
+      },
+      "HubCatalogVersionResponse": {
+        "description": "Response for `GET /api/hub/version` — the catalog's current\n hub_version, the server's own version (so the UI can compute\n compat client-side), counts per category, where the active catalog\n came from (`seed` vs `github`), and when it was installed.",
+        "type": "object",
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/HubCatalogCounts"
+          },
+          "hub_version": {
+            "type": "string"
+          },
+          "last_refreshed": {
+            "description": "ISO 8601 install time of the active catalog (None if unreadable).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "server_version": {
+            "type": "string"
+          },
+          "source": {
+            "description": "\"seed\" (embedded boot fallback) or \"github\" (verified fetch).",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CatalogProvenance"
+              }
+            ]
+          }
+        },
+        "required": [
+          "hub_version",
+          "server_version",
+          "counts",
+          "source"
+        ]
+      },
+      "HubCategory": {
+        "description": "Hub category enum. The JSON wire form uses kebab-case (`\"mcp-server\"`)\n to match the on-disk folder names in the catalog (`mcp-servers/`) and\n the index.json shape published by ziee-ai/hub's `release.yml`. The\n `as_str()` helper still returns the snake-case form (`\"mcp_server\"`)\n because the `hub_entities` DB column was created with that value\n (migration 8's CHECK constraint) — kept for backward compat with\n existing rows.",
+        "type": "string",
+        "enum": [
+          "assistant",
+          "mcp-server",
+          "model"
+        ]
+      },
       "HubEntity": {
         "description": "Hub entity tracking record",
         "type": "object",
@@ -15825,6 +16677,60 @@
           "display_name"
         ]
       },
+      "HubManifest": {
+        "description": "Full manifest for one hub item, returned by `GET /api/hub/manifest/:id`.\n\n A struct (not a `#[serde(tag)]` enum) because the tagged-enum +\n `Box<Struct>` form produces an empty OpenAPI schema — clients\n couldn't see the payload fields. Exactly one of `model` /\n `assistant` / `mcp_server` is populated, matching `category`.",
+        "type": "object",
+        "properties": {
+          "assistant": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HubAssistant"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "category": {
+            "$ref": "#/components/schemas/HubCategory"
+          },
+          "mcp_server": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HubMCPServer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HubModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "category"
+        ]
+      },
+      "HubManifestQuery": {
+        "description": "Query parameters for `GET /api/hub/manifest/:id`.",
+        "type": "object",
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/HubCategory"
+          }
+        },
+        "required": [
+          "category"
+        ]
+      },
       "HubModel": {
         "description": "Hub model entry",
         "type": "object",
@@ -16012,6 +16918,114 @@
           "version"
         ]
       },
+      "HubReleaseInfo": {
+        "description": "One published catalog version on GitHub Releases. Surfaced by\n `list_releases()` for the admin version picker.",
+        "type": "object",
+        "properties": {
+          "prerelease": {
+            "type": "boolean"
+          },
+          "published_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tag": {
+            "description": "Full git tag (e.g. `v0.0.2-alpha`).",
+            "type": "string"
+          },
+          "version": {
+            "description": "Version without the leading `v` (e.g. `0.0.2-alpha`).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "tag",
+          "prerelease"
+        ]
+      },
+      "HubReleasesResponse": {
+        "description": "Response for `GET /api/hub/releases` — the versions published on\n GitHub, plus which is currently installed (`active_version`) and the\n admin's pin (`pinned_version`, None = tracking latest).",
+        "type": "object",
+        "properties": {
+          "active_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pinned_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "releases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HubReleaseInfo"
+            }
+          }
+        },
+        "required": [
+          "releases"
+        ]
+      },
+      "HubUpdateRow": {
+        "description": "Single row in `GET /api/hub/updates` — one installed hub entity\n that's behind the current catalog (either NULL hub_version or\n a hub_version different from the catalog).",
+        "type": "object",
+        "properties": {
+          "current_version": {
+            "type": "string"
+          },
+          "entity_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "entity_type": {
+            "type": "string"
+          },
+          "hub_category": {
+            "type": "string"
+          },
+          "hub_id": {
+            "type": "string"
+          },
+          "installed_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "hub_id",
+          "hub_category",
+          "entity_type",
+          "entity_id",
+          "current_version"
+        ]
+      },
+      "HubUpdatesResponse": {
+        "type": "object",
+        "properties": {
+          "catalog_version": {
+            "type": "string"
+          },
+          "updates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HubUpdateRow"
+            }
+          }
+        },
+        "required": [
+          "catalog_version",
+          "updates"
+        ]
+      },
       "HubVersionResponse": {
         "description": "Version response",
         "type": "object",
@@ -16085,6 +17099,56 @@
               "file_id"
             ]
           }
+        ]
+      },
+      "IndexItem": {
+        "type": "object",
+        "properties": {
+          "added_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "category": {
+            "$ref": "#/components/schemas/HubCategory"
+          },
+          "id": {
+            "type": "string"
+          },
+          "manifest_path": {
+            "type": "string"
+          },
+          "min_ziee_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "default": [],
+            "items": {
+              "type": "string"
+            }
+          },
+          "verified": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "id",
+          "category",
+          "name",
+          "summary",
+          "manifest_path"
         ]
       },
       "InstallTaskState": {
@@ -19637,9 +20701,6 @@
       "RuntimeSettings": {
         "type": "object",
         "properties": {
-          "allow_unsigned_downloads": {
-            "type": "boolean"
-          },
           "auto_start_timeout_secs": {
             "type": "integer",
             "format": "int32"
@@ -19665,7 +20726,6 @@
           "idle_unload_secs",
           "auto_start_timeout_secs",
           "drain_timeout_secs",
-          "allow_unsigned_downloads",
           "created_at",
           "updated_at"
         ]
@@ -20280,6 +21340,159 @@
               "error"
             ]
           }
+        ]
+      },
+      "SSEEngineDownloadCompleteData": {
+        "type": "object",
+        "properties": {
+          "bytes_downloaded": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "duration_ms": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "version_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "version_id",
+          "bytes_downloaded",
+          "duration_ms"
+        ]
+      },
+      "SSEEngineDownloadConnectedData": {
+        "type": "object",
+        "properties": {
+          "backend": {
+            "type": "string"
+          },
+          "engine": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EngineDownloadStatus"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "key",
+          "engine",
+          "version",
+          "backend",
+          "status"
+        ]
+      },
+      "SSEEngineDownloadEvent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "connected": {
+                "$ref": "#/components/schemas/SSEEngineDownloadConnectedData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "connected"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "progress": {
+                "$ref": "#/components/schemas/SSEEngineDownloadProgressData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "progress"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "complete": {
+                "$ref": "#/components/schemas/SSEEngineDownloadCompleteData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "complete"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "failed": {
+                "$ref": "#/components/schemas/SSEEngineDownloadFailedData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "failed"
+            ]
+          }
+        ]
+      },
+      "SSEEngineDownloadFailedData": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "SSEEngineDownloadProgressData": {
+        "type": "object",
+        "properties": {
+          "bytes_received": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "percent": {
+            "description": "`None` when `total_bytes` is None; otherwise 0.0..=100.0.",
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EngineDownloadStatus"
+          },
+          "total_bytes": {
+            "description": "May be `None` when the upstream omits Content-Length (rare\n for GitHub Releases). The UI shows an indeterminate bar.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "status",
+          "bytes_received"
         ]
       },
       "SSEHardwareUsageConnectedData": {
@@ -21917,12 +23130,6 @@
       "UpdateRuntimeSettingsRequest": {
         "type": "object",
         "properties": {
-          "allow_unsigned_downloads": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
           "auto_start_timeout_secs": {
             "type": [
               "integer",

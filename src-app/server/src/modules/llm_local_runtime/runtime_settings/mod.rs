@@ -1,10 +1,9 @@
 //! Singleton runtime-settings row.
 //!
-//! Stores the four operator-tunable knobs:
+//! Stores the three operator-tunable knobs:
 //!  - `idle_unload_secs` — reaper threshold
 //!  - `auto_start_timeout_secs` — how long ensure_running waits for Healthy
 //!  - `drain_timeout_secs` — how long the reaper waits for in-flight to drain
-//!  - `allow_unsigned_downloads` — defense-in-depth flag for engine binaries
 //!
 //! Persistence lives on `LocalRuntimeRepository`
 //! (`get_runtime_settings` / `update_runtime_settings`), reached via

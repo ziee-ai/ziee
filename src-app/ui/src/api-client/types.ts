@@ -10,6 +10,10 @@
 // TYPE DEFINITIONS
 // =============================================================================
 
+export interface ActivateHubVersionRequest {
+  version?: string
+}
+
 export type ApprovalMode = 'disabled' | 'auto_approve' | 'manual_approve'
 
 export interface AssignProviderToGroupRequest {
@@ -90,6 +94,7 @@ export interface AvailableVersion {
   prerelease: boolean
   published_at?: string
   recommended_backend?: string
+  size_bytes?: number
   version: string
 }
 
@@ -125,6 +130,15 @@ export interface CallToolResponse {
   content: ToolContent[]
   is_error: boolean
 }
+
+export interface Catalog {
+  generated_at?: string
+  hub_version: string
+  items: IndexItem[]
+  schema_version: number
+}
+
+export type CatalogProvenance = 'seed' | 'github'
 
 export interface ChatStreamChunk {
   branch_id?: string
@@ -449,6 +463,10 @@ export interface DownloadInstanceListResponse {
   total: number
 }
 
+export interface DownloadListResponse {
+  downloads: DownloadSnapshot[]
+}
+
 export interface DownloadPaginationQuery {
   page?: number
   per_page?: number
@@ -496,6 +514,20 @@ export interface DownloadRequestData {
   revision?: string
 }
 
+export interface DownloadSnapshot {
+  backend: string
+  bytes_received: number
+  engine: string
+  error?: string
+  key: string
+  percent?: number
+  result_version_id?: string
+  status: string
+  task_id: string
+  total_bytes?: number
+  version: string
+}
+
 export type DownloadStatus = 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled'
 
 export interface DownloadTokenQuery {
@@ -515,10 +547,14 @@ export interface DownloadVersionRequest {
   version: string
 }
 
-export interface DownloadVersionResponse {
-  downloaded: boolean
-  message: string
-  version: RuntimeVersionResponse
+export interface DownloadVersionStartedResponse {
+  backend: string
+  engine: string
+  events_url: string
+  key: string
+  status: string
+  task_id: string
+  version: string
 }
 
 export interface DrainEntry {
@@ -538,6 +574,8 @@ export interface EditMessageResponse {
   branch: Branch
   message: Message
 }
+
+export type EngineDownloadStatus = 'pending' | 'downloading' | 'verifying' | 'extracting' | 'registering' | 'completed' | 'failed'
 
 export type EngineType = 'mistralrs' | 'llamacpp' | 'none'
 
@@ -695,6 +733,29 @@ export interface HubAssistant {
   use_cases?: string[]
 }
 
+export interface HubCatalogCounts {
+  assistants: number
+  mcp_servers: number
+  models: number
+}
+
+export interface HubCatalogRefreshResponse {
+  cosign_verified: boolean
+  new_version: string
+  previous_version?: string
+  updated: boolean
+}
+
+export interface HubCatalogVersionResponse {
+  counts: HubCatalogCounts
+  hub_version: string
+  last_refreshed?: string
+  server_version: string
+  source: CatalogProvenance
+}
+
+export type HubCategory = 'assistant' | 'mcp-server' | 'model'
+
 export interface HubEntity {
   created_at: string
   created_by?: string
@@ -749,6 +810,17 @@ export interface HubMCPServer {
   version?: string
 }
 
+export interface HubManifest {
+  assistant?: HubAssistant
+  category: HubCategory
+  mcp_server?: HubMCPServer
+  model?: HubModel
+}
+
+export interface HubManifestQuery {
+  category: HubCategory
+}
+
 export interface HubModel {
   description?: string
   auth_required?: boolean
@@ -791,6 +863,33 @@ export interface HubRefreshResponse {
   version: string
 }
 
+export interface HubReleaseInfo {
+  prerelease: boolean
+  published_at?: string
+  tag: string
+  version: string
+}
+
+export interface HubReleasesResponse {
+  active_version?: string
+  pinned_version?: string
+  releases: HubReleaseInfo[]
+}
+
+export interface HubUpdateRow {
+  current_version: string
+  entity_id: string
+  entity_type: string
+  hub_category: string
+  hub_id: string
+  installed_version?: string
+}
+
+export interface HubUpdatesResponse {
+  catalog_version: string
+  updates: HubUpdateRow[]
+}
+
 export interface HubVersionResponse {
   last_updated?: string
   version: string
@@ -806,6 +905,18 @@ export type ImageSource = {
 } | {
   type: 'file'
   file_id: string
+}
+
+export interface IndexItem {
+  added_at?: string
+  category: HubCategory
+  id: string
+  manifest_path: string
+  min_ziee_version?: string
+  name: string
+  summary: string
+  tags?: string[]
+  verified?: boolean
 }
 
 export interface InstallTaskState {
@@ -1583,7 +1694,6 @@ export interface RotateProxyTokenResponse {
 }
 
 export interface RuntimeSettings {
-  allow_unsigned_downloads: boolean
   auto_start_timeout_secs: number
   created_at: string
   drain_timeout_secs: number
@@ -1697,6 +1807,39 @@ export type SSEDownloadProgressEvent = {
   update: DownloadProgressUpdate[]
   complete: string
   error: string
+}
+
+export interface SSEEngineDownloadCompleteData {
+  bytes_downloaded: number
+  duration_ms: number
+  version_id: string
+}
+
+export interface SSEEngineDownloadConnectedData {
+  backend: string
+  engine: string
+  key: string
+  status: EngineDownloadStatus
+  task_id: string
+  version: string
+}
+
+export type SSEEngineDownloadEvent = {
+  connected: SSEEngineDownloadConnectedData
+  progress: SSEEngineDownloadProgressData
+  complete: SSEEngineDownloadCompleteData
+  failed: SSEEngineDownloadFailedData
+}
+
+export interface SSEEngineDownloadFailedData {
+  error: string
+}
+
+export interface SSEEngineDownloadProgressData {
+  bytes_received: number
+  percent?: number
+  status: EngineDownloadStatus
+  total_bytes?: number
 }
 
 export interface SSEHardwareUsageConnectedData {
@@ -2055,7 +2198,6 @@ export interface UpdateProjectRequest {
 }
 
 export interface UpdateRuntimeSettingsRequest {
-  allow_unsigned_downloads?: boolean
   auto_start_timeout_secs?: number
   drain_timeout_secs?: number
   idle_unload_secs?: number
@@ -2249,6 +2391,8 @@ export enum Permissions {
   HubAssistantsRead = 'hub::assistants::read',
   HubAssistantsRefresh = 'hub::assistants::refresh',
   HubAssistantsVersionRead = 'hub::assistants::read_version',
+  HubCatalogManage = 'hub::catalog::manage',
+  HubCatalogRead = 'hub::catalog::read',
   HubMcpServersCreate = 'hub::mcp_servers::create',
   HubMCPServersRead = 'hub::mcp_servers::read',
   HubMCPServersRefresh = 'hub::mcp_servers::refresh',
@@ -2352,6 +2496,8 @@ export const PermissionDescriptions: Record<string, string> = {
   HubAssistantsRead: 'View hub assistants',
   HubAssistantsRefresh: 'Refresh hub assistants from GitHub',
   HubAssistantsVersionRead: 'View hub assistants version information',
+  HubCatalogManage: 'Refresh + activate hub catalog versions',
+  HubCatalogRead: 'View hub catalog versions + pending updates',
   HubMcpServersCreate: 'Create MCP servers from hub',
   HubMCPServersRead: 'View hub MCP servers',
   HubMCPServersRefresh: 'Refresh hub MCP servers from GitHub',
@@ -2400,7 +2546,7 @@ export const PermissionDescriptions: Record<string, string> = {
   ProjectsDelete: 'Delete chat projects',
   ProjectsEdit: 'Edit chat projects (incl. attach/detach files)',
   ProjectsRead: 'Read chat projects',
-  RuntimeSettingsManage: 'Modify runtime singleton settings (idle/auto-start/drain/allow_unsigned_downloads)',
+  RuntimeSettingsManage: 'Modify runtime singleton settings (idle/auto-start/drain)',
   RuntimeSettingsRead: 'Read runtime singleton settings (idle/auto-start/drain)',
   RuntimeVersionCreate: 'Download and register new runtime versions',
   RuntimeVersionDelete: 'Delete runtime versions',
@@ -2487,17 +2633,24 @@ export const ApiEndpoints = {
   'Hardware.info': 'GET /api/hardware',
   'Hardware.stream': 'GET /api/hardware/usage-stream',
   'Health.check': 'GET /api/health',
+  'Hub.activateVersion': 'POST /api/hub/activate',
   'Hub.createAssistantFromHub': 'POST /api/hub/assistants/create',
   'Hub.createMcpServerFromHub': 'POST /api/hub/mcp-servers/create',
   'Hub.createModelFromHub': 'POST /api/hub/models/download',
   'Hub.getAssistants': 'GET /api/hub/assistants',
   'Hub.getAssistantsVersion': 'GET /api/hub/assistants/version',
+  'Hub.getCatalog': 'GET /api/hub/index',
+  'Hub.getCatalogVersion': 'GET /api/hub/version',
   'Hub.getLocalProviders': 'GET /api/hub/models/local-providers',
   'Hub.getMCPServers': 'GET /api/hub/mcp-servers',
   'Hub.getMCPServersVersion': 'GET /api/hub/mcp-servers/version',
+  'Hub.getManifest': 'GET /api/hub/manifest/{id}',
   'Hub.getModels': 'GET /api/hub/models',
   'Hub.getModelsVersion': 'GET /api/hub/models/version',
+  'Hub.getReleases': 'GET /api/hub/releases',
+  'Hub.getUpdates': 'GET /api/hub/updates',
   'Hub.refreshAssistants': 'POST /api/hub/assistants/refresh',
+  'Hub.refreshCatalog': 'POST /api/hub/refresh',
   'Hub.refreshMCPServers': 'POST /api/hub/mcp-servers/refresh',
   'Hub.refreshModels': 'POST /api/hub/models/refresh',
   'LlmModel.cancelDownload': 'POST /api/llm-models/downloads/{download_id}/cancel',
@@ -2617,8 +2770,11 @@ export const ApiEndpoints = {
   'RuntimeVersion.delete': 'DELETE /api/local-runtime/versions/{version_id}',
   'RuntimeVersion.download': 'POST /api/local-runtime/versions/download',
   'RuntimeVersion.get': 'GET /api/local-runtime/versions/{version_id}',
+  'RuntimeVersion.getDownload': 'GET /api/local-runtime/versions/downloads/{key}',
   'RuntimeVersion.list': 'GET /api/local-runtime/versions',
+  'RuntimeVersion.listDownloads': 'GET /api/local-runtime/versions/downloads',
   'RuntimeVersion.setDefault': 'POST /api/local-runtime/versions/{version_id}/set-default',
+  'RuntimeVersion.subscribeDownloadEvents': 'GET /api/local-runtime/versions/downloads/{key}/events',
   'RuntimeVersion.syncCache': 'POST /api/local-runtime/versions/sync-cache',
   'RuntimeVersion.usage': 'GET /api/local-runtime/version-usage',
   'User.create': 'POST /api/users',
@@ -2706,17 +2862,24 @@ export type ApiEndpointParameters = {
   'Hardware.info': void
   'Hardware.stream': void
   'Health.check': void
+  'Hub.activateVersion': ActivateHubVersionRequest
   'Hub.createAssistantFromHub': CreateAssistantFromHubRequest
   'Hub.createMcpServerFromHub': CreateMcpServerFromHubRequest
   'Hub.createModelFromHub': CreateModelFromHubRequest
   'Hub.getAssistants': { lang?: string }
   'Hub.getAssistantsVersion': void
+  'Hub.getCatalog': void
+  'Hub.getCatalogVersion': void
   'Hub.getLocalProviders': void
   'Hub.getMCPServers': { lang?: string }
   'Hub.getMCPServersVersion': void
+  'Hub.getManifest': { id: string; category: HubCategory }
   'Hub.getModels': { lang?: string }
   'Hub.getModelsVersion': void
+  'Hub.getReleases': void
+  'Hub.getUpdates': void
   'Hub.refreshAssistants': void
+  'Hub.refreshCatalog': void
   'Hub.refreshMCPServers': void
   'Hub.refreshModels': void
   'LlmModel.cancelDownload': { download_id: string }
@@ -2836,8 +2999,11 @@ export type ApiEndpointParameters = {
   'RuntimeVersion.delete': { version_id: string; remove_binary?: boolean }
   'RuntimeVersion.download': DownloadVersionRequest
   'RuntimeVersion.get': { version_id: string }
+  'RuntimeVersion.getDownload': { key: string }
   'RuntimeVersion.list': { engine?: string }
+  'RuntimeVersion.listDownloads': void
   'RuntimeVersion.setDefault': { version_id: string }
+  'RuntimeVersion.subscribeDownloadEvents': { key: string }
   'RuntimeVersion.syncCache': void
   'RuntimeVersion.usage': { engine?: string }
   'User.create': CreateUserRequest
@@ -2925,17 +3091,24 @@ export type ApiEndpointResponses = {
   'Hardware.info': HardwareInfoResponse
   'Hardware.stream': SSEHardwareUsageEvent
   'Health.check': HealthResponse
+  'Hub.activateVersion': HubCatalogRefreshResponse
   'Hub.createAssistantFromHub': AssistantFromHubResponse
   'Hub.createMcpServerFromHub': McpServerFromHubResponse
   'Hub.createModelFromHub': ModelFromHubResponse
   'Hub.getAssistants': HubAssistant[]
   'Hub.getAssistantsVersion': HubVersionResponse
+  'Hub.getCatalog': Catalog
+  'Hub.getCatalogVersion': HubCatalogVersionResponse
   'Hub.getLocalProviders': HubLocalProvidersResponse
   'Hub.getMCPServers': HubMCPServer[]
   'Hub.getMCPServersVersion': HubVersionResponse
+  'Hub.getManifest': HubManifest
   'Hub.getModels': HubModel[]
   'Hub.getModelsVersion': HubVersionResponse
+  'Hub.getReleases': HubReleasesResponse
+  'Hub.getUpdates': HubUpdatesResponse
   'Hub.refreshAssistants': HubRefreshResponse
+  'Hub.refreshCatalog': HubCatalogRefreshResponse
   'Hub.refreshMCPServers': HubRefreshResponse
   'Hub.refreshModels': HubRefreshResponse
   'LlmModel.cancelDownload': void
@@ -3053,10 +3226,13 @@ export type ApiEndpointResponses = {
   'Project.uploadAndAttachFile': File
   'RuntimeVersion.checkUpdates': AvailableUpdatesResponse
   'RuntimeVersion.delete': void
-  'RuntimeVersion.download': DownloadVersionResponse
+  'RuntimeVersion.download': DownloadVersionStartedResponse
   'RuntimeVersion.get': RuntimeVersionResponse
+  'RuntimeVersion.getDownload': DownloadSnapshot
   'RuntimeVersion.list': RuntimeVersionListResponse
+  'RuntimeVersion.listDownloads': DownloadListResponse
   'RuntimeVersion.setDefault': RuntimeVersionResponse
+  'RuntimeVersion.subscribeDownloadEvents': SSEEngineDownloadEvent
   'RuntimeVersion.syncCache': SyncCacheResponse
   'RuntimeVersion.usage': VersionUsageResponse
   'User.create': User

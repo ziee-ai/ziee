@@ -63,7 +63,7 @@ export function LiveLogsPanel({ modelId }: { modelId: string }) {
   }, [lines])
 
   return (
-    <Card title="Live logs" size="small">
+    <Card title="Live logs">
       {lines.length === 0 ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -72,14 +72,7 @@ export function LiveLogsPanel({ modelId }: { modelId: string }) {
       ) : (
         <div
           ref={scrollRef}
-          style={{
-            maxHeight: 360,
-            overflowY: 'auto',
-            fontFamily: 'monospace',
-            fontSize: 12,
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-all',
-          }}
+          className="max-h-[360px] overflow-y-auto font-mono text-xs whitespace-pre-wrap break-all"
         >
           {lines.map((line, i) => (
             <div key={i}>{line}</div>

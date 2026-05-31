@@ -180,11 +180,19 @@ fn stage_engine(
     // `releases` is a directory on disk (holds `latest`), so the list lives
     // in a sibling `releases.json` that `serve` falls back to. Two entries:
     // TEST_VERSION (asset + sig present) and PENDING_VERSION (no asset, so
-    // `binary_ready=false` for every host).
+    // `binary_ready=false` for every host). Asset sizes are read from the
+    // actual files on disk so the UI's `size_bytes` rendering test gets a
+    // real-world value, not a synthetic placeholder.
+    let archive_size = std::fs::metadata(&archive_path)
+        .expect("stat archive")
+        .len();
+    let sig_size = std::fs::metadata(dl_dir.join(format!("{archive_name}.sig")))
+        .expect("stat sig")
+        .len();
     let releases_json = format!(
         r#"[
             {{"tag_name":"{PENDING_VERSION}","draft":false,"prerelease":true,"published_at":"2026-05-29T00:00:00Z","assets":[]}},
-            {{"tag_name":"{TEST_VERSION}","draft":false,"prerelease":false,"published_at":"2026-05-01T00:00:00Z","assets":[{{"name":"{archive_name}"}},{{"name":"{archive_name}.sig"}}]}}
+            {{"tag_name":"{TEST_VERSION}","draft":false,"prerelease":false,"published_at":"2026-05-01T00:00:00Z","assets":[{{"name":"{archive_name}","size":{archive_size}}},{{"name":"{archive_name}.sig","size":{sig_size}}}]}}
         ]"#
     );
     std::fs::write(

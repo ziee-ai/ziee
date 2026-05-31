@@ -32,31 +32,38 @@ const HF_KEY = process.env.HUGGINGFACE_API_KEY
 // the only variable for the version sections.
 const BASE_READS = [Permissions.LocalRuntimeRead, Permissions.RuntimeSettingsRead]
 
-function mbvCard(page: Page) {
+// The Installed versions card is the row-level surface for
+// model start/stop/swap controls now (the standalone "Models by
+// engine version" card was folded in). Engine-backed permission
+// tests scope assertions to this card.
+function installedCard(page: Page) {
   return page
     .locator('.ant-tabs-tabpane-active')
     .locator('.ant-card')
-    .filter({ hasText: 'Models by engine version' })
+    .filter({ hasText: 'Installed versions' })
 }
 
 // ── engine-free: versions_read gates whole sections ──────────────────────
 test.describe('Local Runtime — permission gating (engine-free)', () => {
-  test('versions_read gates the version / update / usage sections', async ({
+  test('versions_read gates the installed-versions + available-versions cards', async ({
     page,
     testInfra
   }) => {
     const { baseURL, apiURL } = testInfra
 
-    // read (no versions_read): page loads, GPU card shows, version sections hidden.
+    // read (no versions_read): page loads, but both per-engine
+    // cards are hidden — they're gated together on versions_read
+    // (detect-gpu + check-updates + version list all need it).
     await loginWithPerms(page, baseURL, apiURL, BASE_READS, 'lrt-noversions')
     await gotoRuntimeSettings(page, baseURL)
-    await expect(
-      page.locator('.ant-card').filter({ hasText: /Hardware acceleration|GPU/i }).first()
-    ).toBeVisible({ timeout: 30000 })
-    await expect(page.getByText('Models by engine version')).toHaveCount(0)
-    await expect(page.getByRole('button', { name: /Check for Updates/i })).toHaveCount(0)
+    await expect(page.getByRole('tab', { name: 'Llama.cpp' })).toBeVisible()
+    await expect(page.getByText(/Available backends:/i)).toHaveCount(0)
+    await expect(page.getByText(/Available versions/i)).toHaveCount(0)
+    await expect(page.getByText(/Installed versions/i)).toHaveCount(0)
 
-    // + versions_read: the version sections appear.
+    // + versions_read: both cards appear, and the Available versions
+    // card surfaces a manual "Check for updates" button in its
+    // `extra` slot.
     await loginWithPerms(
       page,
       baseURL,
@@ -65,8 +72,14 @@ test.describe('Local Runtime — permission gating (engine-free)', () => {
       'lrt-versions'
     )
     await gotoRuntimeSettings(page, baseURL)
-    await expect(page.getByText('Models by engine version')).toBeVisible()
-    await expect(page.getByRole('button', { name: /Check for Updates/i })).toBeVisible()
+    await expect(page.getByText(/Available backends:/i).first()).toBeVisible({
+      timeout: 30000,
+    })
+    await expect(page.getByText(/Available versions/i).first()).toBeVisible()
+    await expect(page.getByText(/Installed versions/i).first()).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: /Check for updates/i }),
+    ).toBeVisible()
   })
 })
 
@@ -92,7 +105,7 @@ test.describe('Local Runtime — permission gating (needs HUGGINGFACE_API_KEY)',
       'lrt-nomanage'
     )
     await gotoRuntimeSettings(page, baseURL)
-    const card = mbvCard(page)
+    const card = installedCard(page)
     await expect(card.getByText(/E2E e2e-gate-/)).toBeVisible({ timeout: 15000 })
     await expect(card.getByRole('button', { name: 'Start' })).toHaveCount(0)
 
@@ -106,11 +119,14 @@ test.describe('Local Runtime — permission gating (needs HUGGINGFACE_API_KEY)',
     )
     await gotoRuntimeSettings(page, baseURL)
     await expect(
-      mbvCard(page).getByRole('button', { name: 'Start' }).first()
+      installedCard(page).getByRole('button', { name: 'Start' }).first()
     ).toBeVisible({ timeout: 15000 })
   })
 
   test('logs gates the Logs control independently of manage', async ({ page, testInfra }) => {
+    // Full real-engine spawn + cold-CPU first-token; bump the test
+    // budget to 10 min so the 180s locator timeouts aren't truncated.
+    test.setTimeout(600000)
     const { baseURL, apiURL } = testInfra
     // Admin downloads a real engine + GGUF and starts the model so the row
     // exposes the running-state controls (Stop/Restart/Logs).
@@ -121,14 +137,14 @@ test.describe('Local Runtime — permission gating (needs HUGGINGFACE_API_KEY)',
     await downloadGgufModelViaApi(baseURL, adminToken, providerId) // ~670 MB
 
     await gotoRuntimeSettings(page, baseURL)
-    const card = mbvCard(page)
+    const card = installedCard(page)
     await expect(card.getByText('E2E TinyLlama')).toBeVisible({ timeout: 30000 })
     const startBtn = card.getByRole('button', { name: 'Start' })
     if (await startBtn.isVisible().catch(() => false)) {
       await startBtn.click()
     }
     await expect(card.getByRole('button', { name: 'Stop' }).first()).toBeVisible({
-      timeout: 180000
+      timeout: 480000
     })
 
     // logs-only (read + versions_read + logs, NO manage): Logs shown, Stop hidden.
@@ -140,7 +156,7 @@ test.describe('Local Runtime — permission gating (needs HUGGINGFACE_API_KEY)',
       'lrt-logsonly'
     )
     await gotoRuntimeSettings(page, baseURL)
-    const c1 = mbvCard(page)
+    const c1 = installedCard(page)
     await expect(c1.getByText('E2E TinyLlama')).toBeVisible({ timeout: 15000 })
     await expect(c1.getByRole('button', { name: 'Logs' }).first()).toBeVisible()
     await expect(c1.getByRole('button', { name: 'Stop' })).toHaveCount(0)
@@ -154,7 +170,7 @@ test.describe('Local Runtime — permission gating (needs HUGGINGFACE_API_KEY)',
       'lrt-managenologs'
     )
     await gotoRuntimeSettings(page, baseURL)
-    const c2 = mbvCard(page)
+    const c2 = installedCard(page)
     await expect(c2.getByRole('button', { name: 'Stop' }).first()).toBeVisible({ timeout: 15000 })
     await expect(c2.getByRole('button', { name: 'Logs' })).toHaveCount(0)
   })

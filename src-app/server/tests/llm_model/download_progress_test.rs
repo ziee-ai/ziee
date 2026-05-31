@@ -370,23 +370,55 @@ async fn test_download_cancellation() {
 
     println!("Download initiated with ID: {}", download_id);
 
-    // Wait for tiny model to complete (deterministic: it will complete in ~1 second)
-    sleep(Duration::from_secs(2)).await;
+    // Poll the download row until it reaches a terminal state. The
+    // previous fixed 2-second sleep was tight enough that on a slow
+    // host the download could still be `Downloading` at the cancel
+    // call → can_cancel()=true → 204 success → test asserted 400
+    // and failed flakily. Polling makes the precondition explicit:
+    // we WANT to test cancel-after-complete, so wait until complete.
+    let client = reqwest::Client::new();
+    let deadline = std::time::Instant::now() + Duration::from_secs(60);
+    let mut last_status = String::new();
+    loop {
+        let resp = client
+            .get(server.api_url(&format!("/llm-models/downloads/{}", download_id)))
+            .header("Authorization", format!("Bearer {}", user.token))
+            .send()
+            .await
+            .unwrap();
+        if resp.status() == StatusCode::NOT_FOUND {
+            // Already auto-deleted; that's a terminal state too.
+            last_status = "deleted".to_string();
+            break;
+        }
+        let dl: serde_json::Value = resp.json().await.unwrap();
+        last_status = dl["status"].as_str().unwrap_or("").to_string();
+        if matches!(last_status.as_str(), "completed" | "failed" | "cancelled") {
+            break;
+        }
+        if std::time::Instant::now() > deadline {
+            panic!("download didn't reach terminal state in 60s; last_status={last_status}");
+        }
+        sleep(Duration::from_millis(200)).await;
+    }
+    println!(
+        "Download reached terminal status '{last_status}'; attempting cancel…"
+    );
 
-    // Attempt to cancel the download (which should already be completed)
-    println!("Attempting to cancel already-completed download...");
-    let cancel_response = reqwest::Client::new()
+    // Cancel should fail with 400 for completed/failed downloads
+    // (can_cancel() returns false for anything but Pending/Downloading).
+    // If the row was already auto-deleted, the handler returns 404
+    // instead — accept either as a valid "you can't cancel this" reply.
+    let cancel_response = client
         .post(server.api_url(&format!("/llm-models/downloads/{}/cancel", download_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
         .unwrap();
-
-    // For tiny models, cancel should return 400 (cannot cancel completed download)
-    assert_eq!(
-        cancel_response.status(),
-        StatusCode::BAD_REQUEST,
-        "Cancel should fail with 400 for already-completed download"
+    let cancel_status = cancel_response.status();
+    assert!(
+        cancel_status == StatusCode::BAD_REQUEST || cancel_status == StatusCode::NOT_FOUND,
+        "cancel-after-terminal should return 400 (still in DB) or 404 (already evicted); got {cancel_status} after terminal_status={last_status}"
     );
 
     // Verify download is in terminal state (completed, failed, or deleted)

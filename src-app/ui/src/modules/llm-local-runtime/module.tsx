@@ -10,6 +10,7 @@ import {
   useRuntimeDeleteConfirmStore,
   useRuntimeConfigStore,
   useRuntimeModelUsageStore,
+  useRuntimeDownloadProgressStore,
 } from './stores'
 import './types' // Register event types
 
@@ -59,6 +60,10 @@ export default createModule({
     {
       name: 'RuntimeModelUsage',
       store: useRuntimeModelUsageStore,
+    },
+    {
+      name: 'RuntimeDownloadProgress',
+      store: useRuntimeDownloadProgressStore,
     }
   ],
 
