@@ -2,26 +2,37 @@ import { Flex, Tabs } from 'antd'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
-import { RuntimeVersionList } from './RuntimeVersionList'
-import { RuntimeUpdateChecker } from './RuntimeUpdateChecker'
-import { RuntimeModelsByVersion } from './RuntimeModelsByVersion'
+import { InstalledVersionsCard } from './InstalledVersionsCard'
+import { AvailableVersionsCard } from './AvailableVersionsCard'
 import { RuntimeDownloadDrawer } from './drawers/RuntimeDownloadDrawer'
-import { GpuDetectionCard } from './GpuDetectionCard'
 import { RuntimeConfigCard } from './RuntimeConfigCard'
 import type { RuntimeEngine } from '../types'
 
-// The version catalogue, update-checker, and per-version model usage all read
-// `llm_local_runtime::versions_read` endpoints. The page route only requires
-// `llm_local_runtime::read`, so gate these sections explicitly — otherwise a
-// read-only principal without versions_read sees 403'ing/empty cards.
+// Per-engine sections. Each engine tab stacks two cards:
+//   1. Installed versions  — list of registered binaries; each row
+//                            shows the models that resolve to that
+//                            version inlined directly underneath
+//                            (start/stop/restart/swap + Logs), so
+//                            an operator sees "v0.0.1 — 3 models
+//                            pin it, 1 is running" in one place.
+//                            The unresolved-models warning appears
+//                            as a footer block when applicable.
+//   2. Available versions  — upstream catalog (with Check-for-updates
+//                            in the card's `extra` slot, mirroring
+//                            UsersSettings's `+` create-button
+//                            convention), plus the host platform /
+//                            available-backends context strip.
+//
+// Both read `llm_local_runtime::versions_read`. The page route only
+// requires `llm_local_runtime::read`, so they're wrapped in <Can>
+// here to avoid empty/403 cards for read-only principals without
+// versions_read.
 function VersionSections({ engine }: { engine: RuntimeEngine }) {
   return (
     <Flex className="flex-col gap-3">
-      <GpuDetectionCard engine={engine} />
       <Can permission={Permissions.RuntimeVersionRead}>
-        <RuntimeUpdateChecker engine={engine} />
-        <RuntimeVersionList engine={engine} />
-        <RuntimeModelsByVersion engine={engine} />
+        <InstalledVersionsCard engine={engine} />
+        <AvailableVersionsCard engine={engine} />
       </Can>
     </Flex>
   )
@@ -32,7 +43,7 @@ export function RuntimeVersionSettings() {
     <>
       <SettingsPageContainer
         title="Local Runtimes"
-        subtitle="Hardware acceleration, engine binary versions, and runtime configuration for local model inference"
+        subtitle="Engine binary versions, available downloads, and runtime configuration for local model inference"
       >
         <Flex className="flex-col gap-3">
           <Tabs

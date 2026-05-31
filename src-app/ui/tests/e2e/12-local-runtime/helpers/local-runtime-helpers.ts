@@ -112,10 +112,19 @@ export async function downloadEngineViaApi(
   await fetch(`${baseURL}/api/local-runtime/settings`, {
     method: 'PUT',
     headers,
-    // CPU cold-load + first token is slow; the 30s default is too short to
-    // reach a healthy instance on a manual start (gold_smoke uses 180s too).
-    body: JSON.stringify({ allow_unsigned_downloads: true, auto_start_timeout_secs: 180 }),
+    // CPU cold-load + first token is slow on commodity Macs (TinyLlama
+    // Q4_K_M ~670 MB takes >3 min to reach a healthy instance + first
+    // token). The 30s default is too short for ANY real engine, and
+    // 180s was tight — bump to 600s (10 min) so the spawn doesn't time
+    // out before health.
+    body: JSON.stringify({ auto_start_timeout_secs: 600 }),
   })
+  // Use the GPU-detect endpoint's recommended backend (mirrors the
+  // Rust test_helpers::download_engine_release pattern). The fork
+  // doesn't publish a `cpu` asset for macos/aarch64 — only `metal`
+  // — so hardcoding `cpu` produces an HTTP 404 from GitHub Releases.
+  // Falling back to `cpu` for hosts the gpu-detect can't classify.
+  const backend = gpu?.recommended ?? 'cpu'
   const dl = await fetch(`${baseURL}/api/local-runtime/versions/download`, {
     method: 'POST',
     headers,
@@ -124,13 +133,17 @@ export async function downloadEngineViaApi(
       version,
       platform: gpu.platform,
       arch: gpu.arch,
-      backend: 'cpu',
+      backend,
     }),
   })
   if (!dl.ok) {
     throw new Error(`downloadEngineViaApi failed: ${dl.status} - ${await dl.text()}`)
   }
-  const versionId = (await dl.json()).version.id
+  // The POST is detached now — it returns a task key immediately and
+  // the download runs in the background. Poll the snapshot endpoint
+  // until terminal to keep the test step blocking.
+  const { key } = (await dl.json()) as { key: string }
+  const versionId = await waitForEngineDownload(baseURL, token, key)
   if (setDefault) {
     await fetch(`${baseURL}/api/local-runtime/versions/${versionId}/set-default`, {
       method: 'POST',
@@ -138,6 +151,46 @@ export async function downloadEngineViaApi(
     })
   }
   return versionId
+}
+
+/**
+ * Poll the engine-download snapshot endpoint until the task reaches a
+ * terminal status. Returns the resulting version id on `completed`;
+ * throws on `failed` or timeout (5 min cap — enough for a real GitHub
+ * fetch on a sluggish connection).
+ */
+export async function waitForEngineDownload(
+  baseURL: string,
+  token: string,
+  key: string,
+  timeoutMs = 300_000
+): Promise<string> {
+  const headers = jsonHeaders(token)
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const resp = await fetch(
+      `${baseURL}/api/local-runtime/versions/downloads/${encodeURIComponent(key)}`,
+      { headers }
+    )
+    if (!resp.ok) {
+      throw new Error(
+        `waitForEngineDownload snapshot ${resp.status}: ${await resp.text()}`
+      )
+    }
+    const snap = (await resp.json()) as {
+      status: string
+      result_version_id?: string | null
+      error?: string | null
+    }
+    if (snap.status === 'completed' && snap.result_version_id) {
+      return snap.result_version_id
+    }
+    if (snap.status === 'failed') {
+      throw new Error(`engine download failed: ${snap.error ?? 'unknown'}`)
+    }
+    await new Promise(r => setTimeout(r, 250))
+  }
+  throw new Error(`waitForEngineDownload timeout for ${key}`)
 }
 
 /**

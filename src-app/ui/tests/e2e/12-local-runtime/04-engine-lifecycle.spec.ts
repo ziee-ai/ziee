@@ -26,34 +26,47 @@ test.describe('Local Runtime — engine lifecycle (needs HUGGINGFACE_API_KEY)', 
     await loginAsAdmin(page, testInfra.baseURL)
   })
 
-  test('download an engine version from GitHub via the drawer', async ({ page, testInfra }) => {
-    // The fork releases aren't cosign-signed → the download path refuses unless
-    // allow_unsigned_downloads is on. Enable it, then drive the UI download.
-    const token = await getCurrentUserToken(page)
-    await fetch(`${testInfra.baseURL}/api/local-runtime/settings`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ allow_unsigned_downloads: true })
-    })
-
+  test('download an engine version via the inline Available versions list', async ({ page, testInfra }) => {
+    // The fork releases aren't cosign-signed, but the runtime no longer
+    // gates downloads on a signed-only policy — the install proceeds
+    // unconditionally (cosign verify is logged but doesn't block).
     await gotoRuntimeSettings(page, testInfra.baseURL)
-    await page.getByRole('button', { name: /Download Version/i }).click()
-    const drawer = page.locator('.ant-drawer.ant-drawer-open')
-    await expect(drawer).toBeVisible()
-    await drawer.getByRole('button', { name: 'Download' }).click()
+    // AvailableVersionsCard auto-checks for updates on mount; wait for the
+    // "Available versions" card to populate, then click the Install
+    // button on the first available (non-installed) row. The button label
+    // was renamed Download → Install when the detached SSE pipeline landed.
+    const pane = page.locator('.ant-tabs-tabpane-active')
+    await expect(pane.getByText(/Available versions/i).first()).toBeVisible({ timeout: 30000 })
+    // The button's accessible name is its aria-label ("Install v0.0.x-alpha"),
+    // not the visible text "Install" — aria-label overrides text per the ARIA
+    // spec, so an `/^Install$/` regex never matches. Match the aria-label shape.
+    const firstAvailable = pane.getByRole('button', { name: /^Install v/i }).first()
+    await expect(firstAvailable).toBeVisible({ timeout: 30000 })
+    await firstAvailable.click()
 
     // The downloaded version row appears in the installed-versions list (it
     // becomes the default + a Delete action shows for it).
     await expect(
-      page.locator('.ant-tabs-tabpane-active').getByRole('button', { name: 'Delete' }).first()
+      pane.getByRole('button', { name: 'Delete' }).first()
     ).toBeVisible({ timeout: 120000 })
   })
 
   test('chat auto-starts a stopped engine and streams a reply', async ({ page, testInfra }) => {
+    // Cold-CPU first-token after engine spawn is slow on commodity Macs.
+    // The chain is: GGUF download (~30s with cache) → engine binary
+    // spawn → llama-server cold model load (~3–5 min on Apple Silicon
+    // CPU for TinyLlama Q4_K_M) → MCP tool description plumbing →
+    // prompt eval + first-token (~1–2 min on CPU). 20-min budget
+    // covers worst-case slow CPU.
+    test.setTimeout(1200000)
     const { baseURL, apiURL } = testInfra
     const token = await getCurrentUserToken(page)
 
-    // Real engine + real GGUF model under a local provider, exposed to chat.
+    // Real engine + real GGUF model under a local provider, exposed
+    // to chat. v0.0.3-alpha and later are safe to resolve via the
+    // `latest` tag — the prior v0.0.2-alpha macOS bug (missing
+    // libllama-server-impl.dylib from the release tarball, dyld-fail
+    // on launch) was fixed upstream in ziee-ai/llama.cpp#1.
     await downloadEngineViaApi(baseURL, token, 'llamacpp')
     const providerId = await seedLocalProvider(baseURL, token)
     await downloadGgufModelViaApi(baseURL, token, providerId)
@@ -76,10 +89,12 @@ test.describe('Local Runtime — engine lifecycle (needs HUGGINGFACE_API_KEY)', 
         .filter({ hasText: 'Reply with the single word' })
     ).toBeVisible({ timeout: 15000 })
 
-    // …then the engine auto-starts and streams the assistant reply. CPU
-    // first-token after a cold start is slow — allow several minutes.
+    // …then the engine auto-starts and streams the assistant reply.
+    // Auto-start (up to 600s for cold load) + first-token CPU
+    // inference (1–2 min). Allow 15 min to fit inside the 20-min
+    // test budget set above.
     await expect(page.locator('[data-testid="chat-message"]').nth(1)).toBeVisible({
-      timeout: 240000
+      timeout: 900000
     })
   })
 })

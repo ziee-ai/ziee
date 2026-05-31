@@ -25,7 +25,6 @@ async fn get_returns_defaults() {
     assert_eq!(s["idle_unload_secs"].as_i64(), Some(1800));
     assert_eq!(s["auto_start_timeout_secs"].as_i64(), Some(30));
     assert_eq!(s["drain_timeout_secs"].as_i64(), Some(30));
-    assert_eq!(s["allow_unsigned_downloads"].as_bool(), Some(false));
 }
 
 #[tokio::test]
@@ -38,8 +37,7 @@ async fn put_updates_all_fields() {
         json!({
             "idle_unload_secs": 120,
             "auto_start_timeout_secs": 20,
-            "drain_timeout_secs": 15,
-            "allow_unsigned_downloads": true
+            "drain_timeout_secs": 15
         }),
     )
     .await;
@@ -49,7 +47,6 @@ async fn put_updates_all_fields() {
     assert_eq!(s["idle_unload_secs"].as_i64(), Some(120));
     assert_eq!(s["auto_start_timeout_secs"].as_i64(), Some(20));
     assert_eq!(s["drain_timeout_secs"].as_i64(), Some(15));
-    assert_eq!(s["allow_unsigned_downloads"].as_bool(), Some(true));
 }
 
 #[tokio::test]

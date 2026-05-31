@@ -214,7 +214,6 @@ impl LocalRuntimeRepository {
         sqlx::query_as!(
             RuntimeSettings,
             r#"SELECT idle_unload_secs, auto_start_timeout_secs, drain_timeout_secs,
-                    allow_unsigned_downloads,
                     created_at as "created_at: chrono::DateTime<chrono::Utc>",
                     updated_at as "updated_at: chrono::DateTime<chrono::Utc>"
              FROM llm_runtime_settings WHERE id = TRUE"#,
@@ -261,17 +260,14 @@ impl LocalRuntimeRepository {
                 idle_unload_secs        = COALESCE($1, idle_unload_secs),
                 auto_start_timeout_secs = COALESCE($2, auto_start_timeout_secs),
                 drain_timeout_secs      = COALESCE($3, drain_timeout_secs),
-                allow_unsigned_downloads = COALESCE($4, allow_unsigned_downloads),
                 updated_at = NOW()
              WHERE id = TRUE
              RETURNING idle_unload_secs, auto_start_timeout_secs, drain_timeout_secs,
-                       allow_unsigned_downloads,
                        created_at as "created_at: chrono::DateTime<chrono::Utc>",
                        updated_at as "updated_at: chrono::DateTime<chrono::Utc>""#,
             req.idle_unload_secs,
             req.auto_start_timeout_secs,
             req.drain_timeout_secs,
-            req.allow_unsigned_downloads,
         )
         .fetch_one(&self.pool)
         .await

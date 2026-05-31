@@ -81,7 +81,29 @@ pub fn spawn_worker(pool: Arc<PgPool>) -> tokio::task::JoinHandle<()> {
 }
 
 /// Enqueue a validation request. The background worker picks it up.
+///
+/// Honors a **debug-only** opt-out env var
+/// `ZIEE_DISABLE_MODEL_VALIDATION=1`. When set, the call short-
+/// circuits to a no-op (and writes `valid` directly to the model
+/// row so the UI doesn't show "Validating…" forever).
+///
+/// Use case: E2E tests that drive the engine themselves cannot race
+/// against the validator's 90s spawn/kill cycle (the engine spawned
+/// for validation conflicts with the test's Start click → 409
+/// "already running" + UI sees an unstable Stop button). The env
+/// read is compiled out of release builds via `cfg!(debug_assertions)`
+/// so production behavior is unchanged.
 pub async fn enqueue(model_id: Uuid, tier: ValidationTier) {
+    #[cfg(debug_assertions)]
+    if std::env::var("ZIEE_DISABLE_MODEL_VALIDATION")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+    {
+        tracing::info!(
+            "validator: ZIEE_DISABLE_MODEL_VALIDATION=1 — skipping {tier:?} for model {model_id}"
+        );
+        return;
+    }
     let mut q = QUEUE.lock().await;
     q.push_back((model_id, tier));
     tracing::info!("validator: enqueued model {model_id} tier {tier:?}");

@@ -89,12 +89,55 @@ pub struct RuntimeVersionListResponse {
     pub versions: Vec<RuntimeVersionResponse>,
 }
 
-/// Response after downloading and registering a version
+/// Response when a download task is started (or joined for an
+/// already-running download of the same engine/version/backend).
+/// Detached: the download keeps running on the server even after the
+/// HTTP request returns or the client disconnects, so a page reload
+/// can pick up the in-flight task via `GET /versions/downloads`.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct DownloadVersionResponse {
-    pub version: RuntimeVersionResponse,
-    pub downloaded: bool,
-    pub message: String,
+pub struct DownloadVersionStartedResponse {
+    pub task_id: Uuid,
+    /// Composite key `{engine}@{version}@{backend}` — also the path
+    /// segment for the events / snapshot endpoints.
+    pub key: String,
+    pub engine: String,
+    pub version: String,
+    pub backend: String,
+    /// Current status snapshot at the moment the task was started or
+    /// joined. The SSE stream sends Connected immediately with the
+    /// same value so a late subscriber doesn't have to round-trip.
+    pub status: String,
+    /// Ready-to-use SSE URL for the frontend's EventSource (relative
+    /// to the API root). Includes the encoded key.
+    pub events_url: String,
+}
+
+/// One entry returned by `GET /local-runtime/versions/downloads`.
+/// Lists every download task currently held by the in-process
+/// registry (running OR terminal-but-not-replaced). Used by the UI
+/// on mount to repaint in-flight progress after a page reload.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct DownloadSnapshot {
+    pub task_id: Uuid,
+    pub key: String,
+    pub engine: String,
+    pub version: String,
+    pub backend: String,
+    pub status: String,
+    pub bytes_received: u64,
+    /// `None` when the upstream omitted Content-Length.
+    pub total_bytes: Option<u64>,
+    /// 0..=100 when `total_bytes` is set.
+    pub percent: Option<f32>,
+    /// Result version when terminal=Completed; null otherwise.
+    pub result_version_id: Option<Uuid>,
+    pub error: Option<String>,
+}
+
+/// `GET /local-runtime/versions/downloads` response.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct DownloadListResponse {
+    pub downloads: Vec<DownloadSnapshot>,
 }
 
 /// One upstream release in the update-check diff, enriched with what we
@@ -117,6 +160,13 @@ pub struct AvailableVersion {
     /// GPU/driver versions (the suitable major-version match), if any.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recommended_backend: Option<String>,
+    /// Byte size of the archive the inline Install button would
+    /// fetch (recommended backend when set, else the first
+    /// published backend). `None` when no asset matches this host
+    /// or GitHub omitted the size — UI hides the size label in
+    /// that case.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
     /// GitHub prerelease flag.
     pub prerelease: bool,
     /// ISO-8601 publish timestamp, if present.

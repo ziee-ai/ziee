@@ -278,9 +278,19 @@ async fn main() {
     // before reaching the handler.
     //
     // - DefaultBodyLimit::max — 16 MB cap (per-route upload routes raise this).
-    // - TimeoutLayer 60s — request hard-deadline. SSE/streaming routes that
-    //   need longer override per-route; this is the global default.
-    //   Closes 05-file F-09 generalization + similar.
+    // - TimeoutLayer 660s — request hard-deadline. MUST exceed the
+    //   runtime-settings `auto_start_timeout_secs` ceiling (600s,
+    //   enforced in `repository.rs::update_runtime_settings`). The
+    //   `/api/local-llm/v1/*` proxy synchronously waits for
+    //   `auto_start::ensure_running` to bring the local engine to
+    //   Healthy BEFORE returning the Response — so this layer's
+    //   deadline applies to the WHOLE auto-start + first-byte
+    //   window. Sized as ceiling + 60s buffer for the actual
+    //   response generation. Closes 05-file F-09 generalization +
+    //   similar. (Architectural follow-up: refactor the proxy chat
+    //   handler to return an SSE Response immediately with
+    //   keepalives so the deadline can return to ~60s like other
+    //   non-streaming routes.)
     // - Security headers (X-Content-Type-Options, X-Frame-Options,
     //   Referrer-Policy, Permissions-Policy, Strict-Transport-Security).
     //   These are response-only defenses but cheap and audit-recommended.
@@ -321,7 +331,7 @@ async fn main() {
     let app = api_router
         .finish_api(&mut api_doc)
         .layer(axum::extract::DefaultBodyLimit::max(16 * 1024 * 1024))
-        .layer(tower_http::timeout::TimeoutLayer::new(std::time::Duration::from_secs(60)))
+        .layer(tower_http::timeout::TimeoutLayer::new(std::time::Duration::from_secs(660)))
         .layer(governor_layer)
         .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
             axum::http::header::HeaderName::from_static("x-content-type-options"),

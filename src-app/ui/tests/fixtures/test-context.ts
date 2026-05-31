@@ -286,6 +286,14 @@ jwt:
         env: {
           ...process.env,
           ZIEE_HUB_DATA_DIR_OVERRIDE: hubDataDir,
+          // E2E tests drive engine start/stop themselves; the model
+          // validator's 90s spawn-and-kill cycle (TIER2_HEALTH_DEADLINE_SECS)
+          // races with the test's Start click — backend returns 409
+          // "already running" if Start fires while the validator
+          // owns the engine, and Stop button toggles unstably.
+          // Short-circuit validation to a no-op (debug-only env;
+          // compiled out of release builds).
+          ZIEE_DISABLE_MODEL_VALIDATION: '1',
           PATH: process.platform === 'win32'
             ? `${process.env.USERPROFILE}\\.cargo\\bin;${process.env.PATH}`
             : `${process.env.HOME}/.cargo/bin:${process.env.PATH}`,

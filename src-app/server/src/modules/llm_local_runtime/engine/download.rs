@@ -107,19 +107,44 @@ fn asset_backend(engine: EngineType, platform: &str, arch: &str, asset: &str) ->
         .map(|s| s.to_string())
 }
 
-/// Backends published for (engine, platform, arch) given a release's asset
-/// names. Empty ⇒ the release exists but its binary for this host is not
-/// (yet) uploaded — the build-pending case.
+/// One release asset, reduced to what update-checking needs:
+/// the filename + GitHub's reported byte size (so the UI can render
+/// the download size up-front and the user can make an informed
+/// pick when CPU vs CUDA builds are very different).
+#[derive(Debug, Clone)]
+pub struct AssetInfo {
+    pub name: String,
+    pub size_bytes: u64,
+}
+
+/// Backends published for (engine, platform, arch) given a release's
+/// assets. Empty ⇒ the release exists but its binary for this host
+/// is not (yet) uploaded — the build-pending case.
 pub fn available_backends(
     engine: EngineType,
     platform: &str,
     arch: &str,
-    asset_names: &[String],
+    assets: &[AssetInfo],
 ) -> Vec<String> {
-    asset_names
+    assets
         .iter()
-        .filter_map(|a| asset_backend(engine, platform, arch, a))
+        .filter_map(|a| asset_backend(engine, platform, arch, &a.name))
         .collect()
+}
+
+/// The byte size of the host-matching binary archive for a specific
+/// backend. Returns `None` when no asset matches (build-pending
+/// case) or when GitHub omitted the `size` field (which it never
+/// does in practice for published assets).
+pub fn asset_size_for_backend(
+    engine: EngineType,
+    platform: &str,
+    arch: &str,
+    backend: &str,
+    assets: &[AssetInfo],
+) -> Option<u64> {
+    let target = archive_name(engine, platform, arch, backend);
+    assets.iter().find(|a| a.name == target).map(|a| a.size_bytes)
 }
 
 /// One upstream release, reduced to what update-checking needs.
@@ -133,8 +158,8 @@ pub struct ReleaseInfo {
     pub prerelease: bool,
     /// ISO-8601 publish timestamp, if present.
     pub published_at: Option<String>,
-    /// All asset filenames attached to the release.
-    pub asset_names: Vec<String>,
+    /// All assets attached to the release (filename + byte size).
+    pub assets: Vec<AssetInfo>,
 }
 
 /// GitHub binary downloader
@@ -198,14 +223,9 @@ impl BinaryDownloader {
         Ok(home.join(".llm-runtime").join("binaries"))
     }
 
-    /// Download a binary from GitHub releases
-    ///
-    /// # Arguments
-    /// * `engine` - Engine type (Llamacpp or Mistralrs)
-    /// * `version` - Version tag (e.g., "v0.7.0", use "latest" for latest release)
-    /// * `platform` - Platform (e.g., "linux", "macos", "windows")
-    /// * `arch` - Architecture (e.g., "x86_64", "aarch64")
-    /// * `backend` - Backend (e.g., "cpu", "cuda", "metal")
+    /// Download a binary from GitHub releases (no progress reporting).
+    /// Thin wrapper around [`Self::download_with_progress`] for callers
+    /// that don't need byte-level progress (tests, idempotent re-installs).
     pub async fn download(
         &self,
         engine: EngineType,
@@ -214,6 +234,34 @@ impl BinaryDownloader {
         arch: &str,
         backend: &str,
     ) -> Result<BinaryInfo> {
+        self.download_with_progress(engine, version, platform, arch, backend, |_, _| {})
+            .await
+    }
+
+    /// Download a binary from GitHub releases with a per-chunk progress
+    /// callback. The callback is invoked synchronously on every chunk
+    /// read with `(bytes_received_so_far, total_bytes)`. `total_bytes`
+    /// is `None` when the upstream omits Content-Length.
+    ///
+    /// # Arguments
+    /// * `engine` - Engine type (Llamacpp or Mistralrs)
+    /// * `version` - Version tag (e.g., "v0.7.0", use "latest" for latest release)
+    /// * `platform` - Platform (e.g., "linux", "macos", "windows")
+    /// * `arch` - Architecture (e.g., "x86_64", "aarch64")
+    /// * `backend` - Backend (e.g., "cpu", "cuda", "metal")
+    /// * `progress` - Progress callback (received_bytes, total_bytes)
+    pub async fn download_with_progress<F>(
+        &self,
+        engine: EngineType,
+        version: &str,
+        platform: &str,
+        arch: &str,
+        backend: &str,
+        progress: F,
+    ) -> Result<BinaryInfo>
+    where
+        F: Fn(u64, Option<u64>) + Send + Sync,
+    {
         // Determine repository and binary name (shared naming helpers, so
         // the download URL and asset-readiness detection never drift).
         let repo = engine_repo(engine);
@@ -288,7 +336,7 @@ impl BinaryDownloader {
         // per-platform binary, so a fetch that 404s means "build pending",
         // not "no such release". Surface that explicitly instead of a bare
         // HTTP error.
-        self.download_file(&download_url, &temp_archive)
+        self.download_file(&download_url, &temp_archive, Some(&progress))
             .await
             .map_err(|e| {
                 RuntimeError::BinaryNotFound(format!(
@@ -299,29 +347,32 @@ impl BinaryDownloader {
                 ))
             })?;
 
-        // P1.l: best-effort cosign-keyless verify (closes
-        // 08-llm-local-runtime F-01 HIGH). We download the sibling
-        // `.sig` artifact and check whether it exists; the server
-        // wrapping `binary_manager` checks
-        // `RuntimeSettings.allow_unsigned_downloads` and decides
-        // whether to abort when verify fails. The runtime returns
-        // Ok regardless of verify outcome — the server is the
-        // authority on policy.
+        // Best-effort cosign-keyless artifact fetch. We pull the
+        // sibling `.sig` when published and log the outcome, but the
+        // install proceeds either way — the operator-facing
+        // `allow_unsigned_downloads` gate has been removed (downloads
+        // are always permitted; cryptographic verification will be
+        // re-introduced once the fork CI signs releases). Operators
+        // that need stricter handling pre-stage the binary
+        // out-of-band.
         let sig_url = format!("{}.sig", download_url);
         let sig_path = temp_dir.join(format!("{}.sig", archive_name));
-        match self.download_file(&sig_url, &sig_path).await {
+        // Sig fetch doesn't report progress — it's a tiny artifact and
+        // the surrounding download has already left a 100% progress
+        // frame in the SSE replay buffer.
+        match self.download_file(&sig_url, &sig_path, None).await {
             Ok(()) => {
                 tracing::info!(
-                    "cosign sibling .sig downloaded for {} (verification \
-                     handled by binary_manager when allow_unsigned_downloads=false)",
+                    "cosign sibling .sig downloaded for {} (verification not \
+                     yet wired — install proceeds unconditionally)",
                     archive_name
                 );
             }
             Err(e) => {
                 tracing::warn!(
-                    "cosign sibling .sig not available for {} ({e}); engine \
-                     binary install will require allow_unsigned_downloads=true \
-                     until the fork CI publishes signed releases",
+                    "cosign sibling .sig not available for {} ({e}); install \
+                     proceeds unverified (TOFU) until the fork CI publishes \
+                     signed releases",
                     archive_name
                 );
             }
@@ -410,12 +461,19 @@ impl BinaryDownloader {
             .iter()
             .filter_map(|r| {
                 let version = r["tag_name"].as_str()?.to_string();
-                let asset_names = r["assets"]
+                // GitHub returns `assets[].size` as an integer (bytes).
+                // We thread it through to the UI so the download row
+                // can show "12.3 MB" before the user clicks Download.
+                let assets = r["assets"]
                     .as_array()
                     .map(|assets| {
                         assets
                             .iter()
-                            .filter_map(|a| a["name"].as_str().map(String::from))
+                            .filter_map(|a| {
+                                let name = a["name"].as_str()?.to_string();
+                                let size_bytes = a["size"].as_u64().unwrap_or(0);
+                                Some(AssetInfo { name, size_bytes })
+                            })
                             .collect()
                     })
                     .unwrap_or_default();
@@ -424,7 +482,7 @@ impl BinaryDownloader {
                     draft: r["draft"].as_bool().unwrap_or(false),
                     prerelease: r["prerelease"].as_bool().unwrap_or(false),
                     published_at: r["published_at"].as_str().map(String::from),
-                    asset_names,
+                    assets,
                 })
             })
             .collect())
@@ -441,16 +499,20 @@ impl BinaryDownloader {
     /// upstream (e.g. a hijacked GitHub mirror) could redirect to a
     /// /dev/zero stream and fill the host disk.
     ///
-    /// 08-llm-local-runtime F-01 (High) gap: this function does NOT
-    /// cryptographically verify the downloaded binary. The right
-    /// shape is a cosign-keyless verify (matches the
-    /// `sigstore` crate already pulled by code_sandbox) against a
-    /// `.sig` artifact published alongside each engine binary. That
-    /// requires the llm-runtime release pipeline to actually sign
-    /// (Actions OIDC + cosign sign-blob) — until that ships, this
-    /// download path remains TOFU. Operators reading the SBOM should
+    /// Note: this function does NOT cryptographically verify the
+    /// downloaded binary. The right shape is a cosign-keyless verify
+    /// (matches the `sigstore` crate already pulled by code_sandbox)
+    /// against a `.sig` artifact published alongside each engine
+    /// binary. That requires the fork release pipeline to actually
+    /// sign (Actions OIDC + cosign sign-blob) — until that ships,
+    /// this download path is TOFU. Operators reading the SBOM should
     /// confirm the upstream GitHub Releases page hashes match.
-    async fn download_file(&self, url: &str, dest: &Path) -> Result<()> {
+    async fn download_file(
+        &self,
+        url: &str,
+        dest: &Path,
+        progress: Option<&(dyn Fn(u64, Option<u64>) + Send + Sync)>,
+    ) -> Result<()> {
         const MAX_DOWNLOAD_BYTES: u64 = 2 * 1024 * 1024 * 1024; // 2 GiB
 
         // Get file size from HEAD request
@@ -499,6 +561,11 @@ impl BinaryDownloader {
 
         let mut file = File::create(dest)?;
         let mut received: u64 = 0;
+        let total_for_cb = if total_size > 0 { Some(total_size) } else { None };
+        // Initial 0% frame so subscribers see the bar render at start.
+        if let Some(cb) = progress {
+            cb(0, total_for_cb);
+        }
 
         while let Some(chunk) = response.chunk().await? {
             received = received.saturating_add(chunk.len() as u64);
@@ -511,6 +578,9 @@ impl BinaryDownloader {
                 )));
             }
             file.write_all(&chunk)?;
+            if let Some(cb) = progress {
+                cb(received, total_for_cb);
+            }
         }
 
         tracing::debug!("Downloaded {}", dest.file_name().unwrap().to_string_lossy());
