@@ -31,7 +31,7 @@ pub use common::AppError;
 pub use async_trait::async_trait;
 
 // Re-export MCP client types for integration tests
-pub use modules::mcp::client::http::HttpMcpClient;
+pub use modules::mcp::client::http::{HeaderParseError, HttpMcpClient, parse_header_map};
 pub use modules::mcp::client::auth::{
     OAuthClientConfig, StoredToken, refresh_token as oauth_refresh_token,
 };

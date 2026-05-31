@@ -253,7 +253,7 @@ pub async fn create_user_mcp_server(
             AppError::internal_error(format!("Failed to serialize environment_variables: {}", e))
         })?;
 
-    let headers = serde_json::to_value(request.headers.clone().unwrap_or_default())
+    let headers = serde_json::to_value(normalize_and_validate_headers(&request.headers)?)
         .map_err(|e| AppError::internal_error(format!("Failed to serialize headers: {}", e)))?;
 
     let supports_sampling = request.supports_sampling.unwrap_or(false);
@@ -469,9 +469,14 @@ pub async fn update_user_mcp_server(
     let env_vars = request
         .environment_variables
         .and_then(|e| serde_json::to_value(e).ok());
-    let headers = request
-        .headers
-        .and_then(|h| serde_json::to_value(h).ok());
+    let headers = match &request.headers {
+        Some(_) => Some(
+            serde_json::to_value(normalize_and_validate_headers(&request.headers)?).map_err(
+                |e| AppError::internal_error(format!("Failed to serialize headers: {}", e)),
+            )?,
+        ),
+        None => None,
+    };
 
     let row = sqlx::query!(
         r#"
@@ -598,7 +603,7 @@ pub async fn create_system_mcp_server(
             AppError::internal_error(format!("Failed to serialize environment_variables: {}", e))
         })?;
 
-    let headers = serde_json::to_value(request.headers.clone().unwrap_or_default())
+    let headers = serde_json::to_value(normalize_and_validate_headers(&request.headers)?)
         .map_err(|e| AppError::internal_error(format!("Failed to serialize headers: {}", e)))?;
 
     let supports_sampling = request.supports_sampling.unwrap_or(false);
@@ -933,9 +938,14 @@ pub async fn update_system_mcp_server(
     let env_vars = request
         .environment_variables
         .and_then(|e| serde_json::to_value(e).ok());
-    let headers = request
-        .headers
-        .and_then(|h| serde_json::to_value(h).ok());
+    let headers = match &request.headers {
+        Some(_) => Some(
+            serde_json::to_value(normalize_and_validate_headers(&request.headers)?).map_err(
+                |e| AppError::internal_error(format!("Failed to serialize headers: {}", e)),
+            )?,
+        ),
+        None => None,
+    };
 
     let row = sqlx::query!(
         r#"
@@ -1442,4 +1452,42 @@ fn validate_url(url: &str) -> Result<(), AppError> {
         ));
     }
     Ok(())
+}
+
+/// Trim + validate a request's HTTP headers before they're persisted.
+///
+/// Returns the cleaned map (original key casing preserved, each value trimmed of
+/// surrounding whitespace) ready to store, or a 400 `INVALID_HEADER` naming the
+/// first header whose value still can't form a valid HTTP header (an interior
+/// newline, control char, etc.). `None` → empty map. The actual char-validation
+/// is delegated to the client's `parse_header_map` so the save boundary and the
+/// runtime connect path agree on exactly what counts as valid. We deliberately
+/// trim rather than reject trailing whitespace: a token pasted with a trailing
+/// newline is an extremely common artifact, and RFC 7230 §3.2.4 says surrounding
+/// whitespace isn't part of the field value anyway.
+pub(crate) fn normalize_and_validate_headers(
+    headers: &Option<std::collections::HashMap<String, String>>,
+) -> Result<std::collections::HashMap<String, String>, AppError> {
+    let Some(map) = headers else {
+        return Ok(std::collections::HashMap::new());
+    };
+
+    let as_value = serde_json::to_value(map)
+        .map_err(|e| AppError::internal_error(format!("Failed to serialize headers: {}", e)))?;
+    let (_parsed, errors) = super::client::http::parse_header_map(&as_value);
+    if let Some(first) = errors.first() {
+        return Err(AppError::bad_request(
+            "INVALID_HEADER",
+            format!(
+                "Invalid value for header {:?}: {}",
+                first.name, first.reason
+            ),
+        ));
+    }
+
+    // All entries valid → persist them trimmed, preserving the user's key casing.
+    Ok(map
+        .iter()
+        .map(|(k, v)| (k.clone(), v.trim().to_string()))
+        .collect())
 }

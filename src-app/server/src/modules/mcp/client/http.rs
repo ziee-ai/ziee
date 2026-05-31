@@ -44,6 +44,81 @@ fn json_id_eq(id: &Value, expected: i64) -> bool {
     }
 }
 
+/// One configured header that could not be turned into a valid HTTP header,
+/// with a human-readable reason. `name` is the JSON key exactly as the user
+/// supplied it, so callers can name the offending header in errors/logs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeaderParseError {
+    pub name: String,
+    pub reason: String,
+}
+
+/// Parse a JSON object of `{ "Header-Name": "value" }` pairs into a reqwest
+/// [`HeaderMap`](reqwest::header::HeaderMap).
+///
+/// Each value is **trimmed** of leading/trailing ASCII whitespace (including
+/// newlines) before parsing. This is intentional: a token pasted with a
+/// trailing newline is the single most common reason a configured
+/// `Authorization` header "isn't sent" — trimming repairs it at runtime, even
+/// for values that were already persisted before this fix.
+///
+/// Instead of silently dropping entries it cannot parse (the previous
+/// behaviour), it returns every failure in the second tuple element so the
+/// caller can decide policy: connect-time logs them and proceeds with the valid
+/// headers; the save/test boundary rejects the request. Non-object input (or an
+/// empty object) yields an empty map with no errors.
+pub fn parse_header_map(
+    headers: &Value,
+) -> (reqwest::header::HeaderMap, Vec<HeaderParseError>) {
+    use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+
+    let mut map = HeaderMap::new();
+    let mut errors = Vec::new();
+
+    let Some(obj) = headers.as_object() else {
+        return (map, errors);
+    };
+
+    for (key, value) in obj {
+        let Some(val_str) = value.as_str() else {
+            errors.push(HeaderParseError {
+                name: key.clone(),
+                reason: "header value must be a string".to_string(),
+            });
+            continue;
+        };
+        // RFC 7230 §3.2.4: optional leading/trailing whitespace around a field
+        // value is not part of the value. Trimming it is spec-compliant and
+        // fixes the common pasted-token-with-newline artifact.
+        let trimmed = val_str.trim();
+        let name = match HeaderName::from_bytes(key.as_bytes()) {
+            Ok(n) => n,
+            Err(_) => {
+                errors.push(HeaderParseError {
+                    name: key.clone(),
+                    reason: "invalid header name".to_string(),
+                });
+                continue;
+            }
+        };
+        match HeaderValue::from_str(trimmed) {
+            Ok(v) => {
+                map.insert(name, v);
+            }
+            Err(_) => {
+                errors.push(HeaderParseError {
+                    name: key.clone(),
+                    reason:
+                        "header value contains invalid characters (an interior newline or non-ASCII character?)"
+                            .to_string(),
+                });
+            }
+        }
+    }
+
+    (map, errors)
+}
+
 /// Parse a Server-Sent Events response body and return the JSON-RPC message
 /// whose `id` matches the requested id. Drops notifications and unrelated
 /// requests/responses (logs them at debug level). Per MCP spec § Transports:
@@ -495,17 +570,32 @@ impl HttpMcpClient {
         let base_url = server.url.clone()
             .ok_or_else(|| AppError::bad_request("MISSING_URL", "Missing URL for HTTP transport"))?;
 
-        let mut headers = reqwest::header::HeaderMap::new();
-        if let Some(headers_map) = server.headers.as_object() {
-            for (key, value) in headers_map {
-                if let Some(val_str) = value.as_str()
-                    && let (Ok(name), Ok(val)) = (
-                        reqwest::header::HeaderName::from_bytes(key.as_bytes()),
-                        reqwest::header::HeaderValue::from_str(val_str)
-                    ) {
-                        headers.insert(name, val);
-                    }
-            }
+        // Configured headers are attached to BOTH clients below via
+        // `default_headers`, so they ride on every request to the remote server
+        // (initialize, tools/list, tools/call, SSE GETs, DELETE). Values are
+        // trimmed; anything still unparseable is logged and skipped rather than
+        // silently dropped (the save/test boundary rejects such values up front,
+        // but a header persisted before this fix — or on a built-in server — is
+        // repaired/diagnosed here at runtime).
+        //
+        // NOTE: reqwest's default redirect policy strips sensitive headers
+        // (`Authorization`, `Cookie`) when a redirect crosses origins
+        // (different scheme/host/port). If a configured server URL redirects to
+        // another origin, the header will not reach the final host — point the
+        // URL at the final origin in that case.
+        let (headers, header_errors) = parse_header_map(&server.headers);
+        for e in &header_errors {
+            tracing::warn!(
+                "[mcp] server '{}' has an unparseable configured header {:?} ({}); it will NOT be sent",
+                server.name, e.name, e.reason
+            );
+        }
+        if !headers.is_empty() {
+            let names: Vec<&str> = headers.keys().map(|k| k.as_str()).collect();
+            tracing::debug!(
+                "[mcp] server '{}' attaching {} custom header(s): {:?}",
+                server.name, names.len(), names
+            );
         }
 
         let timeout_secs = server.timeout_seconds.max(1) as u64;
@@ -2281,5 +2371,10 @@ impl McpClient for HttpMcpClient {
     }
 }
 
-// Tests for this module live in tests/mcp/mod.rs (see test_call_tool_with_sampling_sse_roundtrip
-// and test_call_tool_with_real_llm_sampling).
+// Tests for this module live in tests/mcp/ (see tests/mcp/mod.rs sampling
+// roundtrips and tests/mcp/http_headers_test.rs for `parse_header_map` unit
+// coverage + custom-header transmission). The helper's unit tests live at the
+// integration tier because `cargo test --lib` does not currently compile on
+// this branch (a pre-existing sqlx 0.8/0.9 version clash pulled in by
+// dev-dependencies breaks the memory/pgvector modules), whereas
+// `cargo test --test integration_tests` builds the lib normally and is fine.
