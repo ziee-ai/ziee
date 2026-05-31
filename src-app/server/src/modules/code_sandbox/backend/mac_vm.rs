@@ -16,7 +16,8 @@
 //! ⚠️ **Validation status:** this file cannot be compiled on Linux (no macOS
 //! toolchain / libkrun). It is grounded in the real libkrun API + the protocol
 //! crate but must be compiled + validated on macOS. Points flagged `MAC-TODO`
-//! need first-run attention. See `src-app/sandbox-rootfs/MACOS-RUNBOOK.md`.
+//! need first-run attention. See `MACOS-RUNBOOK.md` in the standalone
+//! `ziee-ai/sandbox-rootfs` repo.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -113,20 +114,21 @@ fn ensure_reaper() {
             }
             let mut vms = VMS.lock().await;
             let mut evict = Vec::new();
-            for (flavor, h) in vms.iter() {
+            // `key` is the `<version>/<flavor>` composite (Plan 5 Phase 3).
+            for (key, h) in vms.iter() {
                 if h.inflight.load(Ordering::SeqCst) == 0
                     && h.last_used.lock().await.elapsed().as_secs() >= idle_evict_secs
                 {
-                    evict.push(flavor.clone());
+                    evict.push(key.clone());
                 }
             }
-            for flavor in evict {
-                if let Some(h) = vms.remove(&flavor) {
+            for key in evict {
+                if let Some(h) = vms.remove(&key) {
                     let mut child = h.child.lock().await;
                     let _ = child.start_kill();
                     let _ = child.wait().await;
                     let _ = std::fs::remove_file(&h.socket_path);
-                    tracing::info!(flavor, "code_sandbox: macOS VM evicted (idle)");
+                    tracing::info!(key = %key, "code_sandbox: macOS VM evicted (idle)");
                 }
             }
         }
@@ -145,11 +147,18 @@ static VMS: Lazy<Mutex<HashMap<String, Arc<VmHandle>>>> = Lazy::new(|| Mutex::ne
 static BOOT_LOCKS: Lazy<Mutex<HashMap<String, Arc<Mutex<()>>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
-async fn boot_lock_for(flavor: &str) -> Arc<Mutex<()>> {
+/// Composite registry key for `VMS` + `BOOT_LOCKS` so two pinned
+/// rootfs versions of the same flavor (the new pin + a draining old
+/// pin during a swap) get separate VM slots. Plan 5 Phase 3.
+fn vm_key(version: &str, flavor: &str) -> String {
+    format!("{version}/{flavor}")
+}
+
+async fn boot_lock_for(version: &str, flavor: &str) -> Arc<Mutex<()>> {
     BOOT_LOCKS
         .lock()
         .await
-        .entry(flavor.to_string())
+        .entry(vm_key(version, flavor))
         .or_insert_with(|| Arc::new(Mutex::new(())))
         .clone()
 }
@@ -374,28 +383,36 @@ impl MacVmBackend {
         }
     }
 
-    /// Get the warm VM for `flavor`, booting one (single-flight) if needed.
+    /// Get the warm VM for `(version, flavor)`, booting one
+    /// (single-flight) if needed. Plan 5 Phase 3: keyed on
+    /// `(version, flavor)` so the old-pin VM keeps serving its
+    /// in-flight execs while a new-pin VM boots alongside.
     async fn ensure_vm(
         &self,
         state: &CodeSandboxState,
         flavor: &str,
         sandbox_disk: &Path,
+        version: &str,
     ) -> Result<Arc<VmHandle>, AppError> {
+        let key = vm_key(version, flavor);
         // Fast path: warm VM (don't hold the lock across a boot).
-        if let Some(h) = VMS.lock().await.get(flavor) {
+        if let Some(h) = VMS.lock().await.get(&key) {
             return Ok(h.clone());
         }
-        // Serialize boot for THIS flavor only (B3). The global VMS lock is NOT
-        // held across the ≤30 s boot, so other flavors stay responsive.
-        let boot_lock = boot_lock_for(flavor).await;
+        // Serialize boot for THIS (version, flavor) only (B3). Global
+        // VMS lock is NOT held across the ≤30 s boot, so other slots
+        // stay responsive.
+        let boot_lock = boot_lock_for(version, flavor).await;
         let _boot = boot_lock.lock().await;
-        // Re-check: another caller may have booted this flavor while we waited.
-        if let Some(h) = VMS.lock().await.get(flavor) {
+        if let Some(h) = VMS.lock().await.get(&key) {
             return Ok(h.clone());
         }
 
         let dir = runtime_dir().map_err(|e| AppError::internal_error(format!("runtime dir: {e}")))?;
-        let socket_path = dir.join(format!("vm-{flavor}.sock"));
+        // Socket path includes the version so two pinned versions of
+        // the same flavor don't collide on a shared `vm-<flavor>.sock`
+        // file during a swap-drain cycle.
+        let socket_path = dir.join(format!("vm-{version}-{flavor}.sock"));
         let _ = std::fs::remove_file(&socket_path);
 
         // Read runtime-tunable VM sizing + concurrency cap (§6). Boot-time
@@ -413,7 +430,7 @@ impl MacVmBackend {
             "vsock_port": GUEST_VSOCK_PORT,
             "agent_exec_path": GUEST_AGENT_PATH,
         });
-        let cfg_path = dir.join(format!("vm-{flavor}.json"));
+        let cfg_path = dir.join(format!("vm-{version}-{flavor}.json"));
         std::fs::write(&cfg_path, serde_json::to_vec(&cfg).unwrap()).map_err(|e| {
             AppError::internal_error(format!("write VM launch config: {e}"))
         })?;
@@ -479,7 +496,7 @@ impl MacVmBackend {
             inflight: AtomicUsize::new(0),
             sem: Semaphore::new(limits.vm_max_concurrent_execs.max(1) as usize),
         });
-        VMS.lock().await.insert(flavor.to_string(), handle.clone());
+        VMS.lock().await.insert(key, handle.clone());
         ensure_reaper();
         Ok(handle)
     }
@@ -551,10 +568,26 @@ impl SandboxBackend for MacVmBackend {
             // applies the shared seccomp filter itself; see run().
             seccomp: SeccompMode::NotLinked,
         };
+        let artifact_id = outcome.artifact_id;
+        let artifact_version = outcome.version.clone();
+        // Register with the version-manager mount registry so the
+        // Phase 3 drain task can find this VM-backed mount when the
+        // admin changes the pin. The mount_dir is the guest-side
+        // path; the host backend will tear down the actual VM in
+        // `evict_artifact`.
+        crate::modules::code_sandbox::version_manager::register_mount(
+            artifact_id,
+            &artifact_version,
+            std::env::consts::ARCH,
+            flavor,
+            PathBuf::from(GUEST_ROOTFS_MOUNT),
+        );
         Ok(EnsureOutcome {
             caps: Arc::new(guest_caps),
             mount_dir: PathBuf::from(GUEST_ROOTFS_MOUNT),
             fetch_info: Some(outcome),
+            artifact_id: Some(artifact_id),
+            artifact_version: Some(artifact_version),
         })
     }
 
@@ -566,12 +599,16 @@ impl SandboxBackend for MacVmBackend {
         timeout_secs: Option<u64>,
         flavor: &str,
     ) -> Result<SandboxRunResult, AppError> {
-        // Locate (fetch if needed) the flavor squashfs; idempotent on cache hit.
+        // Locate (fetch if needed) the flavor squashfs; idempotent on
+        // cache hit. Capture `version` so `ensure_vm` keys its slot on
+        // `(version, flavor)` — two pinned versions of the same flavor
+        // coexist during a swap-drain cycle (Plan 5 Phase 3).
         let cache = cache_dir(state);
-        let disk = runtime_fetch::ensure_fetched(&cache, flavor, |_| {})
+        let fetched = runtime_fetch::ensure_fetched(&cache, flavor, |_| {})
             .await
-            .map_err(|e| AppError::internal_error(format!("rootfs fetch failed: {e}")))?
-            .installed_path;
+            .map_err(|e| AppError::internal_error(format!("rootfs fetch failed: {e}")))?;
+        let disk = fetched.installed_path;
+        let version = fetched.version;
 
         // Runtime-configurable resource caps (Plan 1 §6). Snapshot once per
         // exec — both the host argv (prlimit) and the guest cgroup (via
@@ -632,7 +669,7 @@ impl SandboxBackend for MacVmBackend {
         let mut attempt = 0;
         loop {
             attempt += 1;
-            let vm = self.ensure_vm(state, flavor, &disk).await?;
+            let vm = self.ensure_vm(state, flavor, &disk, &version).await?;
             // Bound concurrency per VM (Ga) and mark in-flight so the reaper
             // won't evict mid-command (with a Drop guard so a cancelled future
             // can't leak the count — B2).
@@ -648,10 +685,10 @@ impl SandboxBackend for MacVmBackend {
                     return result;
                 }
                 Err(e) if attempt < 2 => {
-                    tracing::warn!(flavor, "code_sandbox: VM unreachable ({e}); re-booting and retrying");
+                    tracing::warn!(flavor, version = %version, "code_sandbox: VM unreachable ({e}); re-booting and retrying");
                     drop(_guard);
                     drop(_permit);
-                    evict_dead_vm(flavor, &vm).await;
+                    evict_dead_vm(&version, flavor, &vm).await;
                     continue;
                 }
                 Err(e) => {
@@ -663,12 +700,12 @@ impl SandboxBackend for MacVmBackend {
 
     async fn shutdown(&self) {
         let mut vms = VMS.lock().await;
-        for (flavor, handle) in vms.drain() {
+        for (key, handle) in vms.drain() {
             let mut child = handle.child.lock().await;
             let _ = child.start_kill();
             let _ = child.wait().await;
             let _ = std::fs::remove_file(&handle.socket_path);
-            tracing::info!(flavor, "code_sandbox: macOS VM stopped on shutdown");
+            tracing::info!(key = %key, "code_sandbox: macOS VM stopped on shutdown");
         }
         // Also tear down test-scoped VMs (tier 4 helper pool).
         let mut test_vms = TEST_VMS.lock().await;
@@ -725,11 +762,12 @@ impl SandboxBackend for MacVmBackend {
         // Make sure the flavor's rootfs is on disk and a VM is warm
         // (cold-start path identical to one-shot `run`).
         let cache = cache_dir(state);
-        let disk = runtime_fetch::ensure_fetched(&cache, flavor, |_| {})
+        let fetched = runtime_fetch::ensure_fetched(&cache, flavor, |_| {})
             .await
-            .map_err(|e| AppError::internal_error(format!("rootfs fetch failed: {e}")))?
-            .installed_path;
-        let vm = self.ensure_vm(state, flavor, &disk).await?;
+            .map_err(|e| AppError::internal_error(format!("rootfs fetch failed: {e}")))?;
+        let disk = fetched.installed_path;
+        let version = fetched.version;
+        let vm = self.ensure_vm(state, flavor, &disk, &version).await?;
 
         // Hold an inflight count for the session's lifetime so the
         // reaper waits for live MCP sessions to drain before evicting.
@@ -748,22 +786,87 @@ impl SandboxBackend for MacVmBackend {
         Ok(Some(session))
     }
 
+    /// Legacy admin-DELETE evict by flavor: tear down EVERY pinned
+    /// version's VM for this flavor + delete every cached squashfs.
+    /// Idempotent. The version-aware path is `evict_artifact`.
     async fn evict_flavor(&self, cache_dir: &Path, flavor: &str) -> EvictOutcome {
-        // Stop the flavor's VM if running.
-        if let Some(handle) = VMS.lock().await.remove(flavor) {
+        let suffix_match = format!("/{flavor}");
+        let stale_keys: Vec<String> = VMS
+            .lock()
+            .await
+            .keys()
+            .filter(|k| k.as_str() == flavor || k.ends_with(&suffix_match))
+            .cloned()
+            .collect();
+        for key in stale_keys {
+            if let Some(handle) = VMS.lock().await.remove(&key) {
+                let mut child = handle.child.lock().await;
+                let _ = child.start_kill();
+                let _ = child.wait().await;
+                let _ = std::fs::remove_file(&handle.socket_path);
+            }
+        }
+        // Walk every per-version cache subdir and delete `*-{flavor}.squashfs`.
+        let suffix = format!("-{flavor}.squashfs");
+        let mut bytes_freed = 0;
+        let mut was_cached = false;
+        fn walk(
+            dir: &Path,
+            suffix: &str,
+            bytes_freed: &mut u64,
+            was_cached: &mut bool,
+        ) {
+            if let Ok(rd) = std::fs::read_dir(dir) {
+                for entry in rd.flatten() {
+                    let p = entry.path();
+                    if p.is_dir() {
+                        walk(&p, suffix, bytes_freed, was_cached);
+                    } else if p
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(|n| n.ends_with(suffix))
+                    {
+                        *was_cached = true;
+                        if let Ok(m) = std::fs::metadata(&p) {
+                            *bytes_freed += m.len();
+                        }
+                        let _ = std::fs::remove_file(&p);
+                    }
+                }
+            }
+        }
+        walk(cache_dir, &suffix, &mut bytes_freed, &mut was_cached);
+        EvictOutcome { bytes_freed, was_cached }
+    }
+
+    /// Version-aware evict (Plan 5 Phase 3 drain-on-swap): tear down
+    /// ONLY the `(version, flavor)` VM the drain task observed
+    /// finishing. Leaves the new-pin VM alive.
+    async fn evict_artifact(
+        &self,
+        mount_dir: &Path,
+        flavor: &str,
+        version: &str,
+    ) -> EvictOutcome {
+        let key = vm_key(version, flavor);
+        if let Some(handle) = VMS.lock().await.remove(&key) {
             let mut child = handle.child.lock().await;
             let _ = child.start_kill();
             let _ = child.wait().await;
             let _ = std::fs::remove_file(&handle.socket_path);
         }
-        // Delete the cached squashfs for this flavor.
+        // Delete the per-version squashfs.
+        let version_cache_dir = mount_dir.parent().unwrap_or(mount_dir);
         let suffix = format!("-{flavor}.squashfs");
-        let mut bytes_freed = 0;
+        let mut bytes_freed = 0u64;
         let mut was_cached = false;
-        if let Ok(rd) = std::fs::read_dir(cache_dir) {
+        if let Ok(rd) = std::fs::read_dir(version_cache_dir) {
             for entry in rd.flatten() {
                 let p = entry.path();
-                if p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with(&suffix)) {
+                if p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.ends_with(&suffix))
+                {
                     was_cached = true;
                     if let Ok(m) = std::fs::metadata(&p) {
                         bytes_freed += m.len();
@@ -777,13 +880,15 @@ impl SandboxBackend for MacVmBackend {
 }
 
 /// Remove a dead/unreachable VM from the registry (only if it's still the
-/// current handle for the flavor — don't clobber a concurrent fresh boot) and
-/// kill its launcher, so the next `ensure_vm` re-boots (B1). Idempotent.
-async fn evict_dead_vm(flavor: &str, dead: &Arc<VmHandle>) {
+/// current handle for `(version, flavor)` — don't clobber a concurrent fresh
+/// boot) and kill its launcher, so the next `ensure_vm` re-boots (B1).
+/// Idempotent.
+async fn evict_dead_vm(version: &str, flavor: &str, dead: &Arc<VmHandle>) {
+    let key = vm_key(version, flavor);
     {
         let mut vms = VMS.lock().await;
-        if vms.get(flavor).is_some_and(|h| Arc::ptr_eq(h, dead)) {
-            vms.remove(flavor);
+        if vms.get(&key).is_some_and(|h| Arc::ptr_eq(h, dead)) {
+            vms.remove(&key);
         }
     }
     let mut child = dead.child.lock().await;

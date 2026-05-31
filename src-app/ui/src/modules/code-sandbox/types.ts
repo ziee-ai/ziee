@@ -1,11 +1,11 @@
 import type { StoreProxy } from '@/core/stores'
-import type { useSandboxEnvironmentsStore } from './stores/SandboxEnvironments.store'
+import type { useSandboxRootfsVersionsStore } from './stores/SandboxRootfsVersions.store'
 import type { useSandboxResourceLimitsStore } from './stores/SandboxResourceLimits.store'
 
 declare module '@/core/stores' {
   interface RegisteredStores {
-    SandboxEnvironments: StoreProxy<
-      ReturnType<typeof useSandboxEnvironmentsStore.getState>
+    SandboxRootfsVersions: StoreProxy<
+      ReturnType<typeof useSandboxRootfsVersionsStore.getState>
     >
     SandboxResourceLimits: StoreProxy<
       ReturnType<typeof useSandboxResourceLimitsStore.getState>

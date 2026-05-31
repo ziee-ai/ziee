@@ -102,6 +102,33 @@ pub trait SandboxBackend: Send + Sync {
     /// Evict a flavor from the local cache (unmount + delete). Idempotent.
     async fn evict_flavor(&self, cache_dir: &Path, flavor: &str) -> EvictOutcome;
 
+    /// Evict a specific (version, flavor) mount after the version
+    /// manager's drain task observed the inflight counter hit zero
+    /// (Plan 5 Phase 3). Default impl is version-aware — it kills
+    /// only the matching `(version, flavor)` squashfuse via
+    /// `runtime_mount::evict_by_version_flavor`, leaving any sibling
+    /// version of the same flavor (e.g. the new pin) alive.
+    ///
+    /// VM-backed overrides (mac_vm, wsl2) layer per-version cleanup
+    /// on top of this default (libkrun VM teardown, `wsl --unregister`).
+    async fn evict_artifact(
+        &self,
+        mount_dir: &Path,
+        flavor: &str,
+        version: &str,
+    ) -> EvictOutcome {
+        // `mount_dir` is `<cache_root>/<version>/<asset_stem>`; the
+        // parent is the per-version cache subdir that evict_by_version_flavor
+        // expects (it'll find + remove the per-flavor `.squashfs` next to it).
+        let version_cache_dir = mount_dir.parent().unwrap_or(mount_dir);
+        crate::modules::code_sandbox::runtime_mount::evict_by_version_flavor(
+            version_cache_dir,
+            version,
+            flavor,
+        )
+        .await
+    }
+
     /// **Test-only seam.** Execute an arbitrary `bwrap` argv against the
     /// given rootfs and return the raw stdout/stderr/exit. Tier-4 tests
     /// use this to verify the hardening primitives the argv builder

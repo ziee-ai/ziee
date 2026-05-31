@@ -557,6 +557,15 @@ export interface DownloadVersionStartedResponse {
   version: string
 }
 
+export interface DrainEntry {
+  arch: string
+  artifact_id: string
+  flavor: string
+  inflight_exec: number
+  inflight_mcp: number
+  version: string
+}
+
 export interface EditMessageRequest {
   content: string
 }
@@ -569,21 +578,6 @@ export interface EditMessageResponse {
 export type EngineDownloadStatus = 'pending' | 'downloading' | 'verifying' | 'extracting' | 'registering' | 'completed' | 'failed'
 
 export type EngineType = 'mistralrs' | 'llamacpp' | 'none'
-
-export interface EnvironmentInfo {
-  description: string
-  approximate_size_mb: number
-  cached: boolean
-  cached_size_bytes?: number
-  flavor: string
-  mounted: boolean
-}
-
-export interface EnvironmentsResponse {
-  available: EnvironmentInfo[]
-}
-
-export type FetchPhase = 'resolving' | 'downloading' | 'verifying_sha256' | 'verifying_cosign' | 'installing'
 
 export interface File {
   checksum?: string
@@ -925,6 +919,30 @@ export interface IndexItem {
   verified?: boolean
 }
 
+export interface InstallTaskState {
+  arch: string
+  artifact_id?: string
+  bytes_downloaded?: number
+  completed_at?: string
+  duration_ms?: number
+  error?: string
+  flavor: string
+  message?: string
+  package: string
+  phase?: string
+  started_at: string
+  status: TaskStatus
+  task_id: string
+  version: string
+}
+
+export interface InstallVersionRequest {
+  arch: string
+  flavor: string
+  package: string
+  version: string
+}
+
 export interface InstanceResponse {
   base_url: string
   error_message?: string
@@ -977,10 +995,6 @@ export interface ListModelsQuery {
   page?: number
   perPage?: number
   providerId?: string
-}
-
-export interface ListPrefetchTasksResponse {
-  tasks: PrefetchTaskSummary[]
 }
 
 export interface ListPromptsResponse {
@@ -1487,18 +1501,6 @@ export interface PingResponse {
   ok: boolean
 }
 
-export type PrefetchStatus = 'running' | 'completed' | 'failed' | 'already_cached'
-
-export interface PrefetchTaskSummary {
-  error?: string
-  flavor: string
-  last_phase?: FetchPhase
-  outcome?: SSEPrefetchCompleteData
-  started_at: string
-  status: PrefetchStatus
-  task_id: string
-}
-
 export interface PreviewQuery {
   page?: number
 }
@@ -1664,6 +1666,28 @@ export interface RichFile {
   mime_type: string
 }
 
+export interface RootfsArtifact {
+  arch: string
+  artifact_path: string
+  cosign_bundle?: string
+  downloaded_at: string
+  flavor: string
+  id: string
+  last_used_at?: string
+  package: string
+  sha256: string
+  status: string
+  version: string
+}
+
+export interface RootfsRelease {
+  asset_names: string[]
+  draft: boolean
+  prerelease: boolean
+  published_at?: string
+  version: string
+}
+
 export interface RotateProxyTokenResponse {
   plaintext_api_key: string
   provider: LlmProvider
@@ -1827,6 +1851,38 @@ export type SSEHardwareUsageEvent = {
   update: HardwareUsageUpdate
 }
 
+export interface SSEInstallCompleteData {
+  artifact_id: string
+  bytes_downloaded: number
+  cosign_verified: boolean
+  duration_ms: number
+  task_id: string
+}
+
+export interface SSEInstallConnectedData {
+  message: string
+}
+
+export interface SSEInstallFailedData {
+  error: string
+  task_id: string
+}
+
+export interface SSEInstallProgressData {
+  message: string
+  phase: string
+  task_id: string
+}
+
+export type SSEInstallTaskEvent = {
+  connected: SSEInstallConnectedData
+  taskStarted: InstallTaskState
+  progress: SSEInstallProgressData
+  complete: SSEInstallCompleteData
+  failed: SSEInstallFailedData
+  taskState: InstallTaskState
+}
+
 export type SSELogEvent = {
   log: SSELogLineData
   lag: SSELogLagData
@@ -1839,35 +1895,6 @@ export interface SSELogLagData {
 
 export interface SSELogLineData {
   line: string
-}
-
-export interface SSEPrefetchCompleteData {
-  bytes_downloaded: number
-  cosign_verified: boolean
-  duration_ms: number
-}
-
-export interface SSEPrefetchConnectedData {
-  expected_size_mb: number
-  flavor: string
-  status: PrefetchStatus
-  task_id: string
-}
-
-export type SSEPrefetchEvent = {
-  connected: SSEPrefetchConnectedData
-  progress: SSEPrefetchProgressData
-  complete: SSEPrefetchCompleteData
-  failed: SSEPrefetchFailedData
-}
-
-export interface SSEPrefetchFailedData {
-  error: string
-}
-
-export interface SSEPrefetchProgressData {
-  message: string
-  phase: FetchPhase
 }
 
 export interface SaveUserApiKeyRequest {
@@ -1899,6 +1926,15 @@ export interface SetMcpServerOAuthConfigRequest {
   scopes?: string
 }
 
+export interface SetPinRequest {
+  version: string
+}
+
+export interface SetPinResponse {
+  status: VersionStatus
+  swap: SwapOutcome
+}
+
 export interface SetupAdminRequest {
   display_name?: string
   email: string
@@ -1912,22 +1948,19 @@ export interface SetupStatusResponse {
 
 export type StartInstanceRequest = any
 
-export interface StartPrefetchBody {
-  flavor: string
-}
-
-export interface StartPrefetchResponse {
-  events_url: string
-  expected_size_mb: number
-  flavor: string
-  status: PrefetchStatus
-  task_id: string
-}
-
 export interface StreamError {
   code?: string
   message: string
 }
+
+export interface SwapOutcome {
+  cache_wipe: SwapPolicy
+  draining_mounts: number
+  pinned: string
+  was?: string
+}
+
+export type SwapPolicy = 'preserve' | 'wipe_caches_on_drain'
 
 export interface SwapRuntimeVersionRequest {
   version_id: string
@@ -1943,6 +1976,8 @@ export interface SyncCacheResponse {
   message: string
   synced_count: number
 }
+
+export type TaskStatus = 'running' | 'completed' | 'failed'
 
 export interface TestExtractRequest {
   assistant_message: string
@@ -2293,6 +2328,15 @@ export interface UserMemorySettings {
   user_id: string
 }
 
+export interface VersionStatus {
+  available: RootfsRelease[]
+  conversation_count: number
+  draining: DrainEntry[]
+  installed: RootfsArtifact[]
+  mcp_server_workspace_count: number
+  pinned_version?: string
+}
+
 export interface VersionUsageEntry {
   models: ModelUsageInfo[]
   version: RuntimeVersionResponse
@@ -2426,7 +2470,7 @@ export const PermissionDescriptions: Record<string, string> = {
   BranchesCreate: 'Create message branches for edit/regenerate',
   BranchesSwitch: 'Switch between conversation branches',
   CodeSandboxEnvironmentsManage: 'Trigger pre-fetch + cache management of sandbox rootfs environments.',
-  CodeSandboxEnvironmentsRead: 'List available sandbox environments and watch prefetch progress.',
+  CodeSandboxEnvironmentsRead: 'List rootfs versions and watch install progress.',
   CodeSandboxResourceLimitsManage: 'Update the sandbox memory/CPU/PID caps + per-exec timeout + idle-evict policy.',
   CodeSandboxResourceLimitsRead: 'Read the sandbox resource limits configuration.',
   ConversationsCreate: 'Create new chat conversations',
@@ -2555,12 +2599,12 @@ export const ApiEndpoints = {
   'Branch.getPendingApprovals': 'GET /api/branches/{branch_id}/pending-approvals',
   'Branch.list': 'GET /api/conversations/{id}/branches',
   'Chat.getUserLlmProviders': 'GET /api/chat/llm-providers',
-  'CodeSandbox.evictEnvironment': 'DELETE /api/code-sandbox/environments/{flavor}',
+  'CodeSandbox.deleteRootfsVersion': 'DELETE /api/code-sandbox/rootfs/versions/{id}',
   'CodeSandbox.getResourceLimits': 'GET /api/code-sandbox/resource-limits',
-  'CodeSandbox.listEnvironments': 'GET /api/code-sandbox/environments',
-  'CodeSandbox.listPrefetchTasks': 'GET /api/code-sandbox/prefetch',
-  'CodeSandbox.startPrefetch': 'POST /api/code-sandbox/prefetch',
-  'CodeSandbox.subscribePrefetchEvents': 'GET /api/code-sandbox/prefetch/{flavor}/events',
+  'CodeSandbox.installRootfsVersion': 'POST /api/code-sandbox/rootfs/versions/install',
+  'CodeSandbox.listRootfsVersions': 'GET /api/code-sandbox/rootfs/versions',
+  'CodeSandbox.setRootfsPin': 'POST /api/code-sandbox/rootfs/versions/set-pin',
+  'CodeSandbox.subscribeRootfsInstallProgress': 'GET /api/code-sandbox/rootfs/versions/install/subscribe',
   'CodeSandbox.updateResourceLimits': 'PUT /api/code-sandbox/resource-limits',
   'Conversation.create': 'POST /api/conversations',
   'Conversation.delete': 'DELETE /api/conversations/{id}',
@@ -2784,12 +2828,12 @@ export type ApiEndpointParameters = {
   'Branch.getPendingApprovals': { branch_id: string }
   'Branch.list': { id: string }
   'Chat.getUserLlmProviders': void
-  'CodeSandbox.evictEnvironment': { flavor: string }
+  'CodeSandbox.deleteRootfsVersion': { id: string }
   'CodeSandbox.getResourceLimits': void
-  'CodeSandbox.listEnvironments': void
-  'CodeSandbox.listPrefetchTasks': void
-  'CodeSandbox.startPrefetch': StartPrefetchBody
-  'CodeSandbox.subscribePrefetchEvents': { flavor: string }
+  'CodeSandbox.installRootfsVersion': InstallVersionRequest
+  'CodeSandbox.listRootfsVersions': void
+  'CodeSandbox.setRootfsPin': SetPinRequest
+  'CodeSandbox.subscribeRootfsInstallProgress': void
   'CodeSandbox.updateResourceLimits': UpdateCodeSandboxResourceLimits
   'Conversation.create': CreateConversationRequest
   'Conversation.delete': { id: string }
@@ -3013,12 +3057,12 @@ export type ApiEndpointResponses = {
   'Branch.getPendingApprovals': PendingApprovalsResponse
   'Branch.list': Branch[]
   'Chat.getUserLlmProviders': GetUserProvidersResponse2
-  'CodeSandbox.evictEnvironment': EnvironmentsResponse
+  'CodeSandbox.deleteRootfsVersion': VersionStatus
   'CodeSandbox.getResourceLimits': CodeSandboxResourceLimits
-  'CodeSandbox.listEnvironments': EnvironmentsResponse
-  'CodeSandbox.listPrefetchTasks': ListPrefetchTasksResponse
-  'CodeSandbox.startPrefetch': StartPrefetchResponse
-  'CodeSandbox.subscribePrefetchEvents': SSEPrefetchEvent
+  'CodeSandbox.installRootfsVersion': InstallTaskState
+  'CodeSandbox.listRootfsVersions': VersionStatus
+  'CodeSandbox.setRootfsPin': SetPinResponse
+  'CodeSandbox.subscribeRootfsInstallProgress': SSEInstallTaskEvent
   'CodeSandbox.updateResourceLimits': CodeSandboxResourceLimits
   'Conversation.create': Conversation
   'Conversation.delete': void

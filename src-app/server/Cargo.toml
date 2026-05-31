@@ -227,7 +227,7 @@ flate2.workspace = true
 # Tests need `cookies` (browser-like session round-trips) on top of the
 # workspace baseline (rustls-tls + charset + http2) plus `json` +
 # `multipart` for request bodies.
-reqwest = { workspace = true, features = ["json", "cookies", "multipart"] }
+reqwest = { workspace = true, features = ["json", "cookies", "multipart", "blocking"] }
 uuid.workspace = true
 rand.workspace = true
 serde_yaml.workspace = true

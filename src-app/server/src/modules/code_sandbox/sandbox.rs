@@ -96,7 +96,18 @@ pub async fn run_in_sandbox(
     // coexist — minimal and full both stay live once first used.
     let ensure = runtime_mount::ensure_rootfs_ready(state, flavor).await?;
     let caps = ensure.caps.clone();
-    let rootfs_dir = ensure.mount_dir;
+    let rootfs_dir = ensure.mount_dir.clone();
+
+    // Hold an inflight guard against the mounted artifact for the
+    // duration of this exec session (Plan 5 Phase 3). A pin change
+    // mid-exec sees inflight > 0 and waits to evict the mount until
+    // this guard drops at function return.
+    let _inflight = ensure.artifact_id.and_then(|id| {
+        crate::modules::code_sandbox::version_manager::acquire_inflight(
+            id,
+            crate::modules::code_sandbox::version_manager::InflightKind::Exec,
+        )
+    });
 
     // Runtime-configurable resource caps (Plan 1 §6). Async fetch from the
     // singleton; first call after process start loads from DB, every later
@@ -960,6 +971,9 @@ mod tests {
             loopback_url: "http://127.0.0.1:8080/api/code-sandbox".to_string(),
             workspace_root: PathBuf::from("/tmp/ziee-workspace"),
             host_caps: fake_host_caps(),
+            // Tests in this module exercise pure-Rust argv-builder
+            // paths only, so the live DB hook is left None.
+            pool: None,
         }
     }
 

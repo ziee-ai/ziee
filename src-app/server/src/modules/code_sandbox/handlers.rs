@@ -464,21 +464,18 @@ fn flavor_cached_size_bytes(cache_dir: &std::path::Path, flavor: &str) -> Option
     found.then_some(total)
 }
 
+
 // =====================================================================
-// REST admin surface: list environments, list+start prefetch tasks,
-// SSE progress stream. All four endpoints are typed via aide/schemars
-// so they surface in the generated openapi.json + the frontend's
-// typed TypeScript client.
+// MCP `list_sandbox_environments` tool support. The structs below are
+// consumed by `build_environments_response()` (above) which the LLM
+// calls to discover available flavors before `execute_command`. The
+// legacy REST admin endpoints (`/environments`, `/environments/{f}`,
+// `/prefetch`, `/prefetch/{f}/events`) were retired in Plan 5 Phase
+// 2c — their function is now served by the version-aware endpoints
+// in `version_handlers.rs` + the SSE channel in
+// `version_install_tasks.rs`.
 // =====================================================================
 
-use crate::modules::code_sandbox::permissions::{
-    CodeSandboxEnvironmentsManage, CodeSandboxEnvironmentsRead,
-};
-use crate::modules::code_sandbox::prefetch::{
-    self, PrefetchStatus, SSEPrefetchCompleteData, SSEPrefetchConnectedData, SSEPrefetchEvent,
-    SSEPrefetchFailedData, SSEPrefetchProgressData,
-};
-use crate::modules::code_sandbox::runtime_fetch::FetchPhase;
 use crate::modules::permissions::openapi::with_permission;
 
 #[derive(Debug, serde::Serialize, schemars::JsonSchema)]
@@ -500,339 +497,6 @@ pub struct EnvironmentsResponse {
     pub available: Vec<EnvironmentInfo>,
 }
 
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct StartPrefetchBody {
-    pub flavor: String,
-}
-
-#[derive(Debug, serde::Serialize, schemars::JsonSchema)]
-pub struct StartPrefetchResponse {
-    pub task_id: Uuid,
-    pub flavor: String,
-    pub expected_size_mb: u64,
-    pub status: PrefetchStatus,
-    /// Ready-to-use SSE URL for the frontend's EventSource (relative
-    /// to the API root).
-    pub events_url: String,
-}
-
-#[derive(Debug, serde::Serialize, schemars::JsonSchema)]
-pub struct PrefetchTaskSummary {
-    pub task_id: Uuid,
-    pub flavor: String,
-    pub status: PrefetchStatus,
-    /// RFC 3339 UTC timestamp of task start.
-    pub started_at: String,
-    pub last_phase: Option<FetchPhase>,
-    pub outcome: Option<SSEPrefetchCompleteData>,
-    pub error: Option<String>,
-}
-
-#[derive(Debug, serde::Serialize, schemars::JsonSchema)]
-pub struct ListPrefetchTasksResponse {
-    pub tasks: Vec<PrefetchTaskSummary>,
-}
-
-// ─── GET /code-sandbox/environments ───
-pub async fn list_environments_handler(
-    _auth: RequirePermissions<(CodeSandboxEnvironmentsRead,)>,
-) -> crate::common::ApiResult<Json<EnvironmentsResponse>> {
-    Ok((StatusCode::OK, Json(environments_with_mounted().await)))
-}
-
-/// `build_environments_response()` plus the `mounted` overlay, which needs to
-/// await the mount registry. Used by the list + evict HTTP handlers.
-async fn environments_with_mounted() -> EnvironmentsResponse {
-    let mut resp = build_environments_response();
-    let mounted = crate::modules::code_sandbox::runtime_mount::mounted_set().await;
-    for e in &mut resp.available {
-        e.mounted = mounted.contains(&e.flavor);
-    }
-    resp
-}
-
-pub fn list_environments_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
-    with_permission::<(CodeSandboxEnvironmentsRead,)>(op)
-        .id("CodeSandbox.listEnvironments")
-        .tag("Code Sandbox")
-        .summary("List available sandbox environments")
-        .description(
-            "Returns every rootfs flavor this server binary knows about, with \
-             description, approximate size, and whether the squashfs is currently \
-             cached locally. A `cached: false` flavor will trigger an auto-fetch \
-             on the first `execute_command` or `POST /prefetch` for that flavor."
-        )
-        .response::<200, Json<EnvironmentsResponse>>()
-        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
-}
-
-// ─── DELETE /code-sandbox/environments/{flavor} ───
-pub async fn evict_environment_handler(
-    _auth: RequirePermissions<(CodeSandboxEnvironmentsManage,)>,
-    axum::extract::Path(flavor): axum::extract::Path<String>,
-) -> crate::common::ApiResult<Json<EnvironmentsResponse>> {
-    use crate::modules::code_sandbox::types::KNOWN_FLAVORS;
-
-    // Unknown flavor → 404.
-    if !KNOWN_FLAVORS.iter().any(|m| m.flavor == flavor) {
-        return Err((
-            StatusCode::NOT_FOUND,
-            crate::common::AppError::new(
-                StatusCode::NOT_FOUND,
-                "UNKNOWN_FLAVOR",
-                format!("unknown sandbox flavor {flavor:?}"),
-            ),
-        ));
-    }
-
-    // Cache dir = the configured rootfs_path's parent (same convention as
-    // list_environments / start_prefetch; falls back to cwd when disabled).
-    let cache_dir = config::get_state()
-        .as_ref()
-        .map(|s| {
-            std::path::PathBuf::from(s.config.rootfs_path())
-                .parent()
-                .map(std::path::Path::to_path_buf)
-                .unwrap_or_else(|| std::path::PathBuf::from("."))
-        })
-        .unwrap_or_else(|| std::path::PathBuf::from("."));
-
-    // Unmount (if mounted) + delete the cached squashfs. Idempotent: a
-    // not-cached flavor is a 200 no-op. The next execute_command re-fetches.
-    let outcome =
-        crate::modules::code_sandbox::backend::active().evict_flavor(&cache_dir, &flavor).await;
-    tracing::info!(
-        flavor,
-        bytes_freed = outcome.bytes_freed,
-        was_cached = outcome.was_cached,
-        "code_sandbox: evict endpoint"
-    );
-
-    // Return the refreshed environments list so the UI updates in one call.
-    Ok((StatusCode::OK, Json(environments_with_mounted().await)))
-}
-
-pub fn evict_environment_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
-    with_permission::<(CodeSandboxEnvironmentsManage,)>(op)
-        .id("CodeSandbox.evictEnvironment")
-        .tag("Code Sandbox")
-        .summary("Evict a flavor's cached rootfs")
-        .description(
-            "Unmounts the flavor's squashfuse (if mounted) and deletes its cached \
-             squashfs, freeing disk. Idempotent — a not-cached flavor is a no-op. \
-             The next `execute_command` for the flavor re-fetches automatically. \
-             Returns the refreshed environments list (the flavor's `cached` flips \
-             to false)."
-        )
-        .response::<200, Json<EnvironmentsResponse>>()
-        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
-        .response_with::<404, (), _>(|res| res.description("Unknown flavor"))
-}
-
-// ─── GET /code-sandbox/prefetch ───
-pub async fn list_prefetch_tasks_handler(
-    _auth: RequirePermissions<(CodeSandboxEnvironmentsRead,)>,
-) -> crate::common::ApiResult<Json<ListPrefetchTasksResponse>> {
-    let tasks = prefetch::list_tasks();
-    let mut summaries: Vec<PrefetchTaskSummary> = Vec::with_capacity(tasks.len());
-    for t in tasks {
-        let snap = t.state.lock().await;
-        summaries.push(PrefetchTaskSummary {
-            task_id: t.task_id,
-            flavor: t.flavor.clone(),
-            status: snap.status,
-            started_at: chrono::DateTime::<chrono::Utc>::from(t.started_at).to_rfc3339(),
-            last_phase: snap.progress.last().map(|p| p.phase),
-            outcome: snap.outcome.as_ref().map(|o| SSEPrefetchCompleteData {
-                bytes_downloaded: o.bytes_downloaded,
-                duration_ms: o.duration_ms,
-                cosign_verified: o.cosign_verified,
-            }),
-            error: snap.error.clone(),
-        });
-    }
-    Ok((StatusCode::OK, Json(ListPrefetchTasksResponse { tasks: summaries })))
-}
-
-pub fn list_prefetch_tasks_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
-    with_permission::<(CodeSandboxEnvironmentsRead,)>(op)
-        .id("CodeSandbox.listPrefetchTasks")
-        .tag("Code Sandbox")
-        .summary("List known prefetch tasks")
-        .description(
-            "One entry per flavor; terminal-state entries persist until \
-             replaced by the next POST for the same flavor."
-        )
-        .response::<200, Json<ListPrefetchTasksResponse>>()
-        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
-}
-
-// ─── POST /code-sandbox/prefetch ───
-pub async fn start_prefetch_handler(
-    _auth: RequirePermissions<(CodeSandboxEnvironmentsManage,)>,
-    Json(body): Json<StartPrefetchBody>,
-) -> crate::common::ApiResult<Json<StartPrefetchResponse>> {
-    // Cache dir comes from the configured rootfs_path's parent
-    // (same convention used by runtime_mount + the existing MCP
-    // list_environments path).
-    let cache_dir = config::get_state()
-        .as_ref()
-        .map(|s| {
-            std::path::PathBuf::from(s.config.rootfs_path())
-                .parent()
-                .map(std::path::Path::to_path_buf)
-                .unwrap_or_else(|| std::path::PathBuf::from("."))
-        })
-        .unwrap_or_else(|| std::path::PathBuf::from("."));
-
-    // `start_or_join` returns AppError only on unknown-flavor (400);
-    // wrap with the matching status for ApiResult's tuple shape.
-    let task = prefetch::start_or_join(&cache_dir, &body.flavor)
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
-    let snap = task.state.lock().await;
-    Ok((
-        StatusCode::OK,
-        Json(StartPrefetchResponse {
-            task_id: task.task_id,
-            flavor: task.flavor.clone(),
-            expected_size_mb: task.expected_size_mb,
-            status: snap.status,
-            events_url: format!("/api/code-sandbox/prefetch/{}/events", task.flavor),
-        }),
-    ))
-}
-
-pub fn start_prefetch_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
-    with_permission::<(CodeSandboxEnvironmentsManage,)>(op)
-        .id("CodeSandbox.startPrefetch")
-        .tag("Code Sandbox")
-        .summary("Start (or join) a rootfs prefetch task")
-        .description(
-            "Idempotent: concurrent POSTs for the same flavor while a task is \
-             Running return the same task_id. The returned `events_url` is suitable \
-             for the frontend's EventSource. If the flavor is already cached, the \
-             returned status is `already_cached` and the task completes immediately."
-        )
-        .response::<200, Json<StartPrefetchResponse>>()
-        .response_with::<400, (), _>(|res| res.description("Unknown flavor"))
-        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
-}
-
-// ─── GET /code-sandbox/prefetch/{flavor}/events ───
-pub async fn subscribe_prefetch_events_handler(
-    _auth: RequirePermissions<(CodeSandboxEnvironmentsRead,)>,
-    axum::extract::Path(flavor): axum::extract::Path<String>,
-) -> crate::common::ApiResult<
-    axum::response::Sse<
-        impl futures_util::Stream<Item = Result<axum::response::sse::Event, axum::Error>>,
-    >,
-> {
-    use axum::response::sse::{Event, KeepAlive, Sse};
-
-    let task = prefetch::get_task(&flavor).ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            crate::common::AppError::new(
-                StatusCode::NOT_FOUND,
-                "PREFETCH_TASK_NOT_FOUND",
-                format!("no prefetch task for flavor {flavor:?} (POST /prefetch first)"),
-            ),
-        )
-    })?;
-
-    // Subscribe BEFORE snapshotting so we don't drop events that
-    // arrive between the snapshot and the subscribe.
-    let mut rx = task.events.subscribe();
-    let (initial_status, replay): (PrefetchStatus, Vec<_>) = {
-        let snap = task.state.lock().await;
-        (snap.status, snap.progress.clone())
-    };
-
-    let task_clone = task.clone();
-    let stream = async_stream::stream! {
-        // 1. Connected — first thing every subscriber gets.
-        yield Ok::<Event, axum::Error>(SSEPrefetchEvent::Connected(SSEPrefetchConnectedData {
-            flavor: task_clone.flavor.clone(),
-            task_id: task_clone.task_id,
-            status: initial_status,
-            expected_size_mb: task_clone.expected_size_mb,
-        }).into());
-
-        // 2. Replay buffered progress so late subscribers catch up.
-        for p in replay {
-            yield Ok(SSEPrefetchEvent::Progress(SSEPrefetchProgressData {
-                phase: p.phase,
-                message: p.message,
-            }).into());
-        }
-
-        // 3. If already terminal, emit the final event + done.
-        match initial_status {
-            PrefetchStatus::Completed | PrefetchStatus::AlreadyCached => {
-                let snap = task_clone.state.lock().await;
-                if let Some(o) = snap.outcome.as_ref() {
-                    yield Ok(SSEPrefetchEvent::Complete(SSEPrefetchCompleteData {
-                        bytes_downloaded: o.bytes_downloaded,
-                        duration_ms: o.duration_ms,
-                        cosign_verified: o.cosign_verified,
-                    }).into());
-                }
-                return;
-            }
-            PrefetchStatus::Failed => {
-                let snap = task_clone.state.lock().await;
-                if let Some(err) = snap.error.as_ref() {
-                    yield Ok(SSEPrefetchEvent::Failed(SSEPrefetchFailedData {
-                        error: err.clone(),
-                    }).into());
-                }
-                return;
-            }
-            PrefetchStatus::Running => { /* fall through to live loop */ }
-        }
-
-        // 4. Stream live events until broadcast closes (task ended).
-        loop {
-            match rx.recv().await {
-                Ok(ev) => {
-                    let is_terminal = matches!(
-                        ev,
-                        SSEPrefetchEvent::Complete(_) | SSEPrefetchEvent::Failed(_)
-                    );
-                    yield Ok(ev.into());
-                    if is_terminal { break; }
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-            }
-        }
-    };
-
-    Ok((
-        StatusCode::OK,
-        Sse::new(stream).keep_alive(KeepAlive::default()),
-    ))
-}
-
-pub fn subscribe_prefetch_events_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
-    with_permission::<(CodeSandboxEnvironmentsRead,)>(op)
-        .id("CodeSandbox.subscribePrefetchEvents")
-        .tag("Code Sandbox")
-        .summary("Subscribe to prefetch progress via SSE")
-        .description(
-            "Server-Sent Events stream of prefetch progress for the named flavor. \
-             The first event is always `connected`; the stream then replays any \
-             buffered `progress` events (so late subscribers catch up) and finally \
-             streams live events until the task reaches terminal state \
-             (`complete` or `failed`). Declaring the SSEPrefetchEvent enum as \
-             the 200 response is what surfaces the discriminated union in the \
-             generated TypeScript client."
-        )
-        .response::<200, Json<SSEPrefetchEvent>>()
-        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
-        .response_with::<404, (), _>(|res| res.description("No task for this flavor"))
-}
 
 /// Build the MCP `content[]` array for a tool result.
 ///
@@ -1581,7 +1245,9 @@ mod tests {
 
         assert_eq!(
             shape, expected,
-            "tool catalog changed — bump SANDBOX_ROOTFS_SCHEMA_VERSION + update this snapshot"
+            "tool catalog changed — coordinate a rootfs major bump (so the wipe \
+             policy in version_manager triggers across existing conversation \
+             workspaces) and update this snapshot"
         );
     }
 
@@ -1744,6 +1410,10 @@ mod tests {
                 cgroup: CgroupMode::None,
                 seccomp: SeccompMode::NotLinked,
             },
+            // These handler unit tests stub the DB layer via
+            // repository mocks, so the optional version-manager
+            // pool stays None.
+            pool: None,
         }
     }
 

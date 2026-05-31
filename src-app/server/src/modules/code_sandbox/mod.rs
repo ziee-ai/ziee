@@ -26,7 +26,6 @@ pub mod embedded;
 #[cfg(target_os = "windows")]
 pub mod wsl2_agent_embedded;
 pub mod handlers;
-pub mod prefetch;
 pub mod runtime_fetch;
 pub mod runtime_mount;
 pub mod models;
@@ -41,28 +40,9 @@ pub mod sandbox;
 pub mod streaming;
 pub mod tools;
 pub mod types;
-
-/// Embedded rootfs ↔ server compat matrix (single source of truth lives
-/// in `src-app/sandbox-rootfs/compat.toml`). The server include_str!s it
-/// at compile time so a server build is locked to the schema knowledge
-/// it was built with.
-pub const SANDBOX_COMPAT_TOML: &str =
-    include_str!("../../../../sandbox-rootfs/compat.toml");
-
-/// Embedded yanked-revision catalog. See `src-app/sandbox-rootfs/yanks.toml`.
-pub const SANDBOX_YANKS_TOML: &str =
-    include_str!("../../../../sandbox-rootfs/yanks.toml");
-
-/// Embedded known-revision sha256 map. Populated by the post-release
-/// PR-bot workflow; until then it's an empty scaffold and `fetch`
-/// callers must supply `--sha256` explicitly.
-pub const SANDBOX_KNOWN_REVISIONS_TOML: &str = include_str!("known_revisions.toml");
-
-/// Schema version this server binary expects from the mounted rootfs.
-/// Bumped only on ABI-breaking rootfs changes (Python major bump,
-/// binary path changes, layout changes). Mirrors `current_schema` in
-/// `src-app/sandbox-rootfs/compat.toml`.
-pub const SANDBOX_ROOTFS_SCHEMA_VERSION: u32 = 1;
+pub mod version_handlers;
+pub mod version_install_tasks;
+pub mod version_manager;
 
 pub use repository::CodeSandboxRepository;
 
@@ -92,56 +72,6 @@ pub fn code_sandbox_server_id() -> Uuid {
 /// "loopback" must, by definition, dial `127.0.0.1`.
 pub fn loopback_host(_server_host: &str) -> &str {
     "127.0.0.1"
-}
-
-/// Read the schema-version sentinel inside the mounted rootfs.
-/// The file lives at `<rootfs>/.ziee-sandbox-rootfs-schema` and
-/// contains a single decimal integer (e.g. `1`). Whitespace is
-/// trimmed.
-///
-/// Returns `Err` if the file is missing, is a symlink, exceeds the
-/// size cap, or its content is not a base-10 u32.
-///
-/// SECURITY: rejects symlinks AND caps read size at 64 bytes. The
-/// rootfs path is operator-configurable; a misconfig (or a stale
-/// unmount that exposes a host dir) could place a symlink at the
-/// sentinel pointing at `/dev/zero` (infinite read → boot hang) or
-/// `/proc/kcore` (multi-GB allocation → boot OOM). Bounded read +
-/// no-follow defeats both.
-pub fn probe_rootfs_schema(rootfs_path: &str) -> Result<u32, String> {
-    use std::io::Read;
-    let sentinel = std::path::Path::new(rootfs_path).join(".ziee-sandbox-rootfs-schema");
-    // Reject symlinks before opening — `read_to_string` follows them.
-    match std::fs::symlink_metadata(&sentinel) {
-        Ok(meta) => {
-            if meta.file_type().is_symlink() {
-                return Err(format!(
-                    "{} is a symlink; refusing to follow",
-                    sentinel.display()
-                ));
-            }
-            // Bound size BEFORE reading. A sentinel that's anything
-            // other than ~5 bytes is corrupt or hostile.
-            if meta.len() > 64 {
-                return Err(format!(
-                    "{} is {} bytes; refusing (cap 64)",
-                    sentinel.display(),
-                    meta.len()
-                ));
-            }
-        }
-        Err(e) => return Err(format!("stat {}: {e}", sentinel.display())),
-    }
-    let f = std::fs::File::open(&sentinel)
-        .map_err(|e| format!("open {}: {e}", sentinel.display()))?;
-    // Read into a tiny buffer so even if the metadata check above
-    // was racing a symlink swap, we still cap the read.
-    let mut buf = String::new();
-    f.take(64).read_to_string(&mut buf)
-        .map_err(|e| format!("read {}: {e}", sentinel.display()))?;
-    buf.trim()
-        .parse::<u32>()
-        .map_err(|e| format!("parse schema sentinel {:?}: {e}", buf.trim()))
 }
 
 #[cfg(test)]
@@ -184,75 +114,6 @@ mod tests {
         );
     }
 
-    // ─── rootfs schema-version probe ────────────────────────────────
-
-    #[test]
-    fn probe_rootfs_schema_reads_sentinel() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join(".ziee-sandbox-rootfs-schema"), "1\n").unwrap();
-        let got = probe_rootfs_schema(dir.path().to_str().unwrap()).expect("read");
-        assert_eq!(got, 1);
-    }
-
-    #[test]
-    fn probe_rootfs_schema_trims_whitespace() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join(".ziee-sandbox-rootfs-schema"), "  42  \n\n").unwrap();
-        let got = probe_rootfs_schema(dir.path().to_str().unwrap()).expect("read");
-        assert_eq!(got, 42);
-    }
-
-    #[test]
-    fn probe_rootfs_schema_errors_on_missing_sentinel() {
-        let dir = tempfile::tempdir().unwrap();
-        // No sentinel file written.
-        let err =
-            probe_rootfs_schema(dir.path().to_str().unwrap()).expect_err("must error");
-        // "stat" (no such file) is the first thing we try; "open" /
-        // "read" are also valid if stat passed but later steps fail.
-        assert!(
-            err.contains("stat") || err.contains("open") || err.contains("read"),
-            "err: {err}"
-        );
-    }
-
-    #[test]
-    fn probe_rootfs_schema_errors_on_malformed() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join(".ziee-sandbox-rootfs-schema"), "not-a-number").unwrap();
-        let err =
-            probe_rootfs_schema(dir.path().to_str().unwrap()).expect_err("must error");
-        assert!(err.contains("parse"), "err: {err}");
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn probe_rootfs_schema_rejects_symlink_sentinel() {
-        // SECURITY regression test: a misconfigured rootfs path could
-        // expose a symlink to /dev/zero or /proc/kcore at the sentinel,
-        // which `read_to_string` would happily follow.
-        let dir = tempfile::tempdir().unwrap();
-        std::os::unix::fs::symlink(
-            "/etc/hostname", // any existing file; we just need a symlink
-            dir.path().join(".ziee-sandbox-rootfs-schema"),
-        ).unwrap();
-        let err =
-            probe_rootfs_schema(dir.path().to_str().unwrap()).expect_err("must reject");
-        assert!(err.contains("symlink"), "err: {err}");
-    }
-
-    #[test]
-    fn probe_rootfs_schema_rejects_huge_sentinel() {
-        let dir = tempfile::tempdir().unwrap();
-        // 65 bytes of '1' — just over the 64-byte cap.
-        std::fs::write(
-            dir.path().join(".ziee-sandbox-rootfs-schema"),
-            "1".repeat(65),
-        ).unwrap();
-        let err =
-            probe_rootfs_schema(dir.path().to_str().unwrap()).expect_err("must reject");
-        assert!(err.contains("cap") || err.contains("64"), "err: {err}");
-    }
 }
 
 #[distributed_slice(MODULE_ENTRIES)]
@@ -405,6 +266,7 @@ impl AppModule for CodeSandboxModule {
             loopback_url: loopback_url.clone(),
             workspace_root: workspace_root.clone(),
             host_caps,
+            pool: Some(ctx.db_pool.clone()),
         };
         let _state_arc = config::init_state(state);
 
@@ -427,6 +289,40 @@ impl AppModule for CodeSandboxModule {
         let reaper_root = workspace_root.clone();
         tokio::spawn(async move {
             workspace_reaper(reaper_root).await;
+        });
+
+        // ---- Pin-latest-on-first-run probe (Plan 5 Phase 2) ----
+        // Reads the persisted pin; if NULL and GitHub is reachable,
+        // sets it to the latest semver release. Soft-fail: if GitHub
+        // is unreachable we log + leave the pin NULL, the next
+        // `execute_command` retries via the lazy auto-fetch path.
+        let pin_pool = ctx.db_pool.clone();
+        tokio::spawn(async move {
+            match version_manager::ensure_pin_initialized(&pin_pool).await {
+                Ok(Some(pin)) => {
+                    let installed =
+                        version_manager::list_installed(&pin_pool).await.unwrap_or_default();
+                    let downloaded: Vec<String> = installed
+                        .iter()
+                        .filter(|a| a.version == pin)
+                        .map(|a| format!("{}-{}", a.arch, a.flavor))
+                        .collect();
+                    tracing::info!(
+                        "code_sandbox: rootfs version pinned at v{}; downloaded flavors = {:?}",
+                        pin,
+                        downloaded
+                    );
+                }
+                Ok(None) => {
+                    tracing::warn!(
+                        "code_sandbox: rootfs version not yet pinned — \
+                         will pin on first reachable GitHub call"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!("code_sandbox: rootfs pin probe failed: {e}");
+                }
+            }
         });
 
         tracing::info!(

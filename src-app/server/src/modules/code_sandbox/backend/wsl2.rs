@@ -83,7 +83,13 @@ use crate::modules::code_sandbox::types::{
     CgroupMode, CodeSandboxState, HardeningCapabilities, HostCapabilities, PidNsMode,
     SandboxContext, SeccompMode,
 };
-use crate::modules::code_sandbox::SANDBOX_ROOTFS_SCHEMA_VERSION;
+/// Composite key used by `DISTROS` + `BOOT_LOCKS` so two pinned rootfs
+/// versions of the same flavor (the new pin + a draining old pin
+/// during a swap) can coexist without colliding in either registry.
+/// Plan 5 Phase 3.
+fn distro_key(version: &str, flavor: &str) -> String {
+    format!("{version}/{flavor}")
+}
 
 // ── Guest contract (paths INSIDE the imported distro) ────────────────────────
 // The distro filesystem is the flavor rootfs, so bwrap's rootfs_dir is "/"
@@ -259,15 +265,16 @@ fn ensure_reaper() {
             }
             let mut distros = DISTROS.lock().await;
             let mut evict = Vec::new();
-            for (flavor, h) in distros.iter() {
+            // `key` is `<version>/<flavor>` (Plan 5 Phase 3).
+            for (key, h) in distros.iter() {
                 if h.inflight.load(Ordering::SeqCst) == 0
                     && h.last_used.lock().await.elapsed().as_secs() >= idle_evict_secs
                 {
-                    evict.push(flavor.clone());
+                    evict.push(key.clone());
                 }
             }
-            for flavor in evict {
-                if let Some(h) = distros.remove(&flavor) {
+            for key in evict {
+                if let Some(h) = distros.remove(&key) {
                     stop_agent(&h).await;
                     // `wsl --terminate <distro>` stops THIS distro's in-VM init
                     // but does NOT free the shared WSL2 utility VM's RAM — that
@@ -279,7 +286,7 @@ fn ensure_reaper() {
                     // separately runs `wsl --shutdown`. See microsoft/WSL FAQ
                     // + #13291.
                     let _ = run_wsl(&["--terminate", &h.distro]).await;
-                    tracing::info!(flavor, distro = %h.distro, "code_sandbox: WSL2 distro evicted (idle)");
+                    tracing::info!(key = %key, distro = %h.distro, "code_sandbox: WSL2 distro evicted (idle)");
                 }
             }
         }
@@ -295,11 +302,11 @@ static DISTROS: Lazy<Mutex<HashMap<String, Arc<DistroHandle>>>> =
 static BOOT_LOCKS: Lazy<Mutex<HashMap<String, Arc<Mutex<()>>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
-async fn boot_lock_for(flavor: &str) -> Arc<Mutex<()>> {
+async fn boot_lock_for(version: &str, flavor: &str) -> Arc<Mutex<()>> {
     BOOT_LOCKS
         .lock()
         .await
-        .entry(flavor.to_string())
+        .entry(distro_key(version, flavor))
         .or_insert_with(|| Arc::new(Mutex::new(())))
         .clone()
 }
@@ -385,38 +392,43 @@ impl Wsl2Backend {
             .unwrap_or_else(|| PathBuf::from("ziee-sandbox-agent"))
     }
 
-    fn distro_name(flavor: &str) -> String {
-        format!("ziee-sandbox-{flavor}-v{SANDBOX_ROOTFS_SCHEMA_VERSION}")
+    /// WSL distro name for `(flavor, version)`. Two pinned rootfs
+    /// versions of the same flavor get distinct distros so they can
+    /// coexist during a drain-on-swap cycle. Plan 5 Phase 3.
+    fn distro_name(flavor: &str, version: &str) -> String {
+        format!("ziee-sandbox-{flavor}-v{version}")
     }
 
     /// Per-distro install dir (where `wsl --import` lays down the ext4 vhdx).
-    fn import_dir(state: &CodeSandboxState, flavor: &str) -> PathBuf {
-        cache_dir(state).join("wsl").join(Self::distro_name(flavor))
+    fn import_dir(state: &CodeSandboxState, flavor: &str, version: &str) -> PathBuf {
+        cache_dir(state).join("wsl").join(Self::distro_name(flavor, version))
     }
 
-    /// Get the warm distro for `flavor`, importing + provisioning + starting the
-    /// agent (single-flight) if needed.
+    /// Get the warm distro for `(version, flavor)`, importing +
+    /// provisioning + starting the agent (single-flight) if needed.
     async fn ensure_distro(
         &self,
         state: &CodeSandboxState,
         flavor: &str,
         tarball: &Path,
+        version: &str,
     ) -> Result<Arc<DistroHandle>, AppError> {
+        let key = distro_key(version, flavor);
         // Fast path: warm distro (don't hold the lock across a boot).
-        if let Some(h) = DISTROS.lock().await.get(flavor) {
+        if let Some(h) = DISTROS.lock().await.get(&key) {
             return Ok(h.clone());
         }
-        let boot_lock = boot_lock_for(flavor).await;
+        let boot_lock = boot_lock_for(version, flavor).await;
         let _boot = boot_lock.lock().await;
-        if let Some(h) = DISTROS.lock().await.get(flavor) {
+        if let Some(h) = DISTROS.lock().await.get(&key) {
             return Ok(h.clone());
         }
 
-        let distro = Self::distro_name(flavor);
+        let distro = Self::distro_name(flavor, version);
 
         // 1. Import the distro if it isn't already registered (idempotent).
         if !distro_registered(&distro).await {
-            let import_dir = Self::import_dir(state, flavor);
+            let import_dir = Self::import_dir(state, flavor, version);
             std::fs::create_dir_all(&import_dir)
                 .map_err(|e| AppError::internal_error(format!("create WSL import dir: {e}")))?;
             run_wsl(&[
@@ -536,7 +548,7 @@ impl Wsl2Backend {
             inflight: AtomicUsize::new(0),
             sem: Semaphore::new(max_concurrent),
         });
-        DISTROS.lock().await.insert(flavor.to_string(), handle.clone());
+        DISTROS.lock().await.insert(key, handle.clone());
         ensure_reaper();
         Ok(handle)
     }
@@ -928,6 +940,15 @@ impl SandboxBackend for Wsl2Backend {
             // The agent builds + applies the shared seccomp filter itself.
             seccomp: SeccompMode::NotLinked,
         };
+        let artifact_id = outcome.artifact_id;
+        let artifact_version = outcome.version.clone();
+        crate::modules::code_sandbox::version_manager::register_mount(
+            artifact_id,
+            &artifact_version,
+            std::env::consts::ARCH,
+            flavor,
+            PathBuf::from(GUEST_ROOTFS_MOUNT),
+        );
         Ok(EnsureOutcome {
             caps: Arc::new(guest_caps),
             // The imported distro filesystem IS the rootfs. The rootfs image
@@ -940,6 +961,8 @@ impl SandboxBackend for Wsl2Backend {
             // `--unshare-user`.
             mount_dir: PathBuf::from(GUEST_ROOTFS_MOUNT),
             fetch_info: Some(outcome),
+            artifact_id: Some(artifact_id),
+            artifact_version: Some(artifact_version),
         })
     }
 
@@ -952,12 +975,16 @@ impl SandboxBackend for Wsl2Backend {
         flavor: &str,
     ) -> Result<SandboxRunResult, AppError> {
         // Locate (fetch if needed) the flavor tarball; idempotent on cache hit.
+        // Capture `version` so `ensure_distro` can name + cache the
+        // per-(version, flavor) WSL distro distinctly from any
+        // draining old-pin distro (Plan 5 Phase 3).
         let cache = cache_dir(state);
-        let tarball =
+        let fetched =
             runtime_fetch::ensure_fetched_format(&cache, flavor, RootfsFormat::TarZst, |_| {})
                 .await
-                .map_err(|e| AppError::internal_error(format!("rootfs fetch failed: {e}")))?
-                .installed_path;
+                .map_err(|e| AppError::internal_error(format!("rootfs fetch failed: {e}")))?;
+        let tarball = fetched.installed_path;
+        let version = fetched.version;
 
         // Runtime-configurable resource caps (Plan 1 §6). Snapshot once per
         // exec so the host argv (prlimit) and the guest cgroup (via
@@ -1026,7 +1053,7 @@ impl SandboxBackend for Wsl2Backend {
         let mut attempt = 0;
         loop {
             attempt += 1;
-            let h = self.ensure_distro(state, flavor, &tarball).await?;
+            let h = self.ensure_distro(state, flavor, &tarball, &version).await?;
             let _permit = h.sem.acquire().await.expect("distro semaphore never closed");
             h.inflight.fetch_add(1, Ordering::SeqCst);
             let _guard = InflightGuard(h.clone());
@@ -1051,7 +1078,7 @@ impl SandboxBackend for Wsl2Backend {
                     );
                     drop(_guard);
                     drop(_permit);
-                    evict_dead_distro(flavor, &h).await;
+                    evict_dead_distro(&version, flavor, &h).await;
                     continue;
                 }
                 Err(e) => return Err(e),
@@ -1082,30 +1109,96 @@ impl SandboxBackend for Wsl2Backend {
             stop_agent(&h).await;
             let _ = run_wsl(&["--terminate", &h.distro]).await;
             tracing::info!(
-                flavor,
+                key = %flavor,
                 distro = %h.distro,
                 "code_sandbox: WSL2 distro stopped on shutdown"
             );
         }
     }
 
+    /// Legacy admin-DELETE evict by flavor: tear down EVERY pinned
+    /// version's distro for this flavor + delete every cached tarball.
+    /// Idempotent. The version-aware path is `evict_artifact` (single
+    /// `(version, flavor)` tear-down).
     async fn evict_flavor(&self, cache_dir: &Path, flavor: &str) -> EvictOutcome {
-        // Stop + unregister the distro if running/registered.
-        if let Some(h) = DISTROS.lock().await.remove(flavor) {
+        // Stop + unregister every running distro for this flavor (one
+        // per pinned version, post Plan 5 Phase 3).
+        let suffix_match = format!("/{flavor}");
+        let stale_keys: Vec<String> = DISTROS
+            .lock()
+            .await
+            .keys()
+            .filter(|k| k.as_str() == flavor || k.ends_with(&suffix_match))
+            .cloned()
+            .collect();
+        for key in stale_keys {
+            if let Some(h) = DISTROS.lock().await.remove(&key) {
+                stop_agent(&h).await;
+                let _ = run_wsl(&["--unregister", &h.distro]).await;
+            }
+        }
+
+        // Delete every `*-{flavor}.tar.zst` in the version-subdirs the
+        // version-manager owns.
+        let suffix = format!("-{flavor}.tar.zst");
+        let mut bytes_freed = 0u64;
+        let mut was_cached = false;
+        fn walk(
+            dir: &Path,
+            suffix: &str,
+            bytes_freed: &mut u64,
+            was_cached: &mut bool,
+        ) {
+            if let Ok(rd) = std::fs::read_dir(dir) {
+                for entry in rd.flatten() {
+                    let p = entry.path();
+                    if p.is_dir() {
+                        walk(&p, suffix, bytes_freed, was_cached);
+                    } else if p
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(|n| n.ends_with(suffix))
+                    {
+                        *was_cached = true;
+                        if let Ok(m) = std::fs::metadata(&p) {
+                            *bytes_freed += m.len();
+                        }
+                        let _ = std::fs::remove_file(&p);
+                    }
+                }
+            }
+        }
+        walk(cache_dir, &suffix, &mut bytes_freed, &mut was_cached);
+        EvictOutcome { bytes_freed, was_cached }
+    }
+
+    /// Version-aware evict (Plan 5 Phase 3 drain-on-swap): tear down
+    /// ONLY the `(version, flavor)` distro the drain task observed
+    /// finishing.
+    async fn evict_artifact(
+        &self,
+        mount_dir: &Path,
+        flavor: &str,
+        version: &str,
+    ) -> EvictOutcome {
+        let key = distro_key(version, flavor);
+        if let Some(h) = DISTROS.lock().await.remove(&key) {
             stop_agent(&h).await;
             let _ = run_wsl(&["--unregister", &h.distro]).await;
         } else {
-            // Not warm but may still be registered from a prior run.
-            let distro = Self::distro_name(flavor);
+            // Cold but maybe still registered from a prior run.
+            let distro = Self::distro_name(flavor, version);
             if distro_registered(&distro).await {
                 let _ = run_wsl(&["--unregister", &distro]).await;
             }
         }
-        // Delete the cached tarball for this flavor.
+        // Delete the cached `<arch>-<flavor>.tar.zst` next to mount_dir
+        // (the per-version cache subdir the version manager passed).
+        let version_cache_dir = mount_dir.parent().unwrap_or(mount_dir);
         let suffix = format!("-{flavor}.tar.zst");
-        let mut bytes_freed = 0;
+        let mut bytes_freed = 0u64;
         let mut was_cached = false;
-        if let Ok(rd) = std::fs::read_dir(cache_dir) {
+        if let Ok(rd) = std::fs::read_dir(version_cache_dir) {
             for entry in rd.flatten() {
                 let p = entry.path();
                 if p.file_name()
@@ -1182,21 +1275,25 @@ impl SandboxBackend for Wsl2Backend {
         state: &CodeSandboxState,
         flavor: &str,
     ) -> Result<Option<super::vm_long_lived::LongLivedSession>, AppError> {
-        // Ensure the per-flavor distro is provisioned + the agent is up
-        // (cold-start path identical to one-shot `run`). MUST fetch the
-        // `.tar.zst` packaging, not the squashfs: `wsl --import` only accepts
-        // a tarball, and `ensure_distro` passes this straight to it. Using the
-        // squashfs-defaulting `ensure_fetched` here (as this previously did)
-        // made every long-lived/MCP sandbox spawn fail with
-        // `bsdtar: Unrecognized archive format`, while the one-shot `run`
-        // path — which already used `TarZst` — worked.
+        // Ensure the per-(version, flavor) distro is provisioned + the
+        // agent is up (cold-start path identical to one-shot `run`).
+        // MUST fetch the `.tar.zst` packaging, not the squashfs: `wsl
+        // --import` only accepts a tarball, and `ensure_distro` passes
+        // this straight to it — the squashfs-defaulting `ensure_fetched`
+        // would fail every long-lived/MCP spawn with `bsdtar:
+        // Unrecognized archive format`.
         let cache = cache_dir(state);
-        let tarball =
-            runtime_fetch::ensure_fetched_format(&cache, flavor, RootfsFormat::TarZst, |_| {})
-                .await
-                .map_err(|e| AppError::internal_error(format!("rootfs fetch failed: {e}")))?
-                .installed_path;
-        let h = self.ensure_distro(state, flavor, &tarball).await?;
+        let fetched = runtime_fetch::ensure_fetched_format(
+            &cache,
+            flavor,
+            RootfsFormat::TarZst,
+            |_| {},
+        )
+        .await
+        .map_err(|e| AppError::internal_error(format!("rootfs fetch failed: {e}")))?;
+        let tarball = fetched.installed_path;
+        let version = fetched.version;
+        let h = self.ensure_distro(state, flavor, &tarball, &version).await?;
 
         // Hold an inflight count for the session's lifetime so the
         // distro reaper waits for live MCP sessions to drain before
@@ -1294,7 +1391,10 @@ fn test_distro_name(tarball: &Path) -> String {
     // dev's test corpus and keeps the distro name well under WSL's
     // 64-char limit.
     let short = hex::encode(&digest[..6]);
-    format!("ziee-sandbox-test-{short}-v{SANDBOX_ROOTFS_SCHEMA_VERSION}")
+    // Test distros use a hardcoded "test" version suffix — they're
+    // tarball-keyed (TEST_DISTROS) so they don't need to coexist with
+    // production pinned-version distros (DISTROS).
+    format!("ziee-sandbox-test-{short}-vtest")
 }
 
 /// Resolve the tarball path to import from a path the trait gave us.
@@ -1532,13 +1632,15 @@ async fn stop_agent(h: &DistroHandle) {
 }
 
 /// Remove a dead/unreachable distro from the registry (only if it's still the
-/// current handle for the flavor) and stop its agent, so the next
-/// `ensure_distro` re-boots (mirrors macOS B1). Idempotent.
-async fn evict_dead_distro(flavor: &str, dead: &Arc<DistroHandle>) {
+/// current handle for that (version, flavor) — don't clobber a concurrent
+/// fresh boot) and stop its agent, so the next `ensure_distro` re-boots
+/// (mirrors macOS B1). Idempotent.
+async fn evict_dead_distro(version: &str, flavor: &str, dead: &Arc<DistroHandle>) {
+    let key = distro_key(version, flavor);
     {
         let mut distros = DISTROS.lock().await;
-        if distros.get(flavor).is_some_and(|h| Arc::ptr_eq(h, dead)) {
-            distros.remove(flavor);
+        if distros.get(&key).is_some_and(|h| Arc::ptr_eq(h, dead)) {
+            distros.remove(&key);
         }
     }
     stop_agent(dead).await;

@@ -25,9 +25,10 @@
 //!   - Else: find the `.squashfs` for `flavor` in the cache dir,
 //!     spawn `squashfuse -f` with `PR_SET_PDEATHSIG=SIGTERM`, poll
 //!     for the mount to appear.
-//!   - Run `probe_rootfs_schema` + `probe_pid_ns` against the
-//!     flavor-specific mount. Cache the resulting
-//!     `HardeningCapabilities` in [`READY[flavor]`].
+//!   - Read the version sentinel (informational only, post Plan 5
+//!     Phase 2) + run `probe_pid_ns` against the flavor-specific
+//!     mount. Cache the resulting `HardeningCapabilities` in
+//!     `READY[<version>/<flavor>]`.
 //! - **Subsequent calls for the same flavor**: atomic load from the
 //!   per-flavor `OnceCell`. Cached failure is sticky.
 //! - **Subsequent calls for a different flavor**: spawn squashfuse
@@ -58,7 +59,6 @@ use crate::modules::code_sandbox::runtime_fetch::{
     self, FetchError, FetchOutcome, FetchPhase,
 };
 use crate::modules::code_sandbox::types::{CodeSandboxState, HardeningCapabilities};
-use crate::modules::code_sandbox::{probe_rootfs_schema, SANDBOX_ROOTFS_SCHEMA_VERSION};
 
 // =====================================================================
 // Per-flavor lazy-init state
@@ -89,11 +89,19 @@ struct MountedRootfs {
 /// `fetch_info` is populated when THIS call did the auto-fetch; the
 /// chat UI uses it to render a "fetched X (Y MB in Z s)" system
 /// note. `None` when the flavor's squashfs was already in the cache.
+///
+/// `artifact_id` identifies the row in `code_sandbox_rootfs_artifacts`
+/// that this mount corresponds to. Callers that wish to participate
+/// in the drain-on-swap protocol (Plan 5 Phase 3) acquire an
+/// `InflightGuard` against it via
+/// `version_manager::acquire_inflight(artifact_id, kind)`.
 #[derive(Debug, Clone)]
 pub struct EnsureOutcome {
     pub caps: Arc<HardeningCapabilities>,
     pub mount_dir: PathBuf,
     pub fetch_info: Option<FetchOutcome>,
+    pub artifact_id: Option<uuid::Uuid>,
+    pub artifact_version: Option<String>,
 }
 
 // =====================================================================
@@ -106,8 +114,6 @@ pub enum ReadyError {
     NoRootfsForFlavor { flavor: String, cache_dir: PathBuf },
     FetchFailed { flavor: String, reason: String },
     MountFailed { reason: String },
-    SchemaMismatch { found: u32, expected: u32 },
-    SchemaReadFailed { reason: String },
     PidNsDisabled { reason: String },
     // ── VM-backend lazy-init failures (Plan 1 §5) ──
     // Cross-platform but currently only constructed on macOS/Windows; kept on
@@ -140,10 +146,9 @@ impl ReadyError {
                 StatusCode::SERVICE_UNAVAILABLE,
                 "SANDBOX_ROOTFS_NOT_FETCHED",
                 format!(
-                    "sandbox cannot start: no rootfs squashfs for flavor {flavor:?} in {}. \
+                    "sandbox cannot start: no rootfs artifact for flavor {flavor:?} in {}. \
                      This is normally auto-fetched on first use; the failure indicates \
-                     either no network at startup or the flavor isn't in the embedded \
-                     known_revisions.toml.",
+                     either no network at startup or the pinned version is missing on GitHub.",
                     cache_dir.display()
                 ),
             ),
@@ -160,22 +165,6 @@ impl ReadyError {
                 StatusCode::SERVICE_UNAVAILABLE,
                 "SANDBOX_MOUNT_FAILED",
                 format!("sandbox cannot start: rootfs mount failed: {reason}"),
-            ),
-            ReadyError::SchemaMismatch { found, expected } => AppError::new(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "SANDBOX_SCHEMA_MISMATCH",
-                format!(
-                    "sandbox cannot start: rootfs schema v{found} but this server \
-                     binary expects v{expected}. Upgrade the rootfs."
-                ),
-            ),
-            ReadyError::SchemaReadFailed { reason } => AppError::new(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "SANDBOX_SCHEMA_UNREADABLE",
-                format!(
-                    "sandbox cannot start: rootfs schema sentinel unreadable: \
-                     {reason}. The rootfs may be corrupt."
-                ),
             ),
             ReadyError::PidNsDisabled { reason } => AppError::new(
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -227,9 +216,38 @@ pub async fn ensure_rootfs_ready(
     state: &CodeSandboxState,
     flavor: &str,
 ) -> Result<EnsureOutcome, AppError> {
+    // The READY map is keyed on (version, flavor) so a
+    // pin change invalidates the cached EnsureOutcome — the next call
+    // mounts the new version against a fresh cell while live execs
+    // continue to read the old cell's mount_dir from their captured
+    // EnsureOutcome. Two pinned versions can coexist during drain.
+    let pin = match state.pool.as_ref() {
+        Some(pool) => {
+            // Audit B8: propagate hard DB errors here. The fn already
+            // returns `Ok(None)` for the soft cases (GitHub
+            // unreachable, no usable releases) so what's left is the
+            // `current_pin` SELECT / `set pin` UPDATE failing — in
+            // either of those we MUST NOT silently fall back to the
+            // legacy unkeyed cell, which would mount a stale rootfs
+            // for the next exec.
+            crate::modules::code_sandbox::version_manager::ensure_pin_initialized(pool)
+                .await
+                .map_err(|e| AppError::internal_error(format!(
+                    "code_sandbox: rootfs pin resolution failed: {e}"
+                )))?
+                .unwrap_or_default()
+        }
+        None => String::new(),
+    };
+    let key = if pin.is_empty() {
+        flavor.to_string()
+    } else {
+        format!("{pin}/{flavor}")
+    };
+
     let ready_map = READY.get_or_init(|| async { DashMap::new() }).await;
     let cell: ReadyCell = ready_map
-        .entry(flavor.to_string())
+        .entry(key.clone())
         .or_insert_with(|| Arc::new(OnceCell::new()))
         .clone();
     let cached = cell
@@ -242,10 +260,10 @@ pub async fn ensure_rootfs_ready(
             // (fetch network blip, mount timeout) would otherwise wedge the
             // flavor until an admin evict. Drop the cell so the next call
             // re-inits (recovers when the network/mount recovers; a persistent
-            // failure like a schema mismatch just re-fails cheaply — cache hit,
-            // mount skip, sentinel re-read). `remove_if` with identity guards
+            // failure like a PID-ns probe failure just re-fails cheaply —
+            // cache hit, mount skip). `remove_if` with identity guards
             // against clobbering a fresh cell another caller just inserted.
-            ready_map.remove_if(flavor, |_, v| Arc::ptr_eq(v, &cell));
+            ready_map.remove_if(&key, |_, v| Arc::ptr_eq(v, &cell));
             Err(e.to_app_error())
         }
     }
@@ -254,62 +272,64 @@ pub async fn ensure_rootfs_ready(
 async fn do_first_init(state: &CodeSandboxState, flavor: &str) -> ReadyResult {
     let cache_dir = derive_cache_dir(state);
 
-    // 0. Auto-fetch on miss. If the cache dir already has a
-    // .squashfs for this flavor, we skip the network entirely
-    // (idempotent — `fetch_flavor` short-circuits on cache hit
-    // too, but skipping it here avoids the tokio::spawn_blocking
-    // overhead for the common warm path).
-    let (sqfs_path, fetch_info) =
-        match find_cached_squashfs_for_flavor(&cache_dir, flavor) {
-            Some(p) => (p, None),
-            None => {
-                tracing::info!(
-                    flavor,
-                    cache_dir = %cache_dir.display(),
-                    "code_sandbox: no cached rootfs for flavor; auto-fetching"
-                );
-                let log_flavor = flavor.to_string();
-                let outcome = runtime_fetch::ensure_fetched(
-                    &cache_dir,
-                    flavor,
-                    move |p| {
-                        // Use tracing for now; Phase 4's structured
-                        // fetch_info field is the user-facing surface.
-                        tracing::info!(
-                            flavor = %log_flavor,
-                            phase = ?p.phase,
-                            "code_sandbox: fetch progress: {}",
-                            p.message
-                        );
-                    },
-                )
-                .await
-                .map_err(|e| ReadyError::FetchFailed {
-                    flavor: flavor.to_string(),
-                    reason: fetch_error_message(&e),
-                })?;
-                (outcome.installed_path.clone(), Some(outcome))
-            }
-        };
+    // 0. Resolve + auto-fetch. `ensure_fetched` is idempotent: a warm
+    //    cache hit short-circuits without touching the network, so we
+    //    don't need a separate fast-path here. The returned outcome
+    //    carries the pinned `version` plus stats for `fetch_info`.
+    let log_flavor = flavor.to_string();
+    let outcome = runtime_fetch::ensure_fetched(
+        &cache_dir,
+        flavor,
+        move |p| {
+            tracing::info!(
+                flavor = %log_flavor,
+                phase = ?p.phase,
+                "code_sandbox: fetch progress: {}",
+                p.message
+            );
+        },
+    )
+    .await
+    .map_err(|e| ReadyError::FetchFailed {
+        flavor: flavor.to_string(),
+        reason: fetch_error_message(&e),
+    })?;
+    let sqfs_path = outcome.installed_path.clone();
+    let fetch_version = outcome.version.clone();
+    let artifact_id = outcome.artifact_id;
+    // Surface `fetch_info` only when this call actually downloaded.
+    let fetch_info = if outcome.bytes_downloaded > 0 {
+        Some(outcome)
+    } else {
+        None
+    };
 
+    // 1. Mount dir is parented at the per-version cache subdir so two
+    //    versions of the same flavor never collide. Stem includes the
+    //    full asset filename so a future swap can mount the new
+    //    version alongside the draining old one.
     let stem = sqfs_path
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("sandbox-rootfs")
         .to_string();
-    let mount_dir = cache_dir.join(&stem);
+    let mount_dir = cache_dir.join(&fetch_version).join(&stem);
 
-    // 1. Mount the squashfs (skip if already mounted by harness/prior).
-    mount_if_needed(&sqfs_path, &mount_dir, flavor).await?;
+    mount_if_needed(&sqfs_path, &mount_dir, flavor, &fetch_version).await?;
 
-    // 2. Schema sentinel check against the flavor's mount.
-    let schema = probe_rootfs_schema(mount_dir.to_str().unwrap_or_default())
-        .map_err(|reason| ReadyError::SchemaReadFailed { reason })?;
-    if schema != SANDBOX_ROOTFS_SCHEMA_VERSION {
-        return Err(ReadyError::SchemaMismatch {
-            found: schema,
-            expected: SANDBOX_ROOTFS_SCHEMA_VERSION,
-        });
+    // 2. Best-effort version sentinel read — informational only. The
+    //    DB row is the source of truth for which release is mounted;
+    //    a mismatch here is logged but no longer rejected.
+    if let Ok(found) = read_version_sentinel(&mount_dir)
+        && !found.is_empty()
+        && found != fetch_version
+    {
+        tracing::warn!(
+            mount = %mount_dir.display(),
+            expected = %fetch_version,
+            found = %found,
+            "code_sandbox: rootfs version sentinel disagrees with DB row"
+        );
     }
 
     // 3. PID-ns probe — needs a config view that points at THIS
@@ -323,11 +343,37 @@ async fn do_first_init(state: &CodeSandboxState, flavor: &str) -> ReadyResult {
     )
     .map_err(|reason| ReadyError::PidNsDisabled { reason })?;
 
+    // Register the live mount with the version manager so a
+    // subsequent pin-change can drain + evict against the right
+    // inflight counter. Idempotent: a re-mount under the same
+    // artifact_id reuses the existing `MountedArtifact`.
+    let arch = std::env::consts::ARCH.to_string();
+    crate::modules::code_sandbox::version_manager::register_mount(
+        artifact_id,
+        &fetch_version,
+        &arch,
+        flavor,
+        mount_dir.clone(),
+    );
+
     Ok(EnsureOutcome {
         caps: Arc::new(caps),
         mount_dir,
         fetch_info,
+        artifact_id: Some(artifact_id),
+        artifact_version: Some(fetch_version),
     })
+}
+
+/// Read the `.ziee-sandbox-rootfs-version` sentinel inside the mounted
+/// rootfs. Best-effort: returns an empty string on dev builds (where
+/// `build.sh --version` was unset) and a parse-friendly error on
+/// missing/malformed sentinels. Soft because the DB row is now the
+/// source of truth — a sentinel mismatch is just a breadcrumb for
+/// debugging a misconfigured deployment.
+fn read_version_sentinel(mount_dir: &Path) -> std::io::Result<String> {
+    let p = mount_dir.join(".ziee-sandbox-rootfs-version");
+    std::fs::read_to_string(p).map(|s| s.trim().to_string())
 }
 
 fn fetch_error_message(e: &FetchError) -> String {
@@ -362,40 +408,60 @@ pub fn cache_dir(state: &CodeSandboxState) -> PathBuf {
     derive_cache_dir(state)
 }
 
-/// `true` if a `.squashfs` for `flavor` is already in the cache dir, so
-/// picking that flavor will NOT trigger a download. Used by the
-/// download-consent path to decide whether to prompt the user.
-pub fn is_flavor_cached(state: &CodeSandboxState, flavor: &str) -> bool {
-    find_cached_squashfs_for_flavor(&derive_cache_dir(state), flavor).is_some()
-}
-
-/// Find the most-recently-modified `.squashfs` in `cache_dir` whose
-/// filename ends with `-{flavor}.squashfs`. Returns `None` if no
-/// matching file exists.
-fn find_cached_squashfs_for_flavor(cache_dir: &Path, flavor: &str) -> Option<PathBuf> {
-    let suffix = format!("-{flavor}.squashfs");
-    let mut matches: Vec<PathBuf> = std::fs::read_dir(cache_dir)
-        .ok()?
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| {
-            p.file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.ends_with(&suffix))
-        })
-        .collect();
-    matches.sort_by_key(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok());
-    matches.last().cloned()
+/// `true` if a downloaded artifact for the currently-pinned version +
+/// `flavor` already exists on disk, so picking that flavor will NOT
+/// trigger a download. Used by the download-consent path in
+/// `streaming.rs` to decide whether to prompt the user before
+/// auto-fetching multi-hundred-MB rootfs payloads.
+///
+/// Conservative on errors: any DB / FS failure resolves to "not
+/// cached", so the consent prompt fires (over-prompting is far less
+/// bad than silently downloading without consent).
+pub async fn is_flavor_cached(state: &CodeSandboxState, flavor: &str) -> bool {
+    use crate::modules::code_sandbox::version_manager;
+    let pool = match state.pool.as_ref() {
+        Some(p) => p,
+        None => return false,
+    };
+    let pinned = match version_manager::current_pin(pool).await {
+        Ok(Some(v)) => v,
+        _ => return false,
+    };
+    let arch = std::env::consts::ARCH;
+    let package = if cfg!(target_os = "windows") {
+        "tar.zst"
+    } else {
+        "squashfs"
+    };
+    match version_manager::find_artifact(pool, &pinned, arch, flavor, package).await {
+        Ok(Some(row)) => std::path::PathBuf::from(&row.artifact_path).exists(),
+        _ => false,
+    }
 }
 
 // =====================================================================
 // squashfuse spawn (foreground + PDEATHSIG)
 // =====================================================================
 
+/// Compose the MOUNTED registry key. Two pinned versions of the same
+/// flavor must coexist in the registry during a swap-drain cycle (the
+/// old version's squashfuse stays alive until inflight==0 even though
+/// the new pin is already serving fresh `execute_command`s), so the
+/// key encodes BOTH coordinates. Plan 5: "`MOUNTED`
+/// registry key flips from `flavor` to `(version, arch, flavor)`."
+fn mount_key(version: &str, flavor: &str) -> String {
+    if version.is_empty() {
+        flavor.to_string()
+    } else {
+        format!("{version}/{flavor}")
+    }
+}
+
 async fn mount_if_needed(
     sqfs_path: &Path,
     mount_dir: &Path,
     flavor: &str,
+    version: &str,
 ) -> Result<(), ReadyError> {
     // Idempotency: if the mount dir already has `usr/`, it's mounted
     // (by the test harness, an operator pre-mount via `just
@@ -411,7 +477,38 @@ async fn mount_if_needed(
         return Ok(());
     }
 
-    if let Err(e) = std::fs::create_dir_all(mount_dir) {
+    // Reaching here means the idempotency check above did NOT see a
+    // healthy mount (`usr/` didn't stat). But `mount_dir` can still
+    // EXIST as a STALE/DEAD FUSE mount: the squashfuse daemon died
+    // (server SIGKILL/OOM, or — in tests — a prior per-test server that
+    // shared this cache exited) but the kernel mount entry lingers, so
+    // `usr/` returns ENOTCONN ("Transport endpoint is not connected")
+    // rather than NotFound. In that state `create_dir_all` fails with
+    // EEXIST and a fresh squashfuse can't mount over the stale entry.
+    // Ensure the mount point exists, clearing any stale/dead FUSE mount
+    // first. A dead FUSE mount makes `mkdir` return EEXIST while `stat`
+    // fails (so we can't gate on `mount_dir.exists()`), and a fresh
+    // squashfuse can't mount over the lingering entry. We do NOT find a
+    // *healthy* mount here — that was reused above — so anything present
+    // is dead and safe to clear. `fusermount -u -z` (lazy) can return
+    // before the kernel fully releases the point, so retry the mkdir a
+    // few times.
+    let mut mkdir_result = std::fs::create_dir_all(mount_dir);
+    #[cfg(target_os = "linux")]
+    {
+        let mut attempts = 0;
+        while mkdir_result.is_err() && attempts < 5 {
+            let _ = Command::new("fusermount")
+                .arg("-u")
+                .arg("-z")
+                .arg(mount_dir)
+                .status();
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            mkdir_result = std::fs::create_dir_all(mount_dir);
+            attempts += 1;
+        }
+    }
+    if let Err(e) = mkdir_result {
         return Err(ReadyError::MountFailed {
             reason: format!("mkdir {}: {e}", mount_dir.display()),
         });
@@ -461,7 +558,7 @@ async fn mount_if_needed(
     {
         let mut g = slot.lock().await;
         g.insert(
-            flavor.to_string(),
+            mount_key(version, flavor),
             MountedRootfs {
                 child,
                 mount_dir: mount_dir.to_path_buf(),
@@ -537,10 +634,22 @@ pub async fn shutdown() {
 }
 
 /// Snapshot of flavors currently mounted (server-spawned squashfuse live).
-/// Empty if no flavor has been mounted yet.
+/// Empty if no flavor has been mounted yet. Projects the (version,
+/// flavor) composite MOUNTED keys back to a flavor-only set for the
+/// `/code-sandbox/environments` endpoint (removed Phase 2c).
 pub async fn mounted_set() -> std::collections::HashSet<String> {
     match MOUNTED.get() {
-        Some(slot) => slot.lock().await.keys().cloned().collect(),
+        Some(slot) => slot
+            .lock()
+            .await
+            .keys()
+            .map(|k| {
+                // Composite key shape "<version>/<flavor>" — split off the
+                // flavor; fall back to the whole key for legacy entries
+                // (pre-version-aware mounts).
+                k.rsplit_once('/').map(|(_, f)| f.to_string()).unwrap_or_else(|| k.clone())
+            })
+            .collect(),
         None => std::collections::HashSet::new(),
     }
 }
@@ -552,32 +661,62 @@ pub struct EvictOutcome {
     pub was_cached: bool,
 }
 
-/// Evict a flavor from the cache: unmount its squashfuse (if mounted),
-/// drop its READY/MOUNTED registry entries, and delete its cached
-/// `*-{flavor}.squashfs` file(s) under `cache_dir` plus any mirror mount dir.
-/// Idempotent — returns `was_cached: false`, `bytes_freed: 0` when nothing is
-/// present. The next `ensure_rootfs_ready` for the flavor re-fetches + re-mounts.
+/// Evict a flavor from the cache: unmount EVERY pinned version's
+/// squashfuse process for this flavor (if mounted), drop their
+/// READY/MOUNTED registry entries, and delete all cached
+/// `*-{flavor}.squashfs` files under `cache_dir`. Used by the legacy
+/// `/code-sandbox/environments/{flavor}` admin DELETE endpoint.
+/// Idempotent.
+///
+/// For version-aware eviction (the Plan 5 Phase 3 drain-on-swap
+/// path), use [`evict_by_version_flavor`] instead — it kills only
+/// the specific `(version, flavor)` mount and leaves any sibling
+/// version of the same flavor running.
 pub async fn evict_flavor(cache_dir: &Path, flavor: &str) -> EvictOutcome {
-    // 1. Drop the READY cell so the next use re-initializes from scratch.
+    // 1. Drop READY cells for any (version, flavor) entry matching
+    //    this flavor. Also flush the version-manager mount registry
+    //    so MOUNTED_ARTIFACTS doesn't leak stale entries until the
+    //    next server restart.
     if let Some(map) = READY.get() {
-        map.remove(flavor);
+        let suffix = format!("/{flavor}");
+        map.retain(|k, _| k != flavor && !k.ends_with(&suffix));
+    }
+    let deregistered =
+        crate::modules::code_sandbox::version_manager::deregister_mounts_for_flavor(flavor);
+    if deregistered > 0 {
+        tracing::debug!(
+            flavor,
+            deregistered,
+            "code_sandbox: evict_flavor flushed version-manager registry"
+        );
     }
 
-    // 2. Unmount the squashfuse we spawned (if any) — mirrors shutdown().
+    // 2. Unmount every squashfuse spawn for this flavor (across all
+    //    pinned versions). Same defensive sequence as shutdown().
     if let Some(slot) = MOUNTED.get() {
-        let taken = slot.lock().await.remove(flavor);
-        if let Some(MountedRootfs { mut child, mount_dir }) = taken {
-            if let Some(pid) = child.id() {
-                #[cfg(target_os = "linux")]
-                unsafe {
-                    libc::kill(pid as libc::pid_t, libc::SIGTERM);
+        let suffix = format!("/{flavor}");
+        let stale_keys: Vec<String> = slot
+            .lock()
+            .await
+            .keys()
+            .filter(|k| k.as_str() == flavor || k.ends_with(&suffix))
+            .cloned()
+            .collect();
+        for key in stale_keys {
+            let taken = slot.lock().await.remove(&key);
+            if let Some(MountedRootfs { mut child, mount_dir }) = taken {
+                if let Some(pid) = child.id() {
+                    #[cfg(target_os = "linux")]
+                    unsafe {
+                        libc::kill(pid as libc::pid_t, libc::SIGTERM);
+                    }
+                    #[cfg(not(target_os = "linux"))]
+                    let _ = pid;
+                    let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
                 }
-                #[cfg(not(target_os = "linux"))]
-                let _ = pid;
-                let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
+                let _ = Command::new("fusermount").arg("-u").arg(&mount_dir).status().await;
+                let _ = std::fs::remove_dir(&mount_dir);
             }
-            let _ = Command::new("fusermount").arg("-u").arg(&mount_dir).status().await;
-            let _ = std::fs::remove_dir(&mount_dir);
         }
     }
 
@@ -618,5 +757,78 @@ pub async fn evict_flavor(cache_dir: &Path, flavor: &str) -> EvictOutcome {
         }
     }
 
+    EvictOutcome { bytes_freed, was_cached }
+}
+
+/// Version-aware evict: tear down ONLY the `(version, flavor)`
+/// mount, leaving any sibling version of the same flavor (or any
+/// other flavor) untouched. drain-on-swap path.
+///
+/// `version_cache_dir` is the per-version cache subdir
+/// (`<rootfs cache root>/<version>/`) so the cached squashfs at
+/// that path is removed too.
+pub async fn evict_by_version_flavor(
+    version_cache_dir: &Path,
+    version: &str,
+    flavor: &str,
+) -> EvictOutcome {
+    let key = mount_key(version, flavor);
+
+    // 1. Drop the matching READY cell so the next call re-mounts.
+    if let Some(map) = READY.get() {
+        map.remove(&key);
+    }
+
+    // 2. Unmount the specific squashfuse for this (version, flavor).
+    if let Some(slot) = MOUNTED.get() {
+        let taken = slot.lock().await.remove(&key);
+        if let Some(MountedRootfs { mut child, mount_dir }) = taken {
+            if let Some(pid) = child.id() {
+                #[cfg(target_os = "linux")]
+                unsafe {
+                    libc::kill(pid as libc::pid_t, libc::SIGTERM);
+                }
+                #[cfg(not(target_os = "linux"))]
+                let _ = pid;
+                let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
+            }
+            let _ = Command::new("fusermount").arg("-u").arg(&mount_dir).status().await;
+            let _ = std::fs::remove_dir(&mount_dir);
+        }
+    }
+
+    // 3. Remove the per-version cached squashfs for THIS flavor.
+    let suffix = format!("-{flavor}.squashfs");
+    let mut bytes_freed: u64 = 0;
+    let mut was_cached = false;
+    if let Ok(rd) = std::fs::read_dir(version_cache_dir) {
+        for entry in rd.flatten() {
+            let p = entry.path();
+            let is_match = p
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.ends_with(&suffix));
+            if !is_match {
+                continue;
+            }
+            was_cached = true;
+            if let Ok(meta) = std::fs::metadata(&p) {
+                bytes_freed += meta.len();
+            }
+            if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
+                let mnt = version_cache_dir.join(stem);
+                let _ = Command::new("fusermount").arg("-u").arg(&mnt).status().await;
+                let _ = std::fs::remove_dir_all(&mnt);
+            }
+            let _ = std::fs::remove_file(&p);
+        }
+    }
+    tracing::info!(
+        version,
+        flavor,
+        bytes_freed,
+        was_cached,
+        "code_sandbox: evict_by_version_flavor complete"
+    );
     EvictOutcome { bytes_freed, was_cached }
 }

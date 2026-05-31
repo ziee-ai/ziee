@@ -286,7 +286,7 @@ async fn run_execute(
         cfg.require_download_consent,
         cfg.auto_download_under_mb,
         size_mb,
-        runtime_mount::is_flavor_cached(&state, &flavor),
+        runtime_mount::is_flavor_cached(&state, &flavor).await,
         runtime_fetch::is_fetch_in_flight(&flavor),
     );
 
@@ -328,7 +328,7 @@ async fn run_execute(
     }
 
     // --- Fetch with progress (if still uncached) -----------------------
-    if !runtime_mount::is_flavor_cached(&state, &flavor) {
+    if !runtime_mount::is_flavor_cached(&state, &flavor).await {
         let cache_dir = runtime_mount::cache_dir(&state);
         let txp = tx.clone();
         let token = progress_token.clone();

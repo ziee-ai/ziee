@@ -31,11 +31,22 @@ use crate::modules::code_sandbox::types::CodeSandboxState;
 /// Result of a successful sandboxed MCP spawn. The variant carries the
 /// platform-specific lifecycle owner so dropping `McpSandboxTransport`
 /// tears the sandboxed child down.
+///
+/// The `_inflight` field on each variant is the
+/// [`version_manager::InflightGuard`] that keeps the swap-drain task
+/// (Plan 5 Phase 3) waiting until this MCP server's transport drops.
+/// Field order matters — Rust drops fields in declaration order, so
+/// the transport-owner is listed first (so the bwrap child / VM
+/// session torn down first) and the inflight guard last (decrements
+/// the per-(version, arch, flavor) counter once the use is fully over).
 pub enum McpSandboxTransport {
     /// Linux: already-spawned bwrap subprocess, ready to feed into
     /// rmcp via `().serve(transport)`. `TokioChildProcess` owns the
     /// `Child` and kills it on drop.
-    LinuxBwrap(TokioChildProcess),
+    LinuxBwrap {
+        child: TokioChildProcess,
+        _inflight: Option<crate::modules::code_sandbox::version_manager::InflightGuard>,
+    },
     /// VM backend: long-lived agent session + the per-process duplex
     /// stream. The caller splits `io` into halves and passes them to
     /// `rmcp::transport::AsyncRwTransport::new_client(read, write)`.
@@ -44,6 +55,7 @@ pub enum McpSandboxTransport {
     VmSession {
         io: vm_long_lived::ProcessIo,
         session: vm_long_lived::LongLivedSession,
+        _inflight: Option<crate::modules::code_sandbox::version_manager::InflightGuard>,
     },
 }
 
@@ -135,6 +147,20 @@ pub async fn start_mcp_in_sandbox(
     state: &CodeSandboxState,
     req: McpSpawnRequest,
 ) -> Result<McpSandboxTransport, AppError> {
+    use crate::modules::code_sandbox::runtime_mount;
+    use crate::modules::code_sandbox::version_manager::{self, InflightKind};
+
+    // Resolve the rootfs first so we know which artifact_id this
+    // sandboxed MCP server is pinned to. ensure_rootfs_ready is
+    // idempotent on the warm path. The InflightGuard we acquire
+    // here keeps the drain-on-swap task from evicting the mount as
+    // long as this MCP server's transport (held by the caller via
+    // `McpSandboxTransport`) is alive.
+    let ensure = runtime_mount::ensure_rootfs_ready(state, DEFAULT_MCP_FLAVOR).await?;
+    let inflight = ensure
+        .artifact_id
+        .and_then(|id| version_manager::acquire_inflight(id, InflightKind::Mcp));
+
     // Backends opt in by overriding `open_long_lived_session`; Linux
     // inherits the default `Ok(None)` and falls through to the
     // host-bwrap path below.
@@ -142,16 +168,16 @@ pub async fn start_mcp_in_sandbox(
         .open_long_lived_session(state, DEFAULT_MCP_FLAVOR)
         .await?
     {
-        return spawn_in_vm_session(state, req, session).await;
+        return spawn_in_vm_session(state, req, session, inflight).await;
     }
 
     #[cfg(target_os = "linux")]
     {
-        return spawn_on_linux_host(state, req).await;
+        return spawn_on_linux_host(state, req, inflight).await;
     }
     #[cfg(not(target_os = "linux"))]
     {
-        let _ = (state, req);
+        let _ = (state, req, inflight);
         Err(AppError::internal_error(
             "MCP run-in-sandbox: no backend available on this host",
         ))
@@ -171,6 +197,7 @@ async fn spawn_in_vm_session(
     state: &CodeSandboxState,
     req: McpSpawnRequest,
     session: vm_long_lived::LongLivedSession,
+    inflight: Option<crate::modules::code_sandbox::version_manager::InflightGuard>,
 ) -> Result<McpSandboxTransport, AppError> {
     // Re-resolve against the rootfs (rejects uvx/npx/node/deno on v1 VM).
     let (guest_command, guest_prepended) = resolve_command_for_guest(&req.original_command)?;
@@ -216,7 +243,11 @@ async fn spawn_in_vm_session(
     let io = session
         .spawn(bwrap_path, guest_argv, None, None)
         .await?;
-    Ok(McpSandboxTransport::VmSession { io, session })
+    Ok(McpSandboxTransport::VmSession {
+        io,
+        session,
+        _inflight: inflight,
+    })
 }
 
 /// Build the guest-side bwrap argv for a MCP spawn. Keeps a separate
@@ -293,6 +324,7 @@ fn build_guest_mcp_argv(
 async fn spawn_on_linux_host(
     state: &CodeSandboxState,
     req: McpSpawnRequest,
+    inflight: Option<crate::modules::code_sandbox::version_manager::InflightGuard>,
 ) -> Result<McpSandboxTransport, AppError> {
     use std::os::unix::process::CommandExt;
     use std::path::Path;
@@ -410,7 +442,10 @@ async fn spawn_on_linux_host(
     // Spawn done — child has its own dup of read_fd; drop ours.
     drop(seccomp_pipe);
 
-    Ok(McpSandboxTransport::LinuxBwrap(child))
+    Ok(McpSandboxTransport::LinuxBwrap {
+        child,
+        _inflight: inflight,
+    })
 }
 
 #[cfg(test)]
