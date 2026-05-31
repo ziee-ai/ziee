@@ -600,9 +600,24 @@ impl HttpMcpClient {
 
         let timeout_secs = server.timeout_seconds.max(1) as u64;
 
+        // `pool_max_idle_per_host(0)` — do NOT reuse idle keep-alive connections.
+        // A proxy/tunnel/LB in front of the server (e.g. a Coder workspace-app
+        // tunnel, nginx, a cloud LB) can silently drop an idle keep-alive
+        // connection half-open (no FIN/RST). reqwest would then hand that dead
+        // connection to the next request (e.g. `notifications/initialized` right
+        // after a successful `initialize`), whose write blackholes until the
+        // overall timeout fires — surfacing as "error sending request for url".
+        // Forcing a fresh connection per request avoids that entirely. This only
+        // disables reuse of *idle* connections across separate requests; it does
+        // NOT affect *active* long-lived SSE streams (standalone GET-SSE,
+        // tool-call POST-SSE), which reqwest holds open for their whole lifetime.
+        // Cost is one extra handshake per request — negligible here (sessions are
+        // ephemeral per tool call; built-in servers are localhost).
+
         // Regular client has an overall timeout
         let client = Client::builder()
             .timeout(Duration::from_secs(timeout_secs))
+            .pool_max_idle_per_host(0)
             .default_headers(headers.clone())
             .build()
             .map_err(|e| AppError::internal_error(format!("Failed to create HTTP client: {}", e)))?;
@@ -610,6 +625,7 @@ impl HttpMcpClient {
         // Streaming client: only connect timeout (no overall timeout — SSE streams can be long)
         let stream_client = Client::builder()
             .connect_timeout(Duration::from_secs(timeout_secs))
+            .pool_max_idle_per_host(0)
             .default_headers(headers)
             .build()
             .map_err(|e| AppError::internal_error(format!("Failed to create stream client: {}", e)))?;
