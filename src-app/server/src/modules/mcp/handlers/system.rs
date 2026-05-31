@@ -8,11 +8,13 @@ use axum::{
     extract::{Extension, Path, Query},
     http::StatusCode,
 };
+use schemars::JsonSchema;
+use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
-    common::{ApiResult, AppError, PaginationQuery},
+    common::{ApiResult, AppError},
     core::EventBus,
     modules::permissions::{RequirePermissions, with_permission},
 };
@@ -28,15 +30,54 @@ use super::super::{
 // System Handlers
 // =====================================================
 
+/// Query params for the system MCP server list — extends pagination
+/// with server-side `search` (name/display_name/description ILIKE)
+/// and `status` (enabled / disabled, translated to a bool predicate).
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ListSystemServersQuery {
+    #[serde(default = "default_page")]
+    pub page: u32,
+    #[serde(default = "default_per_page")]
+    pub per_page: u32,
+    #[serde(default)]
+    pub search: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+}
+
+fn default_page() -> u32 {
+    1
+}
+
+fn default_per_page() -> u32 {
+    20
+}
+
 /// List all system MCP servers
 #[debug_handler]
 pub async fn list_system_servers(
     _auth: RequirePermissions<(McpServersAdminRead,)>,
-    Query(params): Query<PaginationQuery>,
+    Query(params): Query<ListSystemServersQuery>,
 ) -> ApiResult<Json<McpServerListResponse>> {
+    let search = params
+        .search
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let enabled = match params.status.as_deref() {
+        Some("enabled") => Some(true),
+        Some("disabled") => Some(false),
+        _ => None,
+    };
+
     let response = Repos
         .mcp
-        .list_system_servers(params.page as i64, params.per_page as i64)
+        .list_system_servers(
+            params.page as i64,
+            params.per_page as i64,
+            search,
+            enabled,
+        )
         .await?;
 
     Ok((StatusCode::OK, Json(response)))

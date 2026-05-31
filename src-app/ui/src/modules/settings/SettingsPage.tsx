@@ -1,9 +1,9 @@
 import { Button, Dropdown, Flex, Menu, Result, theme, Typography } from 'antd'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
+import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { IoIosArrowDown, IoMdSettings } from 'react-icons/io'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { Stores } from '@/core/stores'
 import { evaluatePermission } from '@/core/permissions'
 import type { SettingsPageSlot } from '@/modules/settings/types/SettingsSlots'
@@ -11,7 +11,21 @@ import type { SettingsPageSlot } from '@/modules/settings/types/SettingsSlots'
 export default function SettingsPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const windowMinSize = useWindowMinSize()
+  // Drive layout from the settings page's OWN container width
+  // (via ResizeObserver on `containerRef`). Independent of the
+  // viewport AND of `mainContentWidth` — guarantees the layout
+  // flip is keyed to the actual horizontal room the settings
+  // page has, regardless of what's happening upstream in the
+  // AppLayout (sidebar collapse, window resize, embedded chrome).
+  const containerRef = useRef<HTMLDivElement>(null)
+  const minSize = useElementMinSize(containerRef)
+  // The settings layout needs the side-menu (~180px) + a content
+  // column wide enough for cards/forms (~440px) to feel non-cramped
+  // — that's ~620px total. Use `sm` (≤640px) as the threshold so
+  // the menu folds into the mobile dropdown the moment the page
+  // itself drops below the comfortable two-column width, not at
+  // the much tighter `xs` (≤480) which the page rarely hits.
+  const useMobileLayout = minSize.sm
   const { token } = theme.useToken()
 
   const { slots } = Stores.ModuleSystem
@@ -134,14 +148,17 @@ export default function SettingsPage() {
   )
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div
+      ref={containerRef}
+      className="h-full flex flex-col overflow-hidden"
+    >
       {/* Page Header */}
       <HeaderBarContainer>
         <div className="h-full flex items-center justify-between w-full">
           <Typography.Title level={4} className="!m-0 !leading-tight truncate">
             Settings
           </Typography.Title>
-          {windowMinSize.xs && (
+          {useMobileLayout && (
             <div className="flex flex-1 items-center px-2">
               <Dropdown
                 styles={{
@@ -205,7 +222,7 @@ export default function SettingsPage() {
       {/* Page Content */}
       <div className="flex flex-1 overflow-hidden">
         {/* Desktop Sidebar */}
-        {!windowMinSize.xs && (
+        {!useMobileLayout && (
           <div className="w-fit">
             <SettingsMenu />
           </div>

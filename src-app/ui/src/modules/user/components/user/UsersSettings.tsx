@@ -19,6 +19,7 @@ import {
   Popconfirm,
   Spin,
   Switch,
+  Tooltip,
   Typography,
 } from 'antd'
 import { useEffect } from 'react'
@@ -203,12 +204,16 @@ export function UsersSettings() {
             title="Users"
             extra={
               <Can permission={Permissions.UsersCreate}>
-                <Button
-                  type="text"
-                  icon={<PlusOutlined aria-hidden="true" />}
-                  onClick={() => Stores.CreateUserDrawer.openCreateUserDrawer()}
-                  aria-label="Create user"
-                />
+                <Tooltip title="Create user">
+                  <Button
+                    type="text"
+                    icon={<PlusOutlined aria-hidden="true" />}
+                    onClick={() =>
+                      Stores.CreateUserDrawer.openCreateUserDrawer()
+                    }
+                    aria-label="Create user"
+                  />
+                </Tooltip>
               </Can>
             }
           >

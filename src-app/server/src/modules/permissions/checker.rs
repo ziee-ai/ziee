@@ -77,6 +77,7 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             last_login_at: None,
+            password_changed_at: None,
         }
     }
 

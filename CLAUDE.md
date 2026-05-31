@@ -7,6 +7,10 @@ Essential documentation for developing Ziee, a full-stack application with Rust 
 ## Quick Start
 
 ```bash
+# One-time setup (or after any dep bump):
+npm install                          # hoists deps for BOTH UI workspaces
+cd src-app && cargo check --workspace  # builds the entire Rust workspace
+
 # Backend
 cd src-app/server
 CONFIG_FILE=config/dev.yaml cargo run
@@ -17,6 +21,23 @@ npm run dev
 ```
 
 Access at http://localhost:5173
+
+### Monorepo layout
+
+- **Rust** — single workspace at `src-app/Cargo.toml` listing 9 member
+  crates. Shared dep versions live in `[workspace.dependencies]`; bump
+  once there, every member picks it up. One `Cargo.lock` at
+  `src-app/Cargo.lock`. Cargo's config (`POSTGRESQL_VERSION` etc.) is
+  workspace-wide at `src-app/.cargo/config.toml`.
+- **npm** — root `/package.json` declares `workspaces:
+  ["src-app/ui", "src-app/desktop/ui"]`. `npm install` from the repo
+  root hoists shared deps into `/node_modules`. One
+  `/package-lock.json`. `overrides` pins react/react-dom/typescript
+  across workspaces.
+- **Drift guard** — `npx syncpack lint` (or `just sync-check`) flags
+  any shared dep whose version differs between
+  `src-app/ui/package.json` and `src-app/desktop/ui/package.json`.
+  Rules live in `/.syncpackrc.json`.
 
 ---
 
@@ -415,8 +436,27 @@ everything else (download, sha256 + cosign verify, mount, unmount).
    - **Windows:** `wsl --update` to ≥ 2.5.10 / 2.6.1 (`probe_host`
      enforces this; older runtimes are refused with a clear log). The
      server imports the per-flavor distro + provisions it on first
-     `execute_command` (bubblewrap + rsync from inside the distro);
-     no further host setup needed.
+     `execute_command` (bubblewrap + rsync from inside the distro).
+     **Two one-time admin-shell steps** the user must run before the
+     sandbox is usable:
+
+     1. Hyper-V Administrators group (resolves the WSL utility VM's
+        VmId via `hcsdiag list`):
+        ```powershell
+        net localgroup "Hyper-V Administrators" $env:USERNAME /add
+        # Sign out + back in so the group SID attaches at the next login.
+        ```
+
+     2. AF_HYPERV port-template GUID registration (the
+        `HV_GUID_VSOCK_TEMPLATE` family is not auto-routable from the
+        Windows host to a WSL guest's AF_VSOCK listener; vmcompute
+        rejects connect attempts with WSA 10060 unless the specific
+        GUID is registered):
+        ```powershell
+        scripts/register-sandbox-vsock-ports.ps1
+        # Registers ports 10001..10100 + runs `wsl --shutdown` so
+        # vmcompute picks up the new registrations at the next VM boot.
+        ```
 2. Set `code_sandbox.enabled: true` in config.
 3. Boot the server. The startup log shows
    `code_sandbox: registered (rootfs will mount on first execute_command)`.
@@ -460,6 +500,95 @@ sudo chown -R <server-uid>:<server-gid> /sys/fs/cgroup/ziee-sandbox.slice
 See [`src-app/sandbox-rootfs/RELEASE-RUNBOOK.md`](./src-app/sandbox-rootfs/RELEASE-RUNBOOK.md)
 for the bootstrap script (`scripts/bootstrap-first-rootfs-release.sh`)
 and the ongoing release workflow.
+
+---
+
+## Local LLM Runtime — testing
+
+The `llm_local_runtime` module turns local engines (llama.cpp /
+mistral.rs subprocesses) into an OpenAI-compatible provider via a
+same-port reverse proxy at `/api/local-llm/v1/*`. The test suite covers
+the full lifecycle without needing a published engine release.
+
+The engine library code — binary download/extract/cache, GGUF/safetensors
+metadata parsing, the per-engine settings vocabulary (`LlamaCppSettings` /
+`MistralRsSettings`), and the health state machine — lives in
+`src-app/server/src/modules/llm_local_runtime/engine/`, folded in from the
+former standalone `llm-runtime` crate (now deleted; the server was its sole
+consumer). The per-engine CLI arg-builders are in `deployment/local.rs`
+(`llamacpp_argv` / `mistralrs_argv`); a model's `engine_settings` JSONB
+deserializes into the typed settings, and the health state machine is wired
+into `auto_start.rs`'s crash path (exponential backoff + a flap cap that
+gives up after 5 crashes / 60s instead of re-spawning forever).
+
+### Test fixtures
+
+- **`stub-engine`** (`src-app/stub-engine/`, a workspace
+  member, `publish = false`) — a tiny axum OpenAI-compatible server
+  (`/health`, `/v1/chat/completions` incl. SSE, `/v1/embeddings`,
+  `/v1/models`). It's spawned by the *real* deployment path exactly as if
+  it were `llama-server`, so spawn → health → proxy forward → bearer
+  rewrite → SSE all run for real; only token generation is canned. It
+  ignores unknown llama-server flags; behaviour knobs come via the request
+  body (`stub_hang_ms`, `stub_force_status`) or a `stub-unhealthy` path
+  sentinel (env is wiped by the deployment's `env_clear`).
+- **`MockReleaseServer`** (`src-app/server/tests/llm_local_runtime/mock_release.rs`)
+  — packages the stub-engine as a release artifact and serves it from a
+  loopback HTTP server, so `POST /versions/download` exercises the full
+  download → extract → cache → register path. Mirrors
+  `code_sandbox/mirror_fixture.rs`.
+
+### Debug-only test env vars (compiled out of release builds via `cfg!(debug_assertions)`)
+
+- `LLM_RUNTIME_RELEASE_MIRROR` / `LLM_RUNTIME_API_MIRROR` — override the
+  GitHub release/API hosts in `llm_local_runtime/engine/download.rs` so the
+  download path resolves against the mock release server.
+- `LLM_RUNTIME_REAPER_TICK_MS` — shorten the idle-reaper's 60s tick so
+  idle-eviction / drain tests observe behaviour in seconds
+  (`llm_local_runtime/reaper.rs`).
+
+These are the same testability-seam pattern as code_sandbox's
+`CODE_SANDBOX_ROOTFS_MIRROR`; they cannot be set in a release build.
+
+### Test tiers
+
+| Tier | Where | Needs | Notes |
+|---|---|---|---|
+| 1 unit | in-source `#[cfg(test)]` in `proxy.rs`, `engine/{health,metadata,download,error}.rs`, `deployment/local.rs` (argv builders), `ai-providers/model_registry.rs` | nothing (Postgres only to *compile* the server lib) | token cache, state machine, GGUF parse, mirror-default, argv-shape |
+| 2 integration | `server/tests/llm_local_runtime/*_test.rs` | Postgres + stub-engine; `model_files_real_test` also needs `HUGGINGFACE_API_KEY` + network | proxy auth/forward, lifecycle, reaper/drain, settings, token rotation, provider create, gpu-detect, sse-logs, validation, engine download, supervision (flap cap) |
+| gold | `server/tests/llm_local_runtime/gold_smoke.rs` (`#[ignore]`) | a real `llama-server` + tiny GGUF | env-gated: `ZIEE_REAL_LLAMA_SERVER`, `ZIEE_REAL_GGUF` |
+| 3 E2E | `ui/tests/e2e/12-local-runtime/` | Playwright; engine flows need an engine mirror | UI surface specs run engine-free; `04-engine-lifecycle` skips unless `ZIEE_E2E_ENGINE_MIRROR` is set |
+
+```bash
+# Tier 1
+cd src-app && cargo test --lib -p ziee llm_local_runtime:: && cargo test -p ai-providers
+
+# Tier 2 (needs the HF key for the real-download test)
+source src-app/server/tests/.env.test
+cargo test --test integration_tests llm_local_runtime:: -- --test-threads=1 \
+    2>&1 | tee local-runtime-int-$(date +%Y%m%d-%H%M%S).log
+
+# Gold smoke (manual, real engine)
+ZIEE_REAL_LLAMA_SERVER=/path/llama-server ZIEE_REAL_GGUF=/path/tiny.gguf \
+    cargo test --test integration_tests -- --ignored llm_local_runtime::gold_smoke
+
+# E2E (UI surface) — always --workers=1
+cd src-app/ui && npm run test:e2e -- tests/e2e/12-local-runtime --workers=1
+```
+
+**Build the stub first** (the mock fixture builds it on demand, but
+pre-building avoids a nested cargo call during tests):
+`cargo build -p stub-engine`.
+
+**Engine settings (canonical names):** llama.cpp — `ctx_size`,
+`n_gpu_layers`, `batch_size`, `threads`, `embeddings`, `rope_freq_base`,
+`rope_freq_scale`; mistral.rs — `max_seqs`, `prefix_cache_n`, `dtype`,
+`model_format`. These are the keys a model's `engine_settings` JSONB must
+use (NOT the old `context_size`); the arg-builders deserialize + validate
+them. mistral.rs uses the `gguf` / `plain` subcommand form — those flags
+are **not yet verified against a real `mistralrs-server` binary** (no
+binary available), only against the (now-deleted) reference crate + the
+argv-shape unit tests; confirm against `--help` before relying on it.
 
 ---
 

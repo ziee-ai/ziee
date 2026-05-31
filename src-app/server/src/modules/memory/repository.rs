@@ -34,12 +34,18 @@ impl MemoryRepository {
 
     // ── user_memories CRUD ──────────────────────────────────────────
 
-    /// List own memories. Soft-deleted rows excluded.
+    /// List own memories with optional server-side filters. Soft-deleted
+    /// rows excluded. Each filter is a noop when None — the `$x::text IS
+    /// NULL` short-circuit lets the planner skip the predicate entirely.
+    /// Search is case-insensitive substring match on `content`.
     pub async fn list_for_user(
         &self,
         user_id: Uuid,
         limit: i64,
         offset: i64,
+        search: Option<&str>,
+        kind: Option<&str>,
+        source: Option<&str>,
     ) -> Result<Vec<UserMemory>, AppError> {
         let rows = sqlx::query_as!(
             UserMemory,
@@ -60,13 +66,20 @@ impl MemoryRepository {
                 last_recalled_at as "last_recalled_at: _",
                 recall_count
             FROM user_memories
-            WHERE user_id = $1 AND deleted_at IS NULL
+            WHERE user_id = $1
+              AND deleted_at IS NULL
+              AND ($4::text IS NULL OR content ILIKE '%' || $4 || '%')
+              AND ($5::text IS NULL OR kind = $5)
+              AND ($6::text IS NULL OR source = $6)
             ORDER BY updated_at DESC
             LIMIT $2 OFFSET $3
             "#,
             user_id,
             limit,
-            offset
+            offset,
+            search,
+            kind,
+            source,
         )
         .fetch_all(&self.pool)
         .await
@@ -74,11 +87,30 @@ impl MemoryRepository {
         Ok(rows)
     }
 
-    /// Count own memories (live).
-    pub async fn count_for_user(&self, user_id: Uuid) -> Result<i64, AppError> {
+    /// Count own memories (live) with the same optional server-side
+    /// filters as `list_for_user`. Total must respect the same predicates
+    /// or the UI's `<Pagination total>` lies and you get phantom pages.
+    pub async fn count_for_user(
+        &self,
+        user_id: Uuid,
+        search: Option<&str>,
+        kind: Option<&str>,
+        source: Option<&str>,
+    ) -> Result<i64, AppError> {
         let n = sqlx::query_scalar!(
-            r#"SELECT COUNT(*) as "count!" FROM user_memories WHERE user_id = $1 AND deleted_at IS NULL"#,
-            user_id
+            r#"
+            SELECT COUNT(*) as "count!"
+            FROM user_memories
+            WHERE user_id = $1
+              AND deleted_at IS NULL
+              AND ($2::text IS NULL OR content ILIKE '%' || $2 || '%')
+              AND ($3::text IS NULL OR kind = $3)
+              AND ($4::text IS NULL OR source = $4)
+            "#,
+            user_id,
+            search,
+            kind,
+            source,
         )
         .fetch_one(&self.pool)
         .await

@@ -156,26 +156,23 @@ check-rootfs-reproducibility:
 server:
     cd src-app/server && CONFIG_FILE=config/dev.yaml cargo run
 
-# One-time test prerequisites: builds the minimal sandbox squashfs
-# that tier-4/6 tests dispatch into via the libkrun (Mac) / bwrap
-# (Linux) / WSL2 (Windows) backend. Idempotent — skips if cached.
-test-prereqs:
-    scripts/build-test-rootfs.sh
-
 # Run the full backend test suite, including tier-4 (45 tests that
-# now dispatch through SandboxBackend::exec_raw_argv on all platforms).
-# Depends on test-prereqs so the squashfs is always present.
-test: test-prereqs
+# dispatch through SandboxBackend::exec_raw_argv on all platforms).
+# Tier-4/6 fetch the real published rootfs from the
+# `ziee-ai/sandbox-rootfs` GitHub release on demand (cached under
+# `.ziee-cache/sandbox-rootfs`), so there is no local build step — just
+# network access on the first run. Pin a different release via
+# `ZIEE_SANDBOX_TEST_TAG`.
+test:
     cd src-app/server && \
         bash -c 'source tests/.env.test && cargo test --test integration_tests -- --test-threads=1'
 
-# Same as `test` but also runs tier-6 e2e + tier-5 LLM tests (marked
-# `#[ignore]` because they need extra harness setup: tier-6 requires a
-# `enabled_test_server` extension that stages the test rootfs + fakes
-# `known_revisions.toml` on Mac/Windows; tier-5 needs ANTHROPIC_API_KEY
-# and costs ~$0.30/run). Use this in CI / pre-release validation, not
-# routine dev cycles.
-test-all: test-prereqs
+# Same as `test` but also runs tier-6 e2e + tier-5 LLM tests (tier-5 is
+# `#[ignore]` — needs ANTHROPIC_API_KEY and costs ~$0.30/run). Tier-6
+# boots a real server that fetches + cosign-verifies + mounts the rootfs
+# from GitHub. Use this in CI / pre-release validation, not routine dev
+# cycles.
+test-all:
     cd src-app/server && \
         bash -c 'source tests/.env.test && cargo test --test integration_tests -- --test-threads=1 --include-ignored'
 
@@ -189,6 +186,127 @@ ui:
 # Outputs in src-app/ui/docs/antd-diagnostics/<date>/. See FRONTEND_DEPS.md.
 antd-check:
     cd src-app/ui && ./scripts/antd-diagnose.sh
+
+# ─── Desktop (Tauri) app ────────────────────────────────────────────
+
+# Run the desktop app in dev mode (Tauri window + hot-reload Vite).
+desktop-dev:
+    cd src-app/desktop/tauri && npx tauri dev
+
+# Build a release bundle (.dmg on macOS, .deb/.AppImage on Linux,
+# .msi on Windows). Output: src-app/desktop/tauri/target/release/bundle/.
+desktop-build:
+    cd src-app/desktop/tauri && npx tauri build
+
+# Same but unsigned + debug profile, for faster iteration.
+desktop-build-debug:
+    cd src-app/desktop/tauri && npx tauri build --debug
+
+# Install npm deps for both UI workspaces in one shot. With npm
+# workspaces (root /package.json), `npm install` hoists shared deps
+# to the repo's root node_modules and dedupes across workspaces.
+desktop-deps:
+    npm install
+
+# Check for dependency drift between core UI and desktop UI
+# package.json files. Exits non-zero if any shared dep version
+# differs (with the exception of intentionally split deps configured
+# in /.syncpackrc.json). Wire into CI to catch drift early.
+sync-check:
+    npx --no-install syncpack lint
+
+# Auto-fix mismatched dependency versions across workspaces by
+# rewriting the lower-version package.json to match the higher.
+# Run sync-check after to confirm clean.
+sync-fix:
+    npx --no-install syncpack fix-mismatches
+
+# Pin sqlx to the 0.8.x line in the workspace's `src-app/Cargo.lock`.
+# pgvector 0.4 accepts sqlx `>= 0.8, < 0.10` and cargo's resolver picks
+# 0.9 for it independently of the rest of the tree (which is pinned to
+# 0.8.x by ziee's `sqlx = "0.8.6"` + macros feature). Without this pin,
+# the two sqlx versions coexist and `HalfVector: sqlx::Type<Postgres>`
+# trait impls (which live in 0.9) don't apply to ziee's 0.8 query
+# builders → ~12 compile errors in the server lib.
+#
+# Run after every `cargo update`. No-op if already pinned.
+workspace-cargo-pin-sqlx:
+    @bash -c 'cd src-app && \
+        if cargo tree -i sqlx@0.9.0 2>/dev/null | grep -q pgvector; then \
+            echo "==> pinning pgvector→sqlx onto 0.8.6"; \
+            cargo update -p sqlx@0.9.0 --precise 0.8.6; \
+        else \
+            echo "==> sqlx already pinned to 0.8.x in lock"; \
+        fi'
+
+# Run desktop tests across all three layers (L1 + L2 + L3 + the
+# legacy Playwright suite). L2 and L3 are heavy and gated on built
+# artifacts — invoke them individually if you don't have a fresh
+# bundle.
+#
+# Layer breakdown:
+#   L1 — Tauri command unit tests via tauri::test::mock_builder
+#        (`tests/tauri_commands_test.rs`). Fast, no external deps.
+#   L2 — Spawn-binary smoke that boots the production binary against
+#        an isolated tempdir, hits /api/health, then SIGTERMs
+#        (`tests/spawn_binary_smoke.rs`, `#[ignore]`). Needs the
+#        release binary built. Real embedded-PG bringup ~30s.
+#   L3 — WebDriver E2E against the fully-bundled .app via
+#        tauri-driver (`desktop/ui/tests/tauri-driver/smoke.mjs`).
+#        Needs `cargo install tauri-driver` + `safaridriver --enable`
+#        on macOS. See that dir's README.md for setup.
+desktop-test: desktop-test-rust desktop-test-e2e
+
+desktop-test-rust: workspace-cargo-pin-sqlx
+    cd src-app/desktop/tauri && cargo test
+
+desktop-test-e2e:
+    cd src-app/desktop/ui && npm run test:e2e
+
+# L1 only — fast iteration on Tauri command tests.
+desktop-test-l1: workspace-cargo-pin-sqlx
+    cd src-app/desktop/tauri && cargo test --test tauri_commands_test
+
+# L2 — spawn-binary smoke. Builds release binary if missing, then
+# runs the ignored test.
+desktop-test-l2: workspace-cargo-pin-sqlx
+    cd src-app/desktop/tauri && cargo build --release --bin ziee-desktop
+    cd src-app/desktop/tauri && cargo test --test spawn_binary_smoke -- --ignored --test-threads=1
+
+# L3 — tauri-driver WebDriver smoke against the bundled .app.
+# Preconditions enforced by the script itself; see
+# desktop/ui/tests/tauri-driver/README.md for the install steps.
+desktop-test-l3:
+    cd src-app/desktop/ui && npm run test:tauri-driver
+
+# Scan every desktop override file under src-app/desktop/ui/src/modules/
+# and report whether it matches its core equivalent. Output prefixes:
+#   =  matches core verbatim (override could be deleted if no longer needed)
+#   ≠  diverges from core (review intent — DELIBERATE DIVERGENCE header
+#      means it's intentional; otherwise it's drift to re-sync)
+#   +  desktop-only (no core equivalent — leave alone)
+#
+# Skips desktop-only module roots whose existence is the point.
+desktop-drift-check:
+    @bash -c 'set -e; \
+        cd src-app/desktop/ui/src; \
+        find modules -type f \( -name "*.tsx" -o -name "*.ts" \) \
+            | grep -vE "modules/(desktop-base|window|file-dialog|memory|llm-providers|desktop-loader)" \
+            | sort \
+            | while read f; do \
+                core="../../../ui/src/$f"; \
+                if [ -f "$core" ]; then \
+                    if diff -q "$f" "$core" >/dev/null 2>&1; then \
+                        echo "= $f"; \
+                    elif grep -q "DELIBERATE DIVERGENCE" "$f"; then \
+                        echo "≠ $f  (intentional — has DELIBERATE DIVERGENCE marker)"; \
+                    else \
+                        echo "≠ $f  (drifted — re-sync from $core)"; \
+                    fi; \
+                else \
+                    echo "+ $f  (desktop-only)"; \
+                fi; \
+            done'
 
 # ─── Self-contained release builds ──────────────────────────────────
 #
@@ -223,3 +341,50 @@ test-mac:
     cd src-app/server && cargo test --release --target aarch64-apple-darwin --test macos_brewless_boot -- --ignored --nocapture
 test-linux arch="x86_64":
     cd src-app/server && cargo test --release --target {{arch}}-unknown-linux-musl --test linux_distroless_boot -- --ignored --nocapture
+
+# ─── Remote Access (Feature: ngrok tunnel exposure) ─────────────────
+#
+# Tiered test recipes for the Remote Access module. Tier 1+2 are the
+# default gate; Tier 5 (bundle inclusion) is fast and high-signal;
+# Tier 6 is the Playwright E2E; Tier 8 needs real ngrok credentials.
+
+# Tier 1 (unit) + Tier 2 (integration). Default gate; ~30 s.
+# Unit tests live in-source under the desktop crate's modules;
+# integration tests live in `desktop/tauri/tests/remote_access/` and
+# share the TestServer harness from the server crate via #[path].
+check-remote-access-unit:
+    cd src-app/desktop/tauri && cargo test --lib -p ziee-desktop remote_access:: magic_link:: tunnel_auth::
+    cd src-app/desktop/tauri && \
+        bash -c 'source ../../server/tests/.env.test 2>/dev/null || true; \
+            cargo test --test integration_tests -- --test-threads=1 remote_access::'
+
+# Tier 6 — Playwright E2E for the Remote Access desktop page. Both
+# the admin settings page AND the phone-side magic-link consumer
+# live in the desktop bundle now (single-bundle architecture); the
+# spec mocks ngrok so no network is needed.
+check-remote-access-e2e:
+    cd src-app/desktop/ui && npx playwright test remote-access.spec.ts
+
+# Tier 8 — real ngrok integration. Reads NGROK_AUTH_TOKEN (and
+# optionally NGROK_TEST_DOMAIN) from .ngrok-test-credentials.env.
+# Opens a real tunnel, HTTPs through it, then stops. Costs ~2 min
+# of an ngrok session.
+check-remote-access-real-ngrok:
+    @bash -c 'set -euo pipefail; \
+        if [ -f .ngrok-test-credentials.env ]; then \
+            source .ngrok-test-credentials.env; \
+        fi; \
+        if [ -z "${NGROK_AUTH_TOKEN:-}" ]; then \
+            echo "NGROK_AUTH_TOKEN not set; create .ngrok-test-credentials.env or export it" >&2; \
+            exit 1; \
+        fi; \
+        cd src-app/desktop/tauri && \
+            source ../../server/tests/.env.test 2>/dev/null || true; \
+            cargo test --test integration_tests -- --test-threads=1 --ignored \
+                remote_access::real_ngrok'
+
+# All Remote Access tests in one shot (skips the real-ngrok tier
+# unless credentials are present).
+check-remote-access-all: check-remote-access-unit check-remote-access-e2e
+    @echo "✓ remote-access: unit + integration + e2e all green"
+

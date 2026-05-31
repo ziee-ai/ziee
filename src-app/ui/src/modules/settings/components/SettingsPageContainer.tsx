@@ -16,7 +16,15 @@ export function SettingsPageContainer({
   children,
 }: SettingsPageContainerProps) {
   return (
-    <DivScrollY className="flex flex-col gap-3 h-full">
+    // Vertical spacing notes:
+    //   pt-3 keeps the title close to the top header bar.
+    //   mt-6 on the body section is the gap between title and body
+    //   — done as a margin (not flex gap on the DivScrollY) because
+    //   DivScrollY wraps its children in an internal
+    //   `<div class="flex flex-col">`, so any `gap-*` on DivScrollY
+    //   itself lands on the OverlayScrollbars wrapper and never
+    //   reaches the title/body siblings.
+    <DivScrollY className="h-full">
       <div className="w-full flex justify-center pt-3">
         <div className={'max-w-4xl w-full flex flex-col gap-2 px-3'}>
           <Title level={4} className="!m-0 !leading-tight">
@@ -32,7 +40,7 @@ export function SettingsPageContainer({
           )}
         </div>
       </div>
-      <div className={'flex w-full flex-1 justify-center pb-3'}>
+      <div className={'flex w-full flex-1 justify-center pb-3 mt-3'}>
         <div
           className={
             'max-w-4xl w-full h-full flex flex-col gap-3 px-3 self-center'

@@ -1,5 +1,14 @@
-import { useEffect, useState } from 'react'
-import { App, Button, Flex, Input, Select, Spin, Typography } from 'antd'
+import { useEffect } from 'react'
+import {
+  App,
+  Button,
+  Flex,
+  Input,
+  Pagination,
+  Select,
+  Spin,
+  Typography,
+} from 'antd'
 import { PlusOutlined, SearchOutlined, ClearOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions'
@@ -12,10 +21,18 @@ const { Text } = Typography
 
 export function McpServersSettings() {
   const { message } = App.useApp()
-  const { servers, loading, error } = Stores.McpServer
-  const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [sortBy, setSortBy] = useState('created_at')
+  const {
+    servers,
+    loading,
+    error,
+    total: totalServers,
+    currentPage: storePage,
+    pageSize: storePageSize,
+    searchTerm,
+    statusFilter,
+  } = Stores.McpServer
+  const setSearchTerm = Stores.McpServer.setSearchTerm
+  const setStatusFilter = Stores.McpServer.setStatusFilter
 
   useEffect(() => {
     if (error) {
@@ -33,38 +50,19 @@ export function McpServersSettings() {
     setStatusFilter('all')
   }
 
-  // Filter and sort servers (both user and system servers with system tag)
+  const handlePageChange = (page: number, size?: number) => {
+    const nextSize = size || storePageSize
+    // Reset to page 1 when the user changes page size, so the new
+    // window starts at the top — matches UsersSettings behavior.
+    const nextPage = size && size !== storePageSize ? 1 : page
+    Stores.McpServer.loadMcpServers(nextPage, nextSize)
+  }
+
+  // Server-side filtering — `servers` already reflects the
+  // searchTerm + statusFilter pushed through the backend, so the
+  // UI just renders what came back. Sort dropped: backend's
+  // default ORDER BY (is_system ASC, display_name ASC) covers it.
   const filteredServers = servers
-    .filter(server => {
-      const matchesSearch =
-        searchTerm === '' ||
-        server.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        server.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        server.description?.toLowerCase().includes(searchTerm.toLowerCase())
-
-      const matchesStatus =
-        statusFilter === 'all' ||
-        (statusFilter === 'enabled' && server.enabled) ||
-        (statusFilter === 'disabled' && !server.enabled) ||
-        (statusFilter === 'system' && server.is_system) ||
-        (statusFilter === 'user' && !server.is_system)
-
-      return matchesSearch && matchesStatus
-    })
-    .sort((a, b) => {
-      switch (sortBy) {
-        case 'name':
-          return a.display_name.localeCompare(b.display_name)
-        case 'status':
-          return Number(b.enabled) - Number(a.enabled)
-        case 'type':
-          return Number(b.is_system) - Number(a.is_system)
-        case 'created_at':
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        default:
-          return 0
-      }
-    })
 
   // Show loading state
   if (loading && servers.length === 0) {
@@ -139,19 +137,6 @@ export function McpServersSettings() {
               { label: 'User', value: 'user' },
             ]}
           />
-          <Select
-            placeholder="Sort by"
-            value={sortBy}
-            onChange={setSortBy}
-            style={{ minWidth: 120 }}
-            aria-label="Sort servers"
-            options={[
-              { label: 'Date Added', value: 'created_at' },
-              { label: 'Name', value: 'name' },
-              { label: 'Status', value: 'status' },
-              { label: 'Type', value: 'type' },
-            ]}
-          />
           <Can permission={Permissions.McpServersCreate}>
             <Button
               type="primary"
@@ -204,6 +189,24 @@ export function McpServersSettings() {
                 : 'No MCP servers configured'}
             </Text>
           </div>
+        )}
+
+        {totalServers > 0 && (
+          <Flex justify="end">
+            <Pagination
+              current={storePage}
+              total={totalServers}
+              pageSize={storePageSize}
+              showSizeChanger
+              showQuickJumper
+              showTotal={(total, range) =>
+                `${range[0]}-${range[1]} of ${total} servers`
+              }
+              onChange={handlePageChange}
+              onShowSizeChange={handlePageChange}
+              pageSizeOptions={['5', '10', '20', '50']}
+            />
+          </Flex>
         )}
       </div>
 

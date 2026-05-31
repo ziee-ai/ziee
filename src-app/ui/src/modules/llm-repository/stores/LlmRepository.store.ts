@@ -19,6 +19,13 @@ interface LlmRepositoryState {
   repositories: LlmRepository[]
   isInitialized: boolean
 
+  // Pagination state — drives the settings page's <Pagination>.
+  // Backend `LlmRepository.list` returns
+  // `{ repositories, total, page, per_page }`.
+  currentPage: number
+  pageSize: number
+  total: number
+
   // Loading states
   loading: boolean
   creating: boolean
@@ -30,7 +37,7 @@ interface LlmRepositoryState {
   error: string | null
 
   // Actions
-  loadLlmRepositories: () => Promise<void>
+  loadLlmRepositories: (page?: number, pageSize?: number) => Promise<void>
   createLlmRepository: (
     data: CreateLlmRepositoryRequest,
   ) => Promise<LlmRepository>
@@ -60,6 +67,11 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
       // Initial state
       repositories: [],
       isInitialized: false,
+      // Pagination defaults match the settings page's
+      // pageSizeOptions={['5','10','20','50']}.
+      currentPage: 1,
+      pageSize: 10,
+      total: 0,
       loading: false,
       creating: false,
       updating: false,
@@ -67,22 +79,30 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
       testing: false,
       error: null,
 
-      // Repository actions
-      loadLlmRepositories: async () => {
+      // Repository actions. Page-changes from the UI re-invoke this
+      // with explicit page/pageSize; `__init__` calls it with no args
+      // for the initial load. We only skip a fresh call when one is
+      // already in flight — explicit pagination requests always run.
+      loadLlmRepositories: async (page?: number, pageSize?: number) => {
         const state = get()
-        if (state.isInitialized || state.loading) {
+        if (state.loading) {
           return
         }
+        const nextPage = page ?? state.currentPage
+        const nextPageSize = pageSize ?? state.pageSize
         try {
           set({ loading: true, error: null })
 
           const response = await ApiClient.LlmRepository.list({
-            page: 1,
-            per_page: 50,
+            page: nextPage,
+            per_page: nextPageSize,
           })
 
           set({
             repositories: response.repositories,
+            total: response.total,
+            currentPage: response.page,
+            pageSize: response.per_page,
             isInitialized: true,
             loading: false,
           })

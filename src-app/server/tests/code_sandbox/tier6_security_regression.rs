@@ -114,27 +114,16 @@ async fn e2e_dangling_symlink_does_not_clobber_host() {
 /// sandbox to print its env, then assert the sentinel isn't there.
 #[tokio::test]
 async fn e2e_clearenv_wipes_server_env_from_sandbox() {
-    let Some(rootfs) = crate::code_sandbox::harness::rootfs_path() else {
-        eprintln!("test skipped: no rootfs");
+    // Spin up a sandbox server (rootfs fetched from GitHub) with our
+    // sentinel env var visible to it.
+    let Some(opts) = crate::code_sandbox::harness::github_fetch_server_options(vec![(
+        "ZIEE_TEST_SECRET_SENTINEL".into(),
+        "this-must-not-leak-to-sandbox".into(),
+    )]) else {
+        eprintln!("test skipped: sandbox host unavailable");
         return;
     };
-    if !crate::code_sandbox::harness::bwrap_available() {
-        eprintln!("test skipped: no bwrap");
-        return;
-    }
-    // Spin up a server with our sentinel env var visible to it.
-    let server = crate::common::TestServer::start_with_options(crate::common::TestServerOptions {
-        sandbox_enabled: true,
-        rate_limit: None,
-        sandbox_rootfs: Some(rootfs),
-        sandbox_cgroup_parent: String::new(),
-        extra_env: vec![(
-            "ZIEE_TEST_SECRET_SENTINEL".into(),
-            "this-must-not-leak-to-sandbox".into(),
-        )],
-        sandbox_cache_tempdir: None,
-    })
-    .await;
+    let server = crate::common::TestServer::start_with_options(opts).await;
 
     let test_user = test_helpers::create_user_with_permissions(
         &server,

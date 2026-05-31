@@ -22,11 +22,74 @@ struct Cli {
     /// If no value is provided, defaults to ../ui/openapi
     #[arg(long, value_name = "OUTPUT_DIR", num_args = 0..=1, default_missing_value = "../ui/openapi")]
     generate_openapi: Option<String>,
+
+    /// (Windows, internal) Run as the LocalSystem code-sandbox helper service.
+    /// Invoked by the Service Control Manager — not meant to be run by hand.
+    #[cfg(windows)]
+    #[arg(long, hide = true)]
+    run_sandbox_helper_service: bool,
+
+    /// (Windows) Install the code-sandbox helper as a LocalSystem service.
+    /// Must be run as Administrator. Registers the vsock GUIDs + restarts WSL.
+    #[cfg(windows)]
+    #[arg(long)]
+    install_sandbox_helper: bool,
+
+    /// (Windows) Stop + remove the code-sandbox helper service.
+    /// Must be run as Administrator.
+    #[cfg(windows)]
+    #[arg(long)]
+    uninstall_sandbox_helper: bool,
+
+    /// (Windows, internal) Set on the elevated child that
+    /// `--install-sandbox-helper` spawns, so it performs the install instead
+    /// of trying to elevate again (prevents a UAC loop).
+    #[cfg(windows)]
+    #[arg(long, hide = true)]
+    sandbox_helper_elevated: bool,
 }
 
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
+
+    // Windows code-sandbox helper service dispatch. These short-circuit the
+    // normal server boot. Gated to Windows — the helper brokers privileged
+    // WSL ops (see modules::code_sandbox::backend::helper_service).
+    #[cfg(windows)]
+    {
+        use crate::modules::code_sandbox::backend::helper_service;
+
+        if cli.run_sandbox_helper_service {
+            // Launched by the SCM: hand control to the service dispatcher.
+            if let Err(e) = helper_service::service::run() {
+                eprintln!("ziee sandbox helper service failed: {e}");
+                std::process::exit(1);
+            }
+            return;
+        }
+        if cli.install_sandbox_helper {
+            // Self-checking + self-elevating: silent no-op if already
+            // installed, one UAC prompt if it needs installing. Safe to call
+            // on every app launch.
+            match helper_service::install::install(cli.sandbox_helper_elevated) {
+                Ok(()) => std::process::exit(0),
+                Err(e) => {
+                    eprintln!("install-sandbox-helper failed: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        if cli.uninstall_sandbox_helper {
+            match helper_service::install::uninstall() {
+                Ok(()) => std::process::exit(0),
+                Err(e) => {
+                    eprintln!("uninstall-sandbox-helper failed: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+    }
 
     // Check for OpenAPI generation flag
     if cli.generate_openapi.is_some() {
@@ -118,6 +181,15 @@ async fn main() {
         core::set_app_data_dir(default_data_dir);
     }
     core::set_caches_config(config.caches.clone());
+    // Capture server addr so the llm_local_runtime URL injection
+    // (repository read-time) can derive the live proxy base_url
+    // without holding a reference to the full Config. The api_prefix
+    // is included because module routes are nested under it.
+    core::set_server_addr(
+        config.server.host.clone(),
+        config.server.port,
+        config.server.api_prefix.clone(),
+    );
 
     // Initialize database
     let pool = match core::database::initialize_database(&config).await {
@@ -206,15 +278,25 @@ async fn main() {
     // before reaching the handler.
     //
     // - DefaultBodyLimit::max — 16 MB cap (per-route upload routes raise this).
-    // - TimeoutLayer 60s — request hard-deadline. SSE/streaming routes that
-    //   need longer override per-route; this is the global default.
-    //   Closes 05-file F-09 generalization + similar.
+    // - TimeoutLayer 660s — request hard-deadline. MUST exceed the
+    //   runtime-settings `auto_start_timeout_secs` ceiling (600s,
+    //   enforced in `repository.rs::update_runtime_settings`). The
+    //   `/api/local-llm/v1/*` proxy synchronously waits for
+    //   `auto_start::ensure_running` to bring the local engine to
+    //   Healthy BEFORE returning the Response — so this layer's
+    //   deadline applies to the WHOLE auto-start + first-byte
+    //   window. Sized as ceiling + 60s buffer for the actual
+    //   response generation. Closes 05-file F-09 generalization +
+    //   similar. (Architectural follow-up: refactor the proxy chat
+    //   handler to return an SSE Response immediately with
+    //   keepalives so the deadline can return to ~60s like other
+    //   non-streaming routes.)
     // - Security headers (X-Content-Type-Options, X-Frame-Options,
     //   Referrer-Policy, Permissions-Policy, Strict-Transport-Security).
     //   These are response-only defenses but cheap and audit-recommended.
     // Rate limiter (applied conditionally below — see apply_rate_limit_layer;
-    // gated on `server.rate_limit.enabled`, default on). WHEN ENABLED it is
-    // 5 req/sec per peer IP, burst-able to 60.
+    // gated on `server.rate_limit.enabled`, default on). WHEN ENABLED it
+    // defaults to 50 req/sec per peer IP, burst-able to 500.
     // PeerIpKeyExtractor uses the TCP peer address (not X-Forwarded-For)
     // — appropriate for direct-connect deployments and TestServer.
     // Production behind a reverse proxy should swap for
@@ -222,18 +304,23 @@ async fn main() {
     // Closes a substantial chunk of the auth/file/chat rate-limit
     // findings (01-auth F-05, 03-user F-12, 04-chat F-04 message-stream
     // rate, 06-llm-provider F-13, 08-llm-local-runtime F-06).
-    // Config-driven rate limits — defaults to the A3 production
-    // posture (5 req/s, 60-burst). Tests bump these so a sequential
-    // test sweep against a single peer-IP bucket doesn't 429 itself.
+    // Config-driven rate limits. Defaults to 50 req/s sustained, 500-burst
+    // when the `server.rate_limit` block is omitted — wide enough that a normal
+    // SPA cold-load (15-25 parallel API calls + secondary fetches) doesn't trip
+    // 429, tight enough to still blunt brute-force / scraping. Hardened
+    // deployments behind a real reverse proxy override downward; tests override
+    // upward for sequential-burst sweeps against a single peer-IP bucket. The
+    // 660s request timeout accommodates slow-CPU local-runtime inference.
     let app = api_router
         .finish_api(&mut api_doc)
         .layer(axum::extract::DefaultBodyLimit::max(16 * 1024 * 1024))
-        .layer(tower_http::timeout::TimeoutLayer::new(std::time::Duration::from_secs(60)));
-    // Rate limiter (tower-governor) — gated on `server.rate_limit.enabled`
-    // (see core::app_builder::apply_rate_limit_layer). The built-in MCP
-    // servers reach this same router over loopback, so disabling the limiter
-    // stops the server from self-throttling its own tool-call traffic.
-    let app = core::app_builder::apply_rate_limit_layer(app, &config);
+        .layer(tower_http::timeout::TimeoutLayer::new(std::time::Duration::from_secs(660)));
+    // Rate limiter (tower-governor) — see core::app_builder::apply_rate_limit_layer.
+    // Gated on `server.rate_limit.enabled`; the standalone server passes a
+    // Some((50,500)) default so an un-configured deployment is still protected.
+    // The built-in MCP servers reach this same router over loopback, so set
+    // `enabled: false` (or raise the limits) if agent tool loops self-throttle.
+    let app = core::app_builder::apply_rate_limit_layer(app, &config, Some((50, 500)));
     let app = app
         .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
             axum::http::header::HeaderName::from_static("x-content-type-options"),

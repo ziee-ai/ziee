@@ -21,3 +21,10 @@ export async function emitRuntimeVersionDefaultChanged(versionId: string) {
     data: { versionId }
   })
 }
+
+export async function emitRuntimeModelUsageChanged(modelId: string) {
+  await Stores.EventBus.emit({
+    type: 'runtime_version.usage_changed',
+    data: { modelId }
+  })
+}

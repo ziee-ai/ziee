@@ -3,11 +3,16 @@ import { Input, Select, Typography, Spin, Button } from 'antd'
 import { SearchOutlined, ClearOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { ModelHubCard } from '@/modules/hub/modules/llm-models/components/ModelHubCard'
+import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
 
 const { Text } = Typography
 
 export function ModelsHubTab() {
   const { models, loading, error } = Stores.HubModels // Auto-loads via __init__
+  // Cross-reference each model id with the catalog so we know its
+  // min_ziee_version. The catalog store loads /hub/index lazily.
+  const catalog = Stores.HubCatalog.catalog
+  const serverVersion = Stores.HubCatalog.serverVersion
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [sortBy, setSortBy] = useState('popular')
@@ -154,19 +159,40 @@ export function ModelsHubTab() {
         )}
       </div>
 
-      {/* Models List */}
+      {/* Models List — incompatible items (min_ziee_version > server)
+          are hidden entirely; the backend also rejects installing them. */}
       <div className="flex-1 overflow-auto px-3 pb-3">
-        <div className="flex flex-col gap-3">
-          {filteredModels.map(model => (
-            <ModelHubCard key={model.id} model={model} />
-          ))}
-        </div>
-
-        {filteredModels.length === 0 && (
-          <div className="text-center py-12">
-            <Text type="secondary">No models found</Text>
-          </div>
-        )}
+        {(() => {
+          const indexById = new Map(
+            (catalog?.items ?? [])
+              .filter(it => it.category === 'model')
+              .map(it => [it.id, it]),
+          )
+          // Show items that are compatible OR not in the catalog index
+          // (orphans / dev models are never hidden).
+          const visibleModels = filteredModels.filter(m => {
+            const ix = indexById.get(m.id)
+            return !ix || compatOf(ix, serverVersion).status === 'ok'
+          })
+          return (
+            <>
+              <div className="flex flex-col gap-3">
+                {visibleModels.map(model => (
+                  <ModelHubCard key={model.id} model={model} />
+                ))}
+              </div>
+              {visibleModels.length === 0 && (
+                <div className="text-center py-12">
+                  <Text type="secondary">
+                    {models.length === 0
+                      ? 'No models yet'
+                      : 'No models match your search'}
+                  </Text>
+                </div>
+              )}
+            </>
+          )
+        })()}
       </div>
     </div>
   )

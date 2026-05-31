@@ -292,7 +292,7 @@ export function ProjectFormDrawer() {
         <Form.Item
           name="instructions"
           label="Instructions"
-          tooltip="System instructions injected into every conversation in this project. Capped at 64 KiB."
+          extra="System instructions injected into every conversation in this project. Capped at 64 KiB."
           rules={[{ max: 65_536, message: 'Instructions are too long' }]}
         >
           <Input.TextArea
@@ -306,7 +306,7 @@ export function ProjectFormDrawer() {
         <Form.Item
           name="default_assistant_id"
           label="Default assistant"
-          tooltip="Pre-selected when creating a new conversation in this project. Users can override per-conversation."
+          extra="Pre-selected when creating a new conversation in this project. Users can override per-conversation."
         >
           <Select
             allowClear
@@ -330,7 +330,7 @@ export function ProjectFormDrawer() {
         <Form.Item
           name="default_model_id"
           label="Default model"
-          tooltip="Snapshotted onto each conversation created in this project (when no explicit model is selected)."
+          extra="Snapshotted onto each conversation created in this project (when no explicit model is selected)."
         >
           <Select
             allowClear

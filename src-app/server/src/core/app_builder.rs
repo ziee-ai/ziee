@@ -78,7 +78,7 @@ pub fn register_event_handlers(modules: &[Box<dyn AppModule>], pool: Arc<PgPool>
 pub fn build_api_router(
     modules: &[Box<dyn AppModule>],
     api_prefix: &str,
-    _pool: PgPool,
+    pool: PgPool,
 ) -> (ApiRouter, OpenApi) {
     // Build combined router from all modules
     // Modules handle their own state requirements internally
@@ -86,6 +86,13 @@ pub fn build_api_router(
     for module in modules.iter() {
         combined_router = module.register_routes(combined_router);
     }
+
+    // Provide the DB pool as a request extension. Several handlers
+    // (the local-LLM proxy at /local-llm/v1/*, llm_model upload +
+    // validate) extract `Extension<PgPool>` rather than reaching for
+    // the global `Repos`; without this layer those routes 500 on a
+    // missing-extension rejection before their body ever runs.
+    let combined_router = combined_router.layer(axum::Extension(pool));
 
     // Create OpenAPI documentation. Closes 14-core F-24 (Info): adds
     // a `bearerAuth` security scheme so generated clients (and the
@@ -118,33 +125,49 @@ pub fn build_api_router(
 
 /// Conditionally apply the global rate limiter (tower-governor).
 ///
-/// Returns the router unchanged when `server.rate_limit.enabled == false`,
-/// so the `GovernorLayer` is never installed in that case. Called from BOTH
-/// `lib.rs::build_server` and `main.rs::main` so the two stay in sync.
+/// Behavior, by `server.rate_limit`:
+/// - `Some` with `enabled == false`  → no `GovernorLayer` (explicit opt-out).
+/// - `Some` with `enabled == true`   → apply with its `per_second`/`burst_size`.
+/// - `None` (block omitted)          → use `default_when_absent`:
+///     - `Some((per_second, burst_size))` → apply that default (the standalone
+///       web server passes `Some((50, 500))` so an un-configured deployment is
+///       still protected).
+///     - `None` → no limiter (the embedded/desktop path passes `None`: the
+///       Tauri app serves only its own local webview over 127.0.0.1, has no
+///       per-peer-IP attack surface, and the limiter would 429 legitimate
+///       burst traffic — chat streams, SSE, multi-file uploads).
 ///
-/// Why the toggle exists: the built-in code_sandbox + memory MCP servers are
-/// reached over loopback (`http://127.0.0.1`), so every internal tool-call
-/// request shares the same `PeerIpKeyExtractor` bucket as real user traffic.
-/// A rapid agent tool loop drains that bucket and the server starts returning
-/// HTTP 429 to itself. Trusted / non-public deployments can set
-/// `enabled: false` to opt out entirely. When enabled (default), the limiter
-/// applies to all traffic as before (default 5 req/s, burst 60).
-pub fn apply_rate_limit_layer(router: axum::Router, config: &Config) -> axum::Router {
-    let (enabled, per_second, burst_size) = config
-        .server
-        .rate_limit
-        .as_ref()
-        .map(|r| (r.enabled, r.per_second, r.burst_size))
-        .unwrap_or((true, 5, 60));
+/// Called from BOTH `lib.rs::setup_server` and `main.rs::main` so the two stay
+/// in sync. Why the `enabled` toggle exists: the built-in code_sandbox + memory
+/// MCP servers are reached over loopback (`http://127.0.0.1`), so every internal
+/// tool-call request shares the same `PeerIpKeyExtractor` bucket as real user
+/// traffic. A rapid agent tool loop drains that bucket and the server starts
+/// returning HTTP 429 to itself; raise the limits, or set `enabled: false` to
+/// opt out entirely.
+pub fn apply_rate_limit_layer(
+    router: axum::Router,
+    config: &Config,
+    default_when_absent: Option<(u64, u32)>,
+) -> axum::Router {
+    let resolved = match config.server.rate_limit.as_ref() {
+        Some(r) if !r.enabled => {
+            tracing::warn!(
+                "Rate limiting DISABLED via config (server.rate_limit.enabled=false) — \
+                 no per-IP throttling is applied to any route. Safe only for trusted / \
+                 non-public deployments."
+            );
+            return router;
+        }
+        Some(r) => Some((r.per_second, r.burst_size)),
+        None => default_when_absent,
+    };
 
-    if !enabled {
-        tracing::warn!(
-            "Rate limiting DISABLED via config (server.rate_limit.enabled=false) — \
-             no per-IP throttling is applied to any route. Safe only for trusted / \
-             non-public deployments."
-        );
-        return router;
-    }
+    let (per_second, burst_size) = match resolved {
+        Some(v) => v,
+        // No config block and no caller default → skip the limiter entirely
+        // (embedded/desktop path).
+        None => return router,
+    };
 
     let governor_conf = Arc::new(
         tower_governor::governor::GovernorConfigBuilder::default()

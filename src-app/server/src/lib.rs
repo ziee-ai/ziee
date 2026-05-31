@@ -11,7 +11,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 // Re-export types for desktop/external use
-pub use core::config::Config;
+pub use core::config::{Config, CorsConfig, JwtConfig};
 pub use core::{Repos, EventBus, EventHandler, AppEvent};
 // Re-exported so integration tests (which construct repositories directly
 // against the test DB pool) can initialise the same at-rest storage_key
@@ -22,16 +22,38 @@ pub use core::{Repos, EventBus, EventHandler, AppEvent};
 pub use core::secrets::{init_storage_key, storage_key};
 pub use module_api::ModuleContext as ServerContext;
 pub use modules::auth::{JwtService, AuthResponse, hash_password};
+pub use modules::auth::jwt_extractor::JwtAuth;
+pub use modules::auth::refresh_tokens;
 pub use modules::user::models::User;
 pub use modules::llm_provider::events::LlmProviderEvent;
 pub use modules::llm_provider::UserKeyRepository;
 pub use modules::chat::core::ai_provider::resolve_api_key_for_user;
-pub use common::AppError;
+pub use common::{ApiResult, AppError};
+// Re-export the at-rest secret helpers so out-of-crate consumers
+// (notably the desktop tauri crate's remote_access module) can
+// encrypt/decrypt rows without re-implementing pgcrypto plumbing.
+pub use common::secret::{decrypt_secret, encrypt_secret, resolve_optional_secret, SecretView};
+// Re-export password helpers so the desktop crate's remote_access
+// module can validate + hash passwords without reaching into private
+// auth internals.
+pub mod password {
+    pub use crate::modules::auth::password::{
+        hash_password, validate_password_strength, verify_password,
+    };
+}
+// Re-export the permissions surface so desktop modules can gate
+// their HTTP handlers with `RequirePermissions<(...)>` and define
+// their own `PermissionCheck` permission types.
+pub mod permissions {
+    pub use crate::modules::permissions::{RequirePermissions, with_permission};
+    pub use crate::modules::permissions::types::{PermissionCheck, PermissionList};
+}
 // Re-export async_trait for consistent EventHandler implementations
 pub use async_trait::async_trait;
 
 // Re-export MCP client types for integration tests
 pub use modules::mcp::client::http::{HeaderParseError, HttpMcpClient, parse_header_map};
+pub use modules::mcp::client::stdio::StdioMcpClient;
 pub use modules::mcp::client::auth::{
     OAuthClientConfig, StoredToken, refresh_token as oauth_refresh_token,
 };
@@ -61,7 +83,7 @@ pub use modules::code_sandbox::embedded as code_sandbox_embedded;
 // can redirect the app data root to a TempDir without going through
 // the full config-load path.
 #[doc(hidden)]
-pub use core::set_app_data_dir;
+pub use core::{set_app_data_dir, set_caches_config};
 
 // Test-helper exports: the platform-specific sandbox backend dispatch
 // + the raw-exec result shape. Used by tests/code_sandbox/harness.rs
@@ -88,7 +110,6 @@ pub mod memory_extensions {
 pub mod code_sandbox {
     pub use crate::modules::code_sandbox::{
         code_sandbox_server_id, loopback_host, CodeSandboxRepository,
-        SANDBOX_KNOWN_REVISIONS_TOML, SANDBOX_ROOTFS_SCHEMA_VERSION,
     };
 }
 // MCP repository for integration tests that need McpRepository::list_accessible.
@@ -122,9 +143,12 @@ pub use aide::axum::routing::{get_with, post_with, put_with, delete_with};
 pub use aide::transform::TransformOperation;
 
 // Re-export app_builder functions for desktop OpenAPI generation
-pub use core::app_builder::{create_modules, build_api_router, initialize_modules};
+// and for desktop crates that need to re-apply CORS / security-header
+// layers to their own merged-in routes (axum's `.merge()` does NOT
+// propagate parent layers onto merged routes).
+pub use core::app_builder::{create_cors_layer, create_modules, build_api_router, initialize_modules};
 pub use core::database::initialize_database;
-pub use core::init_repositories;
+pub use core::{init_repositories, is_repos_initialized};
 pub use module_api::AppModule;
 
 /// Server setup result containing components needed for customization
@@ -273,17 +297,25 @@ async fn setup_server(
     // SECURITY: matches the middleware stack in main.rs::main —
     // 16 MB body limit, 60s timeout, security headers, CORS.
     // Closes 14-core F-01 + 05-file F-09 generalization + A3 headers.
-    // Rate limiter — applied conditionally below (see the comment on
-    // apply_rate_limit_layer). When enabled it is 5 req/s per peer IP, burst 60.
+    //
+    // Rate limiter is OPTIONAL on this embedded path. The desktop app embeds
+    // this server and serves only its own local webview over 127.0.0.1 — there
+    // is no per-peer-IP attack surface, and a limiter actively gets in the way
+    // of legitimate burst traffic (chat streams, SSE, multi-file uploads). So
+    // we pass `None` as the absent-default: when `server.rate_limit` is omitted
+    // (the desktop config omits it) the layer is skipped entirely; an explicit
+    // `enabled: false` also skips it. Web deployments set it explicitly (see
+    // config/prod.example.yaml). See core::app_builder::apply_rate_limit_layer.
     let app = api_router
         .finish_api(&mut api_doc)
         .layer(axum::extract::DefaultBodyLimit::max(16 * 1024 * 1024))
-        .layer(tower_http::timeout::TimeoutLayer::new(std::time::Duration::from_secs(60)));
-    // Rate limiter (tower-governor) — gated on `server.rate_limit.enabled`
-    // (see core::app_builder::apply_rate_limit_layer). The built-in MCP
-    // servers reach this same router over loopback, so disabling the limiter
-    // stops the server from self-throttling its own tool-call traffic.
-    let app = core::app_builder::apply_rate_limit_layer(app, &config);
+        // 660s — MUST exceed auto_start_timeout_secs ceiling (600s).
+        // The local-runtime proxy (/api/local-llm/v1/*) waits for
+        // engine auto-start synchronously before returning a
+        // Response, so this layer caps the whole spawn + first-byte
+        // window. See main.rs for the full rationale.
+        .layer(tower_http::timeout::TimeoutLayer::new(std::time::Duration::from_secs(660)));
+    let app = core::app_builder::apply_rate_limit_layer(app, &config, None);
     let app = app
         .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
             axum::http::header::HeaderName::from_static("x-content-type-options"),
@@ -382,6 +414,16 @@ where
 /// Find an available port in the given range
 pub fn find_available_port(start: u16, end: u16) -> Option<u16> {
     (start..=end).find(|&port| std::net::TcpListener::bind(("127.0.0.1", port)).is_ok())
+}
+
+/// (Windows) True iff the LocalSystem code-sandbox helper service is reachable
+/// (answers a `Ping`). Exposed so the integration-test harness — and, later,
+/// desktop onboarding — can decide whether to trigger an elevated install
+/// before the sandbox is exercised. See
+/// `modules::code_sandbox::backend::helper_service`.
+#[cfg(windows)]
+pub fn sandbox_helper_is_running() -> bool {
+    modules::code_sandbox::backend::helper_service::client::is_running()
 }
 
 /// Cleanup server resources

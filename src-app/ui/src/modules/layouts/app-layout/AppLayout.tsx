@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import { LeftSidebar } from '@/modules/layouts/app-layout/components/LeftSidebar'
 import { SidebarToggleButton } from '@/modules/layouts/app-layout/components/SidebarToggleButton'
 import { theme } from 'antd'
@@ -30,7 +30,22 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   const MIN_WIDTH = 150
   const MAX_WIDTH = 400
-  const ICON_ONLY_WIDTH = 52
+  // Collapsed sidebar fully disappears on desktop (mobile already does
+  // via translateX(-100%) below). The toggle button lives outside the
+  // sidebar (SidebarToggleButton, fixed-positioned) so reopening still
+  // works at any width.
+  const COLLAPSED_WIDTH = 0
+
+  // Single source of truth for the sidebar's transition string.
+  // Both the React-managed style prop below AND every imperative
+  // `sidebarRef.current.style.transition = ...` write must use this
+  // exact value when re-enabling transitions — otherwise the
+  // transition list drops properties (notably `transform`, which
+  // drives the xs slide-in) and the next state change snaps
+  // instantly instead of animating.
+  const SIDEBAR_TRANSITION =
+    'width 200ms ease-out, transform 200ms ease-out, box-shadow 200ms ease-out'
+  const SPACER_TRANSITION = 'all 200ms ease-out'
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -48,14 +63,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
         if (newWidth < MIN_WIDTH / 2) {
           if (spacerRef.current) {
-            spacerRef.current.style.transition = 'all 200ms ease-out'
+            spacerRef.current.style.transition = SPACER_TRANSITION
           }
           Stores.AppLayout.setSidebarCollapsed(true)
         } else if (newWidth >= MIN_WIDTH && newWidth <= MAX_WIDTH) {
           // If coming from collapsed state, re-enable transition for smooth expand
           if (isSidebarCollapsed) {
             if (spacerRef.current) {
-              spacerRef.current.style.transition = 'all 200ms ease-out'
+              spacerRef.current.style.transition = SPACER_TRANSITION
             }
 
             setTimeout(() => {
@@ -102,10 +117,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
       const handleMouseUp = () => {
         if (spacerRef.current) {
-          spacerRef.current.style.transition = 'all 200ms ease-out'
+          spacerRef.current.style.transition = SPACER_TRANSITION
         }
         if (sidebarRef.current) {
-          sidebarRef.current.style.transition = 'width 200ms ease-out'
+          sidebarRef.current.style.transition = SIDEBAR_TRANSITION
         }
 
         document.removeEventListener('mousemove', handleMouseMove)
@@ -122,6 +137,34 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     if (windowMinSize.xs) {
       Stores.AppLayout.setSidebarCollapsed(true)
     }
+  }, [windowMinSize.xs])
+
+  // When the xs threshold flips, the sidebar's `width` and
+  // `transform` both change in the same commit. With our unified
+  // SIDEBAR_TRANSITION, those changes animate over 200ms and the
+  // sidebar briefly appears mid-slide (width-shrink + slide-off
+  // happening simultaneously). Suppress the transition for that
+  // single commit so the mode-flip snaps; transitions resume the
+  // next frame for normal collapse/expand animations.
+  const prevXsRef = useRef(windowMinSize.xs)
+  useLayoutEffect(() => {
+    if (prevXsRef.current === windowMinSize.xs) return
+    prevXsRef.current = windowMinSize.xs
+    const sidebarEl = sidebarRef.current
+    const spacerEl = spacerRef.current
+    if (sidebarEl) sidebarEl.style.transition = 'none'
+    if (spacerEl) spacerEl.style.transition = 'none'
+    // Force a reflow so the no-transition style is committed
+    // before the next style change.
+    if (sidebarEl) void sidebarEl.offsetHeight
+    requestAnimationFrame(() => {
+      if (sidebarRef.current) {
+        sidebarRef.current.style.transition = SIDEBAR_TRANSITION
+      }
+      if (spacerRef.current) {
+        spacerRef.current.style.transition = SPACER_TRANSITION
+      }
+    })
   }, [windowMinSize.xs])
 
   // ResizeObserver to listen to main content width changes
@@ -213,15 +256,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   }, [windowMinSize.xs, isSidebarCollapsed])
 
   const handleMaskClick = () => {
-    if (sidebarRef.current) {
-      sidebarRef.current.style.transition = 'transform 200ms ease-out'
-    }
+    // No need to imperatively set transition here — React's
+    // style prop already declares SIDEBAR_TRANSITION on every
+    // render. The previous version also set transition='none'
+    // 200ms later, which left the inline style at 'none'. The
+    // next user-driven open would change `transform` but React's
+    // transition prop didn't change (still SIDEBAR_TRANSITION),
+    // so React skip-committed and the imperative 'none' stuck —
+    // and the slide-in animation was lost.
     Stores.AppLayout.setSidebarCollapsed(true)
-    setTimeout(() => {
-      if (sidebarRef.current) {
-        sidebarRef.current.style.transition = 'none'
-      }
-    }, 200)
   }
 
   return (
@@ -231,65 +274,86 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         backgroundColor: token.colorBgContainer,
       }}
     >
-      {/* Sidebar - Always visible, width controlled by container */}
-      {/* Mask for Left Sidebar (mobile only). Single onClick is enough;
-        * the prior triple-fire (onClick + onMouseDown + onTouchStart)
-        * caused the close handler to fire 2-3 times for any tap,
-        * which interacted badly with the closing animation. (audit 02 R-1) */}
-      {windowMinSize.xs && (
-        <div
-          className={
-            'fixed h-full w-full transition-all z-3 pointer-events-none'
-          }
-          style={{
-            backgroundColor: tinycolor(token.colorBgContainer)
-              .setAlpha(isSidebarCollapsed ? 0 : 0.7)
-              .toRgbString(),
-            pointerEvents: isSidebarCollapsed ? 'none' : 'auto',
-          }}
-          onClick={handleMaskClick}
-          aria-hidden="true"
-        />
-      )}
+      {/* Mask for Left Sidebar (mobile-overlay mode).
+        *
+        * ALWAYS mounted (no `{xs && ...}` gate) — otherwise crossing
+        * the xs threshold during a window resize mounts the div
+        * fresh, which fires its `transition-all` from "no value" to
+        * the current opacity/background and causes a one-frame
+        * flash. The desired behavior (mask only intercepts clicks
+        * when the overlay is open) is just `pointer-events: auto`
+        * when (xs && !collapsed); opacity stays at 0 otherwise so
+        * there's nothing visible to flicker.
+        *
+        * Single onClick is enough; the prior triple-fire (onClick +
+        * onMouseDown + onTouchStart) caused the close handler to
+        * fire 2-3 times for any tap, which interacted badly with
+        * the closing animation. (audit 02 R-1) */}
+      <div
+        className={'fixed h-full w-full z-3'}
+        style={{
+          backgroundColor: tinycolor(token.colorBgContainer)
+            .setAlpha(windowMinSize.xs && !isSidebarCollapsed ? 0.7 : 0)
+            .toRgbString(),
+          pointerEvents:
+            windowMinSize.xs && !isSidebarCollapsed ? 'auto' : 'none',
+          transition: 'background-color 200ms ease-out',
+        }}
+        onClick={handleMaskClick}
+        aria-hidden="true"
+      />
 
       <div
         ref={sidebarRef}
         id="app-sidebar"
-        className="absolute h-full z-1 overflow-hidden"
-        // Mobile-only dialog semantics: when the sidebar is acting as
-        // an overlay (xs viewport), expose it to assistive tech as a
-        // dialog so screen readers announce its open/close state and
-        // focus is constrained to it. On desktop the sidebar is a
-        // permanent fixture, so no dialog role. (audit 02 R-1)
-        {...(windowMinSize.xs
-          ? {
-              role: 'dialog' as const,
-              'aria-modal': true,
-              'aria-label': 'Navigation menu',
-              'aria-hidden': isSidebarCollapsed,
-            }
-          : {})}
+        // Mobile-only dialog semantics for screen readers. Inert
+        // for sighted users on desktop. (audit 02 R-1)
+        role={windowMinSize.xs ? ('dialog' as const) : undefined}
+        aria-modal={windowMinSize.xs ? true : undefined}
+        aria-label={windowMinSize.xs ? 'Navigation menu' : undefined}
+        aria-hidden={
+          windowMinSize.xs ? isSidebarCollapsed : undefined
+        }
+        // STABLE style shape: same property set in every state, only
+        // the VALUES change. The previous version spread an entire
+        // alternate style object when `xs` flipped — which swapped
+        // the `transition` property name (`width` ↔ `transform`),
+        // added/removed `position: fixed`, etc. Each of those is a
+        // new style-object identity React commits to the DOM, and
+        // CSS transitions fire on the new diff. Keeping the shape
+        // stable means crossing the xs threshold only changes
+        // `transform`, `width`, and `box-shadow` — all interpolable
+        // with the single combined transition below.
         style={{
-          width: isSidebarCollapsed
-            ? `${ICON_ONLY_WIDTH}px`
-            : `${currentWidth.current}px`,
-          transition: 'width 200ms ease-out',
-          ...(windowMinSize.xs
-            ? {
-                zIndex: 3,
-                position: 'fixed',
-                backdropFilter: 'blur(8px)',
-                transform: isSidebarCollapsed
-                  ? 'translateX(-100%)'
-                  : 'translateX(0)',
-                width: 250,
-                maxWidth: 'calc(100vw - 24px)',
-                borderRight: `1px solid ${token.colorBorderSecondary}`,
-                borderRadius: 12,
-                boxShadow: 'rgba(0, 0, 0, 0.075) 0px 2px 16px 0px',
-                transition: 'transform 200ms ease-out',
-              }
-            : {}),
+          position: windowMinSize.xs ? 'fixed' : 'absolute',
+          top: 0,
+          left: 0,
+          height: '100%',
+          overflow: 'hidden',
+          zIndex: windowMinSize.xs ? 3 : 1,
+          width: windowMinSize.xs
+            ? 250
+            : isSidebarCollapsed
+              ? COLLAPSED_WIDTH
+              : currentWidth.current,
+          maxWidth: windowMinSize.xs ? 'calc(100vw - 24px)' : undefined,
+          transform:
+            windowMinSize.xs && isSidebarCollapsed
+              ? 'translateX(-100%)'
+              : 'translateX(0)',
+          backdropFilter: windowMinSize.xs ? 'blur(8px)' : undefined,
+          borderRight: windowMinSize.xs
+            ? `1px solid ${token.colorBorderSecondary}`
+            : undefined,
+          borderRadius: windowMinSize.xs ? 12 : undefined,
+          boxShadow: windowMinSize.xs
+            ? 'rgba(0, 0, 0, 0.075) 0px 2px 16px 0px'
+            : 'none',
+          // Single transition spanning every value that can change
+          // on the xs threshold flip. Property name stays constant,
+          // so the browser doesn't reset mid-flight. Kept in sync
+          // with the imperative writes above via SIDEBAR_TRANSITION.
+          transition: SIDEBAR_TRANSITION,
         }}
       >
         <LeftSidebar />
@@ -308,7 +372,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               }
             : {
                 width: isSidebarCollapsed
-                  ? `${ICON_ONLY_WIDTH}px`
+                  ? `${COLLAPSED_WIDTH}px`
                   : `${currentWidth.current}px`,
                 transition: 'all 200ms ease-out', // Default transition, overridden during dragging
               }

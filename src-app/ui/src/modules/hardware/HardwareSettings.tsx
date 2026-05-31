@@ -10,12 +10,12 @@ import {
   Typography,
 } from 'antd'
 import { useEffect } from 'react'
-import { MdOutlineMonitorHeart } from 'react-icons/md'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { formatBytes } from '@/modules/hardware/utils/formatBytes'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
+import { HardwareMonitorButton } from '@/modules/hardware/HardwareMonitorButton'
 
 const { Text } = Typography
 
@@ -582,25 +582,6 @@ export default function HardwareSettings() {
     }
   }
 
-  const handleOpenMonitorPopup = async () => {
-    try {
-      // Use browser popup for web app
-      const popup = window.open(
-        window.location.origin + '/hardware-monitor',
-        'hardware-monitor', // Using same name will focus existing popup
-        'width=800,height=600,scrollbars=yes,resizable=yes,menubar=no,toolbar=no',
-      )
-      if (popup) {
-        popup.focus()
-      } else {
-        message.error('Please allow popups for this website')
-      }
-    } catch (error) {
-      console.error('Error opening hardware monitor:', error)
-      message.error('Failed to open hardware monitor')
-    }
-  }
-
   const renderConnectionStatus = () => (
     <Card
       style={{
@@ -637,14 +618,11 @@ export default function HardwareSettings() {
   const titleWithButton = (
     <div className="flex items-center justify-between w-full">
       <span>Hardware</span>
-      {canMonitor && (
-        <Button
-          icon={<MdOutlineMonitorHeart />}
-          onClick={handleOpenMonitorPopup}
-        >
-          Monitor
-        </Button>
-      )}
+      {/* Extracted so desktop can override via localOverridePlugin
+        * — desktop opens a native Tauri window instead of a browser
+        * popup. Self-permission-gated (returns null without
+        * `hardware::monitor`). */}
+      <HardwareMonitorButton />
     </div>
   )
 

@@ -52,6 +52,32 @@ pub struct AssignProviderToGroupRequest {
 // Response Types
 // =====================================================
 
+/// Wrapped create response. For local providers, `plaintext_api_key`
+/// carries the auto-minted PROXY_TOKEN — shown ONCE on create (and
+/// on rotation). After this response, the value is only accessible
+/// via the existing "show api_key" admin action. For non-local
+/// providers `plaintext_api_key` is always None — admins typed their
+/// own key in, which the server just stored.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CreateLlmProviderResponse {
+    #[serde(flatten)]
+    pub provider: LlmProvider,
+    /// Plaintext PROXY_TOKEN for newly-created local providers. None
+    /// for any other provider_type.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plaintext_api_key: Option<String>,
+}
+
+/// Response from `POST /llm-providers/{id}/rotate-proxy-token`.
+/// Carries the new plaintext token in the same shape as create.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RotateProxyTokenResponse {
+    pub provider: LlmProvider,
+    /// New plaintext token. Caller should copy + store; only this
+    /// response carries it.
+    pub plaintext_api_key: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct LlmProviderListResponse {
     pub providers: Vec<LlmProvider>,

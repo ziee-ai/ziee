@@ -3,6 +3,7 @@
 // mod approval_test;
 
 pub mod mock_sampling_server;
+mod run_in_sandbox_test;
 
 use crate::common::test_helpers::{self};
 use serde_json::json;
@@ -1404,6 +1405,7 @@ fn make_sampling_server_config(url: String, timeout_seconds: i32) -> ziee::McpSe
         usage_mode: ziee::UsageMode::Auto,
         max_concurrent_sessions: None,
         is_built_in: false,
+        run_in_sandbox: false,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
     }

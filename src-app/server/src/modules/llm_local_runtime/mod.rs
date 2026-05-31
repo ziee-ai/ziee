@@ -5,16 +5,24 @@
 // This module manages local LLM runtime instances (llama.cpp, mistral.rs)
 // with support for local execution and SSH remote deployment
 
+pub mod auto_start;
 pub mod binary_manager;
 pub mod deployment;
+pub mod engine;
 pub mod events;
 pub mod handlers;
 pub mod models;
 pub mod permissions;
+pub mod proxy;
+pub mod proxy_handlers;
+pub mod proxy_router;
+pub mod reaper;
 pub mod repository;
 pub mod routes;
+pub mod runtime_settings;
 pub mod runtime_version;
 pub mod utils;
+pub mod validator;
 
 // Re-export main types and router
 pub use binary_manager::BinaryManager;
@@ -75,6 +83,21 @@ impl AppModule for LlmLocalRuntimeModule {
         DEPLOYMENT_MANAGER
             .set(Arc::new(deployment_manager))
             .map_err(|_| "DeploymentManager already initialized")?;
+
+        // Reseed the proxy token cache from llm_providers + spawn the
+        // idle reaper. Both depend on the pool being ready.
+        let pool = ctx.db_pool.clone();
+        tokio::spawn(async move {
+            if let Err(e) = proxy::reseed_from_db(pool.as_ref()).await {
+                tracing::warn!("llm_local_runtime: token cache reseed failed: {}", e);
+            }
+        });
+
+        let _ = reaper::spawn(ctx.db_pool.clone());
+
+        // P1.k: spawn the validation worker. Idempotent — only ever
+        // one instance per process.
+        let _ = validator::spawn_worker(ctx.db_pool.clone());
 
         Ok(())
     }

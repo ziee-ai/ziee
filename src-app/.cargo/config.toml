@@ -1,0 +1,60 @@
+# Workspace-wide Cargo build configuration.
+#
+# Applies to every member of the `src-app/` workspace (see `Cargo.toml`
+# `[workspace] members`). Cargo's config lookup walks UP from the
+# invocation directory; this file is the first one hit from any
+# member, so per-member `.cargo/config.toml` files are obsolete.
+
+[env]
+# Pin the embedded-PostgreSQL version. Single source of truth used by:
+#   - `postgresql_embedded`'s build.rs (reads POSTGRESQL_VERSION as a
+#     semver constraint, then downloads + bundles the matching theseus
+#     binary into our final binary).
+#   - `server/build_helper/pgvector.rs` (reads ZIEE_POSTGRES_VERSION as
+#     a plain version, used in the theseus download URL to build
+#     vector.so against header-compatible PG sources).
+#   - `server/src/core/database/mod.rs` (reads ZIEE_POSTGRES_VERSION
+#     via env!() and bakes it into `POSTGRES_VERSION` so the runtime
+#     VersionReq matches the bundled archive).
+# Bumping the PG floor is a one-line change here; remember to also bump
+# `server/config/dev.yaml` + `server/config/dev.example.yaml` (those
+# are runtime config and read at server start).
+POSTGRESQL_VERSION = "=18.3.0"
+ZIEE_POSTGRES_VERSION = "18.3.0"
+
+# Static-link libseccomp so operators don't need libseccomp2 on the
+# host. The libseccomp-sys build script honors LIBSECCOMP_LINK_TYPE.
+# Only takes effect when the server crate's `code_sandbox_seccomp`
+# cargo feature is enabled (i.e. Linux release builds with the feature
+# flag on). For non-server crates this is an inert env var.
+LIBSECCOMP_LINK_TYPE = "static"
+
+# Where libseccomp.a lives. Default is Debian/Ubuntu's multilib path
+# (works for ~80% of installs out of the box). On Fedora/RHEL the
+# path is /usr/lib64; on Arch /usr/lib; on Alpine /usr/lib.
+#
+# Override via:
+#   - the `just sandbox-build` recipe (auto-detects via pkg-config),
+#   - or set LIBSECCOMP_LIB_PATH=$(pkg-config --variable=libdir libseccomp)
+#     in your shell before running cargo directly.
+LIBSECCOMP_LIB_PATH = "/usr/lib/x86_64-linux-gnu"
+
+# Compile-time database URL for sqlx macros. The server's `build.rs`
+# wipes + applies BOTH server migrations and desktop migrations to
+# this DB (port 54321, the docker-compose build container) before
+# any crate-level compilation, so both `ziee` and `ziee-desktop`
+# crates' `sqlx::query_as!()` macros validate against the same
+# fully-migrated schema. Without this, the desktop crate's query
+# macros fail with "set DATABASE_URL to use query macros online".
+DATABASE_URL = "postgresql://postgres:password@127.0.0.1:54321/postgres"
+
+# ─── Cross-build to musl (Linux static distribution) ────────────────
+#
+# `just build-linux <arch>` runs `cargo zigbuild --target
+# <arch>-unknown-linux-musl`. Zig's linker handles the musl cross-link
+# painlessly from a Mac host. cargo-zigbuild's wrapper IS the linker —
+# we don't need to specify one here.
+#
+# Per-target env (e.g. LIBSECCOMP_LIB_PATH=/usr/lib for the musl Alpine
+# layout) is NOT supported in stable cargo's [env] section. The justfile
+# `build-linux` recipe sets it for the duration of the cargo call.

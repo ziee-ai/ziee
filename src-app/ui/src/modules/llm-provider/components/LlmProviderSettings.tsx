@@ -12,6 +12,7 @@ import {
 import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Stores } from '@/modules/llm-provider/stores'
+import { DivScrollY } from '@/components/common/DivScrollY'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { PROVIDER_ICONS } from '@/modules/llm-provider/constants'
@@ -155,14 +156,14 @@ export function LlmProviderSettings() {
                   Providers
                 </Title>
               </div>
-              <div className={'flex-1 pl-2 overflow-y-auto'}>
+              <DivScrollY className={'flex-1 pl-2 flex-col'}>
                 <ProviderMenu />
-              </div>
+              </DivScrollY>
             </div>
           )}
           {/* Main Content */}
           <div className={'flex flex-1'}>
-            <div className={'flex w-full flex-col py-3 px-3 overflow-y-auto'}>
+            <DivScrollY className={'flex w-full flex-col py-3 px-3'}>
               <div
                 className={'flex flex-col flex-1 max-w-3xl self-center w-full'}
               >
@@ -212,7 +213,7 @@ export function LlmProviderSettings() {
                 {renderProviderSettings()}
               </div>
               <div className={'w-full h-3 block'} />
-            </div>
+            </DivScrollY>
           </div>
         </div>
 

@@ -592,6 +592,44 @@ export function MyCard({ item }: MyCardProps) {
 
 **Reference:** See `ModelDetailsDrawer.tsx`, `McpServerDetailsDrawer.tsx`, and `AssistantDetailsDrawer.tsx` in hub modules.
 
+## Form input descriptions: NO tooltips, always visible
+
+For every antd `<Form.Item>` (settings forms, edit drawers, anywhere
+except the chat composer):
+
+- **Never** use `tooltip="..."` on the label. The question-mark hover
+  icon hides the instruction from users who don't think to mouse-hover.
+- **Always** put the requirement, example, format, valid range, or any
+  other instruction directly under the input as `extra="..."` (or a
+  custom `<Text type="secondary">` block) so it's in plain sight.
+- This applies to inputs WITH specific requirements (formats, ranges,
+  placeholders, semantic implications). A label like "Name" with a free
+  text input doesn't need extra; "memory.max" with a "≥ 16 MiB" rule does.
+
+```tsx
+// ❌ WRONG — instruction is invisible until hover
+<Form.Item
+  name="memory_max_mib"
+  label="memory.max"
+  tooltip="cgroup v2 memory cap (MiB). OOM-kills the workload if exceeded."
+>
+  <InputNumber min={16} suffix="MiB" />
+</Form.Item>
+
+// ✅ RIGHT — instruction visible below input
+<Form.Item
+  name="memory_max_mib"
+  label="memory.max"
+  extra="cgroup v2 memory cap. OOM-kills the workload if exceeded. Minimum 16 MiB."
+>
+  <InputNumber min={16} suffix="MiB" />
+</Form.Item>
+```
+
+**The one exception:** `ChatInput` (the chat composer). Inline tooltips
+on its tiny toolbar buttons are fine — those aren't form inputs in the
+settings-form sense.
+
 ## Summary
 
 **Golden Rule:** Components access store state, stores handle initialization and loading.

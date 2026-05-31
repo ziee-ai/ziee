@@ -5,7 +5,6 @@ import { Stores } from '@/core/stores'
 import type { RuntimeVersionResponse, DownloadVersionRequest } from '@/api-client/types'
 import type { RuntimeEngine } from '../types'
 import {
-  emitRuntimeVersionCreated,
   emitRuntimeVersionDeleted,
   emitRuntimeVersionDefaultChanged,
 } from '../events/emitters'
@@ -24,9 +23,13 @@ interface RuntimeVersionState {
 
   // Actions
   loadVersions: (engine?: RuntimeEngine) => Promise<void>
-  downloadVersion: (request: DownloadVersionRequest) => Promise<RuntimeVersionResponse>
+  /** Kick off a detached download. Returns the registry key — the
+   *  resulting RuntimeVersion lands in `versions` once the
+   *  RuntimeDownloadProgress store sees the Complete SSE event and
+   *  calls `loadVersions()` for us. */
+  downloadVersion: (request: DownloadVersionRequest) => Promise<{ key: string }>
   setDefaultVersion: (versionId: string) => Promise<void>
-  deleteVersion: (versionId: string) => Promise<void>
+  deleteVersion: (versionId: string, removeBinary?: boolean) => Promise<void>
   syncCache: () => Promise<void>
 
   // Selectors
@@ -75,18 +78,16 @@ export const useRuntimeVersionStore = create<RuntimeVersionState>()(
     },
 
     downloadVersion: async (request: DownloadVersionRequest) => {
+      // Delegates to the detached-task pipeline owned by the
+      // RuntimeDownloadProgress store. That store opens the SSE
+      // subscription, drives the per-row progress bar, and refreshes
+      // `versions` here on Complete — so this action no longer
+      // returns the resulting RuntimeVersion (it doesn't exist yet
+      // when the POST returns). Callers that need the version row
+      // should watch `Stores.RuntimeVersion.versions` instead.
       set({ error: null })
       try {
-        const response = await ApiClient.RuntimeVersion.download(request)
-
-        const newVersion = response.version
-        await emitRuntimeVersionCreated(newVersion)
-
-        set(state => ({
-          versions: [...state.versions, newVersion]
-        }))
-
-        return newVersion
+        return await Stores.RuntimeDownloadProgress.startDownload(request)
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Download failed'
         set({ error: message })
@@ -138,7 +139,7 @@ export const useRuntimeVersionStore = create<RuntimeVersionState>()(
       }
     },
 
-    deleteVersion: async (versionId: string) => {
+    deleteVersion: async (versionId: string, removeBinary = false) => {
       set(state => ({
         deleting: new Map(state.deleting).set(versionId, true),
         error: null
@@ -146,7 +147,8 @@ export const useRuntimeVersionStore = create<RuntimeVersionState>()(
 
       try {
         await ApiClient.RuntimeVersion.delete({
-          version_id: versionId
+          version_id: versionId,
+          remove_binary: removeBinary
         })
 
         await emitRuntimeVersionDeleted(versionId)

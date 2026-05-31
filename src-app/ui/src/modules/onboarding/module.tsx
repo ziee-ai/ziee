@@ -4,6 +4,7 @@ import { BookOutlined } from '@ant-design/icons'
 import { BlankLayout } from '@/modules/layouts/blank'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useOnboardingStore } from './stores/Onboarding.store'
+import { OnboardingRedirect } from './OnboardingRedirect'
 import './types/OnboardingSlot'
 import './types'
 
@@ -37,6 +38,16 @@ export default createModule({
         label: 'Onboarding',
         path: '/onboarding',
         order: 90,
+      },
+    ],
+    // Self-owned post-auth redirect. Mounted inside <BrowserRouter>
+    // by RouterComponent — uses useNavigate/useLocation, runs in a
+    // useEffect, returns null. Auth + router stay decoupled from
+    // onboarding.
+    routerEffects: [
+      {
+        id: 'onboarding-redirect',
+        component: OnboardingRedirect,
       },
     ],
   },

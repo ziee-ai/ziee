@@ -14,6 +14,12 @@ interface RuntimeUpdateState {
   // Actions
   checkForUpdates: (engine: RuntimeEngine) => Promise<RuntimeUpdateCheck>
   clearError: () => void
+
+  // Module-init hook (called automatically by the meta-framework on
+  // module mount) — wires the cross-store event listeners.
+  __init__?: {
+    __store__: () => void
+  }
 }
 
 export const useRuntimeUpdateStore = create<RuntimeUpdateState>((set) => ({
@@ -35,15 +41,20 @@ export const useRuntimeUpdateStore = create<RuntimeUpdateState>((set) => ({
       // Get current default version for this engine
       const currentVersion = Stores.RuntimeVersion.getDefaultVersion(engine)
 
-      // Compute additional fields
-      const latestVersion = response.available_versions[0] || ''
-      const hasUpdates = currentVersion
-        ? response.available_versions.some((v: string) => v !== currentVersion.version)
-        : response.available_versions.length > 0
+      // Releases come newest-first. The "latest" we can actually install is
+      // the newest one whose binary is published for this host.
+      const versions = response.versions
+      const latestVersion =
+        versions.find(v => v.binary_ready)?.version || versions[0]?.version || ''
+      // An update is available when there's a ready (built) version we have
+      // not installed yet. Build-pending tags don't count.
+      const hasUpdates = versions.some(v => v.binary_ready && !v.installed)
 
       const updateCheck: RuntimeUpdateCheck = {
         engine: response.engine,
-        available_versions: response.available_versions,
+        platform: response.platform,
+        arch: response.arch,
+        versions,
         current_version: currentVersion?.version,
         latest_version: latestVersion,
         has_updates: hasUpdates
@@ -77,5 +88,37 @@ export const useRuntimeUpdateStore = create<RuntimeUpdateState>((set) => ({
     }
   },
 
-  clearError: () => set({ error: null })
+  clearError: () => set({ error: null }),
+
+  __init__: {
+    __store__: () => {
+      const eventBus = Stores.EventBus
+      // When a version is deleted or created, the cached
+      // updateChecks for its engine still flag it as installed/not
+      // (stale), so the available-versions list misrenders the
+      // "installed" tag + the Download button's disabled state.
+      // Re-running the update check for every engine that has a
+      // cached entry rebuilds the snapshot against the current DB
+      // state. Cheap: there are only two engines.
+      const refreshAllCached = () => {
+        const checks = useRuntimeUpdateStore.getState().updateChecks
+        for (const engine of checks.keys()) {
+          useRuntimeUpdateStore
+            .getState()
+            .checkForUpdates(engine)
+            .catch(() => {})
+        }
+      }
+      eventBus.on(
+        'runtime_version.deleted',
+        refreshAllCached,
+        'RuntimeUpdateStore',
+      )
+      eventBus.on(
+        'runtime_version.created',
+        refreshAllCached,
+        'RuntimeUpdateStore',
+      )
+    },
+  },
 }))

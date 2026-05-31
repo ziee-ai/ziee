@@ -51,7 +51,15 @@ pub fn canonicalize_in_workspace(workspace: &Path, filename: &str) -> Result<Pat
         return Err(bad("filename contains NUL"));
     }
     let raw = Path::new(filename);
-    if raw.is_absolute() {
+    // Reject absolute paths AND leading `/` / `\` (which on Windows
+    // `Path::is_absolute` doesn't consider absolute — it requires a drive
+    // letter or UNC root — but in any sandboxed-path UX the user means
+    // "absolute" by `/etc/passwd`). Sandbox semantics are POSIX-flavored
+    // regardless of host OS, so a leading separator is always wrong.
+    if raw.is_absolute()
+        || filename.starts_with('/')
+        || filename.starts_with('\\')
+    {
         return Err(bad("absolute paths are not allowed"));
     }
     for c in raw.components() {

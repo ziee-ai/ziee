@@ -3,6 +3,7 @@ import {
   Alert,
   Button,
   Card,
+  Divider,
   Flex,
   Form,
   InputNumber,
@@ -73,7 +74,11 @@ export function RetrievalTuningSection() {
       <Form
         name="memory-admin-retrieval-form"
         form={form}
-        layout="vertical"
+        layout="horizontal"
+        labelCol={{ flex: '280px' }}
+        wrapperCol={{ flex: 'auto' }}
+        labelAlign="left"
+        colon={false}
         onFinish={handleSubmit}
         disabled={!canManage}
       >
@@ -82,22 +87,25 @@ export function RetrievalTuningSection() {
           label="Default top-K"
           extra="How many memories to inject per turn (per user can be overridden later)."
         >
-          <InputNumber min={1} max={100} />
+          <InputNumber min={1} max={100} style={{ width: 160 }} />
         </Form.Item>
         <Form.Item
           name="cosine_threshold"
           label="Cosine distance threshold"
           extra="Memories with distance ≥ this value are filtered out. Lower = stricter (fewer false-positives, more misses)."
         >
-          <InputNumber min={0} max={2} step={0.05} />
+          <InputNumber min={0} max={2} step={0.05} style={{ width: 160 }} />
         </Form.Item>
 
         {canManage && (
-          <Flex justify="end">
-            <Button type="primary" htmlType="submit" loading={saving}>
-              Save
-            </Button>
-          </Flex>
+          <>
+            <Divider className="!my-3" />
+            <Flex justify="end">
+              <Button type="primary" htmlType="submit" loading={saving}>
+                Save
+              </Button>
+            </Flex>
+          </>
         )}
       </Form>
     </Card>

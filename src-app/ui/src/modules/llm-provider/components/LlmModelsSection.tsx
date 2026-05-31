@@ -14,6 +14,7 @@ import {
   Flex,
   Spin,
   Switch,
+  Tooltip,
   Typography,
 } from 'antd'
 import { useParams } from 'react-router-dom'
@@ -227,22 +228,26 @@ export function LlmModelsSection() {
           }}
           trigger={['click']}
         >
-          <Button
-            type="text"
-            icon={<PlusOutlined aria-hidden="true" />}
-            aria-label="Add model"
-          />
+          <Tooltip title="Add model">
+            <Button
+              type="text"
+              icon={<PlusOutlined aria-hidden="true" />}
+              aria-label="Add model"
+            />
+          </Tooltip>
         </Dropdown>
       )
     }
 
     return (
-      <Button
-        type="text"
-        icon={<PlusOutlined aria-hidden="true" />}
-        onClick={handleAddLlmModel}
-        aria-label="Add model"
-      />
+      <Tooltip title="Add model">
+        <Button
+          type="text"
+          icon={<PlusOutlined aria-hidden="true" />}
+          onClick={handleAddLlmModel}
+          aria-label="Add model"
+        />
+      </Tooltip>
     )
   }
 

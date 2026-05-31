@@ -92,8 +92,10 @@ test.describe('Hub Search and Filters', () => {
 
       expect(filteredCount).toBe(0)
 
-      // Should show "no results" message
-      await expect(page.getByText(/no.*results|no.*found/i)).toBeVisible()
+      // Should show a "no match" message (catalog has models, none match)
+      await expect(
+        page.getByText(/no models match|no.*results|no.*found/i),
+      ).toBeVisible()
     })
 
     test('should clear search and show all results', async ({ page, testInfra }) => {

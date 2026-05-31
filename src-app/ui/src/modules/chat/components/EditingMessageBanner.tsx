@@ -1,4 +1,4 @@
-import { Button, theme, Typography } from 'antd'
+import { Button, theme, Tooltip, Typography } from 'antd'
 import { EditOutlined, CloseOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 
@@ -33,13 +33,15 @@ export function EditingMessageBanner() {
           Editing message
         </Text>
       </div>
-      <Button
-        type="text"
-        size="small"
-        icon={<CloseOutlined />}
-        onClick={() => Stores.Chat.__state.cancelEdit()}
-        aria-label="Cancel edit"
-      />
+      <Tooltip title="Cancel edit">
+        <Button
+          type="text"
+          size="small"
+          icon={<CloseOutlined />}
+          onClick={() => Stores.Chat.__state.cancelEdit()}
+          aria-label="Cancel edit"
+        />
+      </Tooltip>
     </div>
   )
 }

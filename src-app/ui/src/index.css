@@ -10,12 +10,16 @@
   }
 
   body {
+    /* Web (cross-OS browser) stack. Keep in sync with TokenOverrides
+     * in themes/override.ts — antd's fontFamily token covers antd
+     * components, this covers raw HTML (headings, divs, body text). */
     font-family:
-      -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-      "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-      sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+      system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI Variable",
+      "Segoe UI", "Roboto", "Helvetica Neue", "Arial", sans-serif;
+    font-size: 14px;
+    /* `-webkit-font-smoothing: antialiased` is considered an anti-pattern
+     * in 2025+: makes SF Pro look too thin. Letting the OS default
+     * (subpixel) handle it. */
   }
 
   #root {
@@ -36,4 +40,35 @@
  * Use a darker orange to meet 4.5:1. */
 .ant-tag.ant-tag-orange {
   color: #873800 !important;
+}
+
+/* OverlayScrollbars default-theme handle colors. The library applies
+ * `os-theme-dark` automatically (per the package CSS, .os-theme-dark
+ * sets a near-opaque-black handle — designed for use ON light surfaces).
+ * In dark mode that black handle disappears into the dark surface, so
+ * we re-bind the same theme class's `--os-handle-bg*` variables to the
+ * library's `os-theme-light` palette (which is the SAME library's
+ * light-handles-for-dark-backgrounds set). `.dark` is added to <html>
+ * by ThemeProvider. */
+html.dark .os-theme-dark {
+  --os-handle-bg: rgba(255, 255, 255, 0.22);
+  --os-handle-bg-hover: rgba(255, 255, 255, 0.35);
+  --os-handle-bg-active: rgba(255, 255, 255, 0.48);
+}
+
+/* Hover-expand: enlarge the handle when the user hovers the scrollbar
+ * area so it's easier to grab. `--os-size` controls both track and
+ * handle thickness. The library transitions opacity / bg-color but
+ * not size, so we explicitly transition width/height on the handle. */
+.os-scrollbar-handle {
+  transition:
+    opacity 0.15s,
+    background-color 0.15s,
+    border-color 0.15s,
+    width 0.15s ease-out,
+    height 0.15s ease-out;
+}
+.os-theme-dark.os-scrollbar:hover,
+.os-theme-light.os-scrollbar:hover {
+  --os-size: 12px;
 }

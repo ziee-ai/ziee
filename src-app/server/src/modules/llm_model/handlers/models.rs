@@ -8,6 +8,7 @@ use axum::{
     extract::{Path, Query},
     http::StatusCode,
 };
+use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::{
@@ -201,12 +202,36 @@ pub fn update_model_docs(op: TransformOperation) -> TransformOperation {
         .response_with::<404, (), _>(|res| res.description("Model not found"))
 }
 
+/// Query options for `DELETE /api/llm-models/{id}`.
+///
+/// `delete_file` (default `true`) controls whether the on-disk
+/// model directory is removed. The frontend pre-fills the
+/// confirmation checkbox based on whether the model's `file_path`
+/// is under the managed models directory; operator-managed paths
+/// (Path 3 pre-stage) default-uncheck.
+///
+/// A safety net (`force`, default `false`) is required if
+/// `delete_file=true` AND the path resolves outside the managed
+/// `<app_data>/models/` directory — prevents an admin from
+/// accidentally clobbering an arbitrary host path.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct DeleteModelQuery {
+    #[serde(default = "default_true")]
+    pub delete_file: bool,
+    #[serde(default)]
+    pub force: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
 /// Delete an LLM model (requires llm_models::delete permission)
 #[debug_handler]
 pub async fn delete_model(
     _auth: RequirePermissions<(LlmModelsDelete,)>,
     Path(model_id): Path<Uuid>,
-    
+    Query(query): Query<DeleteModelQuery>,
     Extension(event_bus): Extension<Arc<EventBus>>,
 ) -> ApiResult<StatusCode> {
     // Get model details before deletion (need provider_id for file path)
@@ -230,24 +255,45 @@ pub async fn delete_model(
     // Emit event
     event_bus.emit_async(LlmModelEvent::deleted(model_id, model_name).into());
 
-    // Delete files from disk
-    let storage = crate::modules::llm_model::storage::ModelStorage::new()
-        .await
-        .map_err(|e| AppError::internal_error(format!("Storage error: {}", e)))?;
+    // Optionally delete files from disk. The "managed path" is
+    // <app_data>/models/<provider_id>/<model_id>/; this is always
+    // inside the managed root by construction. The `force` query is
+    // accepted as a no-op for future-compatibility with file_path
+    // override flows (P1.h's Path 3 operator-managed paths are not
+    // exposed on LlmModel today; if/when we surface them, the
+    // safety net activates).
+    if query.delete_file {
+        let _ = query.force; // reserved for future Path-3 cleanup
+        let storage = crate::modules::llm_model::storage::ModelStorage::new()
+            .await
+            .map_err(|e| AppError::internal_error(format!("Storage error: {}", e)))?;
 
-    let model_path = storage.get_model_path(&provider_id, &model_id);
-
-    if model_path.exists() {
-        tokio::fs::remove_dir_all(&model_path).await.map_err(|e| {
-            tracing::error!(
-                "Failed to remove model directory {}: {}",
-                model_path.display(),
-                e
-            );
-            AppError::internal_error(format!("Failed to remove model files: {}", e))
-        })?;
-
-        tracing::info!("Removed model directory: {}", model_path.display());
+        let managed_path = storage.get_model_path(&provider_id, &model_id);
+        if managed_path.exists() {
+            let result = if managed_path.is_dir() {
+                tokio::fs::remove_dir_all(&managed_path).await
+            } else {
+                tokio::fs::remove_file(&managed_path).await
+            };
+            if let Err(e) = result {
+                tracing::error!(
+                    "Failed to remove model path {}: {}",
+                    managed_path.display(),
+                    e
+                );
+                return Err(AppError::internal_error(format!(
+                    "Failed to remove model files: {}",
+                    e
+                ))
+                .into());
+            }
+            tracing::info!("Removed model path: {}", managed_path.display());
+        }
+    } else {
+        tracing::info!(
+            "Skipped on-disk delete for model {} (delete_file=false)",
+            model_id
+        );
     }
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
@@ -258,9 +304,82 @@ pub fn delete_model_docs(op: TransformOperation) -> TransformOperation {
         .id("LlmModel.delete")
         .tag("LLM Models")
         .summary("Delete an LLM model")
+        .description(concat!(
+            "Query: delete_file (default true) controls on-disk file deletion. ",
+            "If delete_file=true and the file_path is outside <app_data>/models, ",
+            "pass force=true to override the safety net."
+        ))
         .response_with::<204, (), _>(|res| res.description("Model deleted successfully"))
+        .response_with::<400, (), _>(|r| r.description("delete_file refused without force"))
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("Model not found"))
+}
+
+/// P1.k: manually (re-)trigger validation for a model. Backs the
+/// "Run inference test" button on the model card.
+///   - Local models → enqueue a Tier-3 background validation
+///     (engine load probe + a tiny chat round-trip).
+///   - Remote models → inline remote API probe (tiny chat call).
+#[debug_handler]
+pub async fn validate_model(
+    _auth: RequirePermissions<(LlmModelsEdit,)>,
+    Path(model_id): Path<Uuid>,
+    Extension(pool): Extension<sqlx::PgPool>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let model = Repos
+        .llm_model
+        .get_by_id(model_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Model"))?;
+
+    let provider = Repos
+        .llm_provider
+        .get_by_id(model.provider_id)
+        .await
+        .map_err(|e| AppError::internal_error(format!("provider lookup: {e}")))?
+        .ok_or_else(|| AppError::not_found("Provider"))?;
+
+    if provider.provider_type == "local" {
+        crate::modules::llm_local_runtime::validator::enqueue(
+            model_id,
+            crate::modules::llm_local_runtime::validator::ValidationTier::Tier3,
+        )
+        .await;
+        Ok((
+            StatusCode::ACCEPTED,
+            Json(serde_json::json!({
+                "queued": true,
+                "tier": "tier3",
+                "message": "Local model validation queued; watch validation_status."
+            })),
+        ))
+    } else {
+        // Remote: run the probe inline (no engine to serialize).
+        let outcome =
+            crate::modules::llm_local_runtime::validator::validate_remote_model(&pool, model_id)
+                .await?;
+        let valid = matches!(
+            outcome,
+            crate::modules::llm_local_runtime::validator::ValidationOutcome::Valid
+        );
+        Ok((
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "queued": false,
+                "valid": valid,
+            })),
+        ))
+    }
+}
+
+pub fn validate_model_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(LlmModelsEdit,)>(op)
+        .id("LlmModel.validate")
+        .tag("LLM Models")
+        .summary("Manually (re-)run model validation (Tier-3 local / remote API probe).")
+        .response::<200, Json<serde_json::Value>>()
+        .response_with::<202, (), _>(|r| r.description("Local validation queued"))
+        .response_with::<404, (), _>(|r| r.description("Model not found"))
 }
 
 // =====================================================

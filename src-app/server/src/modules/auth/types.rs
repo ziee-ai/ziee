@@ -170,3 +170,16 @@ pub struct DeleteProviderResponse {
 fn default_true() -> bool {
     true
 }
+
+// =====================================================
+// Change password
+// =====================================================
+//
+// NOTE: `AuthConfigResponse` and `PasswordOnlyLoginRequest` (which
+// used to live here) moved with their handlers into the desktop
+// tauri crate (`desktop/tauri/src/modules/tunnel_auth/`) — they
+// depend on the desktop-only `remote_access_settings` table.
+
+// NOTE: `ChangePasswordRequest` moved to the desktop tauri crate
+// (`desktop/tauri/src/modules/tunnel_auth/models.rs`) alongside its
+// only handler (`change_password`).

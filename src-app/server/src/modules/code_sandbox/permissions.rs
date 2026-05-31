@@ -25,17 +25,17 @@ impl PermissionCheck for CodeSandboxExecute {
     const MODULE: &'static str = "code_sandbox";
 }
 
-/// Read access to environment metadata + prefetch task state +
+/// Read access to rootfs version metadata + install task state +
 /// SSE progress streams. Sufficient to render the admin UI's
-/// "Sandbox Environments" page without being able to spend
-/// bandwidth on a new download.
+/// "Rootfs versions" page without being able to spend bandwidth on
+/// a new download.
 pub struct CodeSandboxEnvironmentsRead;
 
 impl PermissionCheck for CodeSandboxEnvironmentsRead {
     const NAME: &'static str = "CodeSandboxEnvironmentsRead";
     const PERMISSION: &'static str = "code_sandbox::environments::read";
     const DESCRIPTION: &'static str =
-        "List available sandbox environments and watch prefetch progress.";
+        "List rootfs versions and watch install progress.";
     const MODULE: &'static str = "code_sandbox";
 }
 

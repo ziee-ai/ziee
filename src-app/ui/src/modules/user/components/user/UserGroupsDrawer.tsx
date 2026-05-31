@@ -1,5 +1,5 @@
 import { PlusOutlined, TeamOutlined } from '@ant-design/icons'
-import { App, Button, Empty, List, Popconfirm, Spin, Tag } from 'antd'
+import { App, Button, Empty, List, Popconfirm, Spin, Tag, Tooltip } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -97,18 +97,20 @@ export function UserGroupsDrawer() {
       size={600}
       extra={
         canAssign && (
-          <Button
-            type="text"
-            icon={<PlusOutlined aria-hidden="true" />}
-            onClick={() => {
-              Stores.UserGroupsDrawer.closeUserGroupsDrawer()
-              if (user) {
-                Stores.AssignGroupDrawer.openAssignGroupDrawer(user)
-              }
-            }}
-            className={'mr-2'}
-            aria-label="Assign group"
-          />
+          <Tooltip title="Assign group">
+            <Button
+              type="text"
+              icon={<PlusOutlined aria-hidden="true" />}
+              onClick={() => {
+                Stores.UserGroupsDrawer.closeUserGroupsDrawer()
+                if (user) {
+                  Stores.AssignGroupDrawer.openAssignGroupDrawer(user)
+                }
+              }}
+              className={'mr-2'}
+              aria-label="Assign group"
+            />
+          </Tooltip>
         )
       }
     >

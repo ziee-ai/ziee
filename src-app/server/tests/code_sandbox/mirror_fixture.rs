@@ -108,7 +108,22 @@ pub async fn setup(flavor: &str) -> Option<MirrorFixture> {
     let serve_dir = TempDir::new().ok()?;
     let tag_dir = serve_dir.path().join(&tag);
     std::fs::create_dir_all(&tag_dir).ok()?;
-    std::os::unix::fs::symlink(&source_sqfs, tag_dir.join(&asset_filename)).ok()?;
+    // Cross-platform symlink: Windows distinguishes file vs dir links
+    // via `symlink_file` / `symlink_dir`, and may require Developer Mode
+    // or admin privilege. Fall back to `fs::copy` if the symlink call
+    // fails — the fixture only needs the URL to serve the bytes, not
+    // share inode state with the source.
+    let dest = tag_dir.join(&asset_filename);
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(&source_sqfs, &dest).ok()?;
+    }
+    #[cfg(windows)]
+    {
+        if std::os::windows::fs::symlink_file(&source_sqfs, &dest).is_err() {
+            std::fs::copy(&source_sqfs, &dest).ok()?;
+        }
+    }
 
     // 4. Cache dir — where the prefetch path will INSTALL the
     // downloaded squashfs. Must be a fresh tempdir; if it had the
@@ -178,6 +193,7 @@ yanked = false
             ),
         ],
         sandbox_cache_tempdir: None,
+                use_desktop_binary: false,
     };
     let server = TestServer::start_with_options(opts).await;
 

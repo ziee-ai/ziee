@@ -27,6 +27,18 @@ pub struct UserMemory {
     pub recall_count: i32,
 }
 
+/// Paginated response shape for the per-user memory list — matches
+/// the convention used by `McpServerListResponse` /
+/// `LlmRepositoryListResponse`, so the UI can drive a standard
+/// antd `<Pagination>` from the response (current_page, total).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MemoryListResponse {
+    pub items: Vec<UserMemory>,
+    pub total: i64,
+    pub page: i64,
+    pub per_page: i64,
+}
+
 /// Per-user memory preferences.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, sqlx::FromRow)]
 pub struct UserMemorySettings {

@@ -27,15 +27,18 @@ server:
   port: 9000
   api_prefix: "/api"
   # Global per-IP rate limiter (tower-governor). Keep enabled on public
-  # deployments. per_second/burst_size default to 5/60 when omitted.
+  # deployments. per_second/burst_size default to 50/500 when omitted —
+  # wide enough that a normal SPA cold-load (~15-25 parallel calls) doesn't
+  # 429; tighten once you've measured normal demand, or behind a reverse
+  # proxy that NATs all users to one IP, raise these / swap the key extractor.
   # The built-in code_sandbox + memory MCP servers are reached over loopback
   # and share the 127.0.0.1 bucket, so if agent tool loops self-throttle
   # (HTTP 429), raise the limits rather than disabling — enabled: false
   # removes throttling for ALL traffic, including external.
   rate_limit:
     enabled: true
-    per_second: 5
-    burst_size: 60
+    per_second: 50
+    burst_size: 500
   cors:
     allow_origins: ["https://chat.example.com"]
     allow_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]

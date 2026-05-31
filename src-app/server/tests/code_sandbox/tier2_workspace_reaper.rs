@@ -136,30 +136,67 @@ fn reap_once(root: &std::path::Path, max_age: Duration) {
 }
 
 fn set_mtime(path: &std::path::Path, when: SystemTime) {
-    use std::os::unix::fs::MetadataExt;
-    let secs = when
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map(|d| d.as_secs() as libc::time_t)
-        .unwrap_or(0);
-    let cpath = std::ffi::CString::new(path.to_str().unwrap()).unwrap();
-    // Two-element array: [atime, mtime].
-    let times = [
-        libc::timeval {
-            tv_sec: secs,
-            tv_usec: 0,
-        },
-        libc::timeval {
-            tv_sec: secs,
-            tv_usec: 0,
-        },
-    ];
-    let rc = unsafe { libc::utimes(cpath.as_ptr(), times.as_ptr()) };
-    assert!(
-        rc == 0,
-        "utimes({}) failed: {}",
-        path.display(),
-        std::io::Error::last_os_error()
-    );
-    // Suppress unused-import lint.
-    let _ = std::fs::metadata(path).map(|m| m.size());
+    // Cross-platform mtime setter, working for BOTH files and
+    // directories. The earlier `OpenOptions::write(true).read(true)
+    // .open(path)` approach was POSIX-non-compliant for directories
+    // — `open(O_RDWR, dir)` returns `EISDIR` on every Unix per
+    // `open(2)`. The Windows side worked because Windows lets you
+    // open a directory handle when `FILE_FLAG_BACKUP_SEMANTICS` is
+    // set; the Unix branch never worked for directories on any host.
+    //
+    // Replaced with `utimensat` (Unix) and a fd-based `set_modified`
+    // with FILE_FLAG_BACKUP_SEMANTICS (Windows). `utimensat` operates
+    // on the inode by path — no fd needed, no read/write access
+    // required — and is supported on Linux 2.6.22+, every macOS,
+    // every BSD. Both atime and mtime are set to `when` because the
+    // reaper compares against mtime only and there's no callsite that
+    // observes atime, so a single value keeps the helper simple.
+    let dur = when
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    #[cfg(windows)]
+    {
+        // Windows path uses the file handle approach because Win32
+        // SetFileTime() needs HANDLE; we can't go path-based without
+        // CreateFileW. Existing logic is correct on Windows — kept.
+        let _ = dur;
+        use std::os::windows::fs::OpenOptionsExt;
+        // 0x02000000 = FILE_FLAG_BACKUP_SEMANTICS (required for directory handles)
+        // 0x40000000 = GENERIC_WRITE
+        // 0x80000000 = GENERIC_READ
+        let f = std::fs::OpenOptions::new()
+            .access_mode(0x80000000 | 0x40000000)
+            .custom_flags(0x02000000)
+            .open(path)
+            .unwrap_or_else(|e| panic!("open({}) for set_mtime: {e}", path.display()));
+        f.set_modified(when)
+            .unwrap_or_else(|e| panic!("set_modified({}): {e}", path.display()));
+        return;
+    }
+    #[cfg(unix)]
+    {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+        let c_path = CString::new(path.as_os_str().as_bytes())
+            .unwrap_or_else(|_| panic!("path contains nul: {}", path.display()));
+        let ts = libc::timespec {
+            tv_sec: dur.as_secs() as libc::time_t,
+            tv_nsec: dur.subsec_nanos() as i64,
+        };
+        // [atime, mtime] — same value for both, see comment above.
+        let times = [ts, ts];
+        // SAFETY: c_path and times outlive the call; flags=0 means
+        // "follow symlinks" (test fixtures never use symlinks here);
+        // AT_FDCWD makes the path relative to cwd or absolute as-is.
+        let rc = unsafe {
+            libc::utimensat(libc::AT_FDCWD, c_path.as_ptr(), times.as_ptr(), 0)
+        };
+        if rc != 0 {
+            panic!(
+                "utimensat({}) failed: {}",
+                path.display(),
+                std::io::Error::last_os_error()
+            );
+        }
+    }
 }

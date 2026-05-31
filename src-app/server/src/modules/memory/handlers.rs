@@ -17,8 +17,9 @@ use crate::{
         memory::{
             models::{
                 CreateMemoryRequest, MemoryAdminSettings, MemoryAuditEntry,
-                UpdateMemoryAdminSettingsRequest, UpdateMemoryRequest,
-                UpdateUserMemorySettingsRequest, UserMemory, UserMemorySettings, is_valid_kind,
+                MemoryListResponse, UpdateMemoryAdminSettingsRequest,
+                UpdateMemoryRequest, UpdateUserMemorySettingsRequest, UserMemory,
+                UserMemorySettings, is_valid_kind,
             },
             permissions::{MemoryAdminManage, MemoryAdminRead, MemoryRead, MemoryWrite},
         },
@@ -30,40 +31,108 @@ use crate::{
 // Shared with memory_mcp/handlers.rs (audit R7-#8 dedup).
 use crate::modules::memory::models::MAX_MEMORY_CONTENT_LEN as MAX_CONTENT_LEN;
 
-/// List/page query params.
+/// List/page query params. Accepts `page` + `per_page` (1-based)
+/// plus optional server-side filters that get pushed all the way
+/// down to the SQL WHERE clause:
+///
+///   - `search` — case-insensitive substring match on `content`
+///   - `kind`   — exact match on the memory kind
+///                (preference / fact / goal / relationship / other)
+///   - `source` — exact match on the source
+///                (manual / extraction / mcp_tool)
+///
+/// `limit`/`offset` are still accepted as legacy fallback for
+/// scripted callers — the standard page/per_page path is preferred.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListMemoriesQuery {
-    #[serde(default = "default_limit")]
-    pub limit: i64,
     #[serde(default)]
-    pub offset: i64,
-}
-
-fn default_limit() -> i64 {
-    50
+    pub page: Option<i64>,
+    #[serde(default)]
+    pub per_page: Option<i64>,
+    /// Legacy: when `page`/`per_page` are absent, fall back to
+    /// `limit`/`offset` (clamped to safe ranges).
+    #[serde(default)]
+    pub limit: Option<i64>,
+    #[serde(default)]
+    pub offset: Option<i64>,
+    /// Substring search on `content` (case-insensitive). Trimmed +
+    /// empty-string normalized to None.
+    #[serde(default)]
+    pub search: Option<String>,
+    /// Exact-match filter on `kind`. None = no filter.
+    #[serde(default)]
+    pub kind: Option<String>,
+    /// Exact-match filter on `source`. None = no filter.
+    #[serde(default)]
+    pub source: Option<String>,
 }
 
 #[debug_handler]
 pub async fn list_memories(
     auth: RequirePermissions<(MemoryRead,)>,
     Query(q): Query<ListMemoriesQuery>,
-) -> ApiResult<Json<Vec<UserMemory>>> {
-    // Clamp page size to defend against runaway scans.
-    let limit = q.limit.clamp(1, 200);
-    let offset = q.offset.max(0);
-    let rows = Repos
+) -> ApiResult<Json<MemoryListResponse>> {
+    // Resolve page/per_page from either the new shape or the
+    // legacy limit/offset, then clamp to a defensive range.
+    let per_page = q
+        .per_page
+        .or(q.limit)
+        .unwrap_or(50)
+        .clamp(1, 200);
+    let page = if let Some(p) = q.page {
+        p.max(1)
+    } else if let Some(off) = q.offset {
+        // Convert offset → 1-based page using per_page as the divisor.
+        (off.max(0) / per_page) + 1
+    } else {
+        1
+    };
+    let offset = (page - 1) * per_page;
+
+    // Normalize: trim search, treat empty as None so the SQL noop
+    // short-circuits and we don't run `ILIKE '%%'`.
+    let search = q
+        .search
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let kind = q
+        .kind
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let source = q
+        .source
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+
+    let items = Repos
         .memory
-        .list_for_user(auth.user.id, limit, offset)
+        .list_for_user(auth.user.id, per_page, offset, search, kind, source)
         .await?;
-    Ok((StatusCode::OK, Json(rows)))
+    let total = Repos
+        .memory
+        .count_for_user(auth.user.id, search, kind, source)
+        .await?;
+
+    Ok((
+        StatusCode::OK,
+        Json(MemoryListResponse {
+            items,
+            total,
+            page,
+            per_page,
+        }),
+    ))
 }
 
 pub fn list_memories_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(MemoryRead,)>(op)
         .id("Memory.list")
         .tag("Memory")
-        .summary("List the caller's own memories")
-        .response::<200, Json<Vec<UserMemory>>>()
+        .summary("List the caller's own memories (paginated)")
+        .response::<200, Json<MemoryListResponse>>()
 }
 
 #[debug_handler]

@@ -42,12 +42,29 @@ pub async fn generate_openapi_spec(
     // Initialize global repository factory
     crate::core::init_repositories((*pool).clone());
 
+    // Module init reads `get_caches_config()` for default paths
+    // (e.g. memory's embedding-engine probe touches llm_engines_dir).
+    // Without this set, the unwrap inside `CachesConfig::*` panics.
+    crate::core::set_caches_config(config.caches.clone());
+
     // Initialize modules using shared builder functions
     let module_context = ModuleContext::new(pool.clone(), std::sync::Arc::new(config.clone()));
     let mut modules = app_builder::create_modules();
 
-    // Initialize all modules
-    app_builder::initialize_modules(&mut modules, &module_context)?;
+    // Initialize all modules. OpenAPI generation only walks the
+    // router structure — it never executes handlers — so a module
+    // that fails to initialize on the current platform (e.g.
+    // llm_local_runtime's binary-cache setup on a non-APFS volume)
+    // shouldn't block doc generation. Log + continue.
+    for module in modules.iter_mut() {
+        if let Err(e) = module.init(&module_context) {
+            eprintln!(
+                "openapi-gen: module '{}' init failed: {} (continuing — routes are still registered)",
+                module.name(),
+                e
+            );
+        }
+    }
 
     // Build API router using shared builder function
     // build_api_router expects PgPool, so we need to extract it from Arc

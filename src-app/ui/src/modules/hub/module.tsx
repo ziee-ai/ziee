@@ -3,6 +3,9 @@ import { AppstoreOutlined } from '@ant-design/icons'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { Permissions } from '@/api-client/types'
+import { useHubCatalogStore } from '@/modules/hub/stores/hub-catalog-store'
+import { useHubUpdatesStore } from '@/modules/hub/stores/hub-updates-store'
+import '@/modules/hub/types'
 
 // Hub coordination module
 // Sub-modules are auto-discovered from hub/modules/**/module.tsx
@@ -29,6 +32,10 @@ export default createModule({
     description: 'Hub catalog coordination module',
   },
   dependencies: ['router'],
+  stores: [
+    { name: 'HubCatalog', store: useHubCatalogStore },
+    { name: 'HubUpdates', store: useHubUpdatesStore },
+  ],
   routes: [
     {
       path: '/hub/:activeTab?',

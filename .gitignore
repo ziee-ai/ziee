@@ -2,12 +2,22 @@
 # Created by `just sandbox-fetch` / `just sandbox-build`; never committed.
 .ziee-cache/
 
+# Runtime app-data dir (server-extracted bin tools: bun/pandoc/uv/pdfium,
+# hub catalog seed, postgres data). Created when running the server with the
+# default dev config's `data_dir: ../../ziee-data/...`; never committed.
+ziee-data/
+ziee-chat-data/
+
 # Ad-hoc local test-run logs (E2E + integration + audit tee output).
 *.log
 
 # Local test-environment secrets (API keys for integration tests).
 # Sourced by `just test` via tests/.env.test; never committed.
 **/.env.test
+
+# Local-only credentials for Tier 8 real-ngrok integration tests.
+# Sourced by `just check-remote-access-real-ngrok`; never committed.
+.ngrok-test-credentials.env
 
 # Cross-compile target dir for sandbox-guest-agent (built inside an
 # aarch64-musl Docker container so the host Mac can produce the in-VM agent
@@ -17,3 +27,23 @@ target-docker/
 
 # Local dev config (machine-specific paths)
 src-app/server/config/dev.yaml
+
+# npm workspaces hoists into the repo-root node_modules; never committed.
+node_modules/
+
+# Playwright artifacts — per-run, never committed.
+playwright-report/
+test-results/
+
+# pgvector build-helper outputs that land inside the vendored
+# submodule dir (downloaded PG binaries + the SDK wrapper script).
+# Regenerated on every `cargo build` of the server crate.
+src-app/server/vendor/pgvector/postgresql-*/
+src-app/server/vendor/pgvector/pg_config_wrapper/
+
+# macOS Finder cruft.
+.DS_Store
+
+# Per-session Claude Code state (lock file used by the scheduled-task
+# bookkeeping). Never committed.
+.claude/scheduled_tasks.lock
