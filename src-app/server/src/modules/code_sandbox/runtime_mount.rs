@@ -477,7 +477,38 @@ async fn mount_if_needed(
         return Ok(());
     }
 
-    if let Err(e) = std::fs::create_dir_all(mount_dir) {
+    // Reaching here means the idempotency check above did NOT see a
+    // healthy mount (`usr/` didn't stat). But `mount_dir` can still
+    // EXIST as a STALE/DEAD FUSE mount: the squashfuse daemon died
+    // (server SIGKILL/OOM, or — in tests — a prior per-test server that
+    // shared this cache exited) but the kernel mount entry lingers, so
+    // `usr/` returns ENOTCONN ("Transport endpoint is not connected")
+    // rather than NotFound. In that state `create_dir_all` fails with
+    // EEXIST and a fresh squashfuse can't mount over the stale entry.
+    // Ensure the mount point exists, clearing any stale/dead FUSE mount
+    // first. A dead FUSE mount makes `mkdir` return EEXIST while `stat`
+    // fails (so we can't gate on `mount_dir.exists()`), and a fresh
+    // squashfuse can't mount over the lingering entry. We do NOT find a
+    // *healthy* mount here — that was reused above — so anything present
+    // is dead and safe to clear. `fusermount -u -z` (lazy) can return
+    // before the kernel fully releases the point, so retry the mkdir a
+    // few times.
+    let mut mkdir_result = std::fs::create_dir_all(mount_dir);
+    #[cfg(target_os = "linux")]
+    {
+        let mut attempts = 0;
+        while mkdir_result.is_err() && attempts < 5 {
+            let _ = Command::new("fusermount")
+                .arg("-u")
+                .arg("-z")
+                .arg(mount_dir)
+                .status();
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            mkdir_result = std::fs::create_dir_all(mount_dir);
+            attempts += 1;
+        }
+    }
+    if let Err(e) = mkdir_result {
         return Err(ReadyError::MountFailed {
             reason: format!("mkdir {}: {e}", mount_dir.display()),
         });
