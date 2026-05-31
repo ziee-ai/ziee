@@ -52,14 +52,21 @@ test.describe('Local Runtime — engine lifecycle (needs HUGGINGFACE_API_KEY)', 
   })
 
   test('chat auto-starts a stopped engine and streams a reply', async ({ page, testInfra }) => {
-    // Cold-CPU first-token after engine spawn is slow on commodity Macs
-    // (gold_smoke uses the same generous budget). The locator timeouts
-    // below are useless without bumping the test-level budget too.
-    test.setTimeout(600000)
+    // Cold-CPU first-token after engine spawn is slow on commodity Macs.
+    // The chain is: GGUF download (~30s with cache) → engine binary
+    // spawn → llama-server cold model load (~3–5 min on Apple Silicon
+    // CPU for TinyLlama Q4_K_M) → MCP tool description plumbing →
+    // prompt eval + first-token (~1–2 min on CPU). 20-min budget
+    // covers worst-case slow CPU.
+    test.setTimeout(1200000)
     const { baseURL, apiURL } = testInfra
     const token = await getCurrentUserToken(page)
 
-    // Real engine + real GGUF model under a local provider, exposed to chat.
+    // Real engine + real GGUF model under a local provider, exposed
+    // to chat. v0.0.3-alpha and later are safe to resolve via the
+    // `latest` tag — the prior v0.0.2-alpha macOS bug (missing
+    // libllama-server-impl.dylib from the release tarball, dyld-fail
+    // on launch) was fixed upstream in ziee-ai/llama.cpp#1.
     await downloadEngineViaApi(baseURL, token, 'llamacpp')
     const providerId = await seedLocalProvider(baseURL, token)
     await downloadGgufModelViaApi(baseURL, token, providerId)
@@ -82,12 +89,12 @@ test.describe('Local Runtime — engine lifecycle (needs HUGGINGFACE_API_KEY)', 
         .filter({ hasText: 'Reply with the single word' })
     ).toBeVisible({ timeout: 15000 })
 
-    // …then the engine auto-starts and streams the assistant reply. The
-    // full chain is: auto_start_timeout_secs (up to 600s) → first-token
-    // on CPU (60–180s). Allow 9 minutes to safely fit inside the 10-min
+    // …then the engine auto-starts and streams the assistant reply.
+    // Auto-start (up to 600s for cold load) + first-token CPU
+    // inference (1–2 min). Allow 15 min to fit inside the 20-min
     // test budget set above.
     await expect(page.locator('[data-testid="chat-message"]').nth(1)).toBeVisible({
-      timeout: 540000
+      timeout: 900000
     })
   })
 })

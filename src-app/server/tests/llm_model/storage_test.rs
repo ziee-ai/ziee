@@ -2,9 +2,8 @@
 ///
 /// These tests verify that file operations (storage, cleanup, validation)
 /// work correctly for model uploads and downloads.
-use crate::common::{TestServer, test_helpers};
+use crate::common::{TestServer, shared_test_app_data_dir, test_helpers};
 use std::fs;
-use std::path::Path;
 
 #[tokio::test]
 async fn test_delete_downloaded_model_removes_files() {
@@ -141,14 +140,15 @@ async fn test_delete_downloaded_model_removes_files() {
         .find(|m| m["id"].as_str().unwrap() == model_id)
         .expect("Downloaded model should appear in list");
 
-    // Construct the model path manually since API doesn't return file paths
-    // Model storage path is: {app_data_dir}/models/{provider_id}/{model_id}
-    // App data dir defaults to home directory
-    let app_data_dir = std::env::var("APP_DATA_DIR").unwrap_or_else(|_| {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-        format!("{}/.ziee", home)
-    });
-    let model_path = Path::new(&app_data_dir)
+    // Construct the model path manually since API doesn't return file
+    // paths. Model storage layout is: {app_data_dir}/models/{provider_id}/{model_id}.
+    // The test backend uses the harness's isolated data dir
+    // (`<repo>/.ziee-cache/test-app-data/`) — NOT `~/.ziee/` — so an
+    // env-var fallback that defaults to `$HOME/.ziee` checked the
+    // wrong path and asserted false. Sourcing the dir from the
+    // harness keeps the two in lockstep automatically.
+    let app_data_dir = shared_test_app_data_dir();
+    let model_path = app_data_dir
         .join("models")
         .join(provider_id)
         .join(&model_id);
@@ -338,14 +338,15 @@ async fn test_download_creates_correct_file_structure() {
         .find(|m| m["id"].as_str().unwrap() == model_id)
         .expect("Downloaded model should appear in list");
 
-    // Construct the model path manually since API doesn't return file paths
-    // Model storage path is: {app_data_dir}/models/{provider_id}/{model_id}
-    // App data dir defaults to home directory
-    let app_data_dir = std::env::var("APP_DATA_DIR").unwrap_or_else(|_| {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-        format!("{}/.ziee", home)
-    });
-    let model_path = Path::new(&app_data_dir)
+    // Construct the model path manually since API doesn't return file
+    // paths. Model storage layout is: {app_data_dir}/models/{provider_id}/{model_id}.
+    // The test backend uses the harness's isolated data dir
+    // (`<repo>/.ziee-cache/test-app-data/`) — NOT `~/.ziee/` — so an
+    // env-var fallback that defaults to `$HOME/.ziee` checked the
+    // wrong path and asserted false. Sourcing the dir from the
+    // harness keeps the two in lockstep automatically.
+    let app_data_dir = shared_test_app_data_dir();
+    let model_path = app_data_dir
         .join("models")
         .join(provider_id)
         .join(&model_id);
