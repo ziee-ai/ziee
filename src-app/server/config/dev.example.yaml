@@ -56,12 +56,19 @@ server:
   port: 3000  # Use 0 for automatic port selection
   api_prefix: "/api"  # Base path prefix for all API routes
 
-  # Per-peer-IP rate limit (tower-governor token bucket). Optional —
-  # if omitted, defaults to `per_second: 50, burst_size: 500` (see
-  # src/main.rs). Production behind a real reverse proxy should
-  # tighten these; tests bump them up so a sequential sweep against
-  # 127.0.0.1 doesn't 429 itself.
+  # Global per-IP rate limiter (tower-governor token bucket).
+  #   enabled:     master on/off switch (default true).
+  #   per_second:  sustained requests/sec per peer IP (default 50).
+  #   burst_size:  token-bucket burst capacity (default 500) — wide enough
+  #                that a normal SPA cold-load (15-25 parallel calls) doesn't
+  #                429; tighten behind a real reverse proxy.
+  # NOTE: the built-in code_sandbox + memory MCP servers are reached over
+  # loopback (127.0.0.1) and share one bucket with user traffic, so a rapid
+  # agent tool loop can make the server 429 itself. If you hit that, raise the
+  # limits — or set enabled: false on a trusted/non-public deployment (which
+  # disables throttling for ALL traffic, internal and external).
   rate_limit:
+    enabled: true
     per_second: 50
     burst_size: 500
 

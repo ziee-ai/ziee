@@ -168,6 +168,12 @@ pub struct TestServerOptions {
     /// magic_link, tunnel_auth). See
     /// `desktop/tauri/tests/remote_access/*.rs`.
     pub use_desktop_binary: bool,
+    /// Override the global rate limiter: `(enabled, per_second, burst_size)`.
+    /// `None` (default) keeps the very-high test caps so a sequential test
+    /// sweep against the single 127.0.0.1 peer-IP bucket never self-429s.
+    /// The rate-limit regression test sets this to small or disabled values
+    /// to exercise the governor on/off behavior.
+    pub rate_limit: Option<(bool, u64, u32)>,
 }
 
 impl TestServer {
@@ -245,6 +251,12 @@ impl TestServer {
         //     the sandbox don't touch this dir.
         let shared_data_dir = shared_test_app_data_dir();
 
+        // Rate-limit override: default to very-high caps so sequential test
+        // sweeps against the single 127.0.0.1 bucket don't self-429; the
+        // rate-limit regression test passes explicit small/disabled values.
+        let (rl_enabled, rl_per_sec, rl_burst) =
+            opts.rate_limit.unwrap_or((true, 10000, 10000));
+
         // Create test config for the server.
         //
         // Path values are written with SINGLE quotes (YAML's "flow scalar")
@@ -286,8 +298,9 @@ server:
   # still exercised via the dedicated A3 rate-limit regression test
   # which sets its own low values.
   rate_limit:
-    per_second: 10000
-    burst_size: 10000
+    enabled: {rl_enabled}
+    per_second: {rl_per_sec}
+    burst_size: {rl_burst}
   # OAuth tests drive flows against the testcontainer mock; the
   # reqwest client doesn't set X-Forwarded-* so the backend derives
   # redirect_uri from HOST. The flag's value doesn't matter for
@@ -315,6 +328,9 @@ secrets:
 "#,
             host, port, username, password, database_name, server_port,
             shared = shared_data_dir.display(),
+            rl_enabled = rl_enabled,
+            rl_per_sec = rl_per_sec,
+            rl_burst = rl_burst,
         );
 
         // Optional code_sandbox section. Only written when the test

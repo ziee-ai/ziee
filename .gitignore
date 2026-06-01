@@ -1,11 +1,15 @@
 # Repo-local sandbox rootfs cache (squashfs files + squashfuse mountpoints).
 # Created by `just sandbox-fetch` / `just sandbox-build`; never committed.
 .ziee-cache/
-check-sandbox-*.log
-# Ad-hoc local test-run logs (E2E + integration tee output).
-e2e-*.log
-integration-all-*.log
-tier3-prefetch-*.log
+
+# Runtime app-data dir (server-extracted bin tools: bun/pandoc/uv/pdfium,
+# hub catalog seed, postgres data). Created when running the server with the
+# default dev config's `data_dir: ../../ziee-data/...`; never committed.
+ziee-data/
+ziee-chat-data/
+
+# Ad-hoc local test-run logs (E2E + integration + audit tee output).
+*.log
 
 # Local test-environment secrets (API keys for integration tests).
 # Sourced by `just test` via tests/.env.test; never committed.
@@ -20,6 +24,9 @@ tier3-prefetch-*.log
 # binary). Cargo doesn't auto-place a .gitignore here because the path is
 # custom (CARGO_TARGET_DIR), so ignore it explicitly.
 target-docker/
+
+# Local dev config (machine-specific paths)
+src-app/server/config/dev.yaml
 
 # npm workspaces hoists into the repo-root node_modules; never committed.
 node_modules/

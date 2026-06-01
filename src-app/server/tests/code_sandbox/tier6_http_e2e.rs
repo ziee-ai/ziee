@@ -15,7 +15,8 @@
 #![allow(unused_imports)]
 
 use crate::code_sandbox::harness::{
-    create_test_conversation, enabled_test_server, post_jsonrpc, test_server_jwt, tool_call,
+    create_test_conversation, enabled_test_server, needs_full_rootfs, post_jsonrpc,
+    test_server_jwt, tool_call,
 };
 use crate::common::test_helpers;
 use serde_json::json;
@@ -155,6 +156,67 @@ async fn e2e_execute_command_echo_hello_returns_stdout() {
     );
     assert_eq!(structured["exit_code"].as_i64().unwrap(), 0);
     assert!(!structured["timed_out"].as_bool().unwrap());
+}
+
+/// Fix C regression: R must actually run in the `full` flavor. The reported bug
+/// was `Rscript` failing with `libblas.so.3: cannot open shared object file`
+/// (and a missing `/usr/lib/R/etc/ldpaths`) because `mmdebstrap --variant=minbase`
+/// installs with Recommends disabled, so r-base-core's BLAS/LAPACK runtime was
+/// never pulled in. The recipe now depends on `libopenblas0` explicitly.
+///
+/// Skipped unless a FULL rootfs is mounted (R isn't in the `minimal` test
+/// rootfs): gated on `needs_full_rootfs()` (set ZIEE_SANDBOX_FLAVOR=minimal to
+/// skip) plus the usual `enabled_test_server()` rootfs/bwrap check.
+#[tokio::test]
+async fn e2e_full_rootfs_rscript_runs_without_blas_error() {
+    if !needs_full_rootfs() {
+        return;
+    }
+    let Some(server) = enabled_test_server().await else { return };
+    let (_user_id, jwt, conv_id) = setup_user_and_conv(&server).await;
+    // Test both: (1) R starts at all (the original libblas/ldpaths failure mode),
+    // and (2) a BLAS-using package actually loads (ggplot2 is installed by the
+    // recipe's `provision` step and pulls in matrix routines through its deps —
+    // strictly stronger evidence that BLAS is wired in correctly, not just present).
+    let body = tool_call(
+        &server,
+        &jwt,
+        conv_id,
+        "execute_command",
+        // flavor="full" is REQUIRED — R isn't in the minimal rootfs; without
+        // this the runtime defaults to mounting minimal and Rscript isn't found.
+        // Mirrors the original failing transcript which also passed flavor=full.
+        json!({
+            "command": "Rscript -e 'suppressMessages(library(ggplot2)); cat(1 + 1)'",
+            "flavor": "full",
+        }),
+    )
+    .await;
+    let structured = body
+        .get("result")
+        .and_then(|r| r.get("structuredContent"))
+        .unwrap_or_else(|| panic!("result.structuredContent missing — full body: {body:#?}"));
+    let stdout = structured["stdout"].as_str().unwrap_or("");
+    let stderr = structured.get("stderr").and_then(|s| s.as_str()).unwrap_or("");
+    let exit_code = structured.get("exit_code").and_then(|c| c.as_i64()).unwrap_or(-1);
+
+    assert!(
+        !stderr.contains("libblas") && !stderr.contains("ldpaths"),
+        "R must find its BLAS/LAPACK runtime (Fix C regression). stderr={stderr:?}"
+    );
+    assert!(
+        !stderr.contains("there is no package called"),
+        "ggplot2 must be installed by the recipe's provision step. stderr={stderr:?}"
+    );
+    assert_eq!(
+        exit_code, 0,
+        "Rscript should exit 0. stdout={stdout:?} stderr={stderr:?}"
+    );
+    assert_eq!(
+        stdout.trim(),
+        "2",
+        "R should compute 1+1=2 after loading ggplot2. stdout={stdout:?} stderr={stderr:?}"
+    );
 }
 
 #[tokio::test]

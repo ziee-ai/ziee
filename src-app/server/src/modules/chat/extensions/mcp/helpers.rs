@@ -174,6 +174,11 @@ pub async fn execute_tool(
                                 mime_type: item.content.get("mimeType").and_then(|v| v.as_str()).map(String::from),
                                 size: item.content.get("size").and_then(|v| v.as_i64()),
                                 is_saved: item.content.get("is_saved").and_then(|v| v.as_bool()),
+                                // Set for already-saved attachments (the tool emits it); workspace
+                                // artifacts get it stamped later, after the save pipeline runs.
+                                file_id: item.content.get("file_id")
+                                    .and_then(|v| v.as_str())
+                                    .and_then(|s| uuid::Uuid::parse_str(s).ok()),
                             });
                             // Provide the LLM with a readable confirmation so it doesn't retry
                             text_parts.push(format!("resource_link available — name: {}, uri: {}", name, uri));

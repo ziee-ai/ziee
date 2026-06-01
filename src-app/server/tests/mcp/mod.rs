@@ -1217,6 +1217,10 @@ mod conformance_oauth_test;        // Plan-3 Phase-4 (Cos1): OAuth client_creden
 mod oauth_config_route_test;       // Plan-3 Phase-4: per-server OAuth config endpoints
 mod conformance_cancellation_test; // Plan-3 Phase-2 (C3): client notifications/cancelled
 mod elicitation_route_test;       // HTTP route tests for /mcp/elicitation/{id}/respond
+mod rate_limit_test;              // Global rate-limiter on/off regression (governor toggle)
+mod test_connection_test;         // Connection-test endpoints (user + system test-connection)
+mod http_headers_test;            // Custom-header transmission + trim/validation (create/update/test)
+mod http_connection_reuse_test;   // Stale keep-alive reuse regression (proxy/tunnel reap → fresh conn per request)
 
 // ============================================================================
 // Sampling Field CRUD Tests

@@ -1,12 +1,15 @@
 import { useState } from 'react'
-import { Button, Tooltip, theme } from 'antd'
+import { Button, Tooltip, theme, App } from 'antd'
 import {
   RightOutlined,
   DownOutlined,
   ExportOutlined,
   FileOutlined,
+  PicRightOutlined,
 } from '@ant-design/icons'
-import type { FileViewerEntry, InlineFileSource } from '../types'
+import { Stores } from '@/core/stores'
+import type { File as FileEntity } from '@/api-client/types'
+import type { FileViewerEntry, FileViewerSlotProps, InlineFileSource } from '../types'
 import { isInlineCapable } from '../file-viewers/shared/source'
 
 interface InlineFilePreviewProps {
@@ -14,6 +17,11 @@ interface InlineFilePreviewProps {
    *  viewer claims this MIME/ext — falls back to a header-only file card. */
   viewer: FileViewerEntry | undefined
   source: InlineFileSource
+  /** Resolved File entity when this link is a backend-owned artifact. When
+   *  present, the body renders through the authenticated `{file}` path (same
+   *  as the right-side panel) and the header gains an "Open in side panel"
+   *  button. Absent for external MCP links (URL-based `{source}` path). */
+  file?: FileEntity
 }
 
 function formatFileSize(bytes: number | undefined): string {
@@ -38,28 +46,52 @@ function formatFileSize(bytes: number | undefined): string {
  * does nothing. This matches the right-panel UX where the body is the
  * content, not a button.
  */
-export function InlineFilePreview({ viewer, source }: InlineFilePreviewProps) {
+export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewProps) {
   const { token } = theme.useToken()
+  const { message } = App.useApp()
   const [collapsed, setCollapsed] = useState(false)
 
-  const canInline = isInlineCapable(viewer, source.name, source.mimeType)
+  // Prefer the resolved File's metadata (authoritative) over the link's.
+  const displayName = file?.filename ?? source.name
+  const displayMime = file?.mime_type ?? source.mimeType
+  const displaySize = file?.file_size ?? source.size
+
+  const canInline = isInlineCapable(viewer, displayName, displayMime ?? undefined)
   const Body = canInline ? viewer?.body : undefined
   // Only show the viewer's headerActions when the body itself renders
   // inline. Non-inline viewers (pdf / web / unknown) don't get header
-  // chrome here — their existing headers are FileStore-coupled and
-  // would just return null for `{source}` anyway. Saves wasted renders
-  // and keeps the inline header lean (filename + open-in-new-tab).
+  // chrome here — their existing headers would just return null otherwise.
   const HeaderActions = canInline ? viewer?.headerActions : undefined
   const Icon = viewer?.icon ?? <FileOutlined />
   const label = viewer?.label
 
   const showBody = canInline && !collapsed && Body !== undefined
-  const slotProps = { source } as const
+  // Render the body via the authenticated `{file}` path when this is a
+  // backend-owned artifact; otherwise the URL-based `{source}` path.
+  const slotProps: FileViewerSlotProps = file ? { file } : { source }
+
+  const handleOpenInPanel = () => {
+    if (!file) return
+    Stores.Chat.displayInRightPanel({
+      id: file.id,
+      title: file.filename,
+      type: 'file',
+      data: { fileId: file.id },
+    })
+  }
+
+  const handleOpenInNewTab = () => {
+    if (!file) return
+    Stores.Chat.FileStore.openFileInNewTab(file.id).catch(() =>
+      message.error('Failed to open file'),
+    )
+  }
 
   return (
     <div
       data-testid="inline-file-preview"
       data-file-uri={source.url}
+      data-file-id={file?.id}
       className="flex flex-col rounded-md overflow-hidden"
       style={{
         border: `1px solid ${token.colorBorderSecondary}`,
@@ -97,30 +129,58 @@ export function InlineFilePreview({ viewer, source }: InlineFilePreviewProps) {
         <span
           className="font-medium truncate"
           style={{ color: token.colorText }}
-          title={source.name}
+          title={displayName}
         >
-          {source.name}
+          {displayName}
         </span>
         <span
           className="text-xs flex-shrink-0"
           style={{ color: token.colorTextTertiary }}
         >
           {label ? <>· {label}</> : null}
-          {source.size !== undefined ? <> · {formatFileSize(source.size)}</> : null}
+          {displaySize !== undefined ? <> · {formatFileSize(displaySize)}</> : null}
         </span>
         <div className="flex-grow" />
         {HeaderActions ? <HeaderActions {...slotProps} /> : null}
+        {/* Open in side panel — only for backend-owned files (need a File id
+            to drive the panel renderer). */}
+        {file ? (
+          <Tooltip title="Open in side panel">
+            <Button
+              type="text"
+              size="small"
+              icon={<PicRightOutlined />}
+              onClick={handleOpenInPanel}
+              aria-label="Open file in side panel"
+              data-testid="inline-file-preview-open-panel"
+            />
+          </Tooltip>
+        ) : null}
         <Tooltip title="Open in new tab">
-          <Button
-            type="text"
-            size="small"
-            href={source.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            icon={<ExportOutlined />}
-            aria-label="Open file in new tab"
-            data-testid="inline-file-preview-open"
-          />
+          {file ? (
+            // File-backed: mint a fresh token via the store action (a plain
+            // <a target=_blank> can't carry the bearer header).
+            <Button
+              type="text"
+              size="small"
+              icon={<ExportOutlined />}
+              onClick={handleOpenInNewTab}
+              aria-label="Open file in new tab"
+              data-testid="inline-file-preview-open"
+            />
+          ) : (
+            // External MCP link: open the URL directly.
+            <Button
+              type="text"
+              size="small"
+              href={source.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              icon={<ExportOutlined />}
+              aria-label="Open file in new tab"
+              data-testid="inline-file-preview-open"
+            />
+          )}
         </Tooltip>
       </div>
 

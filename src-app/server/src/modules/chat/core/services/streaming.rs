@@ -349,16 +349,10 @@ impl StreamingService {
                             // Stream the final text directly and skip the LLM entirely.
                             tracing::info!("Skipping LLM call - extension provided final content");
 
-                            let content_offset = match Repos.chat.core.get_message_with_content(assistant_message_id).await {
-                                Ok(Some(msg)) => msg.contents.len() as i32,
-                                _ => 0,
-                            };
-
-                            if let Err(e) = Repos.chat.core.create_content(
+                            if let Err(e) = Repos.chat.core.append_content(
                                 assistant_message_id,
                                 "text",
                                 MessageContentData::Text { text: text.clone() },
-                                content_offset,
                             ).await {
                                 let _ = tx.send(Err(e));
                                 break;
@@ -408,15 +402,6 @@ impl StreamingService {
                     }
                 };
 
-                // Calculate content_offset from how many blocks the assistant message already has.
-                // Iteration 1 has offset=0; each subsequent iteration starts after the previous
-                // iteration's text+tool_use blocks (tool_results are added by the Continue handler).
-                let content_offset = history
-                    .iter()
-                    .find(|m| m.message.id == assistant_message_id)
-                    .map(|m| m.contents.len())
-                    .unwrap_or(0);
-
                 // Create accumulator with extension event channel
                 // Clone ext_tx for this iteration (allows multiple iterations with same channel)
                 let accumulator = Arc::new(Mutex::new(DeltaAccumulator {
@@ -432,7 +417,6 @@ impl StreamingService {
                     usage: None,
                     extension_tx: Some(ext_tx.clone()),
                     finalized: false,
-                    content_offset,
                 }));
 
                 // Stream chunks through accumulator
@@ -495,17 +479,10 @@ impl StreamingService {
                         // Tool result is a final user-facing answer (audience=["user"]).
                         // Emit the text as a delta, save it to the DB, then complete.
 
-                        // Determine sequence_order for the new text block
-                        let content_offset = match Repos.chat.core.get_message_with_content(assistant_message_id).await {
-                            Ok(Some(msg)) => msg.contents.len() as i32,
-                            _ => 0,
-                        };
-
-                        if let Err(e) = Repos.chat.core.create_content(
+                        if let Err(e) = Repos.chat.core.append_content(
                             assistant_message_id,
                             "text",
                             MessageContentData::Text { text: text.clone() },
-                            content_offset,
                         ).await {
                             let _ = tx.send(Err(e));
                             break;
@@ -566,28 +543,21 @@ impl StreamingService {
                             history.push(assistant_msg_with_content);
                         }
 
-                        // Now get content_offset from the updated cache
-                        let content_offset = history
-                            .iter()
-                            .find(|m| m.message.id == assistant_message_id)
-                            .map(|m| m.contents.len() as i32)
-                            .unwrap_or(0);
-
-                        // Tool results are added as content blocks to the same message
-                        // Collect created contents to append to cache after DB writes
+                        // Tool results are appended to the same assistant message.
+                        // append_content assigns sequence_order atomically (MAX+1), so a
+                        // result can never collide with the next iteration's tool_use even
+                        // if the in-memory cache lags. Collect created rows to update cache.
                         let mut created_contents = Vec::new();
 
-                        for (offset_index, content) in assistant_message_content.iter().enumerate() {
+                        for content in assistant_message_content.iter() {
                             let content_type = content.content_type();
-                            let actual_index = content_offset + offset_index as i32;
-                            match Repos.chat.core.create_content(
+                            match Repos.chat.core.append_content(
                                 assistant_message_id,
                                 &content_type,
                                 content.clone(),
-                                actual_index,
                             ).await {
                                 Ok(created) => {
-                                    tracing::info!("Appended content block {} to assistant message", actual_index);
+                                    tracing::info!("Appended content block {} to assistant message", created.sequence_order);
                                     created_contents.push(created);
                                 }
                                 Err(e) => {
@@ -715,11 +685,31 @@ impl StreamingService {
             // together. Walk blocks in sequence_order and flush one Assistant+Tool pair each
             // time a complete tool_use → tool_result round trip is detected.
             if role == MessageRole::Assistant {
-                let mut current_text: Vec<ai_providers::ContentBlock> = Vec::new();
-                let mut current_tool_uses: Vec<ai_providers::ContentBlock> = Vec::new();
-                let mut pending_ids: std::collections::HashSet<String> = Default::default();
-                let mut current_results: Vec<ai_providers::ContentBlock> = Vec::new();
+                // Invariant: blocks arrive in strictly-increasing sequence_order (the
+                // repository assigns it atomically via MAX+1). The pairing walk below
+                // relies on this. If a regression ever reintroduces colliding/non-monotonic
+                // orders, the tool_use/tool_result pairing can silently break and the
+                // provider will reject the request — surface it loudly instead.
+                let monotonic = msg_with_content
+                    .contents
+                    .windows(2)
+                    .all(|w| w[0].sequence_order < w[1].sequence_order);
+                if !monotonic {
+                    tracing::warn!(
+                        "non-monotonic sequence_order in assistant message {}; tool_use/tool_result pairing may be unreliable",
+                        msg_with_content.message.id
+                    );
+                    debug_assert!(
+                        monotonic,
+                        "non-monotonic sequence_order in assistant message {}",
+                        msg_with_content.message.id
+                    );
+                }
 
+                // Convert each stored block to a provider ContentBlock (registry-driven),
+                // then group into per-iteration Assistant/Tool pairs. Grouping is a pure
+                // function (group_assistant_blocks) so the wire-format invariant is unit-testable.
+                let mut blocks: Vec<ai_providers::ContentBlock> = Vec::new();
                 for content in &msg_with_content.contents {
                     let content_data = content.parse_content()?;
 
@@ -744,52 +734,11 @@ impl StreamingService {
                     };
 
                     if let Some(b) = block {
-                        match &b {
-                            ai_providers::ContentBlock::ToolUse { id, .. } => {
-                                pending_ids.insert(id.clone());
-                                current_tool_uses.push(b);
-                            }
-                            ai_providers::ContentBlock::ToolResult { tool_use_id, .. } => {
-                                pending_ids.remove(tool_use_id);
-                                current_results.push(b);
-                                // All tool_uses for this iteration have results — flush one pair.
-                                // Each provider handles Role::Tool correctly:
-                                // - Anthropic: converts to "user" with tool_result content
-                                // - OpenAI: converts to "tool" role
-                                if pending_ids.is_empty() && !current_tool_uses.is_empty() {
-                                    let assistant_content: Vec<_> = current_text
-                                        .drain(..)
-                                        .chain(current_tool_uses.drain(..))
-                                        .collect();
-                                    messages.push(ChatMessage {
-                                        role: ai_providers::Role::Assistant,
-                                        content: assistant_content,
-                                    });
-                                    messages.push(ChatMessage {
-                                        role: ai_providers::Role::Tool,
-                                        content: std::mem::take(&mut current_results),
-                                    });
-                                }
-                            }
-                            _ => current_text.push(b),
-                        }
+                        blocks.push(b);
                     }
                 }
 
-                // Trailing content: in-progress iteration with no result yet, or a pure-text
-                // final answer. Anthropic requires text and tool_use in the same message, and
-                // the conversation must NOT end with an assistant message — both are satisfied
-                // because in normal operation the last block in history is always a tool_result
-                // (the Continue handler only advances the loop after writing the result to DB).
-                // During the approval flow, unmatched tool_uses here are intentional: before_llm_call
-                // will append the real tool_results as a following User message.
-                let trailing: Vec<_> = current_text.into_iter().chain(current_tool_uses).collect();
-                if !trailing.is_empty() {
-                    messages.push(ChatMessage {
-                        role: ai_providers::Role::Assistant,
-                        content: trailing,
-                    });
-                }
+                messages.extend(group_assistant_blocks(blocks));
 
                 continue; // skip the non-assistant path below
             }
@@ -930,9 +879,6 @@ struct DeltaAccumulator {
     extension_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
     /// Flag to track if finalize() has been called (prevents double-finalization)
     finalized: bool,
-    /// Offset into the assistant message's global sequence_order for this iteration.
-    /// Iteration 1 starts at 0, iteration 2 starts at 3 (after text+tool_use+result), etc.
-    content_offset: usize,
 }
 
 impl DeltaAccumulator {
@@ -1049,6 +995,21 @@ impl DeltaAccumulator {
         // Write all accumulated content blocks to database in a single transaction
         let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
 
+        // Determine the starting sequence_order for THIS iteration's blocks directly
+        // from the DB (MAX+1), inside the transaction. Previously this came from a
+        // stale in-memory `content_offset`, which on the parallel-tool-call path
+        // could lag behind tool_results the Continue handler had already appended,
+        // making a later tool_use collide with an earlier tool_result. The streaming
+        // indices below stay relative to this fresh base, preserving in-response order.
+        let base: i32 = sqlx::query_scalar!(
+            r#"SELECT COALESCE(MAX(sequence_order), -1) + 1 AS "next!"
+               FROM message_contents WHERE message_id = $1"#,
+            self.assistant_message_id
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(AppError::database_error)?;
+
         for accumulated in &self.content_blocks {
             // Skip empty content blocks
             if accumulated.content_type.is_empty() {
@@ -1079,7 +1040,7 @@ impl DeltaAccumulator {
                 self.assistant_message_id,
                 accumulated.content_type,
                 content_json,
-                (self.content_offset + accumulated.index) as i32
+                base + accumulated.index as i32
             )
             .execute(&mut *tx)
             .await
@@ -1117,7 +1078,7 @@ impl DeltaAccumulator {
                     self.assistant_message_id,
                     content_type,
                     content_json,
-                    (self.content_offset + index) as i32
+                    base + index as i32
                 )
                 .execute(&mut *tx)
                 .await
@@ -1214,6 +1175,64 @@ fn group_blocks_into_provider_messages(
                 content: all_blocks,
             });
         }
+    }
+
+    messages
+}
+
+/// Group ONE assistant message's already-converted blocks into provider-ready
+/// ChatMessages, reconstructing per-iteration boundaries. Each time every
+/// outstanding tool_use has received its tool_result, one
+/// `[Assistant { text + tool_use }, Tool { tool_result }]` pair is flushed.
+/// Trailing unmatched blocks (in-progress iteration, pure-text final answer, or
+/// an approval-flow tool_use awaiting its result) become a final Assistant turn.
+///
+/// Pure + registry-free so the wire-format invariant — every tool_use in an
+/// Assistant turn is resolved by a tool_result in the immediately following Tool
+/// turn — is directly unit-testable. Assumes blocks arrive in `sequence_order`
+/// (guaranteed by the repository's atomic MAX+1 assignment).
+pub fn group_assistant_blocks(blocks: Vec<ai_providers::ContentBlock>) -> Vec<ChatMessage> {
+    let mut messages = Vec::new();
+    let mut current_text: Vec<ai_providers::ContentBlock> = Vec::new();
+    let mut current_tool_uses: Vec<ai_providers::ContentBlock> = Vec::new();
+    let mut pending_ids: std::collections::HashSet<String> = Default::default();
+    let mut current_results: Vec<ai_providers::ContentBlock> = Vec::new();
+
+    for b in blocks {
+        match &b {
+            ai_providers::ContentBlock::ToolUse { id, .. } => {
+                pending_ids.insert(id.clone());
+                current_tool_uses.push(b);
+            }
+            ai_providers::ContentBlock::ToolResult { tool_use_id, .. } => {
+                pending_ids.remove(tool_use_id);
+                current_results.push(b);
+                // All outstanding tool_uses resolved — flush one Assistant/Tool pair.
+                if pending_ids.is_empty() && !current_tool_uses.is_empty() {
+                    let assistant_content: Vec<_> = current_text
+                        .drain(..)
+                        .chain(current_tool_uses.drain(..))
+                        .collect();
+                    messages.push(ChatMessage {
+                        role: ai_providers::Role::Assistant,
+                        content: assistant_content,
+                    });
+                    messages.push(ChatMessage {
+                        role: ai_providers::Role::Tool,
+                        content: std::mem::take(&mut current_results),
+                    });
+                }
+            }
+            _ => current_text.push(b),
+        }
+    }
+
+    let trailing: Vec<_> = current_text.into_iter().chain(current_tool_uses).collect();
+    if !trailing.is_empty() {
+        messages.push(ChatMessage {
+            role: ai_providers::Role::Assistant,
+            content: trailing,
+        });
     }
 
     messages

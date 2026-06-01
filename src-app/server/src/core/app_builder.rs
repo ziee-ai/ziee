@@ -123,6 +123,65 @@ pub fn build_api_router(
     (api_router, api_doc)
 }
 
+/// Conditionally apply the global rate limiter (tower-governor).
+///
+/// Behavior, by `server.rate_limit`:
+/// - `Some` with `enabled == false`  → no `GovernorLayer` (explicit opt-out).
+/// - `Some` with `enabled == true`   → apply with its `per_second`/`burst_size`.
+/// - `None` (block omitted)          → use `default_when_absent`:
+///     - `Some((per_second, burst_size))` → apply that default (the standalone
+///       web server passes `Some((50, 500))` so an un-configured deployment is
+///       still protected).
+///     - `None` → no limiter (the embedded/desktop path passes `None`: the
+///       Tauri app serves only its own local webview over 127.0.0.1, has no
+///       per-peer-IP attack surface, and the limiter would 429 legitimate
+///       burst traffic — chat streams, SSE, multi-file uploads).
+///
+/// Called from BOTH `lib.rs::setup_server` and `main.rs::main` so the two stay
+/// in sync. Why the `enabled` toggle exists: the built-in code_sandbox + memory
+/// MCP servers are reached over loopback (`http://127.0.0.1`), so every internal
+/// tool-call request shares the same `PeerIpKeyExtractor` bucket as real user
+/// traffic. A rapid agent tool loop drains that bucket and the server starts
+/// returning HTTP 429 to itself; raise the limits, or set `enabled: false` to
+/// opt out entirely.
+pub fn apply_rate_limit_layer(
+    router: axum::Router,
+    config: &Config,
+    default_when_absent: Option<(u64, u32)>,
+) -> axum::Router {
+    let resolved = match config.server.rate_limit.as_ref() {
+        Some(r) if !r.enabled => {
+            tracing::warn!(
+                "Rate limiting DISABLED via config (server.rate_limit.enabled=false) — \
+                 no per-IP throttling is applied to any route. Safe only for trusted / \
+                 non-public deployments."
+            );
+            return router;
+        }
+        Some(r) => Some((r.per_second, r.burst_size)),
+        None => default_when_absent,
+    };
+
+    let (per_second, burst_size) = match resolved {
+        Some(v) => v,
+        // No config block and no caller default → skip the limiter entirely
+        // (embedded/desktop path).
+        None => return router,
+    };
+
+    let governor_conf = Arc::new(
+        tower_governor::governor::GovernorConfigBuilder::default()
+            .per_second(per_second)
+            .burst_size(burst_size)
+            .key_extractor(tower_governor::key_extractor::PeerIpKeyExtractor)
+            .finish()
+            .expect("Failed to build governor config"),
+    );
+    router.layer(tower_governor::GovernorLayer {
+        config: governor_conf,
+    })
+}
+
 /// Create CORS layer from configuration.
 ///
 /// Closes 14-core F-04 (High) at the level of "operator visibility":

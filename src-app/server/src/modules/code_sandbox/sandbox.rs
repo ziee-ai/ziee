@@ -383,6 +383,23 @@ pub(crate) fn build_hardening_prefix(p: &HardeningArgvParams) -> Vec<String> {
         "--ro-bind-try".into(),
         format!("{rootfs}/etc/resolv.conf"),
         "/etc/resolv.conf".into(),
+        // /etc/alternatives is Debian's symlink-chain target for system-wide
+        // tool choices — e.g. r-base-core resolves libblas.so.3 →
+        // /etc/alternatives/libblas.so.3-* → libopenblas via this directory.
+        // Without it, packages installed via the alternatives system (R, the
+        // BLAS/LAPACK stack, default editor/pager, java/python provider
+        // selection) fail at runtime even when the underlying libraries ARE
+        // in the rootfs. ro-bind-try so the minimal rootfs (no alternatives)
+        // is unaffected.
+        "--ro-bind-try".into(),
+        format!("{rootfs}/etc/alternatives"),
+        "/etc/alternatives".into(),
+        // /etc/R holds the R wrapper's ldpaths + Renviron — both sourced by
+        // /usr/lib/R/bin/R at startup (the `ldpaths: No such file` error in
+        // the reported transcript). Same ro-bind-try policy.
+        "--ro-bind-try".into(),
+        format!("{rootfs}/etc/R"),
+        "/etc/R".into(),
         "--ro-bind".into(),
         p.passwd_path.display().to_string(),
         "/etc/passwd".into(),
@@ -428,6 +445,21 @@ pub(crate) fn build_hardening_prefix(p: &HardeningArgvParams) -> Vec<String> {
         "--setenv".into(),
         "TERM".into(),
         "dumb".into(),
+        // BLAS/LAPACK auto-detect every host CPU and spawn one thread per CPU
+        // at startup. On a 64-core box that's 64 pthread_creates against the
+        // sandbox's RLIMIT_NPROC=256, which OpenBLAS regularly loses (the
+        // reported transcript hit this once libblas was findable). Single
+        // thread is the right default for sandboxed scripted tasks; covers
+        // OpenBLAS, BLIS, and Intel MKL with one knob each.
+        "--setenv".into(),
+        "OPENBLAS_NUM_THREADS".into(),
+        "1".into(),
+        "--setenv".into(),
+        "OMP_NUM_THREADS".into(),
+        "1".into(),
+        "--setenv".into(),
+        "MKL_NUM_THREADS".into(),
+        "1".into(),
     ];
 
     // Caller-supplied env (MCP server config). Filtered upstream

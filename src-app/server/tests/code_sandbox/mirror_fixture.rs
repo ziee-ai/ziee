@@ -179,6 +179,7 @@ yanked = false
     let rootfs_path = cache_dir.path().join("current");
     let opts = TestServerOptions {
         sandbox_enabled: true,
+        rate_limit: None,
         sandbox_rootfs: Some(rootfs_path),
         sandbox_cgroup_parent: String::new(),
         extra_env: vec![

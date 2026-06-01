@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::common::AppError;
 use crate::modules::chat::core::models::content::MessageContentData;
@@ -38,6 +39,14 @@ pub struct ResourceLink {
     /// None  → external MCP server; run full processing pipeline.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_saved: Option<bool>,
+    /// File id of the server-saved artifact backing this link, when the backend
+    /// persisted it as a `File` (workspace artifacts and user attachments). Lets
+    /// the UI fetch the content via the authenticated `/api/files/{id}/...`
+    /// endpoints (the same path the right-side panel uses) instead of
+    /// dereferencing the raw `uri`. `None` for external MCP links with no
+    /// backing File.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_id: Option<Uuid>,
 }
 
 /// MCP-specific content data types

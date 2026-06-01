@@ -88,10 +88,6 @@ impl McpChatExtension {
                     bind_user_id,
                 );
                 if let Some(msg_id) = notif.message_id {
-                    let order = crate::core::Repos.chat.core
-                        .get_message_with_content(msg_id).await
-                        .map(|m| m.map(|msg| msg.contents.len() as i32).unwrap_or(0))
-                        .unwrap_or(0);
                     let content_data = MessageContentData::ElicitationRequest {
                         elicitation_id: notif.elicitation_id.to_string(),
                         message: notif.message,
@@ -101,7 +97,7 @@ impl McpChatExtension {
                         response_content: None,
                     };
                     let _ = crate::core::Repos.chat.core
-                        .create_content_with_id(notif.content_id, msg_id, "elicitation_request", content_data, order)
+                        .append_content_with_id(notif.content_id, msg_id, "elicitation_request", content_data)
                         .await;
                 }
             }
@@ -292,10 +288,16 @@ impl McpChatExtension {
             // Exception: is_saved=true links already exist in originals storage — skip all processing.
             let mut saved_artifacts: Vec<(Uuid, String, Option<String>)> = Vec::new(); // (artifact_id, display_name, download_url)
             let mut saved_file_urls: Vec<(String, String)> = Vec::new(); // (display_name, download_url) for is_saved links
+            // (link_index, artifact_id) for workspace artifacts saved by this
+            // pipeline. Applied back onto resource_links[i].file_id after the loop
+            // so the browser inline preview can fetch via the authenticated,
+            // same-origin /api/files/{id}/... path (the tool-emitted absolute
+            // loopback URI is unreachable from the browser).
+            let mut artifact_file_ids: Vec<(usize, Uuid)> = Vec::new();
             if let McpContentData::ToolResult { ref resource_links, is_error, .. } = result
                 && !is_error.unwrap_or(false)
                     && let Some(links) = resource_links {
-                        for link in links {
+                        for (link_idx, link) in links.iter().enumerate() {
 
                         // is_saved=true: file already exists in originals storage.
                         // URI is a download-with-token URL — skip fetch/process/save pipeline.
@@ -486,16 +488,11 @@ impl McpChatExtension {
                                                                 )
                                                                 .await;
 
-                                                                use crate::modules::chat::core::models::MessageContentData;
-                                                                tool_results.push(
-                                                                    MessageContentData::FileAttachment {
-                                                                        file_id: artifact_id,
-                                                                        filename: display_name
-                                                                            .to_string(),
-                                                                        mime_type,
-                                                                        file_size,
-                                                                    },
-                                                                );
+                                                                // No FileAttachment block is emitted for artifacts: the
+                                                                // inline preview (resource_link with file_id, stamped
+                                                                // after the loop) is the single UI view. Record the
+                                                                // index→artifact_id mapping to apply below.
+                                                                artifact_file_ids.push((link_idx, artifact_id));
 
                                                                 tracing::info!(
                                                                     "Artifact saved from resource_link: file_id={}, filename={}",
@@ -584,7 +581,18 @@ impl McpChatExtension {
             // but stripped from browser API responses.
             // saved_file_urls holds download-with-token URLs for is_saved=true links (no pipeline needed).
             if (!saved_artifacts.is_empty() || !saved_file_urls.is_empty())
-                && let McpContentData::ToolResult { ref mut content, ref mut hidden_content, .. } = result {
+                && let McpContentData::ToolResult { ref mut content, ref mut hidden_content, ref mut resource_links, .. } = result {
+                    // Stamp each saved artifact's file_id onto its resource_link so
+                    // the UI inline preview fetches the content via the authenticated
+                    // /api/files/{id}/... path instead of the unreachable absolute
+                    // loopback URI emitted by the tool.
+                    if let Some(links) = resource_links {
+                        for (idx, fid) in &artifact_file_ids {
+                            if let Some(l) = links.get_mut(*idx) {
+                                l.file_id = Some(*fid);
+                            }
+                        }
+                    }
                     if !saved_artifacts.is_empty() {
                         let file_descriptions: Vec<String> = saved_artifacts
                             .iter()
@@ -592,7 +600,7 @@ impl McpChatExtension {
                             .collect();
                         *content = format!(
                             "Files from MCP tool have been saved as artifact attachments: {}. \
-                             They will be shown as file cards in the UI — do not embed them inline in your response.",
+                             They will be shown as inline file previews in the UI — do not embed them inline in your response.",
                             file_descriptions.join(", ")
                         );
                     }
@@ -904,24 +912,22 @@ impl ChatExtension for McpChatExtension {
                 // bypasses the normal Continue action. Without this, the tool_use block already in
                 // the DB would have no matching tool_result, causing API errors on subsequent messages.
                 if let Some(message_id) = context.message_id {
-                    // Get current content count for sequence ordering
-                    let current_count = match Repos.chat.core.get_message_with_content(message_id).await {
-                        Ok(Some(msg)) => msg.contents.len() as i32,
-                        _ => 0,
-                    };
-
-                    for (idx, result) in tool_results.iter().enumerate() {
+                    // append_content assigns sequence_order atomically (MAX+1), so these
+                    // results can't collide with the tool_use blocks finalize() wrote nor
+                    // with a concurrent iteration's blocks.
+                    for result in tool_results.iter() {
                         let content_type = result.content_type();
 
-                        if let Err(e) = Repos.chat.core.create_content(
+                        match Repos.chat.core.append_content(
                             message_id,
                             &content_type,
                             result.clone(),
-                            current_count + idx as i32,
                         ).await {
-                            tracing::error!("Failed to save tool result to message: {}", e);
-                        } else {
-                            tracing::info!("Saved tool_result to message {}, sequence {}", message_id, current_count + idx as i32);
+                            Ok(created) => tracing::info!(
+                                "Saved tool_result to message {}, sequence {}",
+                                message_id, created.sequence_order
+                            ),
+                            Err(e) => tracing::error!("Failed to save tool result to message: {}", e),
                         }
                     }
 
@@ -980,12 +986,7 @@ impl ChatExtension for McpChatExtension {
                 );
 
                 if let Some(message_id) = context.message_id {
-                    let current_count = match Repos.chat.core.get_message_with_content(message_id).await {
-                        Ok(Some(msg)) => msg.contents.len() as i32,
-                        _ => 0,
-                    };
-
-                    for (idx, denied) in denied_tools.iter().enumerate() {
+                    for denied in denied_tools.iter() {
                         let denied_result = McpContentData::ToolResult {
                             tool_use_id: denied.tool_use_id.clone(),
                             name: Some(denied.tool_name.clone()),
@@ -998,13 +999,13 @@ impl ChatExtension for McpChatExtension {
                         };
                         let msg_content = denied_result.to_message_content();
 
-                        // Persist denied result so the conversation history stays coherent
+                        // Persist denied result so the conversation history stays coherent.
+                        // append_content assigns sequence_order atomically (MAX+1).
                         let content_type = msg_content.content_type();
-                        if let Err(e) = Repos.chat.core.create_content(
+                        if let Err(e) = Repos.chat.core.append_content(
                             message_id,
                             &content_type,
                             msg_content.clone(),
-                            current_count + idx as i32,
                         ).await {
                             tracing::error!(
                                 "Failed to save denied tool_result for tool_use_id={}: {}",
@@ -1387,8 +1388,7 @@ impl ChatExtension for McpChatExtension {
                             _ => None,
                         })
                         .collect();
-                    let current_count = msg.contents.len() as i32;
-                    for (idx, (tool_use_id, tool_name)) in pending_tool_uses.iter().enumerate() {
+                    for (tool_use_id, tool_name) in pending_tool_uses.iter() {
                         let error_result = McpContentData::ToolResult {
                             tool_use_id: tool_use_id.clone(),
                             name: Some(tool_name.clone()),
@@ -1401,11 +1401,12 @@ impl ChatExtension for McpChatExtension {
                             hidden_content: None,
                         };
                         let msg_content = error_result.to_message_content();
-                        if let Err(e) = Repos.chat.core.create_content(
+                        // append_content assigns sequence_order atomically (MAX+1) so these
+                        // synthetic results stay strictly after the unresolved tool_use blocks.
+                        if let Err(e) = Repos.chat.core.append_content(
                             message_id,
                             &msg_content.content_type(),
                             msg_content,
-                            current_count + idx as i32,
                         ).await {
                             tracing::error!(
                                 "Failed to save synthetic tool_result for tool_use_id={}: {}",
@@ -1733,10 +1734,6 @@ impl ChatExtension for McpChatExtension {
                     bind_user_id,
                 );
                 if let Some(msg_id) = notif.message_id {
-                    let order = crate::core::Repos.chat.core
-                        .get_message_with_content(msg_id).await
-                        .map(|m| m.map(|msg| msg.contents.len() as i32).unwrap_or(0))
-                        .unwrap_or(0);
                     let content_data = MessageContentData::ElicitationRequest {
                         elicitation_id: notif.elicitation_id.to_string(),
                         message: notif.message,
@@ -1746,7 +1743,7 @@ impl ChatExtension for McpChatExtension {
                         response_content: None,
                     };
                     let _ = crate::core::Repos.chat.core
-                        .create_content_with_id(notif.content_id, msg_id, "elicitation_request", content_data, order)
+                        .append_content_with_id(notif.content_id, msg_id, "elicitation_request", content_data)
                         .await;
                 }
             }
@@ -1942,10 +1939,16 @@ impl ChatExtension for McpChatExtension {
             // Exception: is_saved=true links already exist in originals storage — skip all processing.
             let mut saved_artifacts: Vec<(Uuid, String, Option<String>)> = Vec::new(); // (artifact_id, display_name, download_url)
             let mut saved_file_urls: Vec<(String, String)> = Vec::new(); // (display_name, download_url) for is_saved links
+            // (link_index, artifact_id) for workspace artifacts saved by this
+            // pipeline. Applied back onto resource_links[i].file_id after the loop
+            // so the browser inline preview can fetch via the authenticated,
+            // same-origin /api/files/{id}/... path (the tool-emitted absolute
+            // loopback URI is unreachable from the browser).
+            let mut artifact_file_ids: Vec<(usize, Uuid)> = Vec::new();
             if let McpContentData::ToolResult { ref resource_links, is_error, .. } = result
                 && !is_error.unwrap_or(false)
                     && let Some(links) = resource_links {
-                        for link in links {
+                        for (link_idx, link) in links.iter().enumerate() {
 
                         // is_saved=true: file already exists in originals storage.
                         // URI is a download-with-token URL — skip fetch/process/save pipeline.
@@ -2136,16 +2139,11 @@ impl ChatExtension for McpChatExtension {
                                                                 )
                                                                 .await;
 
-                                                                use crate::modules::chat::core::models::MessageContentData;
-                                                                tool_results.push(
-                                                                    MessageContentData::FileAttachment {
-                                                                        file_id: artifact_id,
-                                                                        filename: display_name
-                                                                            .to_string(),
-                                                                        mime_type,
-                                                                        file_size,
-                                                                    },
-                                                                );
+                                                                // No FileAttachment block is emitted for artifacts: the
+                                                                // inline preview (resource_link with file_id, stamped
+                                                                // after the loop) is the single UI view. Record the
+                                                                // index→artifact_id mapping to apply below.
+                                                                artifact_file_ids.push((link_idx, artifact_id));
 
                                                                 tracing::info!(
                                                                     "Artifact saved from resource_link: file_id={}, filename={}",
@@ -2234,7 +2232,18 @@ impl ChatExtension for McpChatExtension {
             // but stripped from browser API responses.
             // saved_file_urls holds download-with-token URLs for is_saved=true links (no pipeline needed).
             if (!saved_artifacts.is_empty() || !saved_file_urls.is_empty())
-                && let McpContentData::ToolResult { ref mut content, ref mut hidden_content, .. } = result {
+                && let McpContentData::ToolResult { ref mut content, ref mut hidden_content, ref mut resource_links, .. } = result {
+                    // Stamp each saved artifact's file_id onto its resource_link so
+                    // the UI inline preview fetches the content via the authenticated
+                    // /api/files/{id}/... path instead of the unreachable absolute
+                    // loopback URI emitted by the tool.
+                    if let Some(links) = resource_links {
+                        for (idx, fid) in &artifact_file_ids {
+                            if let Some(l) = links.get_mut(*idx) {
+                                l.file_id = Some(*fid);
+                            }
+                        }
+                    }
                     if !saved_artifacts.is_empty() {
                         let file_descriptions: Vec<String> = saved_artifacts
                             .iter()
@@ -2242,7 +2251,7 @@ impl ChatExtension for McpChatExtension {
                             .collect();
                         *content = format!(
                             "Files from MCP tool have been saved as artifact attachments: {}. \
-                             They will be shown as file cards in the UI — do not embed them inline in your response.",
+                             They will be shown as inline file previews in the UI — do not embed them inline in your response.",
                             file_descriptions.join(", ")
                         );
                     }
@@ -2288,15 +2297,14 @@ impl ChatExtension for McpChatExtension {
                 // Save accumulated tool_results to DB so tool_use blocks are not orphaned.
                 // finalize() already wrote tool_use blocks; without matching tool_result blocks
                 // the next LLM request will be rejected by Anthropic with "tool_use without tool_result".
+                // append_content assigns sequence_order atomically (MAX+1) so results stay
+                // strictly after the tool_use blocks finalize() just wrote.
                 if let Some(message_id) = context.message_id {
-                    let current_count = Repos.chat.core.get_message_with_content(message_id).await
-                        .ok().flatten().map(|m| m.contents.len() as i32).unwrap_or(0);
-                    for (idx, tr) in tool_results.iter().enumerate() {
-                        let _ = Repos.chat.core.create_content(
+                    for tr in tool_results.iter() {
+                        let _ = Repos.chat.core.append_content(
                             message_id,
                             &tr.content_type(),
                             tr.clone(),
-                            current_count + idx as i32,
                         ).await;
                     }
                 }
@@ -2311,17 +2319,12 @@ impl ChatExtension for McpChatExtension {
         // reject the request with "tool_use ids found without tool_result blocks".
         if let Some(text) = final_response_text {
             if let Some(message_id) = context.message_id {
-                let current_count = match Repos.chat.core.get_message_with_content(message_id).await {
-                    Ok(Some(msg)) => msg.contents.len() as i32,
-                    _ => 0,
-                };
-                for (idx, result) in tool_results.iter().enumerate() {
+                for result in tool_results.iter() {
                     let content_type = result.content_type();
-                    if let Err(e) = Repos.chat.core.create_content(
+                    if let Err(e) = Repos.chat.core.append_content(
                         message_id,
                         &content_type,
                         result.clone(),
-                        current_count + idx as i32,
                     ).await {
                         tracing::error!("Failed to save tool result before CompleteWithContent: {}", e);
                     }

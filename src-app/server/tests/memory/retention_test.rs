@@ -144,7 +144,8 @@ async fn test_grace_period_hard_delete() {
         .send()
         .await
         .unwrap();
-    let rows: Vec<Value> = res.json().await.unwrap();
+    let body: Value = res.json().await.unwrap();
+    let rows = body["items"].as_array().cloned().unwrap_or_default();
     assert_eq!(rows.len(), 0);
 }
 
@@ -282,6 +283,7 @@ async fn test_max_memories_cap_enforcement() {
         .send()
         .await
         .unwrap();
-    let rows: Vec<Value> = res.json().await.unwrap();
+    let body: Value = res.json().await.unwrap();
+    let rows = body["items"].as_array().cloned().unwrap_or_default();
     assert_eq!(rows.len(), 3, "max_memories=3 should leave exactly 3 live rows");
 }

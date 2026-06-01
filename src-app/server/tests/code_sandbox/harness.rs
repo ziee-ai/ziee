@@ -510,6 +510,7 @@ pub fn github_fetch_server_options(
 
     Some(TestServerOptions {
         sandbox_enabled: true,
+        rate_limit: None,
         sandbox_rootfs: Some(rootfs_path),
         sandbox_cgroup_parent: String::new(),
         extra_env,

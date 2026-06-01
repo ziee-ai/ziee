@@ -1,7 +1,8 @@
 import { useMessageContext } from '@/modules/chat/core/MessageContext'
+import { Stores } from '@/core/stores'
 import { getViewer } from '@/modules/chat/extensions/file/fileViewerRegistry'
 import { InlineFilePreview } from './InlineFilePreview'
-import type { MessageContent } from '@/api-client/types'
+import type { MessageContent, File as FileEntity } from '@/api-client/types'
 import type { InlineFileSource } from '../types'
 
 /**
@@ -21,6 +22,9 @@ interface RuntimeResourceLink {
   mime_type?: string | null
   size?: number | null
   is_saved?: boolean | null
+  /** Backing File id for backend-owned artifacts (set by the MCP save
+   *  pipeline). Absent for external MCP links. */
+  file_id?: string | null
 }
 
 function extractResourceLinks(content: MessageContent): RuntimeResourceLink[] {
@@ -54,6 +58,30 @@ function toInlineSource(link: RuntimeResourceLink): InlineFileSource {
     name,
     mimeType: link.mime_type ?? undefined,
     size: link.size ?? undefined,
+    fileId: link.file_id ?? undefined,
+  }
+}
+
+/**
+ * Build a stub `FileEntity` from a resource_link's metadata, shown while the
+ * FileStore fetches the full entity. Mirrors `FileAttachmentRenderer`'s
+ * fallback so backend-owned inline previews render through the same
+ * authenticated `{file}` path the right-side panel uses.
+ */
+function buildFallbackFile(fileId: string, source: InlineFileSource): FileEntity {
+  return {
+    id: fileId,
+    filename: source.name,
+    file_size: source.size ?? 0,
+    mime_type: source.mimeType ?? undefined,
+    has_thumbnail: false,
+    preview_page_count: 0,
+    created_at: '',
+    updated_at: '',
+    user_id: '',
+    created_by: '',
+    processing_metadata: null,
+    text_page_count: 0,
   }
 }
 
@@ -92,6 +120,10 @@ export function MessageFilesView() {
     deduped.push(link)
   }
 
+  // Reactive subscription — re-renders when getMessageFile() resolves the
+  // full entity (e.g. once a thumbnail becomes available).
+  const messageFilesCache = Stores.Chat.FileStore.messageFilesCache
+
   return (
     <div
       data-testid="message-files-view"
@@ -99,12 +131,24 @@ export function MessageFilesView() {
     >
       {deduped.map(link => {
         const source = toInlineSource(link)
-        const viewer = getViewer(source.name, source.mimeType)
+        // Backend-owned artifact: resolve the File entity so the body renders
+        // via the authenticated `{file}` path and the side-panel button works.
+        let file: FileEntity | undefined
+        if (source.fileId) {
+          const fallback = buildFallbackFile(source.fileId, source)
+          file = messageFilesCache.get(source.fileId) ?? fallback
+          // Deferred inside the store action — safe to call during render.
+          Stores.Chat.FileStore.getMessageFile(source.fileId, fallback)
+        }
+        const viewer = file
+          ? getViewer(file.filename, file.mime_type ?? undefined)
+          : getViewer(source.name, source.mimeType)
         return (
           <InlineFilePreview
             key={link.uri}
             viewer={viewer}
             source={source}
+            file={file}
           />
         )
       })}

@@ -5,9 +5,15 @@ import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { useMcpServerDrawerStore } from '@/modules/mcp/stores'
 import {
+  showConnectionTestResult,
+  showConnectionTestError,
+} from '@/modules/mcp/components/common/connectionTestToast'
+import {
   Permissions,
   type CreateMcpServerRequest,
   type UpdateMcpServerRequest,
+  type TestMcpConnectionRequest,
+  type McpServer,
 } from '@/api-client/types'
 
 const { TextArea } = Input
@@ -40,6 +46,9 @@ export function McpServerDrawer() {
   // Whether the server being edited already has a stored OAuth config — used to
   // decide between keep/replace/remove on save and to label the secret field.
   const [hasExistingOAuth, setHasExistingOAuth] = useState(false)
+
+  // Local loading for the "Save & Test Connection" action (save, then probe).
+  const [testing, setTesting] = useState(false)
 
   // OAuth is configurable only for user-owned HTTP servers (the endpoints are
   // owner-scoped). Built-in/system servers authenticate differently.
@@ -138,162 +147,237 @@ export function McpServerDrawer() {
     }
   }, [editingServer, open, mode, form])
 
-  const handleSubmit = async () => {
+  // Parse the JSON-string transport fields (args / env / headers) shared by
+  // save + test. Returns null (after surfacing a message) on malformed input.
+  type ParsedTransport = {
+    args: string[]
+    environmentVariables: Record<string, string>
+    headers: Record<string, string>
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const parseTransportFields = (values: any): ParsedTransport | null => {
+    let args: string[] = []
+    if (values.args && values.args.trim()) {
+      try {
+        const parsed = JSON.parse(values.args)
+        if (!Array.isArray(parsed)) {
+          message.error('Arguments must be a JSON array')
+          return null
+        }
+        args = parsed
+      } catch (_error) {
+        message.error('Invalid JSON in arguments')
+        return null
+      }
+    }
+
+    let environmentVariables: Record<string, string> = {}
+    if (values.env && values.env.trim()) {
+      try {
+        const parsed = JSON.parse(values.env)
+        if (typeof parsed !== 'object' || Array.isArray(parsed)) {
+          message.error('Environment variables must be a JSON object')
+          return null
+        }
+        environmentVariables = parsed
+      } catch (_error) {
+        message.error('Invalid JSON in environment variables')
+        return null
+      }
+    }
+
+    let headers: Record<string, string> = {}
+    if (values.headers && values.headers.trim()) {
+      try {
+        const parsed = JSON.parse(values.headers)
+        if (typeof parsed !== 'object' || Array.isArray(parsed)) {
+          message.error('HTTP Headers must be a JSON object')
+          return null
+        }
+        headers = parsed
+      } catch (_error) {
+        message.error('Invalid JSON in HTTP Headers')
+        return null
+      }
+    }
+
+    return { args, environmentVariables, headers }
+  }
+
+  // Validate + persist the form (create or update) and return the saved server
+  // (incl. its id / is_system / transport_type) so callers can act on it.
+  // Returns null when the form is invalid (antd surfaces the field errors) or a
+  // handled precondition fails (e.g. an OAuth client id without a secret).
+  // A create/update API failure is thrown so the caller can report it.
+  const persistServer = async (): Promise<McpServer | null> => {
+    let values
     try {
-      const values = await form.validateFields()
-      Stores.McpServerDrawer.setMcpServerDrawerLoading(true)
+      values = await form.validateFields()
+    } catch {
+      // antd already highlights the invalid fields — nothing more to surface.
+      return null
+    }
 
-      // Parse arguments from JSON array string
-      let args: string[] = []
-      if (values.args && values.args.trim()) {
-        try {
-          const parsed = JSON.parse(values.args)
-          if (!Array.isArray(parsed)) {
-            message.error('Arguments must be a JSON array')
-            Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
-            return
-          }
-          args = parsed
-        } catch (_error) {
-          message.error('Invalid JSON in arguments')
-          Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
-          return
-        }
-      }
+    const parsed = parseTransportFields(values)
+    if (!parsed) return null
+    const { args, environmentVariables, headers } = parsed
 
-      // Parse environment variables from JSON string
-      let environmentVariables = {}
-      if (values.env && values.env.trim()) {
-        try {
-          environmentVariables = JSON.parse(values.env)
-          if (
-            typeof environmentVariables !== 'object' ||
-            Array.isArray(environmentVariables)
-          ) {
-            message.error('Environment variables must be a JSON object')
-            Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
-            return
-          }
-        } catch (_error) {
-          message.error('Invalid JSON in environment variables')
-          Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
-          return
-        }
-      }
+    const serverData = {
+      name: values.name,
+      display_name: values.display_name,
+      description: values.description,
+      transport_type: values.transport_type,
+      url: values.url,
+      command: values.command,
+      args: args,
+      environment_variables: environmentVariables,
+      headers: headers,
+      enabled: values.enabled ?? true,
+      supports_sampling: values.supports_sampling ?? false,
+      usage_mode: values.usage_mode ?? 'auto',
+      max_concurrent_sessions: values.max_concurrent_sessions ?? null,
+      // Backend ignores `run_in_sandbox` for user-mode + non-stdio servers; we
+      // still send it so the field round-trips through create + edit unchanged
+      // when the toggle is visible.
+      run_in_sandbox: values.run_in_sandbox ?? false,
+      timeout_seconds: values.timeout_seconds ?? 30,
+    }
 
-      // Parse HTTP headers from JSON string
-      let headers = {}
-      if (values.headers && values.headers.trim()) {
-        try {
-          headers = JSON.parse(values.headers)
-          if (typeof headers !== 'object' || Array.isArray(headers)) {
-            message.error('HTTP Headers must be a JSON object')
-            Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
-            return
-          }
-        } catch (_error) {
-          message.error('Invalid JSON in HTTP Headers')
-          Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
-          return
-        }
-      }
+    const updateData: UpdateMcpServerRequest = {
+      display_name: values.display_name,
+      description: values.description,
+      url: values.url,
+      command: values.command,
+      args: args,
+      environment_variables: environmentVariables,
+      headers: headers,
+      enabled: values.enabled ?? true,
+      supports_sampling: values.supports_sampling ?? false,
+      usage_mode: values.usage_mode ?? 'auto',
+      max_concurrent_sessions: values.max_concurrent_sessions ?? null,
+      // Backend ignores `run_in_sandbox` for user-mode + non-stdio servers; we
+      // still send it so the field round-trips through create + edit unchanged
+      // when the toggle is visible.
+      run_in_sandbox: values.run_in_sandbox ?? false,
+      timeout_seconds: values.timeout_seconds ?? 30,
+    }
 
-      const serverData = {
-        name: values.name,
-        display_name: values.display_name,
-        description: values.description,
-        transport_type: values.transport_type,
-        url: values.url,
-        command: values.command,
-        args: args,
-        environment_variables: environmentVariables,
-        headers: headers,
-        enabled: values.enabled ?? true,
-        supports_sampling: values.supports_sampling ?? false,
-        usage_mode: values.usage_mode ?? 'auto',
-        max_concurrent_sessions: values.max_concurrent_sessions ?? null,
-        // Backend ignores `run_in_sandbox` for user-mode + non-stdio
-        // servers; we still send it so the field round-trips through
-        // create + edit unchanged when the toggle is visible.
-        run_in_sandbox: values.run_in_sandbox ?? false,
-        timeout_seconds: values.timeout_seconds ?? 30,
-      }
+    let saved: McpServer
+    if (mode === 'create') {
+      saved = await Stores.McpServer.createMcpServer(
+        serverData as CreateMcpServerRequest,
+      )
+      message.success('MCP server created successfully')
+    } else if (mode === 'edit' && editingServer) {
+      saved = await Stores.McpServer.updateMcpServer(editingServer.id, updateData)
+      message.success('MCP server updated successfully')
+    } else if (mode === 'create-system') {
+      saved = await Stores.SystemMcpServer.createSystemServer(
+        serverData as CreateMcpServerRequest,
+      )
+      message.success('System MCP server created successfully')
+    } else if (mode === 'edit-system' && editingServer) {
+      saved = await Stores.SystemMcpServer.updateSystemServer(
+        editingServer.id,
+        updateData,
+      )
+      message.success('System MCP server updated successfully')
+    } else {
+      // Unreachable guard for the unused 'clone'/default modes (mirrors
+      // canManage's `default: false`); no save is attempted.
+      return null
+    }
 
-      let savedServerId: string | undefined
-      if (mode === 'create') {
-        const created = await Stores.McpServer.createMcpServer(
-          serverData as CreateMcpServerRequest,
+    // Once a fresh server exists, any outcome that leaves the drawer OPEN must
+    // rebind it to edit mode so the NEXT action updates it instead of creating a
+    // duplicate. Used by the post-create OAuth failure paths below (the
+    // secret-missing early return and OAuth API errors). The plain-Save success
+    // path closes the drawer and never calls this; Save&Test does its own flip.
+    const flipToEditIfFreshCreate = () => {
+      if (mode === 'create' || mode === 'create-system') {
+        Stores.McpServerDrawer.openMcpServerDrawer(
+          saved,
+          saved.is_system ? 'edit-system' : 'edit',
         )
-        savedServerId = created.id
-        message.success('MCP server created successfully')
-      } else if (mode === 'edit' && editingServer) {
-        const updateData: UpdateMcpServerRequest = {
-          display_name: values.display_name,
-          description: values.description,
-          url: values.url,
-          command: values.command,
-          args: args,
-          environment_variables: environmentVariables,
-          headers: headers,
-          enabled: values.enabled ?? true,
-          supports_sampling: values.supports_sampling ?? false,
-          usage_mode: values.usage_mode ?? 'auto',
-          max_concurrent_sessions: values.max_concurrent_sessions ?? null,
-          timeout_seconds: values.timeout_seconds ?? 30,
-        }
-        await Stores.McpServer.updateMcpServer(editingServer.id, updateData)
-        savedServerId = editingServer.id
-        message.success('MCP server updated successfully')
-      } else if (mode === 'create-system') {
-        await Stores.SystemMcpServer.createSystemServer(
-          serverData as CreateMcpServerRequest,
-        )
-        message.success('System MCP server created successfully')
-      } else if (mode === 'edit-system' && editingServer) {
-        const updateData: UpdateMcpServerRequest = {
-          display_name: values.display_name,
-          description: values.description,
-          url: values.url,
-          command: values.command,
-          args: args,
-          environment_variables: environmentVariables,
-          headers: headers,
-          enabled: values.enabled ?? true,
-          supports_sampling: values.supports_sampling ?? false,
-          usage_mode: values.usage_mode ?? 'auto',
-          max_concurrent_sessions: values.max_concurrent_sessions ?? null,
-          run_in_sandbox: values.run_in_sandbox ?? false,
-          timeout_seconds: values.timeout_seconds ?? 30,
-        }
-        await Stores.SystemMcpServer.updateSystemServer(
-          editingServer.id,
-          updateData,
-        )
-        message.success('System MCP server updated successfully')
       }
+    }
 
-      // Persist OAuth config for user-owned HTTP servers.
-      if (savedServerId && isUserMode && values.transport_type === 'http') {
-        const clientId = (values.oauth_client_id ?? '').trim()
-        const clientSecret = values.oauth_client_secret ?? ''
-        const scopes = (values.oauth_scopes ?? '').trim() || null
+    // Persist OAuth config for user-owned HTTP servers.
+    if (isUserMode && values.transport_type === 'http') {
+      const clientId = (values.oauth_client_id ?? '').trim()
+      const clientSecret = values.oauth_client_secret ?? ''
+      const scopes = (values.oauth_scopes ?? '').trim() || null
+      try {
         if (clientId && clientSecret) {
-          await Stores.McpServer.setMcpServerOAuthConfig(savedServerId, {
+          await Stores.McpServer.setMcpServerOAuthConfig(saved.id, {
             client_id: clientId,
             client_secret: clientSecret,
             scopes,
           })
         } else if (clientId && !clientSecret && !hasExistingOAuth) {
           message.error('Enter the OAuth client secret to enable OAuth')
-          Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
-          return
+          flipToEditIfFreshCreate()
+          return null
         } else if (!clientId && hasExistingOAuth) {
           // Cleared the client id → remove the stored config.
-          await Stores.McpServer.deleteMcpServerOAuthConfig(savedServerId)
+          await Stores.McpServer.deleteMcpServerOAuthConfig(saved.id)
         }
         // (clientId set, secret blank, config exists → keep the current secret)
+      } catch (error) {
+        // The server was already created/updated; rebind a fresh create to edit
+        // before the error propagates so a retry can't create a duplicate.
+        flipToEditIfFreshCreate()
+        throw error
+      }
+    }
+
+    return saved
+  }
+
+  // "Save & Test Connection": persist the entered settings first, then probe the
+  // PERSISTED server (by id, so the backend reuses any stored OAuth secret —
+  // same as the card). On a fresh create we flip the drawer to edit mode so a
+  // second click updates rather than creating a duplicate. The drawer stays open
+  // so the test result and saved state remain visible.
+  const handleSaveAndTest = async () => {
+    setTesting(true)
+    try {
+      const saved = await persistServer()
+      if (!saved) return
+
+      if (mode === 'create' || mode === 'create-system') {
+        Stores.McpServerDrawer.openMcpServerDrawer(
+          saved,
+          saved.is_system ? 'edit-system' : 'edit',
+        )
       }
 
+      const payload: TestMcpConnectionRequest = {
+        transport_type: saved.transport_type,
+        command: saved.command ?? undefined,
+        args: Array.isArray(saved.args) ? saved.args : [],
+        environment_variables: saved.environment_variables ?? {},
+        url: saved.url ?? undefined,
+        headers: saved.headers ?? {},
+        timeout_seconds: saved.timeout_seconds,
+        id: saved.id,
+      }
+      const result = saved.is_system
+        ? await Stores.SystemMcpServer.testSystemServerConnection(payload)
+        : await Stores.McpServer.testMcpServerConnection(payload)
+      showConnectionTestResult(message, result)
+    } catch (error) {
+      showConnectionTestError(message, error)
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  const handleSubmit = async () => {
+    try {
+      Stores.McpServerDrawer.setMcpServerDrawerLoading(true)
+      const saved = await persistServer()
+      if (!saved) return
       Stores.McpServerDrawer.closeMcpServerDrawer()
       form.resetFields()
     } catch (error) {
@@ -576,11 +660,26 @@ export function McpServerDrawer() {
         </Form>
 
         <div className="flex gap-2 justify-end">
+          {canManage && !!transportType && (
+            <Button
+              className="mr-auto"
+              loading={testing}
+              disabled={loading}
+              onClick={handleSaveAndTest}
+            >
+              Save &amp; Test Connection
+            </Button>
+          )}
           <Button onClick={handleClose}>
             {canManage ? 'Cancel' : 'Close'}
           </Button>
           {canManage && (
-            <Button type="primary" loading={loading} onClick={handleSubmit}>
+            <Button
+              type="primary"
+              loading={loading}
+              disabled={testing}
+              onClick={handleSubmit}
+            >
               {getButtonText()}
             </Button>
           )}

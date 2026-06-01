@@ -5,6 +5,8 @@ import type {
   McpServer,
   CreateMcpServerRequest,
   UpdateMcpServerRequest,
+  TestMcpConnectionRequest,
+  TestMcpConnectionResponse,
 } from '@/api-client/types'
 import {
   emitGroupSystemMcpServersChanged,
@@ -67,6 +69,9 @@ interface SystemMcpServersState {
     data: UpdateMcpServerRequest,
   ) => Promise<McpServer>
   deleteSystemServer: (id: string) => Promise<void>
+  testSystemServerConnection: (
+    data: TestMcpConnectionRequest,
+  ) => Promise<TestMcpConnectionResponse>
   getServerGroups: (serverId: string) => Promise<string[]>
   assignServerToGroups: (serverId: string, groupIds: string[]) => Promise<void>
   removeServerFromGroup: (serverId: string, groupId: string) => Promise<void>
@@ -357,6 +362,14 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
           })
           throw error
         }
+      },
+
+      // Probe a candidate system-server config (read-only; nothing persisted).
+      // Returns { success, message, tool_count } with HTTP 200 even on failure.
+      testSystemServerConnection: async (
+        data: TestMcpConnectionRequest,
+      ): Promise<TestMcpConnectionResponse> => {
+        return await ApiClient.McpServerSystem.testConnection(data)
       },
 
       getServerGroups: async (serverId: string): Promise<string[]> => {

@@ -41,6 +41,12 @@ export interface InlineFileSource {
   mimeType?: string
   /** File size in bytes, if known. */
   size?: number
+  /** Backing File id, when the resource_link points at a server-persisted
+   *  artifact (backend-owned). When set, the inline preview renders content
+   *  via the authenticated `/api/files/{id}/...` path (same as the right-side
+   *  panel) and can open that file in the side panel. Absent for external
+   *  MCP links with no backing File. */
+  fileId?: string
 }
 
 /**

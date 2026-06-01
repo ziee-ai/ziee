@@ -56,7 +56,8 @@ async fn test_create_list_get_delete_memory() {
         .await
         .unwrap();
     assert_eq!(res.status(), 200);
-    let rows: Vec<Value> = res.json().await.unwrap();
+    let body: Value = res.json().await.unwrap();
+    let rows = body["items"].as_array().cloned().unwrap_or_default();
     assert!(rows.iter().any(|r| r["id"] == id));
 
     // Get
@@ -219,7 +220,8 @@ async fn test_cross_user_isolation_get() {
         .send()
         .await
         .unwrap();
-    let bob_rows: Vec<Value> = res.json().await.unwrap();
+    let bob_body: Value = res.json().await.unwrap();
+    let bob_rows = bob_body["items"].as_array().cloned().unwrap_or_default();
     assert!(
         bob_rows.iter().all(|r| r["id"] != alice_mem_id),
         "user B must not see user A's memories in LIST"
@@ -374,6 +376,7 @@ async fn test_delete_all_only_affects_caller() {
         .send()
         .await
         .unwrap();
-    let rows: Vec<Value> = res.json().await.unwrap();
+    let body: Value = res.json().await.unwrap();
+    let rows = body["items"].as_array().cloned().unwrap_or_default();
     assert_eq!(rows.len(), 1, "bob's memory must survive alice's delete-all");
 }

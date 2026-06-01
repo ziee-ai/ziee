@@ -82,6 +82,14 @@ pub fn user_routes() -> ApiRouter {
             "/mcp/servers/{id}/ping",
             post_with(runtime::ping_server, runtime::ping_server_docs),
         )
+        // Connection test — probe a candidate config without persisting it
+        .api_route(
+            "/mcp/servers/test-connection",
+            post_with(
+                test_connection::test_user_connection,
+                test_connection::test_user_connection_docs,
+            ),
+        )
 }
 
 // =====================================================
@@ -97,6 +105,14 @@ pub fn admin_routes() -> ApiRouter {
         .api_route(
             "/mcp/system-servers",
             post_with(create_system_server, create_system_server_docs),
+        )
+        // Connection test — probe a candidate system-server config (no persist)
+        .api_route(
+            "/mcp/system-servers/test-connection",
+            post_with(
+                test_connection::test_system_connection,
+                test_connection::test_system_connection_docs,
+            ),
         )
         .api_route(
             "/mcp/system-servers/{id}",

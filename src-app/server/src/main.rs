@@ -294,7 +294,9 @@ async fn main() {
     // - Security headers (X-Content-Type-Options, X-Frame-Options,
     //   Referrer-Policy, Permissions-Policy, Strict-Transport-Security).
     //   These are response-only defenses but cheap and audit-recommended.
-    // Rate limiter: 5 req/sec per peer IP, burst-able to 60.
+    // Rate limiter (applied conditionally below — see apply_rate_limit_layer;
+    // gated on `server.rate_limit.enabled`, default on). WHEN ENABLED it
+    // defaults to 50 req/sec per peer IP, burst-able to 500.
     // PeerIpKeyExtractor uses the TCP peer address (not X-Forwarded-For)
     // — appropriate for direct-connect deployments and TestServer.
     // Production behind a reverse proxy should swap for
@@ -302,37 +304,24 @@ async fn main() {
     // Closes a substantial chunk of the auth/file/chat rate-limit
     // findings (01-auth F-05, 03-user F-12, 04-chat F-04 message-stream
     // rate, 06-llm-provider F-13, 08-llm-local-runtime F-06).
-    // Config-driven rate limits. Defaults to 50 req/s sustained,
-    // 500-burst — wide enough that a normal SPA cold-load (15-25
-    // parallel API calls + secondary fetches) doesn't trip 429,
-    // tight enough to still blunt brute-force / scraping. Hardened
-    // deployments behind a real reverse proxy should override
-    // downward via `server.rate_limit` in config; tests already
-    // override upward to handle sequential-burst sweeps against a
-    // single peer-IP bucket.
-    let (rl_per_sec, rl_burst) = config
-        .server
-        .rate_limit
-        .as_ref()
-        .map(|r| (r.per_second, r.burst_size))
-        .unwrap_or((50, 500));
-    let governor_conf = std::sync::Arc::new(
-        tower_governor::governor::GovernorConfigBuilder::default()
-            .per_second(rl_per_sec)
-            .burst_size(rl_burst)
-            .key_extractor(tower_governor::key_extractor::PeerIpKeyExtractor)
-            .finish()
-            .expect("Failed to build governor config"),
-    );
-    let governor_layer = tower_governor::GovernorLayer {
-        config: governor_conf,
-    };
-
+    // Config-driven rate limits. Defaults to 50 req/s sustained, 500-burst
+    // when the `server.rate_limit` block is omitted — wide enough that a normal
+    // SPA cold-load (15-25 parallel API calls + secondary fetches) doesn't trip
+    // 429, tight enough to still blunt brute-force / scraping. Hardened
+    // deployments behind a real reverse proxy override downward; tests override
+    // upward for sequential-burst sweeps against a single peer-IP bucket. The
+    // 660s request timeout accommodates slow-CPU local-runtime inference.
     let app = api_router
         .finish_api(&mut api_doc)
         .layer(axum::extract::DefaultBodyLimit::max(16 * 1024 * 1024))
-        .layer(tower_http::timeout::TimeoutLayer::new(std::time::Duration::from_secs(660)))
-        .layer(governor_layer)
+        .layer(tower_http::timeout::TimeoutLayer::new(std::time::Duration::from_secs(660)));
+    // Rate limiter (tower-governor) — see core::app_builder::apply_rate_limit_layer.
+    // Gated on `server.rate_limit.enabled`; the standalone server passes a
+    // Some((50,500)) default so an un-configured deployment is still protected.
+    // The built-in MCP servers reach this same router over loopback, so set
+    // `enabled: false` (or raise the limits) if agent tool loops self-throttle.
+    let app = core::app_builder::apply_rate_limit_layer(app, &config, Some((50, 500)));
+    let app = app
         .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
             axum::http::header::HeaderName::from_static("x-content-type-options"),
             axum::http::HeaderValue::from_static("nosniff"),

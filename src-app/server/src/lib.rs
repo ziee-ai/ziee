@@ -52,7 +52,7 @@ pub mod permissions {
 pub use async_trait::async_trait;
 
 // Re-export MCP client types for integration tests
-pub use modules::mcp::client::http::HttpMcpClient;
+pub use modules::mcp::client::http::{HeaderParseError, HttpMcpClient, parse_header_map};
 pub use modules::mcp::client::stdio::StdioMcpClient;
 pub use modules::mcp::client::auth::{
     OAuthClientConfig, StoredToken, refresh_token as oauth_refresh_token,
@@ -94,7 +94,7 @@ pub use modules::code_sandbox::backend::{active as sandbox_backend, RawExecResul
 
 // Re-export MCP content types for integration tests
 #[doc(hidden)]
-pub use modules::chat::extensions::mcp::content::{McpContentData, RichFile};
+pub use modules::chat::extensions::mcp::content::{McpContentData, ResourceLink, RichFile};
 
 // Re-export memory chat-extension functions for integration tests
 // (tier 5 real-LLM tests need to invoke the extraction + summarizer
@@ -116,6 +116,20 @@ pub mod code_sandbox {
 #[doc(hidden)]
 pub mod mcp {
     pub use crate::modules::mcp::McpRepository;
+}
+
+// Private pure helpers that integration tests unit-test directly (wire-format
+// grouping). Kept out of the public docs; the ai_providers
+// wire types are re-exported too because that crate is a dependency of `ziee` but
+// not of the integration-test crate.
+#[doc(hidden)]
+pub mod test_internals {
+    pub use crate::modules::chat::core::services::streaming::group_assistant_blocks;
+    pub use ai_providers::{ChatMessage, ContentBlock, Role};
+    // Chat repository surface for the DB-level append_content tests
+    // (Tier-2 monotonic / collision-free under concurrent appends).
+    pub use crate::modules::chat::core::repository::ChatCoreRepository;
+    pub use crate::modules::chat::core::models::MessageContentData;
 }
 
 // Re-export axum types for route building
@@ -284,28 +298,14 @@ async fn setup_server(
     // 16 MB body limit, 60s timeout, security headers, CORS.
     // Closes 14-core F-01 + 05-file F-09 generalization + A3 headers.
     //
-    // Rate limiter is OPTIONAL on this path. The desktop app embeds
-    // this server and serves only its own local webview over
-    // 127.0.0.1 — there is no per-peer-IP attack surface to defend
-    // against, and the rate limiter actively gets in the way of
-    // legitimate burst traffic (chat streams, SSE, multi-file
-    // uploads). When `config.server.rate_limit` is None, the layer
-    // is skipped entirely. Web deployments still set it explicitly
-    // in their config (see config/prod.example.yaml).
-    let governor_layer = config.server.rate_limit.as_ref().map(|r| {
-        let governor_conf = std::sync::Arc::new(
-            tower_governor::governor::GovernorConfigBuilder::default()
-                .per_second(r.per_second)
-                .burst_size(r.burst_size)
-                .key_extractor(tower_governor::key_extractor::PeerIpKeyExtractor)
-                .finish()
-                .expect("Failed to build governor config"),
-        );
-        tower_governor::GovernorLayer {
-            config: governor_conf,
-        }
-    });
-
+    // Rate limiter is OPTIONAL on this embedded path. The desktop app embeds
+    // this server and serves only its own local webview over 127.0.0.1 — there
+    // is no per-peer-IP attack surface, and a limiter actively gets in the way
+    // of legitimate burst traffic (chat streams, SSE, multi-file uploads). So
+    // we pass `None` as the absent-default: when `server.rate_limit` is omitted
+    // (the desktop config omits it) the layer is skipped entirely; an explicit
+    // `enabled: false` also skips it. Web deployments set it explicitly (see
+    // config/prod.example.yaml). See core::app_builder::apply_rate_limit_layer.
     let app = api_router
         .finish_api(&mut api_doc)
         .layer(axum::extract::DefaultBodyLimit::max(16 * 1024 * 1024))
@@ -315,10 +315,7 @@ async fn setup_server(
         // Response, so this layer caps the whole spawn + first-byte
         // window. See main.rs for the full rationale.
         .layer(tower_http::timeout::TimeoutLayer::new(std::time::Duration::from_secs(660)));
-    let app = match governor_layer {
-        Some(layer) => app.layer(layer),
-        None => app,
-    };
+    let app = core::app_builder::apply_rate_limit_layer(app, &config, None);
     let app = app
         .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
             axum::http::header::HeaderName::from_static("x-content-type-options"),
