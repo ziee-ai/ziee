@@ -1,9 +1,10 @@
-import { App, Card, Tag, Typography, Button, Flex, Select } from 'antd'
+import { App, Card, Tag, Typography, Button, Flex, Select, Tooltip } from 'antd'
 import {
   AppstoreOutlined,
   DownloadOutlined,
   EyeOutlined,
   FileTextOutlined,
+  KeyOutlined,
   LockOutlined,
   MessageOutlined,
   PictureOutlined,
@@ -17,7 +18,8 @@ import {
   type HubModel,
   type HubModelQuantizationOption,
 } from '@/api-client/types'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ModelDetailsDrawer } from '@/modules/hub/modules/llm-models/components/ModelDetailsDrawer'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -32,6 +34,9 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
   const { message, modal } = App.useApp()
   const [showDetails, setShowDetails] = useState(false)
   const canDownload = usePermission(Permissions.HubModelsCreate)
+  const navigate = useNavigate()
+  // Guards against stacking duplicate auth modals on rapid Download clicks.
+  const authModalOpenRef = useRef(false)
 
   const { localProviders } = Stores.HubModels
   const { downloads } = Stores.LlmModelDownload
@@ -48,7 +53,51 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
   // Check if this hub model has been downloaded (system-wide tracking via hub)
   const isModelDownloaded = (model.created_ids?.length ?? 0) > 0
 
+  const showAuthRequiredModal = () => {
+    if (authModalOpenRef.current) return
+    authModalOpenRef.current = true
+    const m = modal.info({
+      icon: null,
+      footer: null,
+      title: 'Authentication Required',
+      closable: true,
+      // Fires on every exit path (Cancel/primary destroy, the X, mask click),
+      // reliably clearing the re-entrancy guard above.
+      afterClose: () => {
+        authModalOpenRef.current = false
+      },
+      content: (
+        <div className="flex flex-col gap-2">
+          <Text>
+            Downloading <Text strong>{model.display_name}</Text> needs a
+            credential for its source repository, which is not configured yet.
+            Add it in Settings → LLM Repositories, then try again.
+          </Text>
+          <Flex className={'gap-2 w-full justify-end'}>
+            <Button onClick={() => m.destroy()}>Cancel</Button>
+            <Button
+              type="primary"
+              onClick={() => {
+                m.destroy()
+                navigate('/settings/llm-repositories')
+              }}
+            >
+              Go to LLM Repositories
+            </Button>
+          </Flex>
+        </div>
+      ),
+    })
+  }
+
   const handleDownload = async () => {
+    // Block early with guidance when this model needs auth but its source repo
+    // has no credential configured (the backend enforces the same with a 422).
+    if (model.auth_required && !model.source_auth_configured) {
+      showAuthRequiredModal()
+      return
+    }
+
     if (localProviders.length === 0) {
       message.error(
         `No local provider found. Please ask an administrator to configure a local provider.`,
@@ -253,9 +302,28 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                     <Tag color="geekblue-inverse">Downloaded</Tag>
                   )}
                   {model.auth_required && (
-                    <Tag color="orange" icon={<LockOutlined />}>
-                      Auth Required
-                    </Tag>
+                    <Tooltip
+                      title={
+                        model.source_auth_configured
+                          ? 'This model requires authentication; a credential is configured.'
+                          : 'This model needs a credential for its source repository. Add one in Settings → LLM Repositories before downloading.'
+                      }
+                    >
+                      <Tag
+                        color={model.source_auth_configured ? 'orange' : 'volcano'}
+                        icon={
+                          model.source_auth_configured ? (
+                            <LockOutlined />
+                          ) : (
+                            <KeyOutlined />
+                          )
+                        }
+                      >
+                        {model.source_auth_configured
+                          ? 'Auth Required'
+                          : 'Token Needed'}
+                      </Tag>
+                    </Tooltip>
                   )}
                 </Flex>
               </div>

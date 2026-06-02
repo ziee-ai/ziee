@@ -261,11 +261,24 @@ pub fn validate_auth_config_for_update(
 /// - Hugging Face special handling (Bearer vs X-API-Key)
 /// - auth_test_api_endpoint support
 /// - Only HTTP 200 is success
+///
+/// NOTE: this validates REST-API reachability/credentials against
+/// `auth_test_api_endpoint`, NOT the git-clone Basic-over-HTTPS path that the
+/// actual model download uses (see the credential callbacks in
+/// `utils/git/service.rs`). For `auth_type == "basic_auth"` the two wire formats
+/// differ, so a green "Test connection" does not by itself guarantee the clone
+/// will authenticate.
 pub async fn test_repository_connectivity(
     request: &TestRepositoryConnectionRequest,
 ) -> Result<(), String> {
-    // Create a reqwest client with timeout (10s for faster feedback)
-    let client_builder = reqwest::Client::builder().timeout(std::time::Duration::from_secs(10));
+    // Create a reqwest client with timeout (10s for faster feedback).
+    // A non-empty User-Agent is REQUIRED: GitHub's REST API (the seeded GitHub
+    // test endpoint https://api.github.com/user) rejects any UA-less request with
+    // 403 Forbidden *before* checking the token, so a valid token would otherwise
+    // fail the connection test with a misleading 403.
+    let client_builder = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .user_agent(concat!("ziee/", env!("CARGO_PKG_VERSION")));
 
     let client = client_builder
         .build()

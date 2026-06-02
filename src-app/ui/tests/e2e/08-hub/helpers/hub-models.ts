@@ -81,51 +81,41 @@ export async function hasAuthRequiredBadge(
   modelId: string,
 ): Promise<boolean> {
   const modelCard = page.getByTestId(`hub-model-card-${modelId}`)
-  const authBadge = modelCard.getByText(/auth.*required/i)
+  // The badge reads "Auth Required" once the source repo has a credential and
+  // "Token Needed" while it does not — both mean authentication is required.
+  const authBadge = modelCard.getByText(/auth.*required|token needed/i)
   return await authBadge.isVisible({ timeout: 1000 }).catch(() => false)
 }
 
 /**
- * Handle auth required modal by configuring repository
+ * Find the first model card that shows an auth badge (Auth Required / Token
+ * Needed) — i.e. an auth-gated model. Returns the card locator, or null if none.
+ * Use this instead of `.first()` so tests don't depend on catalog ordering.
  */
-export async function handleAuthRequiredModal(
-  page: Page,
-  credentials: {
-    authType: 'token' | 'username_password'
-    token?: string
-    username?: string
-    password?: string
-  },
-) {
-  // Modal should be visible
-  const modal = page.getByRole('dialog', { name: /authentication.*required/i })
-  await expect(modal).toBeVisible({ timeout: 2000 })
-
-  // Click configure button
-  await modal.getByRole('button', { name: /configure.*authentication/i }).click()
-
-  // Wait for repository settings drawer
-  const drawer = page.getByRole('dialog', { name: /repository.*settings|edit.*repository/i })
-  await expect(drawer).toBeVisible({ timeout: 3000 })
-
-  // Configure auth
-  const authTypeSelect = drawer.getByLabel(/auth.*type/i)
-  await authTypeSelect.selectOption({ label: credentials.authType === 'token' ? 'Token' : 'Username/Password' })
-
-  if (credentials.authType === 'token' && credentials.token) {
-    await drawer.getByLabel(/token/i).fill(credentials.token)
-  } else if (credentials.authType === 'username_password') {
-    if (credentials.username) {
-      await drawer.getByLabel(/username/i).fill(credentials.username)
-    }
-    if (credentials.password) {
-      await drawer.getByLabel(/password/i).fill(credentials.password)
-    }
+export async function findAuthRequiredCard(page: Page) {
+  const cards = page.getByTestId(/^hub-model-card-/)
+  const n = await cards.count()
+  for (let i = 0; i < n; i++) {
+    const card = cards.nth(i)
+    const id =
+      (await card.getAttribute('data-testid'))?.replace('hub-model-card-', '') ||
+      ''
+    if (await hasAuthRequiredBadge(page, id)) return card
   }
+  return null
+}
 
-  // Save settings
-  await drawer.getByRole('button', { name: /save|update/i }).click()
+/**
+ * Handle the "Authentication Required" modal: assert it is shown, click
+ * "Go to LLM Repositories", and assert it deep-links to the LLM Repositories
+ * settings page (the hub module guides the user there rather than embedding the
+ * repository editor — a module-boundary-clean design).
+ */
+export async function handleAuthRequiredModal(page: Page) {
+  const modal = page.getByRole('dialog', { name: /authentication.*required/i })
+  await expect(modal).toBeVisible({ timeout: 5000 })
 
-  // Wait for drawer to close
-  await expect(drawer).not.toBeVisible({ timeout: 3000 })
+  await modal.getByRole('button', { name: /go to llm repositories/i }).click()
+
+  await expect(page).toHaveURL(/\/settings\/llm-repositories/)
 }

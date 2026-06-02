@@ -8,6 +8,8 @@
 
 use serde_json::json;
 
+mod test_connection_user_agent;
+
 #[tokio::test]
 async fn test_list_llm_repositories_requires_permission() {
     let server = crate::common::TestServer::start().await;
@@ -1006,5 +1008,77 @@ async fn test_ssrf_create_rejects_url_with_credentials() {
         res.status(),
         400,
         "URL embedding credentials must be rejected"
+    );
+}
+
+/// Switching a repository's auth_type must PRUNE the previous type's secret from
+/// the stored blob (data-at-rest hygiene). Observed indirectly: after switching
+/// away from api_key and back, the old api_key must no longer satisfy validation.
+#[tokio::test]
+async fn test_auth_type_switch_prunes_previous_secret() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "repo_switch_admin",
+        &[
+            "llm_repositories::create",
+            "llm_repositories::edit",
+            "llm_repositories::read",
+        ],
+    )
+    .await;
+
+    // 1) Create a custom api_key repo with a secret.
+    let create = reqwest::Client::new()
+        .post(server.api_url("/llm-repositories"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "name": "Switch Test Repo",
+            "url": "https://example.com/switch-test",
+            "auth_type": "api_key",
+            "auth_config": { "api_key": "custom-api-key" }
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create.status(), 201, "create should succeed");
+    let repo_id = create.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // 2) Switch to bearer_token (providing the new secret). This must PRUNE the
+    //    old api_key from the stored blob.
+    let switch = reqwest::Client::new()
+        .post(server.api_url(&format!("/llm-repositories/{}", repo_id)))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "auth_type": "bearer_token",
+            "auth_config": { "token": "custom-token" }
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(switch.status(), 200, "auth_type switch should succeed");
+
+    // 3) Switch BACK to api_key WITHOUT providing a key. If the old api_key was
+    //    pruned in step 2, neither the request nor the stored config has one, so
+    //    validation rejects (400). If pruning had failed, the stale api_key would
+    //    still satisfy validation and this would NOT be a client error.
+    let back = reqwest::Client::new()
+        .post(server.api_url(&format!("/llm-repositories/{}", repo_id)))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "auth_type": "api_key",
+            "auth_config": {}
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        back.status(),
+        400,
+        "switching back to api_key with no key must be rejected because the old \
+         api_key was pruned on the earlier switch"
     );
 }

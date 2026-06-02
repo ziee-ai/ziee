@@ -38,6 +38,14 @@ pub struct HubModel {
     #[serde(default)]
     pub auth_required: bool,
 
+    /// Whether the model's SOURCE repository currently has a credential
+    /// configured. Computed at response time (never read from the catalog file)
+    /// by joining against `llm_repositories`. When `auth_required` is true and
+    /// this is false, the UI blocks download and points the user to
+    /// Settings → LLM Repositories.
+    #[serde(default)]
+    pub source_auth_configured: bool,
+
     /// Array of model IDs downloaded by ANYONE from this hub model (system-wide)
     #[serde(default)]
     pub created_ids: Vec<Uuid>,

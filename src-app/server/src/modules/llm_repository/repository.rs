@@ -75,6 +75,23 @@ impl LlmRepositoryRepository {
         find_llm_repository_by_url(&self.pool, url).await
     }
 
+    /// Per-repository credential presence (url -> has_credential) for the
+    /// hub-models list hint. Decrypts via the normal read path so it matches the
+    /// authoritative `LlmRepository::has_credential()` gate EXACTLY — an
+    /// approximate "encrypted blob present == configured" check would let the UI
+    /// show a model as configured while the gate then 422s on download. Repos are
+    /// few (2 built-in + a handful of custom), so the per-row decrypt is cheap.
+    pub async fn list_credential_presence(&self) -> Result<Vec<(String, bool)>, sqlx::Error> {
+        Ok(list_llm_repositories(&self.pool)
+            .await?
+            .into_iter()
+            .map(|r| {
+                let present = r.has_credential();
+                (r.url, present)
+            })
+            .collect())
+    }
+
     pub async fn create(
         &self,
         request: CreateLlmRepositoryRequest,
@@ -165,8 +182,14 @@ pub async fn create_llm_repository(
     request: CreateLlmRepositoryRequest,
 ) -> Result<LlmRepository, sqlx::Error> {
     let repository_id = Uuid::new_v4();
-    let auth_config_json =
-        serde_json::to_value(&request.auth_config).unwrap_or(serde_json::json!({}));
+    // Use to_storage_value (NOT serde_json::to_value) so the secret fields
+    // (api_key/password/token) are actually persisted — they are
+    // `skip_serializing` on the entity to hide them in API responses.
+    let auth_config_json = request
+        .auth_config
+        .as_ref()
+        .map(|c| c.to_storage_value())
+        .unwrap_or_else(|| serde_json::json!({}));
 
     // Encrypt the whole auth_config JSON blob. When storage_key is set,
     // ciphertext goes into auth_config_encrypted (bytea) and the
@@ -223,6 +246,12 @@ pub async fn update_llm_repository(
     repository_id: Uuid,
     request: UpdateLlmRepositoryRequest,
 ) -> Result<Option<LlmRepository>, sqlx::Error> {
+    // Snapshot the PRE-update row ONCE, before mutating any column, so the
+    // auth_config merge base and the auth_type-switch detection both see the
+    // ORIGINAL auth_type (the auth_type column is rewritten below). This also
+    // avoids re-reading + re-decrypting the row inside the auth_config branch.
+    let existing = get_llm_repository_by_id(pool, repository_id).await?;
+
     // Replace COALESCE with separate conditional updates
     if let Some(name) = &request.name {
         sqlx::query!(
@@ -255,7 +284,29 @@ pub async fn update_llm_repository(
     }
 
     if let Some(auth_config) = &request.auth_config {
-        let auth_config_json = serde_json::to_value(auth_config).unwrap_or(serde_json::json!({}));
+        // Merge the incoming (partial) auth_config OVER the currently-stored one
+        // so a partial update (e.g. changing only auth_test_api_endpoint or
+        // toggling auth_type) does NOT wipe a previously-saved secret — the API/UI
+        // treat an omitted api_key/password/token as "keep existing". Then
+        // to_storage_value() (NOT serde_json::to_value) persists the secrets
+        // instead of dropping them via their `skip_serializing`.
+        let merged = match &existing {
+            Some(existing) => {
+                let merged = auth_config.merge_over(&existing.auth_config);
+                // On an auth_type SWITCH (compared against the ORIGINAL auth_type
+                // snapshotted before the column was rewritten), drop secret fields
+                // belonging to the previous type so dead credential material
+                // doesn't linger in the stored blob.
+                match &request.auth_type {
+                    Some(new_type) if *new_type != existing.auth_type => {
+                        merged.pruned_for(new_type)
+                    }
+                    _ => merged,
+                }
+            }
+            None => auth_config.clone(),
+        };
+        let auth_config_json = merged.to_storage_value();
         let serialized = auth_config_json.to_string();
         let (plaintext_value, encrypted_value): (serde_json::Value, Option<Vec<u8>>) =
             match encrypt_secret(pool, &serialized, storage_key()).await {

@@ -127,6 +127,10 @@ impl GitService {
         repository_id: &Uuid,
         branch: Option<&str>,
         auth_token: Option<&str>,
+        // Explicit username for basic_auth (paired with the password in
+        // auth_token). None for token auth (api_key/bearer_token), where a
+        // host-appropriate default username is chosen instead.
+        auth_username: Option<&str>,
         progress_tx: mpsc::UnboundedSender<GitProgress>,
         cancellation_token: Option<CancellationToken>,
     ) -> Result<std::path::PathBuf, GitError> {
@@ -181,6 +185,7 @@ impl GitService {
         let repo_cache_dir_clone = repo_cache_dir.clone();
         let repository_url = repository_url.to_string();
         let auth_token = auth_token.map(|s| s.to_string());
+        let auth_username = auth_username.map(|s| s.to_string());
         let branch = branch.map(|s| s.to_string());
 
         // Create a cancellation flag for the blocking task
@@ -275,7 +280,19 @@ impl GitService {
                         ));
                     }
                     if let Some(token) = auth_token.as_deref() {
-                        Cred::userpass_plaintext(username_from_url.unwrap_or(""), token)
+                        // Pair the secret with a NON-EMPTY username (HuggingFace
+                        // rejects an empty one): an explicit basic_auth username
+                        // wins; otherwise use a host-appropriate default. For
+                        // api_key/bearer_token auth_username is None, so this is
+                        // exactly the token path.
+                        let user = auth_username
+                            .as_deref()
+                            .filter(|u| !u.is_empty())
+                            .map(|u| u.to_string())
+                            .unwrap_or_else(|| {
+                                GitService::auth_username_for(url, username_from_url)
+                            });
+                        Cred::userpass_plaintext(&user, token)
                     } else {
                         Cred::default()
                     }
@@ -465,8 +482,19 @@ impl GitService {
                         ));
                     }
                     if let Some(token) = auth_token.as_deref() {
-                        // For GitHub and similar, use token as password with empty username
-                        Cred::userpass_plaintext(username_from_url.unwrap_or(""), token)
+                        // Pair the secret with a NON-EMPTY username: an explicit
+                        // basic_auth username wins; otherwise a host-appropriate
+                        // default (HuggingFace rejects an empty one). For
+                        // api_key/bearer_token auth_username is None, so this is
+                        // exactly the token path.
+                        let user = auth_username
+                            .as_deref()
+                            .filter(|u| !u.is_empty())
+                            .map(|u| u.to_string())
+                            .unwrap_or_else(|| {
+                                GitService::auth_username_for(url, username_from_url)
+                            });
+                        Cred::userpass_plaintext(&user, token)
                     } else {
                         // Try default credentials
                         Cred::default()
@@ -688,6 +716,33 @@ impl GitService {
         }
     }
 
+    /// Pick the git HTTP username to pair with a token for a given host.
+    ///
+    /// Token-based hosts (HuggingFace, GitLab, ...) ignore the username value but
+    /// REQUIRE it to be non-empty over HTTPS Basic auth; an empty username makes
+    /// HuggingFace reject the clone with "git failed to authenticate". GitHub
+    /// conventionally uses "x-access-token". An explicit non-empty username from
+    /// the URL always wins. The LFS client (`lfs::service::url_with_auth`) routes
+    /// its default username through this same helper so the two paths agree.
+    pub fn auth_username_for(url: &str, username_from_url: Option<&str>) -> String {
+        if let Some(u) = username_from_url {
+            if !u.is_empty() {
+                return u.to_string();
+            }
+        }
+        let host = reqwest::Url::parse(url)
+            .ok()
+            .and_then(|u| u.host_str().map(|h| h.to_lowercase()))
+            .unwrap_or_default();
+        // Exact host (or real subdomain) match — `contains` would also classify a
+        // spoof host like "github.com.evil.example" as GitHub.
+        if host == "github.com" || host.ends_with(".github.com") {
+            "x-access-token".to_string()
+        } else {
+            "oauth2".to_string()
+        }
+    }
+
     /// Pull specific LFS files based on file paths with cancellation support
     /// Now uses the native LFS implementation instead of git-lfs binary
     pub async fn pull_lfs_files_with_cancellation(
@@ -750,5 +805,67 @@ impl GitService {
         progress_converter.abort();
 
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GitService;
+
+    #[test]
+    fn auth_username_defaults_oauth2_for_huggingface() {
+        assert_eq!(
+            GitService::auth_username_for("https://huggingface.co/meta-llama/Llama-3.1-8B", None),
+            "oauth2"
+        );
+    }
+
+    #[test]
+    fn auth_username_x_access_token_for_github() {
+        assert_eq!(
+            GitService::auth_username_for("https://github.com/owner/repo.git", None),
+            "x-access-token"
+        );
+    }
+
+    #[test]
+    fn auth_username_explicit_non_empty_wins() {
+        assert_eq!(
+            GitService::auth_username_for("https://huggingface.co/x/y", Some("alice")),
+            "alice"
+        );
+    }
+
+    #[test]
+    fn auth_username_empty_falls_through_to_host_default() {
+        assert_eq!(
+            GitService::auth_username_for("https://github.com/x/y", Some("")),
+            "x-access-token"
+        );
+        assert_eq!(
+            GitService::auth_username_for("https://huggingface.co/x/y", Some("")),
+            "oauth2"
+        );
+    }
+
+    #[test]
+    fn auth_username_unknown_host_defaults_oauth2() {
+        assert_eq!(
+            GitService::auth_username_for("https://gitlab.com/x/y.git", None),
+            "oauth2"
+        );
+        // Unparseable URL also falls back to the generic default.
+        assert_eq!(GitService::auth_username_for("not a url", None), "oauth2");
+        // A spoof host that merely CONTAINS "github.com" must NOT be classified
+        // as GitHub (exact/subdomain match only).
+        assert_eq!(
+            GitService::auth_username_for("https://github.com.evil.example/x/y", None),
+            "oauth2"
+        );
+        // A genuine GitHub subdomain still classifies as GitHub.
+        assert_eq!(
+            GitService::auth_username_for("https://gist.github.com/x/y", None),
+            "x-access-token"
+        );
     }
 }

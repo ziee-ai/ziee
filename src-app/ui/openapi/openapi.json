@@ -16983,6 +16983,11 @@
             "type": "number",
             "format": "double"
           },
+          "source_auth_configured": {
+            "description": "Whether the model's SOURCE repository currently has a credential\n configured. Computed at response time (never read from the catalog file)\n by joining against `llm_repositories`. When `auth_required` is true and\n this is false, the UI blocks download and points the user to\n Settings → LLM Repositories.",
+            "type": "boolean",
+            "default": false
+          },
           "tags": {
             "type": "array",
             "default": [],
