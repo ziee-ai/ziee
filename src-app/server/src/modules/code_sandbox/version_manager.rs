@@ -878,10 +878,27 @@ fn package_extension(package: &str) -> Result<&'static str, VersionError> {
     }
 }
 
+/// Build the artifact download URL for a release `tag` + `asset` name.
+///
+/// Defaults to the real GitHub Releases host. In **debug builds only**
+/// the `CODE_SANDBOX_ROOTFS_MIRROR` env var may override the whole download
+/// base (the mirror serves `{base}/{tag}/{asset}` at its root, unlike the
+/// host-only override in `llm_local_runtime`'s `engine::download::release_base_url`)
+/// so the dev-release loopback mirror (`scripts/dev-release.sh`) and the
+/// integration-test `mirror_fixture` can serve artifacts without cutting a
+/// real release tag. The env read is compiled out of release builds via
+/// `cfg!(debug_assertions)` — the same gating as `release_base_url` — so a
+/// production binary can never be redirected away from GitHub, even if the
+/// env var is set.
 fn build_download_url(tag: &str, asset: &str) -> String {
-    let base = std::env::var("CODE_SANDBOX_ROOTFS_MIRROR")
-        .unwrap_or_else(|_| format!("https://github.com/{ROOTFS_REPO}/releases/download"));
-    format!("{base}/{tag}/{asset}")
+    #[cfg(debug_assertions)]
+    if let Ok(mirror) = std::env::var("CODE_SANDBOX_ROOTFS_MIRROR") {
+        let mirror = mirror.trim_end_matches('/');
+        if !mirror.is_empty() {
+            return format!("{mirror}/{tag}/{asset}");
+        }
+    }
+    format!("https://github.com/{ROOTFS_REPO}/releases/download/{tag}/{asset}")
 }
 
 /// Streamed install progress for the admin UI's SSE channel. Phase 2
@@ -1901,6 +1918,20 @@ mod tests {
         // Same version is a no-op (Preserve covers it; callers
         // short-circuit before this is reached).
         assert_eq!(swap_policy_for_diff("0.1.0", "0.1.0"), SwapPolicy::Preserve);
+        // `parse_semver` is lenient: an unparseable component parses to 0.
+        // So inputs whose major both resolve to 0 compare equal → Preserve
+        // (we never wipe just because a version string was malformed and
+        // both sides land on the same major). Pins are validated semver in
+        // practice, so these are defensive cases.
+        assert_eq!(swap_policy_for_diff("0.1.0", "not-a-version"), SwapPolicy::Preserve);
+        assert_eq!(swap_policy_for_diff("garbage", "also-garbage"), SwapPolicy::Preserve);
+        // The policy keys off "majors differ", not direction or "major == 0":
+        // a major DOWNGRADE wipes too, and an equal NON-ZERO major preserves.
+        assert_eq!(
+            swap_policy_for_diff("2.0.0", "1.5.0"),
+            SwapPolicy::WipeCachesOnDrain
+        );
+        assert_eq!(swap_policy_for_diff("2.3.0", "2.9.0"), SwapPolicy::Preserve);
     }
 
     #[test]
@@ -2038,8 +2069,15 @@ mod tests {
 
     #[test]
     fn build_download_url_uses_default_and_mirror_envs() {
-        // Default path — no env set (avoid global env-var contamination
-        // in CI by ignoring the result, just asserting it's well-formed).
+        // The CODE_SANDBOX_ROOTFS_MIRROR override is `#[cfg(debug_assertions)]`
+        // (see `build_download_url`), so this test — always a debug build —
+        // exercises the mirror path; a release binary compiles the env read
+        // out entirely and always points at GitHub. `set_var`/`remove_var`
+        // are unsafe in edition 2024; only this unit test reads the var in a
+        // `--lib` run, so set→assert→remove is contamination-safe.
+
+        // 1. Default path — no env set → real GitHub Releases host.
+        unsafe { std::env::remove_var("CODE_SANDBOX_ROOTFS_MIRROR") };
         let url = build_download_url("v0.1.0", "x.squashfs");
         assert!(
             url.contains("ziee-ai/sandbox-rootfs/releases/download")
@@ -2047,5 +2085,25 @@ mod tests {
             "unexpected default URL: {url}"
         );
         assert!(url.ends_with("/v0.1.0/x.squashfs"));
+        assert!(
+            url.starts_with("https://github.com/"),
+            "default URL must point at GitHub: {url}"
+        );
+
+        // 2. Mirror set (debug builds only) → loopback host, trailing slash trimmed.
+        unsafe { std::env::set_var("CODE_SANDBOX_ROOTFS_MIRROR", "http://127.0.0.1:9999/m/") };
+        let mirrored = build_download_url("v0.1.0", "x.squashfs");
+        assert_eq!(mirrored, "http://127.0.0.1:9999/m/v0.1.0/x.squashfs");
+
+        // 3. Empty mirror falls back to the default GitHub host.
+        unsafe { std::env::set_var("CODE_SANDBOX_ROOTFS_MIRROR", "") };
+        let empty = build_download_url("v0.1.0", "x.squashfs");
+        assert!(
+            empty.starts_with("https://github.com/"),
+            "empty mirror must fall back to GitHub: {empty}"
+        );
+
+        // Cleanup so sibling tests never observe the override.
+        unsafe { std::env::remove_var("CODE_SANDBOX_ROOTFS_MIRROR") };
     }
 }

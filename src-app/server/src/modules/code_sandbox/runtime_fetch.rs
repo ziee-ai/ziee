@@ -329,10 +329,24 @@ enum DownloadResult {
 }
 
 fn download_to_file(url: &str, dest: &Path, attempts: u32) -> DownloadResult {
-    let client = match reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(600))
-        .build()
-    {
+    use std::io::{Read, Write};
+
+    // Hard size cap. Full rootfs squashfs images run ~1.6-2.0 GB, so 4 GiB
+    // leaves generous headroom while still bounding the bytes an
+    // attacker-controlled / hijacked-mirror `/dev/zero` stream can spool to
+    // disk before sha256 verification rejects it. Parity with
+    // `llm_local_runtime::engine::download`'s `MAX_DOWNLOAD_BYTES` (which uses
+    // a tighter 2 GiB cap suited to engine binaries).
+    const MAX_DOWNLOAD_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+
+    let builder = reqwest::blocking::Client::builder().timeout(Duration::from_secs(600));
+    // Release builds only ever download from `https://github.com/...`; reject
+    // plaintext transports there. The debug-only loopback mirror
+    // (`CODE_SANDBOX_ROOTFS_MIRROR`, http) needs the relaxed client. Shadow
+    // (not `mut`) so debug builds don't warn about an unused `mut`.
+    #[cfg(not(debug_assertions))]
+    let builder = builder.https_only(true);
+    let client = match builder.build() {
         Ok(c) => c,
         Err(e) => return DownloadResult::Failed(format!("client build: {e}")),
     };
@@ -353,6 +367,14 @@ fn download_to_file(url: &str, dest: &Path, attempts: u32) -> DownloadResult {
                     }
                     return DownloadResult::Failed(last_err);
                 }
+                // Content-Length pre-check: fail fast before writing a byte.
+                if let Some(len) = resp.content_length()
+                    && len > MAX_DOWNLOAD_BYTES
+                {
+                    return DownloadResult::Failed(format!(
+                        "refusing to download {len} bytes (cap {MAX_DOWNLOAD_BYTES} / 4 GiB)"
+                    ));
+                }
                 let mut file = match std::fs::File::create(dest) {
                     Ok(f) => f,
                     Err(e) => {
@@ -362,19 +384,50 @@ fn download_to_file(url: &str, dest: &Path, attempts: u32) -> DownloadResult {
                         ))
                     }
                 };
+                // Chunked copy with a running byte cap — a server that lies
+                // about (or omits) Content-Length is still bounded mid-stream.
                 let mut resp = resp;
-                match resp.copy_to(&mut file) {
-                    Ok(n) => return DownloadResult::Ok(n),
-                    Err(e) => {
-                        last_err = format!("stream-to-file: {e}");
-                        let _ = std::fs::remove_file(dest);
-                        if attempt < attempts {
-                            std::thread::sleep(Duration::from_secs(2));
-                            continue;
+                let mut received: u64 = 0;
+                let mut buf = [0u8; 64 * 1024];
+                let mut stream_err: Option<String> = None;
+                let mut capped = false;
+                loop {
+                    match resp.read(&mut buf) {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            received = received.saturating_add(n as u64);
+                            if received > MAX_DOWNLOAD_BYTES {
+                                capped = true;
+                                break;
+                            }
+                            if let Err(e) = file.write_all(&buf[..n]) {
+                                stream_err = Some(format!("write {}: {e}", dest.display()));
+                                break;
+                            }
                         }
-                        return DownloadResult::Failed(last_err);
+                        Err(e) => {
+                            stream_err = Some(format!("stream-read: {e}"));
+                            break;
+                        }
                     }
                 }
+                if capped {
+                    let _ = std::fs::remove_file(dest);
+                    // Not transient — don't retry a body that overflowed the cap.
+                    return DownloadResult::Failed(format!(
+                        "download exceeded {MAX_DOWNLOAD_BYTES} bytes / 4 GiB cap; aborted"
+                    ));
+                }
+                if let Some(e) = stream_err {
+                    last_err = e;
+                    let _ = std::fs::remove_file(dest);
+                    if attempt < attempts {
+                        std::thread::sleep(Duration::from_secs(2));
+                        continue;
+                    }
+                    return DownloadResult::Failed(last_err);
+                }
+                return DownloadResult::Ok(received);
             }
             Err(e) => {
                 last_err = format!("send: {e}");
