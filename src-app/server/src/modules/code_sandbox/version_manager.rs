@@ -93,6 +93,15 @@ pub struct VersionStatus {
     /// Same as above, for per-MCP-server workspaces under
     /// `<workspace_root>/mcp/<server_id>/`.
     pub mcp_server_workspace_count: usize,
+    /// The local host's CPU arch (`"x86_64"` | `"aarch64"`). Authoritative —
+    /// the admin UI uses this to offer the artifact this machine can run,
+    /// instead of guessing from installed artifacts (which is empty on a fresh
+    /// host).
+    pub host_arch: String,
+    /// The rootfs package format the local backend can actually mount
+    /// (`"squashfs"` on Linux/macOS, `"tar.zst"` on Windows/WSL2). Authoritative
+    /// — prevents a fresh Windows host from pre-fetching an unmountable squashfs.
+    pub host_package: String,
 }
 
 /// Per-mount snapshot exposed via `status()` and the admin UI.
@@ -780,6 +789,23 @@ pub async fn install_version(
         return Ok((inserted, None));
     }
 
+    // Surface the dev-only mirror override so it's never silent: in a debug
+    // build with CODE_SANDBOX_ROOTFS_MIRROR set, downloads do NOT hit GitHub.
+    // Emitted here (after the cache-hit + pre-staged-adoption early-returns) so
+    // it only fires when a real download is about to happen. Compiled out of
+    // release builds (where the mirror is never honored), so production is
+    // unaffected.
+    #[cfg(debug_assertions)]
+    if let Ok(mirror) = std::env::var("CODE_SANDBOX_ROOTFS_MIRROR")
+        && !mirror.trim().is_empty()
+    {
+        tracing::warn!(
+            mirror = %mirror,
+            "code_sandbox: CODE_SANDBOX_ROOTFS_MIRROR is set — downloading {asset_name} from the \
+             dev mirror, NOT GitHub Releases. Unset CODE_SANDBOX_ROOTFS_MIRROR to use GitHub."
+        );
+    }
+
     progress(InstallProgress::Resolving { version: version.to_string(), asset: asset_name.clone() });
     let pool_for_blocking = pool.clone();
     let version_owned = version.to_string();
@@ -1017,17 +1043,28 @@ fn download_verify_blocking(
                 }
             }
         }
-        // No bundle published — Phase 2 keeps this lenient (unsigned
-        // releases are accepted with a warning log). Phase 1's
-        // `release.yml` always uploads a bundle, so production
-        // artifacts always get verified; dev `--package tar` builds
-        // staged via `dev-release.sh` skip signing on purpose.
+        // No bundle published. `release.yml` always uploads a bundle, so in a
+        // RELEASE build a missing bundle means a tampered / hijacked-mirror
+        // artifact (and the sha256 sidecar comes from the same host, so it's no
+        // defense) — refuse it. DEBUG builds (dev-release.sh `signed=false`,
+        // the mirror_fixture, local `--package tar`) accept unsigned with a warn.
         _ => {
-            tracing::warn!(
-                url = %cosign_bundle_url,
-                "code_sandbox: cosign bundle not published; accepting unsigned artifact"
-            );
-            None
+            #[cfg(not(debug_assertions))]
+            {
+                let _ = std::fs::remove_file(&tmp_path);
+                let _ = std::fs::remove_file(&cosign_bundle_path);
+                return Err(VersionError::CosignFailed(
+                    "cosign bundle not published; refusing unsigned rootfs artifact".to_string(),
+                ));
+            }
+            #[cfg(debug_assertions)]
+            {
+                tracing::warn!(
+                    url = %cosign_bundle_url,
+                    "code_sandbox: cosign bundle not published; accepting unsigned artifact (debug build only)"
+                );
+                None
+            }
         }
     };
 
@@ -1108,6 +1145,15 @@ pub async fn status(pool: &PgPool) -> Result<VersionStatus, VersionError> {
         draining,
         conversation_count,
         mcp_server_workspace_count,
+        host_arch: std::env::consts::ARCH.to_string(),
+        // Mirrors runtime_mount's per-OS format selection so the UI offers what
+        // the local backend can mount.
+        host_package: if cfg!(target_os = "windows") {
+            "tar.zst"
+        } else {
+            "squashfs"
+        }
+        .to_string(),
     })
 }
 

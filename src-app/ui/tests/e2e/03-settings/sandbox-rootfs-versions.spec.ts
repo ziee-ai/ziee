@@ -29,20 +29,31 @@ function assetNames(arch = 'x86_64', pkg: 'squashfs' | 'tar.zst' = 'squashfs') {
   ]
 }
 
-function art(version: string, flavor: string, idTail: string, arch = 'x86_64') {
+function art(
+  version: string,
+  flavor: string,
+  idTail: string,
+  arch = 'x86_64',
+  pkg: 'squashfs' | 'tar.zst' = 'squashfs',
+) {
   return {
     id: `00000000-0000-0000-0000-0000000000${idTail}`,
     version,
     arch,
     flavor,
-    package: 'squashfs',
+    package: pkg,
     sha256: `${idTail}`.padEnd(64, idTail[0] ?? 'a'),
-    artifact_path: `/cache/${version}/ziee-sandbox-rootfs-${arch}-${flavor}.squashfs`,
-    cosign_bundle: `/cache/${version}/ziee-sandbox-rootfs-${arch}-${flavor}.squashfs.cosign.bundle`,
+    artifact_path: `/cache/${version}/ziee-sandbox-rootfs-${arch}-${flavor}.${pkg}`,
+    cosign_bundle: `/cache/${version}/ziee-sandbox-rootfs-${arch}-${flavor}.${pkg}.cosign.bundle`,
     status: 'installed',
     downloaded_at: '2026-05-30T00:00:00Z',
     last_used_at: null,
   }
+}
+
+/** Asset names for a release that publishes BOTH packages per flavor. */
+function bothPackageAssets(arch = 'x86_64') {
+  return [...assetNames(arch, 'squashfs'), ...assetNames(arch, 'tar.zst')]
 }
 
 interface ReleaseOpts {
@@ -96,18 +107,30 @@ async function mockVersions(page: Page, get: () => unknown) {
   })
 }
 
-/** The page subscribes to the install SSE on mount; emit just `connected`. */
-async function mockInstallSse(page: Page) {
+/** The page subscribes to the install SSE on mount; emit `connected` plus any
+ *  extra pre-scripted SSE frames (e.g. a replayed taskState). */
+async function mockInstallSse(page: Page, extraFrames = '') {
+  // Emit the scripted frames only on the FIRST connect; a reconnect (the
+  // finite body closes the stream) gets `connected` only, so it can't re-add a
+  // task the test has since pruned via Refresh.
+  let sent = false
   await page.route(
     /\/api\/code-sandbox\/rootfs\/versions\/install\/subscribe$/,
     async route => {
+      const frames = sent ? '' : extraFrames
+      sent = true
       await route.fulfill({
         status: 200,
         ...SSE_HEADERS,
-        body: 'event: connected\ndata: {"message":"connected"}\n\n',
+        body: 'event: connected\ndata: {"message":"connected"}\n\n' + frames,
       })
     },
   )
+}
+
+/** Build a single SSE frame for the install-progress stream. */
+function sseTaskFrame(event: string, task: Record<string, unknown>) {
+  return `event: ${event}\ndata: ${JSON.stringify(task)}\n\n`
 }
 
 interface InstallReq {
@@ -515,6 +538,192 @@ test.describe('Sandbox rootfs versions admin', () => {
     await expect.poll(() => installed.filter(i => i.version === '0.2.2').length).toBe(2)
     // parseAssetName resolved the .tar.zst suffix → package routed through.
     expect(installed.filter(i => i.version === '0.2.2').every(i => i.package === 'tar.zst')).toBe(true)
+  })
+
+  test('a release shipping both squashfs + tar.zst renders each flavor once', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    // Real GitHub releases publish BOTH a .squashfs (Linux/macOS) and a
+    // .tar.zst (Windows) asset per flavor. Host package here is squashfs
+    // (derived from the installed 0.0.3 artifacts).
+    await mockVersions(page, () =>
+      versionStatus({
+        installed: [art('0.0.3', 'minimal', '31'), art('0.0.3', 'full', '32')],
+        available: [
+          {
+            version: '0.7.0',
+            published_at: '2026-05-30T00:00:00Z',
+            draft: false,
+            prerelease: false,
+            asset_names: [
+              'ziee-sandbox-rootfs-x86_64-minimal.squashfs',
+              'ziee-sandbox-rootfs-x86_64-full.squashfs',
+              'ziee-sandbox-rootfs-x86_64-minimal.tar.zst',
+              'ziee-sandbox-rootfs-x86_64-full.tar.zst',
+            ],
+          },
+          release('0.0.3'),
+        ],
+      }),
+    )
+    await mockInstallSse(page)
+    const installed = await captureInstalls(page)
+    await gotoSandbox(page, baseURL)
+
+    // Each flavor sub-row appears EXACTLY ONCE (regression: both-package
+    // releases used to render `minimal`/`full` twice — one per package).
+    await expect(availGroup(page, '0.7.0')).toBeVisible()
+    await expect(
+      availGroup(page, '0.7.0').getByTestId('rootfs-row-0.7.0-minimal'),
+    ).toHaveCount(1)
+    await expect(
+      availGroup(page, '0.7.0').getByTestId('rootfs-row-0.7.0-full'),
+    ).toHaveCount(1)
+
+    // The host package (squashfs) is chosen for the Download, not tar.zst.
+    await availGroup(page, '0.7.0').getByRole('button', { name: 'Download' }).click()
+    await expect.poll(() => installed.filter(i => i.version === '0.7.0').length).toBe(2)
+    expect(
+      installed.filter(i => i.version === '0.7.0').every(i => i.package === 'squashfs'),
+    ).toBe(true)
+  })
+
+  test('a flavor downloaded in a non-host package still renders once and is not re-offered', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    // 0.9.0 is fully downloaded but with MIXED packages — minimal as tar.zst,
+    // full as squashfs — while the host package derives to squashfs (majority)
+    // and the catalog ships both packages per flavor. Package-agnostic grouping
+    // must still collapse each flavor to ONE row and treat it as downloaded.
+    await mockVersions(page, () =>
+      versionStatus({
+        installed: [
+          art('0.0.3', 'minimal', '31'),
+          art('0.0.3', 'full', '32'),
+          art('0.9.0', 'minimal', '91', 'x86_64', 'tar.zst'),
+          art('0.9.0', 'full', '92', 'x86_64', 'squashfs'),
+        ],
+        available: [
+          {
+            version: '0.9.0',
+            published_at: '2026-05-30T00:00:00Z',
+            draft: false,
+            prerelease: false,
+            asset_names: bothPackageAssets(),
+          },
+          release('0.0.3'),
+        ],
+      }),
+    )
+    await mockInstallSse(page)
+    await gotoSandbox(page, baseURL)
+
+    // Fully downloaded → Downloaded card, NOT re-offered in Available, and each
+    // flavor renders exactly once despite the package divergence.
+    await expect(dlGroup(page, '0.9.0')).toBeVisible()
+    await expect(
+      availableCard(page).getByTestId('rootfs-version-group-0.9.0'),
+    ).toHaveCount(0)
+    await expect(
+      dlGroup(page, '0.9.0').getByTestId('rootfs-row-0.9.0-minimal'),
+    ).toHaveCount(1)
+    await expect(
+      dlGroup(page, '0.9.0').getByTestId('rootfs-row-0.9.0-full'),
+    ).toHaveCount(1)
+  })
+
+  test('uses the server host package on a fresh host (Windows → tar.zst)', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    // Fresh host (nothing installed) where the server reports a Windows/WSL2
+    // host — the UI must offer tar.zst (what the backend can mount), NOT the
+    // squashfs client-default.
+    await mockVersions(page, () =>
+      versionStatus({
+        pinned_version: null,
+        installed: [],
+        host_arch: 'x86_64',
+        host_package: 'tar.zst',
+        available: [
+          {
+            version: '0.0.4',
+            published_at: '2026-05-30T00:00:00Z',
+            draft: false,
+            prerelease: false,
+            asset_names: bothPackageAssets(),
+          },
+        ],
+      }),
+    )
+    await mockInstallSse(page)
+    const installed = await captureInstalls(page)
+    await gotoSandbox(page, baseURL)
+
+    await availGroup(page, '0.0.4').getByRole('button', { name: 'Download' }).click()
+    await expect.poll(() => installed.filter(i => i.version === '0.0.4').length).toBe(2)
+    // Server-authoritative host package (tar.zst) chosen, not squashfs default.
+    expect(
+      installed.filter(i => i.version === '0.0.4').every(i => i.package === 'tar.zst'),
+    ).toBe(true)
+  })
+
+  test('a failed install survives a sibling completion and only clears on Refresh', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    await mockVersions(page, () => versionStatus())
+    // On SSE connect, replay a terminal-FAILED taskState for 0.0.4-minimal AND a
+    // `complete` for a sibling — the `complete` handler auto-fires loadStatus(),
+    // which must NOT prune the still-failed flavor's bar (round-4 regression).
+    await mockInstallSse(
+      page,
+      sseTaskFrame('taskState', {
+        task_id: 't-0.0.4-min',
+        version: '0.0.4',
+        arch: 'x86_64',
+        flavor: 'minimal',
+        package: 'squashfs',
+        status: 'failed',
+        phase: 'failed',
+        message: 'boom',
+        started_at: '2026-05-30T00:00:00Z',
+        completed_at: null,
+        artifact_id: null,
+        bytes_downloaded: null,
+        duration_ms: null,
+        error: 'disk full',
+      }) +
+        sseTaskFrame('complete', {
+          task_id: 't-sibling-complete',
+          artifact_id: '00000000-0000-0000-0000-0000000000ff',
+          bytes_downloaded: 1,
+          cosign_verified: true,
+          duration_ms: 1,
+        }),
+    )
+    await gotoSandbox(page, baseURL)
+
+    // The failed flavor surfaces a (red exception) progress bar...
+    await expect(page.getByTestId('install-progress-0.0.4')).toBeVisible({
+      timeout: 10000,
+    })
+    // ...and SURVIVES the sibling `complete`'s auto-loadStatus (no pruneFailed).
+    await page.waitForTimeout(500)
+    await expect(page.getByTestId('install-progress-0.0.4')).toBeVisible()
+    // Only an EXPLICIT Refresh (pruneFailed) clears the stuck failed bar.
+    await page.getByTestId('rootfs-refresh-button').click()
+    await expect(page.getByTestId('install-progress-0.0.4')).toHaveCount(0)
   })
 
   test('derives host arch from installed artifacts (aarch64)', async ({

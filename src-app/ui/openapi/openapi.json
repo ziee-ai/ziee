@@ -24018,6 +24018,14 @@
               "$ref": "#/components/schemas/DrainEntry"
             }
           },
+          "host_arch": {
+            "description": "The local host's CPU arch (`\"x86_64\"` | `\"aarch64\"`). Authoritative —\n the admin UI uses this to offer the artifact this machine can run,\n instead of guessing from installed artifacts (which is empty on a fresh\n host).",
+            "type": "string"
+          },
+          "host_package": {
+            "description": "The rootfs package format the local backend can actually mount\n (`\"squashfs\"` on Linux/macOS, `\"tar.zst\"` on Windows/WSL2). Authoritative\n — prevents a fresh Windows host from pre-fetching an unmountable squashfs.",
+            "type": "string"
+          },
           "installed": {
             "type": "array",
             "items": {
@@ -24042,7 +24050,9 @@
           "available",
           "draining",
           "conversation_count",
-          "mcp_server_workspace_count"
+          "mcp_server_workspace_count",
+          "host_arch",
+          "host_package"
         ]
       },
       "VersionUsageEntry": {

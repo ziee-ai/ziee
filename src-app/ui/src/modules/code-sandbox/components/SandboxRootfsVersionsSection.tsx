@@ -8,6 +8,7 @@ import { DownloadedRootfsCard } from './DownloadedRootfsCard'
 import {
   buildVersionGroups,
   deriveHostArch,
+  deriveHostPackage,
   isMajorBump,
   MANAGE_PERM,
   READ_PERM,
@@ -33,12 +34,24 @@ export function SandboxRootfsVersionsSection() {
     installTasks,
     conversationCount,
     mcpServerWorkspaceCount,
+    hostArch: serverHostArch,
+    hostPackage: serverHostPackage,
   } = Stores.SandboxRootfsVersions
 
   const canManage = usePermission(MANAGE_PERM)
   const canRead = usePermission(READ_PERM) || canManage
 
-  const hostArch = useMemo(() => deriveHostArch(installed), [installed])
+  // Prefer the server-authoritative host arch/package (correct even on a fresh,
+  // zero-installed host — e.g. Windows/WSL2 needs tar.zst); fall back to the
+  // installed-artifact heuristic if the server didn't supply them.
+  const hostArch = useMemo(
+    () => serverHostArch ?? deriveHostArch(installed),
+    [serverHostArch, installed],
+  )
+  const hostPkg = useMemo(
+    () => serverHostPackage ?? deriveHostPackage(installed),
+    [serverHostPackage, installed],
+  )
 
   const groups = useMemo(
     () =>
@@ -46,12 +59,13 @@ export function SandboxRootfsVersionsSection() {
         installed,
         available,
         hostArch,
+        hostPkg,
         pinnedVersion,
         installTasks,
         actions,
         draining,
       }),
-    [installed, available, hostArch, pinnedVersion, installTasks, actions, draining],
+    [installed, available, hostArch, hostPkg, pinnedVersion, installTasks, actions, draining],
   )
 
   // Download is atomic over flavors, so a version is normally either fully
@@ -199,7 +213,7 @@ export function SandboxRootfsVersionsSection() {
         </div>
         <Button
           icon={<ReloadOutlined />}
-          onClick={() => Stores.SandboxRootfsVersions.loadStatus()}
+          onClick={() => Stores.SandboxRootfsVersions.loadStatus({ pruneFailed: true })}
           data-testid="rootfs-refresh-button"
         >
           Refresh
