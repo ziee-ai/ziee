@@ -8,55 +8,76 @@ import {
 } from '../../common/auth-helpers'
 
 // ---------------------------------------------------------------------------
-// Admin UI for the rootfs **version** lifecycle (Plan 5). Replaces the
-// removed environments/prefetch admin spec. The real install endpoint
-// downloads a ~74 MB squashfs + cosign-verifies it — slow + networked —
-// so all /api/code-sandbox/rootfs/versions/* endpoints are mocked with
-// deterministic responses. The SSE wire format matches the backend's
-// committed SSEInstallTaskEvent union (camelCase event names).
+// Admin UI for the rootfs **version** lifecycle (version-grouped two-card
+// redesign). The page splits versions into a "Downloaded versions" card and an
+// "Available versions" card, grouped by version with flavors nested underneath.
+// Download is atomic over flavors: one per-version Download button fetches every
+// missing host-arch flavor at once. "Set as Default" == the backend pin (with a
+// major-version-bump confirm). The real install endpoint downloads a large
+// squashfs + cosign-verifies it, so every /api/code-sandbox/rootfs/versions/*
+// endpoint is mocked. The SSE wire format matches the backend's committed
+// SSEInstallTaskEvent union (camelCase event names).
 // ---------------------------------------------------------------------------
 
 const SSE_HEADERS = { contentType: 'text/event-stream' }
 
-const ART_PINNED = {
-  id: '00000000-0000-0000-0000-0000000000a3',
-  version: '0.0.3',
-  arch: 'x86_64',
-  flavor: 'minimal',
-  package: 'squashfs',
-  sha256: 'a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3',
-  artifact_path: '/cache/0.0.3/ziee-sandbox-rootfs-x86_64-minimal.squashfs',
-  cosign_bundle: '/cache/0.0.3/ziee-sandbox-rootfs-x86_64-minimal.squashfs.cosign.bundle',
-  status: 'installed',
-  downloaded_at: '2026-05-30T00:00:00Z',
-  last_used_at: null,
-}
-const ART_UNPINNED = {
-  ...ART_PINNED,
-  id: '00000000-0000-0000-0000-0000000000a4',
-  version: '0.0.4',
-  artifact_path: '/cache/0.0.4/ziee-sandbox-rootfs-x86_64-minimal.squashfs',
-  cosign_bundle: '/cache/0.0.4/ziee-sandbox-rootfs-x86_64-minimal.squashfs.cosign.bundle',
+/** Release asset names → exercises `parseAssetName` / flavor grouping. */
+function assetNames(arch = 'x86_64', pkg: 'squashfs' | 'tar.zst' = 'squashfs') {
+  return [
+    `ziee-sandbox-rootfs-${arch}-minimal.${pkg}`,
+    `ziee-sandbox-rootfs-${arch}-full.${pkg}`,
+  ]
 }
 
-function release(version: string) {
+function art(version: string, flavor: string, idTail: string, arch = 'x86_64') {
   return {
+    id: `00000000-0000-0000-0000-0000000000${idTail}`,
     version,
-    published_at: '2026-05-30T00:00:00Z',
-    draft: false,
-    prerelease: false,
-    asset_names: [],
+    arch,
+    flavor,
+    package: 'squashfs',
+    sha256: `${idTail}`.padEnd(64, idTail[0] ?? 'a'),
+    artifact_path: `/cache/${version}/ziee-sandbox-rootfs-${arch}-${flavor}.squashfs`,
+    cosign_bundle: `/cache/${version}/ziee-sandbox-rootfs-${arch}-${flavor}.squashfs.cosign.bundle`,
+    status: 'installed',
+    downloaded_at: '2026-05-30T00:00:00Z',
+    last_used_at: null,
   }
 }
 
-/** VersionStatus mock. `installed` defaults to the 0.0.3 (pinned) +
- *  0.0.4 (unpinned) minimal artifacts; `available` exposes both as
- *  GitHub releases so the synthetic full rows get a Download button. */
+interface ReleaseOpts {
+  arch?: string
+  pkg?: 'squashfs' | 'tar.zst'
+  draft?: boolean
+  prerelease?: boolean
+}
+function release(version: string, opts: ReleaseOpts = {}) {
+  return {
+    version,
+    published_at: '2026-05-30T00:00:00Z',
+    draft: opts.draft ?? false,
+    prerelease: opts.prerelease ?? false,
+    asset_names: assetNames(opts.arch ?? 'x86_64', opts.pkg ?? 'squashfs'),
+  }
+}
+
+// Fixture matrix:
+//   0.0.3 — DEFAULT, fully downloaded (minimal+full) → Downloaded card.
+//   0.0.5 — fully downloaded, NOT default            → Downloaded card.
+//   1.0.0 — fully downloaded, NOT default            → Downloaded card (major bump).
+//   0.0.4 — nothing downloaded, catalog minimal+full → Available card.
 function versionStatus(over: Partial<Record<string, unknown>> = {}) {
   return {
     pinned_version: '0.0.3',
-    installed: [ART_PINNED, ART_UNPINNED],
-    available: [release('0.0.4'), release('0.0.3')],
+    installed: [
+      art('0.0.3', 'minimal', '31'),
+      art('0.0.3', 'full', '32'),
+      art('0.0.5', 'minimal', '51'),
+      art('0.0.5', 'full', '52'),
+      art('1.0.0', 'minimal', 'a1'),
+      art('1.0.0', 'full', 'a2'),
+    ],
+    available: [release('1.0.0'), release('0.0.5'), release('0.0.4'), release('0.0.3')],
     draining: [],
     conversation_count: 0,
     mcp_server_workspace_count: 0,
@@ -75,8 +96,7 @@ async function mockVersions(page: Page, get: () => unknown) {
   })
 }
 
-/** The page subscribes to the install SSE on mount; return a stream
- *  that just emits `connected` so the store's subscriber is happy. */
+/** The page subscribes to the install SSE on mount; emit just `connected`. */
 async function mockInstallSse(page: Page) {
   await page.route(
     /\/api\/code-sandbox\/rootfs\/versions\/install\/subscribe$/,
@@ -90,10 +110,46 @@ async function mockInstallSse(page: Page) {
   )
 }
 
+interface InstallReq {
+  version: string
+  arch: string
+  flavor: string
+  package: string
+}
+/** Capture every install POST and 202 a running task. Returns the capture array. */
+async function captureInstalls(page: Page): Promise<InstallReq[]> {
+  const installs: InstallReq[] = []
+  await page.route(
+    /\/api\/code-sandbox\/rootfs\/versions\/install$/,
+    async route => {
+      const b = route.request().postDataJSON() as InstallReq
+      installs.push(b)
+      await route.fulfill({
+        status: 202,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          task_id: `task-${b.version}-${b.flavor}`,
+          version: b.version,
+          arch: b.arch,
+          flavor: b.flavor,
+          package: b.package,
+          status: 'running',
+          phase: 'downloading',
+          message: 'downloading',
+          started_at: '2026-05-30T00:00:00Z',
+          completed_at: null,
+          artifact_id: null,
+          bytes_downloaded: null,
+          duration_ms: null,
+          error: null,
+        }),
+      })
+    },
+  )
+  return installs
+}
+
 async function gotoSandbox(page: Page, baseURL: string) {
-  // Vite can throw a transient 504 "Outdated Optimize Dep" mid-nav on a
-  // cold cache; the only recovery is a reload. Retry until the heading
-  // renders.
   const heading = page.getByRole('heading', { name: 'Code Sandbox' })
   for (let attempt = 1; attempt <= 3; attempt++) {
     await page.goto(`${baseURL}/settings/sandbox`)
@@ -108,19 +164,22 @@ async function gotoSandbox(page: Page, baseURL: string) {
   }
 }
 
-const minimalPinned = (page: Page) =>
-  page.getByTestId('rootfs-row-0.0.3-minimal')
-const minimalUnpinned = (page: Page) =>
-  page.getByTestId('rootfs-row-0.0.4-minimal')
-const fullAvailable = (page: Page) =>
-  page.getByTestId('rootfs-row-0.0.4-full')
+const downloadedCard = (page: Page) => page.getByTestId('downloaded-versions-card')
+const availableCard = (page: Page) => page.getByTestId('available-versions-card')
+const group = (page: Page, v: string) => page.getByTestId(`rootfs-version-group-${v}`)
+// Card-scoped group locators so action tests also assert the version is in the
+// EXPECTED card (the partition is part of the behavior under test).
+const dlGroup = (page: Page, v: string) =>
+  downloadedCard(page).getByTestId(`rootfs-version-group-${v}`)
+const availGroup = (page: Page, v: string) =>
+  availableCard(page).getByTestId(`rootfs-version-group-${v}`)
 
 // ---------------------------------------------------------------------------
 
 test.describe('Sandbox rootfs versions admin', () => {
   test.describe.configure({ retries: 2 })
 
-  test('lists versions with pinned / downloaded / available status', async ({
+  test('renders the two cards with versions grouped + flavors nested', async ({
     page,
     testInfra,
   }) => {
@@ -130,24 +189,36 @@ test.describe('Sandbox rootfs versions admin', () => {
     await mockInstallSse(page)
     await gotoSandbox(page, baseURL)
 
-    // Header shows the current pin.
-    await expect(page.getByTestId('pinned-chip')).toContainText('0.0.3')
+    // Both cards present.
+    await expect(downloadedCard(page)).toBeVisible()
+    await expect(availableCard(page)).toBeVisible()
 
-    // The pinned, installed row carries the Pinned + Downloaded tags.
-    // `exact` so we hit the status tag, not the "… · downloaded <date>"
-    // sha256 caption line below it.
-    await expect(minimalPinned(page).getByTestId('pinned-tag')).toBeVisible()
+    // Header shows the current default + the downloaded-flavors summary.
+    await expect(page.getByTestId('default-chip')).toContainText('0.0.3')
+    await expect(page.getByTestId('downloaded-flavors')).toContainText('x86_64-minimal')
+
+    // 0.0.3 is fully downloaded → Downloaded card, with minimal + full nested.
+    await expect(dlGroup(page, '0.0.3')).toBeVisible()
     await expect(
-      minimalPinned(page).getByText('Downloaded', { exact: true }),
+      dlGroup(page, '0.0.3').getByTestId('rootfs-row-0.0.3-minimal'),
     ).toBeVisible()
-
-    // The not-yet-downloaded `full` flavor offers a Download button.
     await expect(
-      fullAvailable(page).getByRole('button', { name: 'Download' }),
+      dlGroup(page, '0.0.3').getByTestId('rootfs-row-0.0.3-full'),
+    ).toBeVisible()
+    // It's the default → "Default" tag, and no Set-as-Default / Delete buttons.
+    await expect(dlGroup(page, '0.0.3').getByTestId('default-tag')).toBeVisible()
+    await expect(
+      dlGroup(page, '0.0.3').getByRole('button', { name: 'Set as Default' }),
+    ).toHaveCount(0)
+
+    // 0.0.4 (nothing downloaded) → Available card, with a Download button.
+    await expect(availGroup(page, '0.0.4')).toBeVisible()
+    await expect(
+      availGroup(page, '0.0.4').getByRole('button', { name: 'Download' }),
     ).toBeVisible()
   })
 
-  test('download click starts an install and shows progress', async ({
+  test('Download fetches ALL flavors of a version at once', async ({
     page,
     testInfra,
   }) => {
@@ -155,43 +226,71 @@ test.describe('Sandbox rootfs versions admin', () => {
     await loginAsAdmin(page, baseURL)
     await mockVersions(page, () => versionStatus())
     await mockInstallSse(page)
-    let started = false
-    await page.route(
-      /\/api\/code-sandbox\/rootfs\/versions\/install$/,
-      async route => {
-        started = true
-        await route.fulfill({
-          status: 202,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            task_id: '00000000-0000-0000-0000-0000000000ff',
-            version: '0.0.4',
-            arch: 'x86_64',
-            flavor: 'full',
-            package: 'squashfs',
-            status: 'running',
-            phase: 'downloading',
-            message: 'downloading',
-            started_at: '2026-05-30T00:00:00Z',
-            completed_at: null,
-            artifact_id: null,
-            bytes_downloaded: null,
-            duration_ms: null,
-            error: null,
-          }),
-        })
-      },
+    const installed = await captureInstalls(page)
+    await gotoSandbox(page, baseURL)
+
+    await availGroup(page, '0.0.4').getByRole('button', { name: 'Download' }).click()
+
+    // Both flavors of 0.0.4 are requested (atomic over flavors).
+    await expect
+      .poll(() => installed.filter(i => i.version === '0.0.4').length)
+      .toBe(2)
+    expect(
+      installed
+        .filter(i => i.version === '0.0.4')
+        .map(i => i.flavor)
+        .sort(),
+    ).toEqual(['full', 'minimal'])
+
+    // Version-level aggregate progress bar appears.
+    await expect(page.getByTestId('install-progress-0.0.4')).toBeVisible({
+      timeout: 10000,
+    })
+  })
+
+  test('Download of a partially-downloaded version fetches only the missing flavor', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    // 0.0.6 has ONLY minimal downloaded; catalog offers minimal+full.
+    await mockVersions(page, () =>
+      versionStatus({
+        installed: [
+          art('0.0.3', 'minimal', '31'),
+          art('0.0.3', 'full', '32'),
+          art('0.0.6', 'minimal', '61'),
+        ],
+        available: [release('0.0.6'), release('0.0.3')],
+      }),
     )
+    await mockInstallSse(page)
+    const installed = await captureInstalls(page)
     await gotoSandbox(page, baseURL)
 
-    await fullAvailable(page).getByRole('button', { name: 'Download' }).click()
-    expect(started).toBe(true)
+    // Partial version lives in the Available card (not fully downloaded), with
+    // minimal already "Downloaded" and full still "Available".
+    await expect(availGroup(page, '0.0.6')).toBeVisible()
+    await expect(downloadedCard(page).getByTestId('rootfs-version-group-0.0.6')).toHaveCount(0)
     await expect(
-      page.getByTestId('install-progress-0.0.4-full'),
-    ).toBeVisible({ timeout: 10000 })
+      availGroup(page, '0.0.6')
+        .getByTestId('rootfs-row-0.0.6-minimal')
+        .getByText('Downloaded', { exact: true }),
+    ).toBeVisible()
+    await expect(
+      availGroup(page, '0.0.6')
+        .getByTestId('rootfs-row-0.0.6-full')
+        .getByText('Available', { exact: true }),
+    ).toBeVisible()
+
+    await availGroup(page, '0.0.6').getByRole('button', { name: 'Download' }).click()
+    // Only the missing flavor (full) is installed — NOT minimal again.
+    await expect.poll(() => installed.length).toBe(1)
+    expect(installed[0]).toMatchObject({ version: '0.0.6', flavor: 'full' })
   })
 
-  test('pin a downloaded version (non-major, no confirm)', async ({
+  test('Set as Default on a same-major version (no confirm modal)', async ({
     page,
     testInfra,
   }) => {
@@ -208,35 +307,154 @@ test.describe('Sandbox rootfs versions admin', () => {
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({
-            swap: { pinned: '0.0.4', was: '0.0.3', draining_mounts: 0, cache_wipe: 'preserve' },
-            status: versionStatus({ pinned_version: '0.0.4' }),
+            swap: {
+              pinned: '0.0.5',
+              was: '0.0.3',
+              draining_mounts: 0,
+              cache_wipe: 'preserve',
+            },
+            status: versionStatus({ pinned_version: '0.0.5' }),
           }),
         })
       },
     )
     await gotoSandbox(page, baseURL)
 
-    // 0.0.3 → 0.0.4 is a patch bump (same major) → no confirm modal.
-    await minimalUnpinned(page).getByRole('button', { name: 'Pin' }).click()
-    await expect.poll(() => pinnedTo).toBe('0.0.4')
+    // 0.0.3 → 0.0.5 is a patch bump (same major 0) → no confirm modal.
+    await dlGroup(page, '0.0.5')
+      .getByRole('button', { name: 'Set as Default' })
+      .click()
+    await expect.poll(() => pinnedTo).toBe('0.0.5')
+    await expect(page.getByText(/major version bump/i)).toHaveCount(0)
   })
 
-  test('delete a downloaded non-pinned artifact', async ({ page, testInfra }) => {
+  test('Set as Default across a MAJOR bump shows a confirm + wipe warning', async ({
+    page,
+    testInfra,
+  }) => {
     const { baseURL } = testInfra
     await loginAsAdmin(page, baseURL)
-    await mockVersions(page, () => versionStatus())
+    await mockVersions(page, () =>
+      versionStatus({ conversation_count: 3, mcp_server_workspace_count: 1 }),
+    )
     await mockInstallSse(page)
-    let deletedId = ''
+    let pinnedTo = ''
+    let pinCalls = 0
+    await page.route(
+      /\/api\/code-sandbox\/rootfs\/versions\/set-pin$/,
+      async route => {
+        pinCalls += 1
+        pinnedTo = (route.request().postDataJSON() as { version: string }).version
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            swap: {
+              pinned: '1.0.0',
+              was: '0.0.3',
+              draining_mounts: 2,
+              cache_wipe: 'wipe_caches_on_drain',
+            },
+            status: versionStatus({ pinned_version: '1.0.0' }),
+          }),
+        })
+      },
+    )
+    await gotoSandbox(page, baseURL)
+
+    // First: open the modal and CANCEL — no set-pin call should fire.
+    await dlGroup(page, '1.0.0')
+      .getByRole('button', { name: 'Set as Default' })
+      .click()
+    // antd v6 renders the confirm title twice — a visually-hidden
+    // .ant-modal-title (the dialog's aria-label) + the visible
+    // .ant-modal-confirm-title. Match the dialog by its accessible name rather
+    // than a title text node (the hidden one fails toBeVisible).
+    const modal = page.getByRole('dialog', { name: /major version bump/i })
+    await expect(modal).toBeVisible()
+    await expect(modal.getByText(/3 conversation workspaces/i)).toBeVisible()
+    await expect(modal.getByText(/1 sandboxed MCP server workspace/i)).toBeVisible()
+    await modal.getByRole('button', { name: 'Cancel' }).click()
+    await page.waitForTimeout(300)
+    expect(pinCalls).toBe(0)
+
+    // Then: open again and CONFIRM → set-pin to 1.0.0.
+    await dlGroup(page, '1.0.0')
+      .getByRole('button', { name: 'Set as Default' })
+      .click()
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /Set as default and wipe caches/i })
+      .click()
+    await expect.poll(() => pinnedTo).toBe('1.0.0')
+
+    // The swap returned in-flight sessions → draining indicator surfaces.
+    await expect(page.getByTestId('draining-indicator')).toBeVisible()
+  })
+
+  test('per-row draining + in-flight tags render from the draining list', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    // 0.0.5 (non-default) is still serving in-flight sessions on the old mount.
+    await mockVersions(page, () =>
+      versionStatus({
+        draining: [
+          {
+            version: '0.0.5',
+            arch: 'x86_64',
+            flavor: 'minimal',
+            artifact_id: '00000000-0000-0000-0000-000000000051',
+            inflight_exec: 2,
+            inflight_mcp: 1,
+          },
+        ],
+      }),
+    )
+    await mockInstallSse(page)
+    await gotoSandbox(page, baseURL)
+
+    await expect(dlGroup(page, '0.0.5').getByTestId('row-draining')).toBeVisible()
+    await expect(
+      page.getByTestId('inflight-0.0.5-minimal'),
+    ).toContainText('2 exec')
+    await expect(page.getByTestId('inflight-0.0.5-minimal')).toContainText('1 MCP')
+  })
+
+  test('Delete removes every flavor of a downloaded version and it leaves the card', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    const deleted: string[] = []
+    // Stateful: the status response drops the deleted artifacts so the version
+    // actually disappears from the Downloaded card.
+    await mockVersions(page, () =>
+      versionStatus({
+        installed: versionStatus().installed.filter(
+          (a: { id: string }) => !deleted.includes(a.id),
+        ),
+      }),
+    )
+    await mockInstallSse(page)
     await page.route(
       /\/api\/code-sandbox\/rootfs\/versions\/[0-9a-f-]+$/,
       async route => {
         if (route.request().method() === 'DELETE') {
-          deletedId = route.request().url().split('/').pop() ?? ''
+          const id = route.request().url().split('/').pop() ?? ''
+          deleted.push(id)
           return route.fulfill({
             status: 200,
             contentType: 'application/json',
             body: JSON.stringify(
-              versionStatus({ installed: [ART_PINNED] }),
+              versionStatus({
+                installed: versionStatus().installed.filter(
+                  (a: { id: string }) => !deleted.includes(a.id),
+                ),
+              }),
             ),
           })
         }
@@ -245,13 +463,109 @@ test.describe('Sandbox rootfs versions admin', () => {
     )
     await gotoSandbox(page, baseURL)
 
-    await minimalUnpinned(page).getByTestId('rootfs-delete-button').click()
-    // Popconfirm OK button text is "Delete" — scope to the popover.
+    await dlGroup(page, '0.0.5').getByRole('button', { name: 'Delete' }).click()
     await page
       .locator('.ant-popconfirm, .ant-popover')
       .getByRole('button', { name: 'Delete' })
       .click()
-    await expect.poll(() => deletedId).toBe(ART_UNPINNED.id)
+
+    // Both 0.0.5 artifacts (minimal id ...51, full id ...52) are deleted...
+    await expect.poll(() => deleted.length).toBe(2)
+    expect(deleted.sort()).toEqual([
+      '00000000-0000-0000-0000-000000000051',
+      '00000000-0000-0000-0000-000000000052',
+    ])
+    // ...and the version is gone from the Downloaded card. Refresh first so the
+    // final state is deterministic (the mockVersions closure now filters BOTH
+    // ids) rather than depending on which concurrent DELETE response resolved
+    // last.
+    await page.getByTestId('rootfs-refresh-button').click()
+    await expect(
+      downloadedCard(page).getByTestId('rootfs-version-group-0.0.5'),
+    ).toHaveCount(0)
+  })
+
+  test('skips draft/prerelease releases and parses tar.zst assets', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    await mockVersions(page, () =>
+      versionStatus({
+        installed: [art('0.0.3', 'minimal', '31'), art('0.0.3', 'full', '32')],
+        available: [
+          release('0.2.2', { pkg: 'tar.zst' }),
+          release('0.1.1', { prerelease: true }),
+          release('0.0.9', { draft: true }),
+          release('0.0.3'),
+        ],
+      }),
+    )
+    await mockInstallSse(page)
+    const installed = await captureInstalls(page)
+    await gotoSandbox(page, baseURL)
+
+    // Draft + prerelease releases never surface.
+    await expect(group(page, '0.0.9')).toHaveCount(0)
+    await expect(group(page, '0.1.1')).toHaveCount(0)
+    // The tar.zst release parses + offers a Download.
+    await expect(availGroup(page, '0.2.2')).toBeVisible()
+    await availGroup(page, '0.2.2').getByRole('button', { name: 'Download' }).click()
+    await expect.poll(() => installed.filter(i => i.version === '0.2.2').length).toBe(2)
+    // parseAssetName resolved the .tar.zst suffix → package routed through.
+    expect(installed.filter(i => i.version === '0.2.2').every(i => i.package === 'tar.zst')).toBe(true)
+  })
+
+  test('derives host arch from installed artifacts (aarch64)', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    // Majority (here: all) installed artifacts are aarch64 → hostArch=aarch64.
+    await mockVersions(page, () =>
+      versionStatus({
+        pinned_version: '0.0.8',
+        installed: [
+          art('0.0.8', 'minimal', '81', 'aarch64'),
+          art('0.0.8', 'full', '82', 'aarch64'),
+        ],
+        available: [
+          release('0.0.8', { arch: 'aarch64' }),
+          release('0.0.7', { arch: 'aarch64' }),
+        ],
+      }),
+    )
+    await mockInstallSse(page)
+    const installed = await captureInstalls(page)
+    await gotoSandbox(page, baseURL)
+
+    await availGroup(page, '0.0.7').getByRole('button', { name: 'Download' }).click()
+    await expect.poll(() => installed.filter(i => i.version === '0.0.7').length).toBe(2)
+    // The host-arch filter offered aarch64 flavors, not the x86_64 default.
+    expect(installed.filter(i => i.version === '0.0.7').every(i => i.arch === 'aarch64')).toBe(true)
+  })
+
+  test('empty available catalog shows the Empty guidance', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    await mockVersions(page, () => versionStatus({ available: [] }))
+    await mockInstallSse(page)
+    await gotoSandbox(page, baseURL)
+
+    // Downloaded versions still render (installed is unchanged).
+    await expect(dlGroup(page, '0.0.3')).toBeVisible()
+    // Available card shows the GitHub-unreachable guidance (no enabled hint).
+    await expect(
+      availableCard(page).getByText(/No versions available to download/i),
+    ).toBeVisible()
+    await expect(
+      availableCard(page).getByText(/api\.github\.com/i),
+    ).toBeVisible()
   })
 
   test('refresh re-fetches the version list', async ({ page, testInfra }) => {
@@ -283,16 +597,42 @@ test.describe('Sandbox rootfs versions admin', () => {
     await mockInstallSse(page)
     await gotoSandbox(page, baseURL)
 
-    // Read-only: rows render, but Download / Pin / Delete are disabled.
+    // Read-only: groups render, but Download / Set-as-Default / Delete disabled.
     await expect(
-      fullAvailable(page).getByRole('button', { name: 'Download' }),
+      availGroup(page, '0.0.4').getByRole('button', { name: 'Download' }),
     ).toBeDisabled()
     await expect(
-      minimalUnpinned(page).getByRole('button', { name: 'Pin' }),
+      dlGroup(page, '0.0.5').getByRole('button', { name: 'Set as Default' }),
     ).toBeDisabled()
     await expect(
-      minimalUnpinned(page).getByTestId('rootfs-delete-button'),
+      dlGroup(page, '0.0.5').getByRole('button', { name: 'Delete' }),
     ).toBeDisabled()
+  })
+
+  test('resource-limits-only admin sees the rootfs section denial but reaches the page', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    const adminToken = await getAdminToken(apiURL)
+    const uname = `rootfs_rl_${Date.now()}`
+    // resource_limits::read admits the route (anyOf) but NOT the rootfs section.
+    await createTestUser(apiURL, adminToken, uname, `${uname}@example.com`, 'password123', [
+      'code_sandbox::resource_limits::read',
+    ])
+    await login(page, baseURL, uname, 'password123')
+
+    await mockVersions(page, () => versionStatus())
+    await mockInstallSse(page)
+    await gotoSandbox(page, baseURL)
+
+    // Page rendered (route admitted), but the rootfs section shows its own
+    // gate rather than the version cards.
+    await expect(
+      page.getByText(/don't have permission to view rootfs versions/i),
+    ).toBeVisible()
+    await expect(downloadedCard(page)).toHaveCount(0)
   })
 
   test('read permission gates the whole page', async ({ page, testInfra }) => {

@@ -179,6 +179,13 @@ export const useSandboxRootfsVersionsStore = create<SandboxRootfsVersionsStore>(
             s.draining = res.draining
             s.conversationCount = res.conversation_count
             s.mcpServerWorkspaceCount = res.mcp_server_workspace_count
+            // Prune any install task whose artifact has now landed — keeps
+            // installTasks bounded while letting the SSE `complete` handler hold
+            // a completed task (phase='complete' → 100%) until this reload
+            // arrives, so the per-version aggregate bar stays monotonic.
+            for (const a of res.installed) {
+              delete s.installTasks[rowKey(a.version, a.arch, a.flavor, a.package)]
+            }
             s.loading = false
           })
         } catch (e: any) {
@@ -227,6 +234,12 @@ export const useSandboxRootfsVersionsStore = create<SandboxRootfsVersionsStore>(
             s.pinnedVersion = res.status.pinned_version ?? null
             s.installed = res.status.installed
             s.available = res.status.available
+            // Mirror loadStatus/deleteArtifact: the response carries the full
+            // VersionStatus, so refresh draining + workspace counts too,
+            // otherwise per-row Draining tags stay stale right after a swap.
+            s.draining = res.status.draining
+            s.conversationCount = res.status.conversation_count
+            s.mcpServerWorkspaceCount = res.status.mcp_server_workspace_count
             s.lastSwap = res.swap
           })
         } catch (e: any) {
@@ -321,6 +334,12 @@ export const useSandboxRootfsVersionsStore = create<SandboxRootfsVersionsStore>(
                     for (const key of Object.keys(s.installTasks)) {
                       const t = s.installTasks[key]
                       if (t.task_id === d.task_id) {
+                        // Keep the task marked 'complete' (phasePercent → 100)
+                        // so a version's aggregate bar stays monotonic across
+                        // the loadStatus round-trip below; loadStatus prunes the
+                        // task once the artifact lands (bounding growth). Don't
+                        // delete here — that would briefly drop the flavor's
+                        // contribution to 5% until the reload arrives.
                         t.status = 'completed'
                         t.phase = 'complete'
                         t.artifact_id = d.artifact_id
@@ -344,7 +363,10 @@ export const useSandboxRootfsVersionsStore = create<SandboxRootfsVersionsStore>(
                         clearAction(s, key)
                       }
                     }
-                    s.error = d.error
+                    // Surface the failure ONLY via the per-version progress
+                    // message (which carries version/flavor context); setting
+                    // the global `s.error` here too produced a duplicate
+                    // top-level Alert. Connection/load errors still use s.error.
                   })
                 },
                 error: (msg: string) => {

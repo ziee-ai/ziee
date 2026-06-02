@@ -1,0 +1,365 @@
+import { Button, Tooltip } from 'antd'
+import {
+  Permissions,
+  type DrainEntry,
+  type InstallTaskState,
+  type RootfsArtifact,
+  type RootfsRelease,
+} from '@/api-client/types'
+
+// ---------------------------------------------------------------------------
+// Shared constants + pure helpers + view-model for the rootfs-versions section.
+//
+// The section reads store state at its top (hook-safety) and builds the
+// version-grouped view-model with `buildVersionGroups`; the card / group
+// children receive the pre-built groups + callbacks as props and never read
+// the store. Keeping all the logic here (a) keeps each component's hook
+// surface small and (b) lets the grouping be reasoned about in isolation.
+// ---------------------------------------------------------------------------
+
+export const MANAGE_PERM = Permissions.CodeSandboxEnvironmentsManage
+export const READ_PERM = Permissions.CodeSandboxEnvironmentsRead
+
+const DEFAULT_ARCH = 'x86_64'
+const DEFAULT_FLAVORS = ['minimal', 'full']
+const DEFAULT_PACKAGE = 'squashfs'
+
+/** Known host architectures, longest-first so prefix matching is unambiguous. */
+const KNOWN_ARCHES = ['aarch64', 'x86_64']
+const ASSET_PREFIX = 'ziee-sandbox-rootfs-'
+
+/** Per-(version,arch,flavor,package) action flags mirrored from the store
+ *  (the store does not export its `ActionState` type). */
+export interface ActionFlags {
+  installing?: boolean
+  pinning?: boolean
+  deleting?: boolean
+}
+
+export interface FlavorEntry {
+  flavor: string
+  arch: string
+  pkg: string
+  /** `${version}::${arch}::${flavor}::${pkg}` — matches the store's keys. */
+  rowKey: string
+  /** Present iff this flavor is downloaded. */
+  artifact?: RootfsArtifact
+  /** Present in the GitHub release catalog (so it can be downloaded). */
+  available: boolean
+  /** Live install task (from `installTasks[rowKey]`). */
+  task?: InstallTaskState
+  /** Live drain entry (from `draining`, keyed by version::arch::flavor). */
+  drainEntry?: DrainEntry
+  isInstalling: boolean
+  /** inflight exec + MCP for this flavor. */
+  live: number
+  isDraining: boolean
+}
+
+export interface VersionGroup {
+  version: string
+  /** Downloaded flavors first, then alphabetical. */
+  flavors: FlavorEntry[]
+  isDefault: boolean
+  /** ≥1 flavor downloaded (any arch). */
+  anyDownloaded: boolean
+  /** No host-arch catalog flavor is missing an artifact. */
+  allDownloaded: boolean
+  /** Host-arch catalog flavors with no artifact yet — drives Download-all. */
+  missingFlavors: FlavorEntry[]
+  release?: RootfsRelease
+}
+
+function parseSemver(v: string): [number, number, number] {
+  const parts = v.split('.').map(p => parseInt(p, 10) || 0)
+  return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0]
+}
+
+export function isMajorBump(oldV: string | null, newV: string): boolean {
+  if (!oldV) return false
+  return parseSemver(oldV)[0] !== parseSemver(newV)[0]
+}
+
+// Install phases come from the backend's `InstallProgress` enum; map each one
+// to a coarse stepped percentage (the backend emits discrete phases, not
+// byte-granular progress).
+export function phasePercent(phase?: string | null): number {
+  switch (phase) {
+    case 'resolving':
+      return 10
+    case 'downloading':
+      return 50
+    case 'verifying_sha256':
+      return 75
+    case 'verifying_cosign':
+      return 85
+    case 'installing':
+      return 95
+    case 'complete':
+      return 100
+    default:
+      return 5
+  }
+}
+
+/**
+ * Parse a release asset filename
+ * (`ziee-sandbox-rootfs-{arch}-{flavor}.{squashfs|tar.zst}`) into its parts.
+ * Returns null for names that don't match the shape. Arch is matched against
+ * the known set first (arch tokens never contain `-`), so the remainder is
+ * unambiguously the flavor.
+ */
+function parseAssetName(
+  name: string,
+): { arch: string; flavor: string; pkg: string } | null {
+  if (!name.startsWith(ASSET_PREFIX)) return null
+  let rest = name.slice(ASSET_PREFIX.length)
+
+  let pkg: string
+  if (rest.endsWith('.tar.zst')) {
+    pkg = 'tar.zst'
+    rest = rest.slice(0, -'.tar.zst'.length)
+  } else if (rest.endsWith('.squashfs')) {
+    pkg = 'squashfs'
+    rest = rest.slice(0, -'.squashfs'.length)
+  } else {
+    return null
+  }
+
+  for (const arch of KNOWN_ARCHES) {
+    if (rest.startsWith(`${arch}-`)) {
+      const flavor = rest.slice(arch.length + 1)
+      if (flavor) return { arch, flavor, pkg }
+    }
+  }
+  // Fallback: split on the first dash (arch can't contain one).
+  const dash = rest.indexOf('-')
+  if (dash > 0 && dash < rest.length - 1) {
+    return { arch: rest.slice(0, dash), flavor: rest.slice(dash + 1), pkg }
+  }
+  return null
+}
+
+/** Derive the host arch from installed artifacts (operators only download for
+ *  their own host), defaulting to x86_64. No host-arch endpoint exists yet; a
+ *  future one can replace this derivation cleanly. */
+export function deriveHostArch(installed: RootfsArtifact[]): string {
+  const counts = new Map<string, number>()
+  for (const a of installed) {
+    counts.set(a.arch, (counts.get(a.arch) ?? 0) + 1)
+  }
+  let best = DEFAULT_ARCH
+  let bestN = 0
+  for (const [arch, n] of counts) {
+    if (n > bestN) {
+      best = arch
+      bestN = n
+    }
+  }
+  return best
+}
+
+function rowKeyOf(version: string, arch: string, flavor: string, pkg: string) {
+  return `${version}::${arch}::${flavor}::${pkg}`
+}
+
+interface BuildArgs {
+  installed: RootfsArtifact[]
+  available: RootfsRelease[]
+  hostArch: string
+  pinnedVersion: string | null
+  installTasks: Record<string, InstallTaskState>
+  actions: Record<string, ActionFlags>
+  draining: DrainEntry[]
+}
+
+/**
+ * Fold installed artifacts + the GitHub release catalog into version groups,
+ * each carrying its flavor sub-entries (with live task / drain state attached).
+ * Sorted newest-version first.
+ */
+export function buildVersionGroups({
+  installed,
+  available,
+  hostArch,
+  pinnedVersion,
+  installTasks,
+  actions,
+  draining,
+}: BuildArgs): VersionGroup[] {
+  const drainByKey = new Map<string, DrainEntry>()
+  for (const d of draining) {
+    drainByKey.set(`${d.version}::${d.arch}::${d.flavor}`, d)
+  }
+
+  interface Acc {
+    version: string
+    byKey: Map<string, FlavorEntry>
+    release?: RootfsRelease
+  }
+  const groups = new Map<string, Acc>()
+
+  const ensure = (version: string): Acc => {
+    let g = groups.get(version)
+    if (!g) {
+      g = { version, byKey: new Map() }
+      groups.set(version, g)
+    }
+    return g
+  }
+
+  const ensureFlavor = (
+    g: Acc,
+    arch: string,
+    flavor: string,
+    pkg: string,
+  ): FlavorEntry => {
+    const rowKey = rowKeyOf(g.version, arch, flavor, pkg)
+    let f = g.byKey.get(rowKey)
+    if (!f) {
+      f = {
+        flavor,
+        arch,
+        pkg,
+        rowKey,
+        available: false,
+        isInstalling: false,
+        live: 0,
+        isDraining: false,
+      }
+      g.byKey.set(rowKey, f)
+    }
+    return f
+  }
+
+  // 1. Downloaded artifacts (any arch). Non-host-arch artifacts still surface
+  //    as flavor sub-rows, but note the version-level Delete only appears on a
+  //    fully-downloaded host-arch version in the Downloaded card — a stray
+  //    non-host-arch artifact for a version still in the catalog has no UI
+  //    delete affordance today.
+  for (const a of installed) {
+    const g = ensure(a.version)
+    const f = ensureFlavor(g, a.arch, a.flavor, a.package)
+    f.artifact = a
+  }
+
+  // 2. GitHub catalog → the downloadable host-arch flavors per version.
+  for (const r of available) {
+    if (r.draft || r.prerelease) continue
+    const g = ensure(r.version)
+    g.release = r
+
+    const parsed = (r.asset_names ?? [])
+      .map(parseAssetName)
+      .filter((p): p is { arch: string; flavor: string; pkg: string } => !!p)
+      .filter(p => p.arch === hostArch)
+
+    const flavorTuples =
+      parsed.length > 0
+        ? parsed
+        : DEFAULT_FLAVORS.map(flavor => ({
+            arch: hostArch,
+            flavor,
+            pkg: DEFAULT_PACKAGE,
+          }))
+
+    for (const { arch, flavor, pkg } of flavorTuples) {
+      const f = ensureFlavor(g, arch, flavor, pkg)
+      f.available = true
+    }
+  }
+
+  // 3. Attach live task/drain state + finalise group-level flags.
+  const out: VersionGroup[] = []
+  for (const g of groups.values()) {
+    const flavors = Array.from(g.byKey.values())
+    for (const f of flavors) {
+      f.task = installTasks[f.rowKey]
+      f.drainEntry = drainByKey.get(`${g.version}::${f.arch}::${f.flavor}`)
+      f.isInstalling =
+        !!actions[f.rowKey]?.installing || f.task?.status === 'running'
+      f.live =
+        (f.drainEntry?.inflight_exec ?? 0) + (f.drainEntry?.inflight_mcp ?? 0)
+      f.isDraining = !!f.drainEntry && g.version !== pinnedVersion && f.live > 0
+    }
+
+    flavors.sort((a, b) => {
+      const ad = a.artifact ? 0 : 1
+      const bd = b.artifact ? 0 : 1
+      if (ad !== bd) return ad - bd
+      return a.flavor.localeCompare(b.flavor)
+    })
+
+    const hostCatalog = flavors.filter(f => f.arch === hostArch && f.available)
+    const missingFlavors = hostCatalog.filter(f => !f.artifact)
+    const anyDownloaded = flavors.some(f => !!f.artifact)
+
+    out.push({
+      version: g.version,
+      flavors,
+      release: g.release,
+      isDefault: g.version === pinnedVersion,
+      anyDownloaded,
+      allDownloaded: anyDownloaded && missingFlavors.length === 0,
+      missingFlavors,
+    })
+  }
+
+  out.sort((a, b) => {
+    const av = parseSemver(a.version)
+    const bv = parseSemver(b.version)
+    for (let i = 0; i < 3; i++) {
+      if (bv[i] !== av[i]) return bv[i] - av[i]
+    }
+    return 0
+  })
+  return out
+}
+
+// ---------------------------------------------------------------------------
+// Shared permission-gated button. Mirrors the original section's helper:
+// visible-but-disabled with a tooltip naming the required permission when the
+// viewer lacks `code_sandbox::environments::manage` (the E2E suite asserts the
+// buttons are `.toBeDisabled()`, not hidden — so we do NOT use <Can>).
+// ---------------------------------------------------------------------------
+
+interface RenderButtonProps {
+  canManage: boolean
+  label: string
+  icon: React.ReactNode
+  onClick: () => void
+  loading?: boolean
+  danger?: boolean
+  type?: 'text' | 'default' | 'primary'
+  'data-testid'?: string
+}
+
+export function RenderButton({
+  canManage,
+  label,
+  icon,
+  onClick,
+  loading,
+  danger,
+  type = 'text',
+  'data-testid': testId,
+}: RenderButtonProps) {
+  const btn = (
+    <Button
+      type={type}
+      danger={danger}
+      icon={icon}
+      loading={loading}
+      disabled={!canManage || loading}
+      onClick={onClick}
+      data-testid={testId}
+    >
+      {label}
+    </Button>
+  )
+  return canManage ? (
+    btn
+  ) : (
+    <Tooltip title={`Requires ${MANAGE_PERM}`}>{btn}</Tooltip>
+  )
+}
