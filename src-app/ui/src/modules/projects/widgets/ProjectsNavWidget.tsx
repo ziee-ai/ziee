@@ -19,8 +19,11 @@ const { Text } = Typography
  * the projects store self-bootstraps via __init__, but the widget also
  * triggers a load on mount in case nothing has accessed the store yet.
  *
- * Each row has a hover-revealed "+" button that creates a new
- * conversation in that project (forwards to /chat?project_id=…).
+ * Each row has a hover-revealed "+" button that navigates to the
+ * project's detail page (/projects/{id}); typing in that page's
+ * inline ChatInput creates a new conversation, and the project
+ * chat extension's afterCreateConversation hook files it into the
+ * project.
  */
 export function ProjectsNavWidget() {
   const navigate = useNavigate()
@@ -148,7 +151,11 @@ export function ProjectsNavWidget() {
                       aria-label={`New chat in ${project.name}`}
                       onClick={e => {
                         e.stopPropagation()
-                        navigate(`/chat?project_id=${project.id}`)
+                        // Go straight to the project detail page;
+                        // its inline ChatInput + the project chat
+                        // extension's `afterCreateConversation` hook
+                        // do the file-into-project on first send.
+                        navigate(`/projects/${project.id}`)
                       }}
                     />
                   )}

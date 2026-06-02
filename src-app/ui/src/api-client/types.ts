@@ -192,7 +192,6 @@ export interface Conversation {
   id: string
   memory_mode: string
   model_id?: string
-  project_id?: string
   updated_at: string
   user_id: string
 }
@@ -217,7 +216,6 @@ export interface ConversationResponse {
   memory_mode: string
   message_count: number
   model_id?: string
-  project_id?: string
   updated_at: string
   user_id: string
 }
@@ -268,7 +266,6 @@ export interface CreateBranchRequest {
 export interface CreateConversationRequest {
   title?: string
   model_id?: string
-  project_id?: string
 }
 
 export interface CreateGroupRequest {
@@ -1468,7 +1465,6 @@ export interface PaginationQuery4 {
 export interface PaginationQuery5 {
   limit?: number
   page?: number
-  project_id?: string
 }
 
 export interface PendingApprovalsResponse {
@@ -2116,7 +2112,6 @@ export interface UpdateCodeSandboxResourceLimits {
 export interface UpdateConversationRequest {
   title?: string
   memory_mode?: string
-  project_id?: string
 }
 
 export interface UpdateGroupProvidersRequest {
@@ -2776,11 +2771,14 @@ export const ApiEndpoints = {
   'Message.sendStream': 'POST /api/conversations/{id}/messages/stream',
   'Onboarding.complete': 'POST /api/onboarding/{guide_id}/complete',
   'Onboarding.completeStep': 'POST /api/onboarding/{guide_id}/steps/{step_id}/complete',
+  'Project.attachConversation': 'POST /api/projects/{id}/conversations/{conversation_id}',
   'Project.attachFile': 'POST /api/projects/{id}/files',
   'Project.create': 'POST /api/projects',
   'Project.delete': 'DELETE /api/projects/{id}',
+  'Project.detachConversation': 'DELETE /api/projects/{id}/conversations/{conversation_id}',
   'Project.detachFile': 'DELETE /api/projects/{id}/files/{file_id}',
   'Project.duplicate': 'POST /api/projects/{id}/duplicate',
+  'Project.forConversation': 'GET /api/projects/by-conversation/{conversation_id}',
   'Project.get': 'GET /api/projects/{id}',
   'Project.getMcpSettings': 'GET /api/projects/{id}/mcp-settings',
   'Project.list': 'GET /api/projects',
@@ -2862,7 +2860,7 @@ export type ApiEndpointParameters = {
   'Conversation.delete': { id: string }
   'Conversation.get': { id: string }
   'Conversation.getMcpSettings': { id: string }
-  'Conversation.list': { limit?: number; page?: number; project_id?: string }
+  'Conversation.list': { limit?: number; page?: number }
   'Conversation.update': { id: string } & UpdateConversationRequest
   'Conversation.updateMcpSettings': { id: string } & UpsertMcpSettingsRequest
   'CoreMemory.delete': { assistant_id: string; block_label: string }
@@ -3007,11 +3005,14 @@ export type ApiEndpointParameters = {
   'Message.sendStream': { id: string } & SendMessageRequest
   'Onboarding.complete': { guide_id: string }
   'Onboarding.completeStep': { guide_id: string; step_id: string }
+  'Project.attachConversation': { id: string; conversation_id: string }
   'Project.attachFile': { id: string } & AttachFileRequest
   'Project.create': CreateProjectRequest
   'Project.delete': { id: string }
+  'Project.detachConversation': { id: string; conversation_id: string }
   'Project.detachFile': { id: string; file_id: string }
   'Project.duplicate': { id: string }
+  'Project.forConversation': { conversation_id: string }
   'Project.get': { id: string }
   'Project.getMcpSettings': { id: string }
   'Project.list': { limit?: number; page?: number }
@@ -3238,11 +3239,14 @@ export type ApiEndpointResponses = {
   'Message.sendStream': SSEChatStreamEvent
   'Onboarding.complete': User
   'Onboarding.completeStep': User
+  'Project.attachConversation': ConversationResponse
   'Project.attachFile': void
   'Project.create': Project
   'Project.delete': void
+  'Project.detachConversation': void
   'Project.detachFile': void
   'Project.duplicate': Project
+  'Project.forConversation': Project
   'Project.get': Project
   'Project.getMcpSettings': UpdateProjectMcpSettingsRequest
   'Project.list': ProjectListResponse

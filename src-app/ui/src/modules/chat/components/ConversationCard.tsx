@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { App, Button, Card, Checkbox, Divider, Popconfirm, theme, Typography } from 'antd'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import type { ConversationResponse } from '@/api-client/types'
+import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
 
 dayjs.extend(relativeTime)
 
@@ -18,6 +19,14 @@ interface ConversationCardProps {
   isSelected?: boolean
   onSelect?: (conversationId: string) => void
   isInSelectionMode?: boolean
+  /**
+   * Extra controls rendered in the per-card bottom-right action row,
+   * left of the Delete button + checkbox. Like Delete, hidden in
+   * selection mode (bulk actions take over the row). Use for
+   * caller-specific per-row affordances (e.g., "Remove from project"
+   * on the project page).
+   */
+  trailing?: (conversation: ConversationResponse) => ReactNode
 }
 
 /**
@@ -31,20 +40,31 @@ export function ConversationCard({
   isSelected = false,
   onSelect,
   isInSelectionMode = false,
+  trailing,
 }: ConversationCardProps) {
   const { message } = App.useApp()
   const navigate = useNavigate()
   const { token } = theme.useToken()
   const [popconfirmOpen, setPopconfirmOpen] = useState(false)
   const canDelete = usePermission(Permissions.ConversationsDelete)
+  // Lazy-render the trailing area only after first hover so extensions
+  // that need a network round-trip (e.g., project membership lookup)
+  // don't fire N requests per page load. Sticky once true — the
+  // user has already paid for the lookup, no point hiding again.
+  const [hoveredOnce, setHoveredOnce] = useState(false)
 
   const handleCardClick = () => {
     if (isInSelectionMode && onSelect) {
       // In selection mode, toggle selection instead of navigating
       onSelect(conversation.id)
     } else {
-      // Normal mode, navigate to conversation
-      navigate(`/chat/${conversation.id}`)
+      // Per-conversation URL resolution: chat extensions can
+      // override the default `/chat/{id}` link via the
+      // `conversationHref` hook. First non-undefined wins.
+      const href =
+        chatExtensionRegistry.conversationHref(conversation) ??
+        `/chat/${conversation.id}`
+      navigate(href)
     }
   }
 
@@ -64,10 +84,21 @@ export function ConversationCard({
     }
   }
 
+  // Trailing content: prop wins (caller-supplied, project page's
+  // per-row Remove etc.). Otherwise consult the extension registry
+  // so any chat extension can inject decorations. Either way, the
+  // trailing only mounts after first hover (see `hoveredOnce`).
+  const renderedTrailing = trailing
+    ? trailing(conversation)
+    : chatExtensionRegistry.renderConversationCardTrailing(conversation)
+
   return (
     <Card
       key={conversation.id}
       onClick={handleCardClick}
+      onMouseEnter={() => {
+        if (!hoveredOnce) setHoveredOnce(true)
+      }}
       className="cursor-pointer relative group hover:!shadow-md transition-shadow"
       classNames={{
         body: '!px-3 !py-2',
@@ -99,27 +130,30 @@ export function ConversationCard({
         </div>
       </div>
 
-      {/* Selection checkbox - positioned in bottom right */}
-      {onSelect && (
-        <div
-          className={`absolute bottom-2 right-2 z-10 transition-opacity ${
-            isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-          }`}
-        >
-          <Checkbox
-            checked={isSelected}
-            onChange={handleSelectChange}
-            onClick={e => e.stopPropagation()}
-          />
-        </div>
-      )}
+      {/* Per-card actions row — bottom right. Caller-supplied
+          `trailing` + Delete + selection checkbox share one row so
+          they don't compete for space on hover. Trailing + Delete
+          are hover-revealed; the checkbox stays visible
+          (opacity-100) whenever the row is selected. */}
+      <div
+        className="absolute bottom-2 right-2 flex items-center gap-2 z-10"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Trailing — caller prop wins, else extension registry.
+            Lazy-mounted on first hover (so a slow lookup inside the
+            trailing doesn't fire on render). Hidden in selection
+            mode (bulk toolbar takes over).
+            VISIBILITY is each trailing element's own responsibility —
+            it must apply `opacity-0 group-hover:opacity-100` to itself
+            (same pattern as the Delete button), AND pin itself
+            `opacity-100` while any popover/popconfirm it owns is
+            open, so the user can move the mouse off the card to
+            interact with the overlay without the anchor disappearing. */}
+        {hoveredOnce && !isInSelectionMode && renderedTrailing}
 
-      {/* Delete button - positioned in top right */}
-      {canDelete && !isInSelectionMode && (
-        <div
-          className="absolute top-2 right-2"
-          onClick={e => e.stopPropagation()}
-        >
+        {/* Delete button — hidden in selection mode (bulk-delete in
+            the toolbar replaces per-row deletes). */}
+        {canDelete && !isInSelectionMode && (
           <Popconfirm
             title="Delete conversation?"
             description="This will permanently delete the conversation and all its messages."
@@ -139,6 +173,7 @@ export function ConversationCard({
               }`}
               type="text"
               size="small"
+              danger
               icon={<DeleteOutlined />}
               style={{ backgroundColor: token.colorBgContainer }}
               onClick={(e: React.MouseEvent) => {
@@ -147,8 +182,23 @@ export function ConversationCard({
               }}
             />
           </Popconfirm>
-        </div>
-      )}
+        )}
+
+        {/* Selection checkbox — visible on hover OR when selected. */}
+        {onSelect && (
+          <div
+            className={`transition-opacity ${
+              isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+            }`}
+          >
+            <Checkbox
+              checked={isSelected}
+              onChange={handleSelectChange}
+              onClick={e => e.stopPropagation()}
+            />
+          </div>
+        )}
+      </div>
     </Card>
   )
 }

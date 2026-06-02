@@ -23,10 +23,9 @@ declare module '@/core/stores' {
 
 /**
  * Slot that other modules use to render content trailing the chat
- * header title (next to the TitleEditor in ConversationPage). The
- * Projects module uses this for `ConversationProjectChip` so the
- * chat module doesn't have a compile-time import on projects (closes
- * audit N11).
+ * header title (next to the TitleEditor in ConversationPage).
+ * Decoupled injection point — chat itself doesn't compile against
+ * any consumer.
  *
  * Slot items render in `order` ascending, rightmost-first visually.
  * Use SidebarWidgetItem's shape so any module can register without

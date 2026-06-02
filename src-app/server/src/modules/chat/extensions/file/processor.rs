@@ -1,14 +1,9 @@
 //! File → provider-specific ContentBlock conversion.
 //!
-//! Single source of truth for the provider-routing branch used by:
-//!   * `FileExtension::before_llm_call` — per-message attachments.
-//!   * `ProjectExtension::before_llm_call` — project-scoped knowledge
-//!     files (prepended onto the user message ahead of the
-//!     per-message ones).
-//!
-//! Both extensions used to duplicate the entire OpenAI/Anthropic/Gemini
-//! routing block; extracting it here closes that drift hazard (Plan 5
-//! §4 "Refactor required").
+//! Single source of truth for the per-provider (OpenAI / Anthropic /
+//! Gemini) routing block that turns a file row into the wire format
+//! the provider expects. Extracted so different callers (per-message
+//! attachments, knowledge-file batches, etc.) don't drift apart.
 
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -23,9 +18,8 @@ use crate::modules::llm_provider_files;
 /// Process a single file ID into provider-routed ContentBlock(s).
 ///
 /// Ownership is re-validated here as defense in depth: callers
-/// (file extension via per-message file_ids, project extension via
-/// project_files JOIN) already enforce it, but the per-file repository
-/// lookup costs nothing extra and fails safe.
+/// already enforce it, but the per-file repository lookup costs
+/// nothing extra and fails safe.
 pub async fn process_file_blocks(
     pool: &PgPool,
     file_id: Uuid,
@@ -163,11 +157,9 @@ async fn process_via_base64(
     {
         // Text-like files: inline the content verbatim as a Text
         // ContentBlock. The pre-R4 implementation returned only the
-        // filename (`[File: foo.txt]`) which meant project knowledge
-        // files reached the LLM with no body, breaking the
-        // `project_files_appear_in_llm_response` integration test
-        // and silently misleading any user attaching .txt/.md/.json
-        // knowledge to a project.
+        // filename (`[File: foo.txt]`) which meant attached
+        // knowledge files reached the LLM with no body — silently
+        // misleading any user attaching .txt/.md/.json content.
         //
         // Best-effort UTF-8: if the file isn't valid UTF-8 we fall
         // back to a labeled placeholder so a binary-disguised-as-

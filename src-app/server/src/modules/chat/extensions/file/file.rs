@@ -107,9 +107,9 @@ impl ChatExtension for FileExtension {
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| AppError::internal_error("Provider type not in context"))?;
 
-            // Process each file via the shared free function (also used
-            // by ProjectExtension at order 8). Single source of truth
-            // for provider-specific routing — see processor.rs.
+            // Process each file via the shared free function —
+            // single source of truth for provider-specific routing
+            // (see processor.rs).
             let mut file_blocks = Vec::new();
             for file_id in file_ids {
                 let blocks = process_file_blocks(

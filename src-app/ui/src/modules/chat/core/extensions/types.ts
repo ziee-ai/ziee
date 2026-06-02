@@ -424,6 +424,105 @@ export interface ChatExtension {
   onConversationLoad?: (conversation: import('@/api-client/types').Conversation) => void | Promise<void>
 
   /**
+   * Called after chat auto-creates a conversation in sendMessage,
+   * BEFORE the message stream starts. Extensions can append work
+   * (record cross-cutting attribution, attach defaults, etc.) that
+   * needs to land before the LLM begins.
+   *
+   * Return the updated conversation if your work mutated server-side
+   * state; chat adopts the return value as the canonical local conv
+   * so the subsequent `conversation.created` event + store state
+   * carry the post-hook shape. Return void to keep the conversation
+   * as-is.
+   *
+   * Extensions run sequentially in priority order; each receives the
+   * latest accumulated conversation shape.
+   *
+   * @param conversation - The freshly-created conversation
+   * @returns Updated conversation, or void to keep the input as-is
+   */
+  afterCreateConversation?: (
+    conversation: import('@/api-client/types').Conversation,
+  ) => Promise<import('@/api-client/types').Conversation | void> | import('@/api-client/types').Conversation | void
+
+  /**
+   * Return a URL string for the given conversation, or undefined to
+   * let chat fall through to its default `/chat/{conversation.id}`.
+   * First registered extension to return a non-undefined string
+   * wins. Lets chat's conversation-list surfaces (ConversationCard,
+   * recent widget, history page) route per-conversation links
+   * without knowing about other modules.
+   */
+  conversationHref?: (
+    conversation: import('@/api-client/types').Conversation,
+  ) => string | undefined
+
+  /**
+   * Contribute menu items + overlay JSX to any conversation
+   * dropdown menu (sidebar `RecentConversationsWidget` 3-dot menu,
+   * future card-level menus, etc.). Implemented as a React hook so
+   * the contribution can hold its own state (modal open, popconfirm
+   * visible, async lookups) via useState/useEffect — flat item
+   * descriptors aren't enough for extensions that need modals.
+   *
+   * Returns:
+   *   - `items`: antd MenuProps['items'] entries appended to the
+   *     menu. Each item's onClick can toggle local state defined in
+   *     this hook to drive `overlays`.
+   *   - `overlays`: optional JSX mounted alongside the dropdown
+   *     trigger (modals, popconfirms, etc.).
+   *
+   * The aggregator on the chat side calls every registered hook in
+   * priority order on every render of a conversation row. Standard
+   * React-hook rules apply: same order on every render.
+   */
+  useConversationMenu?: (
+    conversation: import('@/api-client/types').Conversation,
+  ) => {
+    items: import('antd').MenuProps['items']
+    overlays?: import('react').ReactNode
+    /**
+     * Set true while any overlay (popconfirm, sub-popover) is
+     * showing so the dropdown stays open even when the user moves
+     * the mouse to interact with the overlay (which renders in a
+     * body-level portal and would otherwise trigger antd's
+     * outside-click close). Modals don't need this — they cover
+     * the dropdown anyway.
+     */
+    keepMenuOpen?: boolean
+  }
+
+  /**
+   * Render extension-supplied controls in the per-card bottom-right
+   * action row of `ConversationCard`. All registered extensions
+   * stack (in priority order); each returns its own React node (or
+   * null to opt out for a given conversation).
+   *
+   * Consulted ONLY when the card's caller doesn't pass an explicit
+   * `trailing` prop — caller-supplied trailing wins (e.g., the
+   * project page's per-card "Remove from project" button overrides
+   * any extension trailing on that surface).
+   *
+   * Rendered lazily — only after the user hovers the card — so an
+   * extension that needs a network round-trip doesn't fire N
+   * requests per page load.
+   */
+  renderConversationCardTrailing?: (
+    conversation: import('@/api-client/types').Conversation,
+  ) => import('react').ReactNode
+
+  /**
+   * Return the URL the ConversationPage back button should
+   * navigate to for this conversation, or undefined to use chat's
+   * default. First registered extension to return a non-undefined
+   * string wins. Same first-non-undefined semantics as
+   * conversationHref.
+   */
+  conversationBackHref?: (
+    conversation: import('@/api-client/types').Conversation,
+  ) => string | undefined
+
+  /**
    * Called before a message is sent
    * Can modify message, add request fields, or cancel send
    * Extensions should access their own stores for data (e.g., TextStore for text)

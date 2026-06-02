@@ -11,22 +11,24 @@ import {
  *
  * Drives the full UI flow:
  *   login → configure Anthropic provider (real API key) → seed
- *   project via API → navigate to /chat?project_id=<uuid> →
- *   send message in the UI → wait for streamed response → assert
+ *   project via API → navigate to /projects/{id} → send message
+ *   in the inline ChatInput → wait for streamed response → assert
  *   response contains the magic markers that prove project context
  *   was injected end-to-end.
+ *
+ * The `/chat?project_id=<uuid>` URL pattern is gone (chat doesn't
+ * know about projects anymore); the project detail page now owns
+ * the "start a new chat in this project" affordance via the
+ * embedded ChatInput, and the project chat extension's
+ * `afterCreateConversation` hook files the conversation into the
+ * project on first send.
  *
  * Equivalent assertions live in the Rust Tier-3 tests at
  * `src-app/server/tests/project/injection_test.rs`. This spec adds
  * the UI-layer proof that a user clicking through the real
- * affordances (URL latch → ChatInput) ends up with project context
- * on the wire.
+ * affordances ends up with project context on the wire.
  *
- * **Gating**: tests soft-skip when `ANTHROPIC_API_KEY` is unset. The
- * shared `createProviderViaAPI` helper reads the env via
- * `process.env.ANTHROPIC_API_KEY`; without the key, real-LLM calls
- * would fail. We pre-check + `test.skip()` to keep the suite green
- * without API access.
+ * **Gating**: tests soft-skip when `ANTHROPIC_API_KEY` is unset.
  */
 
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY ?? ''
@@ -88,13 +90,20 @@ test.describe('Projects - message uses project context (real LLM)', () => {
     )
     expect(project).toHaveProperty('id')
 
-    // Navigate to /chat?project_id=<uuid> — same route the
-    // ProjectDetailPage's "New chat" button uses.
-    await page.goto(`${baseURL}/chat?project_id=${project.id}`)
+    // Navigate to the project detail page; the inline ChatInput
+    // there is the entry point for new project chats. (The legacy
+    // `/chat?project_id=<uuid>` URL still redirects here for
+    // backward-compat, but the canonical flow is the project page.)
+    await page.goto(`${baseURL}/projects/${project.id}`)
     await page.waitForLoadState('networkidle')
 
-    // Send a message via the real UI.
-    const textarea = page.locator('textarea[placeholder*="Type your message"]')
+    // Send a message via the real UI — the project chat extension's
+    // afterCreateConversation hook attaches the new conversation to
+    // the project before the message stream starts, so the system
+    // prompt carries the project's instructions.
+    const textarea = page.locator(
+      '[data-test-section="chat-input"] textarea[placeholder*="Type your message"]',
+    )
     await expect(textarea).toBeVisible({ timeout: 10000 })
     await textarea.fill('Say hello.')
 
@@ -102,16 +111,22 @@ test.describe('Projects - message uses project context (real LLM)', () => {
     await expect(sendButton).toBeEnabled({ timeout: 10000 })
     await sendButton.click()
 
-    // Wait for the streamed assistant response. The chat layout
-    // renders assistant text in the conversation pane — we wait for
-    // the magic marker to appear anywhere on the page.
+    // After send, the page navigates to the namespaced URL once the
+    // attach call resolves. Confirm the routing contract first so a
+    // failure here points at the wiring instead of at the LLM.
+    await page.waitForURL(
+      new RegExp(`/projects/${project.id}/chat/[0-9a-f-]+`),
+      { timeout: 30000 },
+    )
+
+    // Wait for the streamed assistant response — magic marker proves
+    // project instructions reached the LLM.
     await expect(page.locator('body')).toContainText('ZZZ_E2E_BEACON_77', {
       timeout: 45000,
     })
 
     // Visual proof the header chip correctly identifies the
-    // conversation's project (renders only when conversation.project_id
-    // is set, which it should be after the URL-latch flow ran).
+    // conversation's project.
     await expect(page.getByText(/In project: E2E Magic Project/i)).toBeVisible(
       { timeout: 5000 },
     )

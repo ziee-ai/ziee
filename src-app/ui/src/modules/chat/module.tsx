@@ -18,16 +18,6 @@ const ChatHistoryPage = lazyWithPreload(
   () => import('./pages/ChatHistoryPage'),
 )
 
-// Top-level wrapper component so the sidebar slot renders the recent
-// conversations widget in "unfiled only" mode (Plan 5 §5: when the
-// Projects module is present, per-project conversations appear under
-// their project headers in ProjectsNavWidget — this widget then shows
-// only orphan/unfiled chats to avoid duplication). Defined at module
-// scope so each render reuses the same function reference.
-const UnfiledRecentConversationsWidget = () => (
-  <RecentConversationsWidget projectIdFilter={null} />
-)
-
 export default createModule({
   metadata: {
     name: 'chat',
@@ -97,7 +87,7 @@ export default createModule({
     sidebarContent: [
       {
         id: 'recent-conversations',
-        component: UnfiledRecentConversationsWidget,
+        component: RecentConversationsWidget,
         order: 10,
       },
     ],

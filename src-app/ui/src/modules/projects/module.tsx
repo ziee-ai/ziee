@@ -9,10 +9,8 @@ import {
   useProjectDetailStore,
   useProjectDrawerStore,
 } from '@/modules/projects/stores'
-import { ConversationProjectChip } from '@/modules/projects/components/ConversationProjectChip'
 import '@/modules/projects/types' // store-merge declaration
 import '@/modules/projects/events' // event-bus type merge
-import '@/modules/chat/types' // chatConversationHeaderTrailing slot decl
 
 const ProjectsListPage = lazyWithPreload(() =>
   import('./pages/ProjectsListPage').then(m => ({
@@ -23,6 +21,13 @@ const ProjectDetailPage = lazyWithPreload(() =>
   import('./pages/ProjectDetailPage').then(m => ({
     default: m.ProjectDetailPage,
   })),
+)
+// Project-namespaced chat URL renders chat's existing
+// ConversationPage as-is. Projects module is allowed to import
+// chat (chat doesn't import projects), so the route element points
+// straight at it — no thin wrapper needed.
+const ProjectChatPage = lazyWithPreload(
+  () => import('@/modules/chat/pages/ConversationPage'),
 )
 
 export default createModule({
@@ -53,6 +58,19 @@ export default createModule({
       permission: Permissions.ProjectsRead,
       layout: AppLayoutDef,
     },
+    {
+      // Project-namespaced chat URL. Project module owns the URL
+      // shape; chat doesn't know about projects. Both this URL and
+      // the plain `/chat/:conversationId` are valid for a project-
+      // bound conversation (no redirect between them); links FROM
+      // project surfaces resolve through the `conversationHref`
+      // extension hook so they use this namespaced form by default.
+      path: '/projects/:projectId/chat/:conversationId',
+      element: ProjectChatPage,
+      requiresAuth: true,
+      permission: Permissions.ProjectsRead,
+      layout: AppLayoutDef,
+    },
   ],
   slots: {
     sidebarNavigation: [
@@ -63,19 +81,6 @@ export default createModule({
         path: '/projects',
         order: 20,
         permission: Permissions.ProjectsRead,
-      },
-    ],
-    // Decorate the chat conversation header (next to TitleEditor)
-    // with the "In project: P · N files" chip. The chip itself
-    // gates on conversation.project_id being non-null, so it renders
-    // nothing for unfiled chats. Registering via slot here decouples
-    // the chat module from a direct import of this component
-    // (audit N11).
-    chatConversationHeaderTrailing: [
-      {
-        id: 'project-chip',
-        component: ConversationProjectChip,
-        order: 10,
       },
     ],
   },
