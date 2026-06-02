@@ -2346,6 +2346,8 @@ export interface VersionStatus {
   available: RootfsRelease[]
   conversation_count: number
   draining: DrainEntry[]
+  host_arch: string
+  host_package: string
   installed: RootfsArtifact[]
   mcp_server_workspace_count: number
   pinned_version?: string
