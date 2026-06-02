@@ -2009,6 +2009,10 @@ async fn test_create_model_from_hub() {
         "Created IDs should be empty initially"
     );
 
+    // This model is auth_required; configure the source repo credential so the
+    // pre-download gate passes.
+    configure_hf_repo_credential(&server).await;
+
     // Create model download from hub
     let url = server.api_url("/hub/models/download");
     let request_body = serde_json::json!({
@@ -2227,10 +2231,16 @@ async fn test_create_model_from_hub_invalid_provider_id() {
         &[
             "hub::models::download",
             "hub::models::read",
+            "llm_models::create",
             "llm_repositories::read",
         ],
     )
     .await;
+
+    // Configure the source repo credential so the request passes the auth gate
+    // and actually reaches provider validation — otherwise it would 422 at the
+    // gate and this test would not exercise the invalid-provider path.
+    configure_hf_repo_credential(&server).await;
 
     // Get hub models
     let url = server.api_url("/hub/models?lang=en");
@@ -2265,7 +2275,14 @@ async fn test_create_model_from_hub_invalid_provider_id() {
 
     assert!(
         response.status().is_client_error() || response.status().is_server_error(),
-        "Should return error for invalid provider_id"
+        "Should return error for invalid provider_id, got {}",
+        response.status()
+    );
+    // Must fail on the invalid provider, NOT short-circuit at the auth gate.
+    assert_ne!(
+        response.status(),
+        422,
+        "should reach provider validation, not be blocked by the auth gate"
     );
 }
 
@@ -2324,6 +2341,9 @@ async fn test_create_model_from_hub_with_quantization() {
     let quant_options = model.get("quantization_options").and_then(|v| v.as_array()).unwrap();
     let first_quant = &quant_options[0];
     let quant_name = first_quant.get("name").and_then(|v| v.as_str()).unwrap();
+
+    // auth_required model: configure the source repo credential so the gate passes.
+    configure_hf_repo_credential(&server).await;
 
     // Create download with specific quantization
     let url = server.api_url("/hub/models/download");
@@ -2391,6 +2411,9 @@ async fn test_duplicate_download_prevention() {
     let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
     let first_model = &models.as_array().unwrap()[0];
     let hub_id = first_model.get("id").and_then(|v| v.as_str()).unwrap();
+
+    // auth_required model: configure the source repo credential so the gate passes.
+    configure_hf_repo_credential(&server).await;
 
     // Create first download
     let url = server.api_url("/hub/models/download");
@@ -2676,5 +2699,219 @@ async fn test_get_hub_local_providers_excludes_non_local_and_disabled() {
     assert!(
         !names.contains(&"Local"),
         "Disabled built-in 'Local' provider should be excluded, got: {names:?}"
+    );
+}
+
+/// `source_auth_configured` is computed per source repository: false while the
+/// Hugging Face repo has no credential, true once a key is set. This is the data
+/// the hub UI uses to block + guide download BEFORE the click.
+#[tokio::test]
+async fn test_hub_models_source_auth_configured_reflects_repo_credential() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_source_auth",
+        &[
+            "hub::models::read",
+            "llm_repositories::read",
+            "llm_repositories::edit",
+        ],
+    )
+    .await;
+
+    // Initially: the Hugging Face repo has no key -> HF models report unconfigured.
+    let before: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url("/hub/models?lang=en"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let mut hf_count = 0;
+    for m in before.as_array().unwrap() {
+        if m["repository_url"].as_str() == Some("https://huggingface.co") {
+            hf_count += 1;
+            assert_eq!(
+                m["source_auth_configured"].as_bool(),
+                Some(false),
+                "model {} should be unconfigured while the HF repo is empty",
+                m["id"]
+            );
+        }
+    }
+    assert!(hf_count > 0, "expected at least one Hugging Face model in the catalog");
+
+    // Configure the Hugging Face repo with a dummy key.
+    let repos: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url("/llm-repositories"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let hf_id = repos["repositories"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["name"].as_str() == Some("Hugging Face Hub"))
+        .expect("Hugging Face Hub repository should exist")["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let update = reqwest::Client::new()
+        .post(server.api_url(&format!("/llm-repositories/{}", hf_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&serde_json::json!({ "auth_config": { "api_key": "dummy-token" } }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(update.status(), 200);
+
+    // Now HF models report configured.
+    let after: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url("/hub/models?lang=en"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    for m in after.as_array().unwrap() {
+        if m["repository_url"].as_str() == Some("https://huggingface.co") {
+            assert_eq!(
+                m["source_auth_configured"].as_bool(),
+                Some(true),
+                "model {} should be configured after setting a key",
+                m["id"]
+            );
+        }
+    }
+}
+
+/// A PARTIAL repository update (changing only a non-secret field, omitting the
+/// secret) must NOT wipe the stored credential — the API/UI treat an omitted
+/// secret as "keep existing". Regression guard for the merge-on-update fix.
+#[tokio::test]
+async fn test_partial_repo_update_preserves_stored_secret() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "repo_partial",
+        &[
+            "hub::models::read",
+            "llm_repositories::read",
+            "llm_repositories::edit",
+        ],
+    )
+    .await;
+
+    let repos: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url("/llm-repositories"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let hf_id = repos["repositories"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["name"].as_str() == Some("Hugging Face Hub"))
+        .expect("Hugging Face Hub repository")["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // 1) Set a credential.
+    let set = reqwest::Client::new()
+        .post(server.api_url(&format!("/llm-repositories/{}", hf_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&serde_json::json!({ "auth_config": { "api_key": "dummy-key" } }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(set.status(), 200);
+
+    // 2) Partial update that OMITS the secret (changes only the test endpoint).
+    let partial = reqwest::Client::new()
+        .post(server.api_url(&format!("/llm-repositories/{}", hf_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&serde_json::json!({
+            "auth_config": { "auth_test_api_endpoint": "https://huggingface.co/api/whoami-v2" }
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(partial.status(), 200, "partial update should succeed");
+
+    // 3) The stored secret must survive — source_auth_configured stays true.
+    let models: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url("/hub/models?lang=en"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let hf_model = models
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["repository_url"].as_str() == Some("https://huggingface.co"))
+        .expect("an HF hub model");
+    assert_eq!(
+        hf_model["source_auth_configured"].as_bool(),
+        Some(true),
+        "a partial update must NOT wipe the stored credential"
+    );
+}
+
+/// Configure the built-in Hugging Face repository with a dummy credential so the
+/// hub pre-download gate (auth_required models require a configured source repo)
+/// passes. Uses its own admin user so callers don't need repository-edit perms.
+async fn configure_hf_repo_credential(server: &crate::common::TestServer) {
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        server,
+        "hf_repo_admin",
+        &["llm_repositories::read", "llm_repositories::edit"],
+    )
+    .await;
+    let repos: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url("/llm-repositories"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("list repositories")
+        .json()
+        .await
+        .expect("parse repositories");
+    let hf_id = repos["repositories"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["name"].as_str() == Some("Hugging Face Hub"))
+        .expect("Hugging Face Hub repository should exist")["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let resp = reqwest::Client::new()
+        .post(server.api_url(&format!("/llm-repositories/{}", hf_id)))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&serde_json::json!({ "auth_config": { "api_key": "dummy-token" } }))
+        .send()
+        .await
+        .expect("configure HF repo");
+    assert_eq!(
+        resp.status(),
+        200,
+        "configuring the Hugging Face repo credential should succeed"
     );
 }

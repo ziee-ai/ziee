@@ -107,3 +107,12 @@ code_sandbox:
   enabled: false
   rootfs_path: "./.ziee-cache/sandbox-rootfs/current"
   cgroup_parent: ""   # empty = rlimits-only mode (no per-call cgroup scope)
+
+# At-rest encryption for stored credentials (LLM provider api_keys, LLM
+# repository auth tokens, per-user provider keys). When UNSET (the default),
+# these are stored in PLAINTEXT in the database and are reachable in DB
+# dumps/backups. Set a stable random key (min 32 chars) to encrypt them at rest.
+# NOTE: changing or losing the key makes previously-encrypted secrets
+# unrecoverable.
+# secrets:
+#   storage_key: "change-me-to-a-stable-random-string-min-32-chars"

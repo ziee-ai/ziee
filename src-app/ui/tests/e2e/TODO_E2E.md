@@ -10,25 +10,17 @@ Reinstate each as the listed prerequisite is met.
 
 ---
 
-## 1. Block download and show auth modal for hub models requiring authentication
+## 1. Block download and show auth modal for hub models requiring authentication — REINSTATED
 
-**File when removed:** `tests/e2e/08-hub/02-hub-models.spec.ts`
+**File:** `tests/e2e/08-hub/02-hub-models.spec.ts`
 **Test name:** `should block download and show auth modal for models requiring authentication`
 
-**Why removed:** the UI shows an "Auth Required" badge on hub model
-cards but does NOT block download or open an authentication-config
-modal. The `getByRole('dialog', { name: /authentication.*required/i })`
-the test waits for has never been implemented in
-`ModelHubCard.tsx`. Only the badge surface exists today.
-
-**To reinstate:**
-1. Implement the modal in `src/modules/hub/modules/llm-models/components/ModelHubCard.tsx`:
-   when the Download button is clicked on a `model.auth_required`
-   model, open a confirm modal that links to the repository auth
-   config drawer.
-2. Restore the test body (see git history for
-   `02-hub-models.spec.ts`; was the test directly after `should
-   display auth_required badge on appropriate models`).
+**Status:** REINSTATED. `ModelHubCard.tsx` now blocks Download when a model is
+`auth_required` and its source repository has no credential
+(`source_auth_configured === false`), opening an "Authentication Required" modal
+whose "Go to LLM Repositories" button deep-links to `/settings/llm-repositories`.
+The reinstated test (plus a companion `should navigate to repository settings from
+the auth modal`) lives directly after `should show "Auth Required" badge ...`.
 
 ---
 

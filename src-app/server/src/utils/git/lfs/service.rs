@@ -188,13 +188,27 @@ impl LfsService {
     }
 
     fn url_with_auth(url: &str, access_token: Option<&str>) -> Result<Url, LfsError> {
-        let mut url = Url::parse(url)?;
-        let username = if access_token.is_some() { "oauth2" } else { "" };
-        url.set_username(username)
+        let mut parsed = Url::parse(url)?;
+        // Host-aware default username, matching the git-clone path
+        // (GitService::auth_username_for): "x-access-token" for GitHub, "oauth2"
+        // otherwise. NOTE: basic_auth repositories are not fully supported on the
+        // LFS path — the configured basic_auth username is not threaded here, so a
+        // host-default username is used with the password. The two built-in repos
+        // (HF api_key, GitHub bearer_token) are token-based and unaffected (token
+        // hosts ignore the username), so this only matters for the uncommon case
+        // of a custom basic_auth repo whose model files are LFS-tracked.
+        let username = if access_token.is_some() {
+            crate::utils::git::GitService::auth_username_for(url, None)
+        } else {
+            String::new()
+        };
+        parsed
+            .set_username(&username)
             .map_err(|_| LfsError::InvalidFormat("Could not set username"))?;
-        url.set_password(access_token)
+        parsed
+            .set_password(access_token)
             .map_err(|_| LfsError::InvalidFormat("Could not set password"))?;
-        Ok(url)
+        Ok(parsed)
     }
 
     async fn download_file(

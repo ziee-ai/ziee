@@ -41,10 +41,26 @@ pub async fn get_hub_models(
     // Get created model IDs (system-wide, no user filter)
     let created_map = Repos.hub.get_created_model_ids().await?;
 
-    // Merge created_ids into models
+    // Compute, per source repository, whether a credential is configured — so the
+    // UI can block + guide BEFORE the user clicks download. Mirrors the precise,
+    // decrypting `has_credential()` gate EXACTLY (repos are few, so the per-row
+    // decrypt is cheap). `database_error` redacts the raw sqlx text.
+    let cred_by_url: std::collections::HashMap<String, bool> = Repos
+        .llm_repository
+        .list_credential_presence()
+        .await
+        .map_err(AppError::database_error)?
+        .into_iter()
+        .collect();
+
+    // Merge created_ids + source_auth_configured into models
     let mut models = hub_data.models;
     for model in &mut models {
         model.created_ids = created_map.get(&model.id).cloned().unwrap_or_default();
+        model.source_auth_configured = cred_by_url
+            .get(&model.repository_url)
+            .copied()
+            .unwrap_or(false);
     }
 
     Ok((StatusCode::OK, Json(models)))
@@ -480,6 +496,29 @@ pub async fn create_model_from_hub(
                 hub_model.repository_url
             ))
         })?;
+
+    // 2b. Block early with clear guidance when this model needs auth but the
+    // source repository has no credential configured. Without this the download
+    // is spawned and only fails later in the background with an opaque git auth
+    // error. Enforced server-side; the UI mirrors it via `source_auth_configured`.
+    if hub_model.auth_required && !repository.has_credential() {
+        return Err((
+            StatusCode::UNPROCESSABLE_ENTITY,
+            AppError::unprocessable_entity(
+                "HUB_REPOSITORY_AUTH_NOT_CONFIGURED",
+                format!(
+                    "Downloading \"{}\" requires authentication for the \"{}\" repository, \
+                     but no credential is configured. Add it in Settings → LLM Repositories.",
+                    hub_model.display_name, repository.name
+                ),
+            )
+            .with_details(serde_json::json!({
+                "repository_id": repository.id,
+                "repository_name": repository.name,
+                "settings_path": "/settings/llm-repositories",
+            })),
+        ));
+    }
 
     // 3. Select quantization option if specified
     let main_filename = if let Some(ref quant_name) = request.quantization_name {
