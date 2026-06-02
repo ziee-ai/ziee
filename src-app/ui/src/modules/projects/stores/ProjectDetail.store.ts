@@ -20,6 +20,21 @@ import { Stores } from '@/core/stores'
 /// backend's PaginationQuery::resolved() clamp (≤100).
 const CONVERSATIONS_PAGE_SIZE = 20
 
+/**
+ * Per-file upload progress tracked while a project knowledge upload
+ * is in flight. The map key is a synthetic local id (so the same file
+ * uploaded twice gets two separate progress rows). Mirrors the chat
+ * FileStore's pattern but scoped to the currently-loaded project.
+ */
+export interface ProjectFileUploadProgress {
+  id: string
+  filename: string
+  size: number
+  progress: number
+  status: 'pending' | 'uploading' | 'error'
+  error?: string
+}
+
 interface ProjectDetailState {
   project: Project | null
   files: ProjectFile[]
@@ -45,6 +60,12 @@ interface ProjectDetailState {
   attaching: boolean
   detaching: boolean
 
+  /// In-flight project-knowledge uploads keyed by synthetic local id.
+  /// Done entries are removed on success (the new File appears in
+  /// `files` via the `project.file_attached` event); failed entries
+  /// remain with `status: 'error'` until the user clears them.
+  uploadingFiles: Map<string, ProjectFileUploadProgress>
+
   error: string | null
 
   __init__: {
@@ -57,6 +78,12 @@ interface ProjectDetailState {
   loadConversations: (projectId: string) => Promise<void>
   loadMoreConversations: (projectId: string) => Promise<void>
   attachFile: (projectId: string, fileId: string) => Promise<void>
+  /// Upload N new files via multipart and attach to the project in
+  /// one shot (POST /api/projects/{id}/files/upload). Each file gets
+  /// its own progress row; errors stay visible until cleared.
+  uploadAndAttachFiles: (projectId: string, files: File[]) => Promise<void>
+  /// Drop a finished/errored upload row from `uploadingFiles`.
+  dismissUploadingFile: (uploadId: string) => void
   detachFile: (projectId: string, fileId: string) => Promise<void>
   updateMcpSettings: (
     projectId: string,
@@ -80,6 +107,7 @@ export const useProjectDetailStore = create<ProjectDetailState>()(
         conversationsLoadingMore: false,
         attaching: false,
         detaching: false,
+        uploadingFiles: new Map(),
         error: null,
 
         __init__: {
@@ -270,6 +298,103 @@ export const useProjectDetailStore = create<ProjectDetailState>()(
             })
             throw error
           }
+        },
+
+        uploadAndAttachFiles: async (projectId, files) => {
+          // Per-file upload — each gets its own progress row + own
+          // event emit on success. Failures stay in `uploadingFiles`
+          // with `status: 'error'` so the user can read the message
+          // before dismissing; subsequent uploads in the same batch
+          // proceed independently. After ALL uploads in this batch
+          // settle we re-fetch the files list once (the event-bus
+          // listener does the same job, but doing it directly here
+          // avoids relying on cross-listener timing — fixes the
+          // "uploaded many files but no files are shown" race when
+          // multiple emits arrive faster than loadFiles can settle).
+          let anySucceeded = false
+          await Promise.all(
+            files.map(async file => {
+              const uploadId = `up_${Date.now()}_${Math.random()
+                .toString(36)
+                .slice(2, 11)}`
+              set(state => {
+                state.uploadingFiles.set(uploadId, {
+                  id: uploadId,
+                  filename: file.name,
+                  size: file.size,
+                  progress: 0,
+                  status: 'pending',
+                })
+              })
+
+              try {
+                set(state => {
+                  const entry = state.uploadingFiles.get(uploadId)
+                  if (entry) entry.status = 'uploading'
+                })
+
+                // Path parameter `{id}` is read from FormData entries
+                // by the api-client when params is FormData — see
+                // core.ts's `isFormData` branch. So append BOTH the
+                // path-id AND the multipart file field.
+                const formData = new FormData()
+                formData.append('id', projectId)
+                formData.append('file', file)
+
+                const uploaded = await ApiClient.Project.uploadAndAttachFile(
+                  formData as unknown as { id: string } & FormData,
+                  {
+                    fileUploadProgress: {
+                      onProgress: progress => {
+                        set(state => {
+                          const entry = state.uploadingFiles.get(uploadId)
+                          if (entry) entry.progress = progress
+                        })
+                      },
+                    },
+                  },
+                )
+
+                // Success: drop the progress row + flag for the
+                // post-batch reload. emitProjectFileAttached lets
+                // OTHER subscribers (e.g. the inline preview chip)
+                // react; the local reload below handles our own
+                // files list deterministically.
+                set(state => {
+                  state.uploadingFiles.delete(uploadId)
+                })
+                anySucceeded = true
+                await emitProjectFileAttached(projectId, uploaded.id)
+              } catch (error) {
+                set(state => {
+                  const entry = state.uploadingFiles.get(uploadId)
+                  if (entry) {
+                    entry.status = 'error'
+                    entry.error =
+                      error instanceof Error
+                        ? error.message
+                        : 'Upload failed'
+                  }
+                })
+              }
+            }),
+          )
+          // One reload after the batch. The event-bus listener does
+          // the same job for OTHER project-detail subscribers, but
+          // doing it here directly is what makes our own files list
+          // reflect the upload deterministically (a stack of N
+          // listener callbacks all calling loadFiles in parallel can
+          // race against each other and against subsequent state
+          // writes).
+          if (anySucceeded) {
+            await get().loadFiles(projectId)
+          }
+        },
+
+        dismissUploadingFile: uploadId => {
+          set(state => {
+            state.uploadingFiles.delete(uploadId)
+          })
         },
 
         detachFile: async (projectId, fileId) => {

@@ -462,7 +462,7 @@ export function ProjectDetailPage() {
                 )}
               </section>
 
-              <Divider className="!my-4" />
+              <Divider className="!my-2" />
 
               <section data-test-section="instructions">
                 <Text strong className="block mb-2">
@@ -482,12 +482,9 @@ export function ProjectDetailPage() {
                 )}
               </section>
 
-              <Divider className="!my-4" />
+              <Divider className="!my-2" />
 
               <section data-test-section="knowledge">
-                <Text strong className="block mb-2">
-                  Project knowledge
-                </Text>
                 <ProjectFilesManageDrawer projectId={project.id} />
               </section>
             </Flex>

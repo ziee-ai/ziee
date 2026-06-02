@@ -30,7 +30,7 @@ export const DivScrollY = forwardRef<
       className={mergedClassName}
       {...restProps}
     >
-      <div className="flex flex-col">{children}</div>
+      <div className="flex flex-col w-full">{children}</div>
     </OverlayScrollbarsComponent>
   )
 })
