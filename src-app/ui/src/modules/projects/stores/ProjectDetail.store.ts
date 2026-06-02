@@ -15,14 +15,33 @@ import {
 } from '@/modules/projects/events'
 import { Stores } from '@/core/stores'
 
+/// Page size for the project-conversations list. Matches what the
+/// ChatHistory store uses for its primary list, and is bounded by the
+/// backend's PaginationQuery::resolved() clamp (≤100).
+const CONVERSATIONS_PAGE_SIZE = 20
+
 interface ProjectDetailState {
   project: Project | null
   files: ProjectFile[]
   conversations: ConversationResponse[]
+  /// Current page (1-based) of `conversations` — incremented by
+  /// `loadMoreConversations` and reset by `loadConversations`.
+  conversationsPage: number
+  /// True iff the last fetched page came back full
+  /// (length == CONVERSATIONS_PAGE_SIZE), so there may be more rows
+  /// upstream. Mirrors ChatHistory's heuristic — neither backend
+  /// endpoint returns a total count today, so this is the best we
+  /// can do without a schema change.
+  conversationsHasMore: boolean
 
   loading: boolean
   filesLoading: boolean
   conversationsLoading: boolean
+  /// True while a `loadMoreConversations` request is in flight.
+  /// Distinct from `conversationsLoading` so the "Load More" button
+  /// can show a spinner without re-rendering the existing list as
+  /// "loading".
+  conversationsLoadingMore: boolean
   attaching: boolean
   detaching: boolean
 
@@ -36,6 +55,7 @@ interface ProjectDetailState {
   loadProject: (projectId: string) => Promise<void>
   loadFiles: (projectId: string) => Promise<void>
   loadConversations: (projectId: string) => Promise<void>
+  loadMoreConversations: (projectId: string) => Promise<void>
   attachFile: (projectId: string, fileId: string) => Promise<void>
   detachFile: (projectId: string, fileId: string) => Promise<void>
   updateMcpSettings: (
@@ -52,9 +72,12 @@ export const useProjectDetailStore = create<ProjectDetailState>()(
         project: null,
         files: [],
         conversations: [],
+        conversationsPage: 1,
+        conversationsHasMore: false,
         loading: false,
         filesLoading: false,
         conversationsLoading: false,
+        conversationsLoadingMore: false,
         attaching: false,
         detaching: false,
         error: null,
@@ -159,15 +182,23 @@ export const useProjectDetailStore = create<ProjectDetailState>()(
           }
         },
 
+        // Load the first page. Replaces the previous list. Resets
+        // conversationsPage to 1 and recomputes conversationsHasMore
+        // from the response size.
         loadConversations: async projectId => {
           try {
-            set({ conversationsLoading: true })
+            set({ conversationsLoading: true, conversationsPage: 1 })
             const conversations = await ApiClient.Project.listConversations({
               id: projectId,
               page: 1,
-              limit: 100,
+              limit: CONVERSATIONS_PAGE_SIZE,
             })
-            set({ conversations, conversationsLoading: false })
+            set({
+              conversations,
+              conversationsLoading: false,
+              conversationsHasMore:
+                conversations.length === CONVERSATIONS_PAGE_SIZE,
+            })
           } catch (error) {
             set({
               error:
@@ -175,6 +206,50 @@ export const useProjectDetailStore = create<ProjectDetailState>()(
                   ? error.message
                   : 'Failed to load project conversations',
               conversationsLoading: false,
+            })
+          }
+        },
+
+        // Fetch the NEXT page and append. Guarded against double-call
+        // while a previous load is in flight. Sets
+        // `conversationsHasMore=false` when the response comes back
+        // smaller than the page size (no more rows upstream).
+        loadMoreConversations: async projectId => {
+          const state = get()
+          if (
+            !state.conversationsHasMore ||
+            state.conversationsLoadingMore ||
+            state.conversationsLoading
+          ) {
+            return
+          }
+          const nextPage = state.conversationsPage + 1
+          try {
+            set({ conversationsLoadingMore: true })
+            const more = await ApiClient.Project.listConversations({
+              id: projectId,
+              page: nextPage,
+              limit: CONVERSATIONS_PAGE_SIZE,
+            })
+            set(draft => {
+              // Dedupe by id in case the server returned a row we
+              // already have (race with conversation.created on the
+              // tail of the prior page).
+              const seen = new Set(draft.conversations.map(c => c.id))
+              for (const c of more) {
+                if (!seen.has(c.id)) draft.conversations.push(c)
+              }
+              draft.conversationsPage = nextPage
+              draft.conversationsHasMore = more.length === CONVERSATIONS_PAGE_SIZE
+              draft.conversationsLoadingMore = false
+            })
+          } catch (error) {
+            set({
+              error:
+                error instanceof Error
+                  ? error.message
+                  : 'Failed to load more project conversations',
+              conversationsLoadingMore: false,
             })
           }
         },

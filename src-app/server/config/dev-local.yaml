@@ -42,8 +42,7 @@ server:
   api_prefix: "/api"
   trust_forwarded_headers: true
   rate_limit:
-    per_second: 50
-    burst_size: 500
+    enabled: false
   cors:
     allow_origins:
       - "http://localhost:5173"

@@ -294,15 +294,6 @@ interface ChatState {
    */
   editingMessage: MessageWithContent | null
 
-  /**
-   * Project to attach the next-created conversation to. Set by
-   * NewChatPage from the `?project_id=<uuid>` URL query param when a
-   * user clicks "New chat" from a project page. Consumed (and cleared)
-   * by `createConversation` on the next call. NULL = "no project"
-   * (default).
-   */
-  pendingProjectId: string | null
-
   // ── Conversation state management ────────────────────────────────────────
 
   saveConversationState: (conversationId: string) => void
@@ -316,10 +307,12 @@ interface ChatState {
   createConversation: (
     title?: string,
     modelId?: string,
-    projectId?: string | null,
+    /// Defer the `conversation.created` event. `sendMessage` uses
+    /// this so extensions running on `afterCreateConversation` get
+    /// to mutate the conversation BEFORE subscribers see the event.
+    /// Default true (callers from buttons / drawers emit immediately).
+    emitCreated?: boolean,
   ) => Promise<Conversation>
-  /** Set the pendingProjectId for the next created conversation. */
-  setPendingProjectId: (projectId: string | null) => void
   loadConversation: (id: string) => Promise<void>
   loadMessages: (id: string) => Promise<void>
   sendMessage: () => Promise<void>
@@ -409,7 +402,6 @@ export const useChatStore = create<ChatState>()(
       branchChangedDuringStream: false,
       forkPoints: new Map(),
       editingMessage: null,
-      pendingProjectId: null,
 
       // Right panel initial state
       rightPanel: { panelWidth: 440, tabs: [], activeId: null, mobileDrawerOpen: false },
@@ -515,72 +507,36 @@ export const useChatStore = create<ChatState>()(
       createConversation: async (
         title?: string,
         modelId?: string,
-        projectId?: string | null,
+        emitCreated: boolean = true,
       ) => {
-        // Atomic read+clear of pendingProjectId (audit N4) so two
-        // rapid-fire createConversation calls — e.g. a double-clicked
-        // send button — can't BOTH consume the same latched id. The
-        // first call grabs it and clears the store; the second sees
-        // null. Explicit `projectId` arg always wins and doesn't
-        // touch the latch.
-        //
-        // JS is single-threaded so the get()+set() pair is atomic
-        // (no await between them). The chat store does NOT use immer
-        // middleware here, so we use plain partial-update set().
-        let effectiveProjectId: string | null | undefined
-        let consumedFromLatch: string | null = null
-        if (projectId !== undefined) {
-          effectiveProjectId = projectId
-        } else {
-          const latched = get().pendingProjectId
-          effectiveProjectId = latched
-          if (latched !== null) {
-            consumedFromLatch = latched
-            set({ pendingProjectId: null })
-          }
-        }
+        // Extensions can layer additional attribution onto the
+        // freshly-created conversation via the
+        // `afterCreateConversation` hook in sendMessage.
         set({ loading: true, error: null })
 
         try {
           const conversation = await ApiClient.Conversation.create({
             title: title,
             model_id: modelId,
-            project_id: effectiveProjectId ?? undefined,
           })
           set({ conversation, loading: false })
 
-          const { Stores } = await import('@/core/stores')
-          await Stores.EventBus.emit({
-            type: 'conversation.created',
-            data: { conversation },
-          })
+          if (emitCreated) {
+            const { Stores } = await import('@/core/stores')
+            await Stores.EventBus.emit({
+              type: 'conversation.created',
+              data: { conversation },
+            })
+          }
 
           return conversation
         } catch (error: any) {
-          // Restore the latch on failure (audit Q8). The atomic-swap
-          // for N4 (double-click protection) only matters on the
-          // success path; on failure the user expects a retry to
-          // preserve their project context. We only restore if the
-          // user hasn't navigated to a different project mid-flight
-          // (i.e., pendingProjectId is still null — nobody else set it).
-          if (consumedFromLatch !== null && get().pendingProjectId === null) {
-            set({
-              pendingProjectId: consumedFromLatch,
-              error: error.message || 'Failed to create conversation',
-              loading: false,
-            })
-          } else {
-            set({
-              error: error.message || 'Failed to create conversation',
-              loading: false,
-            })
-          }
+          set({
+            error: error.message || 'Failed to create conversation',
+            loading: false,
+          })
           throw error
         }
-      },
-
-      setPendingProjectId: (projectId: string | null) => {
-        set({ pendingProjectId: projectId })
       },
 
       loadConversation: async (id: string) => {
@@ -1002,7 +958,27 @@ export const useChatStore = create<ChatState>()(
         }
 
         if (!conversation) {
-          conversation = await get().createConversation(undefined, allRequestFields.model_id as string | undefined)
+          // Deferred emission: extensions get to mutate the freshly
+          // created conversation BEFORE subscribers see the event.
+          // The `afterCreateConversation` hook can return a replacement
+          // shape; chat adopts it and emits the post-hook conversation.
+          conversation = await get().createConversation(
+            undefined,
+            allRequestFields.model_id as string | undefined,
+            /* emitCreated */ false,
+          )
+          const afterHook = await chatExtensionRegistry.afterCreateConversation(
+            conversation,
+          )
+          if (afterHook !== conversation) {
+            conversation = afterHook
+            set({ conversation })
+          }
+          const { Stores } = await import('@/core/stores')
+          await Stores.EventBus.emit({
+            type: 'conversation.created',
+            data: { conversation },
+          })
           await chatExtensionRegistry.initialize()
           await chatExtensionRegistry.onConversationLoad(conversation)
         }
@@ -1585,7 +1561,6 @@ export const useChatStore = create<ChatState>()(
           branchChangedDuringStream: false,
           forkPoints: new Map(),
           editingMessage: null,
-          pendingProjectId: null,
           rightPanel: { ...state.rightPanel, tabs: [], activeId: null, mobileDrawerOpen: false },
         }))
       },

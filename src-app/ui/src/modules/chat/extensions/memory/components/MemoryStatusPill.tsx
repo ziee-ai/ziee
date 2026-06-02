@@ -18,7 +18,7 @@ export function MemoryStatusPill() {
   // CRITICAL: read every Stores.X.field at the TOP, before any early
   // return. Each proxy access fires a useEffect; reading conditionally
   // after a guard triggers "Rendered more hooks than during the
-  // previous render" (memory: project_stores_proxy_hooks).
+  // previous render."
   const conversation = Stores.Chat.conversation
   const adminSettings = Stores.MemoryAdmin.settings
   const [mode, setMode] = useState<Mode>('inherit')

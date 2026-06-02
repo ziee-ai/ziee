@@ -4,6 +4,7 @@ import { EditOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons'
 import { IoIosArrowBack } from 'react-icons/io'
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
+import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
 
 /**
  * TitleEditor Component
@@ -40,7 +41,13 @@ export function TitleEditor() {
   }
 
   const handleBack = () => {
-    navigate('/chats')
+    // Per-conversation back-target resolution: chat extensions can
+    // override chat's default `/chats` via the `conversationBackHref`
+    // hook. First non-undefined wins.
+    const backHref = conversation
+      ? chatExtensionRegistry.conversationBackHref(conversation)
+      : undefined
+    navigate(backHref ?? '/chats')
   }
 
   if (isEditing) {

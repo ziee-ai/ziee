@@ -7,11 +7,14 @@ import type {
   Project,
   CreateProjectRequest,
   UpdateProjectRequest,
+  ConversationResponse,
 } from '@/api-client/types'
 import {
   emitProjectCreated,
   emitProjectUpdated,
   emitProjectDeleted,
+  emitProjectConversationAttached,
+  emitProjectConversationDetached,
 } from '@/modules/projects/events'
 import { Stores } from '@/core/stores'
 
@@ -40,6 +43,25 @@ interface ProjectsState {
   updateProject: (id: string, data: UpdateProjectRequest) => Promise<Project>
   deleteProject: (id: string) => Promise<void>
   duplicateProject: (id: string) => Promise<Project | undefined>
+  /**
+   * Attach (or re-attach across projects) a conversation to a
+   * project. Idempotent — re-calling refreshes the project MCP
+   * snapshot stored on the conversation. Emits
+   * `project.conversation_attached` on success.
+   */
+  attachConversation: (
+    projectId: string,
+    conversationId: string,
+  ) => Promise<ConversationResponse>
+  /**
+   * Detach a conversation from a project ("unfile"). Clears the
+   * per-conversation MCP snapshot row. Emits
+   * `project.conversation_detached` on success.
+   */
+  detachConversation: (
+    projectId: string,
+    conversationId: string,
+  ) => Promise<void>
   clearProjectsError: () => void
 }
 
@@ -214,6 +236,31 @@ export const useProjectsStore = create<ProjectsState>()(
           }
         },
 
+        attachConversation: async (projectId, conversationId) => {
+          // API call + event only. The chat extension at
+          // `projects/chat-extension/` subscribes to the emitted
+          // event and patches chat-side state — keeps this module
+          // free of chat-store calls.
+          const response = await ApiClient.Project.attachConversation({
+            id: projectId,
+            conversation_id: conversationId,
+          })
+          await emitProjectConversationAttached(
+            projectId,
+            conversationId,
+            null,
+          )
+          return response
+        },
+
+        detachConversation: async (projectId, conversationId) => {
+          await ApiClient.Project.detachConversation({
+            id: projectId,
+            conversation_id: conversationId,
+          })
+          await emitProjectConversationDetached(projectId, conversationId)
+        },
+
         clearProjectsError: () => {
           set({ error: null })
         },
@@ -225,3 +272,4 @@ export const useProjectsStore = create<ProjectsState>()(
     ),
   ),
 )
+

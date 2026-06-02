@@ -154,26 +154,74 @@ pub async fn create_unfiled_conversation(server: &TestServer, user: &TestUser) -
 }
 
 /// Create a conversation inside a project; returns its id.
+///
+/// Two HTTP calls: chat creates the conversation unfiled, then the
+/// project assign endpoint files it. This mirrors the production
+/// frontend flow (chat extension's `afterCreateConversation` hook
+/// calls assign after chat auto-creates) so test coverage exercises
+/// the real chat↔project decoupling shape.
 pub async fn create_project_conversation(
     server: &TestServer,
     user: &TestUser,
     project_id: &str,
 ) -> String {
+    let conv_id = create_unfiled_conversation(server, user).await;
+    attach_conversation_to_project(server, user, project_id, &conv_id).await;
+    conv_id
+}
+
+/// Assign an existing conversation to a project via the project
+/// assign endpoint. Panics on non-200 so callers can rely on the
+/// happy path having succeeded.
+pub async fn attach_conversation_to_project(
+    server: &TestServer,
+    user: &TestUser,
+    project_id: &str,
+    conversation_id: &str,
+) {
     let resp = reqwest::Client::new()
+        .post(server.api_url(&format!(
+            "/projects/{}/conversations/{}",
+            project_id, conversation_id
+        )))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("send assign");
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "assign conv to project: {}",
+        resp.text().await.unwrap_or_default()
+    );
+}
+
+/// Create a conversation with explicit model_id, then assign to a
+/// project. Used by real-LLM tests that need to pin the conversation
+/// to a specific provider model.
+pub async fn create_project_conversation_with_model(
+    server: &TestServer,
+    user: &TestUser,
+    project_id: &str,
+    model_id: &str,
+) -> Value {
+    let create_resp = reqwest::Client::new()
         .post(server.api_url("/conversations"))
         .header("Authorization", format!("Bearer {}", user.token))
-        .json(&json!({ "project_id": project_id }))
+        .json(&json!({ "model_id": model_id }))
         .send()
         .await
         .expect("send create conv");
     assert_eq!(
-        resp.status(),
+        create_resp.status(),
         StatusCode::CREATED,
         "create conv: {}",
-        resp.text().await.unwrap_or_default()
+        create_resp.text().await.unwrap_or_default()
     );
-    let body: Value = resp.json().await.unwrap();
-    body["id"].as_str().unwrap().to_string()
+    let conv: Value = create_resp.json().await.unwrap();
+    let conv_id = conv["id"].as_str().unwrap();
+    attach_conversation_to_project(server, user, project_id, conv_id).await;
+    conv
 }
 
 /// Upload a small text file to the user's library; returns the file row.

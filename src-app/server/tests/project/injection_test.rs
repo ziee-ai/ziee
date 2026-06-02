@@ -143,15 +143,10 @@ async fn setup_project_conversation(
     let project = helpers::create_project_with(server, &user, project_payload).await;
     let project_id = project["id"].as_str().unwrap();
 
-    let conv_resp = reqwest::Client::new()
-        .post(server.api_url("/conversations"))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&json!({ "project_id": project_id, "model_id": model_id.to_string() }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(conv_resp.status(), StatusCode::CREATED);
-    let conv: Value = conv_resp.json().await.unwrap();
+    let conv = helpers::create_project_conversation_with_model(
+        server, &user, project_id, &model_id.to_string(),
+    )
+    .await;
     let conv_id = Uuid::parse_str(conv["id"].as_str().unwrap()).unwrap();
     let branch_id = Uuid::parse_str(conv["active_branch_id"].as_str().unwrap()).unwrap();
 
@@ -317,14 +312,10 @@ async fn assistant_and_project_both_shape_response() {
     .await;
     let pid = project["id"].as_str().unwrap();
 
-    let conv_resp = reqwest::Client::new()
-        .post(server.api_url("/conversations"))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&json!({ "project_id": pid, "model_id": model_id.to_string() }))
-        .send()
-        .await
-        .unwrap();
-    let conv: Value = conv_resp.json().await.unwrap();
+    let conv = helpers::create_project_conversation_with_model(
+        &server, &user, pid, &model_id.to_string(),
+    )
+    .await;
     let conv_id = Uuid::parse_str(conv["id"].as_str().unwrap()).unwrap();
     let branch_id = Uuid::parse_str(conv["active_branch_id"].as_str().unwrap()).unwrap();
 
@@ -440,14 +431,10 @@ async fn per_message_assistant_override_keeps_project_block() {
     .await;
     let pid = project["id"].as_str().unwrap();
 
-    let conv_resp = reqwest::Client::new()
-        .post(server.api_url("/conversations"))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&json!({ "project_id": pid, "model_id": model_id.to_string() }))
-        .send()
-        .await
-        .unwrap();
-    let conv: Value = conv_resp.json().await.unwrap();
+    let conv = helpers::create_project_conversation_with_model(
+        &server, &user, pid, &model_id.to_string(),
+    )
+    .await;
     let conv_id = Uuid::parse_str(conv["id"].as_str().unwrap()).unwrap();
     let branch_id = Uuid::parse_str(conv["active_branch_id"].as_str().unwrap()).unwrap();
 

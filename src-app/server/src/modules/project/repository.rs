@@ -552,12 +552,12 @@ impl ProjectRepository {
         Ok(ProjectFileListResponse { files, total })
     }
 
-    // ============ Conversations ============
+    // ============ Conversations (project_conversations join table) ============
 
     /// Resolve a project from a conversation (used by the chat/project
     /// extension to inject context). Returns None when the conversation
-    /// has no project OR belongs to a different user (safety: never
-    /// inject a foreign user's instructions/files).
+    /// has no project membership OR the project belongs to a different
+    /// user (safety: never inject a foreign user's instructions/files).
     pub async fn get_for_conversation(
         &self,
         conversation_id: Uuid,
@@ -576,9 +576,9 @@ impl ProjectRepository {
                 p.mcp_loop_settings,
                 p.created_at as "created_at: _",
                 p.updated_at as "updated_at: _"
-            FROM conversations c
-            JOIN projects p ON p.id = c.project_id
-            WHERE c.id = $1 AND c.user_id = $2 AND p.user_id = $2
+            FROM project_conversations pc
+            JOIN projects p ON p.id = pc.project_id
+            WHERE pc.conversation_id = $1 AND p.user_id = $2
             "#,
             conversation_id,
             user_id
@@ -588,6 +588,161 @@ impl ProjectRepository {
         .map_err(AppError::database_error)?;
 
         Ok(project)
+    }
+
+    /// Return the project ID that a conversation is currently attached
+    /// to (None if unfiled). Lightweight query for handlers/extensions
+    /// that only need the ID, not the full project row.
+    pub async fn project_id_for_conversation(
+        &self,
+        conversation_id: Uuid,
+    ) -> Result<Option<Uuid>, AppError> {
+        let row = sqlx::query!(
+            "SELECT project_id FROM project_conversations WHERE conversation_id = $1",
+            conversation_id,
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(row.map(|r| r.project_id))
+    }
+
+    /// Insert / update a conversation's project membership in the
+    /// caller's transaction. PK on `conversation_id` means a
+    /// conversation can be in at most one project; `ON CONFLICT`
+    /// flips the project_id on a cross-project move. Returns the
+    /// previous project_id (None if the conversation was unfiled),
+    /// useful for event payloads.
+    pub async fn attach_conversation_in_tx<'a>(
+        &self,
+        tx: &mut sqlx::Transaction<'a, sqlx::Postgres>,
+        project_id: Uuid,
+        conversation_id: Uuid,
+    ) -> Result<Option<Uuid>, AppError> {
+        let prev = sqlx::query!(
+            "SELECT project_id FROM project_conversations WHERE conversation_id = $1",
+            conversation_id,
+        )
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(AppError::database_error)?
+        .map(|r| r.project_id);
+
+        sqlx::query!(
+            r#"
+            INSERT INTO project_conversations (conversation_id, project_id)
+            VALUES ($1, $2)
+            ON CONFLICT (conversation_id) DO UPDATE
+            SET project_id = EXCLUDED.project_id,
+                attached_at = NOW()
+            "#,
+            conversation_id,
+            project_id,
+        )
+        .execute(&mut **tx)
+        .await
+        .map_err(AppError::database_error)?;
+
+        Ok(prev)
+    }
+
+    /// Remove a conversation's project membership row in the caller's
+    /// transaction. Returns true if a row was deleted (the
+    /// conversation was actually in that project), false otherwise.
+    pub async fn detach_conversation_in_tx<'a>(
+        &self,
+        tx: &mut sqlx::Transaction<'a, sqlx::Postgres>,
+        project_id: Uuid,
+        conversation_id: Uuid,
+    ) -> Result<bool, AppError> {
+        let result = sqlx::query!(
+            "DELETE FROM project_conversations WHERE conversation_id = $1 AND project_id = $2",
+            conversation_id,
+            project_id,
+        )
+        .execute(&mut **tx)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// List conversations attached to a project, with paging. The
+    /// caller (project handler) must have already verified
+    /// `user_id` owns `project_id`; the `c.user_id = $2` clause is
+    /// defense-in-depth.
+    pub async fn list_conversations_in_project(
+        &self,
+        project_id: Uuid,
+        user_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<crate::modules::chat::core::types::ConversationResponse>, AppError> {
+        use crate::modules::chat::core::models::Conversation;
+        use crate::modules::chat::core::types::ConversationResponse;
+        let rows = sqlx::query!(
+            r#"
+            SELECT
+                c.id, c.user_id, c.model_id, c.title, c.active_branch_id,
+                c.memory_mode, c.created_at, c.updated_at,
+                COUNT(bm.message_id) as message_count
+            FROM project_conversations pc
+            JOIN conversations c ON c.id = pc.conversation_id
+            LEFT JOIN branches b ON b.conversation_id = c.id
+            LEFT JOIN branch_messages bm ON bm.branch_id = b.id
+            WHERE pc.project_id = $1 AND c.user_id = $2
+            GROUP BY c.id
+            ORDER BY c.updated_at DESC
+            LIMIT $3 OFFSET $4
+            "#,
+            project_id,
+            user_id,
+            limit,
+            offset,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+
+        let to_chrono = |odt: time::OffsetDateTime| -> chrono::DateTime<chrono::Utc> {
+            chrono::DateTime::from_timestamp(odt.unix_timestamp(), odt.nanosecond())
+                .expect("valid timestamp")
+        };
+
+        Ok(rows
+            .into_iter()
+            .map(|row| ConversationResponse {
+                conversation: Conversation {
+                    id: row.id,
+                    user_id: row.user_id,
+                    model_id: row.model_id,
+                    title: row.title,
+                    active_branch_id: row.active_branch_id,
+                    memory_mode: row.memory_mode,
+                    created_at: to_chrono(row.created_at),
+                    updated_at: to_chrono(row.updated_at),
+                },
+                message_count: row.message_count.unwrap_or(0),
+            })
+            .collect())
+    }
+
+    /// Verify a conversation is owned by `user_id`. Used by attach/
+    /// detach handlers to prevent cross-user mutation before touching
+    /// the join table.
+    pub async fn user_owns_conversation(
+        &self,
+        conversation_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<bool, AppError> {
+        let row = sqlx::query_scalar!(
+            "SELECT EXISTS(SELECT 1 FROM conversations WHERE id = $1 AND user_id = $2)",
+            conversation_id,
+            user_id,
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(row.unwrap_or(false))
     }
 
     // ============ Duplicate ============
@@ -737,14 +892,15 @@ impl ProjectRepository {
 
     // ============ MCP snapshot helper ============
 
-    /// Snapshot this project's MCP settings into the
-    /// conversation_mcp_settings table for a newly-created conversation.
-    /// Idempotent — uses ON CONFLICT DO NOTHING so re-snapshotting an
-    /// already-configured conversation is a no-op (the per-conversation
-    /// override wins).
-    pub async fn snapshot_mcp_into_conversation(
+    /// Snapshot this project's MCP settings into a conversation,
+    /// OVERWRITING any existing row. Used by the attach endpoint:
+    /// the semantic is "this conversation now belongs to this project,
+    /// so the conversation MCP settings come from this project's
+    /// defaults" — re-attaching a conversation (including A → B
+    /// moves) refreshes the snapshot from the destination project.
+    pub async fn snapshot_mcp_into_conversation_in_tx<'a>(
         &self,
-        executor: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
+        tx: &mut sqlx::Transaction<'a, sqlx::Postgres>,
         project_id: Uuid,
         conversation_id: Uuid,
         user_id: Uuid,
@@ -760,13 +916,42 @@ impl ProjectRepository {
                    p.mcp_loop_settings
             FROM projects p
             WHERE p.id = $3
-            ON CONFLICT (conversation_id) DO NOTHING
+            ON CONFLICT (conversation_id) DO UPDATE
+            SET user_id = EXCLUDED.user_id,
+                approval_mode = EXCLUDED.approval_mode,
+                auto_approved_tools = EXCLUDED.auto_approved_tools,
+                disabled_servers = EXCLUDED.disabled_servers,
+                loop_settings = EXCLUDED.loop_settings,
+                updated_at = NOW()
             "#,
             conversation_id,
             user_id,
             project_id,
         )
-        .execute(executor)
+        .execute(&mut **tx)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(())
+    }
+
+    /// Clear the conversation's MCP snapshot row (used by the detach
+    /// endpoint — once detached from a project, the snapshot is
+    /// stale, so subsequent chat use falls back to user/global MCP
+    /// defaults). No user_id filter — the caller (project detach
+    /// handler) verifies conversation ownership immediately before
+    /// calling, so a stale conversation_id would no-op via FK cascade
+    /// even without the filter. Same trust-the-caller pattern as
+    /// `detach_file` in this module.
+    pub async fn clear_mcp_snapshot_in_tx<'a>(
+        &self,
+        tx: &mut sqlx::Transaction<'a, sqlx::Postgres>,
+        conversation_id: Uuid,
+    ) -> Result<(), AppError> {
+        sqlx::query!(
+            "DELETE FROM conversation_mcp_settings WHERE conversation_id = $1",
+            conversation_id,
+        )
+        .execute(&mut **tx)
         .await
         .map_err(AppError::database_error)?;
         Ok(())
