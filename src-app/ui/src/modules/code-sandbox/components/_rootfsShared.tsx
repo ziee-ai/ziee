@@ -97,6 +97,10 @@ export function phasePercent(phase?: string | null): number {
       return 95
     case 'complete':
       return 100
+    // A failed flavor fills the bar so the antd `exception` status renders a
+    // solid red bar (reads as "failed", not a ~5% "barely started" sliver).
+    case 'failed':
+      return 100
     default:
       return 5
   }
@@ -148,8 +152,10 @@ export function deriveHostArch(installed: RootfsArtifact[]): string {
   for (const a of installed) {
     counts.set(a.arch, (counts.get(a.arch) ?? 0) + 1)
   }
+  // Seed with the default's own count so a tie deterministically keeps the
+  // default (only a strictly larger count displaces it) regardless of Map order.
   let best = DEFAULT_ARCH
-  let bestN = 0
+  let bestN = counts.get(DEFAULT_ARCH) ?? 0
   for (const [arch, n] of counts) {
     if (n > bestN) {
       best = arch
@@ -157,6 +163,36 @@ export function deriveHostArch(installed: RootfsArtifact[]): string {
     }
   }
   return best
+}
+
+/** Derive the host's package type (squashfs on Linux/macOS, tar.zst on Windows
+ *  WSL) from installed artifacts, defaulting to squashfs. A release ships BOTH
+ *  packages per flavor, so this is used to collapse the catalog to one row per
+ *  flavor. Same "no host endpoint yet" caveat as deriveHostArch. */
+export function deriveHostPackage(installed: RootfsArtifact[]): string {
+  const counts = new Map<string, number>()
+  for (const a of installed) {
+    counts.set(a.package, (counts.get(a.package) ?? 0) + 1)
+  }
+  // Seed with the default's count so ties deterministically keep the default.
+  let best = DEFAULT_PACKAGE
+  let bestN = counts.get(DEFAULT_PACKAGE) ?? 0
+  for (const [pkg, n] of counts) {
+    if (n > bestN) {
+      best = pkg
+      bestN = n
+    }
+  }
+  return best
+}
+
+/** Lower is better: the host package wins, then squashfs, then tar.zst. Used to
+ *  pick ONE package per (version, flavor) when a release publishes several. */
+function packagePriority(pkg: string, hostPkg: string): number {
+  if (pkg === hostPkg) return 0
+  if (pkg === 'squashfs') return 1
+  if (pkg === 'tar.zst') return 2
+  return 3
 }
 
 function rowKeyOf(version: string, arch: string, flavor: string, pkg: string) {
@@ -167,6 +203,7 @@ interface BuildArgs {
   installed: RootfsArtifact[]
   available: RootfsRelease[]
   hostArch: string
+  hostPkg: string
   pinnedVersion: string | null
   installTasks: Record<string, InstallTaskState>
   actions: Record<string, ActionFlags>
@@ -182,6 +219,7 @@ export function buildVersionGroups({
   installed,
   available,
   hostArch,
+  hostPkg,
   pinnedVersion,
   installTasks,
   actions,
@@ -194,7 +232,14 @@ export function buildVersionGroups({
 
   interface Acc {
     version: string
+    // Keyed by `arch::flavor` — package-AGNOSTIC, so an installed artifact and
+    // a catalog asset for the same flavor (even in DIFFERENT packages) collapse
+    // to ONE row. The concrete package is resolved per-entry in the finalize
+    // pass (artifact's package wins, else the host-preferred catalog package).
     byKey: Map<string, FlavorEntry>
+    // Catalog packages seen per `arch::flavor`, used to pick the host's package
+    // for a not-yet-downloaded flavor.
+    catalogPkgs: Map<string, string[]>
     release?: RootfsRelease
   }
   const groups = new Map<string, Acc>()
@@ -202,48 +247,47 @@ export function buildVersionGroups({
   const ensure = (version: string): Acc => {
     let g = groups.get(version)
     if (!g) {
-      g = { version, byKey: new Map() }
+      g = { version, byKey: new Map(), catalogPkgs: new Map() }
       groups.set(version, g)
     }
     return g
   }
 
-  const ensureFlavor = (
-    g: Acc,
-    arch: string,
-    flavor: string,
-    pkg: string,
-  ): FlavorEntry => {
-    const rowKey = rowKeyOf(g.version, arch, flavor, pkg)
-    let f = g.byKey.get(rowKey)
+  const ensureFlavor = (g: Acc, arch: string, flavor: string): FlavorEntry => {
+    const key = `${arch}::${flavor}`
+    let f = g.byKey.get(key)
     if (!f) {
       f = {
         flavor,
         arch,
-        pkg,
-        rowKey,
+        pkg: hostPkg, // placeholder; resolved in the finalize pass below
+        rowKey: '',
         available: false,
         isInstalling: false,
         live: 0,
         isDraining: false,
       }
-      g.byKey.set(rowKey, f)
+      g.byKey.set(key, f)
     }
     return f
   }
 
-  // 1. Downloaded artifacts (any arch). Non-host-arch artifacts still surface
-  //    as flavor sub-rows, but note the version-level Delete only appears on a
-  //    fully-downloaded host-arch version in the Downloaded card — a stray
+  // 1. Downloaded artifacts (any arch). The artifact's own package is
+  //    authoritative for that flavor's row. Non-host-arch artifacts still
+  //    surface as flavor sub-rows, but the version-level Delete only appears on
+  //    a fully-downloaded host-arch version in the Downloaded card — a stray
   //    non-host-arch artifact for a version still in the catalog has no UI
   //    delete affordance today.
   for (const a of installed) {
-    const g = ensure(a.version)
-    const f = ensureFlavor(g, a.arch, a.flavor, a.package)
+    const f = ensureFlavor(ensure(a.version), a.arch, a.flavor)
     f.artifact = a
   }
 
-  // 2. GitHub catalog → the downloadable host-arch flavors per version.
+  // 2. GitHub catalog → the downloadable host-arch flavors per version. A
+  //    release publishes BOTH a .squashfs (Linux/macOS) and a .tar.zst
+  //    (Windows) asset per flavor; record every package but keep ONE row per
+  //    flavor (package chosen in the finalize pass) so a flavor never appears
+  //    twice.
   for (const r of available) {
     if (r.draft || r.prerelease) continue
     const g = ensure(r.version)
@@ -254,26 +298,42 @@ export function buildVersionGroups({
       .filter((p): p is { arch: string; flavor: string; pkg: string } => !!p)
       .filter(p => p.arch === hostArch)
 
-    const flavorTuples =
+    // No parseable host-arch assets → fall back to the conventional flavors.
+    const tuples =
       parsed.length > 0
         ? parsed
-        : DEFAULT_FLAVORS.map(flavor => ({
-            arch: hostArch,
-            flavor,
-            pkg: DEFAULT_PACKAGE,
-          }))
+        : DEFAULT_FLAVORS.map(flavor => ({ arch: hostArch, flavor, pkg: hostPkg }))
 
-    for (const { arch, flavor, pkg } of flavorTuples) {
-      const f = ensureFlavor(g, arch, flavor, pkg)
+    for (const { arch, flavor, pkg } of tuples) {
+      const f = ensureFlavor(g, arch, flavor)
       f.available = true
+      const key = `${arch}::${flavor}`
+      const pkgs = g.catalogPkgs.get(key) ?? []
+      if (!pkgs.includes(pkg)) pkgs.push(pkg)
+      g.catalogPkgs.set(key, pkgs)
     }
   }
 
-  // 3. Attach live task/drain state + finalise group-level flags.
+  // 3. Resolve each flavor's package + rowKey, attach live task/drain state,
+  //    and finalise group-level flags.
   const out: VersionGroup[] = []
   for (const g of groups.values()) {
     const flavors = Array.from(g.byKey.values())
     for (const f of flavors) {
+      // Package precedence: the downloaded artifact's package wins; else the
+      // host's package among the catalog's offerings (else squashfs, else
+      // whatever's published, else the host default).
+      if (f.artifact) {
+        f.pkg = f.artifact.package
+      } else {
+        const cands = g.catalogPkgs.get(`${f.arch}::${f.flavor}`) ?? []
+        f.pkg = cands.length
+          ? cands.reduce((best, p) =>
+              packagePriority(p, hostPkg) < packagePriority(best, hostPkg) ? p : best,
+            )
+          : hostPkg
+      }
+      f.rowKey = rowKeyOf(g.version, f.arch, f.flavor, f.pkg)
       f.task = installTasks[f.rowKey]
       f.drainEntry = drainByKey.get(`${g.version}::${f.arch}::${f.flavor}`)
       f.isInstalling =

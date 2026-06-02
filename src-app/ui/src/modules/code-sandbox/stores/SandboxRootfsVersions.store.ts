@@ -38,6 +38,11 @@ interface SandboxRootfsVersionsStore {
   conversationCount: number
   /** Count of per-MCP-server workspace dirs. */
   mcpServerWorkspaceCount: number
+  /** Server-authoritative host CPU arch + rootfs package format. Null until the
+   *  first status load (then the UI prefers these over guessing from installed
+   *  artifacts, so a fresh host offers the artifact its backend can mount). */
+  hostArch: string | null
+  hostPackage: string | null
   /** Outcome of the last set-pin call. */
   lastSwap: SwapOutcome | null
   loading: boolean
@@ -61,7 +66,11 @@ interface SandboxRootfsVersionsStore {
   }
   __destroy__?: () => void
 
-  loadStatus: () => Promise<void>
+  /** `pruneFailed` clears terminal-failed tasks (stuck red bars). Only set it
+   *  on an explicit Refresh / mount — NOT on the auto-reload fired by the SSE
+   *  `complete` handler, or a sibling flavor's success would erase a still-
+   *  failed flavor's error bar. */
+  loadStatus: (opts?: { pruneFailed?: boolean }) => Promise<void>
   installVersion: (
     version: string,
     arch: string,
@@ -133,6 +142,8 @@ export const useSandboxRootfsVersionsStore = create<SandboxRootfsVersionsStore>(
       draining: [],
       conversationCount: 0,
       mcpServerWorkspaceCount: 0,
+      hostArch: null,
+      hostPackage: null,
       lastSwap: null,
       loading: false,
       error: null,
@@ -154,7 +165,7 @@ export const useSandboxRootfsVersionsStore = create<SandboxRootfsVersionsStore>(
           // reactively caught up. The backend already enforces the
           // permission, so always loading is correct; the 403s for a
           // resource-limits-only admin are harmless + backend-rejected.
-          await get().loadStatus()
+          await get().loadStatus({ pruneFailed: true })
           void get().subscribeToInstallProgress()
         },
       },
@@ -163,7 +174,7 @@ export const useSandboxRootfsVersionsStore = create<SandboxRootfsVersionsStore>(
         cleanupSse()
       },
 
-      loadStatus: async () => {
+      loadStatus: async (opts?: { pruneFailed?: boolean }) => {
         set(s => {
           s.loading = true
           s.error = null
@@ -179,12 +190,26 @@ export const useSandboxRootfsVersionsStore = create<SandboxRootfsVersionsStore>(
             s.draining = res.draining
             s.conversationCount = res.conversation_count
             s.mcpServerWorkspaceCount = res.mcp_server_workspace_count
+            s.hostArch = res.host_arch ?? null
+            s.hostPackage = res.host_package ?? null
             // Prune any install task whose artifact has now landed — keeps
             // installTasks bounded while letting the SSE `complete` handler hold
             // a completed task (phase='complete' → 100%) until this reload
             // arrives, so the per-version aggregate bar stays monotonic.
             for (const a of res.installed) {
               delete s.installTasks[rowKey(a.version, a.arch, a.flavor, a.package)]
+            }
+            // Clear terminal-failed tasks ONLY on an explicit Refresh/mount
+            // (pruneFailed) — NOT on the auto-reload the SSE `complete` handler
+            // fires, or a sibling flavor's success would silently erase a
+            // still-failed flavor's red 'exception' bar. A failed task has no
+            // artifact, so the landed-artifact prune above never reaches it.
+            if (opts?.pruneFailed) {
+              for (const key of Object.keys(s.installTasks)) {
+                if (s.installTasks[key].status === 'failed') {
+                  delete s.installTasks[key]
+                }
+              }
             }
             s.loading = false
           })
@@ -240,6 +265,8 @@ export const useSandboxRootfsVersionsStore = create<SandboxRootfsVersionsStore>(
             s.draining = res.status.draining
             s.conversationCount = res.status.conversation_count
             s.mcpServerWorkspaceCount = res.status.mcp_server_workspace_count
+            s.hostArch = res.status.host_arch ?? null
+            s.hostPackage = res.status.host_package ?? null
             s.lastSwap = res.swap
           })
         } catch (e: any) {
@@ -269,6 +296,8 @@ export const useSandboxRootfsVersionsStore = create<SandboxRootfsVersionsStore>(
             s.draining = res.draining
             s.conversationCount = res.conversation_count
             s.mcpServerWorkspaceCount = res.mcp_server_workspace_count
+            s.hostArch = res.host_arch ?? null
+            s.hostPackage = res.host_package ?? null
           })
         } catch (e: any) {
           set(s => {
