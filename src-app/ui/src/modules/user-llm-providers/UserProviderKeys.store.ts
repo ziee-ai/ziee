@@ -1,8 +1,18 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { ApiClient } from '@/api-client'
-import type { StoreProxy } from '@/core/stores'
 
+/**
+ * Per-provider API-key cache for user-supplied LLM provider keys.
+ * Lives at Stores.UserProviderKeys (registered in
+ * modules/user-llm-providers/module.tsx). Type augmentation lives in
+ * the module's types.ts (the codebase convention used by the
+ * other stores in this module).
+ *
+ * Used by the chat-extension's ProviderApiKeyModal to save a user's
+ * API key for a provider that the chat model picker surfaces as
+ * unconfigured.
+ */
 interface UserProviderKeysState {
   keys: Record<string, { masked_key: string }>
   saving: boolean
@@ -11,12 +21,6 @@ interface UserProviderKeysState {
   // Actions
   loadKeys: () => Promise<void>
   saveKey: (providerId: string, apiKey: string) => Promise<void>
-}
-
-declare module '../../../../core/stores' {
-  interface RegisteredStores {
-    UserProviderKeys: StoreProxy<UserProviderKeysState>
-  }
 }
 
 export const useUserProviderKeysStore = create<UserProviderKeysState>()(

@@ -4,7 +4,6 @@ import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useChatStore } from '@/modules/chat/core/stores/Chat.store'
 import { useChatHistoryStore } from '@/modules/chat/stores/ChatHistory.store'
-import { useUserProviderKeysStore } from '@/modules/chat/extensions/model/UserProviderKeys.store'
 import { RecentConversationsWidget } from '@/modules/chat/widgets/RecentConversationsWidget'
 import '@/modules/chat/types'
 import '@/modules/chat/core/events' // Import chat events for type merging
@@ -33,10 +32,6 @@ export default createModule({
     {
       name: 'ChatHistory',
       store: useChatHistoryStore,
-    },
-    {
-      name: 'UserProviderKeys',
-      store: useUserProviderKeysStore,
     },
   ],
   routes: [

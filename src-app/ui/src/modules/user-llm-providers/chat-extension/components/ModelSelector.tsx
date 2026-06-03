@@ -16,7 +16,7 @@ import { useMainContentMinSize } from '@/modules/layouts/app-layout/hooks/useWin
  * - Prompts user to enter an API key when selecting a model with no key
  */
 export function ModelSelector() {
-  const { selectedModelId, providers } = Stores.Chat.ModelStore
+  const { selectedModelId, providers } = Stores.ModelPicker
   const { sending } = Stores.Chat
   const mainContentMinSize = useMainContentMinSize()
   const [pendingProviderForKey, setPendingProviderForKey] = useState<{
@@ -75,12 +75,12 @@ export function ModelSelector() {
         }
       }
     }
-    Stores.Chat.ModelStore.setModelId(value)
+    Stores.ModelPicker.setModelId(value)
   }
 
   const handleKeyProvided = (modelId: string) => {
     setPendingProviderForKey(null)
-    Stores.Chat.ModelStore.setModelId(modelId)
+    Stores.ModelPicker.setModelId(modelId)
   }
 
   return (
