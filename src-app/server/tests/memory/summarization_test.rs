@@ -3,7 +3,7 @@
 //
 // The pure-logic of `decide_summarize_action`, `build_transcript`, and
 // `apply_summary_block` lives in `#[cfg(test)] mod tests` inside
-// `src/modules/chat/extensions/memory/summarizer.rs` (16 tests, all
+// `src/modules/memory/engine/summarizer.rs` (16 tests, all
 // pure, ~0ms). These integration tests cover the REST surface for
 // the admin-tunable knobs that drive the summarizer:
 //

@@ -260,6 +260,7 @@ const mcpExtension: ChatExtension = createExtension({
 
     const { useChatStore } = await import('@/modules/chat/core/stores/Chat.store')
     const { Stores } = await import('@/core/stores')
+    const { ApiClient } = await import('@/api-client')
 
     useChatStore.subscribe(
       state => state.editingMessage,
@@ -268,9 +269,27 @@ const mcpExtension: ChatExtension = createExtension({
         if (!mcpStore) return
 
         if (editingMessage) {
-          const serverIds = editingMessage.mcp_server_ids
-          if (serverIds && serverIds.length > 0) {
-            mcpStore.setEnabledServers(serverIds)
+          // Per-message server snapshot moved off the Message row into
+          // mcp's own `message_mcp_servers` join table (backend
+          // migration 74). Fetch via the mcp-owned endpoint instead of
+          // reading inline from `editingMessage.mcp_server_ids` (which
+          // no longer exists on the Message type).
+          try {
+            const resp = await ApiClient.Message.getMcpServers({
+              id: editingMessage.id,
+            })
+            if (resp.server_ids.length > 0) {
+              mcpStore.setEnabledServers(resp.server_ids)
+            }
+          } catch (err) {
+            // Soft-fail: no snapshot recorded (pre-migration message
+            // or write hook failed at send-time) → keep current
+            // selection. Matches the pre-extraction behavior for
+            // messages without the column populated.
+            console.warn(
+              '[MCP Extension] Failed to load message server snapshot:',
+              err,
+            )
           }
         } else {
           // Edit cancelled or sent — restore from stored conversation config

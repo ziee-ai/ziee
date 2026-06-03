@@ -193,10 +193,8 @@ impl ChatCoreRepository {
         branch_id: Uuid,
         role: &str,
         model_id: Option<Uuid>,
-        assistant_id: Option<Uuid>,
-        mcp_server_ids: Option<Vec<Uuid>>,
     ) -> Result<crate::modules::chat::core::models::Message, AppError> {
-        messages::create_message(&self.pool, branch_id, role, model_id, assistant_id, mcp_server_ids).await
+        messages::create_message(&self.pool, branch_id, role, model_id).await
     }
 
     /// Get a message by ID

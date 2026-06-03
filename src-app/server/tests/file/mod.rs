@@ -1,4 +1,13 @@
 // File module comprehensive integration tests
+
+// File's chat-bridge tests — moved out of tests/chat/ as part of the
+// chat→file bridge extraction. The tests still rely on
+// `crate::chat::helpers::*` for model fixtures + SSE parsing
+// (`pub(crate)` so cross-module reuse works; same pattern used by
+// `tests/project/injection_test.rs`).
+mod file_attachments_test;
+mod file_attachments_real_providers_test;
+
 use crate::common::test_helpers;
 use reqwest::multipart;
 use std::path::PathBuf;

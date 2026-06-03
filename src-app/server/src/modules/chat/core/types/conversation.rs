@@ -37,13 +37,6 @@ pub struct UpdateConversationRequest {
         deserialize_with = "deserialize_nullable_field"
     )]
     pub title: Option<Option<String>>,
-
-    /// Per-conversation memory mode override:
-    /// `inherit` falls back to the user's retrieval_enabled setting,
-    /// `on` forces retrieval, `off` suppresses retrieval. Drives the
-    /// composer-pill toggle. Migration 57 added the column.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub memory_mode: Option<String>,
 }
 
 /// Custom deserializer to distinguish between missing field and explicit null

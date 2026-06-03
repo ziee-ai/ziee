@@ -9,11 +9,13 @@ use std::sync::Arc;
 use crate::module_api::{AppModule, ModuleEntry, MODULE_ENTRIES};
 use crate::ModuleContext;
 
+pub mod chat_extension;
 pub mod config;
 pub mod handlers;
 pub mod models;
 pub mod permissions;
 pub mod processing;
+pub mod provider_routing;
 pub mod repository;
 pub mod routes;
 pub mod storage;

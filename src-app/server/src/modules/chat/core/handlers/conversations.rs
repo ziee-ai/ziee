@@ -136,7 +136,7 @@ pub fn list_conversations_docs(op: TransformOperation) -> TransformOperation {
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
 }
 
-/// Update conversation metadata (title + memory_mode).
+/// Update conversation metadata (title).
 #[debug_handler]
 pub async fn update_conversation(
     auth: RequirePermissions<(ConversationsEdit,)>,
@@ -149,45 +149,12 @@ pub async fn update_conversation(
             return Err(AppError::bad_request("VALIDATION_ERROR", "Title must not exceed 500 characters").into());
         }
 
-    // Validate memory_mode if provided.
-    if let Some(ref mode) = request.memory_mode {
-        if !matches!(mode.as_str(), "inherit" | "on" | "off") {
-            return Err(AppError::bad_request(
-                "VALIDATION_ERROR",
-                "memory_mode must be one of: inherit, on, off",
-            )
-            .into());
-        }
-    }
-
-    let mut conversation = Repos
+    let conversation = Repos
         .chat
         .core
         .update_conversation(id, auth.user.id, request.title)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
-
-    // memory_mode lives on the conversations table but isn't covered by
-    // the generic update_conversation repo method; one-shot SQL keeps the
-    // diff small. Re-fetch afterwards so the returned struct is current.
-    if let Some(mode) = request.memory_mode {
-        let pool = crate::core::Repos.memory.pool_clone();
-        sqlx::query!(
-            "UPDATE conversations SET memory_mode = $1, updated_at = NOW() WHERE id = $2 AND user_id = $3",
-            mode,
-            id,
-            auth.user.id
-        )
-        .execute(&pool)
-        .await
-        .map_err(AppError::database_error)?;
-        conversation = Repos
-            .chat
-            .core
-            .get_conversation(id, auth.user.id)
-            .await?
-            .ok_or_else(|| AppError::not_found("Conversation"))?;
-    }
 
     Ok((StatusCode::OK, Json(conversation)))
 }

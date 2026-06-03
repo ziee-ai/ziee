@@ -15,10 +15,6 @@ pub struct Conversation {
     pub model_id: Option<Uuid>,
     pub title: Option<String>,
     pub active_branch_id: Option<Uuid>,
-    /// Per-conversation memory mode (migration 57):
-    /// `inherit` defers to the user's retrieval_enabled setting,
-    /// `on` forces retrieval, `off` suppresses it. NOT NULL DEFAULT 'inherit'.
-    pub memory_mode: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

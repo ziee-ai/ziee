@@ -683,7 +683,7 @@ impl ProjectRepository {
             r#"
             SELECT
                 c.id, c.user_id, c.model_id, c.title, c.active_branch_id,
-                c.memory_mode, c.created_at, c.updated_at,
+                c.created_at, c.updated_at,
                 COUNT(bm.message_id) as message_count
             FROM project_conversations pc
             JOIN conversations c ON c.id = pc.conversation_id
@@ -717,7 +717,6 @@ impl ProjectRepository {
                     model_id: row.model_id,
                     title: row.title,
                     active_branch_id: row.active_branch_id,
-                    memory_mode: row.memory_mode,
                     created_at: to_chrono(row.created_at),
                     updated_at: to_chrono(row.updated_at),
                 },

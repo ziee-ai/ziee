@@ -35,15 +35,36 @@ const assistantExtension: ChatExtension = createExtension({
 
     useChatStore.subscribe(
       state => state.editingMessage,
-      (editingMessage) => {
+      async (editingMessage) => {
         const assistantStore = Stores.Chat.__state.AssistantStore
         if (!assistantStore) return
 
         if (editingMessage) {
-          if (editingMessage.assistant_id) {
-            assistantStore.selectAssistant(editingMessage.assistant_id)
-          } else {
-            assistantStore.clearAssistant()
+          // Per-message assistant attribution moved off the Message
+          // row into the assistant bridge's own `message_assistant`
+          // table (backend migration 75). Fetch via the assistant-
+          // owned endpoint instead of reading inline from
+          // `editingMessage.assistant_id` (which no longer exists on
+          // the Message type).
+          try {
+            const { ApiClient } = await import('@/api-client')
+            const resp = await ApiClient.Message.getAssistant({
+              id: editingMessage.id,
+            })
+            if (resp.assistant_id) {
+              assistantStore.selectAssistant(resp.assistant_id)
+            } else {
+              assistantStore.clearAssistant()
+            }
+          } catch (err) {
+            // Soft-fail: no attribution recorded (pre-migration
+            // message or write hook failed at send-time) → keep
+            // current assistant selection. Matches the pre-extraction
+            // behavior for messages without the column populated.
+            console.warn(
+              '[Assistant Extension] Failed to load message assistant attribution:',
+              err,
+            )
           }
         } else {
           // Edit cancelled or sent — clear assistant selection

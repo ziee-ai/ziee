@@ -11,28 +11,22 @@
 //! Total: ~95 integration tests
 
 // Helper functions used across all test files.
-// `pub(crate)` so the project test module can reuse get_test_model_configs +
-// create_test_model_with_config + parse_sse_stream for its Tier-3
-// real-LLM tests (project/injection_test.rs).
+// `pub(crate)` so OTHER test modules (project, file) can reuse
+// get_test_model_configs + create_test_model_with_config +
+// parse_sse_stream for their Tier-3 real-LLM tests.
 pub(crate) mod helpers;
 
-// Test modules
+// Test modules.
+//
+// `file_attachments_*` tests moved to `tests/file/`, and `mcp_*`
+// tests moved to `tests/mcp/`, as part of the chat→file/mcp bridge
+// extraction. What remains here tests chat's own surface only.
 mod permissions_test;
 mod conversations_test;
 mod messages_test;
 mod branches_test;
 mod streaming_test;
 mod ownership_test;
-mod file_attachments_test;
-mod file_attachments_real_providers_test;
-mod mcp_extension_test;
-mod mcp_approval_workflow_test;
-mod mcp_defaults_test;
-mod mcp_streaming_workflow_test;
-mod mcp_loop_settings_test;
-mod mcp_sampling_test;
-mod mcp_elicitation_test;
-mod mcp_content_test;
 mod sandbox_real_llm_test;
 mod test_single_assistant_message_architecture;
 mod assistant_block_grouping_test;

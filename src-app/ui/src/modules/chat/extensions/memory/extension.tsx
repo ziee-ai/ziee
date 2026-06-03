@@ -10,8 +10,10 @@ import { MemoryStatusPill } from '@/modules/chat/extensions/memory/components/Me
 // Phase 5). Auto-discovered by chat/extensions/index.ts via the
 // import.meta.glob pattern over ./STAR/extension.tsx.
 //
-// No composeRequestFields needed — the backend reads
-// conversations.memory_mode directly when assembling the prompt.
+// No composeRequestFields needed — the backend memory bridge reads
+// the per-conversation mode from `conversation_memory_settings`
+// (migration 76) when assembling the prompt; the frontend pill
+// writes via PUT /api/conversations/{id}/memory-mode.
 const memoryExtension: ChatExtension = createExtension({
   name: 'memory',
   description: 'Per-conversation memory retrieval override pill',

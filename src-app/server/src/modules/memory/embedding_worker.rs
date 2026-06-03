@@ -162,7 +162,7 @@ async fn run(
             let id = row.id;
             let user_id = row.user_id;
             let content = row.content;
-            match crate::modules::chat::extensions::memory::dispatch::embed(new_model_id, &content)
+            match crate::modules::memory::engine::dispatch::embed(new_model_id, &content)
                 .await
             {
                 Ok(vec) => {

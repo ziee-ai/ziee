@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Tooltip, Tag, Dropdown, message } from 'antd'
 import { BulbOutlined, BulbFilled, EyeInvisibleOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
+import { ApiClient } from '@/api-client'
 
 type Mode = 'inherit' | 'on' | 'off'
 
@@ -10,9 +11,11 @@ type Mode = 'inherit' | 'on' | 'off'
  * in the chat composer's `toolbar_status` slot (next to the MCP /
  * assistant chips). Plan §7 Phase 5 "composer pill".
  *
- * Reads the active `Stores.Chat.conversation.memory_mode` and PATCHes
- * /api/conversations/{id} to change it. Hidden until a conversation
- * is loaded (initial /chat page with no selection shows nothing).
+ * Per-conversation memory_mode moved off the chat `conversations`
+ * table into the memory-owned `conversation_memory_settings` table
+ * (backend migration 76). Read/write via
+ * `GET`/`PUT /api/conversations/{id}/memory-mode`, NOT inline on
+ * the Conversation type (chat no longer knows memory's vocabulary).
  */
 export function MemoryStatusPill() {
   // CRITICAL: read every Stores.X.field at the TOP, before any early
@@ -24,15 +27,29 @@ export function MemoryStatusPill() {
   const [mode, setMode] = useState<Mode>('inherit')
   const [loading, setLoading] = useState(false)
 
-  // Re-sync the local mode state whenever the active conversation
-  // changes. `memory_mode` was added to Conversation via OpenAPI but
-  // the cast guards against stale api-client types.
-  const conversationMemoryMode = (
-    conversation as unknown as { memory_mode?: Mode }
-  )?.memory_mode
+  // Fetch the current memory_mode for the active conversation. Soft-
+  // fails to 'inherit' on any error — the pill stays interactive even
+  // if the read raced a conversation switch.
   useEffect(() => {
-    setMode(conversationMemoryMode ?? 'inherit')
-  }, [conversation?.id, conversationMemoryMode])
+    let cancelled = false
+    if (!conversation?.id) {
+      setMode('inherit')
+      return
+    }
+    ;(async () => {
+      try {
+        const resp = await ApiClient.Conversation.getMemoryMode({
+          id: conversation.id,
+        })
+        if (!cancelled) setMode((resp.memory_mode as Mode) ?? 'inherit')
+      } catch {
+        if (!cancelled) setMode('inherit')
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [conversation?.id])
 
   // Don't show the pill on the empty /chat landing, or when memory is
   // globally disabled by the admin (audit R6-#17 — pill is meaningless
@@ -44,7 +61,10 @@ export function MemoryStatusPill() {
     if (!conversation?.id) return
     setLoading(true)
     try {
-      await Stores.Chat.updateConversation({ memory_mode: next })
+      await ApiClient.Conversation.setMemoryMode({
+        id: conversation.id,
+        memory_mode: next,
+      })
       setMode(next)
       message.success(`Memory: ${next} for this conversation`)
     } catch (e: any) {

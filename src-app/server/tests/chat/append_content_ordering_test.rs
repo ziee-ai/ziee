@@ -64,7 +64,7 @@ async fn setup_assistant_message(
     let repo = ChatCoreRepository::new(pool);
 
     let assistant = repo
-        .create_message(branch_id, "assistant", None, None, None)
+        .create_message(branch_id, "assistant", None)
         .await
         .expect("create assistant message row");
 
