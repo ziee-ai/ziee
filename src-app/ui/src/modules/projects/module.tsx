@@ -11,6 +11,11 @@ import {
 } from '@/modules/projects/stores'
 import '@/modules/projects/types' // store-merge declaration
 import '@/modules/projects/events' // event-bus type merge
+// Trigger the auto-discovery glob — sibling modules with a
+// `project-extension/extension.tsx` register their knowledge-kind
+// contributions side-effectfully at module-import time. Side-effect
+// import only — no symbol referenced here.
+import '@/modules/projects/extensions'
 
 const ProjectsListPage = lazyWithPreload(() =>
   import('./pages/ProjectsListPage').then(m => ({

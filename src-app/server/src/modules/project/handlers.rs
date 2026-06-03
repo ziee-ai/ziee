@@ -3,7 +3,7 @@
 use aide::transform::TransformOperation;
 use axum::{
     Json, debug_handler,
-    extract::{Extension, Multipart, Path, Query},
+    extract::{Extension, Path, Query},
     http::StatusCode,
 };
 use serde::Deserialize;
@@ -13,17 +13,14 @@ use uuid::Uuid;
 use super::events::ProjectEvent;
 use super::models::Project;
 use super::permissions::*;
-use super::repository::PROJECT_MAX_FILES;
 use super::types::{
-    AttachFileRequest, CreateProjectRequest, McpServerToolEntry, ProjectFileListResponse,
-    ProjectListResponse, UpdateProjectMcpSettingsRequest, UpdateProjectRequest,
-    validate_approval_mode, validate_mcp_entries,
+    CreateProjectRequest, McpServerToolEntry, ProjectListResponse,
+    UpdateProjectMcpSettingsRequest, UpdateProjectRequest, validate_approval_mode,
+    validate_mcp_entries,
 };
 use crate::common::{ApiResult, AppError};
 use crate::core::{EventBus, Repos};
 use crate::modules::chat::core::types::ConversationResponse;
-use crate::modules::file::handlers::upload::upload_file_inner;
-use crate::modules::file::models::File as FileEntity;
 use crate::modules::permissions::{extractors::RequirePermissions, with_permission};
 
 // =====================================================
@@ -422,9 +419,26 @@ pub fn delete_project_docs(op: TransformOperation) -> TransformOperation {
 pub async fn duplicate_project(
     auth: RequirePermissions<(ProjectsCreate, ProjectsRead)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    Extension(extension_registry): Extension<Arc<crate::modules::project::ProjectExtensionRegistry>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<Project>> {
-    let project = Repos.project.duplicate(id, auth.user.id).await?;
+    // Open a single outer transaction so the project row insert AND every
+    // extension's `on_project_duplicated` hook (e.g. file module cloning
+    // project_files rows) share atomicity. If any extension errors, the
+    // commit is never reached and the duplicate fails as a whole.
+    let mut tx = Repos
+        .pool()
+        .begin()
+        .await
+        .map_err(AppError::database_error)?;
+    let project = Repos
+        .project
+        .duplicate_in_tx(&mut tx, id, auth.user.id)
+        .await?;
+    extension_registry
+        .fire_on_project_duplicated(id, project.id, &mut tx)
+        .await?;
+    tx.commit().await.map_err(AppError::database_error)?;
     event_bus.emit_async(ProjectEvent::created(project.id, auth.user.id));
     Ok((StatusCode::CREATED, Json(project)))
 }
@@ -444,337 +458,6 @@ pub fn duplicate_project_docs(op: TransformOperation) -> TransformOperation {
         .response::<201, Json<Project>>()
         .response_with::<404, (), _>(|res| res.description("Project not found"))
         .response_with::<422, (), _>(|res| res.description("Duplicate suffix limit reached"))
-}
-
-// =====================================================
-// File handlers
-// =====================================================
-
-#[debug_handler]
-pub async fn list_project_files(
-    auth: RequirePermissions<(ProjectsRead,)>,
-    Path(id): Path<Uuid>,
-) -> ApiResult<Json<ProjectFileListResponse>> {
-    let _ = Repos
-        .project
-        .get_for_user(id, auth.user.id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Project"))?;
-    let response = Repos.project.list_files(id).await?;
-    Ok((StatusCode::OK, Json(response)))
-}
-
-pub fn list_project_files_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(ProjectsRead,)>(op)
-        .id("Project.listFiles")
-        .tag("Projects")
-        .summary("List files attached to a project")
-        .response::<200, Json<ProjectFileListResponse>>()
-        .response_with::<404, (), _>(|res| res.description("Project not found"))
-}
-
-#[debug_handler]
-pub async fn attach_file(
-    auth: RequirePermissions<(ProjectsEdit,)>,
-    Extension(event_bus): Extension<Arc<EventBus>>,
-    Path(id): Path<Uuid>,
-    Json(request): Json<AttachFileRequest>,
-) -> ApiResult<()> {
-    // Project must exist and be owned by the user.
-    let project = Repos
-        .project
-        .get_for_user(id, auth.user.id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Project"))?;
-
-    // File must exist and be owned by the same user. Both checks are
-    // load-bearing — without them, user B could attach A's file (file
-    // pull) or attach to A's project (project pollution).
-    //
-    // 404 (not 403) on the cross-tenant case so we don't leak the
-    // existence of foreign files (audit N2). The handler-side test
-    // `cannot_attach_other_users_file` accepts EITHER 403 or 404, so
-    // tightening to 404 doesn't regress.
-    let file = Repos
-        .file
-        .get_by_id(request.file_id)
-        .await?
-        .ok_or_else(|| AppError::not_found("File"))?;
-    if file.user_id != auth.user.id {
-        return Err(AppError::not_found("File").into());
-    }
-
-    // Race-free attach: takes a row lock on the project, recounts
-    // under the lock, rejects with 422 if at cap, INSERTs in the same
-    // transaction. Closes audit B1 (concurrent attaches at count=99
-    // could both pass a pre-check and exceed the cap).
-    //
-    // Returns Ok(true) on a new attach, Ok(false) on the idempotent
-    // path (file was already attached). Only emit the FileAttached
-    // event on a real attach so event listeners (cache invalidation,
-    // audit log) don't see phantom duplicates.
-    let newly_attached = Repos
-        .project
-        .attach_file_capped(project.id, file.id, PROJECT_MAX_FILES)
-        .await?;
-    if newly_attached {
-        event_bus.emit_async(ProjectEvent::file_attached(
-            project.id,
-            file.id,
-            auth.user.id,
-        ));
-    }
-    Ok((StatusCode::NO_CONTENT, ()))
-}
-
-pub fn attach_file_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(ProjectsEdit,)>(op)
-        .id("Project.attachFile")
-        .tag("Projects")
-        .summary("Attach a file to a project")
-        .description(
-            "Attach an existing file (by ID) to this project. Idempotent (re-attaching the same \
-             file is a no-op). The file must be owned by the same user as the project.\n\
-             \n\
-             Error codes:\n\
-             - `PROJECT_FILE_COUNT_CAP` (422) — project already has the max files (100).",
-        )
-        .response_with::<204, (), _>(|res| res.description("File attached"))
-        .response_with::<404, (), _>(|res| res.description("Project or file not found (or file belongs to another user)"))
-        .response_with::<422, (), _>(|res| res.description("File count cap reached"))
-}
-
-/// Combined upload+attach in one round-trip. Uploads via the shared
-/// `upload_file_inner` from the file module (so size/MIME/quota/zipbomb
-/// validation matches the standalone POST /files exactly), then attaches
-/// the new file to the project. Best-effort transactional: if the attach
-/// step fails after the file has been created, the file remains in the
-/// user's library (they can attach manually via POST /projects/{id}/files).
-#[debug_handler]
-pub async fn upload_and_attach_file(
-    auth: RequirePermissions<(ProjectsEdit, crate::modules::file::permissions::FilesUpload)>,
-    Extension(event_bus): Extension<Arc<EventBus>>,
-    Path(id): Path<Uuid>,
-    multipart: Multipart,
-) -> ApiResult<Json<FileEntity>> {
-    // 1. Verify project ownership.
-    let project = Repos
-        .project
-        .get_for_user(id, auth.user.id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Project"))?;
-
-    // 2. Pre-flight file count cap (advisory only — the
-    //    attach_file_capped call below recounts under a project row
-    //    lock and is the authoritative gate). The pre-flight saves us
-    //    a wasted upload when the project is already obviously at cap.
-    let count = Repos.project.count_files(project.id).await?;
-    if count >= PROJECT_MAX_FILES {
-        return Err(AppError::unprocessable_entity(
-            "PROJECT_FILE_COUNT_CAP",
-            format!("Project file count cap ({}) reached", PROJECT_MAX_FILES),
-        )
-        .into());
-    }
-
-    // 3. Upload via the shared core (validates size, MIME, quota,
-    //    zip-bombs; creates the files row + storage entries).
-    let file = upload_file_inner(auth.user.id, multipart).await?;
-
-    // 4. Arm a Drop guard that fires if we exit this function before
-    //    disarming it — covers BOTH the attach-failure case (B2)
-    //    AND the cancelled-future case (N5: client disconnects
-    //    between upload-complete and attach-success, tokio drops the
-    //    handler future, the inline cleanup code never runs). The
-    //    guard's Drop impl spawns a background task to delete the
-    //    file row + storage artifacts, so cancellation can't leave
-    //    orphans behind.
-    let mut cleanup = OrphanFileCleanup::new(file.id, auth.user.id);
-
-    // 5. Race-free attach (B1). If we lost a race and the project hit
-    //    the cap between the pre-flight check and now, the cap error
-    //    fires; the guard is still armed and the Drop impl handles
-    //    cleanup.
-    //
-    //    upload-and-attach uses a FRESH file_id (we just created the
-    //    row), so the idempotent (Ok(false)) branch is unreachable in
-    //    practice — we still treat the return value as authoritative
-    //    so the event log can't lie about what happened.
-    let newly_attached = Repos
-        .project
-        .attach_file_capped(project.id, file.id, PROJECT_MAX_FILES)
-        .await?;
-
-    // Attach succeeded — disarm the guard so we keep the file.
-    cleanup.disarm();
-
-    if newly_attached {
-        event_bus.emit_async(ProjectEvent::file_attached(
-            project.id,
-            file.id,
-            auth.user.id,
-        ));
-    }
-
-    Ok((StatusCode::CREATED, Json(file)))
-}
-
-/// RAII guard that deletes a freshly-uploaded file row + storage
-/// artifacts when dropped, UNLESS `disarm()` was called first.
-/// Used by `upload_and_attach_file` (audit B2 + N5) so an attach
-/// failure OR a cancelled-future cleanup happens reliably without
-/// requiring an explicit `if let Err` arm.
-struct OrphanFileCleanup {
-    file_id: Uuid,
-    user_id: Uuid,
-    armed: bool,
-}
-
-impl OrphanFileCleanup {
-    fn new(file_id: Uuid, user_id: Uuid) -> Self {
-        Self {
-            file_id,
-            user_id,
-            armed: true,
-        }
-    }
-
-    fn disarm(&mut self) {
-        self.armed = false;
-    }
-}
-
-impl Drop for OrphanFileCleanup {
-    fn drop(&mut self) {
-        if !self.armed {
-            return;
-        }
-        // Drop runs synchronously. Spawn a detached task so cleanup
-        // runs even when the parent future is being cancelled. We
-        // use `try_current()` so Drop doesn't panic if invoked
-        // outside a Tokio runtime (e.g., during shutdown unwind or
-        // a test harness teardown). If no runtime is available, log
-        // and skip — cleanup is best-effort by design (audit Q7).
-        let handle = match tokio::runtime::Handle::try_current() {
-            Ok(h) => h,
-            Err(_) => {
-                tracing::warn!(
-                    file_id = %self.file_id,
-                    user_id = %self.user_id,
-                    "OrphanFileCleanup: no Tokio runtime available; skipping cleanup"
-                );
-                return;
-            }
-        };
-        let file_id = self.file_id;
-        let user_id = self.user_id;
-        handle.spawn(async move {
-            // Best-effort: log but don't panic if cleanup fails.
-            // Happy-path log on entry so operators can see "file X was
-            // orphaned + cleaned up" (vs "file silently disappeared
-            // somewhere"). Tokio's runtime catches unhandled panics in
-            // spawned tasks, so we don't need an explicit catch_unwind.
-            tracing::info!(
-                %file_id, %user_id,
-                "OrphanFileCleanup: deleting orphaned file (attach failed or future cancelled)"
-            );
-            let row_ok = match Repos.file.delete(file_id, user_id).await {
-                Ok(_) => true,
-                Err(e) => {
-                    tracing::warn!(
-                        %file_id, %user_id, error = ?e,
-                        "OrphanFileCleanup: failed to delete file row"
-                    );
-                    false
-                }
-            };
-            let storage_ok = match crate::modules::file::storage::manager::get_file_storage()
-                .delete_all(user_id, file_id)
-                .await
-            {
-                Ok(_) => true,
-                Err(e) => {
-                    tracing::warn!(
-                        %file_id, %user_id, error = ?e,
-                        "OrphanFileCleanup: failed to delete storage artifacts"
-                    );
-                    false
-                }
-            };
-            if row_ok && storage_ok {
-                tracing::info!(
-                    %file_id, %user_id,
-                    "OrphanFileCleanup: orphaned file deleted successfully"
-                );
-            }
-        });
-    }
-}
-
-pub fn upload_and_attach_file_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(ProjectsEdit, crate::modules::file::permissions::FilesUpload)>(op)
-        .id("Project.uploadAndAttachFile")
-        .tag("Projects")
-        .summary("Upload a file and attach it to a project (multipart)")
-        .description(
-            "**Multipart/form-data** upload. Send the file bytes in a part named `file` with a \
-             filename (Content-Disposition: form-data; name=\"file\"; filename=\"<name>\"). The \
-             server creates the file row + storage artifacts AND attaches the new file to the \
-             project in one round-trip. Failures roll back the upload via a Drop-guard so no \
-             orphans survive client disconnects.\n\
-             \n\
-             Enforces the file module's size cap (100 MiB), per-user quota (10 GiB), MIME \
-             sniffing + smuggling rejection, and the project's 100-file cap.\n\
-             \n\
-             Error codes:\n\
-             - `MISSING_FILE` (400) — no `file` part in the multipart body.\n\
-             - `FILE_TOO_LARGE` (400) — over 100 MiB.\n\
-             - `STORAGE_QUOTA_EXCEEDED` (400) — per-user quota exhausted.\n\
-             - `MIME_MISMATCH` (400) — declared MIME doesn't match sniffed bytes.\n\
-             - `ZIP_BOMB_DETECTED` (400) — OOXML/ODF container expansion exceeds limits.\n\
-             - `PROJECT_FILE_COUNT_CAP` (422) — project already has 100 files.",
-        )
-        .response::<201, Json<FileEntity>>()
-        .response_with::<400, (), _>(|res| res.description("Upload-validation error"))
-        .response_with::<404, (), _>(|res| res.description("Project not found"))
-        .response_with::<422, (), _>(|res| res.description("Project file count cap reached"))
-}
-
-#[debug_handler]
-pub async fn detach_file(
-    auth: RequirePermissions<(ProjectsEdit,)>,
-    Extension(event_bus): Extension<Arc<EventBus>>,
-    Path((id, file_id)): Path<(Uuid, Uuid)>,
-) -> ApiResult<()> {
-    let project = Repos
-        .project
-        .get_for_user(id, auth.user.id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Project"))?;
-
-    let removed = Repos.project.detach_file(project.id, file_id).await?;
-    if !removed {
-        return Err(AppError::not_found("Project file").into());
-    }
-    event_bus.emit_async(ProjectEvent::file_detached(
-        project.id,
-        file_id,
-        auth.user.id,
-    ));
-    Ok((StatusCode::NO_CONTENT, ()))
-}
-
-pub fn detach_file_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(ProjectsEdit,)>(op)
-        .id("Project.detachFile")
-        .tag("Projects")
-        .summary("Detach a file from a project")
-        .description(
-            "Remove the project↔file membership. Does NOT delete the underlying file (it may be \
-             attached to other projects or used per-message in conversations).",
-        )
-        .response_with::<204, (), _>(|res| res.description("File detached"))
-        .response_with::<404, (), _>(|res| res.description("Project or file not attached"))
 }
 
 // =====================================================
@@ -1200,13 +883,9 @@ mod tests {
         assert!(validate_project_text_lengths(Some(""), Some("")).is_ok());
     }
 
-    /// The hard cap that the attach + upload-and-attach handlers enforce.
-    /// Anchored as a Tier-1 invariant so changing it requires updating
-    /// the test (and forces re-validating the UX implications).
-    #[test]
-    fn project_max_files_is_one_hundred() {
-        assert_eq!(PROJECT_MAX_FILES, 100);
-    }
+    // `project_max_files_is_one_hundred` test relocated to
+    // `modules/file/project_extension/repository.rs` along with the
+    // `PROJECT_MAX_FILES` constant (project↔file inversion).
 
     /// Description cap matches the assistant module's cap so messages
     /// that include both don't get rejected by one and accepted by the

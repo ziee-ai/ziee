@@ -11,6 +11,14 @@ import {
   mockResourceLinkUrl,
 } from './fixtures/mock-tool-result'
 
+// 1x1 transparent PNG — keeps ImageBody's <img> in DOM (see
+// mcp-resource-links-dispatch.spec.ts for the full explanation).
+const TINY_PNG = Buffer.from(
+  '89504E470D0A1A0A0000000D49484452000000010000000108060000001F15C4890000000D49444154789C6200010000050001' +
+    '0D0A2DB40000000049454E44AE426082',
+  'hex',
+)
+
 /**
  * Accessibility checks for the new MessageFilesView + InlineFilePreview
  * components. Uses @axe-core/playwright (already a project dep).
@@ -32,13 +40,15 @@ test.describe('Inline file previews — accessibility', () => {
     page,
     testInfra,
   }) => {
+    const pngUri = '/api/files/a11y-img/download'
     const csvUri = '/api/files/a11y-csv/download'
     const mdUri = '/api/files/a11y-md/download'
+    await mockResourceLinkUrl(page, pngUri, TINY_PNG, { contentType: 'image/png' })
     await mockResourceLinkUrl(page, csvUri, 'a,b\n1,2\n', { contentType: 'text/csv' })
     await mockResourceLinkUrl(page, mdUri, '# Section', { contentType: 'text/markdown' })
     await seedAssistantWithToolResult(page, testInfra.baseURL, {
       resourceLinks: [
-        { uri: '/api/files/a11y-img/download', name: 'p.png', mime_type: 'image/png' },
+        { uri: pngUri, name: 'p.png', mime_type: 'image/png' },
         { uri: csvUri, name: 'data.csv', mime_type: 'text/csv' },
         { uri: mdUri, name: 'r.md', mime_type: 'text/markdown' },
       ],

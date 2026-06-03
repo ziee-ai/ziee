@@ -76,10 +76,14 @@ test.describe('Inline file previews — error + security paths', () => {
     expect(pageErrors).toEqual([])
   })
 
-  test('image URL 404 shows broken-image icon, no React error boundary', async ({
+  test('image URL 404 shows friendly placeholder, no React error boundary', async ({
     page,
     testInfra,
   }) => {
+    // ImageBody intentionally renders a "Couldn't load image" placeholder
+    // when the <img>'s onError fires — avoids exposing the browser's
+    // broken-image icon. Test pins (a) the friendly fallback renders and
+    // (b) no React error boundary fires.
     const pageErrors: string[] = []
     page.on('pageerror', e => pageErrors.push(e.message))
     const uri = '/api/files/err-img-404/download'
@@ -87,11 +91,11 @@ test.describe('Inline file previews — error + security paths', () => {
     await seedAssistantWithToolResult(page, testInfra.baseURL, {
       resourceLinks: [{ uri, name: 'p.png', mime_type: 'image/png' }],
     })
-    const img = page.locator('[data-testid="inline-file-preview"] img').first()
-    await expect(img).toBeVisible({ timeout: 10000 })
-    // Browser renders broken-image; natural dimensions will be 0.
-    const natural = await img.evaluate((el: HTMLImageElement) => el.naturalWidth)
-    expect(natural).toBe(0)
+    const fallback = page
+      .locator('[data-testid="inline-file-preview-image-error"]')
+      .first()
+    await expect(fallback).toBeVisible({ timeout: 10000 })
+    await expect(fallback).toContainText(/couldn.?t load image/i)
     expect(pageErrors).toEqual([])
   })
 
