@@ -10,7 +10,7 @@ import { goToNewChatPage } from './helpers/chat-helpers'
 /**
  * McpStatusRow chip behaviour added in feat/mcp-rewrite-v2.
  *
- * The chip row (`src/modules/chat/extensions/mcp/components/McpStatusRow.tsx`)
+ * The chip row (`src/modules/mcp/chat-extension/components/McpStatusRow.tsx`)
  * does three things this branch adds:
  *
  *   1. On chip-close, persists the removal to the backend — either to the

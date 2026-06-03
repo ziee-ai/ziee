@@ -3,7 +3,7 @@ import { ToolOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type Project } from '@/api-client/types'
-import { McpConfigModal } from '@/modules/chat/extensions/mcp/components/McpConfigModal'
+import { McpConfigModal } from '@/modules/mcp/chat-extension/components/McpConfigModal'
 
 const { Text } = Typography
 
@@ -14,7 +14,7 @@ interface ProjectMcpSettingsPanelProps {
 /**
  * Project MCP defaults editor. Round-4 redesign: instead of a
  * standalone raw-JSON form, this panel opens the SAME `McpConfigModal`
- * used in chat — driven by `Stores.Chat.McpStore.openConfigModalForProject`.
+ * used in chat — driven by `Stores.McpComposer.openConfigModalForProject`.
  *
  * The modal's dispatch rule is:
  *   currentProjectId != null && currentConversationId == null  →  project scope
@@ -35,7 +35,7 @@ export function ProjectMcpSettingsPanel({
   const canEdit = usePermission(Permissions.ProjectsEdit)
 
   const handleConfigure = () => {
-    Stores.Chat.McpStore.openConfigModalForProject(project)
+    Stores.McpComposer.openConfigModalForProject(project)
   }
 
   const approvalMode = project.mcp_approval_mode || 'manual_approve'

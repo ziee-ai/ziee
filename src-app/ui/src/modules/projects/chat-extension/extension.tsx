@@ -127,9 +127,9 @@ const projectExtension: ChatExtension = createExtension({
       // Seed the assistant picker with the project's default when
       // the user hasn't picked one. One-shot — won't override an
       // explicit user choice.
-      const assistantStore = Stores.Chat.AssistantStore
-      if (!assistantStore.selectedAssistantId) {
-        assistantStore.selectAssistant(project.default_assistant_id)
+      const picker = Stores.AssistantPicker
+      if (!picker.selectedAssistantId) {
+        picker.selectAssistant(project.default_assistant_id)
       }
     }
   },

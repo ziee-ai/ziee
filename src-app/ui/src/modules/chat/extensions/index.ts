@@ -6,8 +6,10 @@
  *   1. In-chat extensions (this folder):
  *        `chat/extensions/<name>/extension.tsx`
  *      Picked up by the first glob below. Use for extensions that
- *      conceptually belong TO chat (file uploads, assistant picker,
- *      memory, etc.).
+ *      conceptually belong TO chat (text rendering, title generation,
+ *      keyboard shortcuts, export, model picker, syntax highlight,
+ *      file). Memory, assistant, and mcp have been promoted to
+ *      sibling-module bridges (see Path 2).
  *
  *   2. Sibling-module extensions (anywhere under modules/):
  *        `modules/<module-name>/chat-extension/extension.tsx`
