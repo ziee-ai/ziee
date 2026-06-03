@@ -1,8 +1,11 @@
 // Onboarding module — guide completion tracking
 
 pub mod handlers;
+pub mod models;
+mod repository;
 mod routes;
 
+pub use repository::OnboardingRepository;
 pub use routes::onboarding_router;
 
 use aide::axum::ApiRouter;

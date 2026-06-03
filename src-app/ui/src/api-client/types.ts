@@ -1433,6 +1433,11 @@ export interface ModelUsageInfo {
   running: boolean
 }
 
+export interface OnboardingProgress {
+  completed_guide_ids: string[]
+  completed_step_ids: string[]
+}
+
 export interface OperatingSystemInfo {
   architecture: string
   kernel_version?: string
@@ -2265,8 +2270,6 @@ export type UsageMode = 'auto' | 'always'
 
 export interface User {
   avatar_url?: string
-  completed_onboarding_ids: string[]
-  completed_onboarding_step_ids: string[]
   created_at: string
   display_name?: string
   email: string
@@ -2779,6 +2782,7 @@ export const ApiEndpoints = {
   'Message.sendStream': 'POST /api/conversations/{id}/messages/stream',
   'Onboarding.complete': 'POST /api/onboarding/{guide_id}/complete',
   'Onboarding.completeStep': 'POST /api/onboarding/{guide_id}/steps/{step_id}/complete',
+  'Onboarding.getProgress': 'GET /api/onboarding/progress',
   'Project.attachConversation': 'POST /api/projects/{id}/conversations/{conversation_id}',
   'Project.attachFile': 'POST /api/projects/{id}/files',
   'Project.create': 'POST /api/projects',
@@ -3017,6 +3021,7 @@ export type ApiEndpointParameters = {
   'Message.sendStream': { id: string } & SendMessageRequest
   'Onboarding.complete': { guide_id: string }
   'Onboarding.completeStep': { guide_id: string; step_id: string }
+  'Onboarding.getProgress': void
   'Project.attachConversation': { id: string; conversation_id: string }
   'Project.attachFile': { id: string } & AttachFileRequest
   'Project.create': CreateProjectRequest
@@ -3253,8 +3258,9 @@ export type ApiEndpointResponses = {
   'Message.getHistory': MessageWithContent[]
   'Message.getMcpServers': MessageMcpServersResponse
   'Message.sendStream': SSEChatStreamEvent
-  'Onboarding.complete': User
-  'Onboarding.completeStep': User
+  'Onboarding.complete': OnboardingProgress
+  'Onboarding.completeStep': OnboardingProgress
+  'Onboarding.getProgress': OnboardingProgress
   'Project.attachConversation': ConversationResponse
   'Project.attachFile': void
   'Project.create': Project

@@ -202,4 +202,5 @@ declare_repositories! {
     memory: MemoryRepository => crate::modules::memory,
     assistant_core_memory: AssistantCoreMemoryRepository => crate::modules::assistant_core_memory,
     project: ProjectRepository => crate::modules::project,
+    onboarding: OnboardingRepository => crate::modules::onboarding,
 }

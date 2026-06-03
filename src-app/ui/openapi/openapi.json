@@ -1445,6 +1445,30 @@
         ]
       }
     },
+    "/api/onboarding/progress": {
+      "get": {
+        "tags": [
+          "Onboarding"
+        ],
+        "summary": "Get the current user's onboarding progress",
+        "operationId": "Onboarding.getProgress",
+        "responses": {
+          "200": {
+            "description": "Per-user onboarding progress. Step ids use the composite\n \"{guide_id}/{step_id}\" key format. Replaces the two columns that\n previously rode on the `User` object.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingProgress"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/onboarding/{guide_id}/complete": {
       "post": {
         "tags": [
@@ -1478,11 +1502,11 @@
             }
           },
           "200": {
-            "description": "",
+            "description": "Per-user onboarding progress. Step ids use the composite\n \"{guide_id}/{step_id}\" key format. Replaces the two columns that\n previously rode on the `User` object.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/User"
+                  "$ref": "#/components/schemas/OnboardingProgress"
                 }
               }
             }
@@ -1534,11 +1558,11 @@
             }
           },
           "200": {
-            "description": "",
+            "description": "Per-user onboarding progress. Step ids use the composite\n \"{guide_id}/{step_id}\" key format. Replaces the two columns that\n previously rode on the `User` object.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/User"
+                  "$ref": "#/components/schemas/OnboardingProgress"
                 }
               }
             }
@@ -20074,6 +20098,28 @@
           "pinned"
         ]
       },
+      "OnboardingProgress": {
+        "description": "Per-user onboarding progress. Step ids use the composite\n \"{guide_id}/{step_id}\" key format. Replaces the two columns that\n previously rode on the `User` object.",
+        "type": "object",
+        "properties": {
+          "completed_guide_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "completed_step_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "completed_guide_ids",
+          "completed_step_ids"
+        ]
+      },
       "OperatingSystemInfo": {
         "type": "object",
         "properties": {
@@ -23880,18 +23926,6 @@
               "null"
             ]
           },
-          "completed_onboarding_ids": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "completed_onboarding_step_ids": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
           "created_at": {
             "type": "string",
             "format": "date-time"
@@ -23955,8 +23989,6 @@
           "is_active",
           "is_admin",
           "permissions",
-          "completed_onboarding_ids",
-          "completed_onboarding_step_ids",
           "created_at",
           "updated_at"
         ]

@@ -41,7 +41,9 @@ function ActivePanelContent() {
     )
   }
   const { Component } = resolved
-  return <Component {...activeTab.data} />
+  // `data` is erased to ErasedPanelData at this render boundary; the precise
+  // per-type shape was validated at the displayInRightPanel<T> call site.
+  return <Component {...(activeTab.data as Record<string, unknown>)} />
 }
 
 function PanelTabs({ onCloseAll }: { onCloseAll: () => void }) {

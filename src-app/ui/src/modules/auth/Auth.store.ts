@@ -7,8 +7,7 @@ import type {
   CreateUserRequest,
   User,
 } from '@/api-client/types'
-import { Stores, type StoreProxy } from '@/core/stores'
-import '@/modules/onboarding/events/types'
+import { type StoreProxy } from '@/core/stores'
 
 export interface AutoLoginResponse {
   // Nullable: the OAuth callback path passes `null` because the
@@ -216,22 +215,6 @@ export const useAuthStore = create<AuthState>()(
 
         __init__: {
           __store__: () => {
-            Stores.EventBus.on(
-              'onboarding.user_updated',
-              (event) => {
-                set(state => ({
-                  user: state.user
-                    ? {
-                        ...state.user,
-                        completed_onboarding_ids: event.data.user.completed_onboarding_ids,
-                        completed_onboarding_step_ids: event.data.user.completed_onboarding_step_ids,
-                      }
-                    : state.user,
-                }))
-              },
-              'AuthStore',
-            )
-
             // Re-fetch /me when the tab regains focus, so a permissions
             // change made by an admin in another tab self-heals here on
             // the next interaction (permission-plan follow-up).
@@ -261,11 +244,10 @@ export const useAuthStore = create<AuthState>()(
           },
         },
 
-        // Unsubscribe from EventBus + remove the visibilitychange listener
-        // on store destroy so listener slots don't accumulate per
-        // destroy/re-init cycle. (audit 09 B-9 + permission follow-up)
+        // Remove the visibilitychange listener on store destroy so
+        // listener slots don't accumulate per destroy/re-init cycle.
+        // (permission follow-up)
         __destroy__: () => {
-          Stores.EventBus.removeGroupListeners('AuthStore')
           if (visibilityListener) {
             document.removeEventListener('visibilitychange', visibilityListener)
             visibilityListener = null
