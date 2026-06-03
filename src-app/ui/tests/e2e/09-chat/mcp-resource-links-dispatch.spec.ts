@@ -192,6 +192,10 @@ test.describe('Inline file previews — modular dispatch contract', () => {
     // `getViewer()` and each viewer module's `inline` declaration.
     const __filename = fileURLToPath(import.meta.url)
     const __dirname = dirname(__filename)
+    // File chat-extension components moved to modules/file/chat-extension/
+    // (commit ced3fcf, frontend extraction series). Keep the meta-test
+    // pointing at the live source files so it continues to gate hardcoded
+    // MIME literals at the right boundary.
     const root = resolve(
       __dirname,
       '..',
@@ -199,9 +203,8 @@ test.describe('Inline file previews — modular dispatch contract', () => {
       '..',
       'src',
       'modules',
-      'chat',
-      'extensions',
       'file',
+      'chat-extension',
       'components',
     )
     const files = ['MessageFilesView.tsx', 'InlineFilePreview.tsx']
