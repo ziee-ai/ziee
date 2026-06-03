@@ -6,6 +6,12 @@ import {
   createTestUser,
   loginExpectingOnboarding,
 } from '../../common/auth-helpers'
+import {
+  createProviderViaAPI,
+  assignProviderToAdministratorsGroup,
+  getAdministratorsGroupId,
+  assignUserToGroupViaAPI,
+} from '../../common/provider-helpers'
 
 /**
  * E2E — onboarding Memory step: ENABLE path.
@@ -14,26 +20,71 @@ import {
  * Download nomic-embed-text from HuggingFace + selects it; assert
  * settings update and the Memories page is reachable."
  *
- * Real-LLM/network gated (requires HuggingFace download). The
- * scaffold below assumes the test fixture has a pre-seeded
- * embedding-capable model so we don't have to run the actual
- * HF download in CI.
+ * The Memory step's model dropdown is gated on `?capability=text_embedding`,
+ * so we seed an embedding-capable OpenAI model via API in `beforeEach`
+ * (the same admin token onboarding uses). This sidesteps the real
+ * HuggingFace download path (which the dropdown also supports) while
+ * still exercising the full capability-filter → pick → settings-update
+ * surface end-to-end.
  */
 
-const HAS_FIXTURE = Boolean(process.env.MEMORY_E2E_FIXTURE)
+/**
+ * Seed an embedding-capable OpenAI model. The OpenAI provider gets
+ * created with the live `OPENAI_API_KEY`, the model is registered
+ * with `capabilities.text_embedding = true` so the Memory admin
+ * dropdown surfaces it, and it's assigned to the Administrators group
+ * so the admin onboarder can see it.
+ */
+async function seedEmbeddingModel(apiURL: string, adminToken: string): Promise<string> {
+  const providerId = await createProviderViaAPI(apiURL, adminToken, 'OpenAI Embeddings', 'openai')
+  await assignProviderToAdministratorsGroup(apiURL, adminToken, providerId)
+
+  const res = await fetch(`${apiURL}/api/llm-models`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${adminToken}`,
+    },
+    body: JSON.stringify({
+      provider_id: providerId,
+      name: 'text-embedding-3-small',
+      display_name: 'Text Embedding 3 Small',
+      enabled: true,
+      engine_type: 'none',
+      file_format: 'gguf',
+      capabilities: {
+        vision: false,
+        function_calling: false,
+        streaming: false,
+        text_embedding: true,
+      },
+      parameters: {
+        context_length: 8191,
+      },
+    }),
+  })
+  if (!res.ok) {
+    const body = await res.text()
+    throw new Error(`Failed to seed embedding model: ${res.status} ${body}`)
+  }
+  const model = await res.json()
+  return model.id
+}
 
 test.describe('Memory — onboarding enable', () => {
-  test.skip(!HAS_FIXTURE, 'requires MEMORY_E2E_FIXTURE — pre-seeded embedding model')
-
   test.beforeEach(async ({ page, testInfra }) => {
     await loginAsAdmin(page, testInfra.baseURL)
+    // Seed the embedding model BEFORE creating the onboarding user so
+    // the Memory step's capability-filtered dropdown has an option.
+    const adminToken = await getAdminToken(testInfra.apiURL)
+    await seedEmbeddingModel(testInfra.apiURL, adminToken)
   })
 
   test('admin enables memory + picks model', async ({ page, testInfra }) => {
     const { baseURL, apiURL } = testInfra
     const adminToken = await getAdminToken(apiURL)
     const username = `enable_${Date.now().toString(36)}`
-    await createTestUser(
+    const userId = await createTestUser(
       apiURL,
       adminToken,
       username,
@@ -46,8 +97,20 @@ test.describe('Memory — onboarding enable', () => {
         'memory::write',
         'memory::admin::read',
         'memory::admin::manage',
+        // `llm_models::read` is what the Memory step's
+        // capability-filtered model dropdown queries against; without
+        // it `/api/llm-models?capability=text_embedding` 403s and the
+        // dropdown stays empty.
+        'llm_models::read',
       ],
     )
+
+    // Membership in Administrators is required to SEE the seeded
+    // provider's models (the seeded provider is assigned to that
+    // group; users outside it get a filtered-empty list even with
+    // llm_models::read).
+    const adminGroupId = await getAdministratorsGroupId(apiURL, adminToken)
+    await assignUserToGroupViaAPI(apiURL, adminToken, userId, adminGroupId)
 
     await loginExpectingOnboarding(page, baseURL, username, 'password123')
 
@@ -58,12 +121,17 @@ test.describe('Memory — onboarding enable', () => {
     // Memory step: flip switch + pick model.
     await expect(page.getByRole('heading', { name: /Persistent Memory/ })).toBeVisible()
     await page.getByRole('switch').click()
-    // Select first option in the model dropdown.
+    // Pick the first option in the embedding-model dropdown. antd v6
+    // renders dropdown items in a way Playwright marks "not visible"
+    // when targeted via getByRole('option'); keyboard-driven selection
+    // bypasses the visibility check and is robust across antd versions.
     await page.getByRole('combobox').first().click()
-    await page.getByRole('option').first().click()
+    await page.keyboard.press('ArrowDown')
+    await page.keyboard.press('Enter')
 
     await page.getByRole('button', { name: /Next/ }).click()
-    await page.getByRole('button', { name: /Finish|Done/ }).click()
+    // Final step button is "Start Chatting" (not "Finish"/"Done").
+    await page.getByRole('button', { name: /Start Chatting/ }).click()
 
     // Verify settings now enabled.
     const userToken = await getCurrentUserToken(page)
