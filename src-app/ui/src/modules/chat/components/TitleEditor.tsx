@@ -97,7 +97,13 @@ export function TitleEditor() {
 
   return (
     <div className="flex gap-1 items-center justify-start overflow-hidden">
-      <Button type="text" className="!px-1" onClick={handleBack}>
+      <Button
+        type="text"
+        className="!px-1"
+        onClick={handleBack}
+        aria-label="Back to conversation list"
+        data-testid="conversation-back-button"
+      >
         <IoIosArrowBack className="text-md" />
       </Button>
       <Typography.Title

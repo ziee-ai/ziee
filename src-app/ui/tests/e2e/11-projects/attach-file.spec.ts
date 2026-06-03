@@ -89,16 +89,13 @@ test.describe('Projects - Knowledge / file attach', () => {
     )
     expect(resp).toBe(201)
 
-    // Refresh and verify the file appears in the inline knowledge
-    // preview as a chip. The data-test-file-chip attribute is
-    // stable across UI label tweaks.
+    // Refresh and verify the file shows up in the Manage Files drawer.
+    // The detail page no longer renders inline file chips in the
+    // Knowledge section — files live inside the drawer (opened by the
+    // Manage button). Earlier the page had inline chips on the
+    // knowledge card; that was dropped when the section was simplified
+    // to just an empty-state + Manage button.
     await page.reload()
-    await expect(
-      page.locator('[data-test-file-chip="notes.txt"]'),
-    ).toBeVisible()
-
-    // The "Manage" button still works — opening the drawer should
-    // show the same file in the detailed list.
     await page
       .getByRole('button', { name: /manage knowledge files/i })
       .click()

@@ -13,6 +13,15 @@ import {
   mockResourceLinkUrl,
 } from './fixtures/mock-tool-result'
 
+// 1x1 transparent PNG — keeps ImageBody's <img> in the DOM (it
+// transitions to a "Couldn't load image" placeholder on `onerror`,
+// which removes the <img> the test asserts against).
+const TINY_PNG = Buffer.from(
+  '89504E470D0A1A0A0000000D49484452000000010000000108060000001F15C4890000000D49444154789C6200010000050001' +
+    '0D0A2DB40000000049454E44AE426082',
+  'hex',
+)
+
 /**
  * Pin the modular dispatch contract: ALL MIME-to-renderer dispatch
  * happens through `getViewer(name, mimeType)` and the viewer's
@@ -43,6 +52,7 @@ test.describe('Inline file previews — modular dispatch contract', () => {
     testInfra,
   }) => {
     const uri = '/api/files/disp-img/download'
+    await mockResourceLinkUrl(page, uri, TINY_PNG, { contentType: 'image/png' })
     await seedAssistantWithToolResult(page, testInfra.baseURL, {
       resourceLinks: [{ uri, name: 'plot.png', mime_type: 'image/png' }],
     })
@@ -124,6 +134,7 @@ test.describe('Inline file previews — modular dispatch contract', () => {
     // image/heic isn't a specific viewer, but the image viewer registers
     // `image/*` wildcard → should match.
     const uri = '/api/files/disp-heic/download'
+    await mockResourceLinkUrl(page, uri, TINY_PNG, { contentType: 'image/heic' })
     await seedAssistantWithToolResult(page, testInfra.baseURL, {
       resourceLinks: [{ uri, name: 'photo.heic', mime_type: 'image/heic' }],
     })
@@ -174,6 +185,7 @@ test.describe('Inline file previews — modular dispatch contract', () => {
     // FileStore). If body were called with {file} in inline context,
     // it would be missing from the cache → render <Spin/>, not <img>.
     const uri = '/api/files/disp-src/download'
+    await mockResourceLinkUrl(page, uri, TINY_PNG, { contentType: 'image/png' })
     await seedAssistantWithToolResult(page, testInfra.baseURL, {
       resourceLinks: [{ uri, name: 'p.png', mime_type: 'image/png' }],
     })
