@@ -7,7 +7,8 @@ import {
   isModelDownloaded as _isModelDownloaded,
   getModelCardStatus as _getModelCardStatus,
   hasAuthRequiredBadge,
-  handleAuthRequiredModal as _handleAuthRequiredModal,
+  handleAuthRequiredModal,
+  findAuthRequiredCard,
 } from './helpers/hub-models'
 import { loginWithPerms } from '../permissions/fixtures'
 import { Permissions } from '../../../src/api-client/types'
@@ -42,10 +43,12 @@ test.describe('Hub Models', () => {
     await expect(sizeText).toBeVisible()
   })
 
-  test('should show "Auth Required" badge for models requiring authentication', async ({ page }) => {
+  test('should show an auth badge (Auth Required / Token Needed) for models requiring authentication', async ({ page }) => {
     const modelCards = await getModelCards(page)
 
-    // Check at least one model for auth_required badge
+    // Check at least one model for an auth badge. The badge text depends on
+    // source_auth_configured: "Auth Required" when a credential is configured,
+    // "Token Needed" otherwise (the fresh-env default). Both mean auth_required.
     let foundAuthRequired = false
 
     for (let i = 0; i < await modelCards.count(); i++) {
@@ -59,44 +62,41 @@ test.describe('Hub Models', () => {
       }
     }
 
-    // According to setup, all models have auth_required: true
+    // At least one catalog model has auth_required: true, so it renders an
+    // auth badge ("Token Needed" in a fresh env, "Auth Required" once a
+    // credential is configured).
     expect(foundAuthRequired).toBe(true)
   })
 
-  // "should block download and show auth modal for models requiring
-  // authentication" was here. Removed: the UI feature (modal that
-  // blocks download until auth is configured) was never implemented.
-  // Tracked in src-app/ui/tests/e2e/TODO_E2E.md.
+  test('should block download and show auth modal for models requiring authentication', async ({
+    page,
+  }) => {
+    // Find an auth-gated card (in a fresh env the HF repo has no credential, so
+    // its models are gated) instead of assuming the first card is gated.
+    const card = await findAuthRequiredCard(page)
+    test.skip(!card, 'no auth-gated model in catalog')
 
-  test('should allow configuring repository authentication from auth modal', async ({ page }) => {
-    // Find a model with auth_required
-    const modelCards = await getModelCards(page)
-    const firstCard = modelCards.first()
+    await card!.getByRole('button', { name: /download/i }).click()
 
-    // Trigger auth modal
-    await firstCard.getByRole('button', { name: /download/i }).click()
+    const dialog = page.getByRole('dialog', {
+      name: /authentication.*required/i,
+    })
+    await expect(dialog).toBeVisible({ timeout: 5000 })
 
-    const modal = page.getByRole('dialog', { name: /authentication.*required/i })
-    const modalVisible = await modal.isVisible({ timeout: 2000 }).catch(() => false)
+    // No download should have been started (the early-return fired).
+    await expect(page.getByText(/download.*started/i)).toHaveCount(0)
+  })
 
-    if (modalVisible) {
-      // Click configure button - get OK button which triggers onOk callback
-      await modal.getByRole('button', { name: /configure.*authentication/i }).click()
+  test('should navigate to repository settings from the auth modal', async ({
+    page,
+  }) => {
+    const card = await findAuthRequiredCard(page)
+    test.skip(!card, 'no auth-gated model in catalog')
 
-      // Wait for modal to close
-      await expect(modal).not.toBeVisible({ timeout: 3000 })
-
-      // Should open repository edit drawer - use title text since Ant Design Drawer doesn't use role="dialog"
-      await expect(
-        page.getByText(/Edit.*Repository.*Authentication/i),
-      ).toBeVisible({ timeout: 5000 })
-
-      // Should have auth type selector
-      await expect(page.getByLabel(/authentication.*type/i)).toBeVisible()
-
-      // Close drawer by clicking Cancel button
-      await page.getByRole('button', { name: /cancel/i }).click()
-    }
+    // Trigger the auth modal, then "Go to LLM Repositories" deep-links to the
+    // LLM Repositories settings page.
+    await card!.getByRole('button', { name: /download/i }).click()
+    await handleAuthRequiredModal(page)
   })
 
   test('should show quantization options for models with multiple quantizations', async ({

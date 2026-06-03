@@ -67,3 +67,12 @@ code_sandbox:
   enabled: false
   rootfs_path: "/var/lib/ziee/sandbox-rootfs/current"
   cgroup_parent: "/sys/fs/cgroup/ziee-sandbox.slice"
+
+# At-rest encryption for stored credentials (LLM provider api_keys, LLM
+# repository auth tokens, per-user provider keys). STRONGLY RECOMMENDED in
+# production: when unset, these are stored in PLAINTEXT in the database and are
+# reachable in DB dumps/backups. Set a stable random key (min 32 chars), keep it
+# out of version control, and back it up — changing or losing it makes
+# previously-encrypted secrets unrecoverable.
+secrets:
+  storage_key: "CHANGE-ME-to-a-stable-random-string-min-32-chars"

@@ -1056,6 +1056,15 @@ impl std::fmt::Display for ModelFileType {
 /// Internal function to initiate repository download without auth check
 /// Used by both the public API endpoint and the hub module
 /// Returns download instance immediately; actual download happens in background task
+///
+/// NOTE: this lower-level path is intentionally NOT subject to the hub
+/// pre-download auth gate (`HUB_REPOSITORY_AUTH_NOT_CONFIGURED`, in
+/// `hub/handlers.rs`). `auth_required` is a hub-catalog property; this API
+/// accepts an arbitrary repository_id/path and downloads with whatever
+/// credential the repo has (or none) — gating it unconditionally on
+/// `has_credential()` would wrongly block legitimate public-repo downloads. If a
+/// repo lacks a needed credential the background git clone surfaces the auth
+/// error. The early-fail gate is hub-flow-only by design.
 pub async fn initiate_repository_download_internal(
     request: DownloadFromRepositoryRequest,
 ) -> Result<DownloadInstance, String> {
@@ -1115,22 +1124,27 @@ pub async fn initiate_repository_download_internal(
         GitService::build_repository_url(&repository.url, &request.repository_path);
     let _repository_branch = request.repository_branch.clone();
 
-    // Extract authentication token based on repository auth type
-    let auth_token = match repository.auth_type.as_str() {
-        "api_key" => repository.auth_config.api_key.clone(),
-        "bearer_token" => repository.auth_config.token.clone(),
-        "basic_auth" => {
-            if let (Some(username), Some(password)) = (
+    // Extract the credential for the git layer. For basic_auth the username and
+    // password are kept SEPARATE — the password is the git secret and the
+    // username is threaded through so the credential callback can pair them
+    // correctly (libgit2 Basic auth = base64("username:password")). For
+    // api_key/bearer_token the secret is a token paired with a host-default
+    // username, so auth_username stays None and the token path is unchanged.
+    let (auth_username, auth_token): (Option<String>, Option<String>) =
+        match repository.auth_type.as_str() {
+            "api_key" => (None, repository.auth_config.api_key.clone()),
+            "bearer_token" => (None, repository.auth_config.token.clone()),
+            "basic_auth" => match (
                 &repository.auth_config.username,
                 &repository.auth_config.password,
             ) {
-                Some(format!("{}:{}", username, password))
-            } else {
-                None
-            }
-        }
-        "none" | _ => None,
-    };
+                (Some(username), Some(password)) => {
+                    (Some(username.clone()), Some(password.clone()))
+                }
+                _ => (None, None),
+            },
+            "none" | _ => (None, None),
+        };
 
     // Create cancellation token for this download
     let cancellation_token =
@@ -1222,6 +1236,7 @@ pub async fn initiate_repository_download_internal(
                 &request.repository_id,
                 request.repository_branch.as_deref(),
                 auth_token.as_deref(),
+                auth_username.as_deref(),
                 progress_tx.clone(),
                 Some(cancellation_token.clone()),
             )

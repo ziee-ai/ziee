@@ -551,3 +551,188 @@ async fn test_download_with_specific_branch() {
     let request_data = &download_instance["request_data"];
     assert_eq!(request_data["revision"].as_str().unwrap(), "main");
 }
+
+/// Helper: fetch the hub models catalog and return the first auth_required model
+/// whose source is Hugging Face (the bundled catalog ships several).
+async fn first_auth_required_hf_model(
+    server: &crate::common::TestServer,
+    token: &str,
+) -> serde_json::Value {
+    let models: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url("/hub/models?lang=en"))
+        .header("Authorization", format!("Bearer {}", token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    models
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| {
+            m["auth_required"].as_bool() == Some(true)
+                && m["repository_url"].as_str() == Some("https://huggingface.co")
+        })
+        .cloned()
+        .expect("bundled catalog should contain an auth_required Hugging Face model")
+}
+
+/// The hub download endpoint must BLOCK with a 422 + actionable guidance when the
+/// model needs auth but its source repository has no credential configured —
+/// instead of spawning a download that fails later with an opaque git auth error.
+#[tokio::test]
+async fn test_hub_download_blocked_when_repo_auth_not_configured() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_gate_blocked",
+        &[
+            "hub::models::download",
+            "hub::models::read",
+            "llm_models::create",
+            "llm_models::downloads_read",
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_repositories::read",
+            "llm_repositories::edit",
+        ],
+    )
+    .await;
+
+    // Leave the Hugging Face repo credential EMPTY (the seeded default).
+    let _hf = get_huggingface_repository(&server, &user.token, false).await;
+
+    let provider = get_local_provider(&server, &user.token).await;
+    let provider_id = provider["id"].as_str().unwrap();
+
+    let model = first_auth_required_hf_model(&server, &user.token).await;
+    let hub_id = model["id"].as_str().unwrap();
+
+    // The computed flag should agree that auth is NOT configured.
+    assert_eq!(
+        model["source_auth_configured"].as_bool(),
+        Some(false),
+        "source_auth_configured should be false while the HF repo has no key"
+    );
+
+    let response = reqwest::Client::new()
+        .post(server.api_url("/hub/models/download"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "hub_id": hub_id, "provider_id": provider_id }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let body: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(
+        body["error_code"].as_str(),
+        Some("HUB_REPOSITORY_AUTH_NOT_CONFIGURED"),
+        "unexpected error body: {body}"
+    );
+    assert_eq!(
+        body["details"]["settings_path"].as_str(),
+        Some("/settings/llm-repositories")
+    );
+
+    // No download instance should have been created.
+    let downloads: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url("/llm-models/downloads"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        downloads["total"].as_i64(),
+        Some(0),
+        "the blocked request must not create a download instance"
+    );
+}
+
+/// Once the source repository has a credential configured, the same hub download
+/// passes the gate and creates a download instance. A dummy (non-empty) key is
+/// enough to satisfy the presence gate — we don't await the background clone.
+///
+/// NOTE: this is a NETWORK-TOUCHING test — once the gate passes, the background
+/// task makes a real (immediately-failing, dummy-token) git clone to
+/// huggingface.co. The assertion reads only the synchronously-created download
+/// row, so it is not flaky, but the test belongs to the network-dependent tier.
+#[tokio::test]
+async fn test_hub_download_proceeds_when_repo_auth_configured() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_gate_ok",
+        &[
+            "hub::models::download",
+            "hub::models::read",
+            "llm_models::create",
+            "llm_models::downloads_read",
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_repositories::read",
+            "llm_repositories::edit",
+        ],
+    )
+    .await;
+
+    // Configure the Hugging Face repo with a DUMMY non-empty key.
+    let hf = get_huggingface_repository(&server, &user.token, false).await;
+    let hf_id = hf["id"].as_str().unwrap();
+    let update = reqwest::Client::new()
+        .post(server.api_url(&format!("/llm-repositories/{}", hf_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "auth_config": {
+                "api_key": "dummy-token-for-gate-test",
+                "auth_test_api_endpoint": "https://huggingface.co/api/whoami-v2"
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(update.status(), StatusCode::OK);
+
+    let provider = get_local_provider(&server, &user.token).await;
+    let provider_id = provider["id"].as_str().unwrap();
+
+    let model = first_auth_required_hf_model(&server, &user.token).await;
+    let hub_id = model["id"].as_str().unwrap();
+    // The flag now reports configured.
+    assert_eq!(model["source_auth_configured"].as_bool(), Some(true));
+
+    let response = reqwest::Client::new()
+        .post(server.api_url("/hub/models/download"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "hub_id": hub_id, "provider_id": provider_id }))
+        .send()
+        .await
+        .unwrap();
+
+    assert!(
+        response.status().is_success(),
+        "gate should pass once a credential is configured, got {}",
+        response.status()
+    );
+
+    // A download instance was created (it may immediately fail in the background
+    // with the dummy key — we only assert the gate let it through).
+    let downloads: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url("/llm-models/downloads"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(
+        downloads["total"].as_i64().unwrap_or(0) >= 1,
+        "a download instance should have been created"
+    );
+}

@@ -842,6 +842,7 @@ export interface HubModel {
   repository_path: string
   repository_url: string
   size_gb: number
+  source_auth_configured?: boolean
   tags?: string[]
 }
 
