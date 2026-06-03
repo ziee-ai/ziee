@@ -124,6 +124,14 @@ pub struct CodeSandboxConfig {
     /// where IMDS is unreachable (the common dev / on-prem case).
     #[serde(default)]
     pub allow_cloud_imds_reachable: bool,
+    /// Public base origin for resource links handed to MCP clients on a
+    /// different host (e.g. a reverse-proxy / tunnel URL like
+    /// `https://3000--….coder…`). When set, `get_resource_link` roots links
+    /// here instead of the loopback origin. The built-in MCP server's own
+    /// dial URL stays on 127.0.0.1 — this only affects returned links.
+    /// Empty/unset → keep current loopback behavior.
+    #[serde(default)]
+    pub public_base_url: Option<String>,
 }
 
 impl Default for CodeSandboxConfig {
@@ -137,6 +145,7 @@ impl Default for CodeSandboxConfig {
             auto_download_under_mb: default_auto_download_under_mb(),
             allow_wsl2_mirrored_mode: false,
             allow_cloud_imds_reachable: false,
+            public_base_url: None,
         }
     }
 }

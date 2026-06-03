@@ -375,10 +375,13 @@ pub async fn get_resource_link(
             "code_sandbox state not initialized",
         )
     })?;
-    let origin = state
-        .loopback_url
-        .trim_end_matches("/api/code-sandbox")
-        .to_string();
+    let origin = match state.config.public_base_url.as_deref() {
+        Some(base) if !base.trim().is_empty() => base.trim_end_matches('/').to_string(),
+        _ => state
+            .loopback_url
+            .trim_end_matches("/api/code-sandbox")
+            .to_string(),
+    };
 
     // First check whether the filename matches a known attachment by
     // name AND owned by the current user.
