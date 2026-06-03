@@ -2,7 +2,7 @@
 // Extraction-pipeline tests.
 //
 // Exercises the JSON parser + ADD/UPDATE/DELETE/NOOP dispatch in
-// `chat/extensions/memory/extractor.rs`. The parser is the easy bit
+// `modules/memory/engine/extractor.rs`. The parser is the easy bit
 // — testing the full pipeline against a real LLM is out of scope
 // here; that's a Tier-5 real-LLM test. We test the parser in
 // isolation by invoking the public function on canned strings.

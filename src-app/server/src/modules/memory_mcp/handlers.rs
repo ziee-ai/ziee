@@ -202,7 +202,7 @@ async fn remember(user_id: Uuid, args: &Value) -> Result<Value, AppError> {
         if admin.enabled {
             if let Some(emb_model_id) = admin.embedding_model_id {
                 if let Ok(vec) =
-                    crate::modules::chat::extensions::memory::dispatch::embed(emb_model_id, content)
+                    crate::modules::memory::engine::dispatch::embed(emb_model_id, content)
                         .await
                 {
                     let model_name = Repos
@@ -268,7 +268,7 @@ async fn recall(user_id: Uuid, args: &Value) -> Result<Value, AppError> {
         ));
     }
 
-    let vec = crate::modules::chat::extensions::memory::dispatch::embed(emb_model_id, q).await?;
+    let vec = crate::modules::memory::engine::dispatch::embed(emb_model_id, q).await?;
     let pool = Repos.memory.pool_clone();
     let rows: Vec<(Uuid, String, f32)> = sqlx::query_as(
         r#"

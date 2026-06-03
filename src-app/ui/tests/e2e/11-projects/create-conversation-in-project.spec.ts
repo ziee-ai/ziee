@@ -8,20 +8,25 @@ import {
 } from './helpers/project-helpers'
 
 /**
- * Round-4 Option A redesign: the project detail page now embeds a
- * `<ChatInput>` directly, replacing the old "New chat" button that
- * routed to /chat?project_id=…. Sending a message from the project
- * page:
+ * Project detail page hosts an inline `<ChatInput>`. After the
+ * chat↔project decoupling refactor, sending from this input runs
+ * the two-call flow:
  *
- *   1. latches the project's id into Stores.Chat.pendingProjectId
- *   2. calls Stores.Chat.sendMessage() — which creates a new
- *      conversation with project_id on the backend (triggering the
- *      MCP-settings snapshot in the same transaction)
- *   3. fires a `conversation.created` event the page listens for and
- *      navigates to /chat/{newConvId}
+ *   1. POST /api/conversations               (chat creates UNFILED)
+ *   2. POST /api/projects/{pid}/conversations/{cid}  (attach)
  *
- * This test pins the navigation contract. The actual LLM context
- * injection is verified separately in
+ * The attach call is fired by the frontend project chat extension's
+ * `afterCreateConversation` hook (chat's `Stores.Chat.sendMessage`
+ * chains it before emitting `conversation.created`).
+ *
+ * `ProjectDetailPage` subscribes to `conversation.created` and
+ * navigates to the project-namespaced URL
+ * `/projects/{pid}/chat/{cid}` — both URLs (`/chat/{id}` and the
+ * namespaced form) remain valid for a project-bound conversation,
+ * but the project page resolves to the canonical namespaced form.
+ *
+ * This test pins the navigation + API-call contract. The actual
+ * LLM context injection is verified separately in
  * `message-uses-project-context.spec.ts` (real-LLM, gated on key).
  */
 test.describe('Projects - new conversation via inline ChatInput', () => {
@@ -61,7 +66,7 @@ test.describe('Projects - new conversation via inline ChatInput', () => {
     await expect(page.getByRole('button', { name: /^new chat$/i })).toHaveCount(0)
   })
 
-  test('sending from inline ChatInput creates conversation with project_id and navigates to /chat/{id}', async ({
+  test('sending from inline ChatInput fires create + attach and navigates to /projects/{pid}/chat/{cid}', async ({
     page,
   }) => {
     await page.locator('.ant-card', { hasText: 'Project With Chat' }).click()
@@ -69,26 +74,41 @@ test.describe('Projects - new conversation via inline ChatInput', () => {
     const projectUrl = page.url()
     const projectId = new URL(projectUrl).pathname.split('/').pop()!
 
-    // Intercept POST /api/conversations so we can assert the project_id
-    // body parameter without depending on a real LLM round-trip.
-    let capturedProjectId: string | null = null
-    page.on('request', async req => {
+    // Intercept both API calls so we can assert the two-step flow.
+    //   - POST /api/conversations: chat's default create (UNFILED;
+    //     body must NOT include project_id post-decoupling).
+    //   - POST /api/projects/{pid}/conversations/{cid}: the project
+    //     chat extension's attach call.
+    let createBodyHasProjectId: boolean | null = null
+    let attachUrlSeen: string | null = null
+    page.on('request', req => {
+      const url = req.url()
       if (
         req.method() === 'POST' &&
-        req.url().match(/\/api\/conversations(\?|$)/)
+        url.match(/\/api\/conversations(\?|$)/)
       ) {
         try {
           const body = req.postDataJSON?.() ?? JSON.parse(req.postData() || '{}')
-          capturedProjectId = body.project_id ?? null
+          createBodyHasProjectId = Object.prototype.hasOwnProperty.call(
+            body,
+            'project_id',
+          )
         } catch {
           // ignore body parse failures
         }
+      } else if (
+        req.method() === 'POST' &&
+        url.match(
+          new RegExp(`/api/projects/${projectId}/conversations/[0-9a-f-]+`),
+        )
+      ) {
+        attachUrlSeen = url
       }
     })
 
     // Type a message in the inline ChatInput. We don't need it to
-    // actually reach the LLM — `sendMessage` triggers conversation
-    // creation BEFORE the streaming round-trip.
+    // actually reach the LLM — `sendMessage` chains create + attach
+    // BEFORE the streaming round-trip.
     const textarea = page.locator(
       '[data-test-section="chat-input"] textarea[placeholder*="Type your message"]',
     )
@@ -99,14 +119,18 @@ test.describe('Projects - new conversation via inline ChatInput', () => {
     await expect(sendButton).toBeEnabled({ timeout: 10000 })
     await sendButton.click()
 
-    // The page should navigate to /chat/<convId> shortly after the
-    // POST /api/conversations resolves. We allow a generous timeout
-    // because the chat extension chain (text + project + assistant +
-    // file + mcp) runs synchronously before streaming begins.
-    await page.waitForURL(/\/chat\/[0-9a-f-]+/, { timeout: 30000 })
+    // Page navigates to the project-NAMESPACED URL once the attach
+    // call resolves and `conversation.created` fires with the
+    // post-hook conversation shape.
+    await page.waitForURL(
+      new RegExp(`/projects/${projectId}/chat/[0-9a-f-]+`),
+      { timeout: 30000 },
+    )
 
-    // The intercepted POST must have carried project_id set to our
-    // project's id — that's the contract the snapshot SQL depends on.
-    expect(capturedProjectId).toBe(projectId)
+    // Contract: chat's create no longer carries project_id (the
+    // decoupling moved this concern to the project module).
+    expect(createBodyHasProjectId).toBe(false)
+    // Contract: the attach endpoint was hit for this project.
+    expect(attachUrlSeen).not.toBeNull()
   })
 })

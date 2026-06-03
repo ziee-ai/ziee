@@ -1,9 +1,23 @@
 // NOTE: Old approval_test module uses outdated TestServer API
-// Comprehensive approval workflow tests are now in tests/chat/mcp_approval_workflow_test.rs
-// mod approval_test;
+// Comprehensive approval workflow tests now live in this directory
+// (mcp_approval_workflow_test) after the chat→mcp bridge extraction.
 
 pub mod mock_sampling_server;
 mod run_in_sandbox_test;
+
+// Bridge-side tests moved out of tests/chat/ as part of the
+// chat→mcp bridge extraction. They exercise the mcp chat-extension's
+// behavior end-to-end via the test server's HTTP surface; they don't
+// import bridge code directly (rely on `crate::chat::helpers::*` for
+// model fixtures + SSE parsing, same pattern as project tests).
+mod mcp_approval_workflow_test;
+mod mcp_content_test;
+mod mcp_defaults_test;
+mod mcp_elicitation_test;
+mod mcp_extension_test;
+mod mcp_loop_settings_test;
+mod mcp_sampling_test;
+mod mcp_streaming_workflow_test;
 
 use crate::common::test_helpers::{self};
 use serde_json::json;

@@ -55,7 +55,11 @@ export {
 } from './createExtensionStore'
 
 // Registry
-export { ChatExtensionRegistry, chatExtensionRegistry } from './registry'
+export {
+  ChatExtensionRegistry,
+  chatExtensionRegistry,
+  useConversationMenuContributions,
+} from './registry'
 
 // UI components
 export { ExtensionSlot } from './slots'

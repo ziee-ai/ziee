@@ -25,10 +25,23 @@ fn main() {
     // Get the parent directory (server/)
     let server_dir = macros_dir.parent().unwrap().to_path_buf();
 
-    // Scan for extension.rs files in modules/chat/**/
-    let chat_dir = server_dir.join("src/modules/chat");
+    let modules_dir = server_dir.join("src/modules");
+    let chat_dir = modules_dir.join("chat");
 
     let mut extensions = Vec::new();
+
+    // Walk two locations for `extension.rs` files:
+    //   1. modules/chat/**/extension.rs — chat-internal extensions
+    //      (assistant, memory, text, title, …) where the qualified
+    //      path prefix is `crate::modules::chat::<module_path>::extension::`.
+    //   2. modules/*/chat_extension/extension.rs — sibling-module
+    //      bridges (file, project, mcp, …) where the qualified path
+    //      prefix is `crate::modules::<sibling>::chat_extension::extension::`.
+    //
+    // Each entry yields a `qualified_path_prefix` used downstream when
+    // we need to rewrite tokens that reference per-extension types
+    // (only the SSEChatStreamEventVariants case uses this today).
+    let mut extension_files: Vec<(PathBuf, String)> = Vec::new();
 
     if chat_dir.exists() {
         for entry in WalkDir::new(&chat_dir)
@@ -37,16 +50,49 @@ fn main() {
             .filter_map(|e| e.ok())
         {
             let path = entry.path();
-
-            // Look for extension.rs files
             if path.file_name() == Some(std::ffi::OsStr::new("extension.rs")) {
-
-                // Extract module path from file path
                 let module_path = extract_module_path(&chat_dir, path);
+                let qualified_prefix =
+                    format!("crate::modules::chat::{}::extension", module_path);
+                extension_files.push((path.to_path_buf(), qualified_prefix));
+            }
+        }
+    }
 
-                // Read and parse the extension file
-                if let Ok(content) = fs::read_to_string(path) {
-                    if let Ok(parsed) = syn::parse_file(&content) {
+    if modules_dir.exists() {
+        for entry in fs::read_dir(&modules_dir).into_iter().flatten().flatten() {
+            let sibling = entry.path();
+            if !sibling.is_dir() {
+                continue;
+            }
+            let ext_file = sibling.join("chat_extension").join("extension.rs");
+            if !ext_file.exists() {
+                continue;
+            }
+            let sibling_name = sibling
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("unknown");
+            let qualified_prefix =
+                format!("crate::modules::{}::chat_extension::extension", sibling_name);
+            extension_files.push((ext_file, qualified_prefix));
+        }
+    }
+
+    for (path, qualified_prefix) in extension_files {
+        // module_path is only used downstream for the legacy
+        // chat-internal qualified-path builder — see SSEChatStreamEventVariants
+        // handling below. For sibling-module bridges the qualified_prefix
+        // (computed above) takes precedence.
+        let module_path = if path.starts_with(&chat_dir) {
+            extract_module_path(&chat_dir, &path)
+        } else {
+            String::new()
+        };
+
+        // Read and parse the extension file
+        if let Ok(content) = fs::read_to_string(&path) {
+            if let Ok(parsed) = syn::parse_file(&content) {
                         let mut name = module_path.split("::").last().unwrap_or("unknown").to_string();
                         let mut order = 50; // Default order
                         let mut request_fields = Vec::new();
@@ -126,11 +172,16 @@ fn main() {
                                                     // Get the type name
                                                     let type_name = type_path.path.segments.last().unwrap().ident.to_string();
 
-                                                    // Build fully-qualified path
+                                                    // Build fully-qualified path. Uses the
+                                                    // qualified_prefix computed during file
+                                                    // discovery so chat-internal extensions
+                                                    // (`crate::modules::chat::<x>::extension`)
+                                                    // and sibling-module bridges
+                                                    // (`crate::modules::<x>::chat_extension::extension`)
+                                                    // both resolve correctly.
                                                     let full_path = format!(
-                                                        "crate::modules::chat::{}::extension::{}",
-                                                        module_path,
-                                                        type_name
+                                                        "{}::{}",
+                                                        qualified_prefix, type_name
                                                     );
 
                                                     // Store as string with docs if present
@@ -171,11 +222,9 @@ fn main() {
                             stream_event_variants,
                             content_variants,
                         });
-                    }
-                }
-            }
-        }
-    }
+                    } // close `if let Ok(parsed)`
+                } // close `if let Ok(content)`
+    } // close `for (path, qualified_prefix) in extension_files`
 
     // Sort extensions by order (for consistent field composition)
     extensions.sort_by_key(|e| e.order);
@@ -189,8 +238,12 @@ fn main() {
     // The auto_register_extensions function in extension_registration.rs
     // iterates the CHAT_EXTENSIONS slice instead of using generated code
 
-    // Tell cargo to rerun if any .rs file in modules/chat changes
+    // Tell cargo to rerun if any .rs file under modules/chat (in-chat
+    // extensions) OR modules/* (sibling-module bridges) changes.
+    // Watching the broader modules dir is fine — cargo's change
+    // detection is content-hashed, not just timestamp-based.
     println!("cargo:rerun-if-changed={}", chat_dir.display());
+    println!("cargo:rerun-if-changed={}", modules_dir.display());
 }
 
 fn extract_module_path(base: &PathBuf, path: &std::path::Path) -> String {

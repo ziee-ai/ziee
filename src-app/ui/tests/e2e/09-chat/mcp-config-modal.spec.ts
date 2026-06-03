@@ -11,7 +11,7 @@ import { goToNewChatPage } from './helpers/chat-helpers'
  * McpConfigModal behaviour added/refactored in feat/mcp-rewrite-v2:
  *
  * - The save-on-close path now calls `saveConversationConfig(convId, ids,
- *   serverToolsMap)` *without* the `updateAutoApproved` flag. Per the Mcp.store
+ *   serverToolsMap)` *without* the `updateAutoApproved` flag. Per the McpComposer.store
  *   contract, omitting that flag means the request body must NOT include
  *   `auto_approved_tools` (the backend uses COALESCE to preserve the stored value).
  * - Approval changes happen via the in-conversation tool-approval card

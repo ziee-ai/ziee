@@ -41,3 +41,24 @@ export const emitProjectFileDetached = async (
     data: { projectId, fileId },
   })
 }
+
+export const emitProjectConversationAttached = async (
+  projectId: string,
+  conversationId: string,
+  fromProjectId: string | null,
+) => {
+  await Stores.EventBus.emit({
+    type: 'project.conversation_attached',
+    data: { projectId, conversationId, fromProjectId },
+  })
+}
+
+export const emitProjectConversationDetached = async (
+  projectId: string,
+  conversationId: string,
+) => {
+  await Stores.EventBus.emit({
+    type: 'project.conversation_detached',
+    data: { projectId, conversationId },
+  })
+}

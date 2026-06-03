@@ -1,14 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { App, Button, Flex, Form, Input, Select, Typography } from 'antd'
+import { useEffect, useRef, useState } from 'react'
+import { App, Button, Flex, Form, Input, Typography } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { ApiClient } from '@/api-client'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import {
   Permissions,
-  type Assistant,
   type CreateProjectRequest,
-  type LlmModel,
   type UpdateProjectRequest,
 } from '@/api-client/types'
 
@@ -16,9 +13,13 @@ interface ProjectFormValues {
   name: string
   description?: string
   instructions?: string
-  default_assistant_id?: string | null
-  default_model_id?: string | null
 }
+
+/// NOTE: `default_assistant_id` and `default_model_id` are NOT edited
+/// here. They live in the Advanced card on the ProjectDetailPage as
+/// inline auto-save selects (`ProjectDefaultsForm`) — keeping
+/// configuration-shape settings out of the "name/description/
+/// instructions" content drawer.
 
 export function ProjectFormDrawer() {
   const { message } = App.useApp()
@@ -33,11 +34,6 @@ export function ProjectFormDrawer() {
   const canCreate = usePermission(Permissions.ProjectsCreate)
   const isEdit = !!editingProject
   const canSave = isEdit ? canEdit : canCreate
-
-  // Local cache of the default-asset pickers' option lists.
-  const [assistants, setAssistants] = useState<Assistant[]>([])
-  const [models, setModels] = useState<LlmModel[]>([])
-  const [optionsLoading, setOptionsLoading] = useState(false)
 
   /// Mounted/open flag — closes audit N10. Late-landing fetches from
   /// a closed drawer must NOT setState, or React warns + we leak.
@@ -56,59 +52,6 @@ export function ProjectFormDrawer() {
   const lastOpenedSubjectId = useRef<string | null>(null)
   const [remoteUpdatedWhileEditing, setRemoteUpdatedWhileEditing] =
     useState(false)
-
-  // Lazy-load the picker options the first time the drawer opens.
-  // Wrapped in useCallback so the event-subscription effect below can
-  // call the same refetch routine without re-binding listeners.
-  const refetchOptions = useCallback(async () => {
-    if (!mountedRef.current) return
-    setOptionsLoading(true)
-    try {
-      const [assistantsResp, modelsResp] = await Promise.all([
-        ApiClient.Assistant.list({ page: 1, limit: 100 }),
-        ApiClient.LlmModel.list({ page: 1, perPage: 100 }),
-      ])
-      if (!mountedRef.current) return
-      setAssistants(assistantsResp.assistants ?? [])
-      setModels(modelsResp.models ?? [])
-    } catch (err) {
-      // Non-fatal — user can still save without picking a default.
-      console.warn('Failed to load default-asset options', err)
-    } finally {
-      if (mountedRef.current) setOptionsLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!open) return
-    void refetchOptions()
-  }, [open, refetchOptions])
-
-  // While the drawer is open, watch for asset lifecycle changes in
-  // OTHER tabs / components and refresh so a newly-created assistant
-  // (or freshly enabled model) appears in the pickers without needing
-  // to close + reopen. Closes audit F3.
-  useEffect(() => {
-    if (!open) return
-    const GROUP = 'ProjectFormDrawer'
-    const eventBus = Stores.EventBus
-
-    const off1 = eventBus.on('assistant.created', () => void refetchOptions(), GROUP)
-    const off2 = eventBus.on('assistant.deleted', () => void refetchOptions(), GROUP)
-    const off3 = eventBus.on('assistant.updated', () => void refetchOptions(), GROUP)
-    const off4 = eventBus.on('llm_model.enabled', () => void refetchOptions(), GROUP)
-    const off5 = eventBus.on('llm_model.disabled', () => void refetchOptions(), GROUP)
-    const off6 = eventBus.on('llm_model.deleted', () => void refetchOptions(), GROUP)
-
-    return () => {
-      off1()
-      off2()
-      off3()
-      off4()
-      off5()
-      off6()
-    }
-  }, [open, refetchOptions])
 
   // Reset form on a FRESH open (subject change), preserve user edits
   // on in-place updates (audit N6). The reset only fires when:
@@ -132,8 +75,6 @@ export function ProjectFormDrawer() {
         name: editingProject?.name ?? '',
         description: editingProject?.description ?? '',
         instructions: editingProject?.instructions ?? '',
-        default_assistant_id: editingProject?.default_assistant_id ?? null,
-        default_model_id: editingProject?.default_model_id ?? null,
       })
     } else {
       // Same subject, but `editingProject` changed (likely from a
@@ -147,8 +88,6 @@ export function ProjectFormDrawer() {
           name: editingProject?.name ?? '',
           description: editingProject?.description ?? '',
           instructions: editingProject?.instructions ?? '',
-          default_assistant_id: editingProject?.default_assistant_id ?? null,
-          default_model_id: editingProject?.default_model_id ?? null,
         })
       }
     }
@@ -160,8 +99,6 @@ export function ProjectFormDrawer() {
       name: editingProject?.name ?? '',
       description: editingProject?.description ?? '',
       instructions: editingProject?.instructions ?? '',
-      default_assistant_id: editingProject?.default_assistant_id ?? null,
-      default_model_id: editingProject?.default_model_id ?? null,
     })
   }
 
@@ -174,23 +111,13 @@ export function ProjectFormDrawer() {
     Stores.ProjectDrawer.setProjectDrawerLoading(true)
     try {
       if (isEdit && editingProject) {
-        // Tri-state on default_*_id (backend Option<Option<Uuid>>):
-        //   undefined → field omitted → "no change"
-        //   null      → JSON `null`   → "clear"
-        //   string    → uuid          → "set"
-        // The generated TS types flatten the outer Option to
-        // `string | undefined`, so we cast through `unknown` to allow
-        // wiring null through to the server when the user clears a
-        // picker. The backend's `deserialize_nullable_field` reads it
-        // correctly. Tracked as a codegen improvement.
+        // Default assistant / default model are edited inline on the
+        // ProjectDetailPage's Advanced card via ProjectDefaultsForm,
+        // not here — keep this patch focused on the content fields.
         const patch: UpdateProjectRequest = {
           name: values.name,
           description: values.description ?? '',
           instructions: values.instructions ?? '',
-          default_assistant_id: (values.default_assistant_id ??
-            null) as unknown as string | undefined,
-          default_model_id: (values.default_model_id ??
-            null) as unknown as string | undefined,
         }
         await Stores.Projects.updateProject(editingProject.id, patch)
         message.success('Project updated')
@@ -199,8 +126,6 @@ export function ProjectFormDrawer() {
           name: values.name,
           description: values.description,
           instructions: values.instructions,
-          default_assistant_id: values.default_assistant_id ?? undefined,
-          default_model_id: values.default_model_id ?? undefined,
         }
         await Stores.Projects.createProject(req)
         message.success('Project created')
@@ -280,6 +205,7 @@ export function ProjectFormDrawer() {
         <Form.Item
           name="description"
           label="Description"
+          extra="For your reference only — shown on the project card and detail page. NOT sent to the LLM. To shape the model's behavior in this project, use the Instructions field below instead."
           rules={[{ max: 4096, message: 'Description is too long' }]}
         >
           <Input.TextArea
@@ -303,53 +229,6 @@ export function ProjectFormDrawer() {
           />
         </Form.Item>
 
-        <Form.Item
-          name="default_assistant_id"
-          label="Default assistant"
-          extra="Pre-selected when creating a new conversation in this project. Users can override per-conversation."
-        >
-          <Select
-            allowClear
-            placeholder="No default"
-            loading={optionsLoading}
-            options={(() => {
-              const opts = assistants.map(a => ({
-                value: a.id as string,
-                label: a.name,
-              }))
-              const current = editingProject?.default_assistant_id
-              if (current && !opts.some(o => o.value === current)) {
-                opts.unshift({ value: current, label: '(deleted)' })
-              }
-              return opts
-            })()}
-            showSearch={{ optionFilterProp: 'label' }}
-          />
-        </Form.Item>
-
-        <Form.Item
-          name="default_model_id"
-          label="Default model"
-          extra="Snapshotted onto each conversation created in this project (when no explicit model is selected)."
-        >
-          <Select
-            allowClear
-            placeholder="No default"
-            loading={optionsLoading}
-            options={(() => {
-              const opts = models.map(m => ({
-                value: m.id as string,
-                label: m.display_name || m.name,
-              }))
-              const current = editingProject?.default_model_id
-              if (current && !opts.some(o => o.value === current)) {
-                opts.unshift({ value: current, label: '(deleted)' })
-              }
-              return opts
-            })()}
-            showSearch={{ optionFilterProp: 'label' }}
-          />
-        </Form.Item>
       </Form>
     </Drawer>
   )

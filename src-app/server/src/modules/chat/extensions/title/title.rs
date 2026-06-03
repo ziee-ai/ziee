@@ -244,9 +244,9 @@ impl ChatExtension for TitleGenerationExtension {
             }
         };
 
-        // Update conversation title (leave project_id untouched)
+        // Update conversation title.
         Repos.chat.core
-            .update_conversation(context.conversation_id, context.user_id, Some(Some(title.clone())), None)
+            .update_conversation(context.conversation_id, context.user_id, Some(Some(title.clone())))
             .await?;
 
         // Send title event

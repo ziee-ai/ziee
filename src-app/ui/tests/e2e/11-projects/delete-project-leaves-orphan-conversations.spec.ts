@@ -29,28 +29,43 @@ test.describe('Projects - delete preserves orphan conversations', () => {
     await fillProjectForm(page, { name: 'Ephemeral Project' })
     await submitProjectForm(page)
 
-    // 2. Create a conversation inside the project via the API (drives
-    //    the project_id snapshot path tested at the backend level).
-    //    The token lives under the persisted `auth-storage` Zustand
-    //    key, not `access_token` — fetch a fresh token via the helper
-    //    so we don't depend on the FE storage shape.
+    // 2. Create a conversation inside the project via two API calls:
+    //    chat creates UNFILED, then project attaches it. After the
+    //    chat↔project decoupling, chat's POST /conversations no
+    //    longer accepts project_id in the body — project membership
+    //    is a separate concern owned by the project module's attach
+    //    endpoint. This mirrors the production frontend flow (the
+    //    project chat extension's afterCreateConversation hook).
     const token = await getAdminToken(baseURL)
     await page.locator('.ant-card', { hasText: 'Ephemeral Project' }).click()
     await page.waitForURL(/\/projects\/[0-9a-f-]+$/)
     const projectId = new URL(page.url()).pathname.split('/').pop()!
     const convResp = await page.evaluate(
-      async ([apiBase, pid, t]) => {
-        const r = await fetch(`${apiBase}/api/conversations`, {
+      async ({ apiBase, pid, t }: { apiBase: string; pid: string; t: string }) => {
+        // Step 1: chat creates unfiled conversation.
+        const createRes = await fetch(`${apiBase}/api/conversations`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${t}`,
           },
-          body: JSON.stringify({ project_id: pid, title: 'Orphan Soon' }),
+          body: JSON.stringify({ title: 'Orphan Soon' }),
         })
-        return await r.json()
+        const created = await createRes.json()
+        // Step 2: attach to project.
+        const attachRes = await fetch(
+          `${apiBase}/api/projects/${pid}/conversations/${created.id}`,
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${t}` },
+          },
+        )
+        if (!attachRes.ok) {
+          throw new Error(`Attach failed: ${attachRes.status}`)
+        }
+        return created
       },
-      [baseURL, projectId, token],
+      { apiBase: baseURL, pid: projectId, t: token },
     )
     expect(convResp).toHaveProperty('id')
 
@@ -61,20 +76,29 @@ test.describe('Projects - delete preserves orphan conversations', () => {
     await clickCardAction(page, 'Ephemeral Project', 'Delete')
     await confirmDeletePopconfirm(page)
 
-    // 4. The conversation still exists at the API level (project_id = NULL).
+    // 4. The conversation still exists AND is now unfiled. Schema
+    //    move (migration 73): project membership lives in the
+    //    `project_conversations` join table; deleting the project
+    //    cascades that row away, leaving the conversation orphaned.
+    //    Verify via GET /conversations (still 200) + GET
+    //    /projects/by-conversation (404 = unfiled).
     const after = await page.evaluate(
       async ({ apiBase, t, cid }: { apiBase: string; t: string; cid: string }) => {
-        const r = await fetch(`${apiBase}/api/conversations/${cid}`, {
+        const convResp = await fetch(`${apiBase}/api/conversations/${cid}`, {
           headers: { Authorization: `Bearer ${t}` },
         })
+        const projectResp = await fetch(
+          `${apiBase}/api/projects/by-conversation/${cid}`,
+          { headers: { Authorization: `Bearer ${t}` } },
+        )
         return {
-          status: r.status,
-          body: r.status === 200 ? await r.json() : null,
+          convStatus: convResp.status,
+          projectLookupStatus: projectResp.status,
         }
       },
       { apiBase: baseURL, t: token, cid: convResp.id as string },
     )
-    expect(after.status).toBe(200)
-    expect(after.body.project_id).toBeNull()
+    expect(after.convStatus).toBe(200)
+    expect(after.projectLookupStatus).toBe(404)
   })
 })

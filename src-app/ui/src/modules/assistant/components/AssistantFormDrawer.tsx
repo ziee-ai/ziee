@@ -1,0 +1,272 @@
+import { useEffect } from 'react'
+import { App, Button, Form, Input, Switch } from 'antd'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
+import { Stores } from '@/modules/assistant/stores'
+import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
+
+// Template assistants vs user assistants gate on different permission
+// namespaces. `isTemplate` selects which set applies at render time.
+const TEMPLATE_PERMS = {
+  create: Permissions.AssistantsTemplateCreate,
+  edit: Permissions.AssistantsTemplateEdit,
+} as const
+const USER_PERMS = {
+  create: Permissions.AssistantsCreate,
+  edit: Permissions.AssistantsEdit,
+} as const
+
+const { TextArea } = Input
+
+// JSON validator for parameters field
+const validateJSON = (_: any, value: string) => {
+  if (!value || !value.trim()) {
+    return Promise.resolve()
+  }
+  try {
+    JSON.parse(value)
+    return Promise.resolve()
+  } catch (_error) {
+    return Promise.reject(new Error('Please enter valid JSON'))
+  }
+}
+
+interface FormValues {
+  name: string
+  description?: string
+  instructions?: string
+  parameters?: string // JSON string
+  is_default?: boolean
+  enabled?: boolean
+}
+
+export function AssistantFormDrawer() {
+  const { message } = App.useApp()
+  const [form] = Form.useForm<FormValues>()
+
+  // Use drawer store
+  const { open, loading, editingAssistant, isTemplate, isCloning } =
+    Stores.AssistantDrawer
+
+  const perms = isTemplate ? TEMPLATE_PERMS : USER_PERMS
+  const canCreate = usePermission(perms.create)
+  const canEdit = usePermission(perms.edit)
+  const canSave = editingAssistant && !isCloning ? canEdit : canCreate
+
+  // Initialize form when drawer opens or editing assistant changes
+  useEffect(() => {
+    if (open) {
+      if (editingAssistant) {
+        // Stringify parameters for textarea
+        const parametersString = editingAssistant.parameters
+          ? JSON.stringify(editingAssistant.parameters, null, 2)
+          : ''
+
+        form.setFieldsValue({
+          name: editingAssistant.name,
+          description: editingAssistant.description,
+          instructions: editingAssistant.instructions,
+          parameters: parametersString,
+          enabled: editingAssistant.enabled,
+          is_default: editingAssistant.is_default,
+        })
+      } else {
+        // Creating new assistant with default values
+        form.setFieldsValue({
+          enabled: true,
+          is_default: false,
+        })
+      }
+    }
+  }, [open, editingAssistant, form])
+
+  const handleClose = () => {
+    form.resetFields()
+    Stores.AssistantDrawer.closeAssistantDrawer()
+  }
+
+  const handleParametersBlur = () => {
+    const value = form.getFieldValue('parameters')
+    if (!value || !value.trim()) return
+
+    try {
+      const parsed = JSON.parse(value)
+      const prettified = JSON.stringify(parsed, null, 2)
+      form.setFieldValue('parameters', prettified)
+    } catch (_error) {
+      // Invalid JSON, leave as is - validation will show error
+    }
+  }
+
+  const handleSubmit = async (values: FormValues) => {
+    // Parse parameters JSON string
+    let parameters: any = undefined
+    if (values.parameters && values.parameters.trim()) {
+      try {
+        parameters = JSON.parse(values.parameters)
+      } catch (_error) {
+        // JSON validation should catch this, but handle it just in case
+        message.error('Invalid JSON in parameters field')
+        return
+      }
+    }
+
+    const payload = {
+      name: values.name,
+      description: values.description,
+      instructions: values.instructions,
+      parameters,
+      is_default: values.is_default,
+      enabled: values.enabled,
+    }
+
+    Stores.AssistantDrawer.setAssistantDrawerLoading(true)
+    try {
+      // If cloning or creating new, always create (not update)
+      if (editingAssistant && !isCloning) {
+        // Update existing assistant
+        if (isTemplate) {
+          await Stores.TemplateAssistants.updateTemplateAssistant(
+            editingAssistant.id,
+            payload,
+          )
+        } else {
+          await Stores.UserAssistants.updateUserAssistant(
+            editingAssistant.id,
+            payload,
+          )
+        }
+        message.success('Assistant updated successfully')
+      } else {
+        // Create new assistant (including when cloning from template)
+        if (isTemplate) {
+          await Stores.TemplateAssistants.createTemplateAssistant(payload)
+        } else {
+          await Stores.UserAssistants.createUserAssistant(payload)
+        }
+        message.success('Assistant created successfully')
+      }
+      Stores.AssistantDrawer.closeAssistantDrawer()
+    } catch (error) {
+      console.error('Failed to save assistant:', error)
+      // Error already shown via store error state
+    } finally {
+      Stores.AssistantDrawer.setAssistantDrawerLoading(false)
+    }
+  }
+
+  const getTitle = () => {
+    if (isCloning) {
+      return 'Create from Template'
+    }
+    if (editingAssistant) {
+      return isTemplate ? 'Edit Template Assistant' : 'Edit Assistant'
+    }
+    return isTemplate ? 'Create Template Assistant' : 'Create Assistant'
+  }
+
+  return (
+    <Drawer
+      title={getTitle()}
+      open={open}
+      onClose={handleClose}
+      size={600}
+      mask={{ closable: false }}
+      footer={null}
+    >
+      <Form
+        name="assistant-form"
+        form={form}
+        layout="vertical"
+        onFinish={handleSubmit}
+        disabled={!canSave}
+      >
+        <Form.Item
+          name="name"
+          label="Name"
+          rules={[
+            { required: true, message: 'Please enter a name' },
+            { max: 255, message: 'Name must be less than 255 characters' },
+          ]}
+        >
+          <Input
+            placeholder="Enter assistant name"
+            aria-label="Assistant name"
+          />
+        </Form.Item>
+
+        <Form.Item
+          name="description"
+          label="Description"
+          rules={[
+            {
+              max: 1000,
+              message: 'Description must be less than 1000 characters',
+            },
+          ]}
+        >
+          <TextArea
+            placeholder="Enter a brief description"
+            rows={2}
+            aria-label="Assistant description"
+          />
+        </Form.Item>
+
+        <Form.Item name="instructions" label="Instructions">
+          <TextArea
+            placeholder="Enter system instructions for the assistant"
+            rows={6}
+            aria-label="Assistant instructions"
+          />
+        </Form.Item>
+
+        <Form.Item
+          name="parameters"
+          label="Parameters"
+          extra="Model parameters in JSON format (e.g., temperature, max_tokens, top_p)"
+          rules={[{ validator: validateJSON }]}
+        >
+          <TextArea
+            placeholder='{"temperature": 0.7, "max_tokens": 2048, "top_p": 0.9}'
+            rows={6}
+            aria-label="Model parameters in JSON format"
+            onBlur={handleParametersBlur}
+          />
+        </Form.Item>
+
+        <Form.Item
+          name="enabled"
+          label="Enabled"
+          valuePropName="checked"
+          extra="Whether this assistant is enabled"
+        >
+          <Switch />
+        </Form.Item>
+
+        <Form.Item
+          name="is_default"
+          label="Set as Default"
+          valuePropName="checked"
+          extra={
+            isTemplate
+              ? 'Set as the default template assistant for all users'
+              : 'Set as your default assistant'
+          }
+        >
+          <Switch />
+        </Form.Item>
+
+        <div className="flex justify-end gap-3 pt-4">
+          <Button onClick={handleClose} disabled={loading}>
+            {canSave ? 'Cancel' : 'Close'}
+          </Button>
+          {canSave && (
+            <Button type="primary" htmlType="submit" loading={loading}>
+              {editingAssistant ? 'Save' : 'Create'}
+            </Button>
+          )}
+        </div>
+      </Form>
+    </Drawer>
+  )
+}

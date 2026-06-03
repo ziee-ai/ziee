@@ -1,21 +1,25 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { App, Button, Spin, Typography } from 'antd'
+import { App, Button, Card, Divider, Flex, Popconfirm, Spin, Typography } from 'antd'
 import {
   ArrowLeftOutlined,
+  CloseCircleOutlined,
   CopyOutlined,
+  DeleteOutlined,
   EditOutlined,
   ToolOutlined,
 } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
-import { Can } from '@/core/permissions'
+import { Can, usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { ProjectFormDrawer } from '@/modules/projects/components/ProjectFormDrawer'
 import { ProjectFilesManageDrawer } from '@/modules/projects/components/ProjectFilesManageDrawer'
 import { ProjectConversationsList } from '@/modules/projects/components/ProjectConversationsList'
+import { ProjectDefaultsForm } from '@/modules/projects/components/ProjectDefaultsForm'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { ChatInput } from '@/modules/chat/components/ChatInput'
-import { McpConfigModal } from '@/modules/chat/extensions/mcp/components/McpConfigModal'
+import { McpConfigModal } from '@/modules/mcp/chat-extension/components/McpConfigModal'
+import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 
 const { Title, Text, Paragraph } = Typography
 
@@ -39,7 +43,10 @@ const { Title, Text, Paragraph } = Typography
  * them as equal-weight. They aren't — conversations are 80% of why
  * anyone visits this page. Round-4 redesign hoists them above the fold
  * with an inline chat input so users can start a new chat from this
- * page directly instead of navigating to /chat?project_id=… first.
+ * page directly. The project chat extension's afterCreateConversation
+ * hook files the freshly-created conversation into this project on
+ * first send (assign endpoint), then the conversation.created event
+ * subscriber below navigates to /projects/{id}/chat/{conv}.
  */
 export function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>()
@@ -50,7 +57,120 @@ export function ProjectDetailPage() {
   // — the Stores proxy `get` trap calls useEffect + useStore (2 hooks per
   // access), so conditional reads cause "Rendered more hooks than during
   // the previous render".
-  const { project, loading, error } = Stores.ProjectDetail
+  const { project, loading, error, conversations } = Stores.ProjectDetail
+  const canDeleteConversations = usePermission(
+    Permissions.ConversationsDelete,
+  )
+
+  // Bulk-selection state for the Conversations card. Lifted here so
+  // the parent Card's `extra` slot can host the bulk-action toolbar
+  // while the list itself just renders cards.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+
+  // Observe the page container width (not viewport — the same page
+  // may render in a narrow desktop pane or full width depending on
+  // sidebars / right panel). When the card itself is narrow the
+  // bulk toolbar moves out of the Card title row into the body so
+  // it doesn't overflow / wrap awkwardly.
+  const pageContainerRef = useRef<HTMLDivElement>(null)
+  const pageMinSize = useElementMinSize(pageContainerRef)
+  const toolbarInCardBody = pageMinSize.sm
+
+  // Drop selection on project switch so leftover ids from project A
+  // can't trigger a bulk-delete after navigating to project B.
+  useEffect(() => {
+    setSelectedIds(new Set())
+  }, [projectId])
+
+  // Prune selectedIds against the currently-loaded conversations on
+  // every list change (delete, attach, detach can mutate the array
+  // mid-selection). A stable Set instance when nothing changed avoids
+  // re-rendering the list with a "new" Set on every render.
+  const visibleConversationIds = useMemo(
+    () => new Set(conversations.map(c => c.id)),
+    [conversations],
+  )
+  useEffect(() => {
+    setSelectedIds(prev => {
+      const next = new Set<string>()
+      for (const id of prev) {
+        if (visibleConversationIds.has(id)) next.add(id)
+      }
+      return next.size === prev.size ? prev : next
+    })
+  }, [visibleConversationIds])
+
+  const handleToggleSelect = useCallback((id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const handleSelectAll = useCallback(() => {
+    setSelectedIds(new Set(visibleConversationIds))
+  }, [visibleConversationIds])
+
+  const handleDeselectAll = useCallback(() => {
+    setSelectedIds(new Set())
+  }, [])
+
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedIds.size === 0) return
+    setBulkDeleting(true)
+    const ids = Array.from(selectedIds)
+    let succeeded = 0
+    let failed = 0
+    for (const id of ids) {
+      try {
+        await Stores.ChatHistory.__state.deleteConversation(id)
+        succeeded += 1
+      } catch {
+        failed += 1
+      }
+    }
+    setBulkDeleting(false)
+    setSelectedIds(new Set())
+    if (failed === 0) {
+      message.success(
+        `Deleted ${succeeded} conversation${succeeded === 1 ? '' : 's'}`,
+      )
+    } else {
+      message.warning(
+        `Deleted ${succeeded}, ${failed} failed`,
+      )
+    }
+  }, [selectedIds, message])
+
+  const handleBulkRemoveFromProject = useCallback(async () => {
+    if (selectedIds.size === 0 || !projectId) return
+    setBulkDeleting(true)
+    const ids = Array.from(selectedIds)
+    let succeeded = 0
+    let failed = 0
+    for (const id of ids) {
+      try {
+        await Stores.Projects.detachConversation(projectId, id)
+        succeeded += 1
+      } catch {
+        failed += 1
+      }
+    }
+    setBulkDeleting(false)
+    setSelectedIds(new Set())
+    if (failed === 0) {
+      message.success(
+        `Removed ${succeeded} conversation${succeeded === 1 ? '' : 's'} from project`,
+      )
+    } else {
+      message.warning(
+        `Removed ${succeeded}, ${failed} failed`,
+      )
+    }
+  }, [selectedIds, projectId, message])
 
   useEffect(() => {
     if (projectId) {
@@ -65,29 +185,25 @@ export function ProjectDetailPage() {
     }
   }, [error, message])
 
-  // ChatInput integration. The ChatInput component is self-contained:
-  // it calls Stores.Chat.sendMessage() which auto-creates a conversation
-  // if `Stores.Chat.conversation` is null. By latching the project's id
-  // into Stores.Chat.pendingProjectId BEFORE the send, the new
-  // conversation gets created with project_id set on the backend (which
-  // also triggers the MCP-settings snapshot).
-  //
-  // After creation, the chat store emits a `conversation.created` event
-  // that we listen for here to navigate to /chat/{id} — same pattern as
-  // NewChatPage.
+  // ChatInput integration. The chat module is project-unaware: it
+  // creates an unfiled conversation on first send. The project
+  // chat extension at `src-app/ui/src/modules/chat/extensions/
+  // project/extension.tsx` runs `afterCreateConversation`, reads
+  // `Stores.ProjectDetail.project`, and assigns the conversation
+  // into this project via POST /projects/{id}/conversations/{conv}.
+  // The post-hook conversation (with project_id populated) reaches
+  // us via the `conversation.created` event, and we navigate to the
+  // project-namespaced URL.
   useEffect(() => {
     if (!projectId) return
-    // Clear any stale chat state from a prior session and latch the
-    // project id so the next send creates a conversation INSIDE this
-    // project. Pre-latching once on mount is enough; the chat store
-    // consumes-and-clears the value during conversation creation.
+    // Clear stale chat state from a prior session so the next send
+    // takes the auto-create branch (Stores.Chat.conversation === null).
     Stores.Chat.reset()
-    Stores.Chat.setPendingProjectId(projectId)
 
     const unsubscribe = Stores.EventBus.on(
       'conversation.created',
       event => {
-        navigate(`/chat/${event.data.conversation.id}`)
+        navigate(`/projects/${projectId}/chat/${event.data.conversation.id}`)
       },
       'ProjectDetailPage',
     )
@@ -125,7 +241,7 @@ export function ProjectDetailPage() {
   }
 
   const handleConfigureMcp = () => {
-    Stores.Chat.McpStore.openConfigModalForProject(project)
+    Stores.McpComposer.openConfigModalForProject(project)
   }
 
   // MCP summary used in the Advanced section.
@@ -194,7 +310,10 @@ export function ProjectDetailPage() {
       </HeaderBarContainer>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-4xl mx-auto p-4 space-y-6">
+        <div
+          ref={pageContainerRef}
+          className="flex flex-col gap-3 max-w-4xl mx-auto p-4"
+        >
           {/* 1. Inline chat input — start a new conversation in this project.
                 The label above the input is intentional: users land here
                 from the sidebar nav, expecting to either resume an existing
@@ -210,97 +329,183 @@ export function ProjectDetailPage() {
           </section>
 
           {/* 2. Recent conversations — full-width list, no tab. The
-                second-most-important UI element after the chat input. */}
-          <section data-test-section="conversations">
-            <div className="flex items-center justify-between mb-2">
-              <Text strong>Conversations</Text>
-            </div>
-            <ProjectConversationsList projectId={project.id} />
-          </section>
-
-          {/* 3. Project knowledge — compact inline preview with a
-                "Manage" button that opens the full file manager in a
-                drawer. Stays visible (not behind a tab) but doesn't
-                dominate the page. */}
-          <section data-test-section="knowledge">
-            <div className="flex items-center justify-between mb-2">
-              <Text strong>Project knowledge</Text>
-            </div>
-            <ProjectFilesManageDrawer projectId={project.id} />
-          </section>
-
-          {/* 4. Instructions — inline preview + Edit. Important enough to
-                keep visible (it shapes every conversation in the project)
-                but not bigger than conversations. */}
-          <section data-test-section="instructions">
-            <div className="flex items-center justify-between mb-2">
-              <Text strong>Instructions</Text>
-              <Can permission={Permissions.ProjectsEdit}>
+                second-most-important UI element after the chat input.
+                Card wrapper matches Project details / Advanced so the
+                three primary stacked blocks read as one visual rhythm.
+                Bulk-action toolbar appears when ≥1 conversation is
+                selected; placement (Card `extra` vs Card body) is
+                width-responsive — narrow pages move it into the body
+                so it doesn't overflow the title row. */}
+          {(() => {
+            const bulkToolbar = selectedIds.size > 0 ? (
+              <Flex align="center" className="gap-2 flex-wrap">
+                <Text strong>{selectedIds.size} selected</Text>
                 <Button
                   type="text"
                   size="small"
+                  icon={<CloseCircleOutlined />}
+                  onClick={handleDeselectAll}
+                >
+                  Clear
+                </Button>
+                <Button
+                  type="text"
+                  size="small"
+                  onClick={handleSelectAll}
+                  disabled={
+                    selectedIds.size === visibleConversationIds.size
+                  }
+                >
+                  Select all
+                </Button>
+                <Popconfirm
+                  title="Remove from project?"
+                  description={`Detach ${selectedIds.size} conversation${selectedIds.size === 1 ? '' : 's'} from this project? They become unfiled (not deleted).`}
+                  onConfirm={handleBulkRemoveFromProject}
+                  okText="Remove"
+                  cancelText="Cancel"
+                  okButtonProps={{ loading: bulkDeleting }}
+                >
+                  <Button type="text" size="small" loading={bulkDeleting}>
+                    Remove from project
+                  </Button>
+                </Popconfirm>
+                {canDeleteConversations && (
+                  <Popconfirm
+                    title="Delete conversations?"
+                    description={`Permanently delete ${selectedIds.size} conversation${selectedIds.size === 1 ? '' : 's'} and all messages.`}
+                    onConfirm={handleBulkDelete}
+                    okText="Delete"
+                    cancelText="Cancel"
+                    okType="danger"
+                    okButtonProps={{ loading: bulkDeleting }}
+                  >
+                    <Button
+                      type="text"
+                      size="small"
+                      danger
+                      icon={<DeleteOutlined />}
+                      loading={bulkDeleting}
+                    >
+                      Delete
+                    </Button>
+                  </Popconfirm>
+                )}
+              </Flex>
+            ) : null
+
+            return (
+              <Card
+                title="Conversations"
+                data-test-section="conversations"
+                extra={!toolbarInCardBody ? bulkToolbar : null}
+              >
+                {toolbarInCardBody && bulkToolbar && (
+                  <div className="mb-3 flex justify-end">{bulkToolbar}</div>
+                )}
+                <ProjectConversationsList
+                  projectId={project.id}
+                  selectedIds={selectedIds}
+                  onToggleSelect={handleToggleSelect}
+                />
+              </Card>
+            )
+          })()}
+
+          {/* 3. Project metadata card — About, Instructions, Knowledge
+                grouped in one Card in that order. About is the human
+                summary; Instructions is the model-facing system prompt
+                stacked into every conversation in the project; Knowledge
+                is the attached files. Dividers between the three
+                sub-sections match the peer settings-page convention
+                (multiple related sections inside a single Card,
+                separated by `Divider` rather than fragmenting into
+                multiple cards). */}
+          {/* The card-level Edit button opens the ProjectFormDrawer
+              which edits ALL three subsections (About / Instructions /
+              Knowledge live in the same form), so it makes more sense
+              as a card-extra than a per-section button on Instructions
+              alone. */}
+          <Card
+            title="Project details"
+            data-test-section="project-meta"
+            extra={
+              <Can permission={Permissions.ProjectsEdit}>
+                <Button
+                  type="text"
                   icon={<EditOutlined />}
                   onClick={handleEdit}
-                  aria-label="Edit instructions"
+                  aria-label="Edit project details"
                 >
                   Edit
                 </Button>
               </Can>
-            </div>
-            {project.instructions ? (
-              <Paragraph
-                className="whitespace-pre-wrap !mb-0"
-                data-test-instructions={project.instructions}
-              >
-                {project.instructions}
-              </Paragraph>
-            ) : (
-              <Text type="secondary" className="italic">
-                No instructions yet — click Edit to add some.
-              </Text>
-            )}
-          </section>
+            }
+          >
+            <Flex vertical>
+              <section data-test-section="description">
+                <Text strong className="block mb-2">
+                  About
+                </Text>
+                {project.description ? (
+                  <Paragraph
+                    type="secondary"
+                    className="!mb-0 whitespace-pre-wrap"
+                    data-test-description={project.description}
+                  >
+                    {project.description}
+                  </Paragraph>
+                ) : (
+                  <Text type="secondary" className="italic">
+                    No description yet — click Edit to add one.
+                  </Text>
+                )}
+              </section>
 
-          {/* 5. Description (if set) — small inline block, lowest
-                priority. Treated as separate from instructions because
-                "description" is human-readable summary; "instructions"
-                is the model-facing system prompt. */}
-          {project.description && (
-            <section data-test-section="description">
-              <Text strong className="block mb-2">
-                About
-              </Text>
-              <Paragraph type="secondary" className="!mb-0">
-                {project.description}
-              </Paragraph>
-            </section>
-          )}
+              <Divider className="!my-2" />
 
-          {/* 6. Advanced — defaults summary + MCP defaults button.
-                Demoted from a top-level tab to a stacked summary block.
-                Each row is read-only; editing happens via Edit (drawer)
-                or the MCP modal. */}
-          <section data-test-section="advanced">
-            <Text strong className="block mb-2">
-              Advanced
-            </Text>
+              <section data-test-section="instructions">
+                <Text strong className="block mb-2">
+                  Instructions
+                </Text>
+                {project.instructions ? (
+                  <Paragraph
+                    className="whitespace-pre-wrap !mb-0"
+                    data-test-instructions={project.instructions}
+                  >
+                    {project.instructions}
+                  </Paragraph>
+                ) : (
+                  <Text type="secondary" className="italic">
+                    No instructions yet — click Edit to add some.
+                  </Text>
+                )}
+              </section>
+
+              <Divider className="!my-2" />
+
+              <section data-test-section="knowledge">
+                <ProjectFilesManageDrawer projectId={project.id} />
+              </section>
+            </Flex>
+          </Card>
+
+          {/* 4. Advanced — defaults summary + MCP defaults button in its
+                own Card. Separate from the metadata card because the
+                rows are configuration values, not content. */}
+          <Card title="Advanced" data-test-section="advanced">
+            {/* Default assistant + default model — inline auto-save
+                selects (one PATCH per change). These used to live in
+                the ProjectFormDrawer with the content fields, but
+                they're configuration shape (pick a foreign key that
+                snapshots into new conversations), not content; inline
+                editing is the right ergonomic. See ProjectDefaultsForm
+                for the tri-state-null reasoning. */}
+            <ProjectDefaultsForm project={project} />
+
+            <Divider className="!my-4" />
+
             <div className="flex flex-col gap-2 text-sm">
-              <div className="flex items-center justify-between">
-                <Text type="secondary">Default assistant:</Text>
-                <Text data-test-default-assistant-set={
-                  project.default_assistant_id ? 'true' : 'false'
-                }>
-                  {project.default_assistant_id ? 'Set' : 'Not set'}
-                </Text>
-              </div>
-              <div className="flex items-center justify-between">
-                <Text type="secondary">Default model:</Text>
-                <Text data-test-default-model-set={
-                  project.default_model_id ? 'true' : 'false'
-                }>
-                  {project.default_model_id ? 'Set' : 'Not set'}
-                </Text>
-              </div>
               <div className="flex items-center justify-between">
                 <Text type="secondary">MCP approval mode:</Text>
                 <Text data-test-mcp-approval-mode={approvalMode}>
@@ -326,12 +531,12 @@ export function ProjectDetailPage() {
                 </Button>
               </Can>
             </div>
-          </section>
+          </Card>
         </div>
       </div>
 
       <ProjectFormDrawer />
-      {/* Shared MCP modal — controlled by Stores.Chat.McpStore. The
+      {/* Shared MCP modal — controlled by Stores.McpComposer. The
           Advanced "Configure MCP defaults" button above opens this in
           project scope; the dispatch rule
           (currentProjectId && !currentConversationId) routes saves to

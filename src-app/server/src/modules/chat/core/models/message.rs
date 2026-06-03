@@ -55,8 +55,12 @@ pub struct Message {
     pub originated_from_id: Uuid, // Original message ID in edit lineage
     pub edit_count: i32,          // Number of edits in this lineage
     pub model_id: Option<Uuid>,          // Model used when this message was sent
-    pub assistant_id: Option<Uuid>,      // Assistant used when this message was sent
-    pub mcp_server_ids: Option<Vec<Uuid>>, // MCP servers enabled when this message was sent
+    // Per-message ASSISTANT and MCP-server attribution moved off
+    // `messages` into module-owned join tables:
+    //   * `message_assistant`     (migration 75) — assistant bridge.
+    //     GET /api/messages/{id}/assistant
+    //   * `message_mcp_servers`   (migration 74) — mcp bridge.
+    //     GET /api/messages/{id}/mcp-servers
     pub created_at: DateTime<Utc>,
 }
 

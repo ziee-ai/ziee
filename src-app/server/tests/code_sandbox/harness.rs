@@ -497,6 +497,23 @@ pub fn github_fetch_server_options(
         return None;
     }
 
+    // Skip when no rootfs asset is published for this host's arch.
+    // `ziee-ai/sandbox-rootfs` publishes only `x86_64-*.squashfs`
+    // assets today (every tag through v1.0.0-alpha). On aarch64 hosts
+    // (Apple Silicon Macs, ARM Linux) the server's auto-fetch hits
+    // 404 on `ziee-sandbox-rootfs-aarch64-<flavor>.squashfs` and the
+    // sandbox-spawned MCP server never starts — tools/list returns
+    // empty, the LLM sees no tools, the assert fails. Once aarch64
+    // rootfs is published, drop this gate.
+    if test_arch_token() != "x86_64" {
+        eprintln!(
+            "test skipped: ziee-ai/sandbox-rootfs publishes no {}-arch assets yet \
+             (rootfs system is ready, but the released rootfs is x86_64-only)",
+            test_arch_token()
+        );
+        return None;
+    }
+
     let e2e_cache = test_cache_dir().join("e2e");
     std::fs::create_dir_all(&e2e_cache).ok()?;
     let rootfs_path = e2e_cache.join("current");

@@ -10,10 +10,13 @@ import {
 /**
  * E2E — per-conversation memory toggle (Plan §9 Phase 5).
  *
- * Exercises PATCH /api/conversations/{id} with `memory_mode`.
- * The composer pill (ConversationMemoryToggle.tsx) is one consumer;
- * this test drives the API directly so the test isn't coupled to
- * the pill's placement in the chat layout.
+ * Exercises the memory-owned endpoints
+ * `GET`/`PUT /api/conversations/{id}/memory-mode` that replaced the
+ * chat-side `PATCH /api/conversations/{id}` body field after
+ * migration 76 moved the column into `conversation_memory_settings`.
+ * The composer pill (MemoryStatusPill.tsx) is one consumer; this
+ * test drives the API directly so the test isn't coupled to the
+ * pill's placement in the chat layout.
  */
 
 test.describe('Memory — per-conversation override', () => {
@@ -21,7 +24,10 @@ test.describe('Memory — per-conversation override', () => {
     await loginAsAdmin(page, testInfra.baseURL)
   })
 
-  test('memory_mode round-trips through PATCH', async ({ page, testInfra }) => {
+  test('memory_mode round-trips through PUT /memory-mode', async ({
+    page,
+    testInfra,
+  }) => {
     const { baseURL, apiURL } = testInfra
     const adminToken = await getAdminToken(apiURL)
     const username = `pcm_${Date.now().toString(36)}`
@@ -42,7 +48,7 @@ test.describe('Memory — per-conversation override', () => {
     const userToken = await getCurrentUserToken(page)
     const authHeader = { Authorization: `Bearer ${userToken}` }
 
-    // Create a conversation.
+    // Create a conversation (chat-owned endpoint).
     const created = await page.request.post(`${apiURL}/api/conversations`, {
       headers: authHeader,
       data: { title: 'pcm-test' },
@@ -50,26 +56,40 @@ test.describe('Memory — per-conversation override', () => {
     expect(created.ok()).toBe(true)
     const conv = await created.json()
 
-    // Default is 'inherit'.
+    // Default is 'inherit' (no row in conversation_memory_settings).
     const initial = await page.request.get(
-      `${apiURL}/api/conversations/${conv.id}`,
+      `${apiURL}/api/conversations/${conv.id}/memory-mode`,
       { headers: authHeader },
     )
+    expect(initial.ok()).toBe(true)
     expect(((await initial.json()) as any).memory_mode).toBe('inherit')
 
-    // Flip to 'off'.
-    const off = await page.request.put(`${apiURL}/api/conversations/${conv.id}`, {
-      headers: authHeader,
-      data: { memory_mode: 'off' },
-    })
+    // Flip to 'off' via the memory-owned PUT.
+    const off = await page.request.put(
+      `${apiURL}/api/conversations/${conv.id}/memory-mode`,
+      {
+        headers: authHeader,
+        data: { memory_mode: 'off' },
+      },
+    )
     expect(off.ok()).toBe(true)
     expect(((await off.json()) as any).memory_mode).toBe('off')
 
-    // Invalid value rejected.
-    const bad = await page.request.put(`${apiURL}/api/conversations/${conv.id}`, {
-      headers: authHeader,
-      data: { memory_mode: 'maybe' },
-    })
+    // GET round-trip sees the new value.
+    const after = await page.request.get(
+      `${apiURL}/api/conversations/${conv.id}/memory-mode`,
+      { headers: authHeader },
+    )
+    expect(((await after.json()) as any).memory_mode).toBe('off')
+
+    // Invalid value rejected with 400.
+    const bad = await page.request.put(
+      `${apiURL}/api/conversations/${conv.id}/memory-mode`,
+      {
+        headers: authHeader,
+        data: { memory_mode: 'maybe' },
+      },
+    )
     expect(bad.status()).toBe(400)
   })
 })

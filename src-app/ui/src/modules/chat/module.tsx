@@ -4,7 +4,6 @@ import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useChatStore } from '@/modules/chat/core/stores/Chat.store'
 import { useChatHistoryStore } from '@/modules/chat/stores/ChatHistory.store'
-import { useUserProviderKeysStore } from '@/modules/chat/extensions/model/UserProviderKeys.store'
 import { RecentConversationsWidget } from '@/modules/chat/widgets/RecentConversationsWidget'
 import '@/modules/chat/types'
 import '@/modules/chat/core/events' // Import chat events for type merging
@@ -16,16 +15,6 @@ const ConversationPage = lazyWithPreload(
 )
 const ChatHistoryPage = lazyWithPreload(
   () => import('./pages/ChatHistoryPage'),
-)
-
-// Top-level wrapper component so the sidebar slot renders the recent
-// conversations widget in "unfiled only" mode (Plan 5 §5: when the
-// Projects module is present, per-project conversations appear under
-// their project headers in ProjectsNavWidget — this widget then shows
-// only orphan/unfiled chats to avoid duplication). Defined at module
-// scope so each render reuses the same function reference.
-const UnfiledRecentConversationsWidget = () => (
-  <RecentConversationsWidget projectIdFilter={null} />
 )
 
 export default createModule({
@@ -43,10 +32,6 @@ export default createModule({
     {
       name: 'ChatHistory',
       store: useChatHistoryStore,
-    },
-    {
-      name: 'UserProviderKeys',
-      store: useUserProviderKeysStore,
     },
   ],
   routes: [
@@ -97,7 +82,7 @@ export default createModule({
     sidebarContent: [
       {
         id: 'recent-conversations',
-        component: UnfiledRecentConversationsWidget,
+        component: RecentConversationsWidget,
         order: 10,
       },
     ],
