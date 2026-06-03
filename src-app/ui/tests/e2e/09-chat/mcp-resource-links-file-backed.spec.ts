@@ -117,7 +117,10 @@ test.describe('Inline file previews — backend-owned artifacts (file_id)', () =
       .locator(`[data-testid="chat-message"][data-message-id="${assistantMessageId}"]`)
       .locator('[data-testid="inline-file-preview"]')
     await expect(preview).toBeVisible()
-    const table = preview.locator('table')
+    // AntD Table v6 renders dual `<table>` elements for fixed-header
+    // scroll (one in the header, one in the body) — strict-mode-safe
+    // selector targets only the BODY table where data rows live.
+    const table = preview.locator('.ant-table-body table').first()
     await expect(table).toBeVisible()
     await expect(table).toContainText('Hanoi')
     await expect(preview).not.toContainText('Failed to load file content.')
