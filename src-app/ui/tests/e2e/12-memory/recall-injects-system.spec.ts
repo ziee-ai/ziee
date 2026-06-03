@@ -78,11 +78,13 @@ test.describe('Memory — retrieval injects system block', () => {
     expect(settings.retrieval_enabled).toBe(true)
 
     // Sanity: GET the memory back to confirm the seed worked.
+    // GET /api/memories returns the paginated MemoryListResponse
+    // shape `{items, total, page, per_page}` — not a bare array.
     const listRes = await page.request.get(`${apiURL}/api/memories`, {
       headers: authHeader,
     })
-    const rows: any[] = await listRes.json()
-    expect(rows.some((r) => r.content === 'User goes by the codename Falcon')).toBe(true)
+    const body = await listRes.json() as { items: Array<{ content: string }> }
+    expect(body.items.some((r) => r.content === 'User goes by the codename Falcon')).toBe(true)
   })
 
   test('real-LLM end-to-end retrieval (gated)', async ({ page: _p, testInfra: _t }) => {

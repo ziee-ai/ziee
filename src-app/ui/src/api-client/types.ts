@@ -190,7 +190,6 @@ export interface Conversation {
   active_branch_id?: string
   created_at: string
   id: string
-  memory_mode: string
   model_id?: string
   updated_at: string
   user_id: string
@@ -208,12 +207,15 @@ export interface ConversationMcpSettingsResponse {
   user_id: string
 }
 
+export interface ConversationMemoryModeResponse {
+  memory_mode: string
+}
+
 export interface ConversationResponse {
   title?: string
   active_branch_id?: string
   created_at: string
   id: string
-  memory_mode: string
   message_count: number
   model_id?: string
   updated_at: string
@@ -1256,14 +1258,16 @@ export interface MemoryUsage {
 }
 
 export interface Message {
-  assistant_id?: string
   created_at: string
   edit_count: number
   id: string
-  mcp_server_ids?: string[]
   model_id?: string
   originated_from_id: string
   role: string
+}
+
+export interface MessageAssistantResponse {
+  assistant_id?: string
 }
 
 export interface MessageContent {
@@ -1327,13 +1331,15 @@ export interface MessageContentDataElicitationRequest {
 
 export type MessageContentData = MessageContentDataText | MessageContentDataThinking | MessageContentDataImage | MessageContentDataFileAttachment | MessageContentDataToolUse | MessageContentDataToolResult | MessageContentDataElicitationRequest
 
+export interface MessageMcpServersResponse {
+  server_ids: string[]
+}
+
 export interface MessageWithContent {
-  assistant_id?: string
   contents: MessageContent[]
   created_at: string
   edit_count: number
   id: string
-  mcp_server_ids?: string[]
   model_id?: string
   originated_from_id: string
   role: string
@@ -2110,9 +2116,12 @@ export interface UpdateCodeSandboxResourceLimits {
   vm_max_concurrent_execs?: number
 }
 
+export interface UpdateConversationMemoryModeRequest {
+  memory_mode: string
+}
+
 export interface UpdateConversationRequest {
   title?: string
-  memory_mode?: string
 }
 
 export interface UpdateGroupProvidersRequest {
@@ -2627,7 +2636,9 @@ export const ApiEndpoints = {
   'Conversation.delete': 'DELETE /api/conversations/{id}',
   'Conversation.get': 'GET /api/conversations/{id}',
   'Conversation.getMcpSettings': 'GET /api/conversations/{id}/mcp-settings',
+  'Conversation.getMemoryMode': 'GET /api/conversations/{id}/memory-mode',
   'Conversation.list': 'GET /api/conversations',
+  'Conversation.setMemoryMode': 'PUT /api/conversations/{id}/memory-mode',
   'Conversation.update': 'PUT /api/conversations/{id}',
   'Conversation.updateMcpSettings': 'PUT /api/conversations/{id}/mcp-settings',
   'CoreMemory.delete': 'DELETE /api/assistants/{assistant_id}/core-memory/{block_label}',
@@ -2768,7 +2779,9 @@ export const ApiEndpoints = {
   'Message.delete': 'DELETE /api/messages/{id}',
   'Message.edit': 'PUT /api/conversations/{conversation_id}/messages/{message_id}',
   'Message.get': 'GET /api/messages/{id}',
+  'Message.getAssistant': 'GET /api/messages/{id}/assistant',
   'Message.getHistory': 'GET /api/conversations/{id}/messages',
+  'Message.getMcpServers': 'GET /api/messages/{id}/mcp-servers',
   'Message.sendStream': 'POST /api/conversations/{id}/messages/stream',
   'Onboarding.complete': 'POST /api/onboarding/{guide_id}/complete',
   'Onboarding.completeStep': 'POST /api/onboarding/{guide_id}/steps/{step_id}/complete',
@@ -2861,7 +2874,9 @@ export type ApiEndpointParameters = {
   'Conversation.delete': { id: string }
   'Conversation.get': { id: string }
   'Conversation.getMcpSettings': { id: string }
+  'Conversation.getMemoryMode': { id: string }
   'Conversation.list': { limit?: number; page?: number }
+  'Conversation.setMemoryMode': { id: string } & UpdateConversationMemoryModeRequest
   'Conversation.update': { id: string } & UpdateConversationRequest
   'Conversation.updateMcpSettings': { id: string } & UpsertMcpSettingsRequest
   'CoreMemory.delete': { assistant_id: string; block_label: string }
@@ -3002,7 +3017,9 @@ export type ApiEndpointParameters = {
   'Message.delete': { id: string }
   'Message.edit': { conversation_id: string; message_id: string } & EditMessageRequest
   'Message.get': { id: string }
+  'Message.getAssistant': { id: string }
   'Message.getHistory': { id: string }
+  'Message.getMcpServers': { id: string }
   'Message.sendStream': { id: string } & SendMessageRequest
   'Onboarding.complete': { guide_id: string }
   'Onboarding.completeStep': { guide_id: string; step_id: string }
@@ -3095,7 +3112,9 @@ export type ApiEndpointResponses = {
   'Conversation.delete': void
   'Conversation.get': Conversation
   'Conversation.getMcpSettings': McpSettingsResponse
+  'Conversation.getMemoryMode': ConversationMemoryModeResponse
   'Conversation.list': ConversationResponse[]
+  'Conversation.setMemoryMode': ConversationMemoryModeResponse
   'Conversation.update': Conversation
   'Conversation.updateMcpSettings': ConversationMcpSettingsResponse
   'CoreMemory.delete': void
@@ -3236,7 +3255,9 @@ export type ApiEndpointResponses = {
   'Message.delete': void
   'Message.edit': EditMessageResponse
   'Message.get': MessageWithContent
+  'Message.getAssistant': MessageAssistantResponse
   'Message.getHistory': MessageWithContent[]
+  'Message.getMcpServers': MessageMcpServersResponse
   'Message.sendStream': SSEChatStreamEvent
   'Onboarding.complete': User
   'Onboarding.completeStep': User

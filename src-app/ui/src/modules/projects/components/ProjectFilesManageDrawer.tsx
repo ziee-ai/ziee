@@ -2,14 +2,13 @@ import { useState } from 'react'
 import { Button, Typography } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { ProjectFilesPanel } from '@/modules/projects/components/ProjectFilesPanel'
-// FileCard lives in the chat extensions tree but is generic enough to
-// reuse here — its only chat-specific behavior (opening the file in
-// chat's right panel on click) is overridden by passing `onClick`,
-// and the thumbnail lookup against `Stores.Chat.FileStore` safely
-// returns `undefined` for project files (falls back to the file-type
-// icon). Project module is allowed to import from chat per the
-// chat↔project decoupling rule (only chat→project is forbidden).
-import { FileCard } from '@/modules/chat/extensions/file/components/FileCard'
+// FileCard now lives at modules/file/components/FileCard.tsx — a
+// generic top-level primitive shared by the chat composer and this
+// project knowledge drawer. Its only chat-specific behavior (opening
+// the file in chat's right panel on click) is overridden by passing
+// `onClick`; the thumbnail lookup against Stores.File safely returns
+// undefined for project files (falls back to the file-type icon).
+import { FileCard } from '@/modules/file/components/FileCard'
 import { Stores } from '@/core/stores'
 
 const { Text } = Typography

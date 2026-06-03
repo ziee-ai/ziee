@@ -4,6 +4,8 @@ import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 import { useUserLlmProvidersStore } from './UserLlmProviders.store'
+import { useModelPickerStore } from './ModelPicker.store'
+import { useUserProviderKeysStore } from './UserProviderKeys.store'
 import './types'
 
 const UserLlmProvidersPage = lazyWithPreload(
@@ -19,6 +21,8 @@ export default createModule({
   dependencies: ['router'],
   stores: [
     { name: 'UserLlmProviders', store: useUserLlmProvidersStore },
+    { name: 'ModelPicker', store: useModelPickerStore },
+    { name: 'UserProviderKeys', store: useUserProviderKeysStore },
   ],
   routes: [
     {

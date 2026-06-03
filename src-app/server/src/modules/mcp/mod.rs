@@ -1,3 +1,4 @@
+pub mod chat_extension;
 pub mod client;
 pub mod elicitation;
 pub mod events;

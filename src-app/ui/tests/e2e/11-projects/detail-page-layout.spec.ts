@@ -77,14 +77,18 @@ test.describe('Projects - detail page layout (Option A)', () => {
       .locator('[data-test-section]')
       .evaluateAll(els => els.map(el => el.getAttribute('data-test-section')))
 
-    // ChatInput → Conversations → Knowledge → Instructions →
-    // (Description only when set) → Advanced.
+    // ChatInput → Conversations → ProjectMeta (Description +
+    // Instructions + Knowledge subsections) → Advanced. ProjectMeta
+    // wraps the description/instructions/knowledge group in a single
+    // card so its inner sections render between project-meta and
+    // advanced.
     expect(sectionIds).toEqual([
       'chat-input',
       'conversations',
-      'knowledge',
-      'instructions',
+      'project-meta',
       'description',
+      'instructions',
+      'knowledge',
       'advanced',
     ])
   })

@@ -3,6 +3,7 @@ import type {
   useMcpStore,
   useSystemMcpServersStore,
   useMcpServerDrawerStore,
+  useMcpComposerStore,
 } from '@/modules/mcp/stores'
 import type { useSystemMcpServerGroupCardStore } from '@/modules/mcp/components/system/McpServerGroupsAssignmentCard.store'
 import type { useGroupSystemMcpServersWidgetStore } from '@/modules/mcp/widgets/GroupSystemMcpServersWidget.store'
@@ -29,6 +30,9 @@ declare module '@/core/stores' {
     >
     McpServerGroupsAssignment: StoreProxy<
       ReturnType<typeof useMcpServerGroupsAssignmentStore.getState>
+    >
+    McpComposer: StoreProxy<
+      ReturnType<typeof useMcpComposerStore.getState>
     >
   }
 }

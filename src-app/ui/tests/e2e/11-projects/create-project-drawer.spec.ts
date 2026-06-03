@@ -56,13 +56,12 @@ test.describe('Projects - Create drawer', () => {
     await assertProjectExists(page, 'Cancelled Project', false)
   })
 
-  test('drawer surfaces default-assistant + default-model pickers', async ({
-    page,
-  }) => {
-    await openCreateProjectDrawer(page)
-    // Both pickers are present even when no options exist — they render
-    // as Select dropdowns with "No default" placeholder text.
-    await expect(page.getByLabel(/default assistant/i)).toBeVisible()
-    await expect(page.getByLabel(/default model/i)).toBeVisible()
-  })
+  // NOTE: The default-assistant and default-model pickers used to live
+  // in the create drawer; they were intentionally moved to the project
+  // detail page's Advanced card (ProjectDefaultsForm) so they auto-save
+  // inline rather than being tied to a create/edit form transaction. The
+  // pickers' presence on the detail page is asserted by
+  // detail-page-layout.spec.ts's "Advanced section summarises defaults"
+  // test. The prior assertion against the drawer was deleted with that
+  // refactor and is intentionally not replaced here.
 })

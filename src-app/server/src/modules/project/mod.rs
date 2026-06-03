@@ -16,6 +16,7 @@ use crate::ModuleContext;
 use crate::core::EventHandler;
 use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleEntry};
 
+pub mod chat_extension;
 pub mod events;
 pub mod handlers;
 pub mod models;

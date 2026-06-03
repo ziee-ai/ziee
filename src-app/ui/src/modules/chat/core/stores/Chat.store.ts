@@ -318,7 +318,6 @@ interface ChatState {
   sendMessage: () => Promise<void>
   updateConversation: (updates: {
     title?: string
-    memory_mode?: 'inherit' | 'on' | 'off'
   }) => Promise<void>
   clearError: () => void
   reset: () => void
@@ -893,7 +892,11 @@ export const useChatStore = create<ChatState>()(
           c => c.content_type === 'file_attachment'
         )
         if (fileContents.length > 0) {
-          const fileStore = (get() as any).FileStore
+          // File store moved out of Stores.Chat into its own module
+          // (modules/file/) — async-import to avoid a circular-dep
+          // between chat and file.
+          const { Stores } = await import('@/core/stores')
+          const fileStore = Stores.File
           if (fileStore) {
             const stubs = fileContents.map(c => {
               const data = c.content as any
@@ -1424,7 +1427,6 @@ export const useChatStore = create<ChatState>()(
 
       updateConversation: async (updates: {
         title?: string
-        memory_mode?: 'inherit' | 'on' | 'off'
       }) => {
         const { conversation } = get()
         if (!conversation) {

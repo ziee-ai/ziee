@@ -18,33 +18,32 @@ pub async fn create_message(
     branch_id: Uuid,
     role: &str,
     model_id: Option<Uuid>,
-    assistant_id: Option<Uuid>,
-    mcp_server_ids: Option<Vec<Uuid>>,
 ) -> Result<Message, AppError> {
     let message_id = Uuid::new_v4();
 
     // Start transaction
     let mut tx = pool.begin().await.map_err(AppError::database_error)?;
 
-    // Create message (originated_from_id = self for new messages)
+    // Create message (originated_from_id = self for new messages).
+    // Per-extension state (mcp's server-list snapshot, assistant
+    // attribution, etc.) is written by extensions themselves via the
+    // `after_user_message_created` hook on the ChatExtension trait,
+    // AFTER this commit returns. Only `model_id` remains as an
+    // opaque storage column on chat's row.
     let message = sqlx::query_as!(
         Message,
         r#"
-        INSERT INTO messages (id, role, originated_from_id, edit_count, model_id, assistant_id, mcp_server_ids)
-        VALUES ($1, $2, $1, 0, $3, $4, $5)
+        INSERT INTO messages (id, role, originated_from_id, edit_count, model_id)
+        VALUES ($1, $2, $1, 0, $3)
         RETURNING id, role,
                   originated_from_id as "originated_from_id!",
                   edit_count,
                   model_id as "model_id: _",
-                  assistant_id as "assistant_id: _",
-                  mcp_server_ids as "mcp_server_ids: _",
                   created_at as "created_at: _"
         "#,
         message_id,
         role,
         model_id as _,
-        assistant_id as _,
-        mcp_server_ids.as_deref() as _,
     )
     .fetch_one(&mut *tx)
     .await
@@ -77,8 +76,6 @@ pub async fn get_message(pool: &PgPool, id: Uuid) -> Result<Option<Message>, App
                originated_from_id as "originated_from_id!",
                edit_count,
                model_id as "model_id: _",
-               assistant_id as "assistant_id: _",
-               mcp_server_ids as "mcp_server_ids: _",
                created_at as "created_at: _"
         FROM messages
         WHERE id = $1
@@ -124,8 +121,6 @@ pub async fn list_messages_in_branch(
                m.originated_from_id as "originated_from_id!",
                m.edit_count,
                m.model_id as "model_id: _",
-               m.assistant_id as "assistant_id: _",
-               m.mcp_server_ids as "mcp_server_ids: _",
                m.created_at as "created_at: _"
         FROM messages m
         INNER JOIN branch_messages bm ON m.id = bm.message_id
@@ -265,8 +260,6 @@ pub async fn edit_message(
                originated_from_id as "originated_from_id!",
                edit_count,
                model_id as "model_id: _",
-               assistant_id as "assistant_id: _",
-               mcp_server_ids as "mcp_server_ids: _",
                created_at as "created_at: _"
         FROM messages
         WHERE id = $1
@@ -337,8 +330,6 @@ pub async fn edit_message(
                   originated_from_id as "originated_from_id!",
                   edit_count,
                   model_id as "model_id: _",
-                  assistant_id as "assistant_id: _",
-                  mcp_server_ids as "mcp_server_ids: _",
                   created_at as "created_at: _"
         "#,
         new_message_id,
@@ -424,7 +415,6 @@ pub async fn verify_message_ownership(
         crate::modules::chat::core::models::Conversation,
         r#"
         SELECT DISTINCT c.id, c.user_id, c.model_id as "model_id: _", c.title, c.active_branch_id,
-               c.memory_mode,
                c.created_at as "created_at: _", c.updated_at as "updated_at: _"
         FROM conversations c
         INNER JOIN branches b ON b.conversation_id = c.id

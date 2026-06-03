@@ -111,6 +111,27 @@ pub trait ChatExtension: Send + Sync {
         Ok(BeforeLlmAction::Continue)
     }
 
+    /// Fires AFTER the user message is committed to the database and
+    /// BEFORE `before_llm_call`. Extensions that need to persist
+    /// per-message state into their own tables (e.g. mcp's per-message
+    /// server-list snapshot used to restore the original selection on
+    /// edit) write the rows here.
+    ///
+    /// Runs OUTSIDE the message-INSERT transaction. A failure here
+    /// leaves the message saved without the extension's bookkeeping —
+    /// acceptable for audit-trail / restore-context use cases that
+    /// degrade gracefully to "use current state" when no record
+    /// exists (which is the same as messages from before the
+    /// extension started tracking).
+    async fn after_user_message_created(
+        &self,
+        _context: &StreamContext,
+        _user_message: &Message,
+        _send_request: &SendMessageRequest,
+    ) -> Result<(), AppError> {
+        Ok(())
+    }
+
     /// Called after LLM response stream completes
     /// Extensions can perform post-processing (e.g., generate title, execute tools)
     /// Returns action to take: Complete (stop) or Continue (make another LLM call)
@@ -248,6 +269,24 @@ pub trait ChatExtension: Send + Sync {
         _context: &StreamContext,
     ) -> Result<Option<ContentBlock>, AppError> {
         Ok(None) // Default: no transformation
+    }
+
+    /// Should this content block be DROPPED entirely from assistant-message
+    /// forwarding to the LLM? Used for extension-contributed variants that
+    /// represent UI-only artifacts (e.g., file extension's `FileAttachment`
+    /// blocks produced from MCP tool results — the LLM already saw them
+    /// described in the ToolResult content and embedding them inline as
+    /// images would confuse it).
+    ///
+    /// Default `Ok(false)` — most extensions don't need to skip. Override
+    /// for the rare cases where chat would otherwise have to know an
+    /// extension's variant name to filter it.
+    async fn should_skip_in_assistant_forwarding(
+        &self,
+        _content: &MessageContentData,
+        _context: &StreamContext,
+    ) -> Result<bool, AppError> {
+        Ok(false)
     }
 
     /// Process content after retrieving from database
@@ -476,6 +515,46 @@ impl ExtensionRegistry {
         } else {
             Ok(None)
         }
+    }
+
+    /// Should this content block be DROPPED from assistant-message forwarding?
+    /// Asks any extension that handles this content's type. Default false.
+    /// Used by the streaming pipeline to skip variants that extensions mark
+    /// as UI-only (e.g. `FileAttachment` blocks from MCP tool results).
+    pub async fn should_skip_in_assistant_forwarding(
+        &self,
+        content: &MessageContentData,
+        context: &StreamContext,
+    ) -> Result<bool, AppError> {
+        let content_type = content.content_type();
+        if let Some(handler) = self.get_handler_for_content_type(&content_type) {
+            handler
+                .should_skip_in_assistant_forwarding(content, context)
+                .await
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Fan-out the `after_user_message_created` hook to every extension.
+    /// Runs each in sequence (not parallel) so an early failure can be
+    /// observed deterministically; a single extension's failure
+    /// propagates up and aborts subsequent invocations. Used by the
+    /// streaming pipeline to give extensions a chance to write per-
+    /// message state into their own tables right after the user
+    /// message commits.
+    pub async fn after_user_message_created(
+        &self,
+        context: &StreamContext,
+        user_message: &Message,
+        send_request: &SendMessageRequest,
+    ) -> Result<(), AppError> {
+        for handler in &self.extensions {
+            handler
+                .after_user_message_created(context, user_message, send_request)
+                .await?;
+        }
+        Ok(())
     }
 
     /// Process content from database across all extensions

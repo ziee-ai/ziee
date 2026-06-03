@@ -21,7 +21,6 @@ use extension_registration::auto_register_extensions;
 // Re-exports
 pub use core::extension::ExtensionRegistry;
 pub use core::routes::chat_router;
-pub use extensions::mcp::mcp_defaults_router;
 
 /// Register chat module
 #[distributed_slice(MODULE_ENTRIES)]
@@ -71,10 +70,13 @@ impl AppModule for ChatModule {
                 // First, register extension routes (extensions may add their own endpoints)
                 let router_with_extension_routes = registry.register_routes(router);
 
-                // Then create chat router with pool state and extension registry as extension
+                // Then create chat router with pool state and extension
+                // registry as extension. `mcp_defaults_router` was
+                // explicitly merged here in the past; it's now
+                // contributed by the mcp bridge's ChatExtension::register_routes
+                // (the line above) so chat doesn't have to know it exists.
                 let chat_module_router = ApiRouter::new()
                     .merge(chat_router())
-                    .merge(mcp_defaults_router())
                     .layer(Extension(registry.clone()));
 
                 router_with_extension_routes.merge(chat_module_router)

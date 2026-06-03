@@ -160,38 +160,50 @@ export function ProjectDefaultsForm({ project }: ProjectDefaultsFormProps) {
     return opts
   })()
 
+  // Wrapper data-test-* attributes carry the boolean "is a default
+  // set?" signal used by the project detail-page E2E specs to assert
+  // the Advanced section's summary state without scraping the antd
+  // Select's value (which is just a UUID).
   return (
     <Form layout="vertical" disabled={!canEdit}>
-      <Form.Item
-        label="Default assistant"
-        help="Pre-selected when creating a new conversation in this project. Users can override per-conversation."
+      <div
+        data-test-default-assistant-set={project.default_assistant_id ? 'true' : 'false'}
       >
-        <Select
-          allowClear
-          placeholder="No default"
-          loading={optionsLoading || savingAssistant}
-          value={project.default_assistant_id ?? undefined}
-          onChange={handleAssistantChange}
-          options={assistantOptions}
-          showSearch={{ optionFilterProp: 'label' }}
-        />
-      </Form.Item>
+        <Form.Item
+          label="Default assistant"
+          help="Pre-selected when creating a new conversation in this project. Users can override per-conversation."
+        >
+          <Select
+            allowClear
+            placeholder="No default"
+            loading={optionsLoading || savingAssistant}
+            value={project.default_assistant_id ?? undefined}
+            onChange={handleAssistantChange}
+            options={assistantOptions}
+            showSearch={{ optionFilterProp: 'label' }}
+          />
+        </Form.Item>
+      </div>
 
-      <Form.Item
-        label="Default model"
-        help="Snapshotted onto each conversation created in this project (when no explicit model is selected)."
-        className="!mb-0"
+      <div
+        data-test-default-model-set={project.default_model_id ? 'true' : 'false'}
       >
-        <Select
-          allowClear
-          placeholder="No default"
-          loading={optionsLoading || savingModel}
-          value={project.default_model_id ?? undefined}
-          onChange={handleModelChange}
-          options={modelOptions}
-          showSearch={{ optionFilterProp: 'label' }}
-        />
-      </Form.Item>
+        <Form.Item
+          label="Default model"
+          help="Snapshotted onto each conversation created in this project (when no explicit model is selected)."
+          className="!mb-0"
+        >
+          <Select
+            allowClear
+            placeholder="No default"
+            loading={optionsLoading || savingModel}
+            value={project.default_model_id ?? undefined}
+            onChange={handleModelChange}
+            options={modelOptions}
+            showSearch={{ optionFilterProp: 'label' }}
+          />
+        </Form.Item>
+      </div>
     </Form>
   )
 }

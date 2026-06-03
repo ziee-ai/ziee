@@ -23,7 +23,7 @@ function buildTitle(toolUseContents: MessageContent[]): string {
 
 export function ToolCallsCollapse({ toolGroupContents, messageId }: ToolCallsCollapseProps) {
   const { isStreaming, streamingMessage } = Stores.Chat
-  const { toolCalls } = Stores.Chat.McpStore
+  const { toolCalls } = Stores.McpComposer
 
   const toolUseContents = toolGroupContents.filter(c => c.content_type === 'tool_use')
 

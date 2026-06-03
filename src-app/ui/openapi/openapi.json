@@ -7317,6 +7317,59 @@
         ]
       }
     },
+    "/api/messages/{id}/assistant": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Get the assistant that was selected when a message was sent",
+        "description": "Returns the assistant id that was attributed to the given user message at send-time. Used to restore the original assistant selection when editing a past message. `assistant_id` is null when the message was sent without an assistant. Returns 404 if the message doesn't exist or the caller doesn't own the conversation it belongs to.",
+        "operationId": "Message.getAssistant",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View chat conversations",
+                        "name": "ConversationsRead",
+                        "value": "conversations::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageAssistantResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Message not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/conversations/{id}/mcp-settings": {
       "get": {
         "tags": [
@@ -7488,6 +7541,288 @@
         ]
       }
     },
+    "/api/mcp/defaults": {
+      "get": {
+        "tags": [
+          "MCP"
+        ],
+        "summary": "Get user MCP defaults",
+        "description": "Get the current user's default MCP settings for new conversations",
+        "operationId": "Mcp.getDefaults",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View chat conversations",
+                        "name": "ConversationsRead",
+                        "value": "conversations::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMcpDefaultsGetResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "MCP"
+        ],
+        "summary": "Update user MCP defaults",
+        "description": "Create or update the current user's default MCP settings for new conversations",
+        "operationId": "Mcp.updateDefaults",
+        "requestBody": {
+          "description": "Request to create/update user MCP defaults",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertUserMcpDefaultsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit conversation titles and metadata",
+                        "name": "ConversationsEdit",
+                        "value": "conversations::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "User MCP defaults (API response - properly typed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMcpDefaultsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/messages/{id}/mcp-servers": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "List MCP servers that were enabled when a message was sent",
+        "description": "Returns the snapshot of MCP server IDs that were enabled at the time the given user message was sent. Used to restore the original server selection when editing a past message. Returns 404 if the message doesn't exist or the caller doesn't own the conversation it belongs to.",
+        "operationId": "Message.getMcpServers",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View chat conversations",
+                        "name": "ConversationsRead",
+                        "value": "conversations::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageMcpServersResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Message not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations/{id}/memory-mode": {
+      "get": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Get the per-conversation memory mode",
+        "description": "Returns the conversation's `memory_mode` override (`inherit` / `on` / `off`). Defaults to `inherit` when the conversation has no explicit override. Returns 404 if the conversation doesn't exist or the caller doesn't own it.",
+        "operationId": "Conversation.getMemoryMode",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View chat conversations",
+                        "name": "ConversationsRead",
+                        "value": "conversations::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationMemoryModeResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Conversation not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Set the per-conversation memory mode",
+        "description": "Updates the conversation's `memory_mode` override (`inherit` / `on` / `off`). Setting `inherit` removes any stored override. Returns 400 on invalid value, 404 if the conversation doesn't exist or the caller doesn't own it.",
+        "operationId": "Conversation.setMemoryMode",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateConversationMemoryModeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit conversation titles and metadata",
+                        "name": "ConversationsEdit",
+                        "value": "conversations::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationMemoryModeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid memory_mode"
+          },
+          "404": {
+            "description": "Conversation not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/conversations": {
       "get": {
         "tags": [
@@ -7577,7 +7912,7 @@
         "description": "Create a new chat conversation with a default branch",
         "operationId": "Conversation.create",
         "requestBody": {
-          "description": "Request to create a new conversation. Chat creates unfiled\n conversations only — project membership is set in a separate step\n via `POST /projects/{id}/conversations/{conv_id}` (the assign\n endpoint owned by the project module). This keeps chat unaware of\n projects at the API contract level.",
+          "description": "Request to create a new conversation.",
           "content": {
             "application/json": {
               "schema": {
@@ -7698,7 +8033,7 @@
         "description": "Update conversation metadata (currently only title)",
         "operationId": "Conversation.update",
         "requestBody": {
-          "description": "Request to update conversation metadata. Project membership\n changes are NOT accepted here — use\n `POST/DELETE /projects/{id}/conversations/{conv_id}` instead.",
+          "description": "Request to update conversation metadata.",
           "content": {
             "application/json": {
               "schema": {
@@ -8319,118 +8654,6 @@
           },
           "401": {
             "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/mcp/defaults": {
-      "get": {
-        "tags": [
-          "MCP"
-        ],
-        "summary": "Get user MCP defaults",
-        "description": "Get the current user's default MCP settings for new conversations",
-        "operationId": "Mcp.getDefaults",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "View chat conversations",
-                        "name": "ConversationsRead",
-                        "value": "conversations::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: conversations::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UserMcpDefaultsGetResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "MCP"
-        ],
-        "summary": "Update user MCP defaults",
-        "description": "Create or update the current user's default MCP settings for new conversations",
-        "operationId": "Mcp.updateDefaults",
-        "requestBody": {
-          "description": "Request to create/update user MCP defaults",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpsertUserMcpDefaultsRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Edit conversation titles and metadata",
-                        "name": "ConversationsEdit",
-                        "value": "conversations::edit"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: conversations::edit",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "User MCP defaults (API response - properly typed)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UserMcpDefaultsResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request"
           }
         },
         "security": [
@@ -13999,10 +14222,6 @@
             "type": "string",
             "format": "uuid"
           },
-          "memory_mode": {
-            "description": "Per-conversation memory mode (migration 57):\n `inherit` defers to the user's retrieval_enabled setting,\n `on` forces retrieval, `off` suppresses it. NOT NULL DEFAULT 'inherit'.",
-            "type": "string"
-          },
           "model_id": {
             "description": "Optional model ID for display/history purposes\n Actual model selection happens per-message via SendMessageRequest",
             "type": [
@@ -14023,7 +14242,6 @@
         "required": [
           "id",
           "user_id",
-          "memory_mode",
           "created_at",
           "updated_at"
         ]
@@ -14095,6 +14313,18 @@
           "updated_at"
         ]
       },
+      "ConversationMemoryModeResponse": {
+        "type": "object",
+        "properties": {
+          "memory_mode": {
+            "description": "One of `\"inherit\"`, `\"on\"`, `\"off\"`. Defaults to `\"inherit\"`\n when the conversation has no explicit override row.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "memory_mode"
+        ]
+      },
       "ConversationResponse": {
         "description": "Conversation response with additional metadata",
         "type": "object",
@@ -14120,10 +14350,6 @@
             "type": "string",
             "format": "uuid"
           },
-          "memory_mode": {
-            "description": "Per-conversation memory mode (migration 57):\n `inherit` defers to the user's retrieval_enabled setting,\n `on` forces retrieval, `off` suppresses it. NOT NULL DEFAULT 'inherit'.",
-            "type": "string"
-          },
           "message_count": {
             "type": "integer",
             "format": "int64"
@@ -14148,7 +14374,6 @@
         "required": [
           "id",
           "user_id",
-          "memory_mode",
           "created_at",
           "updated_at",
           "message_count"
@@ -14348,7 +14573,7 @@
         ]
       },
       "CreateConversationRequest": {
-        "description": "Request to create a new conversation. Chat creates unfiled\n conversations only — project membership is set in a separate step\n via `POST /projects/{id}/conversations/{conv_id}` (the assign\n endpoint owned by the project module). This keeps chat unaware of\n projects at the API contract level.",
+        "description": "Request to create a new conversation.",
         "type": "object",
         "properties": {
           "title": {
@@ -18927,13 +19152,6 @@
         "description": "Message entity - Represents a single message in a conversation\n Messages belong to branches via the branch_messages junction table",
         "type": "object",
         "properties": {
-          "assistant_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid"
-          },
           "created_at": {
             "type": "string",
             "format": "date-time"
@@ -18945,16 +19163,6 @@
           "id": {
             "type": "string",
             "format": "uuid"
-          },
-          "mcp_server_ids": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            }
           },
           "model_id": {
             "type": [
@@ -18978,6 +19186,19 @@
           "edit_count",
           "created_at"
         ]
+      },
+      "MessageAssistantResponse": {
+        "type": "object",
+        "properties": {
+          "assistant_id": {
+            "description": "`None` when the message exists (and the caller owns it) but\n was sent WITHOUT an assistant. `Some(uuid)` when an assistant\n was attributed at send-time.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        }
       },
       "MessageContent": {
         "description": "Message content entity - Represents a content block within a message",
@@ -19263,17 +19484,25 @@
           }
         ]
       },
+      "MessageMcpServersResponse": {
+        "type": "object",
+        "properties": {
+          "server_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "server_ids"
+        ]
+      },
       "MessageWithContent": {
         "description": "Message with its content blocks",
         "type": "object",
         "properties": {
-          "assistant_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid"
-          },
           "contents": {
             "type": "array",
             "items": {
@@ -19291,16 +19520,6 @@
           "id": {
             "type": "string",
             "format": "uuid"
-          },
-          "mcp_server_ids": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            }
           },
           "model_id": {
             "type": [
@@ -22881,19 +23100,24 @@
           }
         }
       },
+      "UpdateConversationMemoryModeRequest": {
+        "type": "object",
+        "properties": {
+          "memory_mode": {
+            "description": "One of `\"inherit\"`, `\"on\"`, `\"off\"`. Setting `\"inherit\"`\n deletes any stored override (row absence == inherit).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "memory_mode"
+        ]
+      },
       "UpdateConversationRequest": {
-        "description": "Request to update conversation metadata. Project membership\n changes are NOT accepted here — use\n `POST/DELETE /projects/{id}/conversations/{conv_id}` instead.",
+        "description": "Request to update conversation metadata.",
         "type": "object",
         "properties": {
           "title": {
             "description": "Title update: None = don't update, Some(None) = clear to null, Some(Some(value)) = set value",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "memory_mode": {
-            "description": "Per-conversation memory mode override:\n `inherit` falls back to the user's retrieval_enabled setting,\n `on` forces retrieval, `off` suppresses retrieval. Drives the\n composer-pill toggle. Migration 57 added the column.",
             "type": [
               "string",
               "null"

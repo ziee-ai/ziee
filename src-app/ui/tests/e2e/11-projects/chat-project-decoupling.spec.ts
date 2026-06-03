@@ -91,8 +91,9 @@ test.describe('Chat ↔ project decoupling — namespaced URL + back button', ()
 
     // The back button is rendered inside TitleEditor (the small
     // left-arrow icon next to the conversation title).
-    const backBtn = page.locator('button:has(svg)').first()
-    await backBtn.click()
+    // The chat back button lives in TitleEditor (left of the title);
+    // selecting via aria-label avoids matching sidebar svg-buttons.
+    await page.getByTestId('conversation-back-button').click()
 
     // Project chat extension's conversationBackHref hook sends back
     // to /projects/{id} for project-bound conversations.
@@ -121,8 +122,9 @@ test.describe('Chat ↔ project decoupling — namespaced URL + back button', ()
     await page.goto(`${baseURL}/chat/${conversationId}`)
     await page.waitForLoadState('networkidle')
 
-    const backBtn = page.locator('button:has(svg)').first()
-    await backBtn.click()
+    // The chat back button lives in TitleEditor (left of the title);
+    // selecting via aria-label avoids matching sidebar svg-buttons.
+    await page.getByTestId('conversation-back-button').click()
 
     await page.waitForURL(
       new RegExp(`/projects/${projectId}(?:$|/[^c])`),

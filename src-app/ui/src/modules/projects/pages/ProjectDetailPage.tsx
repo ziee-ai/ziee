@@ -18,7 +18,7 @@ import { ProjectConversationsList } from '@/modules/projects/components/ProjectC
 import { ProjectDefaultsForm } from '@/modules/projects/components/ProjectDefaultsForm'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { ChatInput } from '@/modules/chat/components/ChatInput'
-import { McpConfigModal } from '@/modules/chat/extensions/mcp/components/McpConfigModal'
+import { McpConfigModal } from '@/modules/mcp/chat-extension/components/McpConfigModal'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 
 const { Title, Text, Paragraph } = Typography
@@ -241,7 +241,7 @@ export function ProjectDetailPage() {
   }
 
   const handleConfigureMcp = () => {
-    Stores.Chat.McpStore.openConfigModalForProject(project)
+    Stores.McpComposer.openConfigModalForProject(project)
   }
 
   // MCP summary used in the Advanced section.
@@ -536,7 +536,7 @@ export function ProjectDetailPage() {
       </div>
 
       <ProjectFormDrawer />
-      {/* Shared MCP modal — controlled by Stores.Chat.McpStore. The
+      {/* Shared MCP modal — controlled by Stores.McpComposer. The
           Advanced "Configure MCP defaults" button above opens this in
           project scope; the dispatch rule
           (currentProjectId && !currentConversationId) routes saves to

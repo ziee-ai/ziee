@@ -45,7 +45,7 @@ test.describe('Memory — admin embedding picker', () => {
     await login(page, baseURL, username, 'password123')
     const userToken = await getCurrentUserToken(page)
 
-    await page.goto(`${baseURL}/settings/admin/memory`)
+    await page.goto(`${baseURL}/settings/memory-admin`)
 
     // The capability filter API responds 200 (even with empty list).
     const res = await page.request.get(
