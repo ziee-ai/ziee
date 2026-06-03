@@ -89,7 +89,11 @@ impl AppModule for LlmLocalRuntimeModule {
         let pool = ctx.db_pool.clone();
         tokio::spawn(async move {
             if let Err(e) = proxy::reseed_from_db(pool.as_ref()).await {
-                tracing::warn!("llm_local_runtime: token cache reseed failed: {}", e);
+                tracing::error!(
+                    "llm_local_runtime: token cache reseed FAILED ({}); local LLM proxy auth is \
+                     degraded — local-provider requests will 401 until the next successful reseed",
+                    e
+                );
             }
         });
 

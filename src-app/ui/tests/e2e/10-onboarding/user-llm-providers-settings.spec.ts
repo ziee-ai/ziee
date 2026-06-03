@@ -66,4 +66,39 @@ test.describe('User LLM-provider key settings', () => {
     await expect(page.getByText('Your key configured')).toBeHidden({ timeout: 10000 })
     await expect(page.getByRole('button', { name: 'Save Key' })).toBeVisible()
   })
+
+  test('local providers are not listed on the personal-keys page', async ({ page, testInfra }) => {
+    const { baseURL, apiURL } = testInfra
+    const token = await getAdminToken(apiURL)
+    const auth = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+
+    // Seed an enabled LOCAL provider assigned to "Users" (beforeEach already
+    // seeded the remote "E2E Provider"). Local providers authenticate via an
+    // internal proxy token, so they must not appear on the personal-key page.
+    const localRes = await fetch(`${apiURL}/api/llm-providers`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ name: 'Local Only Provider', provider_type: 'local', enabled: true }),
+    })
+    if (!localRes.ok) throw new Error(`local create failed: ${localRes.status} ${await localRes.text()}`)
+    const local = await localRes.json()
+
+    const groupsRes = await fetch(`${apiURL}/api/groups`, { headers: auth })
+    const { groups } = await groupsRes.json()
+    const usersGroup = groups.find((g: any) => g.name === 'Users')
+    const assignRes = await fetch(`${apiURL}/api/llm-providers/${local.id}/groups`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ group_id: usersGroup.id }),
+    })
+    if (!assignRes.ok) throw new Error(`assign failed: ${assignRes.status} ${await assignRes.text()}`)
+
+    await page.goto(`${baseURL}/settings/user-llm-providers`)
+    await page.waitForLoadState('networkidle')
+
+    // The remote provider is listed (its name renders in both the menu and the
+    // detail header → use .first()); the local one is filtered out entirely.
+    await expect(page.getByText('E2E Provider').first()).toBeVisible({ timeout: 15000 })
+    await expect(page.getByText('Local Only Provider', { exact: true })).toHaveCount(0)
+  })
 })

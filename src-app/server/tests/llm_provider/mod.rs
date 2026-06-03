@@ -1914,6 +1914,292 @@ async fn test_get_user_providers_flag_with_and_without_user_key() {
     );
 }
 
+// ---------- Local providers: keyless proxy-token mint + no API key required ----------
+
+/// The boot-time reseed mints AND persists a proxy token for any local provider
+/// that has no usable api_key — NULL or blank — so it can authenticate proxy
+/// requests. After reseed each token is (a) persisted in the DB, (b) resolvable,
+/// (c) present in the proxy token cache, and the operation is idempotent across
+/// reseeds (no re-mint). Uses freshly-inserted providers (not the seeded
+/// built-in) so the subprocess boot reseed — which runs once before these rows
+/// exist — cannot race the assertions.
+#[tokio::test]
+async fn test_reseed_mints_and_persists_token_for_keyless_local_provider() {
+    use sqlx::Row;
+
+    let server = crate::common::TestServer::start().await;
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+
+    // Two keyless local providers — one with a NULL api_key, one with a BLANK
+    // string — both of which must take the mint path. Inserted AFTER boot so the
+    // fire-and-forget boot reseed (which only saw the seeded built-in) can't
+    // touch them, making the mint path deterministic.
+    let null_id = Uuid::new_v4();
+    let blank_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO llm_providers (id, name, provider_type, enabled, built_in)
+         VALUES ($1, 'Reseed Null Local', 'local', false, false)",
+    )
+    .bind(null_id)
+    .execute(&pool)
+    .await
+    .expect("insert NULL-key local provider");
+    sqlx::query(
+        "INSERT INTO llm_providers (id, name, provider_type, enabled, built_in, api_key)
+         VALUES ($1, 'Reseed Blank Local', 'local', false, false, '')",
+    )
+    .bind(blank_id)
+    .execute(&pool)
+    .await
+    .expect("insert blank-key local provider");
+
+    // Drive reseed explicitly (boot reseed is fire-and-forget → not deterministic).
+    ziee::test_internals::proxy_reseed_from_db(&pool)
+        .await
+        .expect("reseed should succeed");
+
+    // Assert a provider got a token that is persisted, resolvable, and accepted
+    // by the proxy cache; return the persisted columns for the idempotency check.
+    async fn assert_minted(pool: &sqlx::PgPool, id: Uuid) -> (Option<String>, Option<Vec<u8>>) {
+        use sqlx::Row;
+        let row = sqlx::query("SELECT api_key, api_key_encrypted FROM llm_providers WHERE id = $1")
+            .bind(id)
+            .fetch_one(pool)
+            .await
+            .unwrap();
+        let plain: Option<String> = row.try_get("api_key").unwrap();
+        let enc: Option<Vec<u8>> = row.try_get("api_key_encrypted").unwrap();
+        assert!(
+            plain
+                .as_deref()
+                .map(str::trim)
+                .map(|s| !s.is_empty())
+                .unwrap_or(false)
+                || enc.as_ref().map(|e| !e.is_empty()).unwrap_or(false),
+            "reseed must persist a minted token for keyless local provider {id}"
+        );
+        let token =
+            ziee::resolve_optional_secret(pool, enc.clone(), plain.clone())
+                .await
+                .expect("minted token must resolve");
+        assert!(!token.trim().is_empty(), "resolved token must be non-empty");
+        assert_eq!(
+            ziee::test_internals::proxy_lookup_token(&token).await,
+            Some(id),
+            "minted token must authenticate against the proxy cache"
+        );
+        (plain, enc)
+    }
+
+    let null_after = assert_minted(&pool, null_id).await;
+    let blank_after = assert_minted(&pool, blank_id).await;
+
+    // Idempotency: a second reseed must NOT re-mint (key material unchanged).
+    ziee::test_internals::proxy_reseed_from_db(&pool)
+        .await
+        .expect("second reseed should succeed");
+    for (id, (plain, enc)) in [(null_id, null_after), (blank_id, blank_after)] {
+        let row = sqlx::query("SELECT api_key, api_key_encrypted FROM llm_providers WHERE id = $1")
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        let again_plain: Option<String> = row.try_get("api_key").unwrap();
+        let again_enc: Option<Vec<u8>> = row.try_get("api_key_encrypted").unwrap();
+        assert_eq!(again_plain, plain, "api_key must be stable across reseeds for {id}");
+        assert_eq!(again_enc, enc, "api_key_encrypted must be stable across reseeds for {id}");
+    }
+}
+
+/// A local provider reports `api_key_configured = true` to the user WITHOUT any
+/// system- or user-supplied API key (the reseed minted an internal proxy token).
+/// This is what stops the chat model selector from prompting for a key.
+#[tokio::test]
+async fn test_get_user_providers_local_reports_configured_without_user_key() {
+    use sqlx::Row;
+
+    let server = crate::common::TestServer::start().await;
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+
+    // Enable the built-in keyless `Local` provider and make it visible to the user.
+    let row = sqlx::query(
+        "UPDATE llm_providers SET enabled = true
+         WHERE provider_type = 'local' AND built_in = true
+         RETURNING id",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("built-in local provider must exist");
+    let provider_id: Uuid = row.try_get("id").unwrap();
+    let pid_str = provider_id.to_string();
+
+    sqlx::query(
+        "INSERT INTO user_group_llm_providers (id, group_id, provider_id)
+         SELECT gen_random_uuid(), id, $1 FROM groups WHERE is_default = true
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(provider_id)
+    .execute(&pool)
+    .await
+    .expect("assign local provider to default group");
+
+    // Persist a minted proxy token to the provider's DB row. `api_key_configured`
+    // is computed from the DB system key (not the in-process cache), so the
+    // DB persist — not the cache insert — is what this assertion depends on.
+    ziee::test_internals::proxy_reseed_from_db(&pool).await.unwrap();
+
+    let r = reqwest::Client::new()
+        .get(server.api_url("/user-llm-providers"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let body: serde_json::Value = r.json().await.unwrap();
+    let our = body["providers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"].as_str() == Some(pid_str.as_str()))
+        .expect("local provider must be visible to the user");
+    assert_eq!(our["provider_type"].as_str(), Some("local"));
+    assert_eq!(
+        our["api_key_configured"].as_bool(),
+        Some(true),
+        "local provider must report api_key_configured = true without any user/system key entry"
+    );
+}
+
+/// Saving a USER API key for a local provider is rejected server-side. A stored
+/// user key would be sent to the local proxy as the bearer and rejected (it
+/// isn't the minted proxy token), breaking local inference.
+#[tokio::test]
+async fn test_save_user_api_key_rejected_for_local_provider() {
+    use sqlx::Row;
+
+    let server = crate::common::TestServer::start().await;
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+    let row = sqlx::query(
+        "SELECT id FROM llm_providers WHERE provider_type = 'local' AND built_in = true LIMIT 1",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("built-in local provider must exist");
+    let provider_id: Uuid = row.try_get("id").unwrap();
+
+    let r = reqwest::Client::new()
+        .post(server.api_url("/user-llm-providers/api-keys"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "provider_id": provider_id.to_string(), "api_key": "sk-should-be-rejected" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = r.json().await.unwrap();
+    assert_eq!(
+        body.get("error_code").and_then(|v| v.as_str()),
+        Some("PROVIDER_IS_LOCAL"),
+        "expected PROVIDER_IS_LOCAL error_code, got: {body}"
+    );
+}
+
+/// A missing provider_id is rejected with 404 BEFORE any key is stored — pins
+/// the new lookup ordering (the existence check happens before the upsert) added
+/// alongside the local-provider guard.
+#[tokio::test]
+async fn test_save_user_api_key_missing_provider_returns_404() {
+    let server = crate::common::TestServer::start().await;
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+
+    let r = reqwest::Client::new()
+        .post(server.api_url("/user-llm-providers/api-keys"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "provider_id": Uuid::new_v4(), "api_key": "sk-valid-key" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::NOT_FOUND);
+}
+
+/// The admin update path (POST /llm-providers/{id}) also refuses to set an
+/// api_key on a local provider — symmetric to the user-key guard. The proxy
+/// token is server-minted and changed via the rotate-proxy-token endpoint, so
+/// accepting an api_key here would desync the DB from the in-memory cache.
+#[tokio::test]
+async fn test_update_provider_api_key_rejected_for_local() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::edit",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    // Create a local provider.
+    let resp = client
+        .post(server.api_url("/llm-providers"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "name": "Local Update Guard", "provider_type": "local", "enabled": false }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let id = resp.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Setting an api_key on it must be rejected with PROVIDER_IS_LOCAL.
+    let r = client
+        .post(server.api_url(&format!("/llm-providers/{id}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "api_key": "sk-should-be-rejected" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = r.json().await.unwrap();
+    assert_eq!(
+        body.get("error_code").and_then(|v| v.as_str()),
+        Some("PROVIDER_IS_LOCAL"),
+        "expected PROVIDER_IS_LOCAL error_code, got: {body}"
+    );
+
+    // A local edit WITHOUT an api_key must still succeed (no false 400).
+    let ok = client
+        .post(server.api_url(&format!("/llm-providers/{id}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "enabled": true }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(ok.status(), StatusCode::OK);
+}
+
 // ---------- Cross-user isolation (1 test) ----------
 
 #[tokio::test]
