@@ -118,6 +118,40 @@ pub trait ProjectExtension: Send + Sync {
         Ok(Vec::new())
     }
 
+    /// Called inside the conversation-attach transaction, after the
+    /// project_conversations row insert. Lets extensions sync per-
+    /// conversation state from the project. Mcp uses this to snapshot
+    /// the project's mcp_settings row into a new conversation-scoped
+    /// row (INSERT…SELECT on the unified mcp_settings table with a
+    /// different FK). Errors abort the attach.
+    ///
+    /// Default: no-op.
+    async fn on_conversation_attached(
+        &self,
+        _project_id: Uuid,
+        _conversation_id: Uuid,
+        _user_id: Uuid,
+        _tx: &mut Transaction<'_, Postgres>,
+    ) -> Result<(), AppError> {
+        Ok(())
+    }
+
+    /// Called inside the conversation-detach transaction, after the
+    /// project_conversations row delete. Lets extensions clean up per-
+    /// conversation state (mcp deletes the conversation's mcp_settings
+    /// row so chat falls back to user/global defaults). Conversation
+    /// deletion is handled by ON DELETE CASCADE on the FK; this hook
+    /// covers detach-but-keep-conversation.
+    ///
+    /// Default: no-op.
+    async fn on_conversation_detached(
+        &self,
+        _conversation_id: Uuid,
+        _tx: &mut Transaction<'_, Postgres>,
+    ) -> Result<(), AppError> {
+        Ok(())
+    }
+
     /// Initialize extension (called once at startup).
     async fn initialize(&self, _pool: &PgPool) -> Result<(), AppError> {
         Ok(())
@@ -175,6 +209,35 @@ impl ProjectExtensionRegistry {
         for ext in &self.extensions {
             ext.on_project_duplicated(src_project_id, dst_project_id, tx)
                 .await?;
+        }
+        Ok(())
+    }
+
+    /// Call `on_conversation_attached` on all extensions sequentially.
+    /// Atomic with the project_conversations INSERT (shared transaction).
+    pub async fn fire_on_conversation_attached(
+        &self,
+        project_id: Uuid,
+        conversation_id: Uuid,
+        user_id: Uuid,
+        tx: &mut Transaction<'_, Postgres>,
+    ) -> Result<(), AppError> {
+        for ext in &self.extensions {
+            ext.on_conversation_attached(project_id, conversation_id, user_id, tx)
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// Call `on_conversation_detached` on all extensions sequentially.
+    /// Atomic with the project_conversations DELETE (shared transaction).
+    pub async fn fire_on_conversation_detached(
+        &self,
+        conversation_id: Uuid,
+        tx: &mut Transaction<'_, Postgres>,
+    ) -> Result<(), AppError> {
+        for ext in &self.extensions {
+            ext.on_conversation_detached(conversation_id, tx).await?;
         }
         Ok(())
     }

@@ -51,13 +51,7 @@ pub fn project_router() -> ApiRouter {
             "/projects/by-conversation/{conversation_id}",
             get_with(project_for_conversation, project_for_conversation_docs),
         )
-        // MCP settings (subset for the settings drawer)
-        .api_route(
-            "/projects/{id}/mcp-settings",
-            get_with(get_project_mcp_settings, get_project_mcp_settings_docs),
-        )
-        .api_route(
-            "/projects/{id}/mcp-settings",
-            put_with(update_project_mcp_settings, update_project_mcp_settings_docs),
-        )
+        // MCP-settings routes (`GET/PUT /api/projects/{id}/mcp-settings`)
+        // moved to mcp/project_extension/ — registered via
+        // `ProjectExtension::register_routes` (project↔mcp inversion).
 }

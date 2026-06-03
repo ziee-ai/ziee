@@ -15,14 +15,13 @@ async fn create_get_list_update_delete() {
     )
     .await;
 
-    // Create.
+    // Create. MCP defaults no longer ship inline on the Project payload
+    // (migration 78 moved them to the unified mcp_settings table); clients
+    // hit GET /projects/{id}/mcp-settings for the defaults.
     let project = helpers::create_project(&server, &user, "My Project").await;
     let id = project["id"].as_str().unwrap();
     assert_eq!(project["name"], "My Project");
     assert_eq!(project["user_id"], user.user_id);
-    assert_eq!(project["mcp_approval_mode"], "manual_approve");
-    assert_eq!(project["mcp_auto_approved_tools"], json!([]));
-    assert_eq!(project["mcp_disabled_servers"], json!([]));
 
     // Get.
     let (status, body) = helpers::get_project(&server, &user, id).await;

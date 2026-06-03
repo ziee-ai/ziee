@@ -9,6 +9,7 @@ import type { useSystemMcpServerGroupCardStore } from '@/modules/mcp/components/
 import type { useGroupSystemMcpServersWidgetStore } from '@/modules/mcp/widgets/GroupSystemMcpServersWidget.store'
 import type { useGroupSystemMcpServersAssignmentStore } from '@/modules/mcp/components/system/GroupSystemMcpServersAssignmentDrawer.store'
 import type { useMcpServerGroupsAssignmentStore } from '@/modules/mcp/components/system/McpServerGroupsAssignmentDrawer.store'
+import type { useProjectMcpSettingsStore } from '@/modules/mcp/project-extension/stores/ProjectMcpSettings.store'
 
 declare module '@/core/stores' {
   interface RegisteredStores {
@@ -33,6 +34,9 @@ declare module '@/core/stores' {
     >
     McpComposer: StoreProxy<
       ReturnType<typeof useMcpComposerStore.getState>
+    >
+    ProjectMcpSettings: StoreProxy<
+      ReturnType<typeof useProjectMcpSettingsStore.getState>
     >
   }
 }

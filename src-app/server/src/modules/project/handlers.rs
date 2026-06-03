@@ -13,11 +13,7 @@ use uuid::Uuid;
 use super::events::ProjectEvent;
 use super::models::Project;
 use super::permissions::*;
-use super::types::{
-    CreateProjectRequest, McpServerToolEntry, ProjectListResponse,
-    UpdateProjectMcpSettingsRequest, UpdateProjectRequest, validate_approval_mode,
-    validate_mcp_entries,
-};
+use super::types::{CreateProjectRequest, ProjectListResponse, UpdateProjectRequest};
 use crate::common::{ApiResult, AppError};
 use crate::core::{EventBus, Repos};
 use crate::modules::chat::core::types::ConversationResponse;
@@ -161,39 +157,11 @@ async fn validate_default_assistant_access(
     Ok(())
 }
 
-/// Verify every `server_id` referenced in an MCP entries list points
-/// to an MCP server the calling user can actually access. Without
-/// this, a client could POST a project with `auto_approved_tools`
-/// containing arbitrary UUIDs and the project + every conversation
-/// snapshotted from it would carry dangling MCP references that
-/// silently fail at chat-send time. Closes Round 4 boundary audit
-/// finding (project ↔ mcp #3).
-///
-/// Returns 422 `MCP_SERVER_NOT_ACCESSIBLE` on the first dangling
-/// server_id. We don't aggregate (single-shot validation matches the
-/// other validators' style + keeps error messages actionable).
-async fn validate_mcp_server_access(
-    user_id: Uuid,
-    entries: &[McpServerToolEntry],
-    field: &str,
-) -> Result<(), AppError> {
-    for e in entries {
-        let accessible = Repos
-            .mcp
-            .can_user_access_server(user_id, e.server_id)
-            .await?;
-        if !accessible {
-            return Err(AppError::unprocessable_entity(
-                "MCP_SERVER_NOT_ACCESSIBLE",
-                format!(
-                    "{} references MCP server {} which you don't have access to",
-                    field, e.server_id
-                ),
-            ));
-        }
-    }
-    Ok(())
-}
+// `validate_mcp_server_access` moved to
+// `modules/mcp/project_extension/handlers.rs` (the only place that
+// still validates server access — the PUT /mcp-settings handler).
+// Project create no longer accepts MCP fields, so no validation at
+// create time.
 
 /// Verify a default_model_id (if set) exists. Per project memory
 /// `llm_models_system_wide`, models are admin-curated and shared
@@ -224,20 +192,9 @@ pub async fn create_project(
         request.description.as_deref(),
         request.instructions.as_deref(),
     )?;
-    if let Some(mode) = request.mcp_approval_mode.as_deref() {
-        validate_approval_mode(mode)
-            .map_err(|e| AppError::bad_request("VALIDATION_ERROR", e))?;
-    }
-    if let Some(entries) = &request.mcp_auto_approved_tools {
-        validate_mcp_entries(entries, "mcp_auto_approved_tools")
-            .map_err(|e| AppError::bad_request("VALIDATION_ERROR", e))?;
-        validate_mcp_server_access(auth.user.id, entries, "mcp_auto_approved_tools").await?;
-    }
-    if let Some(entries) = &request.mcp_disabled_servers {
-        validate_mcp_entries(entries, "mcp_disabled_servers")
-            .map_err(|e| AppError::bad_request("VALIDATION_ERROR", e))?;
-        validate_mcp_server_access(auth.user.id, entries, "mcp_disabled_servers").await?;
-    }
+    // MCP validation moved to mcp/project_extension's
+    // update_project_mcp_settings handler — project create no longer
+    // accepts MCP fields (they're set via separate PUT after create).
     validate_default_assistant_access(auth.user.id, request.default_assistant_id).await?;
     validate_default_model_exists(request.default_model_id).await?;
 
@@ -542,6 +499,7 @@ pub async fn attach_conversation(
         crate::modules::chat::core::permissions::ConversationsEdit,
     )>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    Extension(extension_registry): Extension<Arc<crate::modules::project::ProjectExtensionRegistry>>,
     Path((project_id, conversation_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<Json<ConversationResponse>> {
     // 1. Validate project ownership (404 if missing or foreign).
@@ -572,9 +530,11 @@ pub async fn attach_conversation(
         .attach_conversation_in_tx(&mut tx, project_id, conversation_id)
         .await?;
 
-    Repos
-        .project
-        .snapshot_mcp_into_conversation_in_tx(&mut tx, project_id, conversation_id, auth.user.id)
+    // Fan out the conversation-attach hook to every registered project
+    // extension. MCP's impl snapshots the project's mcp_settings row
+    // into a conversation-scoped row on the unified mcp_settings table.
+    extension_registry
+        .fire_on_conversation_attached(project_id, conversation_id, auth.user.id, &mut tx)
         .await?;
 
     tx.commit().await.map_err(AppError::database_error)?;
@@ -635,6 +595,7 @@ pub async fn detach_conversation(
         crate::modules::chat::core::permissions::ConversationsEdit,
     )>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    Extension(extension_registry): Extension<Arc<crate::modules::project::ProjectExtensionRegistry>>,
     Path((project_id, conversation_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<()> {
     // 1. Validate project ownership.
@@ -653,8 +614,10 @@ pub async fn detach_conversation(
         return Err(AppError::not_found("Conversation").into());
     }
 
-    // 3. Atomic: drop the join row + clear the MCP snapshot. The
-    // detach repo call returns false if no row was deleted (the
+    // 3. Atomic: drop the join row + fire the conversation-detach hook
+    // to every project extension. Mcp's hook deletes the conversation's
+    // mcp_settings row so chat falls back to user/global defaults.
+    // The detach repo call returns false if no row was deleted (the
     // conversation wasn't actually attached to THIS project) —
     // map to 404 so DELETE on a non-membership is a clean
     // mis-addressed-request error.
@@ -672,9 +635,8 @@ pub async fn detach_conversation(
         // No need to commit — the implicit rollback drops the empty tx.
         return Err(AppError::not_found("Conversation in project").into());
     }
-    Repos
-        .project
-        .clear_mcp_snapshot_in_tx(&mut tx, conversation_id)
+    extension_registry
+        .fire_on_conversation_detached(conversation_id, &mut tx)
         .await?;
 
     tx.commit().await.map_err(AppError::database_error)?;
@@ -708,125 +670,6 @@ pub fn detach_conversation_docs(op: TransformOperation) -> TransformOperation {
         })
 }
 
-// =====================================================
-// MCP settings
-// =====================================================
-
-#[debug_handler]
-pub async fn get_project_mcp_settings(
-    auth: RequirePermissions<(ProjectsRead,)>,
-    Path(id): Path<Uuid>,
-) -> ApiResult<Json<UpdateProjectMcpSettingsRequest>> {
-    let project = Repos
-        .project
-        .get_for_user(id, auth.user.id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Project"))?;
-    // Deserialize the JSONB columns into the typed shape. A silent
-    // `unwrap_or_default()` here would mask DB corruption: the GET
-    // returns `[]`, the user re-saves, and the original (broken)
-    // payload is destroyed. Surface as a 500 with a distinct error
-    // code instead so operators can recover the row.
-    //
-    // The serde error is LOGGED server-side (full details for ops) but
-    // NOT embedded in the response body — serde_json::Error::Display
-    // can include a snippet of the input, which would leak the
-    // corrupted JSON (potentially containing secrets if mis-saved) to
-    // any caller that triggers the 500. The client only sees the code.
-    let auto_approved_tools = serde_json::from_value(project.mcp_auto_approved_tools)
-        .map_err(|e| {
-            tracing::error!(
-                project_id = %project.id,
-                error = %e,
-                "mcp_auto_approved_tools deserialization failed"
-            );
-            AppError::internal_error(
-                "PROJECT_MCP_SETTINGS_MALFORMED: stored MCP settings are corrupt; \
-                 re-save via PUT /projects/{id}/mcp-settings to recover.",
-            )
-        })?;
-    let disabled_servers = serde_json::from_value(project.mcp_disabled_servers)
-        .map_err(|e| {
-            tracing::error!(
-                project_id = %project.id,
-                error = %e,
-                "mcp_disabled_servers deserialization failed"
-            );
-            AppError::internal_error(
-                "PROJECT_MCP_SETTINGS_MALFORMED: stored MCP settings are corrupt; \
-                 re-save via PUT /projects/{id}/mcp-settings to recover.",
-            )
-        })?;
-    let settings = UpdateProjectMcpSettingsRequest {
-        approval_mode: project.mcp_approval_mode,
-        auto_approved_tools,
-        disabled_servers,
-        // loop_settings is JSONB-flexible (Option<Value>) — pass
-        // through opaquely. Caller (the modal) parses the standard
-        // shape; NULL means "use defaults".
-        loop_settings: project.mcp_loop_settings,
-    };
-    Ok((StatusCode::OK, Json(settings)))
-}
-
-pub fn get_project_mcp_settings_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(ProjectsRead,)>(op)
-        .id("Project.getMcpSettings")
-        .tag("Projects")
-        .summary("Get project MCP defaults")
-        .response::<200, Json<UpdateProjectMcpSettingsRequest>>()
-        .response_with::<404, (), _>(|res| res.description("Project not found"))
-}
-
-#[debug_handler]
-pub async fn update_project_mcp_settings(
-    auth: RequirePermissions<(ProjectsEdit,)>,
-    Extension(event_bus): Extension<Arc<EventBus>>,
-    Path(id): Path<Uuid>,
-    Json(request): Json<UpdateProjectMcpSettingsRequest>,
-) -> ApiResult<Json<Project>> {
-    validate_approval_mode(&request.approval_mode)
-        .map_err(|e| AppError::bad_request("VALIDATION_ERROR", e))?;
-    validate_mcp_entries(&request.auto_approved_tools, "auto_approved_tools")
-        .map_err(|e| AppError::bad_request("VALIDATION_ERROR", e))?;
-    validate_mcp_entries(&request.disabled_servers, "disabled_servers")
-        .map_err(|e| AppError::bad_request("VALIDATION_ERROR", e))?;
-    validate_mcp_server_access(auth.user.id, &request.auto_approved_tools, "auto_approved_tools")
-        .await?;
-    validate_mcp_server_access(auth.user.id, &request.disabled_servers, "disabled_servers").await?;
-
-    let project = Repos
-        .project
-        .update_mcp_settings(id, auth.user.id, request)
-        .await?;
-    tracing::info!(
-        project_id = %project.id,
-        user_id = %auth.user.id,
-        "project: mcp settings updated"
-    );
-    event_bus.emit_async(ProjectEvent::updated(project.id, auth.user.id));
-    Ok((StatusCode::OK, Json(project)))
-}
-
-pub fn update_project_mcp_settings_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(ProjectsEdit,)>(op)
-        .id("Project.updateMcpSettings")
-        .tag("Projects")
-        .summary("Update project MCP defaults")
-        .description(
-            "Update the project's MCP approval mode + auto-approved tools + disabled servers. \
-             These apply to NEW conversations created in the project (snapshot at create time); \
-             existing conversations are not affected.\n\
-             \n\
-             Validation:\n\
-             - `approval_mode` must be one of: `disabled`, `auto_approve`, `manual_approve`.\n\
-             - `auto_approved_tools` and `disabled_servers` are arrays of \
-               `{ server_id: <uuid>, tools: [<tool_name>, ...] }` entries (max 256 each).",
-        )
-        .response::<200, Json<Project>>()
-        .response_with::<400, (), _>(|res| res.description("Validation error"))
-        .response_with::<404, (), _>(|res| res.description("Project not found"))
-}
 
 // =====================================================
 // Tier-1 unit tests (cargo test --lib project::)

@@ -8,6 +8,7 @@ export type {
   ProjectSlotName,
   KnowledgeView,
   KnowledgeKindContribution,
+  AdvancedSettingsContribution,
   ProjectExtensionRegistration,
   ProjectSlotContributions,
 } from './types'

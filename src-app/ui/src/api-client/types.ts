@@ -366,9 +366,6 @@ export interface CreateProjectRequest {
   default_assistant_id?: string
   default_model_id?: string
   instructions?: string
-  mcp_approval_mode?: string
-  mcp_auto_approved_tools?: McpServerToolEntry[]
-  mcp_disabled_servers?: McpServerToolEntry[]
   name?: string
 }
 
@@ -1193,11 +1190,6 @@ export interface McpServerOAuthConfigResponse {
   updated_at: string
 }
 
-export interface McpServerToolEntry {
-  server_id: string
-  tools?: string[]
-}
-
 export interface McpSettingsResponse {
   settings?: ConversationMcpSettingsResponse
 }
@@ -1514,10 +1506,6 @@ export interface Project {
   default_model_id?: string
   id: string
   instructions?: string
-  mcp_approval_mode: string
-  mcp_auto_approved_tools?: any
-  mcp_disabled_servers?: any
-  mcp_loop_settings?: any
   name: string
   updated_at: string
   user_id: string
@@ -1531,6 +1519,20 @@ export interface ProjectFileListResponse {
 export interface ProjectListResponse {
   projects: Project[]
   total: number
+}
+
+export interface ProjectMcpSettingsRequest {
+  approval_mode: ApprovalMode
+  auto_approved_tools?: AutoApprovedServer[]
+  disabled_servers?: DisabledServer[]
+  loop_settings?: LoopSettings
+}
+
+export interface ProjectMcpSettingsResponse {
+  approval_mode: string
+  auto_approved_tools: AutoApprovedServer[]
+  disabled_servers: DisabledServer[]
+  loop_settings?: LoopSettings
 }
 
 export interface Prompt {
@@ -1982,6 +1984,12 @@ export interface SyncCacheResponse {
 
 export type TaskStatus = 'running' | 'completed' | 'failed'
 
+export interface TestExtractRequest {
+  assistant_message: string
+  user_id: string
+  user_message: string
+}
+
 export interface TestMcpConnectionRequest {
   args?: string[]
   command?: string
@@ -2015,6 +2023,11 @@ export interface TestRepositoryConnectionRequest {
 export interface TestRepositoryConnectionResponse {
   message: string
   success: boolean
+}
+
+export interface TestSummarizeRequest {
+  branch_id: string
+  model_id: string
 }
 
 export interface TextPageQuery {
@@ -2192,13 +2205,6 @@ export interface UpdateMemoryRequest {
   importance?: number
   kind?: string
   metadata?: any
-}
-
-export interface UpdateProjectMcpSettingsRequest {
-  approval_mode: string
-  auto_approved_tools: McpServerToolEntry[]
-  disabled_servers: McpServerToolEntry[]
-  loop_settings?: any
 }
 
 export interface UpdateProjectRequest {
@@ -2762,6 +2768,8 @@ export const ApiEndpoints = {
   'MemoryAudit.list': 'GET /api/memory/audit-log',
   'MemorySettings.get': 'GET /api/memory/settings',
   'MemorySettings.update': 'PUT /api/memory/settings',
+  'MemoryTest.extract': 'POST /api/_test/memory/extract',
+  'MemoryTest.summarize': 'POST /api/_test/memory/summarize',
   'Message.delete': 'DELETE /api/messages/{id}',
   'Message.edit': 'PUT /api/conversations/{conversation_id}/messages/{message_id}',
   'Message.get': 'GET /api/messages/{id}',
@@ -2998,6 +3006,8 @@ export type ApiEndpointParameters = {
   'MemoryAudit.list': { limit?: number }
   'MemorySettings.get': void
   'MemorySettings.update': UpdateUserMemorySettingsRequest
+  'MemoryTest.extract': TestExtractRequest
+  'MemoryTest.summarize': TestSummarizeRequest
   'Message.delete': { id: string }
   'Message.edit': { conversation_id: string; message_id: string } & EditMessageRequest
   'Message.get': { id: string }
@@ -3021,7 +3031,7 @@ export type ApiEndpointParameters = {
   'Project.listConversations': { id: string; limit?: number; page?: number }
   'Project.listFiles': { id: string }
   'Project.update': { id: string } & UpdateProjectRequest
-  'Project.updateMcpSettings': { id: string } & UpdateProjectMcpSettingsRequest
+  'Project.updateMcpSettings': { id: string } & ProjectMcpSettingsRequest
   'Project.uploadAndAttachFile': { id: string } & FormData
   'RuntimeVersion.checkUpdates': { engine: string }
   'RuntimeVersion.delete': { version_id: string; remove_binary?: boolean }
@@ -3234,6 +3244,8 @@ export type ApiEndpointResponses = {
   'MemoryAudit.list': MemoryAuditEntry[]
   'MemorySettings.get': UserMemorySettings
   'MemorySettings.update': UserMemorySettings
+  'MemoryTest.extract': any
+  'MemoryTest.summarize': any
   'Message.delete': void
   'Message.edit': EditMessageResponse
   'Message.get': MessageWithContent
@@ -3252,12 +3264,12 @@ export type ApiEndpointResponses = {
   'Project.duplicate': Project
   'Project.forConversation': Project
   'Project.get': Project
-  'Project.getMcpSettings': UpdateProjectMcpSettingsRequest
+  'Project.getMcpSettings': ProjectMcpSettingsResponse
   'Project.list': ProjectListResponse
   'Project.listConversations': ConversationResponse[]
   'Project.listFiles': ProjectFileListResponse
   'Project.update': Project
-  'Project.updateMcpSettings': Project
+  'Project.updateMcpSettings': ProjectMcpSettingsResponse
   'Project.uploadAndAttachFile': File
   'RuntimeVersion.checkUpdates': AvailableUpdatesResponse
   'RuntimeVersion.delete': void

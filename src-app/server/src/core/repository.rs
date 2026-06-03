@@ -191,6 +191,7 @@ declare_repositories! {
     assistant: AssistantRepository => crate::modules::assistant,
     hub: HubRepository => crate::modules::hub,
     mcp: McpRepository => crate::modules::mcp,
+    mcp_settings: McpSettingsRepository => crate::modules::mcp::settings,
     app: AppRepository => crate::modules::app,
     auth: AuthRepository => crate::modules::auth,
     file: FileRepository => crate::modules::file,

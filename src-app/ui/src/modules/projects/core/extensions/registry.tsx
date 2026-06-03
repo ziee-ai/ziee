@@ -1,4 +1,5 @@
 import type {
+  AdvancedSettingsContribution,
   KnowledgeKindContribution,
   KnowledgeView,
   ProjectExtensionRegistration,
@@ -54,25 +55,47 @@ export class ProjectExtensionRegistry {
   }
 
   /**
+   * Iterate all `advanced_settings` contributions, sorted by `order`.
+   * Each contribution renders as its own self-contained card.
+   */
+  advancedSettings(): Array<
+    AdvancedSettingsContribution & { extensionName: string }
+  > {
+    const out: Array<AdvancedSettingsContribution & { extensionName: string }> =
+      []
+    for (const registration of this.extensions.values()) {
+      const c = registration.slots.advanced_settings
+      if (c) {
+        out.push({ ...c, extensionName: registration.name })
+      }
+    }
+    out.sort((a, b) => (a.order ?? 100) - (b.order ?? 100))
+    return out
+  }
+
+  /**
    * Generic slot renderer — returns the React components for a given
    * slot + view, in render order. Used by `<ProjectExtensionSlot>`.
    *
    * For `knowledge_kinds`, `view` selects `inlinePreview` or `managePanel`.
+   * For `advanced_settings`, `view` is ignored (panels are self-contained).
    */
-  renderSlot(name: ProjectSlotName, view: KnowledgeView): React.ReactNode[] {
-    if (name !== 'knowledge_kinds') {
-      // Future slots add cases here.
-      return []
+  renderSlot(name: ProjectSlotName, view?: KnowledgeView): React.ReactNode[] {
+    if (name === 'knowledge_kinds') {
+      if (!view) return []
+      return this.knowledgeKinds().map((c, idx) => {
+        const Component =
+          view === 'inlinePreview' ? c.inlinePreview : c.managePanel
+        return <Component key={`${c.extensionName}-${view}-${idx}`} />
+      })
     }
-    return this.knowledgeKinds().map((c, idx) => {
-      const Component = view === 'inlinePreview' ? c.inlinePreview : c.managePanel
-      // Each contribution renders inside its own header so consumers can
-      // see which kind is which. Header is part of the view here so the
-      // host (ProjectKnowledgeSection) stays kind-agnostic.
-      return (
-        <Component key={`${c.extensionName}-${view}-${idx}`} />
-      )
-    })
+    if (name === 'advanced_settings') {
+      return this.advancedSettings().map((c, idx) => {
+        const Component = c.panel
+        return <Component key={`${c.extensionName}-panel-${idx}`} />
+      })
+    }
+    return []
   }
 }
 

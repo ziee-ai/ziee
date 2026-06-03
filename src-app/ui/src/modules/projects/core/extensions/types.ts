@@ -23,6 +23,15 @@ export const PROJECT_SLOTS = {
   knowledge_kinds: {
     description: 'Knowledge contributions (file lists, URL lists, etc.) for a project',
   },
+  /**
+   * Configuration panels stacked inside the project detail page's
+   * Advanced settings area. Each contribution renders as a self-
+   * contained card. MCP defaults use this; future per-project
+   * rate limits, retention policies, etc. would too.
+   */
+  advanced_settings: {
+    description: 'Project advanced-settings panels (MCP defaults, rate limits, etc.)',
+  },
 } as const
 
 export type ProjectSlotName = keyof typeof PROJECT_SLOTS
@@ -54,11 +63,29 @@ export interface KnowledgeKindContribution {
 }
 
 /**
+ * Contribution for `advanced_settings`. The panel is fully self-
+ * contained — it renders its own card/title; the host just stacks
+ * panels in order. Zero props; reads from `Stores.ProjectDetail.project`
+ * + its own extension-specific store.
+ */
+export interface AdvancedSettingsContribution {
+  /** Display name (for logs/debug; the panel renders its own header). */
+  label: string
+  /** Optional icon (currently unused by the host; panels render their own). */
+  icon?: React.ReactNode
+  /** The panel component. */
+  panel: React.ComponentType
+  /** Render order (lower first). Default 100. */
+  order?: number
+}
+
+/**
  * Slot-name → contribution-type mapping. The registry uses this to
  * accept only the right shape per slot.
  */
 export interface ProjectSlotContributions {
   knowledge_kinds: KnowledgeKindContribution
+  advanced_settings: AdvancedSettingsContribution
 }
 
 /**
