@@ -91,20 +91,35 @@ impl StreamingService {
                 Vec::new()
             };
 
-            // Extract context values to persist on the user message
-            let msg_assistant_id = request.assistant_id;
-            let msg_mcp_server_ids: Option<Vec<uuid::Uuid>> = request.mcp_config.as_ref().map(|c| {
-                c.mcp_servers.iter().map(|s| s.server_id).collect()
-            });
-
-            // Create user message with context (model, assistant, mcp servers used)
+            // Only `model_id` remains as opaque storage on the
+            // message row. Per-message ASSISTANT attribution (was
+            // `messages.assistant_id`) and MCP server snapshot (was
+            // `messages.mcp_server_ids UUID[]`) moved into module-
+            // owned join tables (migrations 74 + 75) — written by
+            // each bridge's `after_user_message_created` hook a few
+            // lines below. Chat no longer knows about either.
             let user_message = Repos.chat.core.create_message(
                 branch_id,
                 MessageRole::User.as_str(),
                 Some(request.model_id),
-                msg_assistant_id,
-                msg_mcp_server_ids,
             ).await?;
+
+            // Give extensions a chance to persist per-message state
+            // into their own tables (mcp's server snapshot, plus any
+            // future similar bookkeeping). Runs OUTSIDE the message
+            // INSERT transaction — a failure here leaves the message
+            // saved without the extension's bookkeeping, which the
+            // extension's read path handles by degrading to "use
+            // current state."
+            if let Some(registry) = &self.extension_registry {
+                registry
+                    .after_user_message_created(
+                        &preliminary_context,
+                        &user_message,
+                        &request,
+                    )
+                    .await?;
+            }
 
             // Create content blocks from extensions (text, files, etc.)
             // Extensions are called in priority order (text extension runs first at order 5)
@@ -130,12 +145,12 @@ impl StreamingService {
                 msg_id  // Existing message (resuming)
             } else {
                 // No extension provided message, create new one
-                let msg = Repos.chat.core.create_message(branch_id, MessageRole::Assistant.as_str(), None, None, None).await?;
+                let msg = Repos.chat.core.create_message(branch_id, MessageRole::Assistant.as_str(), None).await?;
                 msg.id  // New message
             }
         } else {
             // No extension registry, create new message
-            let msg = Repos.chat.core.create_message(branch_id, MessageRole::Assistant.as_str(), None, None, None).await?;
+            let msg = Repos.chat.core.create_message(branch_id, MessageRole::Assistant.as_str(), None).await?;
             msg.id  // New message
         };
 
@@ -713,10 +728,20 @@ impl StreamingService {
                 for content in &msg_with_content.contents {
                     let content_data = content.parse_content()?;
 
-                    // Skip FileAttachment in assistant messages — MCP artifacts are stored for
-                    // UI display only. The ToolResult content already tells the LLM about them.
-                    // Including them as image blocks confuses the LLM into embedding them inline.
-                    if matches!(content_data, MessageContentData::FileAttachment { .. }) {
+                    // Let any extension claim this content as
+                    // skip-from-assistant-forwarding. The file extension
+                    // does this for `FileAttachment` blocks produced from
+                    // MCP tool results (UI-only artifacts the LLM already
+                    // heard about via ToolResult). Used to be a chat-side
+                    // `matches!(MessageContentData::FileAttachment { .. })`
+                    // — naming an extension-contributed variant in chat's
+                    // source. The skip decision now lives in the
+                    // extension that owns the variant.
+                    if let Some(registry) = extension_registry
+                        && registry
+                            .should_skip_in_assistant_forwarding(&content_data, context)
+                            .await?
+                    {
                         continue;
                     }
 

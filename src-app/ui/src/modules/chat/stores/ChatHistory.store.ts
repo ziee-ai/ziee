@@ -185,11 +185,9 @@ export const useChatHistoryStore = create<ChatHistoryStore>()(
             draft.deleting = false
           })
 
-          // Broadcast deletion so other widgets (e.g.
-          // RecentConversationsWidget in filtered mode, project
-          // conversations panel) drop the row from their local state
-          // without a manual refetch. Closes audit F5. Import-late to
-          // avoid a cycle through `@/core/stores`.
+          // Broadcast deletion so other widgets drop the row from
+          // their local state without a manual refetch (closes audit
+          // F5). Import-late to avoid a cycle through `@/core/stores`.
           const { Stores } = await import('@/core/stores')
           await Stores.EventBus.emit({
             type: 'conversation.deleted',

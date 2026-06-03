@@ -57,15 +57,27 @@ test.describe('Memory — manual add', () => {
       page.getByText('User prefers TypeScript over JavaScript'),
     ).toBeVisible()
 
-    // Delete (Popconfirm) — okText="Delete" per codebase convention;
-    // `exact: true` distinguishes the Popconfirm's "Delete" OK button
-    // from the row's trash icon (aria-label = "Delete memory <id>").
+    // Delete — memories render as divs with `data-memory-id`, NOT as
+    // table rows. Find the memory's wrapper by content, then click the
+    // delete button by its aria-label prefix. After clicking, the
+    // Popconfirm opens AND the trash icon's tooltip "Delete memory"
+    // also lingers (it's a portaled overlay at body-level, so scoping
+    // to the Popconfirm doesn't escape it). `force: true` bypasses the
+    // pointer-intercept check on the OK button — standard antd
+    // tooltip-over-popconfirm workaround.
     await page
-      .getByRole('row', { name: /TypeScript/ })
-      .getByRole('button')
-      .last()
+      .locator('[data-memory-id]')
+      .filter({ hasText: 'TypeScript' })
+      .getByRole('button', { name: /Delete memory/ })
       .click()
-    await page.getByRole('button', { name: 'Delete', exact: true }).click()
+    // dispatchEvent('click') sends a synthetic click directly to the
+    // button regardless of viewport / overlays — `force: true` needs
+    // the element in viewport, and `click()` blocks on the tooltip
+    // intercept. The Popconfirm's onConfirm fires identically.
+    await page
+      .locator('.ant-popconfirm')
+      .getByRole('button', { name: 'Delete', exact: true })
+      .dispatchEvent('click')
     await expect(page.getByText('Memory deleted')).toBeVisible({ timeout: 5000 })
   })
 })

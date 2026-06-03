@@ -14,41 +14,13 @@ export default function ConversationPage() {
   const { token } = theme.useToken()
 
   const { conversation, messages, loading, error } = Stores.Chat
-  const projectId = conversation?.project_id ?? null
 
-  // Load conversation and messages on mount or when ID changes
+  // Load conversation and messages on mount or when ID changes.
   useEffect(() => {
     if (conversationId) {
       Stores.Chat.loadConversation(conversationId)
     }
   }, [conversationId])
-
-  // Project-aware defaults: when this conversation lives inside a
-  // project AND no assistant is currently selected in the chat input,
-  // seed the input's assistant picker with the project's default. The
-  // ProjectDetail store load is triggered by ConversationProjectChip;
-  // we just react to its state here.
-  //
-  // Reads + writes go through the typed `Stores.Chat.AssistantStore`
-  // proxy (closes audit F1) — no internal `__state.__state` casts.
-  // The proxy auto-triggers re-renders, so the !selectedAssistantId
-  // guard turns this into a one-shot seed.
-  const { project } = Stores.ProjectDetail
-  const { selectedAssistantId, selectAssistant } = Stores.Chat.AssistantStore
-  useEffect(() => {
-    if (!projectId) return
-    if (project?.id !== projectId) return
-    const defaultAssistantId = project?.default_assistant_id
-    if (!defaultAssistantId) return
-    if (selectedAssistantId) return // user already picked something
-    selectAssistant(defaultAssistantId)
-  }, [
-    projectId,
-    project?.id,
-    project?.default_assistant_id,
-    selectedAssistantId,
-    selectAssistant,
-  ])
 
   // Auto-scroll to bottom on new messages, but ONLY if the user is
   // already near the bottom. Previously this scrolled unconditionally
@@ -106,16 +78,20 @@ export default function ConversationPage() {
 
   return (
     <main className="flex flex-col h-full">
-      {/* Header */}
+      {/* Header — full width, matches the rest of the app's header bars
+          (project page, settings, etc.). TitleEditor at the left,
+          slot consumers at the right. */}
       <HeaderBarContainer>
-        <div className="w-full max-w-4xl mx-auto flex items-center">
-          <TitleEditor />
-          {/* Decoupled chip injection via slot — closes audit N11.
-              Projects module registers ConversationProjectChip into
-              `chatConversationHeaderTrailing`; other modules can stack
-              additional indicators here without chat needing to
-              import from them. */}
-          <ConversationHeaderTrailingSlot />
+        <div className="h-full flex items-center justify-between w-full gap-2">
+          <div className="flex items-center min-w-0 gap-2">
+            <TitleEditor />
+          </div>
+          <div className="flex items-center gap-1">
+            {/* Decoupled chip injection point — other modules register
+                header decorations into `chatConversationHeaderTrailing`
+                without chat compiling against them. */}
+            <ConversationHeaderTrailingSlot />
+          </div>
         </div>
       </HeaderBarContainer>
 
@@ -149,10 +125,9 @@ export default function ConversationPage() {
 }
 
 /**
- * Consumes the `chatConversationHeaderTrailing` slot — modules
- * (Projects, future ones) register decorations to render next to the
- * TitleEditor. Decoupling avoids a compile-time import on the
- * projects module (closes audit N11).
+ * Consumes the `chatConversationHeaderTrailing` slot. Other modules
+ * register header decorations here; chat doesn't compile against
+ * any of them.
  */
 function ConversationHeaderTrailingSlot() {
   const { slots } = Stores.ModuleSystem

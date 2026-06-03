@@ -60,19 +60,17 @@ test.describe('Memory MCP — remember/forget tools', () => {
     const body = await res.json()
     expect(body.result?.structuredContent?.memory_id).toBeTruthy()
 
-    // Now visit /settings/memory and confirm it shows up. The page
-    // also renders an Audit log card whose Snapshot column contains
-    // the same string — scope to the "My memories" card, and use
-    // `.first()` because antd `ellipsis: true` columns render a
-    // hidden measurement <td> alongside the visible one.
+    // Now visit /settings/memory and confirm it shows up. Memories
+    // render as plain divs with `data-memory-id`, not table cells.
+    // Scope to the My memories section's wrapper, then assert one of
+    // the data-memory-id divs contains the snapshot text. The audit
+    // log section renders the same string too, so the data-memory-id
+    // selector disambiguates without needing card-scoping.
     await page.goto(`${baseURL}/settings/memory`)
-    const memoriesCard = page
-      .locator('.ant-card')
-      .filter({ hasText: 'My memories' })
-      .first()
     await expect(
-      memoriesCard
-        .getByRole('cell', { name: 'User uses Linux on a ThinkPad' })
+      page
+        .locator('[data-memory-id]')
+        .filter({ hasText: 'User uses Linux on a ThinkPad' })
         .first(),
     ).toBeVisible({ timeout: 5000 })
   })

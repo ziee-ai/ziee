@@ -1,61 +1,74 @@
 /**
  * Chat Extensions Auto-Discovery
  *
- * This file automatically discovers and registers all chat extensions using Vite's
- * import.meta.glob() - the same pattern used by the module system.
+ * Three supported registration paths (any combination, same registry):
  *
- * Extension Architecture:
- * - Each extension must be in its own directory: `extensions/[name]/extension.tsx`
- * - Export a default ChatExtension from extension.tsx
- * - Extensions are auto-discovered and registered at build time
+ *   1. In-chat extensions (this folder):
+ *        `chat/extensions/<name>/extension.tsx`
+ *      Picked up by the first glob below. Use for extensions that
+ *      conceptually belong TO chat (text rendering, title generation,
+ *      keyboard shortcuts, export, model picker, syntax highlight,
+ *      file). Memory, assistant, and mcp have been promoted to
+ *      sibling-module bridges (see Path 2).
  *
- * To add a new extension:
- * 1. Create a new directory under extensions/
- * 2. Create extension.tsx that exports a default ChatExtension
- * 3. The extension will be automatically discovered and registered
+ *   2. Sibling-module extensions (anywhere under modules/):
+ *        `modules/<module-name>/chat-extension/extension.tsx`
+ *      Picked up by the second glob below. Use when another module
+ *      owns a bridge into chat (e.g. projects → chat). Keeps chat's
+ *      folder free of project-aware code while still requiring zero
+ *      wiring on the module's side — just drop the file at the
+ *      conventional path.
  *
- * Example extension structure:
+ *   3. Manual registration (anywhere):
+ *        `chatExtensionRegistry.register(myExtension)`
+ *      Call from your module's init code. Use when you need
+ *      programmatic control (feature flag, conditional registration)
+ *      or your file layout doesn't match either glob convention.
+ *
+ * Each `extension.tsx` exports a default `ChatExtension`. Re-registration
+ * is HMR-safe — the registry warns and unregisters first, so paths can
+ * overlap without crashing.
+ *
+ * Example extension:
  * ```typescript
- * // extensions/myextension/extension.tsx
- * import { createExtension, type ChatExtension } from '../../core/extensions'
+ * import { createExtension, type ChatExtension } from '@/modules/chat/core/extensions'
  *
  * export default createExtension({
  *   name: 'myextension',
  *   description: 'My custom extension',
  *   priority: 50,
- *   actions: ['sse_event'],
- *   handleSSEEvent: async (event, context) => {
- *     // Handle custom events
- *     return { handled: false }
- *   }
  * })
  * ```
  *
- * Usage:
- * ```typescript
- * import '@/modules/chat/extensions'
- * ```
+ * Bootstrapped by `chat/module.tsx` via `import '@/modules/chat/extensions'`.
  */
 
 import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
 import type { ChatExtension } from '@/modules/chat/core/extensions'
 
-/**
- * Auto-discover all extension.tsx files in subdirectories
- */
-const extensionFiles = import.meta.glob<{ default: ChatExtension }>(
+// Path 1: in-chat extensions.
+const inChatExtensions = import.meta.glob<{ default: ChatExtension }>(
   './*/extension.tsx',
   { eager: true },
 )
 
-/**
- * Register all discovered extensions
- */
+// Path 2: sibling-module extensions at modules/<name>/chat-extension/extension.tsx.
+// Relative pattern is required — `@/` alias isn't supported by import.meta.glob.
+const siblingModuleExtensions = import.meta.glob<{ default: ChatExtension }>(
+  '../../*/chat-extension/extension.tsx',
+  { eager: true },
+)
+
+const allExtensionFiles = {
+  ...inChatExtensions,
+  ...siblingModuleExtensions,
+}
+
 console.log('[Chat Extensions] Auto-discovering extensions...')
 
 const discoveredExtensions: ChatExtension[] = []
 
-for (const [path, moduleExports] of Object.entries(extensionFiles)) {
+for (const [path, moduleExports] of Object.entries(allExtensionFiles)) {
   const extension = moduleExports.default
   if (extension) {
     discoveredExtensions.push(extension)

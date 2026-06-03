@@ -348,6 +348,149 @@ export class ChatExtensionRegistry {
   }
 
   /**
+   * Call afterCreateConversation hooks for all enabled extensions.
+   * Called in priority order after chat auto-creates a conversation
+   * in sendMessage, BEFORE the message stream starts.
+   *
+   * Each extension receives the latest accumulated conversation
+   * shape. If an extension returns a Conversation, it replaces the
+   * current accumulator (the next extension sees the updated
+   * shape). If an extension returns void/undefined, the accumulator
+   * is unchanged.
+   *
+   * Returns the final post-hook conversation so the caller can
+   * adopt it as the canonical local state before emitting the
+   * `conversation.created` event.
+   *
+   * @param conversation - The freshly-created conversation
+   * @returns The conversation after all hooks have run
+   */
+  async afterCreateConversation(
+    conversation: import('@/api-client/types').Conversation,
+  ): Promise<import('@/api-client/types').Conversation> {
+    const extensions = this.getExtensions().filter(
+      ext => ext.afterCreateConversation !== undefined,
+    )
+
+    if (extensions.length === 0) {
+      return conversation
+    }
+
+    let current = conversation
+    for (const extension of extensions) {
+      try {
+        if (extension.afterCreateConversation) {
+          const updated = await extension.afterCreateConversation(current)
+          if (updated) {
+            current = updated
+          }
+        }
+      } catch (error) {
+        console.error(
+          `[ChatExtensions] Error in ${extension.name}.afterCreateConversation:`,
+          error,
+        )
+      }
+    }
+
+    return current
+  }
+
+  /**
+   * Resolve the URL for a conversation. First registered extension
+   * to return a non-undefined string wins; if no extension returns
+   * one, returns undefined (caller falls back to chat's default
+   * `/chat/{id}`).
+   */
+  conversationHref(
+    conversation: import('@/api-client/types').Conversation,
+  ): string | undefined {
+    const extensions = this.getExtensions().filter(
+      ext => ext.conversationHref !== undefined,
+    )
+    for (const extension of extensions) {
+      try {
+        if (extension.conversationHref) {
+          const href = extension.conversationHref(conversation)
+          if (href !== undefined) {
+            return href
+          }
+        }
+      } catch (error) {
+        console.error(
+          `[ChatExtensions] Error in ${extension.name}.conversationHref:`,
+          error,
+        )
+      }
+    }
+    return undefined
+  }
+
+  /**
+   * Resolve the back URL for a conversation page. Same first-non-
+   * undefined-wins semantics as conversationHref. Returns undefined
+   * when no extension provides one (caller falls back to chat's
+   * default).
+   */
+  conversationBackHref(
+    conversation: import('@/api-client/types').Conversation,
+  ): string | undefined {
+    const extensions = this.getExtensions().filter(
+      ext => ext.conversationBackHref !== undefined,
+    )
+    for (const extension of extensions) {
+      try {
+        if (extension.conversationBackHref) {
+          const href = extension.conversationBackHref(conversation)
+          if (href !== undefined) {
+            return href
+          }
+        }
+      } catch (error) {
+        console.error(
+          `[ChatExtensions] Error in ${extension.name}.conversationBackHref:`,
+          error,
+        )
+      }
+    }
+    return undefined
+  }
+
+  /**
+   * Stack all extensions' trailing-renderers for the given
+   * conversation. Returns a fragment of their ReactNode outputs in
+   * priority order. Called by ConversationCard when no `trailing`
+   * prop is supplied.
+   */
+  renderConversationCardTrailing(
+    conversation: import('@/api-client/types').Conversation,
+  ): React.ReactNode {
+    const extensions = this.getExtensions().filter(
+      ext => ext.renderConversationCardTrailing !== undefined,
+    )
+    if (extensions.length === 0) return null
+    return (
+      <>
+        {extensions.map(extension => {
+          try {
+            return (
+              <React.Fragment key={extension.name}>
+                {extension.renderConversationCardTrailing!(conversation)}
+              </React.Fragment>
+            )
+          } catch (error) {
+            console.error(
+              `[ChatExtensions] Error in ${extension.name}.renderConversationCardTrailing:`,
+              error,
+            )
+            return null
+          }
+        })}
+      </>
+    )
+  }
+
+  /**
    * Call onConversationLoad hooks for all enabled extensions
    * Called when a conversation is loaded or switched
    *
@@ -946,3 +1089,43 @@ export class ChatExtensionRegistry {
 
 // Singleton instance
 export const chatExtensionRegistry = new ChatExtensionRegistry()
+
+/**
+ * React hook that aggregates `useConversationMenu` contributions
+ * from every enabled extension. Returns combined menu items +
+ * stacked overlays, ready to drop into an antd Dropdown's
+ * `menu.items` and rendered alongside the trigger.
+ *
+ * Each extension's `useConversationMenu` is itself a hook, so this
+ * call iterates the registered extensions and calls each in
+ * priority order. Standard rules-of-hooks apply: the set of
+ * extensions implementing this hook must be stable for the
+ * lifetime of the component using it (true under the
+ * auto-discovery setup; HMR re-registrations re-mount consumers).
+ */
+export function useConversationMenuContributions(
+  conversation: import('@/api-client/types').Conversation,
+): {
+  items: import('antd').MenuProps['items']
+  overlays: React.ReactNode[]
+  keepMenuOpen: boolean
+} {
+  const items: NonNullable<import('antd').MenuProps['items']> = []
+  const overlays: React.ReactNode[] = []
+  let keepMenuOpen = false
+  const extensions = chatExtensionRegistry
+    .getExtensions()
+    .filter(ext => ext.useConversationMenu !== undefined)
+  for (const ext of extensions) {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const contrib = ext.useConversationMenu!(conversation)
+    if (contrib.items) items.push(...contrib.items)
+    if (contrib.overlays) {
+      overlays.push(
+        <React.Fragment key={ext.name}>{contrib.overlays}</React.Fragment>,
+      )
+    }
+    if (contrib.keepMenuOpen) keepMenuOpen = true
+  }
+  return { items, overlays, keepMenuOpen }
+}

@@ -795,14 +795,10 @@ pub async fn list_project_conversations(
         .ok_or_else(|| AppError::not_found("Project"))?;
 
     let (page, limit) = query.resolved();
-    // saturating_mul as a belt-and-suspenders backstop — the
-    // PaginationQuery::resolved() clamps already guarantee no overflow
-    // here, but this stays correct if the clamps are ever relaxed.
     let offset = (page - 1).saturating_mul(limit);
     let conversations = Repos
-        .chat
-        .core
-        .list_conversations_by_project(auth.user.id, id, limit, offset)
+        .project
+        .list_conversations_in_project(id, auth.user.id, limit, offset)
         .await?;
     Ok((StatusCode::OK, Json(conversations)))
 }
@@ -814,6 +810,219 @@ pub fn list_project_conversations_docs(op: TransformOperation) -> TransformOpera
         .summary("List conversations in a project")
         .response::<200, Json<Vec<ConversationResponse>>>()
         .response_with::<404, (), _>(|res| res.description("Project not found"))
+}
+
+/// Look up the project a conversation currently belongs to.
+/// 200 with the project body if attached; 404 if the conversation is
+/// unfiled or belongs to a different user. Lets chat-side UI
+/// (project header chip, back-button hook) resolve project context
+/// for a loaded conversation without putting a `project_id` field on
+/// the conversation row itself.
+#[debug_handler]
+pub async fn project_for_conversation(
+    auth: RequirePermissions<(ProjectsRead,)>,
+    Path(conversation_id): Path<Uuid>,
+) -> ApiResult<Json<Project>> {
+    let project = Repos
+        .project
+        .get_for_conversation(conversation_id, auth.user.id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Project for conversation"))?;
+    Ok((StatusCode::OK, Json(project)))
+}
+
+pub fn project_for_conversation_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(ProjectsRead,)>(op)
+        .id("Project.forConversation")
+        .tag("Projects")
+        .summary("Resolve the project a conversation is attached to")
+        .description(
+            "Returns the project the given conversation is currently attached to. \
+             404 if the conversation is unfiled, doesn't exist, or belongs to a different user."
+        )
+        .response::<200, Json<Project>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<403, (), _>(|res| res.description("Missing required permissions"))
+        .response_with::<404, (), _>(|res| res.description("Conversation has no project (unfiled or not owned)"))
+}
+
+/// Attach an existing conversation to this project (or re-attach
+/// from another project). Idempotent: re-POSTing the same (project,
+/// conv) pair refreshes the MCP snapshot from the project's current
+/// defaults. Serves both "create new chat in project" (chat creates
+/// unfiled, then the frontend attaches) and "move existing chat
+/// into project" use cases. Mirrors `attach_file`/`detach_file`.
+#[debug_handler]
+pub async fn attach_conversation(
+    auth: RequirePermissions<(
+        ProjectsEdit,
+        crate::modules::chat::core::permissions::ConversationsEdit,
+    )>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
+    Path((project_id, conversation_id)): Path<(Uuid, Uuid)>,
+) -> ApiResult<Json<ConversationResponse>> {
+    // 1. Validate project ownership (404 if missing or foreign).
+    let _project = Repos
+        .project
+        .get_for_user(project_id, auth.user.id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Project"))?;
+
+    // 2. Validate conversation ownership.
+    if !Repos
+        .project
+        .user_owns_conversation(conversation_id, auth.user.id)
+        .await?
+    {
+        return Err(AppError::not_found("Conversation").into());
+    }
+
+    // 3. Atomic: insert/update join row + refresh MCP snapshot.
+    let mut tx = Repos
+        .pool()
+        .begin()
+        .await
+        .map_err(AppError::database_error)?;
+
+    let from_project_id = Repos
+        .project
+        .attach_conversation_in_tx(&mut tx, project_id, conversation_id)
+        .await?;
+
+    Repos
+        .project
+        .snapshot_mcp_into_conversation_in_tx(&mut tx, project_id, conversation_id, auth.user.id)
+        .await?;
+
+    tx.commit().await.map_err(AppError::database_error)?;
+
+    event_bus.emit_async(ProjectEvent::conversation_attached(
+        conversation_id,
+        project_id,
+        from_project_id,
+        auth.user.id,
+    ));
+
+    // Re-fetch from the project's conversation list so the response
+    // carries the canonical message_count shape clients see elsewhere.
+    let convs = Repos
+        .project
+        .list_conversations_in_project(project_id, auth.user.id, 1, 0)
+        .await?;
+    let response = convs
+        .into_iter()
+        .find(|c| c.conversation.id == conversation_id)
+        .ok_or_else(|| AppError::not_found("Conversation"))?;
+    Ok((StatusCode::OK, Json(response)))
+}
+
+pub fn attach_conversation_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(
+        ProjectsEdit,
+        crate::modules::chat::core::permissions::ConversationsEdit,
+    )>(op)
+        .id("Project.attachConversation")
+        .tag("Projects")
+        .summary("Attach (or re-attach) a conversation to this project")
+        .description(
+            "Attach an existing conversation to this project. Idempotent: re-POSTing the same \
+             (project, conv) pair refreshes the project MCP snapshot stored on the conversation. \
+             Cross-project moves (attach a conversation already in project A into project B) \
+             re-snapshot from B's MCP defaults via ON CONFLICT DO UPDATE.\n\
+             \n\
+             Use cases:\n\
+             - **Create new chat in project**: chat creates an unfiled conversation, then the \
+               frontend's project chat extension calls this endpoint to file it.\n\
+             - **Move existing chat into project**: sidebar drag-drop or context menu calls \
+               this directly.",
+        )
+        .response::<200, Json<ConversationResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<403, (), _>(|res| res.description("Missing required permissions"))
+        .response_with::<404, (), _>(|res| res.description("Project or conversation not found"))
+}
+
+/// Detach a conversation from this project ("unfile" it). Clears the
+/// MCP snapshot row so subsequent chat use falls back to user/global
+/// MCP defaults.
+#[debug_handler]
+pub async fn detach_conversation(
+    auth: RequirePermissions<(
+        ProjectsEdit,
+        crate::modules::chat::core::permissions::ConversationsEdit,
+    )>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
+    Path((project_id, conversation_id)): Path<(Uuid, Uuid)>,
+) -> ApiResult<()> {
+    // 1. Validate project ownership.
+    let _project = Repos
+        .project
+        .get_for_user(project_id, auth.user.id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Project"))?;
+
+    // 2. Validate conversation ownership.
+    if !Repos
+        .project
+        .user_owns_conversation(conversation_id, auth.user.id)
+        .await?
+    {
+        return Err(AppError::not_found("Conversation").into());
+    }
+
+    // 3. Atomic: drop the join row + clear the MCP snapshot. The
+    // detach repo call returns false if no row was deleted (the
+    // conversation wasn't actually attached to THIS project) —
+    // map to 404 so DELETE on a non-membership is a clean
+    // mis-addressed-request error.
+    let mut tx = Repos
+        .pool()
+        .begin()
+        .await
+        .map_err(AppError::database_error)?;
+
+    let detached = Repos
+        .project
+        .detach_conversation_in_tx(&mut tx, project_id, conversation_id)
+        .await?;
+    if !detached {
+        // No need to commit — the implicit rollback drops the empty tx.
+        return Err(AppError::not_found("Conversation in project").into());
+    }
+    Repos
+        .project
+        .clear_mcp_snapshot_in_tx(&mut tx, conversation_id)
+        .await?;
+
+    tx.commit().await.map_err(AppError::database_error)?;
+
+    event_bus.emit_async(ProjectEvent::conversation_detached(
+        conversation_id,
+        project_id,
+        auth.user.id,
+    ));
+
+    Ok((StatusCode::NO_CONTENT, ()))
+}
+
+pub fn detach_conversation_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(
+        ProjectsEdit,
+        crate::modules::chat::core::permissions::ConversationsEdit,
+    )>(op)
+        .id("Project.detachConversation")
+        .tag("Projects")
+        .summary("Detach a conversation from this project")
+        .description(
+            "Detach a conversation from this project (it becomes unfiled). Clears the per-conversation \
+             MCP snapshot so subsequent chat use falls back to user/global MCP defaults.",
+        )
+        .response_with::<204, (), _>(|res| res.description("Conversation detached"))
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<403, (), _>(|res| res.description("Missing required permissions"))
+        .response_with::<404, (), _>(|res| {
+            res.description("Project not found, conversation not found, or conversation not in this project")
+        })
 }
 
 // =====================================================

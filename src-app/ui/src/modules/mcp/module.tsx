@@ -7,6 +7,7 @@ import {
   useMcpStore,
   useSystemMcpServersStore,
   useMcpServerDrawerStore,
+  useMcpComposerStore,
 } from '@/modules/mcp/stores'
 import { useSystemMcpServerGroupCardStore } from '@/modules/mcp/components/system/McpServerGroupsAssignmentCard.store'
 import { useGroupSystemMcpServersWidgetStore } from '@/modules/mcp/widgets/GroupSystemMcpServersWidget.store'
@@ -99,6 +100,10 @@ export default createModule({
     {
       name: 'McpServerGroupsAssignment',
       store: useMcpServerGroupsAssignmentStore,
+    },
+    {
+      name: 'McpComposer',
+      store: useMcpComposerStore,
     },
   ],
   components: [

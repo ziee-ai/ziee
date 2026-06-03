@@ -28,7 +28,7 @@ export function ChatInput({
   // Get stores
   const { sendMessage, sending, isStreaming } = Stores.Chat
 
-  const uploadingFilesMap = Stores.Chat.FileStore?.uploadingFiles
+  const uploadingFilesMap = Stores.File?.uploadingFiles
   const isUploadingFiles = !!(uploadingFilesMap &&
     Array.from(uploadingFilesMap.values()).some(
       f => f.status === 'pending' || f.status === 'uploading'

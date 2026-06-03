@@ -1,39 +1,61 @@
 import { useState } from 'react'
-import { Button, Tag } from 'antd'
-import { FileOutlined } from '@ant-design/icons'
+import { Button, Typography } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { ProjectFilesPanel } from '@/modules/projects/components/ProjectFilesPanel'
+// FileCard now lives at modules/file/components/FileCard.tsx — a
+// generic top-level primitive shared by the chat composer and this
+// project knowledge drawer. Its only chat-specific behavior (opening
+// the file in chat's right panel on click) is overridden by passing
+// `onClick`; the thumbnail lookup against Stores.File safely returns
+// undefined for project files (falls back to the file-type icon).
+import { FileCard } from '@/modules/file/components/FileCard'
 import { Stores } from '@/core/stores'
+
+const { Text } = Typography
 
 interface ProjectFilesManageDrawerProps {
   projectId: string
 }
 
 /**
- * Compact inline knowledge-file preview + "Manage files" drawer.
+ * Inline knowledge-file preview + "Manage files" drawer.
  *
- * The project detail page (Option A redesign) shows up to N file
- * chips inline so users see project knowledge at a glance, with a
- * "Manage" button that opens the full ProjectFilesPanel in a side
- * drawer for attach/detach. Keeps conversations the primary content
- * of the page (file management is a secondary concern most users
- * touch infrequently after project setup).
+ * Shows EVERY attached file as a FileCard tile on the project detail
+ * page — no truncation. The 100-file project cap keeps the worst
+ * case bounded (Tailwind flex-wrap handles overflow into multiple
+ * rows naturally), and seeing the full set at a glance is what users
+ * told us they wanted ("don't make me guess what's already in here").
+ * The "Manage" button opens the full ProjectFilesPanel in a side
+ * drawer for upload / attach / detach.
  */
-const INLINE_PREVIEW_LIMIT = 5
-
 export function ProjectFilesManageDrawer({
   projectId,
 }: ProjectFilesManageDrawerProps) {
   const [open, setOpen] = useState(false)
   const { files } = Stores.ProjectDetail
-  const total = files.length
-  const preview = files.slice(0, INLINE_PREVIEW_LIMIT)
-  const overflow = Math.max(0, total - INLINE_PREVIEW_LIMIT)
 
   return (
     <>
-      <div className="flex flex-wrap gap-2 items-center">
-        {preview.length === 0 ? (
+      {/* Heading row — title left, Manage button pushed to the right
+          via ml-auto. The Manage button used to live at the tail of
+          the file-tile flex-wrap below, which moved its position
+          based on how many files were attached. Pinning it to the
+          right of the header makes it discoverable regardless of
+          file count + 0-file state. */}
+      <div className="flex items-center mb-2">
+        <Text strong>Project knowledge</Text>
+        <Button
+          size="small"
+          onClick={() => setOpen(true)}
+          aria-label="Manage knowledge files"
+          className="!ml-auto"
+        >
+          Manage
+        </Button>
+      </div>
+
+      <div className="flex flex-wrap gap-3 items-start">
+        {files.length === 0 ? (
           <span
             className="text-sm text-gray-500 italic"
             data-test-files-empty="true"
@@ -41,31 +63,20 @@ export function ProjectFilesManageDrawer({
             No knowledge files yet
           </span>
         ) : (
-          preview.map(file => (
-            <Tag
+          files.map(file => (
+            <FileCard
               key={file.id}
-              icon={<FileOutlined />}
-              data-test-file-chip={file.filename}
-            >
-              {file.filename}
-            </Tag>
+              file={file}
+              variant="square"
+              canRemove={false}
+              // Clicking a tile opens the manage drawer (where the
+              // user can detach / inspect). Overrides FileCard's
+              // default chat-right-panel behavior, which isn't
+              // applicable on the project detail page.
+              onClick={() => setOpen(true)}
+            />
           ))
         )}
-        {overflow > 0 && (
-          <Tag
-            color="default"
-            data-test-files-overflow="true"
-          >
-            +{overflow} more
-          </Tag>
-        )}
-        <Button
-          size="small"
-          onClick={() => setOpen(true)}
-          aria-label="Manage knowledge files"
-        >
-          Manage
-        </Button>
       </div>
 
       <Drawer

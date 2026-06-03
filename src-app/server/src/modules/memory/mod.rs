@@ -2,15 +2,21 @@
 //!
 //! The Memory feature has three surfaces:
 //!   - REST CRUD at `/api/memories` (this module) for the Memories page.
-//!   - Chat extension hooks (`modules/chat/extensions/memory`) for the
-//!     silent extract/retrieve pipeline.
+//!   - Chat extension bridge (`chat_extension/`) — silent
+//!     extract/retrieve pipeline. Self-registers with chat via linkme.
 //!   - Built-in MCP server (`modules/memory_mcp`) exposing
 //!     `remember`/`recall`/`forget` tools.
 //!
-//! All three share the same Postgres tables (`user_memories`,
+//! Shared dual-use engine (`engine/`) holds extract/summarize/dispatch/
+//! prompts — called from the bridge hooks AND directly from
+//! `handlers.rs`, `embedding_worker.rs`, and `memory_mcp/handlers.rs`.
+//!
+//! All three surfaces share the same Postgres tables (`user_memories`,
 //! `user_memory_settings`) defined by migration 46.
 
+pub mod chat_extension;
 pub mod embedding_worker;
+pub mod engine;
 pub mod handlers;
 pub mod models;
 pub mod permissions;

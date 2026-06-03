@@ -1,47 +1,16 @@
 import { useEffect } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { App, Typography } from 'antd'
+import { useNavigate } from 'react-router-dom'
+import { Typography } from 'antd'
 import { ChatInput } from '@/modules/chat/components/ChatInput'
 import { Stores } from '@/core/stores'
 
 const { Title, Text } = Typography
 
-/**
- * Strict UUID v4-ish check used to validate `?project_id=` query
- * params before latching them into the chat store. Accepts any RFC
- * 4122 lowercase or mixed-case canonical UUID; rejects junk like
- * `garbage` or `'); DROP TABLE`. Closes audit B4: previously a
- * malformed value would only be rejected by the backend at
- * conversation-create time with a confusing 400.
- */
-const UUID_RE =
-  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
-
 export default function NewChatPage() {
   const navigate = useNavigate()
-  const { message } = App.useApp()
-  const [searchParams] = useSearchParams()
-  const rawProjectId = searchParams.get('project_id')
 
   useEffect(() => {
     Stores.Chat.reset()
-
-    // If the user reached /chat?project_id=<uuid> (e.g. from
-    // ProjectDetailPage's "New chat" button or ProjectsNavWidget's
-    // hover affordance), latch the project ID into the chat store so
-    // the first send creates a conversation INSIDE that project. The
-    // store consumes + clears it on the createConversation call.
-    if (rawProjectId) {
-      if (UUID_RE.test(rawProjectId)) {
-        Stores.Chat.setPendingProjectId(rawProjectId)
-      } else {
-        // Surface the bad URL early instead of failing silently at
-        // first send. The user typed/copy-pasted a malformed link.
-        message.error(
-          'Invalid project link — starting a normal chat instead.',
-        )
-      }
-    }
 
     const unsubscribe = Stores.EventBus.on(
       'conversation.created',
@@ -54,7 +23,7 @@ export default function NewChatPage() {
     return () => {
       unsubscribe()
     }
-  }, [rawProjectId])
+  }, [navigate])
 
   return (
     <main className="flex flex-col h-full items-center justify-center p-8">

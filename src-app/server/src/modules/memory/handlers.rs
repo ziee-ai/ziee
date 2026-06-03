@@ -516,7 +516,7 @@ pub async fn update_admin_settings(
                     let model_id = new_id;
                     let model_name = new_model.name.clone();
                     tokio::spawn(async move {
-                        let dim = match crate::modules::chat::extensions::memory::dispatch::embed(
+                        let dim = match crate::modules::memory::engine::dispatch::embed(
                             model_id,
                             "dimension probe",
                         )
@@ -650,7 +650,7 @@ pub async fn trigger_reembed(
     let pool = Repos.memory.pool_clone();
     let model_name = model.name.clone();
     tokio::spawn(async move {
-        let dim = match crate::modules::chat::extensions::memory::dispatch::embed(
+        let dim = match crate::modules::memory::engine::dispatch::embed(
             model_id,
             "dimension probe",
         )
@@ -705,7 +705,7 @@ pub async fn test_extract(
     _auth: RequirePermissions<(MemoryAdminManage,)>,
     Json(body): Json<TestExtractRequest>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    crate::modules::chat::extensions::memory::extractor::extract_and_persist(
+    crate::modules::memory::engine::extractor::extract_and_persist(
         body.user_id,
         body.user_message,
         body.assistant_message,
@@ -737,7 +737,7 @@ pub async fn test_summarize(
     _auth: RequirePermissions<(MemoryAdminManage,)>,
     Json(body): Json<TestSummarizeRequest>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    crate::modules::chat::extensions::memory::summarizer::refresh_summary(
+    crate::modules::memory::engine::summarizer::refresh_summary(
         body.branch_id,
         body.model_id,
     )
