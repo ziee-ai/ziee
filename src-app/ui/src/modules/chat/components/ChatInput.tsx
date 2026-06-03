@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Button, Dropdown, theme, message as antMessage } from 'antd'
 import { SendOutlined, PlusOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
-import { ExtensionSlot } from '@/modules/chat/core/extensions'
+import { ExtensionSlot, chatExtensionRegistry } from '@/modules/chat/core/extensions'
 import { PlusDropdownContext } from '@/modules/chat/components/PlusDropdownContext'
 import { EditingMessageBanner } from '@/modules/chat/components/EditingMessageBanner'
 
@@ -28,14 +28,15 @@ export function ChatInput({
   // Get stores
   const { sendMessage, sending, isStreaming } = Stores.Chat
 
-  const uploadingFilesMap = Stores.File?.uploadingFiles
-  const isUploadingFiles = !!(uploadingFilesMap &&
-    Array.from(uploadingFilesMap.values()).some(
-      f => f.status === 'pending' || f.status === 'uploading'
-    ))
+  // Extensions can block the Send button via `useSendBlocker`. File's
+  // chat-extension uses this to gate Send while uploads are in flight
+  // — chat itself stays file-agnostic. Click-time defense lives in the
+  // `beforeSendMessage` aggregator (called inside sendMessage).
+  const sendBlockers = chatExtensionRegistry.useSendBlockers()
+  const isBlockedByExtension = sendBlockers.length > 0
 
   const handleSend = async () => {
-    if (sending || isStreaming || disabled || isUploadingFiles) return
+    if (sending || isStreaming || disabled || isBlockedByExtension) return
 
     try {
       // sendMessage auto-creates conversation if missing
@@ -124,8 +125,8 @@ export function ChatInput({
               size="large"
               icon={<SendOutlined rotate={270} />}
               onClick={handleSend}
-              disabled={sending || isStreaming || disabled || isUploadingFiles}
-              loading={sending || isStreaming || isUploadingFiles}
+              disabled={sending || isStreaming || disabled || isBlockedByExtension}
+              loading={sending || isStreaming || isBlockedByExtension}
               aria-label="Send message"
             />
           </div>

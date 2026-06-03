@@ -8,6 +8,11 @@ import { FileAttachMenuItem } from '@/modules/file/chat-extension/components/Fil
 import { FileCard } from '@/modules/file/components/FileCard'
 import { MessageFilesView } from '@/modules/file/chat-extension/components/MessageFilesView'
 import { Stores } from '@/core/stores'
+// Raw zustand hook for the `useSendBlocker` reactive subscription —
+// going through Stores.File would fire the Stores-proxy's internal
+// useEffect+useStore on property access, corrupting the outer hook
+// count (see ProjectFiles.store.ts's earlier bug).
+import { useFileStore } from '@/modules/file/stores/File.store'
 import type { File as FileEntity, MessageContent, MessageContentDataFileAttachment } from '@/api-client/types'
 
 // Augment the central PanelRendererMap so `displayInRightPanel({ type: 'file',
@@ -203,7 +208,63 @@ const fileExtension: ChatExtension = createExtension({
     }))
   },
 
-  // Check if files are still uploading before sending message
+  // Called by the chat store when regenerating/editing a previously-sent
+  // message — rehydrates the file selection from the message's
+  // file_attachment content blocks so the next send carries them.
+  //
+  // Stubs are built synchronously from block data (filename/size/mime)
+  // because sendMessage() fires immediately after this returns and
+  // clearFiles() runs right after — an async server fetch wouldn't
+  // complete in time. This matches the existing `editingMessage`
+  // subscribe behavior (which handles the initial edit-click flow).
+  //
+  // Inverts the file-specific code that used to live at
+  // Chat.store.ts:891-921 (lazy-imported Stores.File to avoid the
+  // chat → file dependency).
+  onMessageEditRestore: async (contents) => {
+    const fileContents = contents.filter(
+      c => c.content_type === 'file_attachment',
+    )
+    if (fileContents.length === 0) return
+
+    const { Stores } = await import('@/core/stores')
+    const fileStore = Stores.File
+    if (!fileStore) return
+
+    const stubs: FileEntity[] = fileContents.map(c => {
+      const data = c.content as MessageContentDataFileAttachment
+      return {
+        id: data.file_id,
+        filename: data.filename,
+        file_size: data.file_size,
+        mime_type: data.mime_type ?? undefined,
+        has_thumbnail: false,
+        preview_page_count: 0,
+        created_at: '',
+        updated_at: '',
+        user_id: '',
+        created_by: '',
+        processing_metadata: null,
+        text_page_count: 0,
+      }
+    })
+    fileStore.restoreFilesFromEdit(stubs)
+  },
+
+  // Reactive companion to `beforeSendMessage` — drives ChatInput's
+  // Send-button disable state. Subscribes to `uploadingFiles` via the
+  // raw zustand hook so re-renders fire when upload status flips.
+  useSendBlocker: () => {
+    const uploadingFiles = useFileStore(s => s.uploadingFiles)
+    const inFlight = Array.from(uploadingFiles.values()).some(
+      f => f.status === 'pending' || f.status === 'uploading',
+    )
+    return inFlight ? { reason: 'uploading' } : null
+  },
+
+  // Click-time defensive cancel — in case the user clicks before the
+  // disable lands (race) or some other extension's useSendBlocker
+  // doesn't propagate. Same semantics as the useSendBlocker hook.
   beforeSendMessage: async () => {
     const { Stores } = await import('@/core/stores')
     const fileStore = Stores.File

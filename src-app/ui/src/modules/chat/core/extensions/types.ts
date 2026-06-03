@@ -183,6 +183,21 @@ export interface BeforeSendResult {
   discardCancel?: string[]
 }
 
+/**
+ * Reactive "send is blocked" signal returned by an extension's
+ * `useSendBlocker` hook. ChatInput's Send button disables when ANY
+ * extension reports a blocker. `reason` is a short machine-readable
+ * tag (e.g. 'uploading', 'awaiting-approval') so callers can render a
+ * tooltip or status badge if desired.
+ *
+ * For click-time defensive cancellation (in case the disable race
+ * losts), implement `beforeSendMessage` to return `{ cancel: true }`
+ * with the same condition — the two are paired.
+ */
+export interface SendBlocker {
+  reason: string
+}
+
 export interface AfterStreamCompleteResult {
   /** Custom actions to perform */
   actions?: (() => void | Promise<void>)[]
@@ -521,6 +536,55 @@ export interface ChatExtension {
   conversationBackHref?: (
     conversation: import('@/api-client/types').Conversation,
   ) => string | undefined
+
+  /**
+   * Reactive "is send blocked right now?" React hook. Called by
+   * `ChatInput` on every render (via the registry's `useSendBlockers`
+   * aggregator) to decide whether to disable the Send button.
+   *
+   * Implementations:
+   * - MUST be safe to call unconditionally (regular React-hook rules
+   *   apply — same hook count every render). The registry calls it
+   *   inside an unconditional loop over the stable extension list.
+   * - SHOULD read from the extension's own state via the raw zustand
+   *   store hook (e.g. `useFileStore(s => s.uploadingFiles)`), NOT
+   *   via `Stores.X.*` — the Stores proxy fires side-effect hooks on
+   *   property access that can corrupt the outer hook count.
+   * - Return `null` when send is unblocked. Return `{ reason }` when
+   *   blocked (e.g. `{ reason: 'uploading' }` while file upload is
+   *   in flight).
+   *
+   * For the click-time defensive cancel (e.g. a race where the user
+   * clicks before the disable lands), pair with `beforeSendMessage`
+   * that returns `{ cancel: true, errorMessage }` under the same
+   * condition. ChatInput respects whichever fires first.
+   */
+  useSendBlocker?: () => SendBlocker | null
+
+  /**
+   * Called when the user clicks Edit on a previously-sent message and
+   * the chat store needs each extension to rehydrate its own state
+   * from the message's content blocks. Receives the FULL contents
+   * array — extensions filter by their own `content_type` and act on
+   * relevant blocks.
+   *
+   * Example: file extension filters for `content_type === 'file_attachment'`
+   * blocks and calls `useFileStore.restoreFilesFromEdit(stubs)` so the
+   * composer's file preview list re-populates. A future memory
+   * extension could filter for `content_type === 'memory_reference'`
+   * and restore the selected memories.
+   *
+   * Run AFTER the chat store has applied the edit (text content already
+   * populated). May be async — the chat store awaits all extensions
+   * sequentially before proceeding.
+   *
+   * The hook is the inversion partner of `provideUserContent` — that
+   * one runs at send-time to GATHER blocks; this one runs at edit-time
+   * to RESTORE state from those same blocks.
+   */
+  onMessageEditRestore?: (
+    contents: MessageContent[],
+  ) => void | Promise<void>
 
   /**
    * Called before a message is sent
