@@ -1441,6 +1441,11 @@ export interface ModelUsageInfo {
   running: boolean
 }
 
+export interface OnboardingProgress {
+  completed_guide_ids: string[]
+  completed_step_ids: string[]
+}
+
 export interface OperatingSystemInfo {
   architecture: string
   kernel_version?: string
@@ -1982,6 +1987,12 @@ export interface SyncCacheResponse {
 
 export type TaskStatus = 'running' | 'completed' | 'failed'
 
+export interface TestExtractRequest {
+  assistant_message: string
+  user_id: string
+  user_message: string
+}
+
 export interface TestMcpConnectionRequest {
   args?: string[]
   command?: string
@@ -2015,6 +2026,11 @@ export interface TestRepositoryConnectionRequest {
 export interface TestRepositoryConnectionResponse {
   message: string
   success: boolean
+}
+
+export interface TestSummarizeRequest {
+  branch_id: string
+  model_id: string
 }
 
 export interface TextPageQuery {
@@ -2259,8 +2275,6 @@ export type UsageMode = 'auto' | 'always'
 
 export interface User {
   avatar_url?: string
-  completed_onboarding_ids: string[]
-  completed_onboarding_step_ids: string[]
   created_at: string
   display_name?: string
   email: string
@@ -2762,6 +2776,8 @@ export const ApiEndpoints = {
   'MemoryAudit.list': 'GET /api/memory/audit-log',
   'MemorySettings.get': 'GET /api/memory/settings',
   'MemorySettings.update': 'PUT /api/memory/settings',
+  'MemoryTest.extract': 'POST /api/_test/memory/extract',
+  'MemoryTest.summarize': 'POST /api/_test/memory/summarize',
   'Message.delete': 'DELETE /api/messages/{id}',
   'Message.edit': 'PUT /api/conversations/{conversation_id}/messages/{message_id}',
   'Message.get': 'GET /api/messages/{id}',
@@ -2771,6 +2787,7 @@ export const ApiEndpoints = {
   'Message.sendStream': 'POST /api/conversations/{id}/messages/stream',
   'Onboarding.complete': 'POST /api/onboarding/{guide_id}/complete',
   'Onboarding.completeStep': 'POST /api/onboarding/{guide_id}/steps/{step_id}/complete',
+  'Onboarding.getProgress': 'GET /api/onboarding/progress',
   'Project.attachConversation': 'POST /api/projects/{id}/conversations/{conversation_id}',
   'Project.attachFile': 'POST /api/projects/{id}/files',
   'Project.create': 'POST /api/projects',
@@ -2998,6 +3015,8 @@ export type ApiEndpointParameters = {
   'MemoryAudit.list': { limit?: number }
   'MemorySettings.get': void
   'MemorySettings.update': UpdateUserMemorySettingsRequest
+  'MemoryTest.extract': TestExtractRequest
+  'MemoryTest.summarize': TestSummarizeRequest
   'Message.delete': { id: string }
   'Message.edit': { conversation_id: string; message_id: string } & EditMessageRequest
   'Message.get': { id: string }
@@ -3007,6 +3026,7 @@ export type ApiEndpointParameters = {
   'Message.sendStream': { id: string } & SendMessageRequest
   'Onboarding.complete': { guide_id: string }
   'Onboarding.completeStep': { guide_id: string; step_id: string }
+  'Onboarding.getProgress': void
   'Project.attachConversation': { id: string; conversation_id: string }
   'Project.attachFile': { id: string } & AttachFileRequest
   'Project.create': CreateProjectRequest
@@ -3234,6 +3254,8 @@ export type ApiEndpointResponses = {
   'MemoryAudit.list': MemoryAuditEntry[]
   'MemorySettings.get': UserMemorySettings
   'MemorySettings.update': UserMemorySettings
+  'MemoryTest.extract': any
+  'MemoryTest.summarize': any
   'Message.delete': void
   'Message.edit': EditMessageResponse
   'Message.get': MessageWithContent
@@ -3241,8 +3263,9 @@ export type ApiEndpointResponses = {
   'Message.getHistory': MessageWithContent[]
   'Message.getMcpServers': MessageMcpServersResponse
   'Message.sendStream': SSEChatStreamEvent
-  'Onboarding.complete': User
-  'Onboarding.completeStep': User
+  'Onboarding.complete': OnboardingProgress
+  'Onboarding.completeStep': OnboardingProgress
+  'Onboarding.getProgress': OnboardingProgress
   'Project.attachConversation': ConversationResponse
   'Project.attachFile': void
   'Project.create': Project

@@ -47,7 +47,7 @@ impl AppRepository {
             INSERT INTO users (username, email, password_hash, display_name, is_active, is_admin)
             VALUES ($1, $2, $3, $4, true, true)
             RETURNING id, username, email, email_verified, password_hash, display_name,
-                      avatar_url, is_active, is_admin, permissions, completed_onboarding_ids, completed_onboarding_step_ids,
+                      avatar_url, is_active, is_admin, permissions,
                       created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _",
                       password_changed_at as "password_changed_at: _"
             "#,

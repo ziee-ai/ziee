@@ -29,6 +29,7 @@ import type { OnboardingSlot } from './types/OnboardingSlot'
 
 export function OnboardingRedirect() {
   const { isAuthenticated, user } = Stores.Auth
+  const { completedGuideIds, loaded } = Stores.Onboarding
   const guides = (Stores.ModuleSystem.slots.get('onboarding') as
     | OnboardingSlot[]
     | undefined) ?? []
@@ -37,21 +38,17 @@ export function OnboardingRedirect() {
 
   useEffect(() => {
     if (!isAuthenticated || !user) return
-    // Defensive: a partial user payload (e.g. brief incomplete state
-    // during refresh) must not trigger a redirect. Treat anything but
-    // an explicit `true` as "not an admin → keep evaluating" but only
-    // when the completion list is actually an array.
     if (user.is_admin === true) return
-    const completed = Array.isArray(user.completed_onboarding_ids)
-      ? user.completed_onboarding_ids
-      : null
-    if (completed === null) return
+    // Wait until the onboarding store has fetched progress — without this
+    // guard a fully-onboarded user would briefly look "incomplete"
+    // (empty list, loaded=false) on first paint and get mis-redirected.
+    if (!loaded) return
     if (location.pathname.startsWith('/onboarding')) return
-    const firstIncomplete = guides.find(g => !completed.includes(g.id))
+    const firstIncomplete = guides.find(g => !completedGuideIds.includes(g.id))
     if (firstIncomplete) {
       navigate(`/onboarding?id=${firstIncomplete.id}`, { replace: true })
     }
-  }, [isAuthenticated, user, guides, location.pathname, navigate])
+  }, [isAuthenticated, user, completedGuideIds, loaded, guides, location.pathname, navigate])
 
   return null
 }

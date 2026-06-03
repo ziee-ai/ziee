@@ -1445,6 +1445,30 @@
         ]
       }
     },
+    "/api/onboarding/progress": {
+      "get": {
+        "tags": [
+          "Onboarding"
+        ],
+        "summary": "Get the current user's onboarding progress",
+        "operationId": "Onboarding.getProgress",
+        "responses": {
+          "200": {
+            "description": "Per-user onboarding progress. Step ids use the composite\n \"{guide_id}/{step_id}\" key format. Replaces the two columns that\n previously rode on the `User` object.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingProgress"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/onboarding/{guide_id}/complete": {
       "post": {
         "tags": [
@@ -1478,11 +1502,11 @@
             }
           },
           "200": {
-            "description": "",
+            "description": "Per-user onboarding progress. Step ids use the composite\n \"{guide_id}/{step_id}\" key format. Replaces the two columns that\n previously rode on the `User` object.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/User"
+                  "$ref": "#/components/schemas/OnboardingProgress"
                 }
               }
             }
@@ -1534,11 +1558,11 @@
             }
           },
           "200": {
-            "description": "",
+            "description": "Per-user onboarding progress. Step ids use the composite\n \"{guide_id}/{step_id}\" key format. Replaces the two columns that\n previously rode on the `User` object.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/User"
+                  "$ref": "#/components/schemas/OnboardingProgress"
                 }
               }
             }
@@ -12996,6 +13020,122 @@
         ]
       }
     },
+    "/api/_test/memory/extract": {
+      "post": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Test-only: trigger extraction synchronously (debug builds)",
+        "description": "\n\n**Required Permission:** `memory::admin::manage`\n\nUpdate memory admin settings (embedding model, enable/disable).",
+        "operationId": "MemoryTest.extract",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestExtractRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update memory admin settings (embedding model, enable/disable).",
+                        "name": "MemoryAdminManage",
+                        "value": "memory::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/_test/memory/summarize": {
+      "post": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Test-only: trigger summary refresh synchronously (debug builds)",
+        "description": "\n\n**Required Permission:** `memory::admin::manage`\n\nUpdate memory admin settings (embedding model, enable/disable).",
+        "operationId": "MemoryTest.summarize",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestSummarizeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update memory admin settings (embedding model, enable/disable).",
+                        "name": "MemoryAdminManage",
+                        "value": "memory::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/assistants/{assistant_id}/core-memory": {
       "get": {
         "tags": [
@@ -20000,6 +20140,28 @@
           "pinned"
         ]
       },
+      "OnboardingProgress": {
+        "description": "Per-user onboarding progress. Step ids use the composite\n \"{guide_id}/{step_id}\" key format. Replaces the two columns that\n previously rode on the `User` object.",
+        "type": "object",
+        "properties": {
+          "completed_guide_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "completed_step_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "completed_guide_ids",
+          "completed_step_ids"
+        ]
+      },
       "OperatingSystemInfo": {
         "type": "object",
         "properties": {
@@ -22380,6 +22542,26 @@
           "failed"
         ]
       },
+      "TestExtractRequest": {
+        "type": "object",
+        "properties": {
+          "assistant_message": {
+            "type": "string"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "user_message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "user_message",
+          "assistant_message"
+        ]
+      },
       "TestMcpConnectionRequest": {
         "description": "Request to test an MCP server connection without persisting anything.\n\n Carries the same transport fields as a create/update request so the UI can\n probe the *current form values* before saving. `oauth` is the credentials\n typed into the form (new external server); since the client secret is\n write-only in the edit / list flows, `id` lets the server fall back to the\n stored OAuth config for that existing server.",
         "type": "object",
@@ -22538,6 +22720,23 @@
         "required": [
           "success",
           "message"
+        ]
+      },
+      "TestSummarizeRequest": {
+        "type": "object",
+        "properties": {
+          "branch_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "model_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "branch_id",
+          "model_id"
         ]
       },
       "TextPageQuery": {
@@ -23739,18 +23938,6 @@
               "null"
             ]
           },
-          "completed_onboarding_ids": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "completed_onboarding_step_ids": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
           "created_at": {
             "type": "string",
             "format": "date-time"
@@ -23814,8 +24001,6 @@
           "is_active",
           "is_admin",
           "permissions",
-          "completed_onboarding_ids",
-          "completed_onboarding_step_ids",
           "created_at",
           "updated_at"
         ]

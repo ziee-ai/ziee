@@ -26,8 +26,6 @@ pub struct User {
     pub is_active: bool,
     pub is_admin: bool,
     pub permissions: Vec<String>,
-    pub completed_onboarding_ids: Vec<String>,
-    pub completed_onboarding_step_ids: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub last_login_at: Option<DateTime<Utc>>,

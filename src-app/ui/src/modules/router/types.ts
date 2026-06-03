@@ -64,4 +64,19 @@ declare module '@/core/module' {
   }
 }
 
+/**
+ * `routerEffects` is the router's own extension point: a list of headless,
+ * effect-only components that RouterComponent mounts INSIDE <BrowserRouter>
+ * (so they can use useNavigate/useLocation), each rendering null and doing
+ * its work in a useEffect. The slot's TYPE is owned here by the consumer
+ * (the router), not by any plugin that fills it — so the router type-checks
+ * standalone and removing a contributing module just empties the list.
+ * Plugins (e.g. onboarding) populate it at runtime via their module.tsx.
+ */
+declare module '@/core/module-system/types' {
+  interface Slots {
+    routerEffects: Array<{ id: string; component: ComponentType }>
+  }
+}
+
 export {}
