@@ -1982,12 +1982,6 @@ export interface SyncCacheResponse {
 
 export type TaskStatus = 'running' | 'completed' | 'failed'
 
-export interface TestExtractRequest {
-  assistant_message: string
-  user_id: string
-  user_message: string
-}
-
 export interface TestMcpConnectionRequest {
   args?: string[]
   command?: string
@@ -2021,11 +2015,6 @@ export interface TestRepositoryConnectionRequest {
 export interface TestRepositoryConnectionResponse {
   message: string
   success: boolean
-}
-
-export interface TestSummarizeRequest {
-  branch_id: string
-  model_id: string
 }
 
 export interface TextPageQuery {
@@ -2773,8 +2762,6 @@ export const ApiEndpoints = {
   'MemoryAudit.list': 'GET /api/memory/audit-log',
   'MemorySettings.get': 'GET /api/memory/settings',
   'MemorySettings.update': 'PUT /api/memory/settings',
-  'MemoryTest.extract': 'POST /api/_test/memory/extract',
-  'MemoryTest.summarize': 'POST /api/_test/memory/summarize',
   'Message.delete': 'DELETE /api/messages/{id}',
   'Message.edit': 'PUT /api/conversations/{conversation_id}/messages/{message_id}',
   'Message.get': 'GET /api/messages/{id}',
@@ -3011,8 +2998,6 @@ export type ApiEndpointParameters = {
   'MemoryAudit.list': { limit?: number }
   'MemorySettings.get': void
   'MemorySettings.update': UpdateUserMemorySettingsRequest
-  'MemoryTest.extract': TestExtractRequest
-  'MemoryTest.summarize': TestSummarizeRequest
   'Message.delete': { id: string }
   'Message.edit': { conversation_id: string; message_id: string } & EditMessageRequest
   'Message.get': { id: string }
@@ -3249,8 +3234,6 @@ export type ApiEndpointResponses = {
   'MemoryAudit.list': MemoryAuditEntry[]
   'MemorySettings.get': UserMemorySettings
   'MemorySettings.update': UserMemorySettings
-  'MemoryTest.extract': any
-  'MemoryTest.summarize': any
   'Message.delete': void
   'Message.edit': EditMessageResponse
   'Message.get': MessageWithContent

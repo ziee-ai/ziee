@@ -84,8 +84,7 @@ export function AddToProjectModal({
         </Text>
         <Select
           placeholder="Pick a project…"
-          showSearch
-          optionFilterProp="label"
+          showSearch={{ optionFilterProp: 'label' }}
           loading={loading}
           options={options}
           value={selectedId ?? undefined}

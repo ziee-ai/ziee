@@ -5,21 +5,17 @@
 
 use uuid::Uuid;
 
+// `FileAttached`/`FileDetached` variants previously lived here.
+// They moved to `crate::modules::file::project_extension::events::FileProjectEvent`
+// as part of the project↔file inversion — the file module now owns the
+// `project_files` join table and its lifecycle events. See the
+// `AppEvent::FileProject(...)` arm in `core/events.rs`.
+
 #[derive(Debug, Clone)]
 pub enum ProjectEvent {
     Created { project_id: Uuid, user_id: Uuid },
     Updated { project_id: Uuid, user_id: Uuid },
     Deleted { project_id: Uuid, user_id: Uuid },
-    FileAttached {
-        project_id: Uuid,
-        file_id: Uuid,
-        user_id: Uuid,
-    },
-    FileDetached {
-        project_id: Uuid,
-        file_id: Uuid,
-        user_id: Uuid,
-    },
     /// A conversation has been attached to (or re-attached across) a
     /// project. Emitted by `POST /projects/{id}/conversations/{conv_id}`.
     /// The MCP snapshot has already been refreshed when this fires.
@@ -55,20 +51,6 @@ impl ProjectEvent {
     pub fn deleted(project_id: Uuid, user_id: Uuid) -> crate::core::AppEvent {
         crate::core::AppEvent::Project(ProjectEvent::Deleted {
             project_id,
-            user_id,
-        })
-    }
-    pub fn file_attached(project_id: Uuid, file_id: Uuid, user_id: Uuid) -> crate::core::AppEvent {
-        crate::core::AppEvent::Project(ProjectEvent::FileAttached {
-            project_id,
-            file_id,
-            user_id,
-        })
-    }
-    pub fn file_detached(project_id: Uuid, file_id: Uuid, user_id: Uuid) -> crate::core::AppEvent {
-        crate::core::AppEvent::Project(ProjectEvent::FileDetached {
-            project_id,
-            file_id,
             user_id,
         })
     }

@@ -29,23 +29,10 @@ pub fn project_router() -> ApiRouter {
             "/projects/{id}/duplicate",
             post_with(duplicate_project, duplicate_project_docs),
         )
-        // Files
-        .api_route(
-            "/projects/{id}/files",
-            get_with(list_project_files, list_project_files_docs),
-        )
-        .api_route(
-            "/projects/{id}/files",
-            post_with(attach_file, attach_file_docs),
-        )
-        .api_route(
-            "/projects/{id}/files/upload",
-            post_with(upload_and_attach_file, upload_and_attach_file_docs),
-        )
-        .api_route(
-            "/projects/{id}/files/{file_id}",
-            delete_with(detach_file, detach_file_docs),
-        )
+        // Files — relocated to the file module's project_extension
+        // (project↔file inversion). The four `/api/projects/{id}/files*`
+        // routes are now contributed via the PROJECT_EXTENSIONS slice;
+        // `project/mod.rs::register_routes` merges them in.
         // Conversations
         .api_route(
             "/projects/{id}/conversations",

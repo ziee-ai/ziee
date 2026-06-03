@@ -15,6 +15,7 @@ pub mod handlers;
 pub mod models;
 pub mod permissions;
 pub mod processing;
+pub mod project_extension;
 pub mod provider_routing;
 pub mod repository;
 pub mod routes;

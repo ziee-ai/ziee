@@ -1,9 +1,10 @@
-import { Button, Spin, Typography, theme, App } from 'antd'
+import { Button, Checkbox, Progress, Spin, Typography, theme, App } from 'antd'
 import {
   CloseOutlined,
   DeleteOutlined,
   FileTextOutlined,
   DownloadOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -36,6 +37,20 @@ export interface FileCardProps {
   canRemove?: boolean
   canDelete?: boolean
   variant?: 'row' | 'square'
+  /** Row only — appended to the trailing edge in place of the default
+   *  Download button. Use this slot to pass a Popconfirm-wrapped
+   *  delete button, retry button, etc. */
+  actions?: React.ReactNode
+  /** Overrides the default "{label} · {ext}" subtitle line (row only).
+   *  Callers can pass the size, attached-at date, etc. */
+  subtitle?: React.ReactNode
+  /** Row only — when true, prepends a hover-revealed Checkbox cell. */
+  selectable?: boolean
+  selected?: boolean
+  onSelectChange?: (selected: boolean) => void
+  /** Surfaced on the upload-error row variant — when provided, the
+   *  trailing cancel button is replaced with a retry button. */
+  onRetry?: () => void
 }
 
 /**
@@ -54,6 +69,12 @@ export function FileCard({
   canRemove = true,
   canDelete = false,
   variant = 'row',
+  actions,
+  subtitle,
+  selectable = false,
+  selected = false,
+  onSelectChange,
+  onRetry,
 }: FileCardProps) {
   const { token } = theme.useToken()
   const { message } = App.useApp()
@@ -72,6 +93,86 @@ export function FileCard({
       type: 'file',
       data: { fileId: file.id },
     })
+  }
+
+  // Row-shaped upload-progress branch — added separately from the
+  // square branch below (which the chat composer's FilePreviewList
+  // depends on; that surface must stay square). Selected by
+  // `variant === 'row'` ahead of the legacy square branch.
+  if (uploadProgress && variant === 'row') {
+    const isError = uploadProgress.status === 'error'
+    const percent = Math.round(uploadProgress.progress)
+    const ext =
+      uploadProgress.filename.split('.').pop()?.toUpperCase() || 'FILE'
+    return (
+      <div
+        className="w-full flex flex-row items-center gap-3 rounded-lg p-3"
+        style={{
+          border: `1px solid ${isError ? token.colorErrorBorder : token.colorBorderSecondary}`,
+          backgroundColor: token.colorBgContainer,
+        }}
+        data-testid="file-card-uploading"
+        data-filename={uploadProgress.filename}
+      >
+        {/* Left: 40×40 progress ring (or error icon) */}
+        <div
+          className="flex-shrink-0 flex items-center justify-center"
+          style={{ width: 40, height: 40 }}
+        >
+          {isError ? (
+            <Text
+              className="!text-[9px] rounded px-1"
+              style={{ backgroundColor: token.colorError, color: token.colorWhite }}
+            >
+              ERROR
+            </Text>
+          ) : (
+            <Progress
+              type="circle"
+              percent={percent}
+              size={32}
+              strokeWidth={10}
+              format={() => ext}
+            />
+          )}
+        </div>
+
+        {/* Middle: filename + status / percentage */}
+        <div className="flex flex-col min-w-0 flex-1">
+          <Text className="!text-sm font-medium truncate" title={uploadProgress.filename}>
+            {uploadProgress.filename}
+          </Text>
+          {isError ? (
+            <Text type="danger" className="!text-xs truncate">
+              {(uploadProgress as { error?: string }).error ?? 'Upload failed'}
+            </Text>
+          ) : (
+            <Text type="secondary" className="!text-xs truncate">
+              Uploading… {percent}%
+            </Text>
+          )}
+        </div>
+
+        {/* Trailing: retry on error if onRetry provided, else cancel */}
+        {isError && onRetry ? (
+          <Button
+            type="text"
+            icon={<ReloadOutlined />}
+            onClick={() => onRetry()}
+            aria-label={`Retry upload ${uploadProgress.filename}`}
+          />
+        ) : (
+          onRemove && (
+            <Button
+              type="text"
+              icon={<CloseOutlined />}
+              onClick={() => onRemove()}
+              aria-label={`Dismiss ${uploadProgress.filename}`}
+            />
+          )
+        )}
+      </div>
+    )
   }
 
   if (uploadProgress) {
@@ -136,11 +237,11 @@ export function FileCard({
   const ext = file.filename.split('.').pop()?.toUpperCase() || 'FILE'
   const viewerLabel = getViewer(file.filename, file.mime_type ?? undefined)?.label ?? ext
 
-  // ── Row variant (assistant artifacts) ──────────────────────────────────────
+  // ── Row variant (assistant artifacts + knowledge management) ───────────────
   if (variant === 'row') {
     return (
       <div
-        className="w-full flex flex-row items-center gap-3 cursor-pointer rounded-lg p-3 transition-opacity hover:opacity-80"
+        className="group w-full flex flex-row items-center gap-3 cursor-pointer rounded-lg p-3 transition-opacity hover:opacity-80"
         style={{
           border: `1px solid ${token.colorBorderSecondary}`,
           backgroundColor: token.colorBgContainer,
@@ -150,6 +251,23 @@ export function FileCard({
         data-file-id={file.id}
         data-filename={file.filename}
       >
+        {/* Optional multi-select checkbox — hover-revealed when
+            unselected, always-visible when selected. Mirrors the
+            ConversationCard pattern. Stop propagation so the outer
+            card-click doesn't fire alongside the checkbox toggle. */}
+        {selectable && (
+          <div
+            className={`flex-shrink-0 transition-opacity ${selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+            onClick={e => e.stopPropagation()}
+          >
+            <Checkbox
+              checked={selected}
+              onChange={e => onSelectChange?.(e.target.checked)}
+              aria-label={`Select ${file.filename}`}
+            />
+          </div>
+        )}
+
         {/* Left: icon box */}
         <div
           className="flex-shrink-0 flex items-center justify-center rounded-lg overflow-hidden"
@@ -168,27 +286,35 @@ export function FileCard({
           )}
         </div>
 
-        {/* Right: name + type */}
+        {/* Middle: name + subtitle (caller can override) */}
         <div className="flex flex-col min-w-0 flex-1">
           <Text className="!text-sm font-medium truncate" title={file.filename}>
             {file.filename}
           </Text>
           <Text type="secondary" className="!text-xs truncate">
-            {viewerLabel} · {ext}
+            {subtitle ?? <>{viewerLabel} · {ext}</>}
           </Text>
         </div>
 
-        {/* Download button */}
-        {canDownload && (
-          <Button
-            type="text"
-            icon={<DownloadOutlined style={{ fontSize: 20 }} />}
-            onClick={e => {
-              e.stopPropagation()
-              Stores.File.downloadFile(file)
-                .catch(() => message.error('Failed to download file'))
-            }}
-          />
+        {/* Trailing: caller-provided actions OR default Download button.
+            actions slot wins — knowledge panels pass a Popconfirm-wrapped
+            delete here; chat callers pass nothing and get Download. */}
+        {actions !== undefined ? (
+          <div onClick={e => e.stopPropagation()} className="flex-shrink-0">
+            {actions}
+          </div>
+        ) : (
+          canDownload && (
+            <Button
+              type="text"
+              icon={<DownloadOutlined style={{ fontSize: 20 }} />}
+              onClick={e => {
+                e.stopPropagation()
+                Stores.File.downloadFile(file)
+                  .catch(() => message.error('Failed to download file'))
+              }}
+            />
+          )
         )}
       </div>
     )

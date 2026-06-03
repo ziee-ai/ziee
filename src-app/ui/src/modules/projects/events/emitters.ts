@@ -22,25 +22,9 @@ export const emitProjectDeleted = async (projectId: string) => {
   })
 }
 
-export const emitProjectFileAttached = async (
-  projectId: string,
-  fileId: string,
-) => {
-  await Stores.EventBus.emit({
-    type: 'project.file_attached',
-    data: { projectId, fileId },
-  })
-}
-
-export const emitProjectFileDetached = async (
-  projectId: string,
-  fileId: string,
-) => {
-  await Stores.EventBus.emit({
-    type: 'project.file_detached',
-    data: { projectId, fileId },
-  })
-}
+// `emitProjectFileAttached` + `emitProjectFileDetached` relocated to
+// `modules/file/project-extension/events/emitters.ts` as part of the
+// project↔file inversion.
 
 export const emitProjectConversationAttached = async (
   projectId: string,

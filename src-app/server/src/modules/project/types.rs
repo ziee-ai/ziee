@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::models::Project;
-use crate::modules::file::models::File as ProjectFileEntity;
 
 /// One entry in the `auto_approved_tools` / `disabled_servers` JSONB
 /// arrays. Mirrors the shape used by `conversation_mcp_settings`:
@@ -147,12 +146,6 @@ pub fn validate_approval_mode(mode: &str) -> Result<(), String> {
     }
 }
 
-/// Request body for attach-by-ID.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct AttachFileRequest {
-    pub file_id: Uuid,
-}
-
 /// List response.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ProjectListResponse {
@@ -160,10 +153,7 @@ pub struct ProjectListResponse {
     pub total: i64,
 }
 
-/// File-list response (joined with the `files` table for client
-/// convenience — saves a per-file lookup roundtrip).
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ProjectFileListResponse {
-    pub files: Vec<ProjectFileEntity>,
-    pub total: i64,
-}
+// `AttachFileRequest` + `ProjectFileListResponse` moved to
+// `modules/file/project_extension/models.rs` as part of the project↔file
+// inversion. The four `/api/projects/{id}/files*` routes that consume
+// them are now owned by the file module.

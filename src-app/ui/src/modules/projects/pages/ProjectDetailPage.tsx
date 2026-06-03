@@ -13,7 +13,7 @@ import { Stores } from '@/core/stores'
 import { Can, usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { ProjectFormDrawer } from '@/modules/projects/components/ProjectFormDrawer'
-import { ProjectFilesManageDrawer } from '@/modules/projects/components/ProjectFilesManageDrawer'
+import { ProjectKnowledgeSection } from '@/modules/projects/components/ProjectKnowledgeSection'
 import { ProjectConversationsList } from '@/modules/projects/components/ProjectConversationsList'
 import { ProjectDefaultsForm } from '@/modules/projects/components/ProjectDefaultsForm'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
@@ -485,7 +485,7 @@ export function ProjectDetailPage() {
               <Divider className="!my-2" />
 
               <section data-test-section="knowledge">
-                <ProjectFilesManageDrawer projectId={project.id} />
+                <ProjectKnowledgeSection />
               </section>
             </Flex>
           </Card>
