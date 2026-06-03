@@ -60,8 +60,12 @@ test.describe('Onboarding wizard', () => {
     await expect(page.getByRole('heading', { name: 'AI Providers' })).toBeVisible()
     await page.getByRole('button', { name: 'Next' }).click()
 
-    // MCP Servers → Finish
+    // MCP Servers → Memory
     await expect(page.getByRole('heading', { name: 'MCP Servers' })).toBeVisible()
+    await page.getByRole('button', { name: 'Next' }).click()
+
+    // Memory → Finish (skippable; leaving memory off advances straight through)
+    await expect(page.getByRole('heading', { name: 'Persistent Memory' })).toBeVisible()
     await page.getByRole('button', { name: 'Next' }).click()
 
     // Finish → chat
