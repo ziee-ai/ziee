@@ -52,7 +52,11 @@ export const useApiKeysStepStore = create<ApiKeysStepStore>()(
             ApiClient.LlmProvider.listUserApiKeys(undefined, undefined),
           ])
           set(state => {
-            state.providers = providersRes.providers.filter(p => p.enabled)
+            // Local providers authenticate via an internal proxy token, not a
+            // user API key — exclude them from the key-entry list.
+            state.providers = providersRes.providers.filter(
+              p => p.enabled && p.provider_type !== 'local',
+            )
             state.userKeys = Object.fromEntries(
               keysRes.keys.map(k => [k.provider_id, { masked_key: k.masked_key }]),
             )

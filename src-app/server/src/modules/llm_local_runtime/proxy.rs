@@ -145,7 +145,14 @@ fn constant_time_eq(a: &TokenHash, b: &TokenHash) -> bool {
 
 /// Read every local provider's api_key (decrypting at-rest where
 /// configured), and populate the cache. Called once at module init
-/// AFTER the `llm_provider` module is up. Idempotent — clears first.
+/// AFTER the `llm_provider` module is up.
+///
+/// Best-effort per provider: a single provider that fails to resolve or mint
+/// is logged and skipped — it does NOT abort the reseed for the others. The
+/// cache is cleared + repopulated atomically at the END (one write-lock
+/// critical section, no awaits held), so `lookup_token` never observes a
+/// transiently-empty cache and a concurrent create/rotate `insert_token` isn't
+/// clobbered by an up-front clear.
 ///
 /// Decryption mirrors `llm_provider::repositories::admin`: fetch the
 /// encrypted bytea + plaintext columns and resolve in Rust via
@@ -154,8 +161,6 @@ fn constant_time_eq(a: &TokenHash, b: &TokenHash) -> bool {
 /// SQL. Keeps the query macro-checkable + consistent with the rest of
 /// the codebase.
 pub async fn reseed_from_db(pool: &PgPool) -> Result<(), AppError> {
-    clear_cache().await;
-
     let rows = sqlx::query!(
         "SELECT id, api_key, api_key_encrypted FROM llm_providers
          WHERE provider_type = 'local'",
@@ -164,27 +169,92 @@ pub async fn reseed_from_db(pool: &PgPool) -> Result<(), AppError> {
     .await
     .map_err(|e| AppError::internal_error(format!("token reseed failed: {e}")))?;
 
-    let mut count = 0usize;
-    let mut cache = PROXY_TOKEN_CACHE.write().await;
+    // Resolve (and, for keyless local providers, MINT + PERSIST) each token
+    // first, then populate the cache in one shot. We deliberately do NOT hold
+    // the cache write-lock across the awaited DB work below.
+    let mut to_insert: Vec<(TokenHash, Uuid)> = Vec::with_capacity(rows.len());
+    let mut minted = 0usize;
     for r in rows {
-        let token =
+        let resolved =
             crate::common::secret::resolve_optional_secret(pool, r.api_key_encrypted, r.api_key)
                 .await;
-        if let Some(token) = token {
-            cache.insert(hash_token(&token), r.id);
-            count += 1;
-        } else {
-            tracing::warn!(
-                "local provider {} has no api_key — cannot accept proxy requests until rotated",
-                r.id
-            );
+
+        // A local provider with no usable token (NULL or blank) — notably the
+        // built-in seeded `Local` provider, which is inserted with a NULL
+        // api_key and never goes through the auto-mint path in
+        // `create_provider` — cannot authenticate proxy requests. Mint a token,
+        // persist it through the repository so the dual-column at-rest
+        // encryption matches create/rotate (and NO event is emitted — reseed is
+        // an internal boot step), then cache it. Idempotent across reboots: once
+        // persisted, the next boot resolves a non-empty key and takes the fast
+        // path below without re-minting.
+        let token = match resolved {
+            Some(t) if !t.trim().is_empty() => t,
+            _ => {
+                let token = generate_proxy_token();
+                // Persist through the same pool reseed was handed (NOT the global
+                // `Repos`): reseed runs both at boot and from integration tests
+                // that drive it directly with their own pool. The free
+                // `update_llm_provider` reuses the dual-column at-rest encryption
+                // from create/rotate and emits no event. Best-effort: warn + skip
+                // this provider on failure (or if its row vanished mid-reseed) so
+                // one bad row can't poison the whole cache.
+                match crate::modules::llm_provider::repositories::admin::update_llm_provider(
+                    pool,
+                    r.id,
+                    crate::modules::llm_provider::types::UpdateLlmProviderRequest {
+                        api_key: Some(token.clone()),
+                        name: None,
+                        enabled: None,
+                        base_url: None,
+                        proxy_settings: None,
+                    },
+                )
+                .await
+                {
+                    Ok(Some(_)) => {}
+                    Ok(None) => {
+                        tracing::warn!(
+                            "llm_local_runtime: local provider {} vanished mid-reseed; skipping",
+                            r.id
+                        );
+                        continue;
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "llm_local_runtime: minting proxy token for local provider {} failed: \
+                             {e}; skipping (its proxy requests will 401 until the next reseed)",
+                            r.id
+                        );
+                        continue;
+                    }
+                }
+                tracing::info!(
+                    "llm_local_runtime: minted proxy token for keyless local provider {}",
+                    r.id
+                );
+                minted += 1;
+                token
+            }
+        };
+        to_insert.push((hash_token(&token), r.id));
+    }
+
+    let count = to_insert.len();
+    // Clear + repopulate atomically: `lookup_token` never observes an empty
+    // cache, and no await is held inside the critical section.
+    {
+        let mut cache = PROXY_TOKEN_CACHE.write().await;
+        cache.clear();
+        for (hash, id) in to_insert {
+            cache.insert(hash, id);
         }
     }
-    drop(cache);
 
     tracing::info!(
-        "llm_local_runtime: PROXY_TOKEN_CACHE reseeded with {} local provider(s)",
-        count
+        "llm_local_runtime: PROXY_TOKEN_CACHE reseeded with {} local provider(s) ({} newly minted)",
+        count,
+        minted
     );
     Ok(())
 }

@@ -130,6 +130,15 @@ pub mod test_internals {
     // (Tier-2 monotonic / collision-free under concurrent appends).
     pub use crate::modules::chat::core::repository::ChatCoreRepository;
     pub use crate::modules::chat::core::models::MessageContentData;
+    // Local-runtime proxy token surface, so integration tests can drive the
+    // boot-time reseed (which mints + persists a proxy token for keyless local
+    // providers) and assert against the in-memory token cache.
+    pub use crate::modules::llm_local_runtime::proxy::{
+        clear_cache as proxy_clear_cache, lookup_token as proxy_lookup_token,
+        reseed_from_db as proxy_reseed_from_db,
+    };
+    // `resolve_optional_secret` is already re-exported at the crate root
+    // (see the `pub use common::secret::{...}` above) — tests use that path.
 }
 
 // Re-export axum types for route building
