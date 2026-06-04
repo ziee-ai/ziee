@@ -641,10 +641,11 @@ export const useFileStore = create<FileExtensionStore>()(
           state.messageFilesCache = newCache
           state.messageFilesLoadingSet = newSet
         })
-        // Trigger thumbnail loading if the file has a preview
-        if (fileInfo.has_thumbnail && fileInfo.preview_page_count > 0) {
-          get().loadThumbnail(fileId)
-        }
+        // NOTE: thumbnails are intentionally NOT eager-loaded here. The
+        // consumers that actually display one (FileCard, ImageBody) call
+        // getThumbnailUrl() when they render. This lets viewport-gated inline
+        // previews avoid fetching/decoding thumbnails for off-screen files on
+        // reload — the fix for laggy reloads with many inline images.
       } catch (error) {
         set((state) => {
           const newSet = new Set(state.messageFilesLoadingSet)

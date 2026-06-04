@@ -174,6 +174,11 @@ pub struct TestServerOptions {
     /// The rate-limit regression test sets this to small or disabled values
     /// to exercise the governor on/off behavior.
     pub rate_limit: Option<(bool, u64, u32)>,
+    /// Override `code_sandbox.public_base_url` in the test config. Only
+    /// written when `sandbox_enabled` is also true (it lives under the
+    /// `code_sandbox:` section). Lets a test assert that file/resource links
+    /// are rooted at a reachable public origin instead of the loopback.
+    pub sandbox_public_base_url: Option<String>,
 }
 
 impl TestServer {
@@ -378,6 +383,9 @@ secrets:
                 ws_path.display(),
                 opts.sandbox_cgroup_parent
             ));
+            if let Some(public_base_url) = opts.sandbox_public_base_url.as_deref() {
+                config.push_str(&format!("  public_base_url: '{public_base_url}'\n"));
+            }
             (Some(ws), Some(ws_path))
         } else {
             (None, None)

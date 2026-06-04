@@ -7,7 +7,7 @@ import {
   type ComponentType,
   type ReactElement,
 } from 'react'
-import { Spin } from 'antd'
+import { Loading } from './Loading'
 
 type LazyComponent = () => Promise<{ default: ComponentType<any> }>
 type ComponentLike = ComponentType<any> | LazyComponent | ReactElement
@@ -28,7 +28,7 @@ interface LazyComponentRendererProps {
 
   /**
    * Custom fallback to show while lazy loading
-   * @default <Spin size="small" /> with padding
+   * @default <Loading size="small" />
    */
   fallback?: ReactNode
 }
@@ -49,7 +49,7 @@ interface LazyComponentRendererProps {
  * <LazyComponentRenderer component={LazyWidget} props={{ id: 1 }} />
  *
  * // Custom fallback
- * <LazyComponentRenderer component={LazyRoute} fallback={<Spin size="large" />} />
+ * <LazyComponentRenderer component={LazyRoute} fallback={<Loading />} />
  *
  * // No fallback
  * <LazyComponentRenderer component={LazyApp} fallback={null} />
@@ -58,11 +58,7 @@ interface LazyComponentRendererProps {
 export function LazyComponentRenderer({
   component,
   props = {},
-  fallback = (
-    <div className="p-3 flex justify-center">
-      <Spin size="small" />
-    </div>
-  ),
+  fallback = <Loading size="small" />,
 }: LazyComponentRendererProps) {
   // Check if it's a lazy function by checking if it's a function with 0 params
   // AND doesn't have React component characteristics (like a name or prototype properties)

@@ -76,10 +76,11 @@ export const CHAT_SLOTS = {
     description: 'Message-level actions',
     component: 'ChatMessage',
   },
-  /** Message-level footer — aggregated extension content rendered AFTER
-   *  all content blocks but still inside the same MessageContext.Provider.
-   *  Used by the file extension to render `MessageFilesView` (inline
-   *  previews of every `resource_link` carried in any tool_result block). */
+  /** Message-level footer — extension content rendered AFTER all content
+   *  blocks but still inside the same MessageContext.Provider. No extension
+   *  registers here today: tool-returned files render inline at their
+   *  `tool_result` block (file extension's `tool_result` content renderer),
+   *  not aggregated into a footer. Kept as a generic extension point. */
   message_footer: {
     description: 'Message-level footer rendered after content blocks',
     component: 'ChatMessage',

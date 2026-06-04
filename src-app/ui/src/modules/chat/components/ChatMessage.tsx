@@ -48,12 +48,14 @@ export const ChatMessage = memo(function ChatMessage({
             className={`${isUser ? '!pt-0.5' : ''} flex flex-1 -mt-[2px] w-full overflow-x-hidden flex-col`}
           >
             <div className={'w-full flex flex-col gap-2'}>
-              {message.contents
-                .sort(
-                  (a, b) =>
-                    new Date(a.created_at).getTime() -
-                    new Date(b.created_at).getTime(),
-                )
+              {/* Render blocks in their authoritative backend order. Sort by
+                  `sequence_order` (a copy — never mutate the store's array
+                  during render), NOT `created_at`: blocks written in one DB
+                  transaction can share a timestamp, and streaming-injected
+                  blocks carry monotonic sequence_order. This keeps tool_use →
+                  tool_result(files) → text in the right places. */}
+              {[...message.contents]
+                .sort((a, b) => a.sequence_order - b.sequence_order)
                 .map((content, index) => (
                   <ContentRenderer
                     key={`${content.id || index}`}
@@ -68,9 +70,9 @@ export const ChatMessage = memo(function ChatMessage({
 
       {/* Core components + extension slots rendered outside the bubble */}
       <MessageContext.Provider value={message}>
-        {/* Files view: inline previews of every resource_link carried by
-            any tool_result block in this message. Renders nothing when
-            no tool_result has resource_links. */}
+        {/* Generic below-the-bubble extension point. Tool-returned files now
+            render inline at their tool_result block (see the file extension's
+            `tool_result` content renderer), so nothing registers here today. */}
         <ExtensionSlot name="message_footer" />
         <div className="flex flex-row items-center gap-1 mt-1">
           <BranchNavigator />

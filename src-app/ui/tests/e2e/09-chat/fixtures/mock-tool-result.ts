@@ -83,12 +83,11 @@ export function mockToolUseContent(opts: {
 }
 
 /**
- * Build a tool_result content block carrying the given resource
- * links. The backend's `McpContentData::ToolResult` includes the
- * `resource_links` field at runtime but the schema-facing variant
- * (`extensions/mcp/extension.rs:222-246`) doesn't expose it, so the
- * generated TS type omits it too. The MessageFilesView component
- * reads via a runtime cast — same here in the test fixture.
+ * Build a tool_result content block carrying the given resource links.
+ * `McpContentData::ToolResult` exposes `resource_links` in both the runtime
+ * and the schema-facing variant, so the generated `MessageContentDataToolResult`
+ * (api-client/types.ts) types it as `resource_links?: ResourceLink[] | null`.
+ * `MessageFilesView` reads it directly off that typed field.
  */
 export function mockToolResultContent(opts: {
   toolUseId: string

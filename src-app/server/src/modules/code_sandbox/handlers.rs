@@ -1107,7 +1107,13 @@ pub(crate) fn tool_definitions() -> Value {
                 JWT-signed download-with-token URL that can be passed directly to external MCP tools \
                 (`is_saved: true`).\n\
                 \n\
-                Use a plain filename (e.g., 'report.pdf' or 'data.csv').",
+                Use a plain filename (e.g., 'report.pdf' or 'data.csv').\n\
+                \n\
+                IMPORTANT: When passing the file to another tool, copy the returned `uri` \
+                VERBATIM into that tool's file/URL argument. Do NOT invent or guess a URL, \
+                do NOT construct a DRS/platform URL (e.g. a ga4gh/drs object URL), and do \
+                NOT substitute '127.0.0.1', 'localhost', or any other host. The returned \
+                `uri` is already reachable exactly as given.",
             "inputSchema": {
                 "type": "object",
                 "required": ["filename"],

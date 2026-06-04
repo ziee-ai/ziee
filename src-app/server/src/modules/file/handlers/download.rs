@@ -19,6 +19,22 @@ use uuid::Uuid;
 
 const TOKEN_EXPIRY: i64 = 3600; // 1 hour
 
+/// `Cache-Control` for authenticated file-content responses (originals,
+/// previews, thumbnails, extracted text). File bytes never change for a given
+/// id, so a `fetch()` of a still-fresh entry serves from the browser's private
+/// cache with no network round-trip — that's the reload-perf win for inline
+/// previews.
+///
+/// `private` keeps shared/proxy caches from storing user-scoped content. We
+/// deliberately do NOT use `immutable` + a multi-year max-age: this content is
+/// access-controlled and can be revoked (account disabled, `files::download`
+/// removed) or the file deleted. `immutable` would let a user's browser serve
+/// it for the full lifetime with zero server round-trips, sidestepping the
+/// server-side revocation re-check. A bounded 1-hour max-age keeps the
+/// fast-reload win while capping how long a stale (post-revocation) copy can
+/// live in one user's own cache.
+pub const FILE_CONTENT_CACHE_CONTROL: &str = "private, max-age=3600";
+
 /// Build a `Content-Disposition: attachment; filename=...; filename*=UTF-8''...`
 /// header value that is safe regardless of what the stored filename
 /// contains. Closes 05-file F-08 (Medium): the previous implementation
@@ -106,6 +122,10 @@ pub async fn download_file(
             content_disposition(&file.filename),
         ),
         (header::CONTENT_LENGTH, file_data.len().to_string()),
+        // Private, bounded cache so reloads reuse bytes without a round-trip
+        // while still re-checking access after the max-age window. See
+        // FILE_CONTENT_CACHE_CONTROL.
+        (header::CACHE_CONTROL, FILE_CONTENT_CACHE_CONTROL.to_string()),
     ];
 
     Ok((headers, file_data).into_response())
@@ -255,6 +275,10 @@ pub async fn download_with_token(
             content_disposition(&file.filename),
         ),
         (header::CONTENT_LENGTH, file_data.len().to_string()),
+        // Private, bounded cache so reloads reuse bytes without a round-trip
+        // while still re-checking access after the max-age window. See
+        // FILE_CONTENT_CACHE_CONTROL.
+        (header::CACHE_CONTROL, FILE_CONTENT_CACHE_CONTROL.to_string()),
     ];
 
     Ok((headers, file_data).into_response())

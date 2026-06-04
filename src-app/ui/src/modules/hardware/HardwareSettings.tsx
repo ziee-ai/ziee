@@ -10,6 +10,7 @@ import {
   Typography,
 } from 'antd'
 import { useEffect } from 'react'
+import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -67,15 +68,7 @@ export default function HardwareSettings() {
   if (hardwareLoading) {
     return (
       <SettingsPageContainer title="Hardware">
-        <div style={{ textAlign: 'center', padding: '50px' }}>
-          <Spin size="large" />
-          <Text
-            type="secondary"
-            style={{ display: 'block', marginTop: '16px' }}
-          >
-            Loading hardware information...
-          </Text>
-        </div>
+        <Loading tip="Loading hardware information..." />
       </SettingsPageContainer>
     )
   }

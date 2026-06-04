@@ -125,7 +125,7 @@ test.describe('Inline file previews — streaming + persistence', () => {
     await expect(previewAfter.locator('table:has(tbody td)')).toBeVisible({ timeout: 10000 })
   })
 
-  test('tool_result with no resource_links does not render a footer', async ({
+  test('tool_result with no resource_links renders no inline files', async ({
     page,
     testInfra,
   }) => {
@@ -133,8 +133,10 @@ test.describe('Inline file previews — streaming + persistence', () => {
     await seedAssistantWithToolResult(page, testInfra.baseURL, {
       resourceLinks: [],
     })
-    // MessageFilesView returns null when no links → no footer DOM node.
-    await expect(page.locator('[data-testid="message-files-view"]')).toHaveCount(0)
+    // The tool_result content renderer returns null when there are no links →
+    // no inline group, no preview, and the old footer is gone entirely.
+    await expect(page.locator('[data-testid="tool-result-files"]')).toHaveCount(0)
+    await expect(page.locator('[data-testid="inline-file-preview"]')).toHaveCount(0)
   })
 
   test('multiple unique URIs each trigger exactly one fetch', async ({
