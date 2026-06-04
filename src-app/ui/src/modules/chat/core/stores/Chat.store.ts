@@ -583,7 +583,14 @@ export const useChatStore = create<ChatState>()(
           set(state => ({ rightPanel: { ...state.rightPanel, tabs: [], activeId: null, mobileDrawerOpen: false } }))
 
           await chatExtensionRegistry.cleanup()
-          set({ isStreaming: false, sending: false, streamingMessage: null, tempUserMessageId: null, streamingAbortController: null })
+          // Clear messages on switch so consumers never momentarily see the
+          // OUTGOING conversation's messages under the new conversation id.
+          // (Outgoing state was already saved via saveConversationState above;
+          // the cache-hit/miss paths below repopulate from cache or the API.)
+          // Without this, ConversationPage's first-load scroll latches against
+          // the stale Map and the new conversation gets an animated
+          // scroll-through that defeats inline-file lazy-loading.
+          set({ isStreaming: false, sending: false, streamingMessage: null, tempUserMessageId: null, streamingAbortController: null, messages: new Map() })
         }
 
         get().cancelCacheClear(id)
@@ -1166,6 +1173,12 @@ export const useChatStore = create<ChatState>()(
                                 ...initialContent,
                                 id: `${messageId}-content-${baseMessage.contents.length}`,
                                 message_id: messageId,
+                                // Override the streaming provider's hardcoded
+                                // `sequence_order: 0` with the real insertion
+                                // index — otherwise a tool-first flow (tool_use
+                                // at 0, then first text) collides at 0 and the
+                                // sequence_order sort can't order them.
+                                sequence_order: baseMessage.contents.length,
                               }
                               const newMessage: MessageWithContent = {
                                 ...baseMessage,
@@ -1206,37 +1219,46 @@ export const useChatStore = create<ChatState>()(
                               const stableId = currentState.streamingMessage.id
                               const dbId = incomingMessageId || stableId
 
-                              const textContentIndex = currentState.streamingMessage.contents.findIndex(
-                                c => c.content_type === 'text' || (c.content as any)?.type === 'text'
-                              )
+                              // Segment by the LAST block, not the first text
+                              // block. If the most recent block is text, append
+                              // to it; if a tool_use/tool_result was injected
+                              // since (e.g. a tool ran mid-response), start a
+                              // NEW text block so post-tool narration renders
+                              // AFTER the tool + its files instead of merging
+                              // back up into the opening text.
+                              const existingContents = currentState.streamingMessage.contents
+                              const lastBlock = existingContents[existingContents.length - 1]
+                              const lastIsText =
+                                !!lastBlock &&
+                                (lastBlock.content_type === 'text' ||
+                                  (lastBlock.content as any)?.type === 'text')
 
                               let updatedContents: MessageContent[]
 
-                              if (textContentIndex >= 0) {
-                                const currentContent = currentState.streamingMessage.contents[textContentIndex]
-                                const currentText = (currentContent.content as any)?.text || ''
+                              if (lastIsText) {
+                                const currentText = (lastBlock.content as any)?.text || ''
                                 const updatedContent: MessageContent = {
-                                  ...currentContent,
+                                  ...lastBlock,
                                   content: {
-                                    ...currentContent.content,
+                                    ...lastBlock.content,
                                     text: currentText + delta,
                                   } as any,
                                 }
 
-                                updatedContents = [...currentState.streamingMessage.contents]
-                                updatedContents[textContentIndex] = updatedContent
+                                updatedContents = [...existingContents]
+                                updatedContents[existingContents.length - 1] = updatedContent
                               } else {
                                 const now = new Date().toISOString()
                                 const newContent: MessageContent = {
-                                  id: `${stableId}-content-${currentState.streamingMessage.contents.length}`,
+                                  id: `${stableId}-content-${existingContents.length}`,
                                   message_id: dbId,
                                   content_type: 'text',
                                   content: { type: 'text', text: delta } as any,
-                                  sequence_order: currentState.streamingMessage.contents.length,
+                                  sequence_order: existingContents.length,
                                   created_at: now,
                                   updated_at: now,
                                 }
-                                updatedContents = [...currentState.streamingMessage.contents, newContent]
+                                updatedContents = [...existingContents, newContent]
                               }
 
                               const updatedMessage: MessageWithContent = {

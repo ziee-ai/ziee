@@ -53,7 +53,7 @@ test.describe('Inline file previews — accessibility', () => {
         { uri: mdUri, name: 'r.md', mime_type: 'text/markdown' },
       ],
     })
-    const view = page.locator('[data-testid="message-files-view"]').first()
+    const view = page.locator('[data-testid="tool-result-files"]').first()
     await expect(view).toBeVisible({ timeout: 10000 })
     // Wait for bodies to render so axe sees the final DOM.
     await expect(view.locator('img').first()).toBeVisible()
@@ -61,7 +61,7 @@ test.describe('Inline file previews — accessibility', () => {
     await expect(view.locator('h1').first()).toBeVisible()
 
     const results = await new AxeBuilder({ page })
-      .include('[data-testid="message-files-view"]')
+      .include('[data-testid="tool-result-files"]')
       // Skip color-contrast (theme tokens are tested separately and
       // axe sometimes complains in dev where the dark/light theme
       // switch is in flux).

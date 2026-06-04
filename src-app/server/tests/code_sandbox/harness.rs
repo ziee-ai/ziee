@@ -533,6 +533,7 @@ pub fn github_fetch_server_options(
         extra_env,
         sandbox_cache_tempdir: None,
         use_desktop_binary: false,
+        sandbox_public_base_url: None,
     })
 }
 

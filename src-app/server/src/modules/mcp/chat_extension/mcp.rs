@@ -28,6 +28,78 @@ use crate::core::repository::Repos;
 use super::content::McpContentData;
 use super::helpers;
 
+/// Origin (`scheme://host[:port]`) for file download URLs handed to the LLM
+/// for tool-to-tool transfer of saved artifacts.
+///
+/// Resolves to `code_sandbox.public_base_url` when configured, otherwise the
+/// pinned `127.0.0.1` loopback. Deliberately does NOT consult
+/// `server.host`: that value can be `0.0.0.0` / a wildcard / a bind address
+/// that is not a routable destination, and handing such a URL to a (possibly
+/// remote) MCP server is exactly the bug this fixes. The loopback is always
+/// `127.0.0.1` — matching `code_sandbox::loopback_host` and the origin
+/// `get_resource_link` returns — so the two paths can never drift.
+///
+/// Pure (no `self`, no I/O) so it is directly unit-testable.
+fn file_download_origin(
+    code_sandbox: Option<&crate::core::config::CodeSandboxConfig>,
+    server_port: u16,
+) -> String {
+    let loopback_origin = format!("http://127.0.0.1:{server_port}");
+    code_sandbox
+        .map(|cs| cs.public_file_origin(&loopback_origin))
+        .unwrap_or(loopback_origin)
+}
+
+/// Build the tool-to-tool download URL for a saved MCP artifact. `origin` must
+/// already be resolved via [`file_download_origin`]. Pure so the URL shape
+/// (and token preservation) is unit-testable without a live extension.
+fn build_artifact_download_url(
+    origin: &str,
+    api_prefix: &str,
+    artifact_id: Uuid,
+    token: &str,
+) -> String {
+    // Trim a trailing slash off api_prefix so a config value like "/api/"
+    // can't yield a double slash ("…/api//files/…"). Mirrors the guard in
+    // llm_local_runtime::proxy::derive_proxy_url.
+    let api_prefix = api_prefix.trim_end_matches('/');
+    format!("{origin}{api_prefix}/files/{artifact_id}/download-with-token?token={token}")
+}
+
+/// The iteration-1 system-message addition for tool usage.
+///
+/// Always includes the "prefer tools over training knowledge" nudge.
+/// Additionally includes the file-URL rule WHEN `get_resource_link` is among
+/// the available tools: this promotes the rule from the tool description
+/// (weak, reactive) to a system instruction (strong, proactive, issued before
+/// the first tool call), because the model otherwise tends to fabricate a
+/// plausible file/download URL (e.g. a platform or DRS endpoint) instead of
+/// calling the tool. Gated on the tool actually being present so we never
+/// instruct the model to call a tool it doesn't have — tool names are
+/// `{server_id}__{tool}` (see `helpers::convert_mcp_tool_to_ai_tool`).
+///
+/// Pure (no `self`, no I/O) so it is directly unit-testable.
+fn tool_system_guidance(tools: &[ai_providers::Tool]) -> String {
+    let mut guidance = String::from(
+        "\n\nYou have access to tools that can retrieve up-to-date or domain-specific \
+         information. When answering questions, prefer using these tools over relying solely \
+         on your training knowledge, especially when the tools are clearly relevant to the request.",
+    );
+    if tools
+        .iter()
+        .any(|t| t.function.name.ends_with("__get_resource_link"))
+    {
+        guidance.push_str(
+            "\n\nTo give any tool a URL or path for a file the user attached or that you \
+             produced, you MUST first call get_resource_link to obtain its download URL, then \
+             pass that URL verbatim. Never invent, guess, or construct a file/download URL \
+             (e.g. a platform or DRS endpoint) — these files are reachable ONLY via the URL \
+             get_resource_link returns.",
+        );
+    }
+    guidance
+}
+
 /// Accumulated tool use data during streaming
 #[derive(Debug, Clone, Default)]
 struct AccumulatedToolUse {
@@ -481,6 +553,7 @@ impl McpChatExtension {
                                                             Ok(_) => {
                                                                 helpers::send_artifact_created_event(
                                                                     tx,
+                                                                    &tool_use_id,
                                                                     &artifact_id.to_string(),
                                                                     display_name,
                                                                     mime_type.as_deref(),
@@ -510,19 +583,26 @@ impl McpChatExtension {
                                                                         iss: self.config.jwt.issuer.clone(),
                                                                         aud: DOWNLOAD_TOKEN_AUDIENCE.to_string(),
                                                                     };
+                                                                    // Root the tool-to-tool download URL at the SAME origin
+                                                                    // get_resource_link uses (public_base_url when set, else the
+                                                                    // pinned 127.0.0.1 loopback) — NOT self.config.server.host,
+                                                                    // which may be 0.0.0.0 / a bind address unreachable by the
+                                                                    // (possibly remote) MCP server the LLM passes this URL to.
+                                                                    let origin = file_download_origin(
+                                                                        self.config.code_sandbox.as_ref(),
+                                                                        self.config.server.port,
+                                                                    );
                                                                     encode(
                                                                         &JwtHeader::default(),
                                                                         &claims,
                                                                         &EncodingKey::from_secret(self.config.jwt.secret.as_bytes()),
                                                                     )
                                                                     .ok()
-                                                                    .map(|token| format!(
-                                                                        "http://{}:{}{}/files/{}/download-with-token?token={}",
-                                                                        self.config.server.host,
-                                                                        self.config.server.port,
-                                                                        self.config.server.api_prefix,
+                                                                    .map(|token| build_artifact_download_url(
+                                                                        &origin,
+                                                                        &self.config.server.api_prefix,
                                                                         artifact_id,
-                                                                        token
+                                                                        &token,
                                                                     ))
                                                                 };
                                                                 saved_artifacts.push((artifact_id, display_name.to_string(), download_url));
@@ -615,7 +695,11 @@ impl McpChatExtension {
                         *hidden_content = Some(format!(
                             "[system: Files saved as artifact attachments (shown as file cards in UI). \
                              Do NOT embed file URLs or images inline in your text response. \
-                             Internal download URLs for tool-to-tool access only:\n{}]",
+                             To pass one of these files to another tool, copy its URL below \
+                             VERBATIM into that tool's file/URL argument — never rewrite the host, \
+                             never substitute 127.0.0.1/localhost, and never invent a DRS or \
+                             platform URL. The URLs below are already reachable exactly as given \
+                             (do not call get_resource_link for these — use the URL here directly):\n{}]",
                             url_lines.join("\n")
                         ));
                     }
@@ -1357,7 +1441,7 @@ impl ChatExtension for McpChatExtension {
             // This is a soft hint — the model can still answer directly if no tool is relevant.
             // Only injected on iteration 1 to avoid redundancy in follow-up tool-calling loops.
             if context.iteration == 1 {
-                let system_addition = String::from("\n\nYou have access to tools that can retrieve up-to-date or domain-specific information. When answering questions, prefer using these tools over relying solely on your training knowledge, especially when the tools are clearly relevant to the request.");
+                let system_addition = tool_system_guidance(&request.tools);
 
                 if let Some(sys_msg) = request.messages.iter_mut().find(|m| m.role == ai_providers::Role::System) {
                     if let Some(ai_providers::ContentBlock::Text { text }) = sys_msg.content.first_mut() {
@@ -2181,6 +2265,7 @@ impl ChatExtension for McpChatExtension {
                                                             Ok(_) => {
                                                                 helpers::send_artifact_created_event(
                                                                     tx,
+                                                                    &tool_use_id,
                                                                     &artifact_id.to_string(),
                                                                     display_name,
                                                                     mime_type.as_deref(),
@@ -2210,19 +2295,26 @@ impl ChatExtension for McpChatExtension {
                                                                         iss: self.config.jwt.issuer.clone(),
                                                                         aud: DOWNLOAD_TOKEN_AUDIENCE.to_string(),
                                                                     };
+                                                                    // Root the tool-to-tool download URL at the SAME origin
+                                                                    // get_resource_link uses (public_base_url when set, else the
+                                                                    // pinned 127.0.0.1 loopback) — NOT self.config.server.host,
+                                                                    // which may be 0.0.0.0 / a bind address unreachable by the
+                                                                    // (possibly remote) MCP server the LLM passes this URL to.
+                                                                    let origin = file_download_origin(
+                                                                        self.config.code_sandbox.as_ref(),
+                                                                        self.config.server.port,
+                                                                    );
                                                                     encode(
                                                                         &JwtHeader::default(),
                                                                         &claims,
                                                                         &EncodingKey::from_secret(self.config.jwt.secret.as_bytes()),
                                                                     )
                                                                     .ok()
-                                                                    .map(|token| format!(
-                                                                        "http://{}:{}{}/files/{}/download-with-token?token={}",
-                                                                        self.config.server.host,
-                                                                        self.config.server.port,
-                                                                        self.config.server.api_prefix,
+                                                                    .map(|token| build_artifact_download_url(
+                                                                        &origin,
+                                                                        &self.config.server.api_prefix,
                                                                         artifact_id,
-                                                                        token
+                                                                        &token,
                                                                     ))
                                                                 };
                                                                 saved_artifacts.push((artifact_id, display_name.to_string(), download_url));
@@ -2315,7 +2407,11 @@ impl ChatExtension for McpChatExtension {
                         *hidden_content = Some(format!(
                             "[system: Files saved as artifact attachments (shown as file cards in UI). \
                              Do NOT embed file URLs or images inline in your text response. \
-                             Internal download URLs for tool-to-tool access only:\n{}]",
+                             To pass one of these files to another tool, copy its URL below \
+                             VERBATIM into that tool's file/URL argument — never rewrite the host, \
+                             never substitute 127.0.0.1/localhost, and never invent a DRS or \
+                             platform URL. The URLs below are already reachable exactly as given \
+                             (do not call get_resource_link for these — use the URL here directly):\n{}]",
                             url_lines.join("\n")
                         ));
                     }
@@ -2580,5 +2676,128 @@ impl ChatExtension for McpChatExtension {
         }
 
         Ok(content_blocks)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_artifact_download_url, file_download_origin, tool_system_guidance};
+    use crate::core::config::CodeSandboxConfig;
+    use uuid::Uuid;
+
+    fn tool(name: &str) -> ai_providers::Tool {
+        ai_providers::Tool::function(name.to_string(), String::new(), serde_json::json!({}))
+    }
+
+    #[test]
+    fn guidance_always_includes_tool_preference_nudge() {
+        let g = tool_system_guidance(&[]);
+        assert!(g.contains("prefer using these tools"), "{g}");
+    }
+
+    #[test]
+    fn guidance_adds_file_url_rule_only_when_get_resource_link_present() {
+        // Absent → no file-URL rule.
+        let without = tool_system_guidance(&[tool("abc__some_other_tool")]);
+        assert!(!without.contains("get_resource_link"), "{without}");
+
+        // Present (real name shape is "{server_id}__get_resource_link") → rule added.
+        let with = tool_system_guidance(&[
+            tool("abc__some_other_tool"),
+            tool("11111111-2222-3333-4444-555555555555__get_resource_link"),
+        ]);
+        assert!(with.contains("you MUST first call get_resource_link"), "{with}");
+        assert!(with.contains("Never invent, guess, or construct a file/download URL"), "{with}");
+
+        // A different tool merely containing the substring must NOT trigger it
+        // (suffix match guards against e.g. "get_resource_link_v2").
+        let lookalike = tool_system_guidance(&[tool("abc__get_resource_link_v2")]);
+        assert!(!lookalike.contains("you MUST first call get_resource_link"), "{lookalike}");
+    }
+
+    fn cs(public_base_url: Option<&str>) -> CodeSandboxConfig {
+        CodeSandboxConfig {
+            public_base_url: public_base_url.map(str::to_string),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn origin_falls_back_to_127_0_0_1_loopback_when_no_public_base_url() {
+        // No code_sandbox config at all → loopback. Crucially the loopback is
+        // 127.0.0.1, never 0.0.0.0 — file_download_origin never consults
+        // server.host, so a 0.0.0.0 bind can't leak into the URL.
+        assert_eq!(file_download_origin(None, 8080), "http://127.0.0.1:8080");
+        // code_sandbox present but public_base_url unset → still loopback.
+        assert_eq!(
+            file_download_origin(Some(&cs(None)), 3000),
+            "http://127.0.0.1:3000"
+        );
+    }
+
+    #[test]
+    fn origin_uses_public_base_url_when_set() {
+        let c = cs(Some("https://tunnel.example.com"));
+        assert_eq!(
+            file_download_origin(Some(&c), 8080),
+            "https://tunnel.example.com"
+        );
+    }
+
+    #[test]
+    fn build_url_trims_trailing_slash_on_api_prefix() {
+        // A config value of "/api/" must not produce a double slash.
+        let id = Uuid::nil();
+        let url = build_artifact_download_url("https://h.example", "/api/", id, "t");
+        assert_eq!(
+            url,
+            format!("https://h.example/api/files/{id}/download-with-token?token=t")
+        );
+        // Empty prefix is also valid (single leading slash from the literal).
+        let url_empty = build_artifact_download_url("https://h.example", "", id, "t");
+        assert_eq!(
+            url_empty,
+            format!("https://h.example/files/{id}/download-with-token?token=t")
+        );
+    }
+
+    #[test]
+    fn build_url_uses_origin_and_preserves_token() {
+        let id = Uuid::nil();
+        let url = build_artifact_download_url(
+            "https://tunnel.example.com",
+            "/api",
+            id,
+            "eyJhbGc.payload.sig-_",
+        );
+        assert_eq!(
+            url,
+            format!("https://tunnel.example.com/api/files/{id}/download-with-token?token=eyJhbGc.payload.sig-_")
+        );
+        // The JWT (with its `.`/`-`/`_` chars) must be preserved byte-for-byte.
+        assert!(url.ends_with("?token=eyJhbGc.payload.sig-_"));
+    }
+
+    #[test]
+    fn end_to_end_artifact_url_never_emits_wildcard_with_public_base_url() {
+        // Regression for the reported bug: with public_base_url configured the
+        // artifact URL the LLM receives is rooted at the public origin and
+        // carries no loopback/wildcard host.
+        let c = cs(Some("https://pub.example.com"));
+        let origin = file_download_origin(Some(&c), 8080);
+        let url = build_artifact_download_url(&origin, "/api", Uuid::nil(), "tok");
+        assert!(url.starts_with("https://pub.example.com/api/files/"), "{url}");
+        assert!(!url.contains("127.0.0.1"), "{url}");
+        assert!(!url.contains("0.0.0.0"), "{url}");
+    }
+
+    #[test]
+    fn end_to_end_artifact_url_uses_loopback_not_wildcard_without_public_base_url() {
+        // Without public_base_url the URL is the 127.0.0.1 loopback (reachable
+        // by a same-host MCP server) — and must never be 0.0.0.0.
+        let origin = file_download_origin(Some(&cs(None)), 8080);
+        let url = build_artifact_download_url(&origin, "/api", Uuid::nil(), "tok");
+        assert!(url.starts_with("http://127.0.0.1:8080/api/files/"), "{url}");
+        assert!(!url.contains("0.0.0.0"), "{url}");
     }
 }
