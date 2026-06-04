@@ -375,13 +375,11 @@ pub async fn get_resource_link(
             "code_sandbox state not initialized",
         )
     })?;
-    let origin = match state.config.public_base_url.as_deref() {
-        Some(base) if !base.trim().is_empty() => base.trim_end_matches('/').to_string(),
-        _ => state
-            .loopback_url
-            .trim_end_matches("/api/code-sandbox")
-            .to_string(),
-    };
+    // Single source of truth shared with the MCP artifact-save pipeline
+    // (mcp::chat_extension::mcp::file_download_origin): public_base_url when
+    // set, else the pinned loopback origin already encoded in loopback_url.
+    let loopback_origin = state.loopback_url.trim_end_matches("/api/code-sandbox");
+    let origin = state.config.public_file_origin(loopback_origin);
 
     // First check whether the filename matches a known attachment by
     // name AND owned by the current user.

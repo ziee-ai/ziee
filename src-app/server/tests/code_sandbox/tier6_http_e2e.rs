@@ -403,6 +403,38 @@ async fn e2e_get_resource_link_for_workspace_artifact_returns_signed_url() {
     assert!(!link["is_saved"].as_bool().unwrap(), "workspace artifact is NOT saved");
 }
 
+/// Same flow, but with `code_sandbox.public_base_url` configured: the returned
+/// resource_link URI must be rooted at that public origin (the URL handed to a
+/// possibly-remote MCP server) and must NOT contain the loopback host. This is
+/// the deployment shape where the artifact→another-tool bug surfaced.
+#[tokio::test]
+async fn e2e_get_resource_link_uses_public_base_url_when_configured() {
+    use crate::code_sandbox::harness::github_fetch_server_options;
+    let Some(mut opts) = github_fetch_server_options(Vec::new()) else { return };
+    opts.sandbox_public_base_url = Some("https://public.example.test".to_string());
+    let server = crate::common::TestServer::start_with_options(opts).await;
+
+    let (_user_id, jwt, conv_id) = setup_user_and_conv(&server).await;
+    tool_call(&server, &jwt, conv_id, "write_file", json!({"filename":"art.txt","content":"x"})).await;
+    let body = tool_call(
+        &server,
+        &jwt,
+        conv_id,
+        "get_resource_link",
+        json!({ "filename": "art.txt" }),
+    )
+    .await;
+    let link = &body["result"]["structuredContent"];
+    assert_eq!(link["type"].as_str().unwrap(), "resource_link");
+    let uri = link["uri"].as_str().expect("uri");
+    assert!(
+        uri.starts_with("https://public.example.test/api/code-sandbox/file/download"),
+        "uri must be rooted at public_base_url: {uri}"
+    );
+    assert!(!uri.contains("127.0.0.1"), "uri must not contain loopback: {uri}");
+    assert!(uri.contains("filename=art.txt"), "uri: {uri}");
+}
+
 #[tokio::test]
 async fn e2e_download_endpoint_returns_workspace_file_bytes() {
     let Some(server) = enabled_test_server().await else { return };
