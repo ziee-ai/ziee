@@ -124,12 +124,21 @@ pub struct CodeSandboxConfig {
     /// where IMDS is unreachable (the common dev / on-prem case).
     #[serde(default)]
     pub allow_cloud_imds_reachable: bool,
-    /// Public base origin for resource links handed to MCP clients on a
-    /// different host (e.g. a reverse-proxy / tunnel URL like
-    /// `https://3000--….coder…`). When set, `get_resource_link` roots links
-    /// here instead of the loopback origin. The built-in MCP server's own
-    /// dial URL stays on 127.0.0.1 — this only affects returned links.
-    /// Empty/unset → keep current loopback behavior.
+    /// Public base origin for file download links handed to MCP clients on
+    /// a different host (e.g. a reverse-proxy / tunnel URL like
+    /// `https://3000--….coder…`). When set, BOTH `get_resource_link`
+    /// (user attachments + workspace artifacts) and the MCP artifact-save
+    /// pipeline's tool-to-tool download URLs root links here instead of the
+    /// loopback origin — see `public_file_origin`, the shared resolver.
+    /// The built-in MCP server's own dial URL stays on 127.0.0.1 (see
+    /// `loopback_host`); this only affects returned link origins, never the
+    /// dial URL. Note: `get_resource_link` additionally requires
+    /// `enabled: true` (it reads the initialized sandbox state), whereas the
+    /// artifact-save pipeline honors this field regardless of `enabled`.
+    /// Empty/unset → loopback behavior: download URLs use the 127.0.0.1
+    /// loopback and no longer derive from `server.host`. So an operator who
+    /// binds `server.host` to a non-loopback, externally-reachable address
+    /// and needs a remote MCP server to fetch artifacts MUST set this.
     #[serde(default)]
     pub public_base_url: Option<String>,
 }
@@ -163,6 +172,29 @@ impl CodeSandboxConfig {
         self.workspace_root
             .as_deref()
             .expect("workspace_root filled by Config::resolve_paths")
+    }
+
+    /// Origin (`scheme://host[:port]`, no trailing slash, no path) for file
+    /// download links handed to MCP clients. Returns `public_base_url` when
+    /// it is set + non-empty; otherwise the caller's already-pinned loopback
+    /// origin.
+    ///
+    /// This is the single source of truth for the origin used by BOTH
+    /// `get_resource_link` (user attachments + workspace artifacts) and the
+    /// MCP artifact-save pipeline's tool-to-tool download URLs. Keeping both
+    /// paths on this one helper guarantees the LLM is never handed a
+    /// `127.0.0.1` / `0.0.0.0` link for a file when the deployment has a
+    /// reachable `public_base_url` configured.
+    ///
+    /// `loopback_origin` must already be the canonical loopback the caller
+    /// derived via [`crate::modules::code_sandbox::loopback_host`] (i.e.
+    /// `http://127.0.0.1:{port}`) — never `0.0.0.0`, a wildcard, or the
+    /// configured bind host, which are not routable destinations.
+    pub fn public_file_origin(&self, loopback_origin: &str) -> String {
+        match self.public_base_url.as_deref() {
+            Some(base) if !base.trim().is_empty() => base.trim().trim_end_matches('/').to_string(),
+            _ => loopback_origin.trim_end_matches('/').to_string(),
+        }
     }
 }
 
@@ -568,5 +600,54 @@ mod rate_limit_config_tests {
         assert!(cfg.enabled);
         assert_eq!(cfg.per_second, 100);
         assert_eq!(cfg.burst_size, 200);
+    }
+}
+
+#[cfg(test)]
+mod public_file_origin_tests {
+    use super::CodeSandboxConfig;
+
+    fn cfg(public_base_url: Option<&str>) -> CodeSandboxConfig {
+        CodeSandboxConfig {
+            public_base_url: public_base_url.map(str::to_string),
+            ..Default::default()
+        }
+    }
+
+    const LOOPBACK: &str = "http://127.0.0.1:8080";
+
+    #[test]
+    fn uses_public_base_url_when_set() {
+        let c = cfg(Some("https://tunnel.example.com"));
+        assert_eq!(c.public_file_origin(LOOPBACK), "https://tunnel.example.com");
+    }
+
+    #[test]
+    fn trims_trailing_slash_and_surrounding_whitespace() {
+        let c = cfg(Some("  https://tunnel.example.com/  "));
+        assert_eq!(c.public_file_origin(LOOPBACK), "https://tunnel.example.com");
+    }
+
+    #[test]
+    fn falls_back_to_loopback_when_unset() {
+        let c = cfg(None);
+        assert_eq!(c.public_file_origin(LOOPBACK), "http://127.0.0.1:8080");
+    }
+
+    #[test]
+    fn falls_back_when_empty_or_whitespace() {
+        assert_eq!(cfg(Some("")).public_file_origin(LOOPBACK), LOOPBACK);
+        assert_eq!(cfg(Some("   ")).public_file_origin(LOOPBACK), LOOPBACK);
+    }
+
+    #[test]
+    fn never_emits_wildcard_when_caller_passes_pinned_loopback() {
+        // The helper trusts the caller's pinned loopback (always 127.0.0.1 via
+        // loopback_host). Regardless of public_base_url being absent, the
+        // result must never carry a wildcard / unroutable bind address.
+        let c = cfg(None);
+        let origin = c.public_file_origin("http://127.0.0.1:9000");
+        assert!(origin.starts_with("http://127.0.0.1"), "origin: {origin}");
+        assert!(!origin.contains("0.0.0.0"), "origin: {origin}");
     }
 }

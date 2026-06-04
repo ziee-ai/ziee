@@ -194,6 +194,7 @@ yanked = false
         ],
         sandbox_cache_tempdir: None,
                 use_desktop_binary: false,
+        sandbox_public_base_url: None,
     };
     let server = TestServer::start_with_options(opts).await;
 
