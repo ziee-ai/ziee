@@ -14,19 +14,31 @@ use super::models::{
 // Conversation MCP Settings
 // ============================================================================
 
-/// Get MCP settings for a conversation
+/// Get MCP settings for a conversation.
+///
+/// Reads from the unified `mcp_settings` table (migration 78). The
+/// `ConversationMcpSettings` return type is preserved as a typed view
+/// — its `FromRow`/column-name shape happens to match the unified
+/// table's conversation-scoped row 1:1 (NOT NULL on conversation_id +
+/// NULL on project_id are guaranteed by the SQL filter + the table's
+/// CHECK constraint).
 pub async fn get_conversation_settings(
     pool: &PgPool,
     conversation_id: Uuid,
 ) -> Result<Option<ConversationMcpSettings>, AppError> {
+    // Force non-NULL on conversation_id via the column alias trick:
+    // `mcp_settings.conversation_id` is nullable in the schema but
+    // every row matching `WHERE conversation_id = $1` has it set.
     let settings = sqlx::query_as!(
         ConversationMcpSettings,
         r#"
         SELECT
-            id, conversation_id, user_id,
+            id,
+            conversation_id as "conversation_id!: _",
+            user_id,
             approval_mode, auto_approved_tools, disabled_servers, loop_settings,
             created_at as "created_at: _", updated_at as "updated_at: _"
-        FROM conversation_mcp_settings
+        FROM mcp_settings
         WHERE conversation_id = $1
         "#,
         conversation_id
@@ -37,8 +49,11 @@ pub async fn get_conversation_settings(
     Ok(settings)
 }
 
-/// Upsert MCP settings for a conversation
-/// `auto_approved_tools`: None = preserve existing DB value; Some(tools) = overwrite
+/// Upsert MCP settings for a conversation.
+///
+/// Writes into the unified `mcp_settings` table — sets `conversation_id`
+/// and leaves `project_id` NULL (CHECK constraint enforces exactly one).
+/// `auto_approved_tools`: None = preserve existing DB value; Some(tools) = overwrite.
 pub async fn upsert_conversation_settings(
     pool: &PgPool,
     conversation_id: Uuid,
@@ -61,19 +76,21 @@ pub async fn upsert_conversation_settings(
     let settings = sqlx::query_as!(
         ConversationMcpSettings,
         r#"
-        INSERT INTO conversation_mcp_settings (
+        INSERT INTO mcp_settings (
             conversation_id, user_id, approval_mode, auto_approved_tools, disabled_servers, loop_settings
         )
         VALUES ($1, $2, $3, COALESCE($4, '[]'::jsonb), $5, $6)
         ON CONFLICT (conversation_id)
         DO UPDATE SET
             approval_mode = EXCLUDED.approval_mode,
-            auto_approved_tools = COALESCE($4, conversation_mcp_settings.auto_approved_tools),
+            auto_approved_tools = COALESCE($4, mcp_settings.auto_approved_tools),
             disabled_servers = EXCLUDED.disabled_servers,
             loop_settings = EXCLUDED.loop_settings,
             updated_at = NOW()
         RETURNING
-            id, conversation_id, user_id,
+            id,
+            conversation_id as "conversation_id!: _",
+            user_id,
             approval_mode, auto_approved_tools, disabled_servers, loop_settings,
             created_at as "created_at: _", updated_at as "updated_at: _"
         "#,

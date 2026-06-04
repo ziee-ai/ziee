@@ -68,8 +68,25 @@ interface ConversationPanelSnapshot {
   lastAccessedAt: number
 }
 
+/**
+ * Internal, type-erased view of panel data. The precise per-type shape
+ * (`PanelRendererMap[T]`) lives only on the PUBLIC edges —
+ * `registerPanelRenderer` / `displayInRightPanel` / `RightPanelTab<T>` —
+ * where the caller supplies a concrete `T`. The registry storage and the
+ * render boundary deliberately erase to this: indexing the map by
+ * `PanelType` *here* would collapse to `never` whenever zero extensions are
+ * loaded (e.g. the chat module type-checked in isolation), even though every
+ * value flowing through is sound by construction.
+ */
+export type ErasedPanelData = Record<string, unknown>
+
+interface ErasedPanelRenderer {
+  component: ComponentType<ErasedPanelData>
+  icon?: ReactNode
+}
+
 // Module-level registry of panel renderers, populated by extensions.
-const panelRendererRegistry = new Map<PanelType, PanelRenderer<PanelType>>()
+const panelRendererRegistry = new Map<string, ErasedPanelRenderer>()
 
 export function registerPanelRenderer<T extends PanelType>(
   type: T,
@@ -84,10 +101,11 @@ export function registerPanelRenderer<T extends PanelType>(
   panelRendererRegistry.set(type, {
     ...renderer,
     // memo(...) returns a MemoExoticComponent which is structurally a
-    // ComponentType but TS can't see through PanelRendererMap[T] indexing,
-    // so widen via unknown.
-    component: memo(renderer.component) as unknown as ComponentType<PanelRendererMap[T]>,
-  } as PanelRenderer<PanelType>)
+    // ComponentType; widen the precise PanelRendererMap[T] props to the
+    // erased storage shape. Sound: the public <T> signature already proved
+    // `component` accepts PanelRendererMap[T], a subtype of ErasedPanelData.
+    component: memo(renderer.component) as unknown as ComponentType<ErasedPanelData>,
+  })
 }
 
 /**
@@ -96,7 +114,7 @@ export function registerPanelRenderer<T extends PanelType>(
  * means the owning extension hasn't initialized yet, or the type was removed.
  */
 export function resolvePanelRenderer(tab: RightPanelTab): {
-  Component: ComponentType<PanelRendererMap[PanelType]>
+  Component: ComponentType<ErasedPanelData>
   icon?: ReactNode
 } | null {
   const renderer = panelRendererRegistry.get(tab.type)
@@ -882,42 +900,14 @@ export const useChatStore = create<ChatState>()(
           return ''
         })()
 
-        // Restore file attachments from the user message so they are included
-        // in the regenerated request. The MessageContentDataFileAttachment block
-        // only carries file_id/filename/file_size/mime_type — remaining
-        // FileEntity fields use defaults because sendMessage() fires immediately
-        // and clearFiles() runs right after, so an async server fetch would
-        // never complete in time to be useful.
-        const fileContents = precedingUserMsg.contents.filter(
-          c => c.content_type === 'file_attachment'
-        )
-        if (fileContents.length > 0) {
-          // File store moved out of Stores.Chat into its own module
-          // (modules/file/) — async-import to avoid a circular-dep
-          // between chat and file.
-          const { Stores } = await import('@/core/stores')
-          const fileStore = Stores.File
-          if (fileStore) {
-            const stubs = fileContents.map(c => {
-              const data = c.content as any
-              return {
-                id: data.file_id,
-                filename: data.filename,
-                file_size: data.file_size,
-                mime_type: data.mime_type ?? undefined,
-                has_thumbnail: false,
-                preview_page_count: 0,
-                created_at: '',
-                updated_at: '',
-                user_id: '',
-                created_by: '',
-                processing_metadata: null,
-                text_page_count: 0,
-              }
-            })
-            fileStore.restoreFilesFromEdit(stubs)
-          }
-        }
+        // Fan out content-block restoration to every extension —
+        // each filters by its own content_type and rehydrates its
+        // store accordingly (file restores `file_attachment` blocks
+        // into its selectedFiles buffer; future extensions can do the
+        // same for their content types). Chat itself stays
+        // content-type-agnostic.
+        const { chatExtensionRegistry } = await import('@/modules/chat/core/extensions')
+        await chatExtensionRegistry.onMessageEditRestore(precedingUserMsg.contents)
 
         if (!userText) return
 

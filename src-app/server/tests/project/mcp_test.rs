@@ -59,9 +59,11 @@ async fn put_mcp_settings_persists() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
+    // PUT returns ProjectMcpSettingsResponse (the unified shape) — no
+    // `mcp_` prefix; the request body shape and the response shape match.
     let updated: Value = resp.json().await.unwrap();
-    assert_eq!(updated["mcp_approval_mode"], "auto_approve");
-    assert_eq!(updated["mcp_auto_approved_tools"][0]["tools"][0], "greet");
+    assert_eq!(updated["approval_mode"], "auto_approve");
+    assert_eq!(updated["auto_approved_tools"][0]["tools"][0], "greet");
 
     // Re-fetch via the dedicated GET endpoint — values should round-trip.
     let again = reqwest::Client::new()
@@ -89,19 +91,23 @@ async fn project_create_snapshots_mcp_into_conversation() {
     let mcp = helpers::create_user_mcp_server(&server, &user, "test-srv-snap").await;
     let sid = mcp["id"].as_str().unwrap();
 
-    // Create a project with non-default MCP settings.
-    let p = helpers::create_project_with(
-        &server,
-        &user,
-        json!({
-            "name": "MCP Snap",
-            "mcp_approval_mode": "auto_approve",
-            "mcp_auto_approved_tools": [{"server_id": sid, "tools": ["greet"]}],
-            "mcp_disabled_servers": [],
-        }),
-    )
-    .await;
+    // Create a project, then set non-default MCP settings via the
+    // separate PUT endpoint (migration 78 moved MCP fields off the
+    // Project payload — they're set via /mcp-settings now).
+    let p = helpers::create_project(&server, &user, "MCP Snap").await;
     let pid = p["id"].as_str().unwrap();
+    let put = reqwest::Client::new()
+        .put(server.api_url(&format!("/projects/{}/mcp-settings", pid)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "approval_mode": "auto_approve",
+            "auto_approved_tools": [{"server_id": sid, "tools": ["greet"]}],
+            "disabled_servers": [],
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(put.status(), StatusCode::OK);
 
     // Create a conversation inside the project.
     let conv_id = helpers::create_project_conversation(&server, &user, pid).await;

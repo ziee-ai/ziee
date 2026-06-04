@@ -9,8 +9,11 @@ use uuid::Uuid;
 
 /// Project entity. One row per personal project.
 ///
-/// MCP defaults are inline (mcp_*) — see migration 51 for the rationale
-/// (no sibling project_mcp_settings table; 1:1 sync hazard).
+/// MCP defaults previously lived inline (mcp_*); they moved to the
+/// unified `mcp_settings` table (migration 78) owned by the mcp module.
+/// Clients fetch them via `GET /api/projects/{id}/mcp-settings` (still
+/// mounted at the same URL — the route now lives in mcp's
+/// project_extension).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, FromRow)]
 pub struct Project {
     pub id: Uuid,
@@ -22,23 +25,6 @@ pub struct Project {
 
     pub default_assistant_id: Option<Uuid>,
     pub default_model_id: Option<Uuid>,
-
-    pub mcp_approval_mode: String,
-    /// JSONB: `[{"server_id": "uuid", "tools": ["tool1", ...]}, ...]`
-    #[serde(default)]
-    pub mcp_auto_approved_tools: serde_json::Value,
-    /// JSONB: `[{"server_id": "uuid", "tools": []}, ...]`
-    #[serde(default)]
-    pub mcp_disabled_servers: serde_json::Value,
-    /// JSONB; nullable. Same shape + NULL convention as
-    /// `conversation_mcp_settings.loop_settings` (migration 19).
-    /// NULL means "not configured — application supplies the default":
-    ///   { stop_when_no_tool_calling: true, max_iteration: 10,
-    ///     stop_when_tools_called: [], force_final_answer: false,
-    ///     per_tool_max_iteration: [] }
-    /// Snapshotted into conversation_mcp_settings.loop_settings at
-    /// conversation create time.
-    pub mcp_loop_settings: Option<serde_json::Value>,
 
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

@@ -44,8 +44,16 @@ pub enum AppEvent {
     /// LLM Local Runtime module events (instances, versions)
     LlmLocalRuntime(crate::modules::llm_local_runtime::events::LlmLocalRuntimeEvent),
 
-    /// Project module events (project + project_files lifecycle)
+    /// Project module events (project lifecycle: created, updated, deleted,
+    /// conversation attach/detach). File-project events live under
+    /// `FileProject` — file module owns the `project_files` join table after
+    /// the project↔file inversion.
     Project(crate::modules::project::events::ProjectEvent),
+
+    /// File module's project-extension events (project_files lifecycle:
+    /// file attached to / detached from a project). Owned by the file
+    /// module per the project↔file inversion.
+    FileProject(crate::modules::file::project_extension::events::FileProjectEvent),
     // Add new module events here as the application grows
 }
 

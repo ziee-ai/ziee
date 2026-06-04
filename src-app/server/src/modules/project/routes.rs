@@ -29,48 +29,17 @@ pub fn project_router() -> ApiRouter {
             "/projects/{id}/duplicate",
             post_with(duplicate_project, duplicate_project_docs),
         )
-        // Files
-        .api_route(
-            "/projects/{id}/files",
-            get_with(list_project_files, list_project_files_docs),
-        )
-        .api_route(
-            "/projects/{id}/files",
-            post_with(attach_file, attach_file_docs),
-        )
-        .api_route(
-            "/projects/{id}/files/upload",
-            post_with(upload_and_attach_file, upload_and_attach_file_docs),
-        )
-        .api_route(
-            "/projects/{id}/files/{file_id}",
-            delete_with(detach_file, detach_file_docs),
-        )
-        // Conversations
-        .api_route(
-            "/projects/{id}/conversations",
-            get_with(list_project_conversations, list_project_conversations_docs),
-        )
-        .api_route(
-            "/projects/{id}/conversations/{conversation_id}",
-            post_with(attach_conversation, attach_conversation_docs),
-        )
-        .api_route(
-            "/projects/{id}/conversations/{conversation_id}",
-            delete_with(detach_conversation, detach_conversation_docs),
-        )
-        // Reverse lookup: "what project is this conversation in?"
-        .api_route(
-            "/projects/by-conversation/{conversation_id}",
-            get_with(project_for_conversation, project_for_conversation_docs),
-        )
-        // MCP settings (subset for the settings drawer)
-        .api_route(
-            "/projects/{id}/mcp-settings",
-            get_with(get_project_mcp_settings, get_project_mcp_settings_docs),
-        )
-        .api_route(
-            "/projects/{id}/mcp-settings",
-            put_with(update_project_mcp_settings, update_project_mcp_settings_docs),
-        )
+        // Files — relocated to the file module's project_extension
+        // (project↔file inversion). The four `/api/projects/{id}/files*`
+        // routes are now contributed via the PROJECT_EXTENSIONS slice;
+        // `project/mod.rs::register_routes` merges them in.
+        //
+        // Conversations — relocated to project/chat_extension (project↔chat
+        // inversion). The four /api/projects/{id}/conversations* +
+        // /api/projects/by-conversation/{id} routes are contributed via
+        // `ProjectExtension::register_routes` on the CHAT_EXTENSIONS slice.
+        //
+        // MCP-settings routes (`GET/PUT /api/projects/{id}/mcp-settings`)
+        // moved to mcp/project_extension/ — registered via the project-extension
+        // `register_routes` hook (project↔mcp inversion).
 }

@@ -27,7 +27,7 @@ impl UserRepository {
             User,
             r#"
             SELECT id, username, email, email_verified, password_hash, display_name,
-                   avatar_url, is_active, is_admin, permissions, completed_onboarding_ids, completed_onboarding_step_ids,
+                   avatar_url, is_active, is_admin, permissions,
                    created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _", password_changed_at as "password_changed_at: _"
             FROM users
             WHERE id = $1
@@ -45,7 +45,7 @@ impl UserRepository {
             User,
             r#"
             SELECT id, username, email, email_verified, password_hash, display_name,
-                   avatar_url, is_active, is_admin, permissions, completed_onboarding_ids, completed_onboarding_step_ids,
+                   avatar_url, is_active, is_admin, permissions,
                    created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _", password_changed_at as "password_changed_at: _"
             FROM users
             WHERE username = $1
@@ -63,7 +63,7 @@ impl UserRepository {
             User,
             r#"
             SELECT id, username, email, email_verified, password_hash, display_name,
-                   avatar_url, is_active, is_admin, permissions, completed_onboarding_ids, completed_onboarding_step_ids,
+                   avatar_url, is_active, is_admin, permissions,
                    created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _", password_changed_at as "password_changed_at: _"
             FROM users
             WHERE email = $1
@@ -84,7 +84,7 @@ impl UserRepository {
             User,
             r#"
             SELECT id, username, email, email_verified, password_hash, display_name,
-                   avatar_url, is_active, is_admin, permissions, completed_onboarding_ids, completed_onboarding_step_ids,
+                   avatar_url, is_active, is_admin, permissions,
                    created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _", password_changed_at as "password_changed_at: _"
             FROM users
             WHERE username = $1 OR email = $1
@@ -111,7 +111,7 @@ impl UserRepository {
             User,
             r#"
             SELECT id, username, email, email_verified, password_hash, display_name,
-                   avatar_url, is_active, is_admin, permissions, completed_onboarding_ids, completed_onboarding_step_ids,
+                   avatar_url, is_active, is_admin, permissions,
                    created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _", password_changed_at as "password_changed_at: _"
             FROM users
             ORDER BY created_at DESC
@@ -142,7 +142,7 @@ impl UserRepository {
             INSERT INTO users (username, email, password_hash, display_name, permissions)
             VALUES ($1, $2, $3, $4, $5)
             RETURNING id, username, email, email_verified, password_hash, display_name,
-                      avatar_url, is_active, is_admin, permissions, completed_onboarding_ids, completed_onboarding_step_ids,
+                      avatar_url, is_active, is_admin, permissions,
                       created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _", password_changed_at as "password_changed_at: _"
             "#,
             username,
@@ -182,7 +182,7 @@ impl UserRepository {
             INSERT INTO users (username, email, password_hash, display_name, is_active, is_admin)
             VALUES ($1, $2, $3, $4, true, true)
             RETURNING id, username, email, email_verified, password_hash, display_name,
-                      avatar_url, is_active, is_admin, permissions, completed_onboarding_ids, completed_onboarding_step_ids,
+                      avatar_url, is_active, is_admin, permissions,
                       created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _", password_changed_at as "password_changed_at: _"
             "#,
             username,
@@ -215,7 +215,7 @@ impl UserRepository {
                 updated_at = NOW()
             WHERE id = $1
             RETURNING id, username, email, email_verified, password_hash, display_name,
-                      avatar_url, is_active, is_admin, permissions, completed_onboarding_ids, completed_onboarding_step_ids,
+                      avatar_url, is_active, is_admin, permissions,
                       created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _", password_changed_at as "password_changed_at: _"
             "#,
             id,
@@ -281,58 +281,6 @@ impl UserRepository {
         .await
         .map_err(AppError::database_error)?;
         Ok(())
-    }
-
-    /// Mark a guide as completed for a user (idempotent)
-    pub async fn complete_guide(
-        &self,
-        user_id: Uuid,
-        guide_id: &str,
-    ) -> Result<User, AppError> {
-        // Append only if not already present (idempotent)
-        sqlx::query!(
-            r#"
-            UPDATE users
-            SET completed_onboarding_ids = array_append(completed_onboarding_ids, $2::TEXT),
-                updated_at = NOW()
-            WHERE id = $1 AND NOT ($2 = ANY(completed_onboarding_ids))
-            "#,
-            user_id,
-            guide_id
-        )
-        .execute(&self.pool)
-        .await
-        .map_err(AppError::database_error)?;
-
-        // Fetch the current user state
-        self.get_by_id(user_id)
-            .await?
-            .ok_or_else(|| AppError::not_found("User"))
-    }
-
-    /// Mark a guide step as completed for a user (idempotent)
-    pub async fn complete_guide_step(
-        &self,
-        user_id: Uuid,
-        step_key: &str,
-    ) -> Result<User, AppError> {
-        sqlx::query!(
-            r#"
-            UPDATE users
-            SET completed_onboarding_step_ids = array_append(completed_onboarding_step_ids, $2::TEXT),
-                updated_at = NOW()
-            WHERE id = $1 AND NOT ($2 = ANY(completed_onboarding_step_ids))
-            "#,
-            user_id,
-            step_key
-        )
-        .execute(&self.pool)
-        .await
-        .map_err(AppError::database_error)?;
-
-        self.get_by_id(user_id)
-            .await?
-            .ok_or_else(|| AppError::not_found("User"))
     }
 
     /// Delete user
@@ -617,7 +565,7 @@ impl GroupRepository {
             r#"
             SELECT u.id, u.username, u.email, u.email_verified, u.password_hash,
                    u.display_name, u.avatar_url, u.is_active, u.is_admin,
-                   ARRAY[]::TEXT[] as "permissions!", u.completed_onboarding_ids, u.completed_onboarding_step_ids,
+                   ARRAY[]::TEXT[] as "permissions!",
                    u.created_at as "created_at: _", u.updated_at as "updated_at: _",
                    u.last_login_at as "last_login_at: _",
                    u.password_changed_at as "password_changed_at: _"

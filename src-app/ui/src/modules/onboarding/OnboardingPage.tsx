@@ -27,10 +27,12 @@ export default function OnboardingPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
-  const user = Stores.Auth.user
   const nextEnabled = Stores.Onboarding.nextEnabled
   const nextLoading = Stores.Onboarding.nextLoading
   const nextError = Stores.Onboarding.nextError
+  const completedGuideIds = Stores.Onboarding.completedGuideIds
+  const completedStepIds = Stores.Onboarding.completedStepIds
+  const loaded = Stores.Onboarding.loaded
   const slots = Stores.ModuleSystem.slots
 
   // Holds the async action registered by the current step (not in store — functions don't go in Zustand/immer)
@@ -50,18 +52,17 @@ export default function OnboardingPage() {
   )
 
   const getInitialStepIndex = useCallback((g: OnboardingSlot): number => {
-    const done = user?.completed_onboarding_step_ids ?? []
-    const idx = g.steps.findIndex(s => !done.includes(`${g.id}/${s.id}`))
+    const idx = g.steps.findIndex(s => !completedStepIds.includes(`${g.id}/${s.id}`))
     return idx === -1 ? 0 : idx
-  }, [user])
+  }, [completedStepIds])
 
   const guideId = searchParams.get('id') || guides[0]?.id
   const [activeGuideId, setActiveGuideId] = useState(guideId)
   const guide = guides.find(g => g.id === activeGuideId) ?? guides[0]
 
   const baseStep = useMemo(
-    () => (user && guide ? getInitialStepIndex(guide) : 0),
-    [user, guide, getInitialStepIndex],
+    () => (loaded && guide ? getInitialStepIndex(guide) : 0),
+    [loaded, guide, getInitialStepIndex],
   )
 
   const [manualStep, setManualStep] = useState<number | null>(null)
@@ -142,7 +143,7 @@ export default function OnboardingPage() {
           Back to Chat
         </Button>
         {guides.map(g => {
-          const isCompleted = user?.completed_onboarding_ids?.includes(g.id)
+          const isCompleted = completedGuideIds.includes(g.id)
           const isActive = g.id === activeGuideId
           return (
             <div

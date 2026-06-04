@@ -12,7 +12,10 @@ use super::super::models::LlmProvider;
 use super::super::types::{CreateLlmProviderRequest, UpdateLlmProviderRequest};
 use crate::common::secret::{encrypt_secret, resolve_optional_secret};
 use crate::core::secrets::storage_key;
-use crate::modules::user::models::Group;
+// Group-related helpers (get_provider_groups, assign_to_group,
+// remove_from_group, get_for_group, get_for_user, user_has_access_to_provider)
+// moved to `user_extension/repository.rs` (llm_provider↔user/Group
+// inversion). Access via `Repos.user_group_llm_provider.*`.
 
 /// Convert a `time::OffsetDateTime` (sqlx return type) to
 /// `chrono::DateTime<Utc>` with full nanosecond precision and without
@@ -88,41 +91,11 @@ impl LlmProviderRepository {
         delete_llm_provider(&self.pool, provider_id).await
     }
 
-    pub async fn get_provider_groups(&self, provider_id: Uuid) -> Result<Vec<Group>, sqlx::Error> {
-        get_llm_provider_groups(&self.pool, provider_id).await
-    }
-
-    pub async fn assign_to_group(
-        &self,
-        provider_id: Uuid,
-        group_id: Uuid,
-    ) -> Result<(), sqlx::Error> {
-        assign_provider_to_group(&self.pool, provider_id, group_id).await
-    }
-
-    pub async fn remove_from_group(
-        &self,
-        group_id: Uuid,
-        provider_id: Uuid,
-    ) -> Result<bool, sqlx::Error> {
-        remove_provider_from_group(&self.pool, group_id, provider_id).await
-    }
-
-    pub async fn get_for_group(&self, group_id: Uuid) -> Result<Vec<LlmProvider>, sqlx::Error> {
-        get_providers_for_group(&self.pool, group_id).await
-    }
-
-    pub async fn get_for_user(&self, user_id: Uuid) -> Result<Vec<LlmProvider>, sqlx::Error> {
-        get_providers_for_user(&self.pool, user_id).await
-    }
-
-    pub async fn user_has_access_to_provider(
-        &self,
-        user_id: Uuid,
-        provider_id: Uuid,
-    ) -> Result<bool, sqlx::Error> {
-        user_has_access_to_provider(&self.pool, user_id, provider_id).await
-    }
+    // Group-related methods (get_provider_groups, assign_to_group,
+    // remove_from_group, get_for_group, get_for_user,
+    // user_has_access_to_provider) moved to
+    // `user_extension::UserGroupLlmProviderRepository`. Access via
+    // `Repos.user_group_llm_provider.*`.
 
     pub async fn list_local_providers(&self) -> Result<Vec<LlmProvider>, sqlx::Error> {
         list_local_providers(&self.pool).await
@@ -456,202 +429,4 @@ pub async fn delete_llm_provider(
         Some(false) => Ok(Ok(false)), // raced with another delete
         None => Ok(Ok(false)),         // provider not found
     }
-}
-
-// =====================================================
-// User Group Assignment Functions
-// =====================================================
-
-/// Get all groups that have access to a provider
-pub async fn get_llm_provider_groups(
-    pool: &PgPool,
-    provider_id: Uuid,
-) -> Result<Vec<Group>, sqlx::Error> {
-    let rows = sqlx::query!(
-        r#"SELECT g.id, g.name, g.description, g.permissions, g.is_system, g.is_active, g.is_default, g.created_at, g.updated_at
-         FROM groups g
-         INNER JOIN user_group_llm_providers ugp ON g.id = ugp.group_id
-         WHERE ugp.provider_id = $1
-         ORDER BY g.name ASC"#,
-        provider_id
-    )
-    .fetch_all(pool)
-    .await?;
-
-    Ok(rows
-        .into_iter()
-        .map(|r| Group {
-            id: r.id,
-            name: r.name,
-            description: r.description,
-            permissions: r.permissions,
-            is_system: r.is_system,
-            is_active: r.is_active,
-            is_default: r.is_default,
-            created_at: to_chrono(r.created_at),
-            updated_at: to_chrono(r.updated_at),
-        })
-        .collect())
-}
-
-/// Assign a provider to a user group
-pub async fn assign_provider_to_group(
-    pool: &PgPool,
-    provider_id: Uuid,
-    group_id: Uuid,
-) -> Result<(), sqlx::Error> {
-    // Check if the relationship already exists
-    let existing = sqlx::query!(
-        "SELECT id FROM user_group_llm_providers WHERE group_id = $1 AND provider_id = $2",
-        group_id,
-        provider_id
-    )
-    .fetch_optional(pool)
-    .await?;
-
-    if existing.is_some() {
-        // Relationship already exists, return success
-        return Ok(());
-    }
-
-    let relationship_id = Uuid::new_v4();
-    sqlx::query!(
-        "INSERT INTO user_group_llm_providers (id, group_id, provider_id) VALUES ($1, $2, $3)",
-        relationship_id,
-        group_id,
-        provider_id
-    )
-    .execute(pool)
-    .await?;
-
-    Ok(())
-}
-
-/// Remove a provider from a user group
-pub async fn remove_provider_from_group(
-    pool: &PgPool,
-    group_id: Uuid,
-    provider_id: Uuid,
-) -> Result<bool, sqlx::Error> {
-    let result = sqlx::query!(
-        "DELETE FROM user_group_llm_providers WHERE group_id = $1 AND provider_id = $2",
-        group_id,
-        provider_id
-    )
-    .execute(pool)
-    .await?;
-
-    Ok(result.rows_affected() > 0)
-}
-
-/// Get all providers assigned to a user group
-pub async fn get_providers_for_group(
-    pool: &PgPool,
-    group_id: Uuid,
-) -> Result<Vec<LlmProvider>, sqlx::Error> {
-    let rows = sqlx::query!(
-        r#"SELECT p.id, p.name, p.provider_type, p.enabled, p.api_key, p.api_key_encrypted, p.base_url, p.built_in, p.proxy_settings, p.created_at, p.updated_at,
-                  p.default_runtime_version_id
-         FROM llm_providers p
-         INNER JOIN user_group_llm_providers ugp ON p.id = ugp.provider_id
-         WHERE ugp.group_id = $1
-         ORDER BY p.built_in DESC, p.name ASC"#,
-        group_id
-    )
-    .fetch_all(pool)
-    .await?;
-
-    let mut providers = Vec::with_capacity(rows.len());
-    for r in rows {
-        let api_key = resolve_optional_secret(pool, r.api_key_encrypted, r.api_key).await;
-        providers.push(LlmProvider {
-            id: r.id,
-            name: r.name,
-            provider_type: r.provider_type,
-            enabled: r.enabled,
-            api_key,
-            base_url: r.base_url,
-            built_in: r.built_in,
-            proxy_settings: r
-                .proxy_settings
-                .and_then(|v| serde_json::from_value(v).ok())
-                .unwrap_or_default(),
-            created_at: to_chrono(r.created_at),
-            updated_at: to_chrono(r.updated_at),
-            default_runtime_version_id: r.default_runtime_version_id,
-        });
-    }
-    Ok(providers)
-}
-
-/// Get all providers available to a user based on their group memberships
-/// Returns only enabled providers assigned to the user's active groups
-pub async fn get_providers_for_user(
-    pool: &PgPool,
-    user_id: Uuid,
-) -> Result<Vec<LlmProvider>, sqlx::Error> {
-    let rows = sqlx::query!(
-        r#"SELECT DISTINCT p.id, p.name, p.provider_type, p.enabled, p.api_key, p.api_key_encrypted, p.base_url, p.built_in, p.proxy_settings, p.created_at, p.updated_at,
-                  p.default_runtime_version_id
-         FROM llm_providers p
-         INNER JOIN user_group_llm_providers ugp ON p.id = ugp.provider_id
-         INNER JOIN user_groups ug ON ugp.group_id = ug.group_id
-         INNER JOIN groups g ON ug.group_id = g.id
-         WHERE ug.user_id = $1
-           AND g.is_active = true
-           AND p.enabled = true
-         ORDER BY p.built_in DESC, p.name ASC"#,
-        user_id
-    )
-    .fetch_all(pool)
-    .await?;
-
-    let mut providers = Vec::with_capacity(rows.len());
-    for r in rows {
-        let api_key = resolve_optional_secret(pool, r.api_key_encrypted, r.api_key).await;
-        providers.push(LlmProvider {
-            id: r.id,
-            name: r.name,
-            provider_type: r.provider_type,
-            enabled: r.enabled,
-            api_key,
-            base_url: r.base_url,
-            built_in: r.built_in,
-            proxy_settings: r
-                .proxy_settings
-                .and_then(|v| serde_json::from_value(v).ok())
-                .unwrap_or_default(),
-            created_at: to_chrono(r.created_at),
-            updated_at: to_chrono(r.updated_at),
-            default_runtime_version_id: r.default_runtime_version_id,
-        });
-    }
-    Ok(providers)
-}
-
-/// Check if a user has access to a specific provider through their group assignments
-pub async fn user_has_access_to_provider(
-    pool: &PgPool,
-    user_id: Uuid,
-    provider_id: Uuid,
-) -> Result<bool, sqlx::Error> {
-    let result = sqlx::query!(
-        r#"SELECT EXISTS(
-             SELECT 1
-             FROM user_group_llm_providers ugp
-             INNER JOIN user_groups ug ON ugp.group_id = ug.group_id
-             INNER JOIN groups g ON ug.group_id = g.id
-             INNER JOIN llm_providers p ON ugp.provider_id = p.id
-             WHERE ug.user_id = $1
-               AND ugp.provider_id = $2
-               AND g.is_active = true
-               AND p.enabled = true
-           ) as "has_access!""#,
-        user_id,
-        provider_id
-    )
-    .fetch_one(pool)
-    .await?;
-
-    Ok(result.has_access)
 }

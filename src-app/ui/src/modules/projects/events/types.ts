@@ -22,21 +22,11 @@ export interface ProjectDeletedEvent extends BaseEvent {
   }
 }
 
-export interface ProjectFileAttachedEvent extends BaseEvent {
-  type: 'project.file_attached'
-  data: {
-    projectId: string
-    fileId: string
-  }
-}
-
-export interface ProjectFileDetachedEvent extends BaseEvent {
-  type: 'project.file_detached'
-  data: {
-    projectId: string
-    fileId: string
-  }
-}
+// `ProjectFileAttachedEvent` + `ProjectFileDetachedEvent` relocated to
+// `modules/file/project-extension/events/types.ts` as part of the
+// project↔file inversion. Event NAMES ("project.file_attached" /
+// "project.file_detached") are preserved verbatim — subscribers
+// unaffected; only the declaration site moves.
 
 /**
  * Fired after a conversation is attached (or re-attached across
@@ -70,8 +60,6 @@ export type ProjectModuleEvent =
   | ProjectCreatedEvent
   | ProjectUpdatedEvent
   | ProjectDeletedEvent
-  | ProjectFileAttachedEvent
-  | ProjectFileDetachedEvent
   | ProjectConversationAttachedEvent
   | ProjectConversationDetachedEvent
 
@@ -80,8 +68,6 @@ declare module '@/core/events' {
     'project.created': ProjectCreatedEvent
     'project.updated': ProjectUpdatedEvent
     'project.deleted': ProjectDeletedEvent
-    'project.file_attached': ProjectFileAttachedEvent
-    'project.file_detached': ProjectFileDetachedEvent
     'project.conversation_attached': ProjectConversationAttachedEvent
     'project.conversation_detached': ProjectConversationDetachedEvent
   }
