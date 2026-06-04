@@ -76,6 +76,18 @@ declare module '@/core/module' {
 declare module '@/core/module-system/types' {
   interface Slots {
     routerEffects: Array<{ id: string; component: ComponentType }>
+    /**
+     * Route guards wrapping every `requiresAuth` route. The router owns this
+     * type and composes the registered guards; features (auth) fill it via
+     * their module.tsx `slots`. The FIRST-registered guard is the OUTERMOST
+     * wrapper (its redirect short-circuits before inner guards mount). An
+     * empty slot is sealed fail-closed by RouterComponent — protected routes
+     * are never rendered ungated.
+     */
+    routeGuards: Array<{
+      id: string
+      component: ComponentType<{ children: ReactNode }>
+    }>
   }
 }
 
