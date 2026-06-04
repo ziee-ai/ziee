@@ -21,6 +21,7 @@ import {
   emitLlmProviderGroupsChanged,
 } from '@/modules/llm-provider/events'
 import { Stores } from '@/core/stores'
+import { sortProviders } from '@/modules/llm-provider/sortProviders'
 
 // Extended type that includes models array
 // TODO: Backend should include llm_models in LlmProvider response
@@ -136,7 +137,7 @@ export const useLlmProviderStore = create<LlmProviderState>()(
             per_page: 50,
           })
 
-          const providers = response.providers
+          const providers = sortProviders(response.providers)
 
           // Set providers immediately without models
           set({
@@ -724,7 +725,10 @@ export const useLlmProviderStore = create<LlmProviderState>()(
                 llm_models: [],
               }
               set(state => ({
-                providers: [...state.providers, providerWithModels],
+                providers: sortProviders([
+                  ...state.providers,
+                  providerWithModels,
+                ]),
               }))
             },
             GROUP,
@@ -745,8 +749,10 @@ export const useLlmProviderStore = create<LlmProviderState>()(
                   llm_models: existingProvider?.llm_models || [],
                 }
                 return {
-                  providers: state.providers.map(p =>
-                    p.id === provider.id ? updatedProvider : p,
+                  providers: sortProviders(
+                    state.providers.map(p =>
+                      p.id === provider.id ? updatedProvider : p,
+                    ),
                   ),
                 }
               })
