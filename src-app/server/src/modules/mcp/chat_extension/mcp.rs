@@ -66,6 +66,40 @@ fn build_artifact_download_url(
     format!("{origin}{api_prefix}/files/{artifact_id}/download-with-token?token={token}")
 }
 
+/// The iteration-1 system-message addition for tool usage.
+///
+/// Always includes the "prefer tools over training knowledge" nudge.
+/// Additionally includes the file-URL rule WHEN `get_resource_link` is among
+/// the available tools: this promotes the rule from the tool description
+/// (weak, reactive) to a system instruction (strong, proactive, issued before
+/// the first tool call), because the model otherwise tends to fabricate a
+/// plausible file/download URL (e.g. a platform or DRS endpoint) instead of
+/// calling the tool. Gated on the tool actually being present so we never
+/// instruct the model to call a tool it doesn't have — tool names are
+/// `{server_id}__{tool}` (see `helpers::convert_mcp_tool_to_ai_tool`).
+///
+/// Pure (no `self`, no I/O) so it is directly unit-testable.
+fn tool_system_guidance(tools: &[ai_providers::Tool]) -> String {
+    let mut guidance = String::from(
+        "\n\nYou have access to tools that can retrieve up-to-date or domain-specific \
+         information. When answering questions, prefer using these tools over relying solely \
+         on your training knowledge, especially when the tools are clearly relevant to the request.",
+    );
+    if tools
+        .iter()
+        .any(|t| t.function.name.ends_with("__get_resource_link"))
+    {
+        guidance.push_str(
+            "\n\nTo give any tool a URL or path for a file the user attached or that you \
+             produced, you MUST first call get_resource_link to obtain its download URL, then \
+             pass that URL verbatim. Never invent, guess, or construct a file/download URL \
+             (e.g. a platform or DRS endpoint) — these files are reachable ONLY via the URL \
+             get_resource_link returns.",
+        );
+    }
+    guidance
+}
+
 /// Accumulated tool use data during streaming
 #[derive(Debug, Clone, Default)]
 struct AccumulatedToolUse {
@@ -1407,7 +1441,7 @@ impl ChatExtension for McpChatExtension {
             // This is a soft hint — the model can still answer directly if no tool is relevant.
             // Only injected on iteration 1 to avoid redundancy in follow-up tool-calling loops.
             if context.iteration == 1 {
-                let system_addition = String::from("\n\nYou have access to tools that can retrieve up-to-date or domain-specific information. When answering questions, prefer using these tools over relying solely on your training knowledge, especially when the tools are clearly relevant to the request.");
+                let system_addition = tool_system_guidance(&request.tools);
 
                 if let Some(sys_msg) = request.messages.iter_mut().find(|m| m.role == ai_providers::Role::System) {
                     if let Some(ai_providers::ContentBlock::Text { text }) = sys_msg.content.first_mut() {
@@ -2647,9 +2681,39 @@ impl ChatExtension for McpChatExtension {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_artifact_download_url, file_download_origin};
+    use super::{build_artifact_download_url, file_download_origin, tool_system_guidance};
     use crate::core::config::CodeSandboxConfig;
     use uuid::Uuid;
+
+    fn tool(name: &str) -> ai_providers::Tool {
+        ai_providers::Tool::function(name.to_string(), String::new(), serde_json::json!({}))
+    }
+
+    #[test]
+    fn guidance_always_includes_tool_preference_nudge() {
+        let g = tool_system_guidance(&[]);
+        assert!(g.contains("prefer using these tools"), "{g}");
+    }
+
+    #[test]
+    fn guidance_adds_file_url_rule_only_when_get_resource_link_present() {
+        // Absent → no file-URL rule.
+        let without = tool_system_guidance(&[tool("abc__some_other_tool")]);
+        assert!(!without.contains("get_resource_link"), "{without}");
+
+        // Present (real name shape is "{server_id}__get_resource_link") → rule added.
+        let with = tool_system_guidance(&[
+            tool("abc__some_other_tool"),
+            tool("11111111-2222-3333-4444-555555555555__get_resource_link"),
+        ]);
+        assert!(with.contains("you MUST first call get_resource_link"), "{with}");
+        assert!(with.contains("Never invent, guess, or construct a file/download URL"), "{with}");
+
+        // A different tool merely containing the substring must NOT trigger it
+        // (suffix match guards against e.g. "get_resource_link_v2").
+        let lookalike = tool_system_guidance(&[tool("abc__get_resource_link_v2")]);
+        assert!(!lookalike.contains("you MUST first call get_resource_link"), "{lookalike}");
+    }
 
     fn cs(public_base_url: Option<&str>) -> CodeSandboxConfig {
         CodeSandboxConfig {
