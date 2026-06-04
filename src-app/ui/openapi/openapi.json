@@ -2377,6 +2377,216 @@
         ]
       }
     },
+    "/api/user-llm-providers": {
+      "get": {
+        "tags": [
+          "LlmProvider"
+        ],
+        "summary": "Get user's accessible LLM providers",
+        "description": "Returns all enabled LLM providers assigned to the user's groups, with enabled models and API key configuration status.",
+        "operationId": "LlmProvider.getUserLlmProviders",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View available LLM providers and models",
+                        "name": "UserLlmProvidersRead",
+                        "value": "user_llm_providers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: user_llm_providers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response for user-accessible LLM providers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetUserProvidersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/user-llm-providers/api-keys": {
+      "get": {
+        "tags": [
+          "LlmProvider"
+        ],
+        "summary": "List user's provider API keys (masked)",
+        "description": "\n\n**Required Permission:** `profile::read`\n\nView own profile information",
+        "operationId": "LlmProvider.listUserApiKeys",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View own profile information",
+                        "name": "ProfileRead",
+                        "value": "profile::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: profile::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response listing user API keys",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserApiKeyListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "LlmProvider"
+        ],
+        "summary": "Save or update user API key for a provider",
+        "description": "\n\n**Required Permission:** `profile::edit`\n\nEdit own profile information",
+        "operationId": "LlmProvider.saveUserApiKey",
+        "requestBody": {
+          "description": "Request to save a user API key",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveUserApiKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit own profile information",
+                        "name": "ProfileEdit",
+                        "value": "profile::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: profile::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "no content"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/user-llm-providers/api-keys/{provider_id}": {
+      "delete": {
+        "tags": [
+          "LlmProvider"
+        ],
+        "summary": "Delete user API key for a provider",
+        "description": "\n\n**Required Permission:** `profile::edit`\n\nEdit own profile information",
+        "operationId": "LlmProvider.deleteUserApiKey",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit own profile information",
+                        "name": "ProfileEdit",
+                        "value": "profile::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: profile::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "no content"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/llm-providers/{provider_id}/groups": {
       "get": {
         "tags": [
@@ -2638,216 +2848,6 @@
                 }
               }
             }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/user-llm-providers": {
-      "get": {
-        "tags": [
-          "LlmProvider"
-        ],
-        "summary": "Get user's accessible LLM providers",
-        "description": "Returns all enabled LLM providers assigned to the user's groups, with enabled models and API key configuration status.",
-        "operationId": "LlmProvider.getUserLlmProviders",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "View available LLM providers and models",
-                        "name": "UserLlmProvidersRead",
-                        "value": "user_llm_providers::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: user_llm_providers::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Response for user-accessible LLM providers",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GetUserProvidersResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/user-llm-providers/api-keys": {
-      "get": {
-        "tags": [
-          "LlmProvider"
-        ],
-        "summary": "List user's provider API keys (masked)",
-        "description": "\n\n**Required Permission:** `profile::read`\n\nView own profile information",
-        "operationId": "LlmProvider.listUserApiKeys",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "View own profile information",
-                        "name": "ProfileRead",
-                        "value": "profile::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: profile::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Response listing user API keys",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UserApiKeyListResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "post": {
-        "tags": [
-          "LlmProvider"
-        ],
-        "summary": "Save or update user API key for a provider",
-        "description": "\n\n**Required Permission:** `profile::edit`\n\nEdit own profile information",
-        "operationId": "LlmProvider.saveUserApiKey",
-        "requestBody": {
-          "description": "Request to save a user API key",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SaveUserApiKeyRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Edit own profile information",
-                        "name": "ProfileEdit",
-                        "value": "profile::edit"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: profile::edit",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "204": {
-            "description": "no content"
-          },
-          "400": {
-            "description": "Validation error"
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/user-llm-providers/api-keys/{provider_id}": {
-      "delete": {
-        "tags": [
-          "LlmProvider"
-        ],
-        "summary": "Delete user API key for a provider",
-        "description": "\n\n**Required Permission:** `profile::edit`\n\nEdit own profile information",
-        "operationId": "LlmProvider.deleteUserApiKey",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Edit own profile information",
-                        "name": "ProfileEdit",
-                        "value": "profile::edit"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: profile::edit",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "204": {
-            "description": "no content"
           },
           "401": {
             "description": "Unauthorized"
@@ -6878,7 +6878,7 @@
         "description": "Create a personal chat project. The project is owned by the authenticated user.\n\nError codes (in the `error_code` response field):\n- `VALIDATION_ERROR` (400) — name empty, instructions/description over caps, malformed MCP shapes.\n- `DEFAULT_ASSISTANT_INACCESSIBLE` (422) — default_assistant_id isn't owned by user or a public template.\n- `DEFAULT_MODEL_NOT_FOUND` (422) — default_model_id refers to a non-existent model.",
         "operationId": "Project.create",
         "requestBody": {
-          "description": "Request to create a project.\n\n `mcp_*` fields previously lived here but moved out with the project↔mcp\n inversion (migration 77). Clients set MCP defaults via the separate\n `PUT /api/projects/{id}/mcp-settings` endpoint after create.",
+          "description": "Request to create a project.",
           "content": {
             "application/json": {
               "schema": {
@@ -6913,7 +6913,7 @@
             }
           },
           "201": {
-            "description": "Project entity. One row per personal project.\n\n MCP defaults previously lived inline (mcp_*); they moved to the\n unified `mcp_settings` table (migration 77) owned by the mcp module.\n Clients fetch them via `GET /api/projects/{id}/mcp-settings` (still\n mounted at the same URL — the route now lives in mcp's\n project_extension).",
+            "description": "Project entity. One row per personal project.\n\n MCP defaults previously lived inline (mcp_*); they moved to the\n unified `mcp_settings` table (migration 78) owned by the mcp module.\n Clients fetch them via `GET /api/projects/{id}/mcp-settings` (still\n mounted at the same URL — the route now lives in mcp's\n project_extension).",
             "content": {
               "application/json": {
                 "schema": {
@@ -6969,7 +6969,7 @@
             }
           },
           "200": {
-            "description": "Project entity. One row per personal project.\n\n MCP defaults previously lived inline (mcp_*); they moved to the\n unified `mcp_settings` table (migration 77) owned by the mcp module.\n Clients fetch them via `GET /api/projects/{id}/mcp-settings` (still\n mounted at the same URL — the route now lives in mcp's\n project_extension).",
+            "description": "Project entity. One row per personal project.\n\n MCP defaults previously lived inline (mcp_*); they moved to the\n unified `mcp_settings` table (migration 78) owned by the mcp module.\n Clients fetch them via `GET /api/projects/{id}/mcp-settings` (still\n mounted at the same URL — the route now lives in mcp's\n project_extension).",
             "content": {
               "application/json": {
                 "schema": {
@@ -7031,7 +7031,7 @@
             }
           },
           "200": {
-            "description": "Project entity. One row per personal project.\n\n MCP defaults previously lived inline (mcp_*); they moved to the\n unified `mcp_settings` table (migration 77) owned by the mcp module.\n Clients fetch them via `GET /api/projects/{id}/mcp-settings` (still\n mounted at the same URL — the route now lives in mcp's\n project_extension).",
+            "description": "Project entity. One row per personal project.\n\n MCP defaults previously lived inline (mcp_*); they moved to the\n unified `mcp_settings` table (migration 78) owned by the mcp module.\n Clients fetch them via `GET /api/projects/{id}/mcp-settings` (still\n mounted at the same URL — the route now lives in mcp's\n project_extension).",
             "content": {
               "application/json": {
                 "schema": {
@@ -7136,7 +7136,7 @@
             }
           },
           "201": {
-            "description": "Project entity. One row per personal project.\n\n MCP defaults previously lived inline (mcp_*); they moved to the\n unified `mcp_settings` table (migration 77) owned by the mcp module.\n Clients fetch them via `GET /api/projects/{id}/mcp-settings` (still\n mounted at the same URL — the route now lives in mcp's\n project_extension).",
+            "description": "Project entity. One row per personal project.\n\n MCP defaults previously lived inline (mcp_*); they moved to the\n unified `mcp_settings` table (migration 78) owned by the mcp module.\n Clients fetch them via `GET /api/projects/{id}/mcp-settings` (still\n mounted at the same URL — the route now lives in mcp's\n project_extension).",
             "content": {
               "application/json": {
                 "schema": {
@@ -7321,7 +7321,7 @@
             "description": "Missing required permissions"
           },
           "200": {
-            "description": "Project entity. One row per personal project.\n\n MCP defaults previously lived inline (mcp_*); they moved to the\n unified `mcp_settings` table (migration 77) owned by the mcp module.\n Clients fetch them via `GET /api/projects/{id}/mcp-settings` (still\n mounted at the same URL — the route now lives in mcp's\n project_extension).",
+            "description": "Project entity. One row per personal project.\n\n MCP defaults previously lived inline (mcp_*); they moved to the\n unified `mcp_settings` table (migration 78) owned by the mcp module.\n Clients fetch them via `GET /api/projects/{id}/mcp-settings` (still\n mounted at the same URL — the route now lives in mcp's\n project_extension).",
             "content": {
               "application/json": {
                 "schema": {
@@ -15071,7 +15071,7 @@
         ]
       },
       "CreateProjectRequest": {
-        "description": "Request to create a project.\n\n `mcp_*` fields previously lived here but moved out with the project↔mcp\n inversion (migration 77). Clients set MCP defaults via the separate\n `PUT /api/projects/{id}/mcp-settings` endpoint after create.",
+        "description": "Request to create a project.",
         "type": "object",
         "properties": {
           "description": {
@@ -20352,7 +20352,7 @@
         }
       },
       "Project": {
-        "description": "Project entity. One row per personal project.\n\n MCP defaults previously lived inline (mcp_*); they moved to the\n unified `mcp_settings` table (migration 77) owned by the mcp module.\n Clients fetch them via `GET /api/projects/{id}/mcp-settings` (still\n mounted at the same URL — the route now lives in mcp's\n project_extension).",
+        "description": "Project entity. One row per personal project.\n\n MCP defaults previously lived inline (mcp_*); they moved to the\n unified `mcp_settings` table (migration 78) owned by the mcp module.\n Clients fetch them via `GET /api/projects/{id}/mcp-settings` (still\n mounted at the same URL — the route now lives in mcp's\n project_extension).",
         "type": "object",
         "properties": {
           "description": {

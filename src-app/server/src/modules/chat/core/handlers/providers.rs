@@ -25,7 +25,7 @@ pub async fn get_user_llm_providers(
 ) -> ApiResult<Json<GetUserProvidersResponse>> {
     // Get providers accessible to the user based on group assignments
     let providers = Repos
-        .llm_provider
+        .user_group_llm_provider
         .get_for_user(auth.user.id)
         .await
         .map_err(AppError::from)?;

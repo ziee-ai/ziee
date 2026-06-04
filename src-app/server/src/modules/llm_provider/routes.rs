@@ -2,12 +2,13 @@
 
 use aide::axum::{
     ApiRouter,
-    routing::{delete_with, get_with, post_with, put_with},
+    routing::{delete_with, get_with, post_with},
 };
 
 use super::handlers::admin::*;
 use super::handlers::discover::{discover_models, discover_models_docs};
 use super::handlers::user::*;
+use super::user_extension::routes::provider_group_routes;
 
 /// LLM Provider management routes
 pub fn llm_provider_router() -> ApiRouter {
@@ -43,28 +44,6 @@ pub fn llm_provider_router() -> ApiRouter {
             "/llm-providers/{provider_id}/discover-models",
             get_with(discover_models, discover_models_docs),
         )
-        // Group assignments (provider-centric - legacy/admin)
-        .api_route(
-            "/llm-providers/{provider_id}/groups",
-            get_with(get_provider_groups, get_provider_groups_docs),
-        )
-        .api_route(
-            "/llm-providers/{provider_id}/groups",
-            post_with(assign_provider_to_group, assign_provider_to_group_docs),
-        )
-        .api_route(
-            "/llm-providers/{provider_id}/groups/{group_id}",
-            delete_with(remove_provider_from_group, remove_provider_from_group_docs),
-        )
-        // Group assignments (group-centric - for UI widgets)
-        .api_route(
-            "/groups/{group_id}/providers",
-            get_with(get_group_providers, get_group_providers_docs),
-        )
-        .api_route(
-            "/groups/{group_id}/providers",
-            put_with(update_group_providers, update_group_providers_docs),
-        )
         // User-facing provider routes
         .api_route(
             "/user-llm-providers",
@@ -82,4 +61,8 @@ pub fn llm_provider_router() -> ApiRouter {
             "/user-llm-providers/api-keys/{provider_id}",
             delete_with(delete_user_api_key, delete_user_api_key_docs),
         )
+        // Provider↔group join surface (5 routes) lives in
+        // user_extension/. Same URLs, same OpenAPI .id() strings —
+        // the autogen frontend client method names are preserved.
+        .merge(provider_group_routes())
 }

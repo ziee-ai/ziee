@@ -56,7 +56,7 @@ pub async fn send_message(
     }
 
     // Verify user has access to this model's provider through their group assignments
-    let has_access = Repos.llm_provider
+    let has_access = Repos.user_group_llm_provider
         .user_has_access_to_provider(auth.user.id, model.provider_id)
         .await
         .map_err(AppError::from)?;

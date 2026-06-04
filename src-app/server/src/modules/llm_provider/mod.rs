@@ -12,12 +12,14 @@ pub mod permissions;
 pub mod repositories;
 pub mod routes;
 pub mod types;
+pub mod user_extension;
 pub mod utils;
 
 // Re-export main types and router
 pub use repositories::admin::LlmProviderRepository;
 pub use repositories::user::UserKeyRepository;
 pub use routes::llm_provider_router;
+pub use user_extension::UserGroupLlmProviderRepository;
 
 use aide::axum::ApiRouter;
 use linkme::distributed_slice;
