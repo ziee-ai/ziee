@@ -13,11 +13,11 @@ import {
   Empty,
   Flex,
   Popconfirm,
-  Spin,
   Tag,
   Tooltip,
   Typography,
 } from 'antd'
+import { Loading } from '@/core/components/Loading'
 import { useEffect } from 'react'
 import { Stores } from '@/modules/assistant/stores'
 import { Can, usePermission } from '@/core/permissions'
@@ -122,9 +122,7 @@ export function UserAssistantsSettings() {
           }
         >
           {loading ? (
-            <div className="flex justify-center py-8">
-              <Spin size="large" />
-            </div>
+            <Loading />
           ) : assistants.length === 0 ? (
             <div>
               <Empty description="No assistants yet" />
