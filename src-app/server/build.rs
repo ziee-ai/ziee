@@ -5,6 +5,8 @@ use std::path::PathBuf;
 mod pandoc;
 #[path = "build_helper/typst.rs"]
 mod typst;
+#[path = "build_helper/hub_seed.rs"]
+mod hub_seed;
 #[path = "build_helper/pdfium.rs"]
 mod pdfium;
 #[path = "build_helper/uv.rs"]
@@ -175,6 +177,18 @@ fn setup_external_binaries() {
     // no system TeX install required.
     if let Err(e) = typst::setup_typst(&target, &binaries_dir, &out_dir) {
         eprintln!("Warning: Failed to setup typst: {}", e);
+    }
+
+    // Setup hub seed - downloads the latest ziee-ai/hub release into
+    // binaries/hub-seed/ (target-agnostic). UNLIKE other helpers
+    // (which warn-and-continue on failure), this PANICS — the
+    // embedded seed is the source of truth at runtime for air-gapped
+    // / first-boot users, and shipping with an empty or stale seed
+    // would silently degrade the hub UI. Offline / rate-limited
+    // builds need to either fix network or pin `HUB_RELEASE_TAG=...`
+    // + manually stage `binaries/hub-seed/`.
+    if let Err(e) = hub_seed::setup_hub_seed(&binaries_dir, &out_dir) {
+        panic!("Failed to fetch hub seed from GitHub: {}", e);
     }
 
     // Setup PDFium - downloads to binaries/{target}/

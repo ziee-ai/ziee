@@ -119,15 +119,26 @@ pub fn server_version() -> &'static str {
 }
 
 // =====================================================================
-// Embedded seed (from v0.0.1-alpha, sourced at build time)
+// Embedded seed (build-time fetched from ziee-ai/hub releases)
 // =====================================================================
+//
+// `build_helper/hub_seed.rs` runs at compile time, downloads the
+// latest non-prerelease tag from github.com/ziee-ai/hub (or honors
+// `HUB_RELEASE_TAG` for pinned builds), sha256 + cosign verifies,
+// and stages the catalog into `binaries/hub-seed/`. The macro below
+// then bakes that staged directory into the binary. The build fails
+// loudly if the fetch fails — offline / air-gapped operators must
+// pin a tag + manually stage the dir before building.
 
-static HUB_SEED: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/resources/hub-seed");
+static HUB_SEED: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/binaries/hub-seed");
 
-/// Seed catalog version — kept in sync with the directory under
-/// `resources/hub-seed/` at build time. Bumped whenever a new seed is
-/// staged for a release.
-pub const SEED_HUB_VERSION: &str = "0.0.1-alpha";
+/// Seed catalog version. Written by `build_helper/hub_seed.rs` from
+/// the resolved tag (with the leading `v` stripped) to keep this
+/// const in lockstep with whatever `binaries/hub-seed/` actually
+/// contains. The pre-build-fetch-era code hardcoded this string and
+/// drifted whenever someone forgot to bump it.
+pub const SEED_HUB_VERSION: &str =
+    include_str!(concat!(env!("OUT_DIR"), "/hub_seed_version.txt"));
 
 /// Marker file dropped into `current/` when the active catalog is the
 /// embedded seed (never fetched + verified from GitHub). A successful

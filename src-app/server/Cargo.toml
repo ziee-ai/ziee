@@ -219,6 +219,15 @@ zstd.workspace = true
 # Linux/macOS releases as .tar.xz (Windows is .zip). lzma-rs is pure
 # Rust so the build doesn't gain a system xz-utils dependency.
 lzma-rs = "0.3"
+# Build-time fetch + verification of the ziee-ai/hub catalog
+# (see build_helper/hub_seed.rs). Same `sigstore` feature set as
+# the runtime crate so the build-time cosign chain matches the
+# runtime refresh chain bit-for-bit. `sha2`/`serde`/`serde_json`
+# are needed for the sha256 sidecar check + GhRelease JSON parsing.
+sigstore = { version = "0.14", default-features = false, features = ["bundle", "sigstore-trust-root", "rustls-tls"] }
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [dev-dependencies]
 mockall.workspace = true
