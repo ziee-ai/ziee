@@ -4,36 +4,44 @@ import { createProviderViaAPI, createModelViaAPI } from '../../common/provider-h
 import { goToNewChatPage } from '../09-chat/helpers/chat-helpers'
 
 /**
- * E2E for ProviderApiKeyModal: selecting a model whose provider has no API key
- * configured prompts the user to enter their own key inline in the model
- * selector. A `local` provider is created without a key (api_key_configured =
- * false); a second keyed provider gives us a non-keyless model to start from,
- * so switching to the keyless model fires the change that opens the modal.
+ * E2E for the chat model selector's API-key gating.
+ *
+ * - A REMOTE provider with no key configured (here a keyless `custom` provider)
+ *   prompts the user to enter their own key inline when one of its models is
+ *   selected.
+ * - A LOCAL provider NEVER prompts: it authenticates via an internal,
+ *   server-minted proxy token, so selecting a local model selects it directly
+ *   with no modal. (This used to be tested with a `local` provider as the
+ *   "keyless" case — that was the bug; local must NOT be gated.)
  */
 
 test.describe('Provider API key modal (chat model selector)', () => {
-  test('selecting a keyless-provider model prompts for an API key', async ({ page, testInfra }) => {
+  // A provider is visible to a user only if enabled AND assigned to a group the
+  // user belongs to. The setup admin is in "Administrators"; assign there.
+  async function assignToAdminGroup(
+    apiURL: string,
+    auth: Record<string, string>,
+    providerId: string,
+  ) {
+    const groupsRes = await fetch(`${apiURL}/api/groups?page=1&per_page=100`, { headers: auth })
+    const { groups } = await groupsRes.json()
+    const adminGroupId = groups.find((g: any) => g.name === 'Administrators').id
+    const r = await fetch(`${apiURL}/api/llm-providers/${providerId}/groups`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ group_id: adminGroupId }),
+    })
+    if (!r.ok) throw new Error(`assign ${providerId} failed: ${r.status} ${await r.text()}`)
+  }
+
+  test('selecting a keyless remote-provider model prompts for an API key', async ({ page, testInfra }) => {
     const { baseURL, apiURL } = testInfra
     await loginAsAdmin(page, baseURL)
     const token = await getAdminToken(apiURL)
     const auth = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
 
-    // Resolve the Administrators group (the admin is a member).
-    const groupsRes = await fetch(`${apiURL}/api/groups?page=1&per_page=100`, { headers: auth })
-    const { groups } = await groupsRes.json()
-    const adminGroupId = groups.find((g: any) => g.name === 'Administrators').id
-
-    // Additive assign (per-provider endpoint; the group-centric one replaces).
-    const assign = async (providerId: string) => {
-      const r = await fetch(`${apiURL}/api/llm-providers/${providerId}/groups`, {
-        method: 'POST',
-        headers: auth,
-        body: JSON.stringify({ group_id: adminGroupId }),
-      })
-      if (!r.ok) throw new Error(`assign ${providerId} failed: ${r.status} ${await r.text()}`)
-    }
-
-    // Keyed provider + model (api_key_configured = true → no modal).
+    // Keyed provider + model (api_key_configured = true → no modal). Inlined
+    // with a literal key so it doesn't depend on OPENAI_API_KEY being set.
     const keyedRes = await fetch(`${apiURL}/api/llm-providers`, {
       method: 'POST',
       headers: auth,
@@ -42,31 +50,80 @@ test.describe('Provider API key modal (chat model selector)', () => {
     if (!keyedRes.ok) throw new Error(`keyed provider create failed: ${keyedRes.status}`)
     const keyedId = (await keyedRes.json()).id
     await createModelViaAPI(apiURL, token, keyedId, 'keyed-model', 'Keyed Model', 'openai')
-    await assign(keyedId)
+    await assignToAdminGroup(apiURL, auth, keyedId)
 
-    // Keyless local provider + model (no key → triggers the modal).
-    const keylessId = await createProviderViaAPI(apiURL, token, 'Keyless Provider', 'local')
-    await createModelViaAPI(apiURL, token, keylessId, 'keyless-model', 'Keyless Model', 'local')
-    await assign(keylessId)
+    // Keyless CUSTOM provider + model (no key → still triggers the modal, since
+    // a remote/custom endpoint legitimately needs a key). `custom` is accepted
+    // enabled-without-key by the backend; `createProviderViaAPI`'s type union
+    // doesn't include it, so create it inline.
+    const customRes = await fetch(`${apiURL}/api/llm-providers`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ name: 'Keyless Custom', provider_type: 'custom', enabled: true }),
+    })
+    if (!customRes.ok) throw new Error(`custom provider create failed: ${customRes.status} ${await customRes.text()}`)
+    const customId = (await customRes.json()).id
+    await createModelViaAPI(apiURL, token, customId, 'custom-model', 'Custom Model')
+    await assignToAdminGroup(apiURL, auth, customId)
 
     await goToNewChatPage(page, baseURL)
 
-    // "Keyed Provider" sorts before "Keyless Provider", so the keyed model is
-    // the default selection; switching to the keyless model fires onChange.
+    // "Keyed Provider" sorts before "Keyless Custom", so the keyed model is the
+    // default selection; switching to the custom model fires onChange.
     await expect(page.locator('[data-testid="model-selector"]')).toContainText('Keyed Model')
     await page.click('[data-testid="model-selector"] .ant-select')
-    const keylessOption = page.getByRole('option', { name: 'Keyless Model' })
-    await keylessOption.waitFor({ state: 'visible' })
-    await keylessOption.click()
+    const customOption = page.getByRole('option', { name: 'Custom Model' })
+    await customOption.waitFor({ state: 'visible' })
+    await customOption.click()
 
-    // The modal appears because the keyless provider has no key configured.
+    // The modal appears because the custom provider has no key configured.
     const modal = page.getByRole('dialog').filter({ hasText: 'API Key Required' })
     await expect(modal).toBeVisible({ timeout: 10000 })
-    await expect(modal.getByText(/API Key Required — Keyless Provider/)).toBeVisible()
+    await expect(modal.getByText(/API Key Required — Keyless Custom/)).toBeVisible()
 
     // Enter a key and save → modal closes.
     await modal.locator('input[type="password"]').fill('sk-my-key')
     await modal.getByRole('button', { name: 'Save & Select Model' }).click()
     await expect(modal).toBeHidden({ timeout: 10000 })
+  })
+
+  test('selecting a local-provider model does NOT prompt for an API key', async ({ page, testInfra }) => {
+    const { baseURL, apiURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    const token = await getAdminToken(apiURL)
+    const auth = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+
+    // Keyed provider + model — gives a non-local starting selection so switching
+    // to the local model fires onChange.
+    const keyedRes = await fetch(`${apiURL}/api/llm-providers`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ name: 'Keyed Provider', provider_type: 'openai', enabled: true, api_key: 'sk-keyed' }),
+    })
+    if (!keyedRes.ok) throw new Error(`keyed provider create failed: ${keyedRes.status}`)
+    const keyedId = (await keyedRes.json()).id
+    await createModelViaAPI(apiURL, token, keyedId, 'keyed-model', 'Keyed Model', 'openai')
+    await assignToAdminGroup(apiURL, auth, keyedId)
+
+    // Local provider + model. Local providers never need a user API key.
+    const localId = await createProviderViaAPI(apiURL, token, 'Local Provider', 'local')
+    await createModelViaAPI(apiURL, token, localId, 'local-model', 'Local Model', 'local')
+    await assignToAdminGroup(apiURL, auth, localId)
+
+    await goToNewChatPage(page, baseURL)
+
+    // "Keyed Provider" sorts before "Local Provider" → keyed model is default.
+    await expect(page.locator('[data-testid="model-selector"]')).toContainText('Keyed Model')
+    await page.click('[data-testid="model-selector"] .ant-select')
+    const localOption = page.getByRole('option', { name: 'Local Model' })
+    await localOption.waitFor({ state: 'visible' })
+    await localOption.click()
+
+    // Prove the selection settled first (this retries until it passes), so any
+    // erroneously-mounted modal has had time to appear...
+    await expect(page.locator('[data-testid="model-selector"]')).toContainText('Local Model')
+    // ...THEN assert the modal never appeared — local providers select directly.
+    const modal = page.getByRole('dialog').filter({ hasText: 'API Key Required' })
+    await expect(modal).toHaveCount(0)
   })
 })

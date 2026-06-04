@@ -116,6 +116,23 @@ pub async fn save_user_api_key(
         );
     }
 
+    // Local providers authenticate via an internal, server-minted proxy token —
+    // not a user-supplied API key. A stored user key would be sent to the local
+    // proxy as the bearer and rejected (it isn't the minted token), breaking
+    // local inference. The UI never offers this for local providers; this guard
+    // closes the corresponding server-side hole.
+    let provider = Repos
+        .llm_provider
+        .get_by_id(request.provider_id)
+        .await
+        .map_err(AppError::from)?
+        .ok_or_else(|| AppError::not_found("Provider"))?;
+    if provider.provider_type == "local" {
+        return Err(
+            AppError::bad_request("PROVIDER_IS_LOCAL", "Local providers do not use API keys").into(),
+        );
+    }
+
     Repos
         .user_key
         .upsert(auth.user.id, request.provider_id, &key)

@@ -105,4 +105,60 @@ test.describe('Onboarding wizard', () => {
     // Sanity: not still on the welcome step.
     await expect(page.getByRole('heading', { name: /Welcome/ })).toBeHidden()
   })
+
+  test('the AI Providers step omits local providers from the key list', async ({ page, testInfra }) => {
+    const { baseURL, apiURL } = testInfra
+    const adminToken = await getAdminToken(apiURL)
+    const auth = { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` }
+
+    // New users auto-join the default group; assign the seeded providers there
+    // so the fresh user sees them in the AI Providers key step.
+    const groupsRes = await fetch(`${apiURL}/api/groups?page=1&per_page=100`, { headers: auth })
+    const { groups } = await groupsRes.json()
+    const defaultGroup =
+      groups.find((g: any) => g.is_default) ?? groups.find((g: any) => g.name === 'Users')
+
+    const suffix = Date.now().toString(36)
+    const remoteName = `Remote Onb ${suffix}`
+    const localName = `Local Onb ${suffix}`
+
+    const seed = async (name: string, body: object) => {
+      const r = await fetch(`${apiURL}/api/llm-providers`, {
+        method: 'POST',
+        headers: auth,
+        body: JSON.stringify(body),
+      })
+      if (!r.ok) throw new Error(`create ${name} failed: ${r.status} ${await r.text()}`)
+      const p = await r.json()
+      const a = await fetch(`${apiURL}/api/llm-providers/${p.id}/groups`, {
+        method: 'POST',
+        headers: auth,
+        body: JSON.stringify({ group_id: defaultGroup.id }),
+      })
+      if (!a.ok) throw new Error(`assign ${name} failed: ${a.status} ${await a.text()}`)
+    }
+
+    await seed(remoteName, {
+      name: remoteName,
+      provider_type: 'openai',
+      enabled: true,
+      api_key: 'sk-onb',
+    })
+    await seed(localName, { name: localName, provider_type: 'local', enabled: true })
+
+    // Fresh user → onboarding.
+    const { username } = await freshUser(apiURL, 'apikeys')
+    await loginExpectingOnboarding(page, baseURL, username, 'password123')
+
+    // Welcome → AI Providers.
+    await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
+    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(page.getByRole('heading', { name: 'AI Providers' })).toBeVisible()
+
+    // The remote provider is listed in the key step (its name renders in both
+    // the menu and the detail header → use .first(); this also guarantees the
+    // list has loaded); the local one is filtered out entirely.
+    await expect(page.getByText(remoteName).first()).toBeVisible({ timeout: 15000 })
+    await expect(page.getByText(localName, { exact: true })).toHaveCount(0)
+  })
 })

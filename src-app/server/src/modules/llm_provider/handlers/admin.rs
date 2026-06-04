@@ -269,6 +269,31 @@ pub async fn update_provider(
     // Validate request
     utils::validate_update_request(&request)?;
 
+    // Local providers authenticate via a server-minted proxy token, not a
+    // user/admin-typed api_key. Accepting an api_key here would overwrite the
+    // minted token in the DB WITHOUT syncing the in-memory proxy token cache,
+    // breaking local inference. Token changes go through the rotate-proxy-token
+    // endpoint. Only pay for the extra lookup when an api_key is actually set.
+    if request.api_key.is_some() {
+        let existing = Repos
+            .llm_provider
+            .get_by_id(provider_id)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to get provider {}: {}", provider_id, e);
+                AppError::internal_error("Database operation failed")
+            })?
+            .ok_or_else(|| AppError::not_found("Provider"))?;
+        if existing.provider_type == "local" {
+            return Err(AppError::bad_request(
+                "PROVIDER_IS_LOCAL",
+                "Local providers use a server-minted proxy token; rotate it via the \
+                 rotate-proxy-token endpoint instead of setting an api_key",
+            )
+            .into());
+        }
+    }
+
     // Update provider
     let provider = Repos.llm_provider
         .update(provider_id, request)

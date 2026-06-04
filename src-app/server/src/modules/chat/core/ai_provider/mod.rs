@@ -73,14 +73,22 @@ pub async fn create_provider_from_model_id(
         _ => "openai", // openai, groq, mistral, deepseek, custom, huggingface all use OpenAI-compatible API
     };
 
-    // Resolve API key: user's personal key → admin-configured system key → empty.
-    let api_key = resolve_api_key_for_user(
-        &Repos.user_key,
-        user_id,
-        provider_info.id,
-        provider_info.api_key.clone(),
-    )
-    .await?;
+    // Resolve API key. Local providers authenticate via the server-minted proxy
+    // token stored as the system key — never a user-supplied key (the proxy
+    // would reject it). Use the system key directly and ignore any (possibly
+    // stale, pre-guard) user key. Every other provider type uses the
+    // user-key → system-key → empty chain.
+    let api_key = if provider_info.provider_type == "local" {
+        provider_info.api_key.clone().unwrap_or_default()
+    } else {
+        resolve_api_key_for_user(
+            &Repos.user_key,
+            user_id,
+            provider_info.id,
+            provider_info.api_key.clone(),
+        )
+        .await?
+    };
 
     let base_url = provider_info
         .base_url

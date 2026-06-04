@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { Select } from 'antd'
 import { WarningOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
+import type { ProviderWithModels } from '@/api-client/types'
 import { ProviderApiKeyModal } from './ProviderApiKeyModal'
 import { useMainContentMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 
@@ -12,9 +13,25 @@ import { useMainContentMinSize } from '@/modules/layouts/app-layout/hooks/useWin
  * Features:
  * - Computes available models from providers on-demand
  * - Manages selected model via ModelStore.setModelId()
- * - Shows warning icon for providers without an API key configured
- * - Prompts user to enter an API key when selecting a model with no key
+ * - Shows a warning icon for non-local providers without an API key configured
+ * - Prompts for an API key when selecting a model from a non-local provider
+ *   with no key (local providers authenticate via a proxy token — never prompt)
  */
+
+/**
+ * Whether a provider still needs an API key before its models can be used.
+ *
+ * Local providers authenticate via an internal, server-minted proxy token —
+ * never a user-supplied API key — so they must never show the warning or
+ * trigger the key prompt. Every other provider needs a key unless one is
+ * already configured (system- or user-level).
+ */
+function providerNeedsApiKey(
+  provider: Pick<ProviderWithModels, 'provider_type' | 'api_key_configured'>,
+): boolean {
+  return provider.provider_type !== 'local' && !provider.api_key_configured
+}
+
 export function ModelSelector() {
   const { selectedModelId, providers } = Stores.ModelPicker
   const { sending } = Stores.Chat
@@ -36,13 +53,13 @@ export function ModelSelector() {
         const enabledModels = provider.llm_models.filter(model => model.enabled)
 
         if (enabledModels.length > 0) {
-          const label = provider.api_key_configured ? (
-            provider.name
-          ) : (
+          const label = providerNeedsApiKey(provider) ? (
             <span className="flex items-center gap-1">
               <WarningOutlined className="text-yellow-500" />
               {provider.name}
             </span>
+          ) : (
+            provider.name
           )
 
           modelGroups.push({
@@ -61,9 +78,10 @@ export function ModelSelector() {
   }, [providers])
 
   const handleChange = (value: string) => {
-    // Check if selected model belongs to a provider without an API key
+    // Check if selected model belongs to a provider that still needs an API
+    // key (local providers never do — they use an internal proxy token).
     for (const provider of providers) {
-      if (!provider.api_key_configured && provider.llm_models) {
+      if (providerNeedsApiKey(provider) && provider.llm_models) {
         const model = provider.llm_models.find(m => m.id === value)
         if (model) {
           setPendingProviderForKey({
