@@ -1,8 +1,12 @@
-import { Button, Card, Skeleton, Tag, Typography } from 'antd'
-import { ToolOutlined } from '@ant-design/icons'
+import { Button, Card, Empty, Skeleton, Space, Tag, Typography } from 'antd'
+import { EditOutlined, ToolOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
-import { Permissions } from '@/api-client/types'
+import {
+  Permissions,
+  type AutoApprovedServer,
+  type DisabledServer,
+} from '@/api-client/types'
 import { McpConfigModal } from '@/modules/mcp/components/McpConfigModal'
 
 const { Text } = Typography
@@ -12,21 +16,25 @@ const { Text } = Typography
  * `Stores.ProjectMcpSettings` store (separate fetch — the `Project`
  * payload no longer carries the MCP fields after the unification).
  *
- * The Configure button opens the SAME `McpConfigModal` used in chat,
- * seeded with the project's current settings. The modal's dispatch rule
- * (currentProjectId set, currentConversationId null) routes the save to
- * `PUT /api/projects/{id}/mcp-settings`. Settings get snapshotted onto
- * every NEW conversation created in this project — changes here do NOT
- * propagate to existing conversations.
+ * The Edit button (in the Card header) opens the SAME `McpConfigModal`
+ * used in chat, seeded with the project's current settings. The modal's
+ * dispatch rule (currentProjectId set, currentConversationId null)
+ * routes the save to `PUT /api/projects/{id}/mcp-settings`. Settings
+ * get snapshotted onto every NEW conversation created in this project
+ * — changes here do NOT propagate to existing conversations.
  *
- * Permission gating: the configure button is hidden when the user lacks
- * `ProjectsEdit`; the summary view stays visible to readers. Admins see
- * both.
+ * Permission gating: the Edit affordance is hidden when the user lacks
+ * `ProjectsEdit`; the summary view stays visible to readers. Admins
+ * see both.
  */
 export function ProjectMcpSettingsPanel() {
   const project = Stores.ProjectDetail.project
   const settings = Stores.ProjectMcpSettings.settings
   const loading = Stores.ProjectMcpSettings.loading
+  // Resolve server_id → display_name for the per-server lists below.
+  // Falls back to the raw id when a server has been deleted but its
+  // rule still references it.
+  const { servers } = Stores.McpServer
   const canEdit = usePermission(Permissions.ProjectsEdit)
 
   if (!project) return null
@@ -43,8 +51,57 @@ export function ProjectMcpSettingsPanel() {
         ? 'Disabled'
         : 'Manual approve'
 
-  const autoApprovedCount = settings?.auto_approved_tools.length ?? 0
-  const disabledCount = settings?.disabled_servers.length ?? 0
+  const serverName = (id: string) =>
+    servers.find(s => s.id === id)?.display_name ?? id
+
+  const renderServerRule = (
+    rule: AutoApprovedServer | DisabledServer,
+    color: 'blue' | 'orange',
+  ) => {
+    // Convention (see McpConfigModal.tsx:121): an empty `tools` array
+    // means the rule applies to the whole server; a non-empty list
+    // restricts the rule to those specific tool names.
+    const allTools = rule.tools.length === 0
+    return (
+      <div key={rule.server_id} className="flex flex-col gap-1">
+        <Text strong className="!text-sm">
+          {serverName(rule.server_id)}
+        </Text>
+        {allTools ? (
+          <Tag color={color}>All tools</Tag>
+        ) : (
+          <Space size={[4, 4]} wrap>
+            {rule.tools.map(t => (
+              <Tag key={t} color={color}>
+                {t}
+              </Tag>
+            ))}
+          </Space>
+        )}
+      </div>
+    )
+  }
+
+  // The backend stores auto_approved_tools and disabled_servers
+  // independently: the modal intentionally preserves your auto-approve
+  // selections when you disable a server (so toggling it back on
+  // restores your prior preferences — see
+  // McpComposer.store.ts:475+). That means it's NORMAL for a fully-
+  // disabled server to also have a stale auto-approve entry on disk.
+  // It would just be confusing to render both as if they were both
+  // active rules — auto-approve is meaningless while the server can't
+  // be called. Filter the auto-approve list down by removing servers
+  // that are fully disabled (entry in disabled_servers with no
+  // per-tool restriction, i.e. tools.length === 0).
+  const rawAutoApproved = settings?.auto_approved_tools ?? []
+  const disabled = settings?.disabled_servers ?? []
+  const fullyDisabledServerIds = new Set(
+    disabled.filter(d => d.tools.length === 0).map(d => d.server_id),
+  )
+  const autoApproved = rawAutoApproved.filter(
+    a => !fullyDisabledServerIds.has(a.server_id),
+  )
+  const noRules = autoApproved.length === 0 && disabled.length === 0
 
   return (
     <Card
@@ -53,6 +110,21 @@ export function ProjectMcpSettingsPanel() {
           <ToolOutlined className="mr-2" />
           MCP Defaults
         </span>
+      }
+      // Card header `extra` slot — moves the edit affordance out of the
+      // body so it sits inline with the title, mirroring the other
+      // project-detail cards (Knowledge, etc.).
+      extra={
+        canEdit && (
+          <Button
+            type="text"
+            icon={<EditOutlined />}
+            onClick={handleConfigure}
+            aria-label="Edit MCP defaults"
+          >
+            Edit
+          </Button>
+        )
       }
       className="mb-4"
       data-test-section="mcp-defaults"
@@ -64,9 +136,10 @@ export function ProjectMcpSettingsPanel() {
       </Text>
 
       {loading && !settings ? (
-        <Skeleton active paragraph={{ rows: 2 }} />
+        <Skeleton active paragraph={{ rows: 3 }} />
       ) : (
-        <div className="flex flex-col gap-3 mb-4">
+        <div className="flex flex-col gap-4">
+          {/* Approval mode — always shown. */}
           <div
             className="flex items-center gap-2"
             data-test-mcp-approval-mode={approvalMode}
@@ -74,30 +147,39 @@ export function ProjectMcpSettingsPanel() {
             <Text strong>Approval mode:</Text>
             <Tag>{approvalLabel}</Tag>
           </div>
-          <div className="flex items-center gap-2">
-            <Text strong>Auto-approved server rules:</Text>
-            <Tag color={autoApprovedCount > 0 ? 'blue' : 'default'}>
-              {autoApprovedCount}
-            </Tag>
-          </div>
-          <div className="flex items-center gap-2">
-            <Text strong>Disabled server rules:</Text>
-            <Tag color={disabledCount > 0 ? 'warning' : 'default'}>
-              {disabledCount}
-            </Tag>
-          </div>
-        </div>
-      )}
 
-      {canEdit && (
-        <Button
-          type="primary"
-          icon={<ToolOutlined />}
-          onClick={handleConfigure}
-          aria-label="Configure MCP defaults"
-        >
-          Configure MCP defaults
-        </Button>
+          {/* Auto-approved + disabled rule lists. Each section is
+              hidden when empty unless BOTH are empty — in which case
+              we surface a single neutral empty state below. */}
+          {autoApproved.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <Text strong>Auto-approved</Text>
+              <div className="flex flex-col gap-3 pl-2">
+                {autoApproved.map(r => renderServerRule(r, 'blue'))}
+              </div>
+            </div>
+          )}
+
+          {disabled.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <Text strong>Disabled</Text>
+              <div className="flex flex-col gap-3 pl-2">
+                {disabled.map(r => renderServerRule(r, 'orange'))}
+              </div>
+            </div>
+          )}
+
+          {noRules && (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={
+                <Text type="secondary" className="!text-xs">
+                  No per-server rules configured.
+                </Text>
+              }
+            />
+          )}
+        </div>
       )}
 
       <McpConfigModal />

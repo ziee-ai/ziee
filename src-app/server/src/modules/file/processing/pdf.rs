@@ -163,6 +163,14 @@ impl ImageGenerator for PdfProcessor {
 
         let metadata = ProcessingMetadata {
             has_text: Some(true),
+            // The doc's actual page count, NOT the rendered image
+            // count. The frontend reads this alongside the file's
+            // `preview_page_count` to detect truncation (we cap
+            // rendered pages at `PREVIEW_PAGE_CAP` in
+            // processing/mod.rs) and surface a "showing first N of
+            // M" banner. Without this, the frontend has no way to
+            // know how many pages the doc actually has.
+            page_count: Some(page_count),
             ..Default::default()
         };
 

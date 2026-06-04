@@ -12,6 +12,14 @@ use crate::common::AppError;
 use crate::modules::file::models::ProcessingMetadata;
 use traits::{ContentProcessor, ImageGenerator};
 
+/// Maximum number of pages we rasterize into preview-page images at
+/// upload time. A 200-page PDF at the 2000px-per-page render size
+/// would consume ~50-100 MB of disk for preview alone; cap keeps the
+/// blast radius bounded. When the doc has more pages than the cap,
+/// `ProcessingMetadata::page_count` retains the true total and the
+/// frontend surfaces a "showing first N of M pages" banner.
+pub const PREVIEW_PAGE_CAP: u32 = 50;
+
 /// Processing result
 #[derive(Debug, Clone, Default)]
 pub struct ProcessingResult {
@@ -39,6 +47,15 @@ impl ProcessingManager {
         let image_generators: Vec<Box<dyn ImageGenerator>> = vec![
             Box::new(image::ImageProcessor),
             Box::new(pdf::PdfProcessor),
+            // OfficeProcessor renders DOCX / DOC / RTF / ODT by piping
+            // them through Pandoc → typst → PDF, then handing the PDF
+            // back to PdfProcessor::generate_images for per-page raster.
+            // PPTX / PPT are intentionally not supported (pandoc 3.x
+            // doesn't read PowerPoint as input). Without this line the
+            // office-doc preview-page count stays at zero at upload
+            // time and the PDF viewer shows the "preview not
+            // available" empty state.
+            Box::new(office::OfficeProcessor),
             Box::new(spreadsheet_image::SpreadsheetImageGenerator),
             Box::new(text_image::TextImageGenerator),
         ];
@@ -83,7 +100,7 @@ impl ProcessingManager {
         // Generate images
         for generator in &self.image_generators {
             if generator.can_generate(mime_type) {
-                let image_result = generator.generate_images(data, mime_type, 5).await?;
+                let image_result = generator.generate_images(data, mime_type, PREVIEW_PAGE_CAP).await?;
                 result.thumbnails = image_result.thumbnails;
                 result.images = image_result.images;
 
@@ -92,6 +109,15 @@ impl ProcessingManager {
                     result.metadata.width = image_result.metadata.width;
                     result.metadata.height = image_result.metadata.height;
                     result.metadata.format = image_result.metadata.format;
+                }
+                // `page_count` lives on the image_result for paged
+                // formats (PDF / DOCX-via-PDF) because the page count
+                // is only known after rendering. Office docs don't
+                // populate it in `extract_metadata` (which sees only
+                // the source bytes), so we merge it in here even when
+                // the content-processor side already set the metadata.
+                if result.metadata.page_count.is_none() {
+                    result.metadata.page_count = image_result.metadata.page_count;
                 }
                 break;
             }

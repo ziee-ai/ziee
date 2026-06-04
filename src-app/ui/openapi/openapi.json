@@ -7314,27 +7314,31 @@
           "Projects"
         ],
         "summary": "Resolve the project a conversation is attached to",
-        "description": "Returns the project the given conversation is currently attached to. 404 if the conversation is unfiled, doesn't exist, or belongs to a different user.",
+        "description": "Returns the project the given conversation is currently attached to, or `null` if the conversation is unfiled, doesn't exist, or belongs to a different user. Always 200 — \"unfiled\" is legitimate data.",
         "operationId": "Project.forConversation",
         "responses": {
           "403": {
             "description": "Missing required permissions"
           },
           "200": {
-            "description": "Project entity. One row per personal project.\n\n MCP defaults previously lived inline (mcp_*); they moved to the\n unified `mcp_settings` table (migration 78) owned by the mcp module.\n Clients fetch them via `GET /api/projects/{id}/mcp-settings` (still\n mounted at the same URL — the route now lives in mcp's\n project_extension).",
+            "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Project"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Project"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 }
               }
             }
           },
           "401": {
             "description": "Unauthorized"
-          },
-          "404": {
-            "description": "Conversation has no project (unfiled or not owned)"
           }
         },
         "security": [

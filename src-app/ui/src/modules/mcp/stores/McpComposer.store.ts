@@ -1179,6 +1179,26 @@ export const useMcpComposerStore = create<McpStore>()(
           loopSettings: loop,
         })
 
+        // RESET the GLOBAL `selectedServers` Map. This is the single
+        // top-level state field used by the modal as its working copy
+        // (mutated by selectServer / toggleServerTool / etc). Without
+        // this reset, stale entries from a previous modal session —
+        // typically a chat conversation's MCP config loaded via
+        // setCurrentConversation — survive across modal opens and
+        // trip the seed-once guard in McpConfigModal.tsx:
+        //
+        //     if (selectedServers.size > 0) return   // skip seeding
+        //
+        // The guard's intent is to preserve mid-edit toggles, NOT to
+        // preserve state across opens — but the Map lives at the store
+        // root, so the two cases conflate. Clearing here makes every
+        // open of the project modal start from a known-empty state;
+        // the seed then runs and computes the toggle state from
+        // disabled_servers + the enabledServers list, which is what
+        // makes "Web Fetch disabled" actually show as disabled after a
+        // reload.
+        state.selectedServers = new Map()
+
         state.currentProjectId = projectId
         state.currentConversationId = null
         state.configModalVisible = true

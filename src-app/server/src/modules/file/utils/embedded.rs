@@ -1,4 +1,4 @@
-// Embedded binaries for Pandoc and PDFium
+// Embedded binaries for Pandoc, typst, and PDFium
 
 use crate::common::AppError;
 use once_cell::sync::OnceCell;
@@ -17,32 +17,40 @@ macro_rules! embed_compressed {
 mod binaries {
     pub const PANDOC: &[u8] = embed_compressed!(concat!(env!("CARGO_MANIFEST_DIR"), "/binaries/x86_64-unknown-linux-gnu/pandoc/pandoc"));
     pub const PDFIUM: &[u8] = embed_compressed!(concat!(env!("CARGO_MANIFEST_DIR"), "/binaries/x86_64-unknown-linux-gnu/pdfium/libpdfium.so"));
+    pub const TYPST: &[u8] = embed_compressed!(concat!(env!("CARGO_MANIFEST_DIR"), "/binaries/x86_64-unknown-linux-gnu/typst/typst"));
     pub const PANDOC_NAME: &str = "pandoc";
     pub const PDFIUM_NAME: &str = "libpdfium.so";
+    pub const TYPST_NAME: &str = "typst";
 }
 
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 mod binaries {
     pub const PANDOC: &[u8] = embed_compressed!(concat!(env!("CARGO_MANIFEST_DIR"), "/binaries/x86_64-apple-darwin/pandoc/pandoc"));
     pub const PDFIUM: &[u8] = embed_compressed!(concat!(env!("CARGO_MANIFEST_DIR"), "/binaries/x86_64-apple-darwin/pdfium/libpdfium.dylib"));
+    pub const TYPST: &[u8] = embed_compressed!(concat!(env!("CARGO_MANIFEST_DIR"), "/binaries/x86_64-apple-darwin/typst/typst"));
     pub const PANDOC_NAME: &str = "pandoc";
     pub const PDFIUM_NAME: &str = "libpdfium.dylib";
+    pub const TYPST_NAME: &str = "typst";
 }
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 mod binaries {
     pub const PANDOC: &[u8] = embed_compressed!(concat!(env!("CARGO_MANIFEST_DIR"), "/binaries/aarch64-apple-darwin/pandoc/pandoc"));
     pub const PDFIUM: &[u8] = embed_compressed!(concat!(env!("CARGO_MANIFEST_DIR"), "/binaries/aarch64-apple-darwin/pdfium/libpdfium.dylib"));
+    pub const TYPST: &[u8] = embed_compressed!(concat!(env!("CARGO_MANIFEST_DIR"), "/binaries/aarch64-apple-darwin/typst/typst"));
     pub const PANDOC_NAME: &str = "pandoc";
     pub const PDFIUM_NAME: &str = "libpdfium.dylib";
+    pub const TYPST_NAME: &str = "typst";
 }
 
 #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
 mod binaries {
     pub const PANDOC: &[u8] = embed_compressed!(concat!(env!("CARGO_MANIFEST_DIR"), "/binaries/x86_64-pc-windows-msvc/pandoc/pandoc.exe"));
     pub const PDFIUM: &[u8] = embed_compressed!(concat!(env!("CARGO_MANIFEST_DIR"), "/binaries/x86_64-pc-windows-msvc/pdfium/pdfium.dll"));
+    pub const TYPST: &[u8] = embed_compressed!(concat!(env!("CARGO_MANIFEST_DIR"), "/binaries/x86_64-pc-windows-msvc/typst/typst.exe"));
     pub const PANDOC_NAME: &str = "pandoc.exe";
     pub const PDFIUM_NAME: &str = "pdfium.dll";
+    pub const TYPST_NAME: &str = "typst.exe";
 }
 
 #[cfg(not(any(
@@ -58,6 +66,40 @@ static EXTRACTED_PATHS: OnceCell<ExtractedPaths> = OnceCell::new();
 struct ExtractedPaths {
     pandoc: PathBuf,
     pdfium: PathBuf,
+    typst: PathBuf,
+}
+
+/// Write embedded bytes to `target` if not already on disk and set
+/// executable bit on Unix. Centralizes the per-binary
+/// write-then-chmod-then-log dance so adding a new embedded binary
+/// is a one-call addition.
+fn extract_one(
+    label: &str,
+    bytes: &[u8],
+    target: &PathBuf,
+) -> Result<(), AppError> {
+    if target.exists() {
+        tracing::debug!("{} already extracted at {:?}", label, target);
+        return Ok(());
+    }
+
+    tracing::info!("Extracting embedded {} to {:?}", label, target);
+    std::fs::write(target, bytes)
+        .map_err(|e| AppError::internal_error(format!("Failed to extract {}: {}", label, e)))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(target)
+            .map_err(|e| AppError::internal_error(format!("Failed to get {} permissions: {}", label, e)))?
+            .permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(target, perms)
+            .map_err(|e| AppError::internal_error(format!("Failed to set {} permissions: {}", label, e)))?;
+    }
+
+    tracing::info!("Successfully extracted {} ({} bytes)", label, bytes.len());
+    Ok(())
 }
 
 /// Extract embedded binaries on first call only
@@ -71,54 +113,16 @@ pub fn ensure_binaries_extracted() -> Result<(), AppError> {
 
         let pandoc_path = bin_dir.join(binaries::PANDOC_NAME);
         let pdfium_path = bin_dir.join(binaries::PDFIUM_NAME);
+        let typst_path = bin_dir.join(binaries::TYPST_NAME);
 
-        // Extract Pandoc if not exists
-        if !pandoc_path.exists() {
-            tracing::info!("Extracting embedded Pandoc to {:?}", pandoc_path);
-            std::fs::write(&pandoc_path, binaries::PANDOC)
-                .map_err(|e| AppError::internal_error(format!("Failed to extract Pandoc: {}", e)))?;
-
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let mut perms = std::fs::metadata(&pandoc_path)
-                    .map_err(|e| AppError::internal_error(format!("Failed to get Pandoc permissions: {}", e)))?
-                    .permissions();
-                perms.set_mode(0o755);
-                std::fs::set_permissions(&pandoc_path, perms)
-                    .map_err(|e| AppError::internal_error(format!("Failed to set Pandoc permissions: {}", e)))?;
-            }
-
-            tracing::info!("Successfully extracted Pandoc ({} bytes)", binaries::PANDOC.len());
-        } else {
-            tracing::debug!("Pandoc already extracted at {:?}", pandoc_path);
-        }
-
-        // Extract PDFium if not exists
-        if !pdfium_path.exists() {
-            tracing::info!("Extracting embedded PDFium to {:?}", pdfium_path);
-            std::fs::write(&pdfium_path, binaries::PDFIUM)
-                .map_err(|e| AppError::internal_error(format!("Failed to extract PDFium: {}", e)))?;
-
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let mut perms = std::fs::metadata(&pdfium_path)
-                    .map_err(|e| AppError::internal_error(format!("Failed to get PDFium permissions: {}", e)))?
-                    .permissions();
-                perms.set_mode(0o755);
-                std::fs::set_permissions(&pdfium_path, perms)
-                    .map_err(|e| AppError::internal_error(format!("Failed to set PDFium permissions: {}", e)))?;
-            }
-
-            tracing::info!("Successfully extracted PDFium ({} bytes)", binaries::PDFIUM.len());
-        } else {
-            tracing::debug!("PDFium already extracted at {:?}", pdfium_path);
-        }
+        extract_one("Pandoc", binaries::PANDOC, &pandoc_path)?;
+        extract_one("PDFium", binaries::PDFIUM, &pdfium_path)?;
+        extract_one("typst", binaries::TYPST, &typst_path)?;
 
         Ok(ExtractedPaths {
             pandoc: pandoc_path,
             pdfium: pdfium_path,
+            typst: typst_path,
         })
     })?;
     Ok(())
@@ -134,4 +138,8 @@ pub fn get_pandoc_path() -> Result<&'static PathBuf, AppError> {
 
 pub fn get_pdfium_path() -> Result<&'static PathBuf, AppError> {
     Ok(&get_extracted_paths()?.pdfium)
+}
+
+pub fn get_typst_path() -> Result<&'static PathBuf, AppError> {
+    Ok(&get_extracted_paths()?.typst)
 }

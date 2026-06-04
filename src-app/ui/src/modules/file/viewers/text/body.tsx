@@ -21,5 +21,5 @@ export function TextBody(props: FileViewerSlotProps) {
   if (content === null) {
     return <div className="flex items-center justify-center h-full"><Spin /></div>
   }
-  return <RawCodeView text={content} />
+  return <RawCodeView text={content} filename={file?.filename} />
 }

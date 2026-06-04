@@ -164,7 +164,10 @@ impl ProjectFilesRepository {
     }
 
     /// List files with metadata (JOIN on files). Returns the same File
-    /// entity the file module returns, for client convenience.
+    /// entity the file module returns, for client convenience. Sorted
+    /// newest-first (recent uploads at the top) — matches how the chat
+    /// conversation list and other recency-driven UI surfaces order
+    /// their rows.
     pub async fn list_files(
         &self,
         project_id: Uuid,
@@ -180,7 +183,7 @@ impl ProjectFilesRepository {
             FROM project_files pf
             JOIN files f ON f.id = pf.file_id
             WHERE pf.project_id = $1
-            ORDER BY pf.added_at ASC
+            ORDER BY pf.added_at DESC
             "#,
             project_id
         )

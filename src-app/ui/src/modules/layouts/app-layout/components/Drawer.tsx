@@ -14,6 +14,18 @@ import { DivScrollY } from '@/components/common/DivScrollY'
 
 export interface DrawerProps extends AntDrawerProps {
   children?: React.ReactNode
+  /**
+   * When true, render `children` directly in the drawer body instead
+   * of wrapping them in the `<DivScrollY>` (vertical OverlayScrollbars)
+   * scroll layer. Use this for content that owns its own scrolling
+   * (e.g. file preview, where the body's `<pre>` needs both vertical
+   * AND horizontal scroll with scrollbars anchored to the viewport
+   * edge — the DivScrollY wrapper collapses the inner flex/height
+   * chain and forces both scrollbars to the bottom of the unbounded
+   * content box). Defaults to false; existing drawer callers keep
+   * the wrapped behavior unchanged.
+   */
+  noBodyScrollWrap?: boolean
 }
 
 export const Drawer: React.FC<DrawerProps> = props => {
@@ -27,6 +39,7 @@ export const Drawer: React.FC<DrawerProps> = props => {
     size = 520,
     children,
     styles: propsStyles,
+    noBodyScrollWrap = false,
     ...restProps
   } = props
 
@@ -146,20 +159,39 @@ export const Drawer: React.FC<DrawerProps> = props => {
         )
       }}
     >
-      <DivScrollY className={'flex w-full h-full'}>
+      {noBodyScrollWrap ? (
+        // Direct render — caller manages its own scroll. The flex
+        // wrapper still adds `w-full h-full pr-3` so layout matches
+        // the wrapped path (consumers can rely on a known parent
+        // box). The `pr-3` matches the body padding the wrapped
+        // path applies to compensate for the body's `!pr-0` class.
         <div className={'flex w-full h-full pr-3'}>
           {React.Children.map(children, child => {
             if (React.isValidElement<{ className?: string }>(child)) {
               return React.cloneElement(child, {
                 ...child.props,
-                className:
-                  `w-full ${child.props.className || ''}`.trim(),
+                className: `w-full ${child.props.className || ''}`.trim(),
               })
             }
             return child
           })}
         </div>
-      </DivScrollY>
+      ) : (
+        <DivScrollY className={'flex w-full h-full'}>
+          <div className={'flex w-full h-full pr-3'}>
+            {React.Children.map(children, child => {
+              if (React.isValidElement<{ className?: string }>(child)) {
+                return React.cloneElement(child, {
+                  ...child.props,
+                  className:
+                    `w-full ${child.props.className || ''}`.trim(),
+                })
+              }
+              return child
+            })}
+          </div>
+        </DivScrollY>
+      )}
     </AntDrawer>
   )
 }

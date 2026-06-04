@@ -46,6 +46,17 @@ export function FilePreviewList() {
                 canRemove={true}
                 onRemove={() => removeFile(file.id)}
                 variant="square"
+                // Chat composer is a chat surface → side-by-side
+                // right panel beats the global drawer for the
+                // "review while chatting" flow.
+                onClick={() =>
+                  Stores.Chat.displayInRightPanel({
+                    id: file.id,
+                    title: file.filename,
+                    type: 'file',
+                    data: { fileId: file.id },
+                  })
+                }
               />
             </div>
           ))}

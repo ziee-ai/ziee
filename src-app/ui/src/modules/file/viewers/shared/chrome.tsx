@@ -1,5 +1,10 @@
 import { App, Button, Space } from 'antd'
-import { CodeOutlined, DownloadOutlined, EyeOutlined } from '@ant-design/icons'
+import {
+  CodeOutlined,
+  CopyOutlined,
+  DownloadOutlined,
+  EyeOutlined,
+} from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import type { File as FileEntity } from '@/api-client/types'
 
@@ -55,9 +60,21 @@ export function RawToggle({ file }: { file: FileEntity }) {
 export function CopyButton({ file }: { file: FileEntity }) {
   const { message } = App.useApp()
   const handleCopy = async () => {
-    const text = Stores.File.fileTextContents.get(file.id) ?? ''
-    if (!text) {
-      message.warning('Nothing to copy yet — content still loading')
+    // `Stores.File.__state` is the raw zustand getState — bypasses
+    // the reactive proxy, safe to use inside event handlers. The
+    // proxy's `.get` trap calls useEffect/useStore on every
+    // property access (see core/stores.ts:266), which is a Rules-
+    // of-Hooks violation when triggered outside render. Falls back
+    // to driving the load ourselves if the cache is cold, so Copy
+    // works even when the user clicks before the body finishes its
+    // async fetch.
+    let text = Stores.File.__state.fileTextContents.get(file.id)
+    if (text === undefined || text === '__error__') {
+      await Stores.File.__state.loadFileTextContent(file.id, file)
+      text = Stores.File.__state.fileTextContents.get(file.id)
+    }
+    if (text === undefined || text === '__error__' || text === '') {
+      message.error('Failed to load file content')
       return
     }
     try {
@@ -68,7 +85,7 @@ export function CopyButton({ file }: { file: FileEntity }) {
     }
   }
   return (
-    <Button style={{ fontSize: 15 }} onClick={handleCopy}>
+    <Button icon={<CopyOutlined />} onClick={handleCopy}>
       Copy
     </Button>
   )

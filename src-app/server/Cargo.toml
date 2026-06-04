@@ -215,6 +215,10 @@ flate2.workspace = true
 tar.workspace = true
 # zstd for the mac sandbox-runtime bundle (level-19 compression).
 zstd.workspace = true
+# Pure-Rust XZ decoder for the typst binary archives. typst publishes
+# Linux/macOS releases as .tar.xz (Windows is .zip). lzma-rs is pure
+# Rust so the build doesn't gain a system xz-utils dependency.
+lzma-rs = "0.3"
 
 [dev-dependencies]
 mockall.workspace = true

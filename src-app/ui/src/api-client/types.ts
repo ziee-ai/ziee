@@ -3269,7 +3269,7 @@ export type ApiEndpointResponses = {
   'Project.detachConversation': void
   'Project.detachFile': void
   'Project.duplicate': Project
-  'Project.forConversation': Project
+  'Project.forConversation': Project | null
   'Project.get': Project
   'Project.getMcpSettings': ProjectMcpSettingsResponse
   'Project.list': ProjectListResponse

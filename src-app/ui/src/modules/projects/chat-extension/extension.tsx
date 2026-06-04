@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { App, Button, Modal, Popconfirm, Spin, Tag, Tooltip, message } from 'antd'
+import { App, Button, Popconfirm, Spin, Tag, Tooltip, message } from 'antd'
 import type { MenuProps } from 'antd'
 import {
   CloseOutlined,
@@ -86,14 +86,16 @@ function loadProjectForConversation(
   const promise = ApiClient.Project.forConversation({
     conversation_id: conversationId,
   })
-    .then((project: Project) => {
-      setCached(conversationId, project)
-      return project as Project | null
+    .then(project => {
+      // Backend returns Option<Project> — `null` means unfiled. Always
+      // a 200; no catch needed for the normal "no project" case.
+      const value = project ?? null
+      setCached(conversationId, value)
+      return value
     })
     .catch(() => {
-      // 404 = unfiled, treat as null. Other errors are also treated
-      // as null so the trailing falls back to "Add to project"
-      // rather than spinning forever.
+      // Real network / auth errors only — treat as null so the trailing
+      // falls back to "Add to project" rather than spinning forever.
       setCached(conversationId, null)
       return null
     })
@@ -505,7 +507,10 @@ function useProjectMenuContribution(conversation: Conversation): {
   keepMenuOpen: boolean
 } {
   const navigate = useNavigate()
-  const { message: msg } = App.useApp()
+  // `modal` from App.useApp() — NOT the static `Modal.confirm`. The
+  // static API renders outside the ConfigProvider tree and ignores
+  // the active theme tokens, so it shows a light modal on dark mode.
+  const { message: msg, modal } = App.useApp()
   const [project, setProject] = useState<Project | null>(() => {
     const cached = getCached(conversation.id)
     return cached && cached.name ? cached : null
@@ -571,7 +576,7 @@ function useProjectMenuContribution(conversation: Conversation): {
   // normally on menu-item click.
   const confirmRemove = () => {
     if (!project) return
-    Modal.confirm({
+    modal.confirm({
       title: 'Remove from project?',
       content: 'The conversation becomes unfiled. It is NOT deleted.',
       okText: 'Remove',

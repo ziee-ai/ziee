@@ -52,6 +52,14 @@ pub struct ProcessingMetadata {
     pub format: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub has_text: Option<bool>,
+    /// Total number of pages in the source document (PDF / DOCX /
+    /// etc), not the number of preview images we rendered. The two
+    /// can diverge when `PREVIEW_PAGE_CAP` truncates a long doc —
+    /// the frontend uses both fields to render a "showing first N
+    /// of M pages" banner. Optional because non-paged formats
+    /// (images, spreadsheets, plain text) have no notion of pages.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_count: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
