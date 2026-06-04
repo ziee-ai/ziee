@@ -82,6 +82,12 @@ test.describe('Projects - delete preserves orphan conversations', () => {
     //    cascades that row away, leaving the conversation orphaned.
     //    Verify via GET /conversations (still 200) + GET
     //    /projects/by-conversation (404 = unfiled).
+    // `/api/projects/by-conversation/{cid}` always returns 200 with
+    // `Json<Option<Project>>` — null body means "unfiled" (see
+    // server/.../chat_extension/handlers.rs::project_for_conversation
+    // for the rationale: 404 caused noisy client-side error logs on
+    // every chat-surface load that polls this endpoint). So check
+    // status==200 AND body==null instead of status==404.
     const after = await page.evaluate(
       async ({ apiBase, t, cid }: { apiBase: string; t: string; cid: string }) => {
         const convResp = await fetch(`${apiBase}/api/conversations/${cid}`, {
@@ -91,14 +97,17 @@ test.describe('Projects - delete preserves orphan conversations', () => {
           `${apiBase}/api/projects/by-conversation/${cid}`,
           { headers: { Authorization: `Bearer ${t}` } },
         )
+        const projectBody = projectResp.ok ? await projectResp.json() : 'error'
         return {
           convStatus: convResp.status,
           projectLookupStatus: projectResp.status,
+          projectBody,
         }
       },
       { apiBase: baseURL, t: token, cid: convResp.id as string },
     )
     expect(after.convStatus).toBe(200)
-    expect(after.projectLookupStatus).toBe(404)
+    expect(after.projectLookupStatus).toBe(200)
+    expect(after.projectBody).toBeNull()
   })
 })

@@ -1,4 +1,4 @@
-import { Button, Checkbox, Progress, Spin, Typography, theme, App } from 'antd'
+import { Button, Checkbox, Popconfirm, Progress, Spin, Tooltip, Typography, theme, App } from 'antd'
 import {
   CloseOutlined,
   DeleteOutlined,
@@ -37,6 +37,13 @@ export interface FileCardProps {
   canRemove?: boolean
   canDelete?: boolean
   variant?: 'row' | 'square'
+  /** Square only — when true, drops the hard-coded 96px width on the
+   *  card wrapper so the parent layout controls width (e.g. a CSS
+   *  Grid track with auto-fill minmax). The aspect-ratio enforcer
+   *  keeps the card square at whatever width the grid hands it.
+   *  Default false to preserve the legacy fixed-96px sizing the chat
+   *  composer's FilePreviewList depends on. */
+  stretch?: boolean
   /** Row only — appended to the trailing edge in place of the default
    *  Download button. Use this slot to pass a Popconfirm-wrapped
    *  delete button, retry button, etc. */
@@ -69,6 +76,7 @@ export function FileCard({
   canRemove = true,
   canDelete = false,
   variant = 'row',
+  stretch = false,
   actions,
   subtitle,
   selectable = false,
@@ -80,19 +88,34 @@ export function FileCard({
   const { message } = App.useApp()
   const canDownload = usePermission(Permissions.FilesDownload)
 
+  // Reactive subscription: re-render when the thumbnail blob URL lands.
   const thumbnailUrls = Stores.File.thumbnailUrls
   const thumbnailUrl = file ? (thumbnailUrls.get(file.id) ?? null) : null
+
+  // Trigger lazy load on cache miss. The action is deferred inside the
+  // store (safe in render — same pattern as FileAttachmentRenderer's
+  // `getMessageFile` call in chat-extension/extension.tsx). Internally
+  // guarded by `has_thumbnail && preview_page_count > 0` so non-image
+  // files don't trigger a wasted fetch. Without this, surfaces that
+  // hand FileCard a hydrated `file` without separately warming
+  // `thumbnailUrls` (e.g. project knowledge files via
+  // `ProjectFiles.store.loadFiles`) never get thumbnails.
+  if (file && !thumbnailUrl) {
+    Stores.File.getThumbnailUrl(file.id, file)
+  }
 
   const handleCardClick = () => {
     if (!file || uploadProgress) return
     if (onClick) { onClick(); return }
 
-    Stores.Chat.displayInRightPanel({
-      id: file.id,
-      title: file.filename,
-      type: 'file',
-      data: { fileId: file.id },
-    })
+    // Default: open the global file-preview drawer. Chat surfaces
+    // (composer / message attachments) override `onClick` to open the
+    // side-by-side right-panel instead — see FilePreviewList +
+    // FileAttachmentRenderer in file/chat-extension/. The drawer is
+    // the portable fallback so any non-chat surface (project knowledge
+    // drawer, knowledge card on ProjectDetailPage, etc.) gets preview
+    // without per-surface plumbing.
+    Stores.FilePreviewDrawer.openPreview(file)
   }
 
   // Row-shaped upload-progress branch — added separately from the
@@ -155,20 +178,24 @@ export function FileCard({
 
         {/* Trailing: retry on error if onRetry provided, else cancel */}
         {isError && onRetry ? (
-          <Button
-            type="text"
-            icon={<ReloadOutlined />}
-            onClick={() => onRetry()}
-            aria-label={`Retry upload ${uploadProgress.filename}`}
-          />
-        ) : (
-          onRemove && (
+          <Tooltip title="Retry upload">
             <Button
               type="text"
-              icon={<CloseOutlined />}
-              onClick={() => onRemove()}
-              aria-label={`Dismiss ${uploadProgress.filename}`}
+              icon={<ReloadOutlined />}
+              onClick={() => onRetry()}
+              aria-label={`Retry upload ${uploadProgress.filename}`}
             />
+          </Tooltip>
+        ) : (
+          onRemove && (
+            <Tooltip title="Dismiss">
+              <Button
+                type="text"
+                icon={<CloseOutlined />}
+                onClick={() => onRemove()}
+                aria-label={`Dismiss ${uploadProgress.filename}`}
+              />
+            </Tooltip>
           )
         )}
       </div>
@@ -195,13 +222,16 @@ export function FileCard({
             <Spin />
           </div>
           {onRemove && (
-            <Button
-              danger
-              size="small"
-              icon={<CloseOutlined />}
-              onClick={() => onRemove()}
-              className="!absolute top-1 right-1"
-            />
+            <Tooltip title="Cancel upload">
+              <Button
+                danger
+                size="small"
+                icon={<CloseOutlined />}
+                onClick={() => onRemove()}
+                className="!absolute top-1 right-1"
+                aria-label="Cancel upload"
+              />
+            </Tooltip>
           )}
           <Text
             className="absolute top-1 left-1 rounded px-1 !text-[9px]"
@@ -251,13 +281,13 @@ export function FileCard({
         data-file-id={file.id}
         data-filename={file.filename}
       >
-        {/* Optional multi-select checkbox — hover-revealed when
-            unselected, always-visible when selected. Mirrors the
-            ConversationCard pattern. Stop propagation so the outer
-            card-click doesn't fire alongside the checkbox toggle. */}
+        {/* Optional multi-select checkbox — always visible when
+            `selectable` so users see it without having to hover.
+            Stop propagation so the outer card-click doesn't fire
+            alongside the checkbox toggle. */}
         {selectable && (
           <div
-            className={`flex-shrink-0 transition-opacity ${selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+            className="flex-shrink-0"
             onClick={e => e.stopPropagation()}
           >
             <Checkbox
@@ -305,15 +335,18 @@ export function FileCard({
           </div>
         ) : (
           canDownload && (
-            <Button
-              type="text"
-              icon={<DownloadOutlined style={{ fontSize: 20 }} />}
-              onClick={e => {
-                e.stopPropagation()
-                Stores.File.downloadFile(file)
-                  .catch(() => message.error('Failed to download file'))
-              }}
-            />
+            <Tooltip title="Download">
+              <Button
+                type="text"
+                icon={<DownloadOutlined style={{ fontSize: 20 }} />}
+                aria-label={`Download ${file.filename}`}
+                onClick={e => {
+                  e.stopPropagation()
+                  Stores.File.downloadFile(file)
+                    .catch(() => message.error('Failed to download file'))
+                }}
+              />
+            </Tooltip>
           )
         )}
       </div>
@@ -321,16 +354,23 @@ export function FileCard({
   }
 
   // ── Square variant (user message attachments & input area) ─────────────────
+  // When `stretch` is false (the default — chat composer's
+  // FilePreviewList), the wrapper is a fixed 96 px square. When the
+  // caller opts into `stretch`, we drop the fixed width so the parent
+  // grid controls the size; the `aspect-ratio: 1` enforcer below keeps
+  // the card square at whatever width it receives.
   return (
     <div
-      className="relative flex flex-col"
-      style={{ width: 96, maxWidth: 96 }}
+      className={`relative flex flex-col ${stretch ? 'w-full' : ''}`}
+      style={stretch ? undefined : { width: 96, maxWidth: 96 }}
       data-testid="file-card"
       data-file-id={file.id}
       data-filename={file.filename}
     >
       <div
-        className="group relative cursor-pointer rounded-2xl min-h-20 min-w-20 max-h-28 max-w-28 w-full h-full flex items-center justify-center"
+        className={`group relative cursor-pointer rounded-2xl w-full h-full flex items-center justify-center ${
+          stretch ? '' : 'min-h-20 min-w-20 max-h-28 max-w-28'
+        }`}
         style={{
           border: `1px solid ${token.colorBorderSecondary}`,
           backgroundColor: token.colorBgContainer,
@@ -363,19 +403,47 @@ export function FileCard({
           </div>
         )}
 
-        {/* Delete/Remove button - only visible on hover */}
+        {/* Delete/Remove button — Popconfirm-wrapped so the
+            destructive action requires explicit confirmation.
+            The row variant routes its delete through the `actions`
+            slot (caller already wraps in Popconfirm); the square
+            variant has its delete inline, so the confirm lives
+            here.
+
+            stopPropagation is on the OUTER wrapper, not the Button.
+            If we put stopPropagation on the Button itself, it
+            cancels the click event before it bubbles up to
+            Tooltip's wrapper span — which is where Popconfirm
+            attaches its trigger handler — so the popover never
+            opens. Hoisting it to a wrapper that lives outside
+            Popconfirm's trigger subtree means Popconfirm's
+            handler runs first (popover opens), then our handler
+            stops the click from reaching the card's onClick. */}
         {(canDelete || canRemove) && onRemove && (
-          <Button
-            danger
-            size="small"
-            icon={<DeleteOutlined />}
-            onClick={e => {
-              e.stopPropagation()
-              onRemove()
-            }}
+          <div
+            className="!absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity"
             style={{ display: canRemove ? 'block' : 'none' }}
-            className="!absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity bg-transparent"
-          />
+            onClick={e => e.stopPropagation()}
+          >
+            <Popconfirm
+              title="Remove this file?"
+              description={canDelete ? 'This deletes the file permanently.' : undefined}
+              okText="Remove"
+              okButtonProps={{ danger: true }}
+              cancelText="Cancel"
+              onConfirm={() => onRemove()}
+            >
+              <Tooltip title="Remove">
+                <Button
+                  danger
+                  size="small"
+                  icon={<DeleteOutlined />}
+                  aria-label="Remove file"
+                  className="bg-transparent"
+                />
+              </Tooltip>
+            </Popconfirm>
+          </div>
         )}
 
         {/* File size badge */}

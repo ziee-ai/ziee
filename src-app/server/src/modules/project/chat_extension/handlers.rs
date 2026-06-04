@@ -59,21 +59,21 @@ pub fn list_project_conversations_docs(op: TransformOperation) -> TransformOpera
 }
 
 /// Look up the project a conversation currently belongs to.
-/// 200 with the project body if attached; 404 if the conversation is
-/// unfiled or belongs to a different user. Lets chat-side UI
-/// (project header chip, back-button hook) resolve project context
-/// for a loaded conversation without putting a `project_id` field on
-/// the conversation row itself.
+/// Returns the project the given conversation is attached to, or
+/// `null` if the conversation is unfiled / doesn't exist / belongs to
+/// a different user. Always 200 — "unfiled" is legitimate data, not
+/// an error condition, and treating it as a 404 caused noisy client-
+/// side error logs on every chat surface load (chat-extension polls
+/// this for every loaded conversation).
 #[debug_handler]
 pub async fn project_for_conversation(
     auth: RequirePermissions<(ProjectsRead,)>,
     Path(conversation_id): Path<Uuid>,
-) -> ApiResult<Json<Project>> {
+) -> ApiResult<Json<Option<Project>>> {
     let project = Repos
         .project
         .get_for_conversation(conversation_id, auth.user.id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Project for conversation"))?;
+        .await?;
     Ok((StatusCode::OK, Json(project)))
 }
 
@@ -83,13 +83,13 @@ pub fn project_for_conversation_docs(op: TransformOperation) -> TransformOperati
         .tag("Projects")
         .summary("Resolve the project a conversation is attached to")
         .description(
-            "Returns the project the given conversation is currently attached to. \
-             404 if the conversation is unfiled, doesn't exist, or belongs to a different user."
+            "Returns the project the given conversation is currently attached to, \
+             or `null` if the conversation is unfiled, doesn't exist, or belongs to \
+             a different user. Always 200 — \"unfiled\" is legitimate data."
         )
-        .response::<200, Json<Project>>()
+        .response::<200, Json<Option<Project>>>()
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<403, (), _>(|res| res.description("Missing required permissions"))
-        .response_with::<404, (), _>(|res| res.description("Conversation has no project (unfiled or not owned)"))
 }
 
 /// Attach an existing conversation to this project (or re-attach

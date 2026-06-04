@@ -224,15 +224,21 @@ test.describe('Sidebar conversation menu — project contributions', () => {
     await expect(confirmDialog).toBeHidden({ timeout: 10000 })
     expect(detachSeen).toBe(true)
 
-    const status = await page.evaluate(
+    // `/api/projects/by-conversation/{cid}` always returns 200 with
+    // null body when unfiled — see the matching note in
+    // delete-project-leaves-orphan-conversations.spec.ts and
+    // server/.../chat_extension/handlers.rs::project_for_conversation.
+    const lookup = await page.evaluate(
       async ({ api, t, cid }: { api: string; t: string; cid: string }) => {
         const r = await fetch(`${api}/api/projects/by-conversation/${cid}`, {
           headers: { Authorization: `Bearer ${t}` },
         })
-        return r.status
+        const body = r.ok ? await r.json() : 'error'
+        return { status: r.status, body }
       },
       { api: apiURL, t: token, cid: conversationId },
     )
-    expect(status).toBe(404)
+    expect(lookup.status).toBe(200)
+    expect(lookup.body).toBeNull()
   })
 })

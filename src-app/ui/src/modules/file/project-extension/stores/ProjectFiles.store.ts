@@ -73,13 +73,13 @@ interface ProjectFilesState {
    *  its own progress row; errors stay visible until cleared. */
   uploadAndAttachFiles: (projectId: string, files: File[]) => Promise<void>
   dismissUploadingFile: (uploadId: string) => void
-  detachFile: (projectId: string, fileId: string) => Promise<void>
+  deleteFile: (projectId: string, fileId: string) => Promise<void>
 
   // Selection actions
   toggleSelection: (fileId: string) => void
   selectAll: () => void
   deselectAll: () => void
-  batchDetach: (projectId: string) => Promise<void>
+  batchDelete: (projectId: string) => Promise<void>
 
   clearError: () => void
 }
@@ -286,13 +286,18 @@ export const useProjectFilesStore = create<ProjectFilesState>()(
           })
         },
 
-        detachFile: async (projectId, fileId) => {
+        deleteFile: async (projectId, fileId) => {
+          // Project-knowledge "delete" is a true library delete. We hit
+          // DELETE /files/{id}, and the backend's FK ON DELETE CASCADE
+          // wipes the project_files membership row (plus any
+          // llm_provider_files mirror) automatically. The
+          // project_file_detached event then reloads this project's
+          // file list. Per-message chat attachments are independent
+          // (separate upload flow), so deleting a knowledge file never
+          // breaks an existing chat message ref in practice.
           try {
             set({ detaching: true, error: null })
-            await ApiClient.Project.detachFile({
-              id: projectId,
-              file_id: fileId,
-            })
+            await ApiClient.File.delete({ file_id: fileId })
             await emitProjectFileDetached(projectId, fileId)
             set({ detaching: false })
           } catch (error) {
@@ -300,7 +305,7 @@ export const useProjectFilesStore = create<ProjectFilesState>()(
               error:
                 error instanceof Error
                   ? error.message
-                  : 'Failed to detach file',
+                  : 'Failed to delete file',
               detaching: false,
             })
             throw error
@@ -331,28 +336,25 @@ export const useProjectFilesStore = create<ProjectFilesState>()(
           })
         },
 
-        batchDetach: async projectId => {
+        batchDelete: async projectId => {
           const ids = Array.from(get().selectedFileIds)
           if (ids.length === 0) return
           set({ detaching: true, error: null })
-          // Detach sequentially to keep event order predictable; the
-          // backend doesn't expose a batch endpoint and per-row detaches
-          // are cheap (single-row DELETE).
+          // Sequential to keep event order predictable; the backend
+          // doesn't expose a batch endpoint and per-row deletes are
+          // cheap (FK cascade does the project_files + storage cleanup).
           for (const fileId of ids) {
             try {
-              await ApiClient.Project.detachFile({
-                id: projectId,
-                file_id: fileId,
-              })
+              await ApiClient.File.delete({ file_id: fileId })
               await emitProjectFileDetached(projectId, fileId)
             } catch (error) {
               set({
                 error:
                   error instanceof Error
                     ? error.message
-                    : `Failed to detach ${fileId}`,
+                    : `Failed to delete ${fileId}`,
               })
-              // Continue with remaining detaches so a single failure
+              // Continue with remaining deletes so a single failure
               // doesn't strand the user; the error message surfaces
               // the failed one.
             }

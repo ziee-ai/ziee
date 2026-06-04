@@ -19,6 +19,7 @@ import { ProjectExtensionSlot } from '@/modules/projects/core/extensions'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { ProjectInlineChatInput } from '@/modules/projects/chat-extension/components/ProjectInlineChatInput'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
+import { DivScrollY } from '@/components/common/DivScrollY'
 
 const { Title, Text, Paragraph } = Typography
 
@@ -291,10 +292,13 @@ export function ProjectDetailPage() {
         </div>
       </HeaderBarContainer>
 
-      <div className="flex-1 overflow-y-auto">
+      {/* Use the shared DivScrollY (OverlayScrollbars) for the page
+          body scroll instead of native `overflow-y-auto` — matches
+          the rest of the app's themed scrollbar treatment. */}
+      <DivScrollY className="flex-1">
         <div
           ref={pageContainerRef}
-          className="flex flex-col gap-3 max-w-4xl mx-auto p-4"
+          className="flex flex-col gap-3 max-w-4xl mx-auto p-4 w-full"
         >
           {/* 1. Inline chat input — start a new conversation in this project.
                 The label above the input is intentional: users land here
@@ -490,7 +494,7 @@ export function ProjectDetailPage() {
 
           <ProjectExtensionSlot name="advanced_settings" />
         </div>
-      </div>
+      </DivScrollY>
 
       <ProjectFormDrawer />
     </div>

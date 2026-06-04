@@ -13,7 +13,7 @@ import {
   App,
   Button,
   Empty,
-  Modal,
+  Popconfirm,
   Spin,
   Tag,
   Tooltip,
@@ -49,7 +49,13 @@ function formatFileSize(bytes: number): string {
 }
 
 export function ProjectFilesManagePanel() {
-  const { message } = App.useApp()
+  // `modal` from App.useApp() — NOT the static `Modal.confirm` from
+  // antd. Static Modal calls render OUTSIDE the ConfigProvider's
+  // context tree, so they ignore the active theme token. In dark
+  // mode that surfaces as a white modal on a dark page. App.useApp()'s
+  // modal instance is wired through the running context and inherits
+  // the dark/light tokens correctly.
+  const { message, modal } = App.useApp()
   const { token } = theme.useToken()
   const project = Stores.ProjectDetail.project
   const {
@@ -70,35 +76,34 @@ export function ProjectFilesManagePanel() {
   const [drawerBody, setDrawerBody] = useState<HTMLElement | null>(null)
   const [isDragging, setIsDragging] = useState(false)
 
-  const handleDetach = async (fileId: string, filename: string) => {
+  const handleDelete = async (fileId: string, filename: string) => {
     if (!projectId) return
     try {
-      await Stores.ProjectFiles.detachFile(projectId, fileId)
-      message.success(`Removed ${filename} from project`)
+      await Stores.ProjectFiles.deleteFile(projectId, fileId)
+      message.success(`Deleted ${filename}`)
     } catch (err) {
       message.error(
-        err instanceof Error ? err.message : 'Failed to detach file',
+        err instanceof Error ? err.message : 'Failed to delete file',
       )
     }
   }
 
-  const handleBatchDetach = () => {
+  const handleBatchDelete = () => {
     if (!projectId || selectedFileIds.size === 0) return
     const n = selectedFileIds.size
-    Modal.confirm({
-      title: `Remove ${n} file${n === 1 ? '' : 's'} from project?`,
-      content:
-        'The files themselves are preserved; only their project attachments are removed.',
-      okText: 'Remove',
+    modal.confirm({
+      title: `Delete ${n} file${n === 1 ? '' : 's'}?`,
+      content: 'This permanently removes the files from your library.',
+      okText: 'Delete',
       okButtonProps: { danger: true },
       cancelText: 'Cancel',
       onOk: async () => {
         try {
-          await Stores.ProjectFiles.batchDetach(projectId)
-          message.success(`Removed ${n} file${n === 1 ? '' : 's'} from project`)
+          await Stores.ProjectFiles.batchDelete(projectId)
+          message.success(`Deleted ${n} file${n === 1 ? '' : 's'}`)
         } catch (err) {
           message.error(
-            err instanceof Error ? err.message : 'Batch detach failed',
+            err instanceof Error ? err.message : 'Batch delete failed',
           )
         }
       },
@@ -256,9 +261,9 @@ export function ProjectFilesManagePanel() {
           size="small"
           danger
           icon={<DeleteOutlined />}
-          onClick={handleBatchDetach}
+          onClick={handleBatchDelete}
         >
-          Detach selected
+          Delete selected
         </Button>
       </div>
     </div>
@@ -313,18 +318,28 @@ export function ProjectFilesManagePanel() {
               onSelectChange={() => Stores.ProjectFiles.toggleSelection(file.id)}
               subtitle={
                 <>
-                  {file.mime_type ?? 'unknown'} · {formatFileSize(file.file_size)}
+                  {formatFileSize(file.file_size)} · {file.mime_type ?? 'unknown'}
                 </>
               }
               actions={
                 canEdit ? (
-                  <Button
-                    type="text"
-                    danger
-                    icon={<DeleteOutlined />}
-                    aria-label={`Remove ${file.filename}`}
-                    onClick={() => handleDetach(file.id, file.filename)}
-                  />
+                  <Popconfirm
+                    title="Delete this file?"
+                    description="This permanently removes the file from your library."
+                    okText="Delete"
+                    okButtonProps={{ danger: true }}
+                    cancelText="Cancel"
+                    onConfirm={() => handleDelete(file.id, file.filename)}
+                  >
+                    <Tooltip title="Delete">
+                      <Button
+                        type="text"
+                        danger
+                        icon={<DeleteOutlined />}
+                        aria-label={`Delete ${file.filename}`}
+                      />
+                    </Tooltip>
+                  </Popconfirm>
                 ) : undefined
               }
             />

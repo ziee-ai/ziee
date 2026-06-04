@@ -858,9 +858,11 @@ async fn detach_returns_404_when_project_owned_by_other_user() {
 // ============================================================
 //
 // Used by the frontend project chat extension to resolve a
-// conversation's parent project (for the trailing chip on
-// ConversationCard + the 3-dot menu's "Open: NAME" entry). Returns
-// the full Project for project-bound conversations, 404 otherwise.
+// conversation's parent project (trailing chip on ConversationCard,
+// "Open: NAME" entry in 3-dot menu). Always 200 — returns Project
+// for attached conversations, `null` for unfiled / nonexistent / not
+// owned. Treating "unfiled" as a 404 used to spam the client console
+// with error logs on every chat surface load.
 
 #[tokio::test]
 async fn project_for_conversation_returns_project_when_attached() {
@@ -884,12 +886,13 @@ async fn project_for_conversation_returns_project_when_attached() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body: Value = resp.json().await.unwrap();
+    assert!(!body.is_null(), "expected Project body, got null");
     assert_eq!(body["id"], pid);
     assert_eq!(body["name"], "Parent");
 }
 
 #[tokio::test]
-async fn project_for_conversation_returns_404_when_unfiled() {
+async fn project_for_conversation_returns_null_when_unfiled() {
     let server = TestServer::start().await;
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
@@ -906,11 +909,13 @@ async fn project_for_conversation_returns_404_when_unfiled() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Value = resp.json().await.unwrap();
+    assert!(body.is_null(), "expected null for unfiled conversation");
 }
 
 #[tokio::test]
-async fn project_for_conversation_returns_404_when_conversation_owned_by_other_user() {
+async fn project_for_conversation_returns_null_when_conversation_owned_by_other_user() {
     // Cross-user ownership: alice queries by Bob's project-bound conv.
     // The handler resolves via project ownership scope, so alice
     // doesn't get a leak even though the row physically exists.
@@ -938,11 +943,13 @@ async fn project_for_conversation_returns_404_when_conversation_owned_by_other_u
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Value = resp.json().await.unwrap();
+    assert!(body.is_null(), "ownership leak — alice should see null for Bob's conv");
 }
 
 #[tokio::test]
-async fn project_for_conversation_returns_404_for_nonexistent_conversation() {
+async fn project_for_conversation_returns_null_for_nonexistent_conversation() {
     let server = TestServer::start().await;
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
@@ -958,7 +965,9 @@ async fn project_for_conversation_returns_404_for_nonexistent_conversation() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Value = resp.json().await.unwrap();
+    assert!(body.is_null(), "expected null for nonexistent conversation id");
 }
 
 // ============================================================
