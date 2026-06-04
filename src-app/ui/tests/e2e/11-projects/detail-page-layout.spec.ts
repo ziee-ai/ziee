@@ -17,7 +17,9 @@ import {
  *   4. Section 3: Project knowledge (inline preview + Manage drawer)
  *   5. Section 4: Instructions (preview + inline Edit)
  *   6. Section 5: About (only if project.description set)
- *   7. Section 6: Advanced (default-asset summary + Configure MCP button)
+ *   7. Section 6: Advanced (default-asset summary)
+ *   8. Section 7: MCP defaults (header Edit button + body summary
+ *      of approval mode + per-server auto-approved / disabled rules)
  *
  * Each section uses a stable `data-test-section="<id>"` selector so
  * spec assertions don't drift when copy or icons change.
@@ -162,7 +164,7 @@ test.describe('Projects - detail page layout (Option A)', () => {
     await expect(section.getByText('Layout sanity-check project.')).toBeVisible()
   })
 
-  test('Advanced section summarises defaults + has Configure MCP defaults button', async ({
+  test('Advanced section summarises default assistant + model status', async ({
     page,
   }) => {
     const advanced = page.locator('[data-test-section="advanced"]')
@@ -174,7 +176,11 @@ test.describe('Projects - detail page layout (Option A)', () => {
     await expect(
       advanced.locator('[data-test-default-model-set="false"]'),
     ).toBeVisible()
+  })
 
+  test('MCP Defaults card shows approval mode + header Edit button', async ({
+    page,
+  }) => {
     // MCP defaults moved to their own section after the project↔mcp
     // inversion — the mcp module contributes a panel via the
     // `advanced_settings` slot, rendered as `data-test-section="mcp-defaults"`.
@@ -184,18 +190,21 @@ test.describe('Projects - detail page layout (Option A)', () => {
     await expect(
       mcp.locator('[data-test-mcp-approval-mode="manual_approve"]'),
     ).toBeVisible()
-    // Configure MCP defaults button (admin → has ProjectsEdit).
+    // Edit button now lives in the Card `extra` slot in the header
+    // (was previously a primary button in the body labeled
+    // "Configure MCP defaults"). Aria label = "Edit MCP defaults" so
+    // we can match without depending on the visible "Edit" text.
     await expect(
-      mcp.getByRole('button', { name: /configure mcp defaults/i }),
+      mcp.getByRole('button', { name: /edit mcp defaults/i }),
     ).toBeVisible()
   })
 
-  test('"Configure MCP defaults" opens the shared MCP modal in project scope', async ({
+  test('"Edit" header button opens the shared MCP modal in project scope', async ({
     page,
   }) => {
     await page
       .locator('[data-test-section="mcp-defaults"]')
-      .getByRole('button', { name: /configure mcp defaults/i })
+      .getByRole('button', { name: /edit mcp defaults/i })
       .click()
 
     // The shared McpConfigModal opens; in project scope its title

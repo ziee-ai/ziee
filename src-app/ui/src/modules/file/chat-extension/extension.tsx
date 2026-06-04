@@ -56,6 +56,18 @@ function FileAttachmentRenderer({ content: data, isUser }: ContentRendererProps)
   // Trigger background load on first access (deferred inside store action — safe in render)
   Stores.File.getMessageFile(fileData.file_id, fallback)
 
+  // Chat surfaces opt into the side-by-side right-panel (ChatRightPanel
+  // is mounted inside ConversationPage). Without this explicit onClick,
+  // FileCard's default falls back to opening the global preview drawer.
+  const openInRightPanel = () => {
+    Stores.Chat.displayInRightPanel({
+      id: file.id,
+      title: file.filename,
+      type: 'file',
+      data: { fileId: file.id },
+    })
+  }
+
   return (
     <FileCard
       file={file}
@@ -63,6 +75,7 @@ function FileAttachmentRenderer({ content: data, isUser }: ContentRendererProps)
       showFileName={true}
       canRemove={false}
       canDelete={false}
+      onClick={openInRightPanel}
     />
   )
 }
@@ -88,7 +101,7 @@ const fileExtension: ChatExtension = createExtension({
     // serialized `data` ({ fileId }) and looks the actual File entity up
     // from FileStore at render time.
     const { registerPanelRenderer } = await import('@/modules/chat/core/stores/Chat.store')
-    const { FilePanel: FilePanelComponent } = await import('./components/FilePanel')
+    const { FilePanel: FilePanelComponent } = await import('@/modules/file/components/FilePanel')
     const { FileOutlined: FileOutlinedIcon } = await import('@ant-design/icons')
     const { Spin: SpinComponent } = await import('antd')
     const { Stores: StoresRef } = await import('@/core/stores')

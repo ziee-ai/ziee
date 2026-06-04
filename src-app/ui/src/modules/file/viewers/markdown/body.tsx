@@ -43,7 +43,7 @@ export function MarkdownBody(props: FileViewerSlotProps) {
     return <div className="flex items-center justify-center h-full"><Spin /></div>
   }
   if (file && mode === 'raw') {
-    return <RawCodeView text={content} />
+    return <RawCodeView text={content} filename={file.filename} />
   }
   return (
     <div className="p-4 overflow-auto h-full">

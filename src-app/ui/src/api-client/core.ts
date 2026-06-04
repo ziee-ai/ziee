@@ -445,26 +445,25 @@ export const callAsync = async <U extends ApiEndpointUrl>(
     } else if (
       contentType.startsWith('text/') ||
       contentType.includes('application/xml') ||
-      contentType.includes('application/javascript') ||
-      contentType.includes('application/json')
+      contentType.includes('application/javascript')
     ) {
       // Return text for text-like content types
       const textResponse = await response.text()
       return textResponse as unknown as ResponseByUrl<U>
-    } else if (
-      contentType.startsWith('image/') ||
-      contentType.startsWith('video/') ||
-      contentType.startsWith('audio/') ||
-      contentType.includes('application/pdf') ||
-      contentType.includes('application/octet-stream')
-    ) {
-      // Return blob for binary content types
+    } else {
+      // Default to binary (Blob) for everything else. Was previously
+      // a whitelist of image/video/audio/pdf/octet-stream with a
+      // text fallback for unknowns — but that fallback corrupted
+      // any binary file whose MIME type wasn't in the list (XLSX,
+      // ZIP, MS Office docs, custom application/* types). UTF-8
+      // decoding replaces every non-valid byte sequence with U+FFFD
+      // (3 bytes each), and the subsequent xlsx/zip parser sees
+      // garbage and OOMs trying to allocate based on mis-read
+      // section lengths. Binary-as-default preserves bytes; the
+      // explicit text branch above still handles legitimate text
+      // responses.
       const blobResponse = await response.blob()
       return blobResponse as unknown as ResponseByUrl<U>
-    } else {
-      // Fallback to text for unknown content types
-      const textResponse = await response.text()
-      return textResponse as unknown as ResponseByUrl<U>
     }
   } catch (error) {
     // Handle AbortErrors more gracefully - they're expected during cleanup

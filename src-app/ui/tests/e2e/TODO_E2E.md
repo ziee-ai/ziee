@@ -134,3 +134,42 @@ on the user MCP page` (line 128) now passes after the path/url fixes
 above.
 
 ---
+
+## 3. MCP project-modal state-bleed regression
+
+**Where it would live:** new spec under `tests/e2e/11-projects/` (e.g.
+`mcp-defaults-modal-state.spec.ts`) or appended to
+`detail-page-layout.spec.ts`.
+
+**What to assert:**
+1. Create a real system MCP server via API + assign to admin's default group.
+2. Open the project's MCP Defaults modal (header "Edit" button).
+3. Toggle the server switch OFF inside the modal.
+4. Click "Save & Close".
+5. Reload the page.
+6. Re-open the MCP Defaults modal.
+7. Assert the server's switch is STILL OFF (it should read the
+   persisted state from the backend, not stale `state.selectedServers`
+   left over from the previous modal session).
+
+**Why this matters:** Caught a real bug in
+`McpComposer.store.ts::openConfigModalForProject` where the global
+`state.selectedServers` Map wasn't reset across modal opens. The
+modal's seed-once guard (`if (selectedServers.size > 0) return`)
+then suppressed the re-seed from backend state, and disabled servers
+showed up as enabled on the second open.
+
+**Why deferred:** Requires real MCP-server-toggle UI interaction inside
+the modal (locate the per-server Switch by display name, click it,
+wait for the save-on-close PUT to finish). The existing
+`mcp-config-modal.spec.ts` deliberately avoids server-toggle UI for
+the same reason. Implementing requires a small helper that registers
+a stub system server + waits for its switch to render in the modal —
+~30 min of helper code.
+
+**Manual repro until then:** disable a server in the project MCP
+defaults modal → save → reload page → re-open modal → confirm the
+switch state matches the on-disk state (was previously showing the
+stale enabled state).
+
+---

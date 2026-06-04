@@ -3,6 +3,8 @@ use std::path::PathBuf;
 
 #[path = "build_helper/pandoc.rs"]
 mod pandoc;
+#[path = "build_helper/typst.rs"]
+mod typst;
 #[path = "build_helper/pdfium.rs"]
 mod pdfium;
 #[path = "build_helper/uv.rs"]
@@ -164,6 +166,15 @@ fn setup_external_binaries() {
     // Setup Pandoc - downloads to binaries/{target}/
     if let Err(e) = pandoc::setup_pandoc(&target, &binaries_dir, &out_dir) {
         eprintln!("Warning: Failed to setup Pandoc: {}", e);
+    }
+
+    // Setup typst - downloads to binaries/{target}/typst/.
+    // typst is the Unicode-capable PDF engine pandoc routes office-doc
+    // → PDF conversions through (replaces pdflatex, which choked on
+    // common Unicode characters like ≥/≤/→/π). Self-contained binary,
+    // no system TeX install required.
+    if let Err(e) = typst::setup_typst(&target, &binaries_dir, &out_dir) {
+        eprintln!("Warning: Failed to setup typst: {}", e);
     }
 
     // Setup PDFium - downloads to binaries/{target}/
