@@ -12,9 +12,12 @@ import {
 import { hasPermissionNow } from '@/core/permissions'
 import { emitMemoryAdminSettingsUpdated } from '@/modules/memory/events'
 
-export type EmbeddingCapableModelRow = Pick<
+// Candidate model row for the admin form's two model pickers. Carries
+// `capabilities` so the form can derive the extraction list (non-embedding
+// models) client-side.
+export type CandidateModelRow = Pick<
   LlmModel,
-  'id' | 'name' | 'display_name' | 'provider_id'
+  'id' | 'name' | 'display_name' | 'provider_id' | 'capabilities'
 >
 
 // Widened patch type. Reason: the backend's `UpdateMemoryAdminSettingsRequest`
@@ -39,7 +42,13 @@ export type MemoryAdminUpdatePatch = Omit<
 
 interface MemoryAdminStore {
   settings: MemoryAdminSettings | null
-  availableModels: EmbeddingCapableModelRow[]
+  // All models (capped page), used to derive the extraction-model list.
+  availableModels: CandidateModelRow[]
+  // Embedding-capable models, fetched server-side (`capability=text_embedding`)
+  // so the embedding picker is never truncated by unrelated chat models
+  // crowding out a late-added embedder in the capped page. Populated by
+  // the same `loadCandidateModels` call as `availableModels`.
+  embeddingModels: CandidateModelRow[]
   rebuildStatus: RebuildStatus | null
   loading: boolean
   saving: boolean
@@ -54,7 +63,7 @@ interface MemoryAdminStore {
   }
 
   load: () => Promise<void>
-  loadEmbeddingCapableModels: () => Promise<void>
+  loadCandidateModels: () => Promise<void>
   loadRebuildStatus: () => Promise<void>
   triggerReembed: () => Promise<void>
   update: (patch: MemoryAdminUpdatePatch) => Promise<MemoryAdminSettings>
@@ -84,34 +93,46 @@ const loadAdminSettings = async (
   }
 }
 
-const loadEmbeddingModels = async (
+const toRow = (m: LlmModel): CandidateModelRow => ({
+  id: m.id,
+  name: m.name,
+  display_name: m.display_name,
+  provider_id: m.provider_id,
+  capabilities: m.capabilities,
+})
+
+const loadCandidateModels = async (
   set: (fn: (s: MemoryAdminStore) => void) => void,
 ) => {
   set(s => {
     s.loadingModels = true
   })
   try {
-    const body = await ApiClient.LlmModel.list({
-      capability: 'text_embedding',
-      page: 1,
-      perPage: 200,
-    })
-    const rows: EmbeddingCapableModelRow[] = body.models.map(m => ({
-      id: m.id,
-      name: m.name,
-      display_name: m.display_name,
-      provider_id: m.provider_id,
-    }))
+    // Two fetches, both capped at the same page size:
+    //  - embedding picker: server-filtered `capability=text_embedding`
+    //    so a late-added embedder is never crowded out of the page by
+    //    unrelated chat models (the original single-list bug also caused
+    //    the extraction dropdown to show ONLY embedders).
+    //  - extraction picker: ALL models; the form keeps the non-embedding
+    //    ones (using "not an embedder" rather than "is chat" so manually
+    //    added chat models without a capability flag still appear).
+    const [allBody, embeddingBody] = await Promise.all([
+      ApiClient.LlmModel.list({ page: 1, perPage: 200 }),
+      ApiClient.LlmModel.list({
+        capability: 'text_embedding',
+        page: 1,
+        perPage: 200,
+      }),
+    ])
     set(s => {
-      s.availableModels = rows
+      s.availableModels = allBody.models.map(toRow)
+      s.embeddingModels = embeddingBody.models.map(toRow)
       s.loadingModels = false
     })
   } catch (error) {
     set(s => {
       s.error =
-        error instanceof Error
-          ? error.message
-          : 'Failed to load embedding models'
+        error instanceof Error ? error.message : 'Failed to load models'
       s.loadingModels = false
     })
   }
@@ -136,6 +157,7 @@ export const useMemoryAdminStore = create<MemoryAdminStore>()(
     immer((set, _get) => ({
       settings: null,
       availableModels: [],
+      embeddingModels: [],
       rebuildStatus: null,
       loading: false,
       saving: false,
@@ -156,7 +178,7 @@ export const useMemoryAdminStore = create<MemoryAdminStore>()(
             : Promise.resolve(),
         availableModels: () =>
           hasPermissionNow(Permissions.MemoryAdminRead)
-            ? loadEmbeddingModels(set)
+            ? loadCandidateModels(set)
             : Promise.resolve(),
         rebuildStatus: () =>
           hasPermissionNow(Permissions.MemoryAdminRead)
@@ -165,7 +187,7 @@ export const useMemoryAdminStore = create<MemoryAdminStore>()(
       },
 
       load: () => loadAdminSettings(set),
-      loadEmbeddingCapableModels: () => loadEmbeddingModels(set),
+      loadCandidateModels: () => loadCandidateModels(set),
       loadRebuildStatus: () => loadRebuildStatusInternal(set),
 
       triggerReembed: async (): Promise<void> => {
