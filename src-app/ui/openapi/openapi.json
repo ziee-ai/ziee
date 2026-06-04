@@ -21296,9 +21296,14 @@
               "string",
               "null"
             ]
+          },
+          "tool_use_id": {
+            "description": "Tool use id this artifact was produced by. Lets the frontend attach the\n artifact's resource_link to the matching tool_result block (positioning),\n and disambiguate when tools run in parallel.",
+            "type": "string"
           }
         },
         "required": [
+          "tool_use_id",
           "file_id",
           "filename",
           "file_size"

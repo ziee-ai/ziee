@@ -1514,6 +1514,7 @@ export interface Resource {
 }
 
 export interface ResourceLink {
+  file_id?: string
   is_saved?: boolean
   mime_type?: string
   name?: string
@@ -1557,6 +1558,7 @@ export interface SSEChatStreamArtifactCreatedData {
   file_size: number
   filename: string
   mime_type?: string
+  tool_use_id: string
 }
 
 export interface SSEChatStreamCompleteData {

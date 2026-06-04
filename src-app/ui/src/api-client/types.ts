@@ -1733,6 +1733,7 @@ export interface SSEChatStreamArtifactCreatedData {
   file_size: number
   filename: string
   mime_type?: string
+  tool_use_id: string
 }
 
 export interface SSEChatStreamCompleteData {

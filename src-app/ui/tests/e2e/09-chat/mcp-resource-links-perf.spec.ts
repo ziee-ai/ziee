@@ -17,6 +17,13 @@ import {
  * accidental refetch on re-render.
  */
 
+// 1x1 transparent PNG — keeps ImageBody's <img> in DOM.
+const TINY_PNG = Buffer.from(
+  '89504E470D0A1A0A0000000D49484452000000010000000108060000001F15C4890000000D49444154789C6200010000050001' +
+    '0D0A2DB40000000049454E44AE426082',
+  'hex',
+)
+
 test.describe('Inline file previews — performance', () => {
   test.beforeEach(async ({ page, testInfra }) => {
     const { baseURL, apiURL } = testInfra
@@ -29,7 +36,7 @@ test.describe('Inline file previews — performance', () => {
     await createModelViaAPI(apiURL, token, providerId, undefined, undefined, 'openai')
   })
 
-  test('20 image resource_links render within 5 seconds', async ({
+  test('20 image resource_links render within a 15s wall-clock budget', async ({
     page,
     testInfra,
   }) => {
@@ -43,8 +50,9 @@ test.describe('Inline file previews — performance', () => {
     const previews = page.locator('[data-testid="inline-file-preview"]')
     await expect(previews).toHaveCount(20, { timeout: 10000 })
     const elapsed = Date.now() - t0
-    // Generous bound — the seed itself takes ~3s of setup. The render
-    // of 20 items inside should be well under another 2s on top.
+    // Wall-clock budget includes the ~3s seed setup + the 10s toHaveCount
+    // timeout above; deliberately generous to absorb E2E cold-start variance.
+    // This guards against a hard hang, not a fine-grained render-time SLA.
     expect(elapsed).toBeLessThan(15000)
   })
 
@@ -116,5 +124,59 @@ test.describe('Inline file previews — performance', () => {
     await expect(previews.nth(1).locator('table:has(tbody td)')).toBeVisible()
     expect(mock.callCount(u1)).toBe(1)
     expect(mock.callCount(u2)).toBe(1)
+  })
+
+  test('off-screen previews defer their body until scrolled into view', async ({
+    page,
+    testInfra,
+  }) => {
+    // A tall message with many files. Only previews near the viewport mount
+    // their body (and thus fetch) — previews far away stay header-only until
+    // scrolled to. This is the fix for laggy reloads that loaded every file at
+    // once. (Position-agnostic: we don't assume where the page settles, only
+    // that NOT ALL bodies mount, and that scrolling a gated one in mounts it.)
+    const COUNT = 80
+    const links = Array.from({ length: COUNT }, (_, i) => ({
+      uri: `/api/files/gate-${i}/download`,
+      name: `f-${i}.csv`,
+      mime_type: 'text/csv',
+    }))
+    await seedAssistantWithToolResult(page, testInfra.baseURL, { resourceLinks: links })
+    const previews = page.locator('[data-testid="inline-file-preview"]')
+    await expect(previews).toHaveCount(COUNT, { timeout: 10000 })
+
+    // Headers all render; bodies are viewport-gated. Once ANY body has mounted
+    // (so the observers have run), the mounted set equals only the previews
+    // within the viewport+800px band — never the off-screen tail. 80 collapsed
+    // headers far exceed any headless viewport + the 800px margin, so the band
+    // cannot contain all of them regardless of where the page settled. No
+    // fixed sleep needed: the off-screen previews never enter the band, so the
+    // count cannot later grow to COUNT without an explicit scroll.
+    const bodies = page.locator('[data-testid="inline-file-preview-body"]')
+    await expect(bodies.first()).toBeVisible({ timeout: 10000 })
+    const mounted = await bodies.count()
+    expect(mounted).toBeGreaterThan(0)
+    expect(mounted).toBeLessThan(COUNT)
+
+    // Scrolling a previously-gated preview into view mounts its body.
+    await previews.last().scrollIntoViewIfNeeded()
+    await expect(
+      previews.last().locator('[data-testid="inline-file-preview-body"]'),
+    ).toHaveCount(1, { timeout: 10000 })
+  })
+
+  test('inline images use native lazy loading + async decoding', async ({
+    page,
+    testInfra,
+  }) => {
+    const uri = '/api/files/lazy-img/download'
+    await mockResourceLinkUrl(page, uri, TINY_PNG, { contentType: 'image/png' })
+    await seedAssistantWithToolResult(page, testInfra.baseURL, {
+      resourceLinks: [{ uri, name: 'p.png', mime_type: 'image/png' }],
+    })
+    const img = page.locator('[data-testid="inline-file-preview"] img').first()
+    await expect(img).toBeVisible({ timeout: 10000 })
+    await expect(img).toHaveAttribute('loading', 'lazy')
+    await expect(img).toHaveAttribute('decoding', 'async')
   })
 })

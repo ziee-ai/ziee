@@ -12,7 +12,7 @@ import {
 } from '@/modules/chat/core/extensions'
 import { Stores } from '@/core/stores'
 import type { McpToolCall } from '@/modules/mcp/stores/McpComposer.store'
-import type { MessageContent, MessageContentDataToolUse, MessageContentDataFileAttachment, MessageWithContent } from '@/api-client/types'
+import type { MessageContent, MessageContentDataToolUse, MessageContentDataToolResult, MessageWithContent } from '@/api-client/types'
 import { ToolCallPendingApprovalContent } from '@/modules/mcp/chat-extension/components/ToolCallPendingApprovalContent'
 import { McpMenuItem } from '@/modules/mcp/chat-extension/components/McpMenuItem'
 import { McpStatusRow } from '@/modules/mcp/chat-extension/components/McpStatusRow'
@@ -226,18 +226,6 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
       )}
     </Card>
   )
-}
-
-/**
- * MCP tool result content renderer component
- * Returns null — McpToolUseRenderer (tool_use content type) already renders the full
- * tool call UI including completed/error states. Rendering here too would cause a
- * duplicate box for every tool call since both tool_use and tool_result blocks are
- * persisted to DB after streaming completes.
- */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function McpToolResultRenderer(_props: ContentRendererProps) {
-  return null
 }
 
 /**
@@ -608,39 +596,95 @@ const mcpExtension: ChatExtension = createExtension({
     },
 
     artifactCreated: async (data, get, set) => {
-      // data is automatically typed as SSEChatStreamArtifactCreatedData
-      // A tool returned a resource_link — inject a file_attachment content block into the
-      // streaming message so the user sees a file card immediately (same as user file uploads).
+      // data is automatically typed as SSEChatStreamArtifactCreatedData.
+      // A tool returned a file artifact. Surface it during streaming the SAME
+      // way it persists in the DB: as a `resource_link` on the tool_result
+      // block for the producing tool call. The file extension's `tool_result`
+      // content renderer then shows the inline preview at that block's
+      // position — consistent during streaming and after the post-complete
+      // reload (no FileCard flash, no jump to a footer).
       const chatState = get()
       const streamingMessage = chatState.streamingMessage
       if (!streamingMessage) return
 
-      const now = new Date().toISOString()
-      const fileContent: MessageContent = {
-        id: `artifact-${data.file_id}`,
-        message_id: streamingMessage.id,
-        content_type: 'file_attachment',
-        content: {
-          type: 'file_attachment',
-          file_id: data.file_id,
-          filename: data.filename,
-          mime_type: data.mime_type ?? null,
-          file_size: data.file_size,
-        } as MessageContentDataFileAttachment,
-        sequence_order: streamingMessage.contents.length,
-        created_at: now,
-        updated_at: now,
+      // Associate to the producing tool call. Prefer the explicit tool_use_id
+      // from the event (robust under parallel tools); fall back to the last
+      // tool_use block for older backends that don't send it.
+      let toolUseId = data.tool_use_id
+      if (!toolUseId) {
+        for (let i = streamingMessage.contents.length - 1; i >= 0; i--) {
+          const c = streamingMessage.contents[i]
+          if (c.content_type === 'tool_use') {
+            toolUseId = (c.content as MessageContentDataToolUse).id
+            break
+          }
+        }
+      }
+      if (!toolUseId) return
+
+      // Backend-owned artifact: render via the authenticated `/api/files/{id}`
+      // path. InlineFilePreview resolves the File entity by `file_id`, so this
+      // synthetic uri is only the React/dedup key until the real link arrives
+      // on reload.
+      const link = {
+        uri: `/api/files/${data.file_id}`,
+        file_id: data.file_id,
+        name: data.filename,
+        mime_type: data.mime_type ?? undefined,
+        size: data.file_size,
+        is_saved: true,
       }
 
-      const updatedMessage = {
-        ...streamingMessage,
-        contents: [...streamingMessage.contents, fileContent],
+      const now = new Date().toISOString()
+      const contents = [...streamingMessage.contents]
+      const existingIdx = contents.findIndex(
+        c =>
+          c.content_type === 'tool_result' &&
+          (c.content as unknown as MessageContentDataToolResult).tool_use_id === toolUseId,
+      )
+
+      if (existingIdx >= 0) {
+        // Merge: a tool that produced several artifacts collects them into one
+        // tool_result block. Dedupe by file_id so repeated events don't stack.
+        const existing = contents[existingIdx]
+        const existingData = existing.content as unknown as MessageContentDataToolResult
+        const links = [...(existingData.resource_links ?? [])]
+        if (!links.some(l => l.file_id === link.file_id)) {
+          links.push(link)
+        }
+        contents[existingIdx] = {
+          ...existing,
+          content: { ...existingData, resource_links: links } as unknown as MessageContentDataToolResult,
+        }
+      } else {
+        // First artifact for this tool: create the tool_result block right
+        // after its tool_use (append → monotonic sequence_order). `content`
+        // is empty — the result text is shown by the tool_use card; this block
+        // only carries the files. `tool_use_id` lets the card's historical
+        // lookup still match it after reload.
+        const toolResult: MessageContent = {
+          id: `artifact-result-${toolUseId}`,
+          message_id: streamingMessage.id,
+          content_type: 'tool_result',
+          content: {
+            type: 'tool_result',
+            tool_use_id: toolUseId,
+            content: '',
+            resource_links: [link],
+          } as unknown as MessageContentDataToolResult,
+          sequence_order: contents.length,
+          created_at: now,
+          updated_at: now,
+        }
+        contents.push(toolResult)
       }
+
+      const updatedMessage = { ...streamingMessage, contents }
       const newMessages = new Map(chatState.messages)
       newMessages.set(updatedMessage.id, updatedMessage)
       set({ streamingMessage: updatedMessage, messages: newMessages })
 
-      console.log('[MCP Extension] Artifact created:', data.filename, data.file_id)
+      console.log('[MCP Extension] Artifact created:', data.filename, data.file_id, '→ tool', toolUseId)
     },
   },
 
@@ -862,10 +906,16 @@ const mcpExtension: ChatExtension = createExtension({
     return {}
   },
 
-  // Register content type components
+  // Register content type components.
+  // NOTE: `tool_result` is intentionally NOT registered here. The tool-call
+  // CARD (input + result text, including completed/error state) is rendered by
+  // McpToolUseRenderer (the `tool_use` content type). The file extension owns
+  // the `tool_result` content type so a tool's returned files (resource_links)
+  // render INLINE at that block's position. The registry returns the first
+  // renderer for a content type, so registering a null renderer here would
+  // shadow the file extension's.
   contentTypes: {
     tool_use: McpToolUseRenderer,
-    tool_result: McpToolResultRenderer,
     elicitation_request: ElicitationFormContent,
   },
 

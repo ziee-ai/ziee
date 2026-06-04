@@ -33,6 +33,8 @@ export function ImageBody(props: FileViewerSlotProps) {
         <img
           src={url}
           alt={name}
+          loading="lazy"
+          decoding="async"
           className="max-w-full max-h-[400px] object-contain"
           onError={() => setErrored(true)}
         />
@@ -56,7 +58,7 @@ export function ImageBody(props: FileViewerSlotProps) {
   }
   return (
     <div className="flex items-center justify-center h-full p-4">
-      <img src={thumbnailUrl} alt={file.filename} className="max-w-full object-contain" />
+      <img src={thumbnailUrl} alt={file.filename} loading="lazy" decoding="async" className="max-w-full object-contain" />
     </div>
   )
 }

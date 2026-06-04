@@ -16,9 +16,9 @@ import { MockResourceLinkServer } from '../07-mcp/helpers/resource-link-mock-ser
  * English request and should:
  *   1. Decide to call `get_file_link` with the right name/mime_type.
  *   2. Receive a `resource_link` content block.
- *   3. The frontend `MessageFilesView` slot picks it up and renders an
- *      `InlineFilePreview` matched to the file's MIME via the viewer
- *      registry.
+ *   3. The frontend `MessageFilesView` (the tool_result content
+ *      renderer) picks it up and renders an `InlineFilePreview` matched to
+ *      the file's MIME via the viewer registry.
  *
  * Mocks the underlying file URL fetch via page.route so the test
  * doesn't need a real backend artifact.
