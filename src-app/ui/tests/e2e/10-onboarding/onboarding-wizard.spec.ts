@@ -9,8 +9,9 @@ import {
 /**
  * E2E for the first-run onboarding wizard.
  *
- * A freshly-created user has empty completed_onboarding_ids, so AuthGuard
- * redirects them to /onboarding. The "getting-started" guide's steps are all
+ * A freshly-created user has no onboarding progress (the onboarding store
+ * fetches it from GET /api/onboarding/progress after login), so the redirect
+ * sends them to /onboarding. The "getting-started" guide's steps are all
  * skippable, so the happy path clicks straight through; the wizard's real
  * actions (saving keys / installing MCP) are covered by focused tests.
  */
@@ -60,8 +61,12 @@ test.describe('Onboarding wizard', () => {
     await expect(page.getByRole('heading', { name: 'AI Providers' })).toBeVisible()
     await page.getByRole('button', { name: 'Next' }).click()
 
-    // MCP Servers → Finish
+    // MCP Servers → Memory
     await expect(page.getByRole('heading', { name: 'MCP Servers' })).toBeVisible()
+    await page.getByRole('button', { name: 'Next' }).click()
+
+    // Memory → Finish (the memory module injects a 'memory-setup' step)
+    await expect(page.getByRole('heading', { name: 'Persistent Memory' })).toBeVisible()
     await page.getByRole('button', { name: 'Next' }).click()
 
     // Finish → chat

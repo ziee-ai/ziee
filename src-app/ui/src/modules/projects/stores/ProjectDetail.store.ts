@@ -5,9 +5,7 @@ import { ApiClient } from '@/api-client'
 import type {
   Project,
   ConversationResponse,
-  UpdateProjectMcpSettingsRequest,
 } from '@/api-client/types'
-import { emitProjectUpdated } from '@/modules/projects/events'
 import { Stores } from '@/core/stores'
 
 /// Page size for the project-conversations list. Matches what the
@@ -52,10 +50,6 @@ interface ProjectDetailState {
   loadProject: (projectId: string) => Promise<void>
   loadConversations: (projectId: string) => Promise<void>
   loadMoreConversations: (projectId: string) => Promise<void>
-  updateMcpSettings: (
-    projectId: string,
-    settings: UpdateProjectMcpSettingsRequest,
-  ) => Promise<Project>
   clearProjectDetailError: () => void
 }
 
@@ -196,26 +190,6 @@ export const useProjectDetailStore = create<ProjectDetailState>()(
                   : 'Failed to load more project conversations',
               conversationsLoadingMore: false,
             })
-          }
-        },
-
-        updateMcpSettings: async (projectId, settings) => {
-          try {
-            const updated = await ApiClient.Project.updateMcpSettings({
-              id: projectId,
-              ...settings,
-            })
-            await emitProjectUpdated(updated)
-            set({ project: updated })
-            return updated
-          } catch (error) {
-            set({
-              error:
-                error instanceof Error
-                  ? error.message
-                  : 'Failed to update MCP settings',
-            })
-            throw error
           }
         },
 

@@ -19,7 +19,9 @@ import { projectExtensionRegistry } from '@/modules/projects/core/extensions/reg
  */
 interface ProjectExtensionSlotProps {
   name: ProjectSlotName
-  view: KnowledgeView
+  /** Required for `knowledge_kinds` (selects inlinePreview vs managePanel),
+   *  ignored for `advanced_settings` (panels are self-contained). */
+  view?: KnowledgeView
   className?: string
   fallback?: React.ReactNode
 }
@@ -34,10 +36,11 @@ export function ProjectExtensionSlot({
   if (renderers.length === 0) {
     return fallback ? <>{fallback}</> : null
   }
+  const dataAttr = view ? `${name}:${view}` : name
   return (
-    <div className={className} data-project-extension-slot={`${name}:${view}`}>
+    <div className={className} data-project-extension-slot={dataAttr}>
       {renderers.map((node, idx) => (
-        <Fragment key={`${name}-${view}-${idx}`}>{node}</Fragment>
+        <Fragment key={`${name}-${view ?? 'default'}-${idx}`}>{node}</Fragment>
       ))}
     </div>
   )

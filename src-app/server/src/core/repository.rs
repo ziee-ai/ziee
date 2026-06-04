@@ -184,6 +184,7 @@ declare_repositories! {
     user: UserRepository => crate::modules::user,
     group: GroupRepository => crate::modules::user,
     llm_provider: LlmProviderRepository => crate::modules::llm_provider,
+    user_group_llm_provider: UserGroupLlmProviderRepository => crate::modules::llm_provider::user_extension,
     user_key: UserKeyRepository => crate::modules::llm_provider,
     llm_model: LlmModelRepository => crate::modules::llm_model,
     download_instance: DownloadInstanceRepository => crate::modules::llm_model,
@@ -191,6 +192,7 @@ declare_repositories! {
     assistant: AssistantRepository => crate::modules::assistant,
     hub: HubRepository => crate::modules::hub,
     mcp: McpRepository => crate::modules::mcp,
+    mcp_settings: McpSettingsRepository => crate::modules::mcp::settings,
     app: AppRepository => crate::modules::app,
     auth: AuthRepository => crate::modules::auth,
     file: FileRepository => crate::modules::file,
@@ -201,4 +203,5 @@ declare_repositories! {
     memory: MemoryRepository => crate::modules::memory,
     assistant_core_memory: AssistantCoreMemoryRepository => crate::modules::assistant_core_memory,
     project: ProjectRepository => crate::modules::project,
+    onboarding: OnboardingRepository => crate::modules::onboarding,
 }

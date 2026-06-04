@@ -22,6 +22,7 @@
 //                                                         files appended by file
 //                                                         chat-extension (order 20)
 
+use aide::axum::ApiRouter;
 use async_trait::async_trait;
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -119,6 +120,14 @@ pub fn apply_project_context(
 impl ChatExtension for ProjectExtension {
     fn name(&self) -> &str {
         "project"
+    }
+
+    /// Contribute the project↔conversation routes — list/attach/detach
+    /// + the reverse `project_for_conversation` lookup. They live under
+    /// `/api/projects/{id}/conversations*` and `/api/projects/by-conversation/{id}`
+    /// (URLs preserved across the inversion).
+    fn register_routes(&self, router: ApiRouter) -> ApiRouter {
+        router.merge(super::routes::project_conversation_routes())
     }
 
     async fn before_llm_call(

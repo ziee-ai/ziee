@@ -2,6 +2,7 @@ import { createModule } from '@/core'
 import { useAuthStore } from '@/modules/auth/Auth.store'
 import { useAuthProvidersStore } from '@/modules/auth/AuthProviders.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
+import { AuthGuard } from './AuthGuard'
 
 const AuthPage = lazyWithPreload(() =>
   import('./AuthPage').then(m => ({ default: m.AuthPage })),
@@ -44,6 +45,11 @@ export default createModule({
       store: useAuthProvidersStore,
     },
   ],
+  // Fill the router-owned `routeGuards` slot so the router gates protected
+  // routes without importing anything from auth (inverts router→auth).
+  slots: {
+    routeGuards: [{ id: 'auth-guard', component: AuthGuard }],
+  },
   initialize: () => {
     console.log('Auth module initialized')
   },

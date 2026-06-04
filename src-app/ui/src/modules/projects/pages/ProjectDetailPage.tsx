@@ -7,18 +7,17 @@ import {
   CopyOutlined,
   DeleteOutlined,
   EditOutlined,
-  ToolOutlined,
 } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { Can, usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { ProjectFormDrawer } from '@/modules/projects/components/ProjectFormDrawer'
 import { ProjectKnowledgeSection } from '@/modules/projects/components/ProjectKnowledgeSection'
-import { ProjectConversationsList } from '@/modules/projects/components/ProjectConversationsList'
+import { ProjectConversationsList } from '@/modules/projects/chat-extension/components/ProjectConversationsList'
 import { ProjectDefaultsForm } from '@/modules/projects/components/ProjectDefaultsForm'
+import { ProjectExtensionSlot } from '@/modules/projects/core/extensions'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
-import { ChatInput } from '@/modules/chat/components/ChatInput'
-import { McpConfigModal } from '@/modules/mcp/chat-extension/components/McpConfigModal'
+import { ProjectInlineChatInput } from '@/modules/projects/chat-extension/components/ProjectInlineChatInput'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 
 const { Title, Text, Paragraph } = Typography
@@ -35,8 +34,10 @@ const { Title, Text, Paragraph } = Typography
  *                    NOT hidden in a tab)
  *   4. Knowledge:    compact chip preview + Manage drawer
  *   5. Instructions: inline preview + Edit affordance
- *   6. Advanced:     defaults summary + "Configure MCP defaults" button
- *                    (project-scope MCP; opens the shared McpConfigModal)
+ *   6. Advanced:     default assistant/model card, plus extension-
+ *                    contributed panels (MCP defaults, future per-
+ *                    project rate limits etc.) via the
+ *                    `advanced_settings` slot.
  *
  * Previous design (round-3) buried conversations behind a Tabs component
  * with Knowledge / Conversations / MCP Settings as siblings, treating
@@ -240,25 +241,6 @@ export function ProjectDetailPage() {
     }
   }
 
-  const handleConfigureMcp = () => {
-    Stores.McpComposer.openConfigModalForProject(project)
-  }
-
-  // MCP summary used in the Advanced section.
-  const approvalMode = project.mcp_approval_mode || 'manual_approve'
-  const approvalLabel =
-    approvalMode === 'auto_approve'
-      ? 'Auto approve'
-      : approvalMode === 'disabled'
-      ? 'Disabled'
-      : 'Manual approve'
-  const autoApprovedCount = Array.isArray(project.mcp_auto_approved_tools)
-    ? (project.mcp_auto_approved_tools as unknown[]).length
-    : 0
-  const disabledCount = Array.isArray(project.mcp_disabled_servers)
-    ? (project.mcp_disabled_servers as unknown[]).length
-    : 0
-
   return (
     <div className="h-full flex flex-col overflow-hidden">
       <HeaderBarContainer>
@@ -325,7 +307,7 @@ export function ProjectDetailPage() {
             <Text type="secondary" className="block mb-2 text-sm">
               Start a new conversation in this project
             </Text>
-            <ChatInput />
+            <ProjectInlineChatInput />
           </section>
 
           {/* 2. Recent conversations — full-width list, no tab. The
@@ -490,9 +472,11 @@ export function ProjectDetailPage() {
             </Flex>
           </Card>
 
-          {/* 4. Advanced — defaults summary + MCP defaults button in its
-                own Card. Separate from the metadata card because the
-                rows are configuration values, not content. */}
+          {/* 4. Advanced — default assistant/model in its own card,
+                followed by extension-contributed panels (MCP defaults,
+                future per-project rate limits etc.) via the
+                advanced_settings slot. The MCP panel ships its own
+                Configure button + modal. */}
           <Card title="Advanced" data-test-section="advanced">
             {/* Default assistant + default model — inline auto-save
                 selects (one PATCH per change). These used to live in
@@ -502,46 +486,13 @@ export function ProjectDetailPage() {
                 editing is the right ergonomic. See ProjectDefaultsForm
                 for the tri-state-null reasoning. */}
             <ProjectDefaultsForm project={project} />
-
-            <Divider className="!my-4" />
-
-            <div className="flex flex-col gap-2 text-sm">
-              <div className="flex items-center justify-between">
-                <Text type="secondary">MCP approval mode:</Text>
-                <Text data-test-mcp-approval-mode={approvalMode}>
-                  {approvalLabel}
-                </Text>
-              </div>
-              <div className="flex items-center justify-between">
-                <Text type="secondary">MCP auto-approved rules:</Text>
-                <Text>{autoApprovedCount}</Text>
-              </div>
-              <div className="flex items-center justify-between">
-                <Text type="secondary">MCP disabled rules:</Text>
-                <Text>{disabledCount}</Text>
-              </div>
-              <Can permission={Permissions.ProjectsEdit}>
-                <Button
-                  icon={<ToolOutlined />}
-                  onClick={handleConfigureMcp}
-                  className="self-start mt-1"
-                  aria-label="Configure MCP defaults"
-                >
-                  Configure MCP defaults
-                </Button>
-              </Can>
-            </div>
           </Card>
+
+          <ProjectExtensionSlot name="advanced_settings" />
         </div>
       </div>
 
       <ProjectFormDrawer />
-      {/* Shared MCP modal — controlled by Stores.McpComposer. The
-          Advanced "Configure MCP defaults" button above opens this in
-          project scope; the dispatch rule
-          (currentProjectId && !currentConversationId) routes saves to
-          /projects/{id}/mcp-settings. */}
-      <McpConfigModal />
     </div>
   )
 }

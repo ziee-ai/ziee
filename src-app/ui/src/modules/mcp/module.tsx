@@ -13,10 +13,13 @@ import { useSystemMcpServerGroupCardStore } from '@/modules/mcp/components/syste
 import { useGroupSystemMcpServersWidgetStore } from '@/modules/mcp/widgets/GroupSystemMcpServersWidget.store'
 import { useGroupSystemMcpServersAssignmentStore } from '@/modules/mcp/components/system/GroupSystemMcpServersAssignmentDrawer.store'
 import { useMcpServerGroupsAssignmentStore } from '@/modules/mcp/components/system/McpServerGroupsAssignmentDrawer.store'
+import { useProjectMcpSettingsStore } from '@/modules/mcp/project-extension/stores/ProjectMcpSettings.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import '@/modules/mcp/types' // CRITICAL: Import to enable type declaration merging
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
+import '@/modules/mcp/project-extension/events/types' // Project↔MCP event declaration merging
+import '@/modules/mcp/project-extension/extension' // Side-effect: register project-extension slot contributions
 
 const McpServersSettings = lazyWithPreload(() =>
   import('./components/user/McpServersSettings').then(m => ({
@@ -104,6 +107,10 @@ export default createModule({
     {
       name: 'McpComposer',
       store: useMcpComposerStore,
+    },
+    {
+      name: 'ProjectMcpSettings',
+      store: useProjectMcpSettingsStore,
     },
   ],
   components: [

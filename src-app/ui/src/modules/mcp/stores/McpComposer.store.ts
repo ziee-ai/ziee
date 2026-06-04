@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { enableMapSet } from 'immer'
-import { Permissions, type Project, type ToolApprovalDecision, type McpServerConfig, type AutoApprovedServer, type DisabledServer, type UserMcpDefaultsResponse, type LoopSettings, type ToolIdentifier, type PerToolLimit, type SSEChatStreamMcpElicitationRequiredData } from '@/api-client/types'
+import { Permissions, type ToolApprovalDecision, type McpServerConfig, type AutoApprovedServer, type DisabledServer, type UserMcpDefaultsResponse, type LoopSettings, type ToolIdentifier, type PerToolLimit, type SSEChatStreamMcpElicitationRequiredData } from '@/api-client/types'
 import { ApiClient } from '@/api-client'
 import { hasPermissionNow } from '@/core/permissions'
 
@@ -227,9 +227,15 @@ interface McpStore {
    *  or pending). */
   openConfigModal: () => void
   /** Open the config modal for editing a project's MCP defaults. Sets
-   *  currentProjectId, clears currentConversationId, seeds the project's
-   *  current settings into the per-key config map. */
-  openConfigModalForProject: (project: Project) => void
+   *  currentProjectId, clears currentConversationId, seeds the supplied
+   *  project settings into the per-key config map. Settings are passed
+   *  explicitly (rather than read from `Project`) because the `Project`
+   *  payload no longer carries `mcp_*` fields after the unification —
+   *  callers fetch via `Stores.ProjectMcpSettings`. */
+  openConfigModalForProject: (
+    projectId: string,
+    settings: import('@/modules/mcp/project-extension/stores/ProjectMcpSettings.store').ProjectMcpSettings | null,
+  ) => void
   /** Close the config modal (also clears currentProjectId). */
   closeConfigModal: () => void
   /** Fetch the live tool list from a running MCP server (used by the
@@ -575,14 +581,12 @@ export const useMcpComposerStore = create<McpStore>()(
       const unavailableDisabled = existingDisabled.filter(d => !availableSet.has(d.server_id))
       disabledServers = [...disabledServers, ...unavailableDisabled]
 
-      const updated = await ApiClient.Project.updateMcpSettings({
+      await ApiClient.Project.updateMcpSettings({
         id: projectId,
         approval_mode: config.approvalMode || 'manual_approve',
         auto_approved_tools: config.autoApprovedTools || [],
         disabled_servers: disabledServers,
-        // loop_settings: opaque pass-through. The project table now
-        // mirrors the conversation column (migration 50).
-        loop_settings: config.loopSettings as unknown,
+        loop_settings: config.loopSettings,
       })
 
       set(state => {
@@ -592,13 +596,15 @@ export const useMcpComposerStore = create<McpStore>()(
         }
       })
 
-      // Mirror the saved row into ProjectDetail store so any open
-      // ProjectDetailPage reflects the change without a refetch.
-      // Dynamic import to avoid module cycle with @/core/stores.
+      // Fire `project.mcp_updated` so the dedicated ProjectMcpSettings
+      // store (used by the project panel) refetches and the UI reflects
+      // the new defaults. Dynamic import to avoid module cycle with
+      // @/core/stores.
       const { Stores } = await import('@/core/stores')
-      if (Stores.ProjectDetail.project?.id === projectId) {
-        Stores.ProjectDetail.__setState({ project: updated })
-      }
+      await Stores.EventBus.emit({
+        type: 'project.mcp_updated',
+        data: { projectId },
+      })
 
       console.log('[MCP Store] Saved project config:', projectId, {
         approvalMode: config.approvalMode,
@@ -1136,48 +1142,36 @@ export const useMcpComposerStore = create<McpStore>()(
 
     /**
      * Open the config modal in PROJECT scope. Seeds a config under
-     * `projectConfigKey(project.id)` from the project's stored MCP
-     * fields and clears currentConversationId so the save dispatch
-     * routes to /projects/{id}/mcp-settings.
+     * `projectConfigKey(projectId)` from the supplied settings (fetched
+     * upstream via `Stores.ProjectMcpSettings.loadSettings`) and clears
+     * currentConversationId so the save dispatch routes to
+     * /projects/{id}/mcp-settings. `settings` may be null when the
+     * project has never customized defaults — we fall back to
+     * manual_approve + empty arrays.
      */
-    openConfigModalForProject: (project: Project) => {
-      const key = projectConfigKey(project.id)
+    openConfigModalForProject: (projectId, settings) => {
+      const key = projectConfigKey(projectId)
       set(state => {
-        const autoApprovedRaw = (project.mcp_auto_approved_tools as
+        const autoApprovedRaw = (settings?.auto_approved_tools as
           | AutoApprovedServer[]
-          | null
           | undefined) ?? []
-        const disabledRaw = (project.mcp_disabled_servers as
+        const disabledRaw = (settings?.disabled_servers as
           | DisabledServer[]
-          | null
           | undefined) ?? []
-        const loop = (project.mcp_loop_settings as
+        const loop = (settings?.loop_settings as
           | LoopSettings
           | null
           | undefined) ?? undefined
 
-        // selectedServers seeding: the modal renders enabled MCP
-        // servers and lets the user toggle them. The persisted shape
-        // is the INVERSE (disabled_servers). We don't know the
-        // accessible-server list here; the modal's render logic
-        // displays each enabled server with its current selection
-        // (`selection = !disabledServers.find(d => d.id === server.id)`).
-        // Leaving selectedServers empty here means the modal initially
-        // shows nothing selected — so we synthesize selections for
-        // every server that is NOT in disabledRaw. The full accessible
-        // list isn't reachable from here, so we add all server_ids
-        // from autoApprovedRaw + a wildcard "not-disabled" marker.
-        // Simpler heuristic: seed selectedServers as the union of
-        // disabled-list complements is impossible without the list.
-        // Instead, we leave selectedServers empty here and let the
-        // modal's render compute selection from disabledRaw + the
-        // enabled-server list it already has access to.
+        // selectedServers stays empty here; the modal computes per-server
+        // selection from disabledRaw + the live enabled-server list it
+        // already loads (`selection = !disabledServers.find(...)`).
         const selectedServers = new Map<string, ServerSelection>()
 
         state.conversationConfigs.set(key, {
           selectedServers,
           disabledServers: disabledRaw,
-          approvalMode: (project.mcp_approval_mode as
+          approvalMode: (settings?.approval_mode as
             | 'disabled'
             | 'auto_approve'
             | 'manual_approve') || 'manual_approve',
@@ -1185,7 +1179,7 @@ export const useMcpComposerStore = create<McpStore>()(
           loopSettings: loop,
         })
 
-        state.currentProjectId = project.id
+        state.currentProjectId = projectId
         state.currentConversationId = null
         state.configModalVisible = true
       })

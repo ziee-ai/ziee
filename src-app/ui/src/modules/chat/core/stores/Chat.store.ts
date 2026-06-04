@@ -68,8 +68,25 @@ interface ConversationPanelSnapshot {
   lastAccessedAt: number
 }
 
+/**
+ * Internal, type-erased view of panel data. The precise per-type shape
+ * (`PanelRendererMap[T]`) lives only on the PUBLIC edges —
+ * `registerPanelRenderer` / `displayInRightPanel` / `RightPanelTab<T>` —
+ * where the caller supplies a concrete `T`. The registry storage and the
+ * render boundary deliberately erase to this: indexing the map by
+ * `PanelType` *here* would collapse to `never` whenever zero extensions are
+ * loaded (e.g. the chat module type-checked in isolation), even though every
+ * value flowing through is sound by construction.
+ */
+export type ErasedPanelData = Record<string, unknown>
+
+interface ErasedPanelRenderer {
+  component: ComponentType<ErasedPanelData>
+  icon?: ReactNode
+}
+
 // Module-level registry of panel renderers, populated by extensions.
-const panelRendererRegistry = new Map<PanelType, PanelRenderer<PanelType>>()
+const panelRendererRegistry = new Map<string, ErasedPanelRenderer>()
 
 export function registerPanelRenderer<T extends PanelType>(
   type: T,
@@ -84,10 +101,11 @@ export function registerPanelRenderer<T extends PanelType>(
   panelRendererRegistry.set(type, {
     ...renderer,
     // memo(...) returns a MemoExoticComponent which is structurally a
-    // ComponentType but TS can't see through PanelRendererMap[T] indexing,
-    // so widen via unknown.
-    component: memo(renderer.component) as unknown as ComponentType<PanelRendererMap[T]>,
-  } as PanelRenderer<PanelType>)
+    // ComponentType; widen the precise PanelRendererMap[T] props to the
+    // erased storage shape. Sound: the public <T> signature already proved
+    // `component` accepts PanelRendererMap[T], a subtype of ErasedPanelData.
+    component: memo(renderer.component) as unknown as ComponentType<ErasedPanelData>,
+  })
 }
 
 /**
@@ -96,7 +114,7 @@ export function registerPanelRenderer<T extends PanelType>(
  * means the owning extension hasn't initialized yet, or the type was removed.
  */
 export function resolvePanelRenderer(tab: RightPanelTab): {
-  Component: ComponentType<PanelRendererMap[PanelType]>
+  Component: ComponentType<ErasedPanelData>
   icon?: ReactNode
 } | null {
   const renderer = panelRendererRegistry.get(tab.type)

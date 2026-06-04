@@ -64,4 +64,31 @@ declare module '@/core/module' {
   }
 }
 
+/**
+ * `routerEffects` is the router's own extension point: a list of headless,
+ * effect-only components that RouterComponent mounts INSIDE <BrowserRouter>
+ * (so they can use useNavigate/useLocation), each rendering null and doing
+ * its work in a useEffect. The slot's TYPE is owned here by the consumer
+ * (the router), not by any plugin that fills it — so the router type-checks
+ * standalone and removing a contributing module just empties the list.
+ * Plugins (e.g. onboarding) populate it at runtime via their module.tsx.
+ */
+declare module '@/core/module-system/types' {
+  interface Slots {
+    routerEffects: Array<{ id: string; component: ComponentType }>
+    /**
+     * Route guards wrapping every `requiresAuth` route. The router owns this
+     * type and composes the registered guards; features (auth) fill it via
+     * their module.tsx `slots`. The FIRST-registered guard is the OUTERMOST
+     * wrapper (its redirect short-circuits before inner guards mount). An
+     * empty slot is sealed fail-closed by RouterComponent — protected routes
+     * are never rendered ungated.
+     */
+    routeGuards: Array<{
+      id: string
+      component: ComponentType<{ children: ReactNode }>
+    }>
+  }
+}
+
 export {}

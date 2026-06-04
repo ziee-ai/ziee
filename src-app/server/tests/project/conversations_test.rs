@@ -95,7 +95,7 @@ async fn db_mcp_snapshot_approval_mode(
     conversation_id: Uuid,
 ) -> Option<String> {
     let row: Option<(String,)> = sqlx::query_as(
-        "SELECT approval_mode FROM conversation_mcp_settings WHERE conversation_id = $1",
+        "SELECT approval_mode FROM mcp_settings WHERE conversation_id = $1",
     )
     .bind(conversation_id)
     .fetch_optional(pool)

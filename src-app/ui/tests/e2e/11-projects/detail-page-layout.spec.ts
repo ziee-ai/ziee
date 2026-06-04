@@ -78,10 +78,11 @@ test.describe('Projects - detail page layout (Option A)', () => {
       .evaluateAll(els => els.map(el => el.getAttribute('data-test-section')))
 
     // ChatInput → Conversations → ProjectMeta (Description +
-    // Instructions + Knowledge subsections) → Advanced. ProjectMeta
-    // wraps the description/instructions/knowledge group in a single
-    // card so its inner sections render between project-meta and
-    // advanced.
+    // Instructions + Knowledge subsections) → Advanced → extension-
+    // contributed advanced_settings cards (currently: MCP defaults via
+    // mcp/project-extension). ProjectMeta wraps the description/
+    // instructions/knowledge group in a single card so its inner
+    // sections render between project-meta and advanced.
     expect(sectionIds).toEqual([
       'chat-input',
       'conversations',
@@ -90,6 +91,7 @@ test.describe('Projects - detail page layout (Option A)', () => {
       'instructions',
       'knowledge',
       'advanced',
+      'mcp-defaults',
     ])
   })
 
@@ -163,22 +165,28 @@ test.describe('Projects - detail page layout (Option A)', () => {
   test('Advanced section summarises defaults + has Configure MCP defaults button', async ({
     page,
   }) => {
-    const section = page.locator('[data-test-section="advanced"]')
-    await expect(section).toBeVisible()
+    const advanced = page.locator('[data-test-section="advanced"]')
+    await expect(advanced).toBeVisible()
     // Defaults not set → both should report "false".
     await expect(
-      section.locator('[data-test-default-assistant-set="false"]'),
+      advanced.locator('[data-test-default-assistant-set="false"]'),
     ).toBeVisible()
     await expect(
-      section.locator('[data-test-default-model-set="false"]'),
+      advanced.locator('[data-test-default-model-set="false"]'),
     ).toBeVisible()
+
+    // MCP defaults moved to their own section after the project↔mcp
+    // inversion — the mcp module contributes a panel via the
+    // `advanced_settings` slot, rendered as `data-test-section="mcp-defaults"`.
+    const mcp = page.locator('[data-test-section="mcp-defaults"]')
+    await expect(mcp).toBeVisible()
     // Default MCP approval mode on a fresh project = manual_approve.
     await expect(
-      section.locator('[data-test-mcp-approval-mode="manual_approve"]'),
+      mcp.locator('[data-test-mcp-approval-mode="manual_approve"]'),
     ).toBeVisible()
     // Configure MCP defaults button (admin → has ProjectsEdit).
     await expect(
-      section.getByRole('button', { name: /configure mcp defaults/i }),
+      mcp.getByRole('button', { name: /configure mcp defaults/i }),
     ).toBeVisible()
   })
 
@@ -186,7 +194,7 @@ test.describe('Projects - detail page layout (Option A)', () => {
     page,
   }) => {
     await page
-      .locator('[data-test-section="advanced"]')
+      .locator('[data-test-section="mcp-defaults"]')
       .getByRole('button', { name: /configure mcp defaults/i })
       .click()
 

@@ -1,29 +1,32 @@
 // ============================================================================
 // Onboarding module endpoint tests
 //
-//   POST /api/onboarding/{guide_id}/complete                  (ProfileRead)
-//   POST /api/onboarding/{guide_id}/steps/{step_id}/complete  (ProfileRead)
+//   GET  /api/onboarding/progress                             (auth-only)
+//   POST /api/onboarding/{guide_id}/complete                  (ProfileEdit)
+//   POST /api/onboarding/{guide_id}/steps/{step_id}/complete  (ProfileEdit)
 //
-// Both return the updated User. A normally-registered user has ProfileRead via
-// the default "Users" group, so the happy-path tests use a vanilla user; the
-// 403 test strips all groups.
+// The completion endpoints return OnboardingProgress (no longer the User).
+// Progress lives in the dedicated `user_onboarding` table. A normally-
+// registered user has ProfileEdit via the default "Users" group, so the
+// happy-path tests use a vanilla user; the 403 test strips all groups. GET
+// progress is authentication-only, so a no-permission user can still read it.
 // ============================================================================
 
 use serde_json::Value;
 
 fn completed_guides(body: &Value) -> Vec<String> {
-    body.get("completed_onboarding_ids")
+    body.get("completed_guide_ids")
         .and_then(|v| v.as_array())
-        .expect("response should have completed_onboarding_ids array")
+        .expect("response should have completed_guide_ids array")
         .iter()
         .filter_map(|v| v.as_str().map(String::from))
         .collect()
 }
 
 fn completed_steps(body: &Value) -> Vec<String> {
-    body.get("completed_onboarding_step_ids")
+    body.get("completed_step_ids")
         .and_then(|v| v.as_array())
-        .expect("response should have completed_onboarding_step_ids array")
+        .expect("response should have completed_step_ids array")
         .iter()
         .filter_map(|v| v.as_str().map(String::from))
         .collect()
@@ -46,7 +49,7 @@ async fn test_complete_guide_marks_guide_completed() {
     let body: Value = response.json().await.expect("Failed to parse JSON");
     assert!(
         completed_guides(&body).contains(&"getting-started".to_string()),
-        "completed_onboarding_ids should contain the guide id"
+        "completed_guide_ids should contain the guide id"
     );
 }
 
@@ -110,7 +113,7 @@ async fn test_complete_guide_step_marks_step_completed() {
     let body: Value = response.json().await.expect("Failed to parse JSON");
     assert!(
         completed_steps(&body).contains(&"getting-started/welcome".to_string()),
-        "completed_onboarding_step_ids should contain the `guide/step` key"
+        "completed_step_ids should contain the `guide/step` key"
     );
 }
 
@@ -158,14 +161,14 @@ async fn test_onboarding_endpoints_require_permission_and_auth() {
     let step_url = server.api_url("/onboarding/getting-started/steps/welcome/complete");
 
     for url in [&guide_url, &step_url] {
-        // No ProfileRead → 403.
+        // No ProfileEdit → 403.
         let response = reqwest::Client::new()
             .post(url)
             .header("Authorization", format!("Bearer {}", no_perm.token))
             .send()
             .await
             .expect("Request failed");
-        assert_eq!(response.status(), 403, "user without ProfileRead should be forbidden: {url}");
+        assert_eq!(response.status(), 403, "user without ProfileEdit should be forbidden: {url}");
 
         // No token → 401.
         let response = reqwest::Client::new()
@@ -175,4 +178,92 @@ async fn test_onboarding_endpoints_require_permission_and_auth() {
             .expect("Request failed");
         assert_eq!(response.status(), 401, "unauthenticated request should be 401: {url}");
     }
+}
+
+#[tokio::test]
+async fn test_get_progress_empty_for_fresh_user() {
+    let server = crate::common::TestServer::start().await;
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "onb_fresh", &[]).await;
+
+    let response = reqwest::Client::new()
+        .get(server.api_url("/onboarding/progress"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200);
+    let body: Value = response.json().await.expect("Failed to parse JSON");
+    assert!(completed_guides(&body).is_empty(), "fresh user has no guides");
+    assert!(completed_steps(&body).is_empty(), "fresh user has no steps");
+}
+
+#[tokio::test]
+async fn test_get_progress_reflects_completion() {
+    let server = crate::common::TestServer::start().await;
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "onb_reflect", &[]).await;
+
+    reqwest::Client::new()
+        .post(server.api_url("/onboarding/getting-started/complete"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    let response = reqwest::Client::new()
+        .get(server.api_url("/onboarding/progress"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200);
+    let body: Value = response.json().await.expect("Failed to parse JSON");
+    assert!(
+        completed_guides(&body).contains(&"getting-started".to_string()),
+        "GET progress should reflect the completed guide"
+    );
+}
+
+#[tokio::test]
+async fn test_get_progress_is_authentication_only() {
+    // Gate split: a user with NO permissions can still read their own
+    // progress (auth-only) but cannot POST a completion (ProfileEdit).
+    let server = crate::common::TestServer::start().await;
+    let no_perm =
+        crate::common::test_helpers::create_user_with_no_permissions(&server, "onb_getnoperm").await;
+
+    let response = reqwest::Client::new()
+        .get(server.api_url("/onboarding/progress"))
+        .header("Authorization", format!("Bearer {}", no_perm.token))
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(
+        response.status(),
+        200,
+        "GET progress is auth-only; no-permission user should still read it"
+    );
+
+    let response = reqwest::Client::new()
+        .post(server.api_url("/onboarding/getting-started/complete"))
+        .header("Authorization", format!("Bearer {}", no_perm.token))
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(
+        response.status(),
+        403,
+        "POST complete still requires ProfileEdit"
+    );
+
+    // Unauthenticated GET → 401.
+    let response = reqwest::Client::new()
+        .get(server.api_url("/onboarding/progress"))
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(response.status(), 401, "unauthenticated GET progress should be 401");
 }
