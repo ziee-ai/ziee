@@ -181,6 +181,12 @@ test.describe('App Setup', () => {
     // Wait for form to be visible using semantic selector
     await page.getByLabel('Username').waitFor({ timeout: 30000 })
 
+    // NOTE on Tab counts: each antd `Input.Password` renders a focusable
+    // eye-toggle (tabindex="0") AFTER its input, so reaching the next
+    // field requires an extra Tab to step past the toggle. Without that,
+    // the sequence shifts by one (the confirm field gets the display-name
+    // text → "Passwords do not match" → the form never submits).
+
     // Tab to username field
     await page.keyboard.press('Tab')
     await page.keyboard.type('admin')
@@ -193,16 +199,19 @@ test.describe('App Setup', () => {
     await page.keyboard.press('Tab')
     await page.keyboard.type('password123')
 
-    // Tab to confirm password field
+    // Tab past the password eye-toggle, then to the confirm-password field
+    await page.keyboard.press('Tab')
     await page.keyboard.press('Tab')
     await page.keyboard.type('password123')
 
-    // Tab to display name field
+    // Tab past the confirm-password eye-toggle, then to the display-name field
+    await page.keyboard.press('Tab')
     await page.keyboard.press('Tab')
     await page.keyboard.type('System Administrator')
 
-    // Tab to submit button and press Enter
-    await page.keyboard.press('Tab')
+    // Submit via Enter from the (text) display-name field — standard HTML
+    // form submission (a final "Tab to the submit button" is fragile
+    // because of the eye-toggles above).
     await page.keyboard.press('Enter')
 
     // Should redirect to home
