@@ -27,12 +27,14 @@ const ProjectDetailPage = lazyWithPreload(() =>
     default: m.ProjectDetailPage,
   })),
 )
-// Project-namespaced chat URL renders chat's existing
-// ConversationPage as-is. Projects module is allowed to import
-// chat (chat doesn't import projects), so the route element points
-// straight at it — no thin wrapper needed.
+// Project-namespaced chat URL renders chat's existing ConversationPage
+// as-is. Route registration is the one place projects/ core reaches
+// into chat module — out of scope for the project↔chat inversion
+// round (no `routes` slot on the frontend chat-extension framework
+// yet). If/when that slot lands, move the lazy-import into
+// `projects/chat-extension/extension.tsx`.
 const ProjectChatPage = lazyWithPreload(
-  () => import('@/modules/chat/pages/ConversationPage'),
+  () => import('@/modules/chat/pages/ConversationPage'), // chat-extension-boundary-exception
 )
 
 export default createModule({

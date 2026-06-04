@@ -78,10 +78,11 @@ test.describe('Projects - detail page layout (Option A)', () => {
       .evaluateAll(els => els.map(el => el.getAttribute('data-test-section')))
 
     // ChatInput → Conversations → ProjectMeta (Description +
-    // Instructions + Knowledge subsections) → Advanced. ProjectMeta
-    // wraps the description/instructions/knowledge group in a single
-    // card so its inner sections render between project-meta and
-    // advanced.
+    // Instructions + Knowledge subsections) → Advanced → extension-
+    // contributed advanced_settings cards (currently: MCP defaults via
+    // mcp/project-extension). ProjectMeta wraps the description/
+    // instructions/knowledge group in a single card so its inner
+    // sections render between project-meta and advanced.
     expect(sectionIds).toEqual([
       'chat-input',
       'conversations',
@@ -90,6 +91,7 @@ test.describe('Projects - detail page layout (Option A)', () => {
       'instructions',
       'knowledge',
       'advanced',
+      'mcp-defaults',
     ])
   })
 

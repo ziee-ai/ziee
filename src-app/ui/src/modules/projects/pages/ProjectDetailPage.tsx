@@ -13,11 +13,11 @@ import { Can, usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { ProjectFormDrawer } from '@/modules/projects/components/ProjectFormDrawer'
 import { ProjectKnowledgeSection } from '@/modules/projects/components/ProjectKnowledgeSection'
-import { ProjectConversationsList } from '@/modules/projects/components/ProjectConversationsList'
+import { ProjectConversationsList } from '@/modules/projects/chat-extension/components/ProjectConversationsList'
 import { ProjectDefaultsForm } from '@/modules/projects/components/ProjectDefaultsForm'
 import { ProjectExtensionSlot } from '@/modules/projects/core/extensions'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
-import { ChatInput } from '@/modules/chat/components/ChatInput'
+import { ProjectInlineChatInput } from '@/modules/projects/chat-extension/components/ProjectInlineChatInput'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 
 const { Title, Text, Paragraph } = Typography
@@ -307,7 +307,7 @@ export function ProjectDetailPage() {
             <Text type="secondary" className="block mb-2 text-sm">
               Start a new conversation in this project
             </Text>
-            <ChatInput />
+            <ProjectInlineChatInput />
           </section>
 
           {/* 2. Recent conversations — full-width list, no tab. The

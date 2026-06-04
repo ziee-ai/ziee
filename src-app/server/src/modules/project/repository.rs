@@ -348,64 +348,11 @@ impl ProjectRepository {
         Ok(result.rows_affected() > 0)
     }
 
-    /// List conversations attached to a project, with paging. The
-    /// caller (project handler) must have already verified
-    /// `user_id` owns `project_id`; the `c.user_id = $2` clause is
-    /// defense-in-depth.
-    pub async fn list_conversations_in_project(
-        &self,
-        project_id: Uuid,
-        user_id: Uuid,
-        limit: i64,
-        offset: i64,
-    ) -> Result<Vec<crate::modules::chat::core::types::ConversationResponse>, AppError> {
-        use crate::modules::chat::core::models::Conversation;
-        use crate::modules::chat::core::types::ConversationResponse;
-        let rows = sqlx::query!(
-            r#"
-            SELECT
-                c.id, c.user_id, c.model_id, c.title, c.active_branch_id,
-                c.created_at, c.updated_at,
-                COUNT(bm.message_id) as message_count
-            FROM project_conversations pc
-            JOIN conversations c ON c.id = pc.conversation_id
-            LEFT JOIN branches b ON b.conversation_id = c.id
-            LEFT JOIN branch_messages bm ON bm.branch_id = b.id
-            WHERE pc.project_id = $1 AND c.user_id = $2
-            GROUP BY c.id
-            ORDER BY c.updated_at DESC
-            LIMIT $3 OFFSET $4
-            "#,
-            project_id,
-            user_id,
-            limit,
-            offset,
-        )
-        .fetch_all(&self.pool)
-        .await
-        .map_err(AppError::database_error)?;
-
-        let to_chrono = |odt: time::OffsetDateTime| -> chrono::DateTime<chrono::Utc> {
-            chrono::DateTime::from_timestamp(odt.unix_timestamp(), odt.nanosecond())
-                .expect("valid timestamp")
-        };
-
-        Ok(rows
-            .into_iter()
-            .map(|row| ConversationResponse {
-                conversation: Conversation {
-                    id: row.id,
-                    user_id: row.user_id,
-                    model_id: row.model_id,
-                    title: row.title,
-                    active_branch_id: row.active_branch_id,
-                    created_at: to_chrono(row.created_at),
-                    updated_at: to_chrono(row.updated_at),
-                },
-                message_count: row.message_count.unwrap_or(0),
-            })
-            .collect())
-    }
+    // `list_conversations_in_project` moved to
+    // `chat_extension/repository.rs` (project↔chat inversion). It's the
+    // only project-conversation repo method that imports chat types —
+    // attach/detach/get_for/user_owns above stay here as pure project_*
+    // CRUD. Access via `Repos.project_conversations.list_conversations_in_project`.
 
     /// Verify a conversation is owned by `user_id`. Used by attach/
     /// detach handlers to prevent cross-user mutation before touching
