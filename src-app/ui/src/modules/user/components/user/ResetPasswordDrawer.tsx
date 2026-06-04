@@ -28,6 +28,7 @@ export function ResetPasswordDrawer() {
   return (
     <Drawer
       title="Reset Password"
+      size={600}
       open={isOpen}
       onClose={() => {
         Stores.ResetPasswordDrawer.closeResetPasswordDrawer()

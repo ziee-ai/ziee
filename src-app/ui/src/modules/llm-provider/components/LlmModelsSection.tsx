@@ -12,11 +12,11 @@ import {
   Dropdown,
   Empty,
   Flex,
-  Spin,
   Switch,
   Tooltip,
   Typography,
 } from 'antd'
+import { Loading } from '@/core/components/Loading'
 import { useParams } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -259,9 +259,7 @@ export function LlmModelsSection() {
   return (
     <Card title="Models" extra={getAddButton()}>
       {loading ? (
-        <div className="flex justify-center py-8">
-          <Spin size="large" />
-        </div>
+        <Loading />
       ) : llmModels.length === 0 ? (
         <div>
           <Empty description="No models yet" />

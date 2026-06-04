@@ -10,11 +10,9 @@ export default function SetupPage() {
   const navigate = useNavigate()
   const [form] = Form.useForm()
 
-  console.log({ needsSetup })
-
-  // Redirect to homepage if setup is not needed
+  // Redirect to homepage if setup is not needed (e.g. already completed
+  // in another tab). The primary post-setup redirect is in onFinish.
   React.useEffect(() => {
-    console.log('useEffect needsSetup:', needsSetup)
     if (needsSetup === false) {
       navigate('/', { replace: true })
     }

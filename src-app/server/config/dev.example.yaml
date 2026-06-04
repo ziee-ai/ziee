@@ -56,6 +56,14 @@ server:
   port: 3000  # Use 0 for automatic port selection
   api_prefix: "/api"  # Base path prefix for all API routes
 
+  # Honor X-Forwarded-Host / X-Forwarded-Proto when deriving the OAuth
+  # redirect_uri. Default false. Dev runs behind the Vite proxy (see
+  # vite.config.ts), which sets X-Forwarded-Host so the backend can derive
+  # the user-facing origin — set true here. Keep false on any directly-
+  # exposed server: otherwise an attacker can send X-Forwarded-Host: evil.com
+  # and a permissive IdP hands them the OAuth code.
+  trust_forwarded_headers: true
+
   # Global per-IP rate limiter (tower-governor token bucket).
   #   enabled:     master on/off switch (default true).
   #   per_second:  sustained requests/sec per peer IP (default 50).
@@ -107,6 +115,13 @@ code_sandbox:
   enabled: false
   rootfs_path: "./.ziee-cache/sandbox-rootfs/current"
   cgroup_parent: ""   # empty = rlimits-only mode (no per-call cgroup scope)
+  # Optional knobs below (defaults shown):
+  # workspace_root: "<app.data_dir>/sandboxes"   # per-conversation workspaces
+  # require_download_consent: true     # prompt before a first rootfs download
+  # auto_download_under_mb: 100        # flavors smaller than this skip the prompt
+  # allow_wsl2_mirrored_mode: false    # Windows: allow WSL2 networkingMode=mirrored
+  # allow_cloud_imds_reachable: false  # allow when 169.254.169.254 (cloud IMDS) is reachable
+  # public_base_url: ""                # root MCP resource links at a tunnel/proxy URL
 
 # At-rest encryption for stored credentials (LLM provider api_keys, LLM
 # repository auth tokens, per-user provider keys). When UNSET (the default),
@@ -116,3 +131,12 @@ code_sandbox:
 # unrecoverable.
 # secrets:
 #   storage_key: "change-me-to-a-stable-random-string-min-32-chars"
+
+# Per-cache path overrides. All optional — each defaults to a subdir of
+# app.data_dir. Override individual entries to put a cache on a different
+# disk (e.g. big HF models on a spinning disk while git_cache stays on SSD).
+# caches:
+#   hf_models_dir: "<app.data_dir>/hf-models"      # HuggingFace downloads
+#   llm_engines_dir: "<app.data_dir>/llm-engines"  # llama.cpp / mistralrs binaries
+#   git_cache_dir: "<app.data_dir>/cache/git"      # Hub repository clones
+#   lfs_cache_dir: "<app.data_dir>/cache/lfs"      # Git LFS objects

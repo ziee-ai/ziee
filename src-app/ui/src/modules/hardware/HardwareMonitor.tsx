@@ -1,4 +1,5 @@
 import { Alert, App, Button, Card, Progress, Spin, Tag, Typography } from 'antd'
+import { Loading } from '@/core/components/Loading'
 import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
 import { DivScrollY } from '@/components/common/DivScrollY'
@@ -144,15 +145,7 @@ export function HardwareMonitor() {
   if (hardwareLoading) {
     return (
       <div className="p-3">
-        <div style={{ textAlign: 'center', padding: '50px' }}>
-          <Spin size="large" />
-          <Text
-            type="secondary"
-            style={{ display: 'block', marginTop: '16px' }}
-          >
-            Loading hardware monitor...
-          </Text>
-        </div>
+        <Loading tip="Loading hardware monitor..." />
       </div>
     )
   }

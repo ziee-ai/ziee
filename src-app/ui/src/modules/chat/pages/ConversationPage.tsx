@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useParams } from 'react-router-dom'
-import { Spin, Alert, theme } from 'antd'
+import { Alert, theme } from 'antd'
+import { Loading } from '@/core/components/Loading'
 import { MessageList } from '@/modules/chat/components/MessageList'
 import { ChatInput } from '@/modules/chat/components/ChatInput'
 import { TitleEditor } from '@/modules/chat/components/TitleEditor'
@@ -92,9 +93,7 @@ export default function ConversationPage() {
   // Loading state
   if (loading && !conversation) {
     return (
-      <main className="flex items-center justify-center h-full">
-        <Spin size="large" />
-      </main>
+      <Loading />
     )
   }
 

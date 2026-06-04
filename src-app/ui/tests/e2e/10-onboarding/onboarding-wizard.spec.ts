@@ -162,3 +162,47 @@ test.describe('Onboarding wizard', () => {
     await expect(page.getByText(localName, { exact: true })).toHaveCount(0)
   })
 })
+
+/**
+ * Regression for the first-run setup hang: after creating the admin account on
+ * the /setup page, the app redirected to home but stuck on the AuthGuard
+ * spinner (isInitializing never cleared) until a manual reload. This describe
+ * has NO loginAsAdmin beforeEach — it drives the real setup form on the fresh
+ * needs_setup=true backend and asserts the app loads WITHOUT any reload.
+ */
+test.describe('First-run admin setup', () => {
+  test('creating the admin lands in the app without a manual reload', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+
+    // Fresh backend (no admin) → AuthGuard sends us to /setup.
+    await page.goto(`${baseURL}/`)
+    // First page load of a fresh worker can 504 on a Vite re-bundle; reload
+    // once if the setup form doesn't render (mirrors loginAsAdmin). This is a
+    // PRE-submit retry, so it doesn't mask the post-submit bug under test.
+    try {
+      await page.waitForSelector('#setup-form_username', { timeout: 8000 })
+    } catch {
+      await page.reload({ waitUntil: 'networkidle' })
+      await page.waitForSelector('#setup-form_username', { timeout: 30000 })
+    }
+
+    const suffix = Date.now().toString(36)
+    await page.fill('#setup-form_username', `admin_${suffix}`)
+    await page.fill('#setup-form_email', `admin_${suffix}@ex.com`)
+    await page.fill('#setup-form_password', 'password123')
+    await page.fill('#setup-form_confirm_password', 'password123')
+    await page.getByRole('button', { name: 'Create Admin Account' }).click()
+
+    // CRITICAL: no reload / goto here. Before the Auth.store fix the AuthGuard
+    // spinner (isInitializing stuck true) never cleared, so home hung on the
+    // loader until a manual reload. The chat composer only renders once
+    // AuthGuard releases — its presence proves the post-setup bootstrap
+    // completed and the home page actually loaded (without a reload).
+    await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible({
+      timeout: 20000,
+    })
+    // Landed on the app home, not bounced back to /setup, with no stuck spinner.
+    await expect(page).not.toHaveURL(/\/setup/)
+    await expect(page.locator('.ant-spin-spinning')).toHaveCount(0)
+  })
+})

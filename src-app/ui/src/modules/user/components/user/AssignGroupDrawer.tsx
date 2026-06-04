@@ -30,6 +30,7 @@ export function AssignGroupDrawer() {
   return (
     <Drawer
       title="Assign to Group"
+      size={600}
       open={isOpen}
       onClose={() => {
         Stores.AssignGroupDrawer.closeAssignGroupDrawer()

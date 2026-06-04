@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
-import { Input, Select, Typography, Spin, Button } from 'antd'
+import { Input, Select, Typography, Button } from 'antd'
+import { Loading } from '@/core/components/Loading'
 import { SearchOutlined, ClearOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { AssistantHubCard } from '@/modules/hub/modules/assistants/components/AssistantHubCard'
@@ -67,10 +68,7 @@ export function AssistantsHubTab() {
   // Show loading state
   if (loading && assistants.length === 0) {
     return (
-      <div className="flex justify-center items-center h-full">
-        <Spin size="large" />
-        <Text className="ml-4">Loading assistants...</Text>
-      </div>
+      <Loading tip="Loading assistants..." />
     )
   }
 
