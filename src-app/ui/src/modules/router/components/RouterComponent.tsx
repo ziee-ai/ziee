@@ -6,9 +6,10 @@ import {
   Navigate,
   Outlet,
 } from 'react-router-dom'
-import { Result, Spin } from 'antd'
+import { Result } from 'antd'
 import { Stores } from '@/core/stores'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
+import { Loading } from '@/core/components/Loading'
 import { usePermission } from '@/core/permissions'
 import type { PermissionExpr } from '@/core/permissions'
 import type { LayoutDefinition, RouteConfig } from '@/modules/router/types'
@@ -38,11 +39,8 @@ function RoutePermissionGate({
   return <>{children}</>
 }
 
-const ROUTE_SPINNER = (
-  <div className="h-full w-full flex items-center justify-center">
-    <Spin size="large" />
-  </div>
-)
+const ROUTE_SPINNER = <Loading />
+
 
 /**
  * Materializes a route's element: feeds `route.element` through

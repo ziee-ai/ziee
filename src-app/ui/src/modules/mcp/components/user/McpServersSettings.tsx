@@ -6,10 +6,10 @@ import {
   Input,
   Pagination,
   Select,
-  Spin,
   Typography,
 } from 'antd'
 import { PlusOutlined, SearchOutlined, ClearOutlined } from '@ant-design/icons'
+import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -71,10 +71,7 @@ export function McpServersSettings() {
         title="MCP Servers"
         subtitle="Manage Model Context Protocol servers for enhanced tool capabilities"
       >
-        <div className="flex justify-center items-center h-full">
-          <Spin size="large" />
-          <Text className="ml-4">Loading MCP servers...</Text>
-        </div>
+        <Loading tip="Loading MCP servers..." />
       </SettingsPageContainer>
     )
   }
