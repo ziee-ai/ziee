@@ -231,6 +231,33 @@ export function mcpToolCompleteEvent(opts: {
 }
 
 /**
+ * Artifact-created event — a tool produced a file. The MCP extension turns
+ * this into a resource_link on the matching tool_result block (keyed by
+ * `toolUseId`), which the file extension renders inline. `fileId` makes it a
+ * backend-owned artifact (rendered via the authenticated /api/files path).
+ */
+export function artifactCreatedEvent(opts: {
+  /** Omit to simulate an older backend that doesn't send tool_use_id — the
+   *  frontend then falls back to the last tool_use block. */
+  toolUseId?: string
+  fileId: string
+  filename: string
+  mimeType?: string
+  fileSize?: number
+}): ScriptedSseEvent {
+  return {
+    event: 'artifactCreated',
+    data: {
+      ...(opts.toolUseId !== undefined ? { tool_use_id: opts.toolUseId } : {}),
+      file_id: opts.fileId,
+      filename: opts.filename,
+      mime_type: opts.mimeType,
+      file_size: opts.fileSize ?? 1024,
+    },
+  }
+}
+
+/**
  * Plain text delta — appends to the streaming message's text content block,
  * or creates one if none exists yet.
  */

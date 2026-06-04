@@ -1691,3 +1691,72 @@ async fn test_delete_file_and_verify_cleanup() {
 
     assert_eq!(get_response.status(), 404, "File should be deleted from database");
 }
+
+// ============================================================================
+// Cache headers — file-content responses carry a private, bounded
+// `Cache-Control` so the browser reuses bytes across reloads (fixes laggy
+// reloads with many inline files) without surrendering the server-side
+// access re-check forever (NOT `immutable`; see FILE_CONTENT_CACHE_CONTROL).
+// ============================================================================
+
+#[tokio::test]
+async fn test_file_content_responses_have_private_bounded_cache_control() {
+    let server = crate::common::TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(
+        &server,
+        "cache_hdr_user",
+        &["files::upload", "files::download", "files::preview", "files::read"],
+    )
+    .await;
+
+    // Upload a small text file — processing produces a thumbnail, a preview
+    // image, and a text page, so every content endpoint below has something
+    // to serve.
+    let form = multipart::Form::new().part(
+        "file",
+        multipart::Part::bytes(b"cache-control check".to_vec())
+            .file_name("cache.txt")
+            .mime_str("text/plain")
+            .unwrap(),
+    );
+    let upload_resp = reqwest::Client::new()
+        .post(server.api_url("/files/upload"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .multipart(form)
+        .send()
+        .await
+        .expect("upload request failed");
+    assert_eq!(upload_resp.status(), 201);
+    let upload_body: serde_json::Value = upload_resp.json().await.unwrap();
+    let file_id = upload_body["id"].as_str().expect("upload response missing id");
+
+    // Every file-content endpoint must carry the private, bounded (NOT
+    // immutable) cache header.
+    let client = reqwest::Client::new();
+    for path in [
+        format!("/files/{file_id}/download"),
+        format!("/files/{file_id}/preview?page=1"),
+        format!("/files/{file_id}/thumbnail"),
+        format!("/files/{file_id}/text"),
+    ] {
+        let resp = client
+            .get(server.api_url(&path))
+            .header("Authorization", format!("Bearer {}", user.token))
+            .send()
+            .await
+            .unwrap_or_else(|e| panic!("request to {path} failed: {e}"));
+        assert_eq!(resp.status(), 200, "{path} should return 200");
+
+        let cache_control = resp
+            .headers()
+            .get("cache-control")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert!(
+            cache_control.contains("private")
+                && cache_control.contains("max-age")
+                && !cache_control.contains("immutable"),
+            "{path} must set a private, bounded (non-immutable) Cache-Control (got {cache_control:?})",
+        );
+    }
+}

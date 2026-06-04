@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { Spin, Alert, theme } from 'antd'
 import { MessageList } from '@/modules/chat/components/MessageList'
@@ -33,6 +33,8 @@ export default function ConversationPage() {
   // The scroll effect only fires when isAtBottomRef is true.
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const isAtBottomRef = useRef(true)
+  // Conversation id whose initial bottom-jump we've already done.
+  const initialScrollConvIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     const sentinel = messagesEndRef.current
@@ -47,11 +49,45 @@ export default function ConversationPage() {
     return () => observer.disconnect()
   }, [])
 
+  // Initial load: jump to the bottom INSTANTLY (before paint), once per
+  // conversation. An animated scroll-through would drag the viewport past
+  // every message and trigger lazy-loading of all inline file previews — the
+  // instant jump means off-screen previews never enter the viewport, so they
+  // stay un-fetched until scrolled to. useLayoutEffect runs before paint so
+  // the first frame is already at the bottom.
+  //
+  // Gate on the STORE's loaded conversation matching the URL, not just
+  // `messages.size`: on an in-app A→B switch the URL param flips to B before
+  // `loadConversation` runs, so for one render `conversationId===B` while the
+  // store still holds A's `conversation`/`messages`. Latching then would
+  // consume the jump against A's stale content and leave B to an animated
+  // smooth-scroll-through (defeating lazy-loading). Requiring
+  // `conversation?.id === conversationId` makes the latch wait for B's data.
+  useLayoutEffect(() => {
+    if (!conversationId) return
+    if (
+      conversation?.id === conversationId &&
+      messages.size > 0 &&
+      initialScrollConvIdRef.current !== conversationId
+    ) {
+      initialScrollConvIdRef.current = conversationId
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' })
+    }
+  }, [conversationId, conversation, messages])
+
+  // Subsequent message changes (e.g. streaming deltas): smooth-follow, but
+  // only when the loaded conversation matches the URL, the initial jump for it
+  // has happened, and the user is already at the bottom. The conversation gate
+  // stops a smooth animation from firing during the stale A→B switch window.
   useEffect(() => {
-    if (isAtBottomRef.current) {
+    if (
+      conversation?.id === conversationId &&
+      initialScrollConvIdRef.current === conversationId &&
+      isAtBottomRef.current
+    ) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [messages])
+  }, [messages, conversationId, conversation])
 
   // Loading state
   if (loading && !conversation) {

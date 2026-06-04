@@ -19360,6 +19360,14 @@
         "description": "A reference to a resource returned by a tool (MCP resource_link content type)\n\n Used when a tool creates or references a file that is already persisted on the server.\n The URI follows the pattern `/api/files/{file_id}` for files stored in the file system.",
         "type": "object",
         "properties": {
+          "file_id": {
+            "description": "File id of the server-saved artifact backing this link, when the backend\n persisted it as a `File` (workspace artifacts and user attachments). Lets\n the UI fetch the content via the authenticated `/api/files/{id}/...`\n endpoints (the same path the right-side panel uses) instead of\n dereferencing the raw `uri`. `None` for external MCP links with no\n backing File.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "is_saved": {
             "description": "Whether the file is already persisted in originals storage (user-attached).\n true  → URI is a download-with-token URL; skip fetch-and-save pipeline.\n false → workspace file; run full processing pipeline.\n None  → external MCP server; run full processing pipeline.",
             "type": [
@@ -19531,9 +19539,14 @@
               "string",
               "null"
             ]
+          },
+          "tool_use_id": {
+            "description": "Tool use id this artifact was produced by. Lets the frontend attach the\n artifact's resource_link to the matching tool_result block (positioning),\n and disambiguate when tools run in parallel.",
+            "type": "string"
           }
         },
         "required": [
+          "tool_use_id",
           "file_id",
           "filename",
           "file_size"

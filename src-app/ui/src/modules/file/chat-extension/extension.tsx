@@ -338,6 +338,11 @@ const fileExtension: ChatExtension = createExtension({
   // Register content type components
   contentTypes: {
     file_attachment: FileAttachmentRenderer,
+    // Tool-returned files (resource_links) render INLINE at the tool_result
+    // block's position via this renderer — not aggregated into a footer. The
+    // MCP extension intentionally does NOT register `tool_result` so this one
+    // wins (the registry returns the first renderer for a content type).
+    tool_result: MessageFilesView,
   },
 
   // Register slot components
@@ -346,8 +351,6 @@ const fileExtension: ChatExtension = createExtension({
     toolbar_plus_items: { component: FileAttachMenuItem, order: 10 },
     // File preview list above textarea
     input_area_prefix: { component: FilePreviewList, order: 10 },
-    // Inline previews of files referenced by tool_result blocks
-    message_footer: { component: MessageFilesView, order: 10 },
   },
 })
 

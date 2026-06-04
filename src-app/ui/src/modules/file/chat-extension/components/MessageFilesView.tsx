@@ -1,53 +1,39 @@
-import { useMessageContext } from '@/modules/chat/core/MessageContext'
 import { Stores } from '@/core/stores'
 import { getViewer } from '@/modules/file/registry/fileViewerRegistry'
 import { InlineFilePreview } from './InlineFilePreview'
-import type { MessageContent, File as FileEntity } from '@/api-client/types'
+import type { ContentRendererProps } from '@/modules/chat/core/extensions'
+import type {
+  MessageContent,
+  MessageContentDataToolResult,
+  ResourceLink,
+  File as FileEntity,
+} from '@/api-client/types'
 import type { InlineFileSource } from '@/modules/file/types/viewer'
 
 /**
- * Runtime shape of a `resource_link` carried inside a `tool_result`
- * content block. The backend's `McpContentData::ToolResult` stores
- * these in `resource_links: Option<Vec<ResourceLink>>` (see
- * `src-app/server/src/modules/chat/extensions/mcp/content.rs`), and
- * the JSONB is persisted with the field intact — but the
- * schema-facing `MessageContentDataVariants::ToolResult`
- * (`extensions/mcp/extension.rs:222-246`) doesn't include it, so the
- * generated TS type for `tool_result` content omits the field. The
- * runtime value is still there; we cast.
+ * Pull the `resource_links` carried by a `tool_result` content block. The
+ * generated `MessageContentDataToolResult` already types this field
+ * (`resource_links?: ResourceLink[] | null`); the cast is only because
+ * `MessageContent.content` is the loosely-typed union and we've already
+ * narrowed on `content_type === 'tool_result'`.
  */
-interface RuntimeResourceLink {
-  uri: string
-  name?: string | null
-  mime_type?: string | null
-  size?: number | null
-  is_saved?: boolean | null
-  /** Backing File id for backend-owned artifacts (set by the MCP save
-   *  pipeline). Absent for external MCP links. */
-  file_id?: string | null
-}
-
-function extractResourceLinks(content: MessageContent): RuntimeResourceLink[] {
+function extractResourceLinks(content: MessageContent): ResourceLink[] {
   if (content.content_type !== 'tool_result') return []
-  const data = content.content as unknown as {
-    resource_links?: RuntimeResourceLink[] | null
-  }
+  const data = content.content as MessageContentDataToolResult
   if (!Array.isArray(data.resource_links)) return []
   // Drop entries with missing/empty URIs so we don't render an
   // `<img src="">` or an open-in-new-tab link to nowhere. Backend
   // shouldn't emit these but external MCP servers might.
   return data.resource_links.filter(
-    link =>
-      typeof link?.uri === 'string' && link.uri.trim().length > 0,
+    link => typeof link?.uri === 'string' && link.uri.trim().length > 0,
   )
 }
 
 /**
- * Convert a runtime resource_link to the `InlineFileSource` shape
- * viewers expect. Filenames fall back to the URI tail when the
- * backend didn't send a name.
+ * Convert a resource_link to the `InlineFileSource` shape viewers expect.
+ * Filenames fall back to the URI tail when the backend didn't send a name.
  */
-function toInlineSource(link: RuntimeResourceLink): InlineFileSource {
+function toInlineSource(link: ResourceLink): InlineFileSource {
   const name =
     link.name ||
     // URI tail (after the last `/`), strip query string for display
@@ -86,35 +72,28 @@ function buildFallbackFile(fileId: string, source: InlineFileSource): FileEntity
 }
 
 /**
- * Files-view footer: aggregates every `resource_link` referenced by
- * a tool_result block in the current message, dedupes by URI, and
- * renders each one through the file-viewer registry.
+ * Inline files view for a single `tool_result` content block: renders every
+ * `resource_link` that block carries, in place, right after the tool-call
+ * card — instead of aggregating all of a message's files into a footer.
+ * Registered by the file extension as the `tool_result` content-type
+ * renderer (the MCP extension owns the `tool_use` card; this owns the files).
  *
- * The actual rendering decision (inline body vs. header-only file
- * card) is owned entirely by each viewer module via its
- * `entry.inline` field — this component never inspects MIME types
- * directly. See [[file-viewer-modular-system]].
+ * Dedupe is per-block (a file referenced twice in the SAME tool_result renders
+ * once); files returned by different tool_results render at each tool's
+ * position. The inline-vs-header-only decision is owned by each viewer module
+ * via its `entry.inline` field — this component never inspects MIME types.
  *
- * Returns `null` when the message has no tool_result blocks with
- * resource_links, so text-only messages don't grow extra DOM nodes.
+ * Returns `null` when the block has no resource_links so non-file tool_results
+ * (and every other content type) add no DOM.
  */
-export function MessageFilesView() {
-  const message = useMessageContext()
-  if (!message) return null
+export function MessageFilesView({ content }: ContentRendererProps) {
+  const links = extractResourceLinks(content)
+  if (links.length === 0) return null
 
-  const allLinks: RuntimeResourceLink[] = []
-  for (const content of message.contents ?? []) {
-    for (const link of extractResourceLinks(content)) {
-      allLinks.push(link)
-    }
-  }
-  if (allLinks.length === 0) return null
-
-  // Dedupe by URI, preserving first-seen order. Same file referenced
-  // in two tool_results within one assistant turn renders once.
+  // Dedupe by URI within this block, preserving first-seen order.
   const seen = new Set<string>()
-  const deduped: RuntimeResourceLink[] = []
-  for (const link of allLinks) {
+  const deduped: ResourceLink[] = []
+  for (const link of links) {
     if (seen.has(link.uri)) continue
     seen.add(link.uri)
     deduped.push(link)
@@ -126,7 +105,7 @@ export function MessageFilesView() {
 
   return (
     <div
-      data-testid="message-files-view"
+      data-testid="tool-result-files"
       className="flex flex-col gap-2 mt-2 w-full"
     >
       {deduped.map(link => {

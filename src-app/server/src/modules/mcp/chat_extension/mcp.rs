@@ -481,6 +481,7 @@ impl McpChatExtension {
                                                             Ok(_) => {
                                                                 helpers::send_artifact_created_event(
                                                                     tx,
+                                                                    &tool_use_id,
                                                                     &artifact_id.to_string(),
                                                                     display_name,
                                                                     mime_type.as_deref(),
@@ -2181,6 +2182,7 @@ impl ChatExtension for McpChatExtension {
                                                             Ok(_) => {
                                                                 helpers::send_artifact_created_event(
                                                                     tx,
+                                                                    &tool_use_id,
                                                                     &artifact_id.to_string(),
                                                                     display_name,
                                                                     mime_type.as_deref(),

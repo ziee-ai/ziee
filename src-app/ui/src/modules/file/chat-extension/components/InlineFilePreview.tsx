@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button, Tooltip, theme, App } from 'antd'
 import {
   RightOutlined,
@@ -51,6 +51,42 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
   const { message } = App.useApp()
   const [collapsed, setCollapsed] = useState(false)
 
+  // Viewport-gate the body: a conversation can hold many inline files, and the
+  // body is where the cost lives (image thumbnail fetch+decode, text fetch).
+  // Mount the body only once this preview scrolls within ~800px of the
+  // viewport, then keep it mounted (mount-once: scrolling away does not unmount
+  // / refetch). The header is always cheap and always rendered. Combined with
+  // the conversation page's instant initial scroll, off-screen files on reload
+  // never enter the viewport, so they never fetch.
+  //
+  // Intentional: a file produced mid-stream while the user has scrolled up
+  // shows its header immediately but defers its body until they scroll back
+  // within range — same lazy contract as any other off-screen preview. We do
+  // NOT special-case the streaming turn here, since that would require the
+  // file module to read chat-streaming state (cross-module coupling).
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [inView, setInView] = useState(false)
+  useEffect(() => {
+    if (inView) return
+    if (typeof IntersectionObserver === 'undefined') {
+      setInView(true)
+      return
+    }
+    const el = containerRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries.some(e => e.isIntersecting)) {
+          setInView(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: '800px 0px' },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [inView])
+
   // Prefer the resolved File's metadata (authoritative) over the link's.
   const displayName = file?.filename ?? source.name
   const displayMime = file?.mime_type ?? source.mimeType
@@ -65,7 +101,7 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
   const Icon = viewer?.icon ?? <FileOutlined />
   const label = viewer?.label
 
-  const showBody = canInline && !collapsed && Body !== undefined
+  const showBody = canInline && !collapsed && Body !== undefined && inView
   // Render the body via the authenticated `{file}` path when this is a
   // backend-owned artifact; otherwise the URL-based `{source}` path.
   const slotProps: FileViewerSlotProps = file ? { file } : { source }
@@ -89,6 +125,7 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
 
   return (
     <div
+      ref={containerRef}
       data-testid="inline-file-preview"
       data-file-uri={source.url}
       data-file-id={file?.id}
