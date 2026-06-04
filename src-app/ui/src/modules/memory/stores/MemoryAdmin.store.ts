@@ -2,12 +2,14 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
-import type {
-  LlmModel,
-  MemoryAdminSettings,
-  RebuildStatus,
-  UpdateMemoryAdminSettingsRequest,
+import {
+  type LlmModel,
+  type MemoryAdminSettings,
+  type RebuildStatus,
+  type UpdateMemoryAdminSettingsRequest,
+  Permissions,
 } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 import { emitMemoryAdminSettingsUpdated } from '@/modules/memory/events'
 
 export type EmbeddingCapableModelRow = Pick<
@@ -141,10 +143,25 @@ export const useMemoryAdminStore = create<MemoryAdminStore>()(
       reembeddingTrigger: false,
       error: null,
 
+      // Property-init loads hit `memory::admin::read`-gated endpoints.
+      // These fire whenever ANY component reads the field — including the
+      // chat composer's MemoryStatusPill (shown to every user). Skip the
+      // call for users without the permission so non-admins don't generate
+      // 403s on `/api/memory/admin-settings` (the explicit `load*` actions
+      // below stay ungated; they're only called from the admin-gated page).
       __init__: {
-        settings: () => loadAdminSettings(set),
-        availableModels: () => loadEmbeddingModels(set),
-        rebuildStatus: () => loadRebuildStatusInternal(set),
+        settings: () =>
+          hasPermissionNow(Permissions.MemoryAdminRead)
+            ? loadAdminSettings(set)
+            : Promise.resolve(),
+        availableModels: () =>
+          hasPermissionNow(Permissions.MemoryAdminRead)
+            ? loadEmbeddingModels(set)
+            : Promise.resolve(),
+        rebuildStatus: () =>
+          hasPermissionNow(Permissions.MemoryAdminRead)
+            ? loadRebuildStatusInternal(set)
+            : Promise.resolve(),
       },
 
       load: () => loadAdminSettings(set),

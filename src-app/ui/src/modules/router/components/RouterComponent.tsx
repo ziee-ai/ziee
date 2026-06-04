@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { ComponentType, ReactNode } from 'react'
 import {
   BrowserRouter,
   Routes,
@@ -8,7 +8,6 @@ import {
 } from 'react-router-dom'
 import { Result, Spin } from 'antd'
 import { Stores } from '@/core/stores'
-import { AuthGuard } from '@/modules/auth'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import { usePermission } from '@/core/permissions'
 import type { PermissionExpr } from '@/core/permissions'
@@ -72,7 +71,7 @@ function renderRouteElement(route: RouteConfig<any>) {
  * - Groups routes by auth requirement (protected vs public)
  * - Groups routes by layout
  * - Merges layout options from all routes using a layout
- * - Wraps protected routes with AuthGuard
+ * - Wraps protected routes with the registered `routeGuards`
  * - Renders routes with their layouts
  */
 export function RouterComponent() {
@@ -150,7 +149,32 @@ export function RouterComponent() {
   // its own redirect logic without auth or router needing to know
   // about it.
   const routerEffects = (Stores.ModuleSystem.slots.get('routerEffects') ||
-    []) as Array<{ id: string; component: React.ComponentType }>
+    []) as Array<{ id: string; component: ComponentType }>
+
+  // Route guards contributed by features (auth fills this). The router owns
+  // the slot type and composes the guards; it does NOT import any guard.
+  const guards = (Stores.ModuleSystem.slots.get('routeGuards') ||
+    []) as Array<{ id: string; component: ComponentType<{ children: ReactNode }> }>
+
+  if (guards.length === 0 && protectedRoutes.length > 0) {
+    // Fail-closed: a guard is a security control, so — unlike routerEffects —
+    // an empty slot must NOT render protected routes ungated. In practice
+    // this only happens if the auth module failed to register.
+    console.error(
+      '[router] No routeGuards registered; protected routes are sealed. ' +
+        'Did the auth module fail to load?',
+    )
+  }
+
+  // Wrap `inner` in the registered guards (first-registered = outermost).
+  // When no guard is registered, seal protected content to the login wall.
+  const guardProtected = (inner: ReactNode): ReactNode =>
+    guards.length > 0
+      ? guards.reduceRight<ReactNode>(
+          (acc, g) => <g.component key={g.id}>{acc}</g.component>,
+          inner,
+        )
+      : <Navigate to="/auth" replace />
 
   return (
     <BrowserRouter>
@@ -158,15 +182,9 @@ export function RouterComponent() {
         <Effect key={id} />
       ))}
       <Routes>
-        {/* Protected routes with AuthGuard */}
+        {/* Protected routes, wrapped in the registered routeGuards */}
         {protectedRoutes.length > 0 && (
-          <Route
-            element={
-              <AuthGuard>
-                <Outlet />
-              </AuthGuard>
-            }
-          >
+          <Route element={guardProtected(<Outlet />)}>
             {renderRoutesForLayoutGroup(protectedRoutes)}
           </Route>
         )}
@@ -174,15 +192,8 @@ export function RouterComponent() {
         {/* Public routes */}
         {renderRoutesForLayoutGroup(publicRoutes)}
 
-        {/* Fallback route */}
-        <Route
-          path="*"
-          element={
-            <AuthGuard>
-              <Navigate to="/" replace />
-            </AuthGuard>
-          }
-        />
+        {/* Fallback route (same guard so unknown deep links hit login) */}
+        <Route path="*" element={guardProtected(<Navigate to="/" replace />)} />
       </Routes>
     </BrowserRouter>
   )

@@ -6,6 +6,18 @@
 // block ends up at index 0 (older position) and the project block at
 // index 1 (closer to the user message; stronger recency). Both apply —
 // orthogonal layers per the locked Plan 5 §4 semantics.
+//
+// Also owns the project↔conversation HTTP surface:
+//   - `/api/projects/{id}/conversations` (GET list, POST attach, DELETE detach)
+//   - `/api/projects/by-conversation/{conversation_id}` (GET reverse-lookup)
+// + the `Repos.project_conversations` repository (the JOIN that returns
+// chat's `ConversationResponse`). Importing chat types in this subdir is
+// the correct architectural direction — `chat_extension/` is the bridge.
 
 mod project;
 pub mod extension; // Auto-discovered by the chat extension registration system
+pub mod handlers;
+pub mod repository;
+pub mod routes;
+
+pub use repository::ProjectChatRepository;

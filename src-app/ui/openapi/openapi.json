@@ -1445,6 +1445,30 @@
         ]
       }
     },
+    "/api/onboarding/progress": {
+      "get": {
+        "tags": [
+          "Onboarding"
+        ],
+        "summary": "Get the current user's onboarding progress",
+        "operationId": "Onboarding.getProgress",
+        "responses": {
+          "200": {
+            "description": "Per-user onboarding progress. Step ids use the composite\n \"{guide_id}/{step_id}\" key format. Replaces the two columns that\n previously rode on the `User` object.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingProgress"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/onboarding/{guide_id}/complete": {
       "post": {
         "tags": [
@@ -1478,11 +1502,11 @@
             }
           },
           "200": {
-            "description": "",
+            "description": "Per-user onboarding progress. Step ids use the composite\n \"{guide_id}/{step_id}\" key format. Replaces the two columns that\n previously rode on the `User` object.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/User"
+                  "$ref": "#/components/schemas/OnboardingProgress"
                 }
               }
             }
@@ -1534,11 +1558,11 @@
             }
           },
           "200": {
-            "description": "",
+            "description": "Per-user onboarding progress. Step ids use the composite\n \"{guide_id}/{step_id}\" key format. Replaces the two columns that\n previously rode on the `User` object.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/User"
+                  "$ref": "#/components/schemas/OnboardingProgress"
                 }
               }
             }
@@ -2353,6 +2377,216 @@
         ]
       }
     },
+    "/api/user-llm-providers": {
+      "get": {
+        "tags": [
+          "LlmProvider"
+        ],
+        "summary": "Get user's accessible LLM providers",
+        "description": "Returns all enabled LLM providers assigned to the user's groups, with enabled models and API key configuration status.",
+        "operationId": "LlmProvider.getUserLlmProviders",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View available LLM providers and models",
+                        "name": "UserLlmProvidersRead",
+                        "value": "user_llm_providers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: user_llm_providers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response for user-accessible LLM providers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetUserProvidersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/user-llm-providers/api-keys": {
+      "get": {
+        "tags": [
+          "LlmProvider"
+        ],
+        "summary": "List user's provider API keys (masked)",
+        "description": "\n\n**Required Permission:** `profile::read`\n\nView own profile information",
+        "operationId": "LlmProvider.listUserApiKeys",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View own profile information",
+                        "name": "ProfileRead",
+                        "value": "profile::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: profile::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response listing user API keys",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserApiKeyListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "LlmProvider"
+        ],
+        "summary": "Save or update user API key for a provider",
+        "description": "\n\n**Required Permission:** `profile::edit`\n\nEdit own profile information",
+        "operationId": "LlmProvider.saveUserApiKey",
+        "requestBody": {
+          "description": "Request to save a user API key",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveUserApiKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit own profile information",
+                        "name": "ProfileEdit",
+                        "value": "profile::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: profile::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "no content"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/user-llm-providers/api-keys/{provider_id}": {
+      "delete": {
+        "tags": [
+          "LlmProvider"
+        ],
+        "summary": "Delete user API key for a provider",
+        "description": "\n\n**Required Permission:** `profile::edit`\n\nEdit own profile information",
+        "operationId": "LlmProvider.deleteUserApiKey",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit own profile information",
+                        "name": "ProfileEdit",
+                        "value": "profile::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: profile::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "no content"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/llm-providers/{provider_id}/groups": {
       "get": {
         "tags": [
@@ -2614,216 +2848,6 @@
                 }
               }
             }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/user-llm-providers": {
-      "get": {
-        "tags": [
-          "LlmProvider"
-        ],
-        "summary": "Get user's accessible LLM providers",
-        "description": "Returns all enabled LLM providers assigned to the user's groups, with enabled models and API key configuration status.",
-        "operationId": "LlmProvider.getUserLlmProviders",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "View available LLM providers and models",
-                        "name": "UserLlmProvidersRead",
-                        "value": "user_llm_providers::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: user_llm_providers::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Response for user-accessible LLM providers",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GetUserProvidersResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/user-llm-providers/api-keys": {
-      "get": {
-        "tags": [
-          "LlmProvider"
-        ],
-        "summary": "List user's provider API keys (masked)",
-        "description": "\n\n**Required Permission:** `profile::read`\n\nView own profile information",
-        "operationId": "LlmProvider.listUserApiKeys",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "View own profile information",
-                        "name": "ProfileRead",
-                        "value": "profile::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: profile::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Response listing user API keys",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UserApiKeyListResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "post": {
-        "tags": [
-          "LlmProvider"
-        ],
-        "summary": "Save or update user API key for a provider",
-        "description": "\n\n**Required Permission:** `profile::edit`\n\nEdit own profile information",
-        "operationId": "LlmProvider.saveUserApiKey",
-        "requestBody": {
-          "description": "Request to save a user API key",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SaveUserApiKeyRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Edit own profile information",
-                        "name": "ProfileEdit",
-                        "value": "profile::edit"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: profile::edit",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "204": {
-            "description": "no content"
-          },
-          "400": {
-            "description": "Validation error"
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/user-llm-providers/api-keys/{provider_id}": {
-      "delete": {
-        "tags": [
-          "LlmProvider"
-        ],
-        "summary": "Delete user API key for a provider",
-        "description": "\n\n**Required Permission:** `profile::edit`\n\nEdit own profile information",
-        "operationId": "LlmProvider.deleteUserApiKey",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Edit own profile information",
-                        "name": "ProfileEdit",
-                        "value": "profile::edit"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: profile::edit",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "204": {
-            "description": "no content"
           },
           "401": {
             "description": "Unauthorized"
@@ -6414,44 +6438,14 @@
         ]
       }
     },
-    "/api/projects": {
+    "/api/projects/{id}/mcp-settings": {
       "get": {
         "tags": [
           "Projects"
         ],
-        "summary": "List user's projects",
-        "description": "\n\n**Required Permission:** `projects::read`\n\nRead chat projects",
-        "operationId": "Project.list",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "limit",
-            "description": "Items per page. Defaults to 20, clamped to [1, 100].",
-            "schema": {
-              "description": "Items per page. Defaults to 20, clamped to [1, 100].",
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "int64"
-            },
-            "style": "form"
-          },
-          {
-            "in": "query",
-            "name": "page",
-            "description": "Page number (1-indexed). Defaults to 1.",
-            "schema": {
-              "description": "Page number (1-indexed). Defaults to 1.",
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "int64"
-            },
-            "style": "form"
-          }
-        ],
+        "summary": "Get project MCP defaults",
+        "description": "Read the project's MCP defaults (approval mode + auto-approved tools + disabled servers + loop settings). These apply to NEW conversations created in the project — existing conversations keep their own snapshot taken at attach time.",
+        "operationId": "Project.getMcpSettings",
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -6477,126 +6471,11 @@
             }
           },
           "200": {
-            "description": "List response.",
+            "description": "GET response shape. Wraps an `McpSettings` row in the same wire\n format as the legacy `UpdateProjectMcpSettingsRequest` so the\n frontend's autogen client stays compatible.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProjectListResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "post": {
-        "tags": [
-          "Projects"
-        ],
-        "summary": "Create a new chat project",
-        "description": "Create a personal chat project. The project is owned by the authenticated user.\n\nError codes (in the `error_code` response field):\n- `VALIDATION_ERROR` (400) — name empty, instructions/description over caps, malformed MCP shapes.\n- `DEFAULT_ASSISTANT_INACCESSIBLE` (422) — default_assistant_id isn't owned by user or a public template.\n- `DEFAULT_MODEL_NOT_FOUND` (422) — default_model_id refers to a non-existent model.",
-        "operationId": "Project.create",
-        "requestBody": {
-          "description": "Request to create a project.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateProjectRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Create chat projects",
-                        "name": "ProjectsCreate",
-                        "value": "projects::create"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: projects::create",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "201": {
-            "description": "Project entity. One row per personal project.\n\n MCP defaults are inline (mcp_*) — see migration 51 for the rationale\n (no sibling project_mcp_settings table; 1:1 sync hazard).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Project"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request"
-          },
-          "422": {
-            "description": "Default-asset access denied or not found"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/projects/{id}": {
-      "get": {
-        "tags": [
-          "Projects"
-        ],
-        "summary": "Get project by ID",
-        "description": "\n\n**Required Permission:** `projects::read`\n\nRead chat projects",
-        "operationId": "Project.get",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read chat projects",
-                        "name": "ProjectsRead",
-                        "value": "projects::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: projects::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Project entity. One row per personal project.\n\n MCP defaults are inline (mcp_*) — see migration 51 for the rationale\n (no sibling project_mcp_settings table; 1:1 sync hazard).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Project"
+                  "$ref": "#/components/schemas/ProjectMcpSettingsResponse"
                 }
               }
             }
@@ -6615,15 +6494,15 @@
         "tags": [
           "Projects"
         ],
-        "summary": "Update project",
-        "description": "Update a project's fields. All fields optional.\n\nError codes:\n- `VALIDATION_ERROR` (400) — name empty, caps exceeded.\n- `PROJECT_NAME_DUPLICATE` (422) — renaming would collide with another of your projects.\n- `DEFAULT_ASSISTANT_INACCESSIBLE` (422) — see create_project.\n- `DEFAULT_MODEL_NOT_FOUND` (422) — see create_project.",
-        "operationId": "Project.update",
+        "summary": "Update project MCP defaults",
+        "description": "Upsert the project's MCP defaults. These apply to NEW conversations created in the project (snapshot at attach time); existing conversations are not affected.\n\nValidation:\n- Every server_id in `auto_approved_tools` and `disabled_servers` must reference an MCP server the calling user can access.",
+        "operationId": "Project.updateMcpSettings",
         "requestBody": {
-          "description": "Request to update an existing project. All fields optional.",
+          "description": "PUT body + GET response for `/api/projects/{id}/mcp-settings`.\n\n Field shapes match the legacy `UpdateProjectMcpSettingsRequest` so\n the OpenAPI schema (and therefore the autogenerated TS client) is\n wire-compatible. The naming is now consistent with mcp's other\n settings types (typed enum/structs instead of raw strings/Value).",
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/UpdateProjectRequest"
+                "$ref": "#/components/schemas/ProjectMcpSettingsRequest"
               }
             }
           },
@@ -6654,125 +6533,23 @@
             }
           },
           "200": {
-            "description": "Project entity. One row per personal project.\n\n MCP defaults are inline (mcp_*) — see migration 51 for the rationale\n (no sibling project_mcp_settings table; 1:1 sync hazard).",
+            "description": "GET response shape. Wraps an `McpSettings` row in the same wire\n format as the legacy `UpdateProjectMcpSettingsRequest` so the\n frontend's autogen client stays compatible.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Project"
+                  "$ref": "#/components/schemas/ProjectMcpSettingsResponse"
                 }
               }
             }
+          },
+          "400": {
+            "description": "Validation error"
           },
           "404": {
             "description": "Project not found"
           },
           "422": {
-            "description": "Name collision or default-asset error"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "delete": {
-        "tags": [
-          "Projects"
-        ],
-        "summary": "Delete project",
-        "description": "Delete a project. Conversations under the project are preserved with project_id = NULL (no longer receive project knowledge or instructions on future sends).",
-        "operationId": "Project.delete",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Delete chat projects",
-                        "name": "ProjectsDelete",
-                        "value": "projects::delete"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: projects::delete",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "204": {
-            "description": "Project deleted"
-          },
-          "404": {
-            "description": "Project not found"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/projects/{id}/duplicate": {
-      "post": {
-        "tags": [
-          "Projects"
-        ],
-        "summary": "Duplicate a project",
-        "description": "Clone a project's instructions + files + defaults into a new project with a \" (copy)\" suffix on the name. Does NOT copy conversations or messages.\n\nError codes:\n- `PROJECT_DUPLICATE_LIMIT` (422) — too many \"(copy N)\" variants already exist (limit 999).",
-        "operationId": "Project.duplicate",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Create chat projects",
-                        "name": "ProjectsCreate",
-                        "value": "projects::create"
-                      },
-                      {
-                        "description": "Read chat projects",
-                        "name": "ProjectsRead",
-                        "value": "projects::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permissions: projects::create, projects::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "201": {
-            "description": "Project entity. One row per personal project.\n\n MCP defaults are inline (mcp_*) — see migration 51 for the rationale\n (no sibling project_mcp_settings table; 1:1 sync hazard).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Project"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Project not found"
-          },
-          "422": {
-            "description": "Duplicate suffix limit reached"
+            "description": "MCP server not accessible"
           }
         },
         "security": [
@@ -6815,7 +6592,7 @@
             }
           },
           "200": {
-            "description": "File-list response (joined with the `files` table for client\n convenience — saves a per-file lookup roundtrip).",
+            "description": "Response for `GET /api/projects/{id}/files` — joined with the `files`\n table so the client gets file metadata without a per-file lookup.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6842,7 +6619,7 @@
         "description": "Attach an existing file (by ID) to this project. Idempotent (re-attaching the same file is a no-op). The file must be owned by the same user as the project.\n\nError codes:\n- `PROJECT_FILE_COUNT_CAP` (422) — project already has the max files (100).",
         "operationId": "Project.attachFile",
         "requestBody": {
-          "description": "Request body for attach-by-ID.",
+          "description": "Request body for attach-by-ID (`POST /api/projects/{id}/files`).",
           "content": {
             "application/json": {
               "schema": {
@@ -7014,6 +6791,374 @@
         ]
       }
     },
+    "/api/projects": {
+      "get": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "List user's projects",
+        "description": "\n\n**Required Permission:** `projects::read`\n\nRead chat projects",
+        "operationId": "Project.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "description": "Items per page. Defaults to 20, clamped to [1, 100].",
+            "schema": {
+              "description": "Items per page. Defaults to 20, clamped to [1, 100].",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "description": "Page number (1-indexed). Defaults to 1.",
+            "schema": {
+              "description": "Page number (1-indexed). Defaults to 1.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read chat projects",
+                        "name": "ProjectsRead",
+                        "value": "projects::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: projects::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "List response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectListResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "Create a new chat project",
+        "description": "Create a personal chat project. The project is owned by the authenticated user.\n\nError codes (in the `error_code` response field):\n- `VALIDATION_ERROR` (400) — name empty, instructions/description over caps, malformed MCP shapes.\n- `DEFAULT_ASSISTANT_INACCESSIBLE` (422) — default_assistant_id isn't owned by user or a public template.\n- `DEFAULT_MODEL_NOT_FOUND` (422) — default_model_id refers to a non-existent model.",
+        "operationId": "Project.create",
+        "requestBody": {
+          "description": "Request to create a project.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProjectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create chat projects",
+                        "name": "ProjectsCreate",
+                        "value": "projects::create"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: projects::create",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Project entity. One row per personal project.\n\n MCP defaults previously lived inline (mcp_*); they moved to the\n unified `mcp_settings` table (migration 78) owned by the mcp module.\n Clients fetch them via `GET /api/projects/{id}/mcp-settings` (still\n mounted at the same URL — the route now lives in mcp's\n project_extension).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "422": {
+            "description": "Default-asset access denied or not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/projects/{id}": {
+      "get": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "Get project by ID",
+        "description": "\n\n**Required Permission:** `projects::read`\n\nRead chat projects",
+        "operationId": "Project.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read chat projects",
+                        "name": "ProjectsRead",
+                        "value": "projects::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: projects::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Project entity. One row per personal project.\n\n MCP defaults previously lived inline (mcp_*); they moved to the\n unified `mcp_settings` table (migration 78) owned by the mcp module.\n Clients fetch them via `GET /api/projects/{id}/mcp-settings` (still\n mounted at the same URL — the route now lives in mcp's\n project_extension).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "Update project",
+        "description": "Update a project's fields. All fields optional.\n\nError codes:\n- `VALIDATION_ERROR` (400) — name empty, caps exceeded.\n- `PROJECT_NAME_DUPLICATE` (422) — renaming would collide with another of your projects.\n- `DEFAULT_ASSISTANT_INACCESSIBLE` (422) — see create_project.\n- `DEFAULT_MODEL_NOT_FOUND` (422) — see create_project.",
+        "operationId": "Project.update",
+        "requestBody": {
+          "description": "Request to update an existing project. All fields optional.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProjectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit chat projects (incl. attach/detach files)",
+                        "name": "ProjectsEdit",
+                        "value": "projects::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: projects::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Project entity. One row per personal project.\n\n MCP defaults previously lived inline (mcp_*); they moved to the\n unified `mcp_settings` table (migration 78) owned by the mcp module.\n Clients fetch them via `GET /api/projects/{id}/mcp-settings` (still\n mounted at the same URL — the route now lives in mcp's\n project_extension).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found"
+          },
+          "422": {
+            "description": "Name collision or default-asset error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "Delete project",
+        "description": "Delete a project. Conversations under the project are preserved with project_id = NULL (no longer receive project knowledge or instructions on future sends).",
+        "operationId": "Project.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Delete chat projects",
+                        "name": "ProjectsDelete",
+                        "value": "projects::delete"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: projects::delete",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Project deleted"
+          },
+          "404": {
+            "description": "Project not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/projects/{id}/duplicate": {
+      "post": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "Duplicate a project",
+        "description": "Clone a project's instructions + files + defaults into a new project with a \" (copy)\" suffix on the name. Does NOT copy conversations or messages.\n\nError codes:\n- `PROJECT_DUPLICATE_LIMIT` (422) — too many \"(copy N)\" variants already exist (limit 999).",
+        "operationId": "Project.duplicate",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create chat projects",
+                        "name": "ProjectsCreate",
+                        "value": "projects::create"
+                      },
+                      {
+                        "description": "Read chat projects",
+                        "name": "ProjectsRead",
+                        "value": "projects::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permissions: projects::create, projects::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Project entity. One row per personal project.\n\n MCP defaults previously lived inline (mcp_*); they moved to the\n unified `mcp_settings` table (migration 78) owned by the mcp module.\n Clients fetch them via `GET /api/projects/{id}/mcp-settings` (still\n mounted at the same URL — the route now lives in mcp's\n project_extension).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found"
+          },
+          "422": {
+            "description": "Duplicate suffix limit reached"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/projects/{id}/conversations": {
       "get": {
         "tags": [
@@ -7176,7 +7321,7 @@
             "description": "Missing required permissions"
           },
           "200": {
-            "description": "Project entity. One row per personal project.\n\n MCP defaults are inline (mcp_*) — see migration 51 for the rationale\n (no sibling project_mcp_settings table; 1:1 sync hazard).",
+            "description": "Project entity. One row per personal project.\n\n MCP defaults previously lived inline (mcp_*); they moved to the\n unified `mcp_settings` table (migration 78) owned by the mcp module.\n Clients fetch them via `GET /api/projects/{id}/mcp-settings` (still\n mounted at the same URL — the route now lives in mcp's\n project_extension).",
             "content": {
               "application/json": {
                 "schema": {
@@ -7190,124 +7335,6 @@
           },
           "404": {
             "description": "Conversation has no project (unfiled or not owned)"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/projects/{id}/mcp-settings": {
-      "get": {
-        "tags": [
-          "Projects"
-        ],
-        "summary": "Get project MCP defaults",
-        "description": "\n\n**Required Permission:** `projects::read`\n\nRead chat projects",
-        "operationId": "Project.getMcpSettings",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read chat projects",
-                        "name": "ProjectsRead",
-                        "value": "projects::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: projects::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "MCP-only update endpoint payload (sibling to UpdateProjectRequest so\n the MCP panel can PUT without sending the rest of the project fields).\n\n `loop_settings` is `Option<Value>` (not a strict struct) for symmetry\n with the conversation_mcp_settings schema (migration 19) — keeping\n the project shape JSONB-flexible avoids a separate Rust struct that\n would need to stay in lockstep with the chat-side type. The chat\n extension consumes the snapshot opaquely.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UpdateProjectMcpSettingsRequest"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Project not found"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "Projects"
-        ],
-        "summary": "Update project MCP defaults",
-        "description": "Update the project's MCP approval mode + auto-approved tools + disabled servers. These apply to NEW conversations created in the project (snapshot at create time); existing conversations are not affected.\n\nValidation:\n- `approval_mode` must be one of: `disabled`, `auto_approve`, `manual_approve`.\n- `auto_approved_tools` and `disabled_servers` are arrays of `{ server_id: <uuid>, tools: [<tool_name>, ...] }` entries (max 256 each).",
-        "operationId": "Project.updateMcpSettings",
-        "requestBody": {
-          "description": "MCP-only update endpoint payload (sibling to UpdateProjectRequest so\n the MCP panel can PUT without sending the rest of the project fields).\n\n `loop_settings` is `Option<Value>` (not a strict struct) for symmetry\n with the conversation_mcp_settings schema (migration 19) — keeping\n the project shape JSONB-flexible avoids a separate Rust struct that\n would need to stay in lockstep with the chat-side type. The chat\n extension consumes the snapshot opaquely.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateProjectMcpSettingsRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Edit chat projects (incl. attach/detach files)",
-                        "name": "ProjectsEdit",
-                        "value": "projects::edit"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: projects::edit",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Project entity. One row per personal project.\n\n MCP defaults are inline (mcp_*) — see migration 51 for the rationale\n (no sibling project_mcp_settings table; 1:1 sync hazard).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Project"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation error"
-          },
-          "404": {
-            "description": "Project not found"
           }
         },
         "security": [
@@ -13533,7 +13560,7 @@
         ]
       },
       "AttachFileRequest": {
-        "description": "Request body for attach-by-ID.",
+        "description": "Request body for attach-by-ID (`POST /api/projects/{id}/files`).",
         "type": "object",
         "properties": {
           "file_id": {
@@ -15076,31 +15103,6 @@
               "null"
             ],
             "maxLength": 65536
-          },
-          "mcp_approval_mode": {
-            "description": "MCP defaults. If omitted, the project gets the standard defaults\n from migration 51 (manual_approve, empty allowlist, empty\n blocklist). Conversations created in the project receive a\n snapshot of these settings at creation time.",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "mcp_auto_approved_tools": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "$ref": "#/components/schemas/McpServerToolEntry"
-            }
-          },
-          "mcp_disabled_servers": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "$ref": "#/components/schemas/McpServerToolEntry"
-            }
           },
           "name": {
             "type": "string",
@@ -18860,26 +18862,6 @@
           "updated_at"
         ]
       },
-      "McpServerToolEntry": {
-        "description": "One entry in the `auto_approved_tools` / `disabled_servers` JSONB\n arrays. Mirrors the shape used by `conversation_mcp_settings`:\n `[{\"server_id\": \"<uuid>\", \"tools\": [\"tool1\", ...]}]`.\n\n Strict deserialization here (instead of `serde_json::Value`) closes\n audit B3: without the struct, a client could POST\n `{\"auto_approved_tools\": \"string\"}` and the chat MCP extension\n would crash trying to interpret it as an array of objects later.",
-        "type": "object",
-        "properties": {
-          "server_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "tools": {
-            "type": "array",
-            "default": [],
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "server_id"
-        ]
-      },
       "McpSettingsResponse": {
         "type": "object",
         "properties": {
@@ -20121,6 +20103,28 @@
           "pinned"
         ]
       },
+      "OnboardingProgress": {
+        "description": "Per-user onboarding progress. Step ids use the composite\n \"{guide_id}/{step_id}\" key format. Replaces the two columns that\n previously rode on the `User` object.",
+        "type": "object",
+        "properties": {
+          "completed_guide_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "completed_step_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "completed_guide_ids",
+          "completed_step_ids"
+        ]
+      },
       "OperatingSystemInfo": {
         "type": "object",
         "properties": {
@@ -20353,7 +20357,7 @@
         }
       },
       "Project": {
-        "description": "Project entity. One row per personal project.\n\n MCP defaults are inline (mcp_*) — see migration 51 for the rationale\n (no sibling project_mcp_settings table; 1:1 sync hazard).",
+        "description": "Project entity. One row per personal project.\n\n MCP defaults previously lived inline (mcp_*); they moved to the\n unified `mcp_settings` table (migration 78) owned by the mcp module.\n Clients fetch them via `GET /api/projects/{id}/mcp-settings` (still\n mounted at the same URL — the route now lives in mcp's\n project_extension).",
         "type": "object",
         "properties": {
           "description": {
@@ -20390,20 +20394,6 @@
               "null"
             ]
           },
-          "mcp_approval_mode": {
-            "type": "string"
-          },
-          "mcp_auto_approved_tools": {
-            "description": "JSONB: `[{\"server_id\": \"uuid\", \"tools\": [\"tool1\", ...]}, ...]`",
-            "default": null
-          },
-          "mcp_disabled_servers": {
-            "description": "JSONB: `[{\"server_id\": \"uuid\", \"tools\": []}, ...]`",
-            "default": null
-          },
-          "mcp_loop_settings": {
-            "description": "JSONB; nullable. Same shape + NULL convention as\n `conversation_mcp_settings.loop_settings` (migration 19).\n NULL means \"not configured — application supplies the default\":\n   { stop_when_no_tool_calling: true, max_iteration: 10,\n     stop_when_tools_called: [], force_final_answer: false,\n     per_tool_max_iteration: [] }\n Snapshotted into conversation_mcp_settings.loop_settings at\n conversation create time."
-          },
           "name": {
             "type": "string"
           },
@@ -20420,13 +20410,12 @@
           "id",
           "user_id",
           "name",
-          "mcp_approval_mode",
           "created_at",
           "updated_at"
         ]
       },
       "ProjectFileListResponse": {
-        "description": "File-list response (joined with the `files` table for client\n convenience — saves a per-file lookup roundtrip).",
+        "description": "Response for `GET /api/projects/{id}/files` — joined with the `files`\n table so the client gets file metadata without a per-file lookup.",
         "type": "object",
         "properties": {
           "files": {
@@ -20463,6 +20452,80 @@
         "required": [
           "projects",
           "total"
+        ]
+      },
+      "ProjectMcpSettingsRequest": {
+        "description": "PUT body + GET response for `/api/projects/{id}/mcp-settings`.\n\n Field shapes match the legacy `UpdateProjectMcpSettingsRequest` so\n the OpenAPI schema (and therefore the autogenerated TS client) is\n wire-compatible. The naming is now consistent with mcp's other\n settings types (typed enum/structs instead of raw strings/Value).",
+        "type": "object",
+        "properties": {
+          "approval_mode": {
+            "$ref": "#/components/schemas/ApprovalMode"
+          },
+          "auto_approved_tools": {
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AutoApprovedServer"
+            }
+          },
+          "disabled_servers": {
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DisabledServer"
+            }
+          },
+          "loop_settings": {
+            "description": "Optional — None preserves the existing row's loop_settings.\n `LoopSettings` is fully typed (matches chat_extension's\n settings shape).",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LoopSettings"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "approval_mode"
+        ]
+      },
+      "ProjectMcpSettingsResponse": {
+        "description": "GET response shape. Wraps an `McpSettings` row in the same wire\n format as the legacy `UpdateProjectMcpSettingsRequest` so the\n frontend's autogen client stays compatible.",
+        "type": "object",
+        "properties": {
+          "approval_mode": {
+            "type": "string"
+          },
+          "auto_approved_tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AutoApprovedServer"
+            }
+          },
+          "disabled_servers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DisabledServer"
+            }
+          },
+          "loop_settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LoopSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "approval_mode",
+          "auto_approved_tools",
+          "disabled_servers"
         ]
       },
       "Prompt": {
@@ -23572,35 +23635,6 @@
           "metadata": true
         }
       },
-      "UpdateProjectMcpSettingsRequest": {
-        "description": "MCP-only update endpoint payload (sibling to UpdateProjectRequest so\n the MCP panel can PUT without sending the rest of the project fields).\n\n `loop_settings` is `Option<Value>` (not a strict struct) for symmetry\n with the conversation_mcp_settings schema (migration 19) — keeping\n the project shape JSONB-flexible avoids a separate Rust struct that\n would need to stay in lockstep with the chat-side type. The chat\n extension consumes the snapshot opaquely.",
-        "type": "object",
-        "properties": {
-          "approval_mode": {
-            "type": "string"
-          },
-          "auto_approved_tools": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/McpServerToolEntry"
-            }
-          },
-          "disabled_servers": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/McpServerToolEntry"
-            }
-          },
-          "loop_settings": {
-            "default": null
-          }
-        },
-        "required": [
-          "approval_mode",
-          "auto_approved_tools",
-          "disabled_servers"
-        ]
-      },
       "UpdateProjectRequest": {
         "description": "Request to update an existing project. All fields optional.",
         "type": "object",
@@ -23897,18 +23931,6 @@
               "null"
             ]
           },
-          "completed_onboarding_ids": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "completed_onboarding_step_ids": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
           "created_at": {
             "type": "string",
             "format": "date-time"
@@ -23972,8 +23994,6 @@
           "is_active",
           "is_admin",
           "permissions",
-          "completed_onboarding_ids",
-          "completed_onboarding_step_ids",
           "created_at",
           "updated_at"
         ]

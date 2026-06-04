@@ -5,10 +5,12 @@ pub mod events;
 mod handlers;
 mod models;
 mod permissions;
+pub mod project_extension;
 mod repository;
 mod routes;
 pub mod runtime_types;
 pub mod sampling;
+pub mod settings;
 mod types;
 mod utils;
 

@@ -11,7 +11,6 @@ export interface OnboardingSlot {
 declare module '@/core/module-system/types' {
   interface Slots {
     onboarding: OnboardingSlot[]
-    routerEffects: Array<{ id: string; component: React.ComponentType }>
   }
 }
 

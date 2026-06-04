@@ -2,6 +2,7 @@ import type {
   ChatExtension,
   ExtensionRegistrationOptions,
   BeforeSendResult,
+  SendBlocker,
   SSEEvent,
   SSEEventTypeRegistry,
   ChatSlotName,
@@ -552,6 +553,67 @@ export class ChatExtensionRegistry {
     }
 
     this.initialized = false
+  }
+
+  /**
+   * Fan out `onMessageEditRestore` across all extensions. Called by
+   * the chat store when the user clicks Edit on a previous message —
+   * each extension filters the contents array for its own
+   * content_type blocks and rehydrates its store accordingly (file:
+   * restores file_attachment blocks into selectedFiles; future
+   * extensions: same pattern with their own content types).
+   *
+   * Sequential rather than parallel so error context stays
+   * deterministic. One extension throwing is logged and does NOT
+   * block subsequent extensions (edit-restore is best-effort).
+   */
+  async onMessageEditRestore(
+    contents: import('@/api-client/types').MessageContent[],
+  ): Promise<void> {
+    for (const extension of this.getExtensions()) {
+      if (extension.onMessageEditRestore) {
+        try {
+          await extension.onMessageEditRestore(contents)
+        } catch (error) {
+          console.error(
+            `[ChatExtensions] Error in ${extension.name}.onMessageEditRestore:`,
+            error,
+          )
+        }
+      }
+    }
+  }
+
+  /**
+   * Reactive send-blocker aggregator. Returns the list of blockers
+   * currently reported by extensions (file: "uploading", future
+   * extensions could report "awaiting-approval", etc.).
+   *
+   * THIS IS A REACT HOOK — call only from inside a render path
+   * (`ChatInput` does). Iterates the extension list in stable
+   * insertion order and calls each extension's `useSendBlocker`
+   * unconditionally. The set of extensions is fixed at app boot,
+   * so the hook count is stable across renders.
+   *
+   * Returns an empty array when no extension blocks. Callers
+   * typically check `blockers.length > 0` to disable the Send button.
+   */
+  useSendBlockers(): SendBlocker[] {
+    const out: SendBlocker[] = []
+    for (const extension of this.getExtensions()) {
+      if (extension.useSendBlocker) {
+        try {
+          const result = extension.useSendBlocker()
+          if (result) out.push(result)
+        } catch (error) {
+          console.error(
+            `[ChatExtensions] Error in ${extension.name}.useSendBlocker:`,
+            error,
+          )
+        }
+      }
+    }
+    return out
   }
 
   /**

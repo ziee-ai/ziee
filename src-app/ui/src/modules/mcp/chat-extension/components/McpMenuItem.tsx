@@ -1,7 +1,7 @@
 import { theme } from 'antd'
 import { ToolOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
-import { McpConfigModal } from '@/modules/mcp/chat-extension/components/McpConfigModal'
+import { McpConfigModal } from '@/modules/mcp/components/McpConfigModal'
 import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
 
 /**

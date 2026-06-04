@@ -366,9 +366,6 @@ export interface CreateProjectRequest {
   default_assistant_id?: string
   default_model_id?: string
   instructions?: string
-  mcp_approval_mode?: string
-  mcp_auto_approved_tools?: McpServerToolEntry[]
-  mcp_disabled_servers?: McpServerToolEntry[]
   name?: string
 }
 
@@ -1194,11 +1191,6 @@ export interface McpServerOAuthConfigResponse {
   updated_at: string
 }
 
-export interface McpServerToolEntry {
-  server_id: string
-  tools?: string[]
-}
-
 export interface McpSettingsResponse {
   settings?: ConversationMcpSettingsResponse
 }
@@ -1442,6 +1434,11 @@ export interface ModelUsageInfo {
   running: boolean
 }
 
+export interface OnboardingProgress {
+  completed_guide_ids: string[]
+  completed_step_ids: string[]
+}
+
 export interface OperatingSystemInfo {
   architecture: string
   kernel_version?: string
@@ -1515,10 +1512,6 @@ export interface Project {
   default_model_id?: string
   id: string
   instructions?: string
-  mcp_approval_mode: string
-  mcp_auto_approved_tools?: any
-  mcp_disabled_servers?: any
-  mcp_loop_settings?: any
   name: string
   updated_at: string
   user_id: string
@@ -1532,6 +1525,20 @@ export interface ProjectFileListResponse {
 export interface ProjectListResponse {
   projects: Project[]
   total: number
+}
+
+export interface ProjectMcpSettingsRequest {
+  approval_mode: ApprovalMode
+  auto_approved_tools?: AutoApprovedServer[]
+  disabled_servers?: DisabledServer[]
+  loop_settings?: LoopSettings
+}
+
+export interface ProjectMcpSettingsResponse {
+  approval_mode: string
+  auto_approved_tools: AutoApprovedServer[]
+  disabled_servers: DisabledServer[]
+  loop_settings?: LoopSettings
 }
 
 export interface Prompt {
@@ -2206,13 +2213,6 @@ export interface UpdateMemoryRequest {
   metadata?: any
 }
 
-export interface UpdateProjectMcpSettingsRequest {
-  approval_mode: string
-  auto_approved_tools: McpServerToolEntry[]
-  disabled_servers: McpServerToolEntry[]
-  loop_settings?: any
-}
-
 export interface UpdateProjectRequest {
   description?: string
   default_assistant_id?: string
@@ -2271,8 +2271,6 @@ export type UsageMode = 'auto' | 'always'
 
 export interface User {
   avatar_url?: string
-  completed_onboarding_ids: string[]
-  completed_onboarding_step_ids: string[]
   created_at: string
   display_name?: string
   email: string
@@ -2785,6 +2783,7 @@ export const ApiEndpoints = {
   'Message.sendStream': 'POST /api/conversations/{id}/messages/stream',
   'Onboarding.complete': 'POST /api/onboarding/{guide_id}/complete',
   'Onboarding.completeStep': 'POST /api/onboarding/{guide_id}/steps/{step_id}/complete',
+  'Onboarding.getProgress': 'GET /api/onboarding/progress',
   'Project.attachConversation': 'POST /api/projects/{id}/conversations/{conversation_id}',
   'Project.attachFile': 'POST /api/projects/{id}/files',
   'Project.create': 'POST /api/projects',
@@ -3023,6 +3022,7 @@ export type ApiEndpointParameters = {
   'Message.sendStream': { id: string } & SendMessageRequest
   'Onboarding.complete': { guide_id: string }
   'Onboarding.completeStep': { guide_id: string; step_id: string }
+  'Onboarding.getProgress': void
   'Project.attachConversation': { id: string; conversation_id: string }
   'Project.attachFile': { id: string } & AttachFileRequest
   'Project.create': CreateProjectRequest
@@ -3037,7 +3037,7 @@ export type ApiEndpointParameters = {
   'Project.listConversations': { id: string; limit?: number; page?: number }
   'Project.listFiles': { id: string }
   'Project.update': { id: string } & UpdateProjectRequest
-  'Project.updateMcpSettings': { id: string } & UpdateProjectMcpSettingsRequest
+  'Project.updateMcpSettings': { id: string } & ProjectMcpSettingsRequest
   'Project.uploadAndAttachFile': { id: string } & FormData
   'RuntimeVersion.checkUpdates': { engine: string }
   'RuntimeVersion.delete': { version_id: string; remove_binary?: boolean }
@@ -3259,8 +3259,9 @@ export type ApiEndpointResponses = {
   'Message.getHistory': MessageWithContent[]
   'Message.getMcpServers': MessageMcpServersResponse
   'Message.sendStream': SSEChatStreamEvent
-  'Onboarding.complete': User
-  'Onboarding.completeStep': User
+  'Onboarding.complete': OnboardingProgress
+  'Onboarding.completeStep': OnboardingProgress
+  'Onboarding.getProgress': OnboardingProgress
   'Project.attachConversation': ConversationResponse
   'Project.attachFile': void
   'Project.create': Project
@@ -3270,12 +3271,12 @@ export type ApiEndpointResponses = {
   'Project.duplicate': Project
   'Project.forConversation': Project
   'Project.get': Project
-  'Project.getMcpSettings': UpdateProjectMcpSettingsRequest
+  'Project.getMcpSettings': ProjectMcpSettingsResponse
   'Project.list': ProjectListResponse
   'Project.listConversations': ConversationResponse[]
   'Project.listFiles': ProjectFileListResponse
   'Project.update': Project
-  'Project.updateMcpSettings': Project
+  'Project.updateMcpSettings': ProjectMcpSettingsResponse
   'Project.uploadAndAttachFile': File
   'RuntimeVersion.checkUpdates': AvailableUpdatesResponse
   'RuntimeVersion.delete': void

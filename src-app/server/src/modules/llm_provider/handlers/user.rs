@@ -28,7 +28,7 @@ pub async fn get_user_llm_providers(
     let user_id = auth.user.id;
 
     let providers = Repos
-        .llm_provider
+        .user_group_llm_provider
         .get_for_user(user_id)
         .await
         .map_err(AppError::from)?;

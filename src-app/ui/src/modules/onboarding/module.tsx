@@ -1,5 +1,4 @@
 import { createModule } from '@/core'
-import './events/types'
 import { BookOutlined } from '@ant-design/icons'
 import { BlankLayout } from '@/modules/layouts/blank'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
@@ -18,7 +17,7 @@ export default createModule({
     version: '1.0.0',
     description: 'Onboarding guides',
   },
-  dependencies: ['router'],
+  dependencies: ['router', 'auth'],
   stores: [
     { name: 'Onboarding', store: useOnboardingStore },
   ],

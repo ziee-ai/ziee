@@ -34,7 +34,10 @@ export async function waitForNewChatPageLoad(page: Page) {
 
   for (let i = 0; i < maxRetries; i++) {
     // Open dropdown
-    await page.click('[data-testid="model-selector"] .ant-select')
+    await page
+    .locator('[data-testid="model-selector"]')
+    .getByRole('combobox', { name: 'Model' })
+    .click()
     await page.waitForSelector('.ant-select-dropdown', { state: 'visible', timeout: 5000 })
 
     // Check if models are loaded (not showing "No data")
@@ -80,10 +83,17 @@ export async function waitForChatPageLoad(page: Page) {
 // =====================================================
 
 export async function getVisibleModelsInDropdown(page: Page): Promise<string[]> {
-  // Click the model selector to open dropdown
-  await page.click('[data-testid="model-selector"] .ant-select')
+  // Click the combobox directly (aria-label="Model" on the antd Select).
+  // The previous `.ant-select` selector wrapped the antd container div,
+  // which isn't always the active click-target in antd v6 — sometimes
+  // the click landed on a child that didn't trigger the dropdown,
+  // leading to a 5s timeout on `.ant-select-dropdown`. The combobox
+  // role IS the trigger element by spec.
+  await page
+    .locator('[data-testid="model-selector"]')
+    .getByRole('combobox', { name: 'Model' })
+    .click()
 
-  // Wait for dropdown to appear
   await page.waitForSelector('.ant-select-dropdown', { state: 'visible', timeout: 5000 })
 
   // Get all option labels (model display names)
@@ -117,7 +127,10 @@ export async function selectModelInDropdown(
   }
 
   // Model not selected, open dropdown and select it
-  await page.click('[data-testid="model-selector"] .ant-select')
+  await page
+    .locator('[data-testid="model-selector"]')
+    .getByRole('combobox', { name: 'Model' })
+    .click()
 
   // Wait for dropdown to appear
   await page.waitForSelector('.ant-select-dropdown', { state: 'visible', timeout: 5000 })
@@ -152,7 +165,10 @@ export async function assertModelNotVisibleInDropdown(
 
 export async function assertDropdownEmpty(page: Page): Promise<void> {
   // Click the model selector to open dropdown
-  await page.click('[data-testid="model-selector"] .ant-select')
+  await page
+    .locator('[data-testid="model-selector"]')
+    .getByRole('combobox', { name: 'Model' })
+    .click()
 
   // Wait for dropdown to appear
   await page.waitForSelector('.ant-select-dropdown', { state: 'visible', timeout: 5000 })

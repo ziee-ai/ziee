@@ -10,6 +10,15 @@ import {
   mockResourceLinkUrl,
 } from './fixtures/mock-tool-result'
 
+// 1x1 transparent PNG — keeps ImageBody's <img> in the DOM (it
+// transitions to a "Couldn't load image" placeholder on `onerror`,
+// which removes the <img> the test asserts against).
+const TINY_PNG = Buffer.from(
+  '89504E470D0A1A0A0000000D49484452000000010000000108060000001F15C4890000000D49444154789C6200010000050001' +
+    '0D0A2DB40000000049454E44AE426082',
+  'hex',
+)
+
 /**
  * Per-viewer rendering tests. Each section asserts the production
  * viewer (image, markdown, tabular, text) actually renders correctly
@@ -33,6 +42,7 @@ test.describe('Inline file previews — per-viewer rendering', () => {
 
   test('image: renders <img> with the resource_link URL', async ({ page, testInfra }) => {
     const uri = '/api/files/img-basic/download'
+    await mockResourceLinkUrl(page, uri, TINY_PNG, { contentType: 'image/png' })
     await seedAssistantWithToolResult(page, testInfra.baseURL, {
       resourceLinks: [{ uri, name: 'plot.png', mime_type: 'image/png' }],
     })
@@ -57,6 +67,15 @@ test.describe('Inline file previews — per-viewer rendering', () => {
       { name: 'b.webp', mime_type: 'image/webp' },
       { name: 'c.gif', mime_type: 'image/gif' },
     ]
+    // Mock all three URIs so ImageBody's <img> stays in DOM.
+    for (let i = 0; i < cases.length; i++) {
+      await mockResourceLinkUrl(
+        page,
+        `/api/files/img-multi-${i}/download`,
+        TINY_PNG,
+        { contentType: cases[i].mime_type },
+      )
+    }
     await seedAssistantWithToolResult(page, testInfra.baseURL, {
       resourceLinks: cases.map((c, i) => ({
         uri: `/api/files/img-multi-${i}/download`,
@@ -73,6 +92,7 @@ test.describe('Inline file previews — per-viewer rendering', () => {
 
   test('image: applies max-width clamp via CSS', async ({ page, testInfra }) => {
     const uri = '/api/files/img-clamp/download'
+    await mockResourceLinkUrl(page, uri, TINY_PNG, { contentType: 'image/png' })
     await seedAssistantWithToolResult(page, testInfra.baseURL, {
       resourceLinks: [{ uri, name: 'big.png', mime_type: 'image/png' }],
     })
@@ -84,10 +104,15 @@ test.describe('Inline file previews — per-viewer rendering', () => {
     expect(maxHeight).toBe('400px')
   })
 
-  test('image: 404 URL does not crash the page; <img> renders broken', async ({
+  test('image: 404 URL does not crash the page; falls back to friendly placeholder', async ({
     page,
     testInfra,
   }) => {
+    // ImageBody intentionally swaps the broken <img> for a friendlier
+    // "Couldn't load image" placeholder when `onError` fires (avoids
+    // showing the browser's broken-image icon). The test contract is:
+    // (a) something renders in place of the image, (b) no React error
+    // boundary fires.
     const uri = '/api/files/img-404/download'
     await mockResourceLinkUrl(page, uri, 'not found', { status: 404 })
     const pageErrors: string[] = []
@@ -95,8 +120,11 @@ test.describe('Inline file previews — per-viewer rendering', () => {
     await seedAssistantWithToolResult(page, testInfra.baseURL, {
       resourceLinks: [{ uri, name: 'gone.png', mime_type: 'image/png' }],
     })
-    const img = page.locator('[data-testid="inline-file-preview"] img').first()
-    await expect(img).toBeVisible({ timeout: 10000 })
+    const fallback = page
+      .locator('[data-testid="inline-file-preview-image-error"]')
+      .first()
+    await expect(fallback).toBeVisible({ timeout: 10000 })
+    await expect(fallback).toContainText(/couldn.?t load image/i)
     expect(pageErrors).toEqual([])
   })
 
@@ -157,7 +185,14 @@ test.describe('Inline file previews — per-viewer rendering', () => {
     // as the streamdown-fallback <pre>, depending on whether the lazy
     // plugin chunk crashed or not).
     await expect(body).toContainText('graph LR')
-    expect(await body.locator('svg').count()).toBe(0)
+    // No mermaid-rendered diagram (mermaid emits svg with class*=mermaid
+    // OR data-mermaid attr OR sets a <g class="root">). Streamdown 2's
+    // code-block controls have their own non-diagram SVG icons (e.g.
+    // copy/download buttons) — those don't represent a rendered mermaid,
+    // so we filter on mermaid-specific markers rather than svg-count.
+    await expect(
+      body.locator('svg.mermaid, svg [class*="mermaid"], [data-mermaid]'),
+    ).toHaveCount(0)
   })
 
   test('markdown: raw <script> in fetched content does not execute', async ({

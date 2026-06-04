@@ -4,16 +4,8 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use super::models::Project;
-use super::types::{
-    CreateProjectRequest, ProjectFileListResponse, ProjectListResponse,
-    UpdateProjectMcpSettingsRequest, UpdateProjectRequest,
-};
+use super::types::{CreateProjectRequest, ProjectListResponse, UpdateProjectRequest};
 use crate::common::AppError;
-use crate::modules::file::models::File as FileEntity;
-
-/// Hard cap on project files (Tier-1 validator gate). Matches the v1
-/// design in Plan 5 §8 ("File count cap — 100 files per project").
-pub const PROJECT_MAX_FILES: i64 = 100;
 
 pub struct ProjectRepository {
     pool: PgPool,
@@ -31,62 +23,22 @@ impl ProjectRepository {
         user_id: Uuid,
         req: CreateProjectRequest,
     ) -> Result<Project, AppError> {
-        let approval_mode = req
-            .mcp_approval_mode
-            .as_deref()
-            .unwrap_or("manual_approve")
-            .to_string();
-        // Serialize the strict types back to JSONB for storage. The
-        // type-level validation (Vec<McpServerToolEntry>) has already
-        // rejected shape errors at handler ingress.
-        //
-        // `serde_json::to_value` only fails for types with non-JSON-
-        // serializable fields (NaN floats, non-string Map keys). Our
-        // McpServerToolEntry has neither, so failure is unreachable
-        // in practice — but surface it explicitly instead of silently
-        // storing `[]`, which would destroy user input. If the type
-        // ever evolves to add a non-serializable field, we crash loudly
-        // instead of corrupting data.
-        let auto_approved = match req.mcp_auto_approved_tools {
-            Some(entries) => serde_json::to_value(entries).map_err(|e| {
-                tracing::error!(error = %e, "failed to serialize mcp_auto_approved_tools");
-                AppError::internal_error("Failed to serialize MCP settings")
-            })?,
-            None => serde_json::json!([]),
-        };
-        let disabled_servers = match req.mcp_disabled_servers {
-            Some(entries) => serde_json::to_value(entries).map_err(|e| {
-                tracing::error!(error = %e, "failed to serialize mcp_disabled_servers");
-                AppError::internal_error("Failed to serialize MCP settings")
-            })?,
-            None => serde_json::json!([]),
-        };
-
-        // loop_settings: NULL at create time means "use application
-        // defaults" — same convention as conversation_mcp_settings.
-        // CreateProjectRequest doesn't expose loop_settings (the
-        // dedicated MCP-settings PUT endpoint sets it later), but we
-        // pass NULL explicitly so the bind position is unambiguous.
-        let loop_settings: Option<serde_json::Value> = None;
-
+        // MCP defaults are no longer set at project-create time —
+        // CreateProjectRequest drops its mcp_* fields entirely (migration 78
+        // + project↔mcp inversion). Clients customize MCP via a separate
+        // PUT /api/projects/{id}/mcp-settings call after create.
         let project = sqlx::query_as!(
             Project,
             r#"
             INSERT INTO projects (
                 user_id, name, description, instructions,
-                default_assistant_id, default_model_id,
-                mcp_approval_mode, mcp_auto_approved_tools, mcp_disabled_servers,
-                mcp_loop_settings
+                default_assistant_id, default_model_id
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING
                 id, user_id, name, description, instructions,
                 default_assistant_id as "default_assistant_id: _",
                 default_model_id as "default_model_id: _",
-                mcp_approval_mode,
-                mcp_auto_approved_tools as "mcp_auto_approved_tools!: _",
-                mcp_disabled_servers as "mcp_disabled_servers!: _",
-                mcp_loop_settings,
                 created_at as "created_at: _",
                 updated_at as "updated_at: _"
             "#,
@@ -96,10 +48,6 @@ impl ProjectRepository {
             req.instructions,
             req.default_assistant_id,
             req.default_model_id,
-            approval_mode,
-            auto_approved,
-            disabled_servers,
-            loop_settings,
         )
         .fetch_one(&self.pool)
         .await
@@ -122,10 +70,6 @@ impl ProjectRepository {
                 id, user_id, name, description, instructions,
                 default_assistant_id as "default_assistant_id: _",
                 default_model_id as "default_model_id: _",
-                mcp_approval_mode,
-                mcp_auto_approved_tools as "mcp_auto_approved_tools!: _",
-                mcp_disabled_servers as "mcp_disabled_servers!: _",
-                mcp_loop_settings,
                 created_at as "created_at: _",
                 updated_at as "updated_at: _"
             FROM projects
@@ -158,10 +102,6 @@ impl ProjectRepository {
                 id, user_id, name, description, instructions,
                 default_assistant_id as "default_assistant_id: _",
                 default_model_id as "default_model_id: _",
-                mcp_approval_mode,
-                mcp_auto_approved_tools as "mcp_auto_approved_tools!: _",
-                mcp_disabled_servers as "mcp_disabled_servers!: _",
-                mcp_loop_settings,
                 created_at as "created_at: _",
                 updated_at as "updated_at: _"
             FROM projects
@@ -271,10 +211,6 @@ impl ProjectRepository {
                 id, user_id, name, description, instructions,
                 default_assistant_id as "default_assistant_id: _",
                 default_model_id as "default_model_id: _",
-                mcp_approval_mode,
-                mcp_auto_approved_tools as "mcp_auto_approved_tools!: _",
-                mcp_disabled_servers as "mcp_disabled_servers!: _",
-                mcp_loop_settings,
                 created_at as "created_at: _",
                 updated_at as "updated_at: _"
             FROM projects WHERE id = $1
@@ -289,65 +225,6 @@ impl ProjectRepository {
         Ok(project)
     }
 
-    pub async fn update_mcp_settings(
-        &self,
-        id: Uuid,
-        user_id: Uuid,
-        req: UpdateProjectMcpSettingsRequest,
-    ) -> Result<Project, AppError> {
-        // Same rationale as `create`: surface serialization failures
-        // explicitly rather than silently truncating to `[]`.
-        let auto_approved = serde_json::to_value(&req.auto_approved_tools).map_err(|e| {
-            tracing::error!(error = %e, "failed to serialize mcp auto_approved_tools");
-            AppError::internal_error("Failed to serialize MCP settings")
-        })?;
-        let disabled_servers = serde_json::to_value(&req.disabled_servers).map_err(|e| {
-            tracing::error!(error = %e, "failed to serialize mcp disabled_servers");
-            AppError::internal_error("Failed to serialize MCP settings")
-        })?;
-
-        // loop_settings: pass Option<Value> straight through. NULL is a
-        // first-class value here ("not configured — use defaults"); a
-        // None on the request preserves any existing row value via the
-        // explicit binding below (we still set it — `None` writes NULL,
-        // which is the documented "use defaults" semantic).
-        let loop_settings = req.loop_settings.clone();
-
-        let project = sqlx::query_as!(
-            Project,
-            r#"
-            UPDATE projects
-            SET mcp_approval_mode = $3,
-                mcp_auto_approved_tools = $4,
-                mcp_disabled_servers = $5,
-                mcp_loop_settings = $6,
-                updated_at = NOW()
-            WHERE id = $1 AND user_id = $2
-            RETURNING
-                id, user_id, name, description, instructions,
-                default_assistant_id as "default_assistant_id: _",
-                default_model_id as "default_model_id: _",
-                mcp_approval_mode,
-                mcp_auto_approved_tools as "mcp_auto_approved_tools!: _",
-                mcp_disabled_servers as "mcp_disabled_servers!: _",
-                mcp_loop_settings,
-                created_at as "created_at: _",
-                updated_at as "updated_at: _"
-            "#,
-            id,
-            user_id,
-            req.approval_mode,
-            auto_approved,
-            disabled_servers,
-            loop_settings,
-        )
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(AppError::database_error)?;
-
-        project.ok_or_else(|| AppError::not_found("Project"))
-    }
-
     pub async fn delete(&self, id: Uuid, user_id: Uuid) -> Result<bool, AppError> {
         let result = sqlx::query!(
             "DELETE FROM projects WHERE id = $1 AND user_id = $2",
@@ -359,197 +236,6 @@ impl ProjectRepository {
         .map_err(AppError::database_error)?;
 
         Ok(result.rows_affected() > 0)
-    }
-
-    // ============ Files ============
-
-    /// Attach a file. Idempotent: duplicate (composite PK collision) is
-    /// silently swallowed and returns success. The caller must have
-    /// already verified that `file_id`'s owner matches the project's
-    /// owner — repository does NOT re-check; handler is the boundary.
-    ///
-    /// For RACE-FREE attach that also enforces the 100-file cap, use
-    /// `attach_file_capped` instead — that variant takes a row lock on
-    /// the project and recounts before INSERT to close audit B1.
-    pub async fn attach_file(&self, project_id: Uuid, file_id: Uuid) -> Result<(), AppError> {
-        sqlx::query!(
-            r#"
-            INSERT INTO project_files (project_id, file_id)
-            VALUES ($1, $2)
-            ON CONFLICT (project_id, file_id) DO NOTHING
-            "#,
-            project_id,
-            file_id
-        )
-        .execute(&self.pool)
-        .await
-        .map_err(AppError::database_error)?;
-        Ok(())
-    }
-
-    /// Race-free attach that enforces the file count cap atomically.
-    /// Closes audit B1: two concurrent attaches at count=99 used to
-    /// both pass a pre-check and result in count=101. Now we take a
-    /// `FOR UPDATE` row lock on the project, count under the lock,
-    /// reject if at cap, and insert in the same transaction. Returns
-    /// `Ok(true)` if a new row was inserted, `Ok(false)` if the file
-    /// was already attached (idempotent path — cap not consulted).
-    pub async fn attach_file_capped(
-        &self,
-        project_id: Uuid,
-        file_id: Uuid,
-        cap: i64,
-    ) -> Result<bool, AppError> {
-        let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
-
-        // Lock the project row so no concurrent attach can race past
-        // the count check. Cheap: one row per project.
-        let project_locked = sqlx::query_scalar!(
-            "SELECT 1 FROM projects WHERE id = $1 FOR UPDATE",
-            project_id
-        )
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(AppError::database_error)?;
-        if project_locked.is_none() {
-            return Err(AppError::not_found("Project"));
-        }
-
-        // Already attached? Idempotent — don't count toward cap.
-        let already: i64 = sqlx::query_scalar!(
-            "SELECT COUNT(*) FROM project_files WHERE project_id = $1 AND file_id = $2",
-            project_id,
-            file_id
-        )
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(AppError::database_error)?
-        .unwrap_or(0);
-        if already > 0 {
-            tx.commit().await.map_err(AppError::database_error)?;
-            return Ok(false);
-        }
-
-        // Recount under the lock — this is the load-bearing step.
-        let count: i64 = sqlx::query_scalar!(
-            "SELECT COUNT(*) FROM project_files WHERE project_id = $1",
-            project_id
-        )
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(AppError::database_error)?
-        .unwrap_or(0);
-        if count >= cap {
-            // Roll back the lock + return a sentinel error the handler
-            // converts to a 422.
-            return Err(AppError::unprocessable_entity(
-                "PROJECT_FILE_COUNT_CAP",
-                format!("Project file count cap ({cap}) reached"),
-            ));
-        }
-
-        sqlx::query!(
-            r#"
-            INSERT INTO project_files (project_id, file_id)
-            VALUES ($1, $2)
-            ON CONFLICT (project_id, file_id) DO NOTHING
-            "#,
-            project_id,
-            file_id
-        )
-        .execute(&mut *tx)
-        .await
-        .map_err(AppError::database_error)?;
-
-        tx.commit().await.map_err(AppError::database_error)?;
-        Ok(true)
-    }
-
-    pub async fn detach_file(&self, project_id: Uuid, file_id: Uuid) -> Result<bool, AppError> {
-        let result = sqlx::query!(
-            "DELETE FROM project_files WHERE project_id = $1 AND file_id = $2",
-            project_id,
-            file_id
-        )
-        .execute(&self.pool)
-        .await
-        .map_err(AppError::database_error)?;
-        Ok(result.rows_affected() > 0)
-    }
-
-    pub async fn count_files(&self, project_id: Uuid) -> Result<i64, AppError> {
-        let count = sqlx::query_scalar!(
-            "SELECT COUNT(*) FROM project_files WHERE project_id = $1",
-            project_id
-        )
-        .fetch_one(&self.pool)
-        .await
-        .map_err(AppError::database_error)?
-        .unwrap_or(0);
-        Ok(count)
-    }
-
-    /// List file IDs only — fast path for the chat/project extension
-    /// which converts them into provider-specific ContentBlocks.
-    pub async fn list_file_ids(&self, project_id: Uuid) -> Result<Vec<Uuid>, AppError> {
-        let rows = sqlx::query!(
-            "SELECT file_id FROM project_files WHERE project_id = $1 ORDER BY added_at ASC",
-            project_id
-        )
-        .fetch_all(&self.pool)
-        .await
-        .map_err(AppError::database_error)?;
-        Ok(rows.into_iter().map(|r| r.file_id).collect())
-    }
-
-    /// List files with metadata (JOIN on files). Returns the same File
-    /// entity the file module returns, for client convenience.
-    pub async fn list_files(
-        &self,
-        project_id: Uuid,
-    ) -> Result<ProjectFileListResponse, AppError> {
-        let rows = sqlx::query!(
-            r#"
-            SELECT
-                f.id, f.user_id, f.filename, f.file_size,
-                f.mime_type, f.checksum, f.has_thumbnail,
-                f.preview_page_count, f.text_page_count,
-                f.processing_metadata, f.created_by,
-                f.created_at, f.updated_at
-            FROM project_files pf
-            JOIN files f ON f.id = pf.file_id
-            WHERE pf.project_id = $1
-            ORDER BY pf.added_at ASC
-            "#,
-            project_id
-        )
-        .fetch_all(&self.pool)
-        .await
-        .map_err(AppError::database_error)?;
-
-        let total = rows.len() as i64;
-        let files: Vec<FileEntity> = rows
-            .into_iter()
-            .map(|r| FileEntity {
-                id: r.id,
-                user_id: r.user_id,
-                filename: r.filename,
-                file_size: r.file_size,
-                mime_type: r.mime_type,
-                checksum: r.checksum,
-                has_thumbnail: r.has_thumbnail,
-                preview_page_count: r.preview_page_count,
-                text_page_count: r.text_page_count,
-                processing_metadata: r.processing_metadata.unwrap_or_else(|| serde_json::json!({})),
-                created_by: r.created_by,
-                created_at: chrono::DateTime::from_timestamp(r.created_at.unix_timestamp(), 0)
-                    .unwrap(),
-                updated_at: chrono::DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0)
-                    .unwrap(),
-            })
-            .collect();
-
-        Ok(ProjectFileListResponse { files, total })
     }
 
     // ============ Conversations (project_conversations join table) ============
@@ -570,10 +256,6 @@ impl ProjectRepository {
                 p.id, p.user_id, p.name, p.description, p.instructions,
                 p.default_assistant_id as "default_assistant_id: _",
                 p.default_model_id as "default_model_id: _",
-                p.mcp_approval_mode,
-                p.mcp_auto_approved_tools as "mcp_auto_approved_tools!: _",
-                p.mcp_disabled_servers as "mcp_disabled_servers!: _",
-                p.mcp_loop_settings,
                 p.created_at as "created_at: _",
                 p.updated_at as "updated_at: _"
             FROM project_conversations pc
@@ -666,64 +348,11 @@ impl ProjectRepository {
         Ok(result.rows_affected() > 0)
     }
 
-    /// List conversations attached to a project, with paging. The
-    /// caller (project handler) must have already verified
-    /// `user_id` owns `project_id`; the `c.user_id = $2` clause is
-    /// defense-in-depth.
-    pub async fn list_conversations_in_project(
-        &self,
-        project_id: Uuid,
-        user_id: Uuid,
-        limit: i64,
-        offset: i64,
-    ) -> Result<Vec<crate::modules::chat::core::types::ConversationResponse>, AppError> {
-        use crate::modules::chat::core::models::Conversation;
-        use crate::modules::chat::core::types::ConversationResponse;
-        let rows = sqlx::query!(
-            r#"
-            SELECT
-                c.id, c.user_id, c.model_id, c.title, c.active_branch_id,
-                c.created_at, c.updated_at,
-                COUNT(bm.message_id) as message_count
-            FROM project_conversations pc
-            JOIN conversations c ON c.id = pc.conversation_id
-            LEFT JOIN branches b ON b.conversation_id = c.id
-            LEFT JOIN branch_messages bm ON bm.branch_id = b.id
-            WHERE pc.project_id = $1 AND c.user_id = $2
-            GROUP BY c.id
-            ORDER BY c.updated_at DESC
-            LIMIT $3 OFFSET $4
-            "#,
-            project_id,
-            user_id,
-            limit,
-            offset,
-        )
-        .fetch_all(&self.pool)
-        .await
-        .map_err(AppError::database_error)?;
-
-        let to_chrono = |odt: time::OffsetDateTime| -> chrono::DateTime<chrono::Utc> {
-            chrono::DateTime::from_timestamp(odt.unix_timestamp(), odt.nanosecond())
-                .expect("valid timestamp")
-        };
-
-        Ok(rows
-            .into_iter()
-            .map(|row| ConversationResponse {
-                conversation: Conversation {
-                    id: row.id,
-                    user_id: row.user_id,
-                    model_id: row.model_id,
-                    title: row.title,
-                    active_branch_id: row.active_branch_id,
-                    created_at: to_chrono(row.created_at),
-                    updated_at: to_chrono(row.updated_at),
-                },
-                message_count: row.message_count.unwrap_or(0),
-            })
-            .collect())
-    }
+    // `list_conversations_in_project` moved to
+    // `chat_extension/repository.rs` (project↔chat inversion). It's the
+    // only project-conversation repo method that imports chat types —
+    // attach/detach/get_for/user_owns above stay here as pure project_*
+    // CRUD. Access via `Repos.project_conversations.list_conversations_in_project`.
 
     /// Verify a conversation is owned by `user_id`. Used by attach/
     /// detach handlers to prevent cross-user mutation before touching
@@ -756,9 +385,19 @@ impl ProjectRepository {
     /// (audit N3). Without the lock, both could compute the same
     /// "(copy N)" suffix as free and one would fail with a unique-
     /// constraint 500 from the INSERT.
-    pub async fn duplicate(&self, id: Uuid, user_id: Uuid) -> Result<Project, AppError> {
-        let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
-
+    /// Duplicate a project row (instructions + defaults + MCP settings).
+    ///
+    /// File-attachment cloning is NOT done here — that's the file
+    /// module's responsibility via its `ProjectExtension::on_project_duplicated`
+    /// hook. The handler opens the outer transaction, calls this method,
+    /// fans out to all project extensions, then commits — so the project
+    /// row and all per-extension state share atomicity.
+    pub async fn duplicate_in_tx<'a>(
+        &self,
+        tx: &mut sqlx::Transaction<'a, sqlx::Postgres>,
+        id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Project, AppError> {
         let original = sqlx::query_as!(
             Project,
             r#"
@@ -766,10 +405,6 @@ impl ProjectRepository {
                 id, user_id, name, description, instructions,
                 default_assistant_id as "default_assistant_id: _",
                 default_model_id as "default_model_id: _",
-                mcp_approval_mode,
-                mcp_auto_approved_tools as "mcp_auto_approved_tools!: _",
-                mcp_disabled_servers as "mcp_disabled_servers!: _",
-                mcp_loop_settings,
                 created_at as "created_at: _",
                 updated_at as "updated_at: _"
             FROM projects
@@ -779,7 +414,7 @@ impl ProjectRepository {
             id,
             user_id
         )
-        .fetch_optional(&mut *tx)
+        .fetch_optional(&mut **tx)
         .await
         .map_err(AppError::database_error)?
         .ok_or_else(|| AppError::not_found("Project"))?;
@@ -799,7 +434,7 @@ impl ProjectRepository {
                 user_id,
                 candidate
             )
-            .fetch_one(&mut *tx)
+            .fetch_one(&mut **tx)
             .await
             .map_err(AppError::database_error)?
             .unwrap_or(0);
@@ -819,7 +454,7 @@ impl ProjectRepository {
                 user_id,
                 candidate
             )
-            .fetch_one(&mut *tx)
+            .fetch_one(&mut **tx)
             .await
             .map_err(AppError::database_error)?
             .unwrap_or(0);
@@ -837,19 +472,13 @@ impl ProjectRepository {
             r#"
             INSERT INTO projects (
                 user_id, name, description, instructions,
-                default_assistant_id, default_model_id,
-                mcp_approval_mode, mcp_auto_approved_tools, mcp_disabled_servers,
-                mcp_loop_settings
+                default_assistant_id, default_model_id
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING
                 id, user_id, name, description, instructions,
                 default_assistant_id as "default_assistant_id: _",
                 default_model_id as "default_model_id: _",
-                mcp_approval_mode,
-                mcp_auto_approved_tools as "mcp_auto_approved_tools!: _",
-                mcp_disabled_servers as "mcp_disabled_servers!: _",
-                mcp_loop_settings,
                 created_at as "created_at: _",
                 updated_at as "updated_at: _"
             "#,
@@ -859,100 +488,17 @@ impl ProjectRepository {
             original.instructions,
             original.default_assistant_id,
             original.default_model_id,
-            original.mcp_approval_mode,
-            original.mcp_auto_approved_tools,
-            original.mcp_disabled_servers,
-            original.mcp_loop_settings,
         )
-        .fetch_one(&mut *tx)
+        .fetch_one(&mut **tx)
         .await
         .map_err(AppError::database_error)?;
 
-        // Copy project_files membership (references the SAME file rows,
-        // not copies — see Plan 5 §8 "Duplicate-project file references
-        // are shared, not copied").
-        sqlx::query!(
-            r#"
-            INSERT INTO project_files (project_id, file_id, added_at)
-            SELECT $1, file_id, NOW()
-            FROM project_files
-            WHERE project_id = $2
-            "#,
-            new_project.id,
-            id
-        )
-        .execute(&mut *tx)
-        .await
-        .map_err(AppError::database_error)?;
-
-        tx.commit().await.map_err(AppError::database_error)?;
+        // project_files clone runs via FileProjectExtension::on_project_duplicated
+        // (project↔file inversion). MCP settings clone runs via
+        // McpProjectExtension::on_project_duplicated (project↔mcp inversion).
+        // Caller commits the outer transaction after firing the extension
+        // fan-out.
         Ok(new_project)
     }
 
-    // ============ MCP snapshot helper ============
-
-    /// Snapshot this project's MCP settings into a conversation,
-    /// OVERWRITING any existing row. Used by the attach endpoint:
-    /// the semantic is "this conversation now belongs to this project,
-    /// so the conversation MCP settings come from this project's
-    /// defaults" — re-attaching a conversation (including A → B
-    /// moves) refreshes the snapshot from the destination project.
-    pub async fn snapshot_mcp_into_conversation_in_tx<'a>(
-        &self,
-        tx: &mut sqlx::Transaction<'a, sqlx::Postgres>,
-        project_id: Uuid,
-        conversation_id: Uuid,
-        user_id: Uuid,
-    ) -> Result<(), AppError> {
-        sqlx::query!(
-            r#"
-            INSERT INTO conversation_mcp_settings (
-                conversation_id, user_id,
-                approval_mode, auto_approved_tools, disabled_servers, loop_settings
-            )
-            SELECT $1, $2,
-                   p.mcp_approval_mode, p.mcp_auto_approved_tools, p.mcp_disabled_servers,
-                   p.mcp_loop_settings
-            FROM projects p
-            WHERE p.id = $3
-            ON CONFLICT (conversation_id) DO UPDATE
-            SET user_id = EXCLUDED.user_id,
-                approval_mode = EXCLUDED.approval_mode,
-                auto_approved_tools = EXCLUDED.auto_approved_tools,
-                disabled_servers = EXCLUDED.disabled_servers,
-                loop_settings = EXCLUDED.loop_settings,
-                updated_at = NOW()
-            "#,
-            conversation_id,
-            user_id,
-            project_id,
-        )
-        .execute(&mut **tx)
-        .await
-        .map_err(AppError::database_error)?;
-        Ok(())
-    }
-
-    /// Clear the conversation's MCP snapshot row (used by the detach
-    /// endpoint — once detached from a project, the snapshot is
-    /// stale, so subsequent chat use falls back to user/global MCP
-    /// defaults). No user_id filter — the caller (project detach
-    /// handler) verifies conversation ownership immediately before
-    /// calling, so a stale conversation_id would no-op via FK cascade
-    /// even without the filter. Same trust-the-caller pattern as
-    /// `detach_file` in this module.
-    pub async fn clear_mcp_snapshot_in_tx<'a>(
-        &self,
-        tx: &mut sqlx::Transaction<'a, sqlx::Postgres>,
-        conversation_id: Uuid,
-    ) -> Result<(), AppError> {
-        sqlx::query!(
-            "DELETE FROM conversation_mcp_settings WHERE conversation_id = $1",
-            conversation_id,
-        )
-        .execute(&mut **tx)
-        .await
-        .map_err(AppError::database_error)?;
-        Ok(())
-    }
 }
