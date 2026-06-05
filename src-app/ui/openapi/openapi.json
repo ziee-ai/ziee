@@ -11610,6 +11610,81 @@
         ]
       }
     },
+    "/api/hub/assistant-templates/create": {
+      "post": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "Create assistant TEMPLATE from hub catalog",
+        "description": "Installs a hub assistant entry as a system-wide template (`is_template=true, created_by=NULL`) rather than a personal user assistant. Requires both `hub::assistants::create` and `assistant_templates::create` permissions.",
+        "operationId": "Hub.createAssistantTemplateFromHub",
+        "requestBody": {
+          "description": "Request to create assistant from hub catalog",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAssistantFromHubRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create assistants from hub",
+                        "name": "HubAssistantsCreate",
+                        "value": "hub::assistants::create"
+                      },
+                      {
+                        "description": "Create system-wide template assistants",
+                        "name": "AssistantsTemplateCreate",
+                        "value": "assistant_templates::create"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permissions: hub::assistants::create, assistant_templates::create",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Response for assistant created from hub",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantFromHubResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Hub assistant not found"
+          },
+          "422": {
+            "description": "Hub item incompatible with this server version"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/hub/mcp-servers/create": {
       "post": {
         "tags": [

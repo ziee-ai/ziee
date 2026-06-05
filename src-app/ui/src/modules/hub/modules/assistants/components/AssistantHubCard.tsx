@@ -22,7 +22,9 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
   const navigate = useNavigate()
   const [showDetails, setShowDetails] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
+  const [isCreatingTemplate, setIsCreatingTemplate] = useState(false)
   const canCreate = usePermission(Permissions.HubAssistantsCreate)
+  const canCreateTemplate = usePermission(Permissions.AssistantsTemplateCreate)
 
   // Check if assistant was already created from this hub assistant
   const isAlreadyCreated =
@@ -58,6 +60,40 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
     }
   }
 
+  const handleUseAsTemplate = async () => {
+    setIsCreatingTemplate(true)
+    try {
+      // Install as a system-wide TEMPLATE (is_template=true, no
+      // owner — enforced by the `template_must_have_no_owner` CHECK
+      // constraint in migration 6). The clone-default-templates-
+      // on-signup hook in the assistant module then propagates this
+      // template to every new user's assistant list.
+      await Stores.HubAssistants.createTemplateFromHub({
+        hub_id: assistant.id,
+        name: assistant.name,
+        description: assistant.description,
+        instructions: assistant.instructions,
+        parameters: assistant.parameters,
+        is_default: false,
+        enabled: true,
+      })
+
+      message.success(
+        `Template "${assistant.display_name}" created successfully!`,
+      )
+
+      // Navigate to the templates admin page so the admin can see it.
+      navigate('/settings/assistant-templates')
+    } catch (error: any) {
+      console.error('Failed to create assistant template:', error)
+      message.error(
+        `Failed to create template: ${error.message || 'Unknown error'}`,
+      )
+    } finally {
+      setIsCreatingTemplate(false)
+    }
+  }
+
   return (
     <>
       <Card
@@ -83,7 +119,11 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
                     </Tag>
                   )}
                   {isAlreadyCreated && <Tag color="green">Created</Tag>}
-                  {isCreating && <Tag color="blue">Creating...</Tag>}
+                  {(isCreating || isCreatingTemplate) && (
+                    <Tag color="blue">
+                      {isCreatingTemplate ? 'Creating template...' : 'Creating...'}
+                    </Tag>
+                  )}
                 </Flex>
               </div>
               <div className="flex gap-1 items-center justify-end">
@@ -96,7 +136,7 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
                 >
                   Details
                 </Button>
-                {isAlreadyCreated ? (
+                {isAlreadyCreated && (
                   <Button
                     icon={<EyeOutlined />}
                     onClick={e => {
@@ -106,7 +146,8 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
                   >
                     View Assistant
                   </Button>
-                ) : canCreate ? (
+                )}
+                {!isAlreadyCreated && canCreate && (
                   <Button
                     type="primary"
                     icon={<RobotOutlined />}
@@ -115,11 +156,34 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
                       handleUseAssistant()
                     }}
                     loading={isCreating}
-                    disabled={isCreating}
+                    disabled={isCreating || isCreatingTemplate}
                   >
                     Use Assistant
                   </Button>
-                ) : null}
+                )}
+                {/* "Use as Template" — admin power-user action.
+                    Shown WHENEVER the user has both permissions,
+                    regardless of whether the per-user "Created"
+                    badge is set (a personal install doesn't
+                    preclude also installing as a template).
+                    Default-styled so the primary "Use Assistant"
+                    path stays visually dominant. The backend
+                    requires both `hub::assistants::create` AND
+                    `assistant_templates::create`. */}
+                {canCreate && canCreateTemplate && (
+                  <Button
+                    icon={<RobotOutlined />}
+                    onClick={e => {
+                      e.stopPropagation()
+                      handleUseAsTemplate()
+                    }}
+                    loading={isCreatingTemplate}
+                    disabled={isCreating || isCreatingTemplate}
+                    data-testid="hub-assistant-use-as-template-btn"
+                  >
+                    Use as Template
+                  </Button>
+                )}
               </div>
             </div>
 

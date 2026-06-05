@@ -20,6 +20,14 @@ interface HubAssistantsState {
   loadAssistants: (force?: boolean) => Promise<void>
   refreshFromGitHub: () => Promise<void>
   createFromHub: (request: CreateAssistantFromHubRequest) => Promise<Assistant>
+  /** Install as a system-wide TEMPLATE (is_template=true, no owner).
+   *  Backend requires both `hub::assistants::create` and
+   *  `assistant_templates::create` permissions; non-admin callers see
+   *  a 403. The frontend gates the button on `AssistantsTemplateCreate`
+   *  so the action is hidden when the user lacks the permission. */
+  createTemplateFromHub: (
+    request: CreateAssistantFromHubRequest,
+  ) => Promise<Assistant>
 
   // Lazy initialization
   __init__: {
@@ -111,6 +119,35 @@ export const useHubAssistantsStore = create<HubAssistantsState>()(
           } catch (error: any) {
             set({
               error: error.message || 'Failed to create assistant from hub',
+              creating: false,
+            })
+            throw error
+          }
+        },
+
+        createTemplateFromHub: async (
+          request: CreateAssistantFromHubRequest,
+        ): Promise<Assistant> => {
+          set({ creating: true, error: null })
+          try {
+            const response =
+              await ApiClient.Hub.createAssistantTemplateFromHub(request)
+
+            // `created_ids` tracks per-user installs of the hub
+            // assistant (used by the card to show the "Created" badge).
+            // Templates have no per-user owner, so we don't push to
+            // `created_ids` here — the badge stays driven purely by
+            // user-scoped installs. A future iteration could surface
+            // a separate "Template installed" indicator if useful.
+            set(state => {
+              state.creating = false
+            })
+
+            return response.assistant
+          } catch (error: any) {
+            set({
+              error:
+                error.message || 'Failed to create assistant template from hub',
               creating: false,
             })
             throw error

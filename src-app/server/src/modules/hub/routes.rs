@@ -52,6 +52,13 @@ pub fn hub_router() -> ApiRouter {
             post_with(create_assistant_from_hub, create_assistant_from_hub_docs),
         )
         .api_route(
+            "/hub/assistant-templates/create",
+            post_with(
+                create_assistant_template_from_hub,
+                create_assistant_template_from_hub_docs,
+            ),
+        )
+        .api_route(
             "/hub/mcp-servers/create",
             post_with(create_mcp_server_from_hub, create_mcp_server_from_hub_docs),
         )

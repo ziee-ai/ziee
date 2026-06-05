@@ -6,6 +6,7 @@ use crate::{
     common::{ApiResult, AppError},
     core::events::EventBus,
     modules::{
+        assistant::permissions::AssistantsTemplateCreate,
         llm_model::{ModelParameters, permissions::LlmModelsCreate},
         permissions::{RequirePermissions, with_permission},
     },
@@ -262,14 +263,27 @@ pub async fn refresh_hub_mcp_servers(
 // ASSISTANT FROM HUB
 // =====================================================
 
-/// Create assistant from hub catalog
-#[debug_handler]
-pub async fn create_assistant_from_hub(
-    auth: RequirePermissions<(HubAssistantsCreate,)>,
-    Extension(event_bus): Extension<Arc<EventBus>>,
-    Json(request): Json<CreateAssistantFromHubRequest>,
-) -> ApiResult<Json<AssistantFromHubResponse>> {
-    // 1. Load hub assistant
+/// Shared steps for both hub-assistant install paths (user vs.
+/// template): load the hub manifest, find the requested entry,
+/// reject incompatible items, build the typed
+/// `CreateAssistantRequest` from hub-entry defaults + caller
+/// overrides. Returns everything the caller needs to invoke
+/// `Repos.assistant.create(...)` and `track_hub_entity(...)`.
+///
+/// `is_template` is supplied by the caller so the two handlers stay
+/// trivially separable — `RequirePermissions<(...)>` does the auth
+/// gating at the extractor level (no per-request permission
+/// branching in the handler body).
+async fn build_assistant_create_from_hub(
+    request: &CreateAssistantFromHubRequest,
+    is_template: bool,
+) -> Result<
+    (
+        crate::modules::assistant::types::CreateAssistantRequest,
+        HubManager,
+    ),
+    AppError,
+> {
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
     let hub_data = hub_manager.load_hub_data_with_locale("en").await?;
@@ -280,35 +294,56 @@ pub async fn create_assistant_from_hub(
         .find(|a| a.id == request.hub_id)
         .ok_or_else(|| AppError::not_found(&format!("Hub assistant '{}'", request.hub_id)))?;
 
-    // 1b. Reject incompatible items (min_ziee_version > server). Mirrors
-    // the UI hiding them; this is the defense-in-depth backstop.
+    // Defense-in-depth: reject incompatible items (min_ziee_version >
+    // server). The UI hides these in the catalog; this is the
+    // backstop for a direct API call.
     hub_manager
         .ensure_installable(HubCategory::Assistant, &request.hub_id)
         .await?;
 
-    // 2. Build create assistant request (WITHOUT source field)
     let create_request = crate::modules::assistant::types::CreateAssistantRequest {
-        name: request.name.unwrap_or(hub_assistant.name.clone()),
-        description: request.description.or(hub_assistant.description.clone()),
-        instructions: request.instructions.or(hub_assistant.instructions.clone()),
+        name: request.name.clone().unwrap_or(hub_assistant.name.clone()),
+        description: request
+            .description
+            .clone()
+            .or(hub_assistant.description.clone()),
+        instructions: request
+            .instructions
+            .clone()
+            .or(hub_assistant.instructions.clone()),
         parameters: request
             .parameters
+            .clone()
             .and_then(|p| serde_json::from_value::<ModelParameters>(p).ok())
             .or_else(|| {
                 serde_json::from_value::<ModelParameters>(hub_assistant.parameters.clone()).ok()
             }),
-        is_template: Some(false),
+        is_template: Some(is_template),
         is_default: Some(request.is_default),
         enabled: Some(request.enabled),
     };
 
-    // 3. Create assistant via assistant module
+    Ok((create_request, hub_manager))
+}
+
+/// Create a user-scoped assistant from the hub catalog. The resulting
+/// row has `is_template=false` and `created_by=<user.id>` — owned by
+/// the caller, only visible to them in the assistant list.
+#[debug_handler]
+pub async fn create_assistant_from_hub(
+    auth: RequirePermissions<(HubAssistantsCreate,)>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
+    Json(request): Json<CreateAssistantFromHubRequest>,
+) -> ApiResult<Json<AssistantFromHubResponse>> {
+    let (create_request, hub_manager) =
+        build_assistant_create_from_hub(&request, false).await?;
+
     let assistant = Repos
         .assistant
         .create(Some(auth.user.id), create_request)
         .await?;
 
-    // 4. Track in hub_entities, stamping the catalog version installed
+    // Track in hub_entities, stamping the catalog version installed
     // from so /hub/updates can detect when it falls behind.
     let hub_version = hub_manager.current_version().await.ok();
     let hub_tracking = Repos
@@ -323,12 +358,60 @@ pub async fn create_assistant_from_hub(
         )
         .await?;
 
-    // 5. Emit event
     event_bus.emit_async(
         HubEvent::assistant_created_from_hub(assistant.id, request.hub_id.clone()).into(),
     );
 
-    // 6. Return combined response
+    Ok((
+        StatusCode::CREATED,
+        Json(AssistantFromHubResponse {
+            assistant,
+            hub_tracking,
+        }),
+    ))
+}
+
+/// Create a SYSTEM-WIDE template assistant from the hub catalog.
+/// `is_template=true` + `created_by=NULL` per the assistants table
+/// CHECK constraint (migration 6: `template_must_have_no_owner`).
+/// The clone-default-templates-on-signup hook in
+/// `assistant::event_handlers` will then propagate this template to
+/// every new user's assistant list.
+///
+/// Permission gate is the intersection of "can install from the
+/// hub" + "can author templates" — admins typically have both.
+#[debug_handler]
+pub async fn create_assistant_template_from_hub(
+    _auth: RequirePermissions<(HubAssistantsCreate, AssistantsTemplateCreate)>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
+    Json(request): Json<CreateAssistantFromHubRequest>,
+) -> ApiResult<Json<AssistantFromHubResponse>> {
+    let (create_request, hub_manager) =
+        build_assistant_create_from_hub(&request, true).await?;
+
+    // Templates have no owner — pass None for the user-id arg.
+    let assistant = Repos.assistant.create(None, create_request).await?;
+
+    // Track with `created_by: None` so /hub/updates surfaces this as
+    // a system-wide install (the existing outdated query joins on
+    // entity_id, ignoring the created_by column).
+    let hub_version = hub_manager.current_version().await.ok();
+    let hub_tracking = Repos
+        .hub
+        .track_hub_entity(
+            HubEntityType::Assistant,
+            assistant.id,
+            &request.hub_id,
+            HubCategory::Assistant,
+            None,
+            hub_version.as_deref(),
+        )
+        .await?;
+
+    event_bus.emit_async(
+        HubEvent::assistant_created_from_hub(assistant.id, request.hub_id.clone()).into(),
+    );
+
     Ok((
         StatusCode::CREATED,
         Json(AssistantFromHubResponse {
@@ -714,6 +797,25 @@ pub fn create_assistant_from_hub_docs(op: TransformOperation) -> TransformOperat
         .id("Hub.createAssistantFromHub")
         .tag("Hub")
         .summary("Create assistant from hub catalog")
+        .response::<201, Json<AssistantFromHubResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("Hub assistant not found"))
+        .response_with::<422, (), _>(|res| {
+            res.description("Hub item incompatible with this server version")
+        })
+}
+
+pub fn create_assistant_template_from_hub_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(HubAssistantsCreate, AssistantsTemplateCreate)>(op)
+        .id("Hub.createAssistantTemplateFromHub")
+        .tag("Hub")
+        .summary("Create assistant TEMPLATE from hub catalog")
+        .description(
+            "Installs a hub assistant entry as a system-wide template \
+             (`is_template=true, created_by=NULL`) rather than a personal \
+             user assistant. Requires both `hub::assistants::create` and \
+             `assistant_templates::create` permissions.",
+        )
         .response::<201, Json<AssistantFromHubResponse>>()
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("Hub assistant not found"))
