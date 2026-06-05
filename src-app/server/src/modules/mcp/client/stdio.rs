@@ -585,6 +585,9 @@ mod tests {
             run_in_sandbox: true,
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            last_health_check_at: None,
+            last_health_check_status: "untested".into(),
+            last_health_check_reason: None,
         }
     }
 

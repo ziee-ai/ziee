@@ -2,6 +2,7 @@ pub mod chat_extension;
 pub mod client;
 pub mod connection_health;
 pub mod elicitation;
+mod event_handlers;
 pub mod events;
 pub(crate) mod handlers;
 mod models;
@@ -95,6 +96,10 @@ impl AppModule for McpModule {
             tracing::error!("McpModule: Pool not initialized during route registration");
             router
         }
+    }
+
+    fn register_event_handlers(&self) -> Vec<Arc<dyn crate::core::events::EventHandler>> {
+        vec![event_handlers::McpSessionCleanupHandler::new()]
     }
 }
 
