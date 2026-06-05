@@ -99,6 +99,20 @@ export function McpServerCard({
         ? await Stores.SystemMcpServer.testSystemServerConnection(payload)
         : await Stores.McpServer.testMcpServerConnection(payload)
       showConnectionTestResult(message, result)
+      // Backend recorded the probe outcome into the row's
+      // `last_health_check_*` columns. Refresh the parent list so
+      // this card's `server` prop re-renders with the updated
+      // health tag (Healthy/Unhealthy) without requiring the user
+      // to reload the page.
+      try {
+        if (server.is_system) {
+          await Stores.SystemMcpServer.loadSystemServers()
+        } else {
+          await Stores.McpServer.loadMcpServers()
+        }
+      } catch (e) {
+        console.warn('Failed to refresh after Test Connection:', e)
+      }
     } catch (error) {
       showConnectionTestError(message, error)
     } finally {
@@ -169,6 +183,46 @@ export function McpServerCard({
                 )}
                 {server.usage_mode === 'always' && (
                   <Tag color="orange" data-testid="mcp-always-badge">Always</Tag>
+                )}
+                {/* Health status from the last probe — surfaces
+                    boot-time auto-disable reasons + Test Connection
+                    results + enable-time probe failures without
+                    requiring the user to open the drawer or re-run
+                    the test. Only renders when the server has been
+                    probed at least once (status != 'untested'). */}
+                {server.last_health_check_status === 'unhealthy' && (
+                  <Tooltip
+                    title={
+                      <span style={{ whiteSpace: 'pre-line' }}>
+                        {`Last connection test failed${
+                          server.last_health_check_at
+                            ? ` at ${new Date(server.last_health_check_at).toLocaleString()}`
+                            : ''
+                        }${
+                          server.last_health_check_reason
+                            ? `:\n${server.last_health_check_reason}`
+                            : ''
+                        }`}
+                      </span>
+                    }
+                  >
+                    <Tag color="error" data-testid="mcp-health-unhealthy">
+                      Unhealthy
+                    </Tag>
+                  </Tooltip>
+                )}
+                {server.last_health_check_status === 'healthy' && (
+                  <Tooltip
+                    title={`Last connection test passed${
+                      server.last_health_check_at
+                        ? ` at ${new Date(server.last_health_check_at).toLocaleString()}`
+                        : ''
+                    }`}
+                  >
+                    <Tag color="success" data-testid="mcp-health-healthy">
+                      Healthy
+                    </Tag>
+                  </Tooltip>
                 )}
               </Flex>
             </div>

@@ -118,17 +118,109 @@ impl StdioMcpClient {
     /// server.
     async fn connect_native(&mut self) -> Result<(), AppError> {
         let command = self.create_command()?;
-        let transport = TokioChildProcess::new(command).map_err(|e| {
-            tracing::error!(server_id = %self.server_id, error = %e, "Failed to create transport");
-            AppError::internal_error(format!("Failed to create transport: {}", e))
-        })?;
-        let service = ().serve(transport).await.map_err(|e| {
-            tracing::error!(server_id = %self.server_id, error = %e, "Failed to connect to MCP server");
-            AppError::internal_error(format!("Failed to connect: {}", e))
-        })?;
-        self.service = Some(service);
-        tracing::info!(server_id = %self.server_id, "MCP server connection established");
-        Ok(())
+
+        // Pipe stderr so we can capture the subprocess's own
+        // diagnostics. Without this stderr is `Stdio::inherit()` per
+        // rmcp's `TokioChildProcessBuilder::new` defaults — fine for
+        // a real terminal but useless for the connection-health
+        // probe path, where the user only sees the host-side
+        // "connection closed: initialize response" error and has no
+        // way to know WHY the subprocess died (missing package, bad
+        // env var, etc.). With stderr piped we drain it into a
+        // bounded buffer (16 KB cap to bound memory on chatty
+        // servers) and append the captured tail to the connect
+        // error when serve() fails.
+        let (transport, stderr_handle) =
+            TokioChildProcess::builder(command)
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .map_err(|e| {
+                    tracing::error!(server_id = %self.server_id, error = %e, "Failed to spawn MCP stdio subprocess");
+                    AppError::internal_error(format!("Failed to spawn: {}", e))
+                })?;
+
+        // Shared buffer for the connect-failure message + a tracing
+        // sink for live diagnostics during the server's lifetime.
+        let captured =
+            std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::with_capacity(2048)));
+        if let Some(stderr) = stderr_handle {
+            let captured = captured.clone();
+            let server_id = self.server_id;
+            let server_name = self.server_config.name.clone();
+            tokio::spawn(async move {
+                use tokio::io::{AsyncBufReadExt, BufReader};
+                const CAPTURE_CAP: usize = 16 * 1024;
+                const READ_TOTAL_CAP: usize = 1024 * 1024;
+                let mut reader = BufReader::new(stderr);
+                let mut line = String::new();
+                let mut total = 0usize;
+                loop {
+                    line.clear();
+                    match reader.read_line(&mut line).await {
+                        Ok(0) => break, // EOF — child exited
+                        Ok(n) => {
+                            total += n;
+                            tracing::debug!(
+                                server_id = %server_id,
+                                server_name = %server_name,
+                                line = %line.trim_end_matches('\n'),
+                                "mcp::stdio stderr",
+                            );
+                            if let Ok(mut buf) = captured.lock() {
+                                if buf.len() < CAPTURE_CAP {
+                                    let take = (CAPTURE_CAP - buf.len()).min(line.len());
+                                    buf.extend_from_slice(line[..take].as_bytes());
+                                }
+                            }
+                            if total > READ_TOTAL_CAP {
+                                tracing::debug!(server_id = %server_id, "mcp::stdio stderr read cap hit; stopping forward");
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            tracing::debug!(server_id = %server_id, error = %e, "mcp::stdio stderr read error");
+                            break;
+                        }
+                    }
+                }
+            });
+        }
+
+        let connect_result = ().serve(transport).await;
+        match connect_result {
+            Ok(service) => {
+                self.service = Some(service);
+                tracing::info!(server_id = %self.server_id, "MCP server connection established");
+                Ok(())
+            }
+            Err(e) => {
+                // The transport was dropped by `serve()` returning Err,
+                // which kills the child + closes our stderr pipe. Give
+                // the reader task a brief moment to drain the
+                // remaining bytes past EOF before we snapshot.
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                let stderr_text = captured
+                    .lock()
+                    .map(|buf| String::from_utf8_lossy(&buf).into_owned())
+                    .unwrap_or_default();
+                let trimmed = stderr_text.trim();
+                let suffix = if trimmed.is_empty() {
+                    String::new()
+                } else {
+                    format!("\n\nServer stderr:\n{}", trimmed)
+                };
+                tracing::error!(
+                    server_id = %self.server_id,
+                    error = %e,
+                    stderr_captured = %trimmed,
+                    "Failed to connect to MCP server",
+                );
+                Err(AppError::internal_error(format!(
+                    "Failed to connect: {}{}",
+                    e, suffix
+                )))
+            }
+        }
     }
 
     /// Sandboxed connect: builds an `McpSpawnRequest` and routes through
