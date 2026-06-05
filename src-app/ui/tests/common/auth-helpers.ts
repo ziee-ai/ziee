@@ -157,7 +157,14 @@ export async function loginAsAdmin(
   const token = await readAuthToken(page)
   await completeOnboarding(baseURL, token)
   await page.goto(`${baseURL}/`)
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
+  // Wait for the authenticated home page (chat input) to render — a stable
+  // signal that AuthGuard accepted the token. NOT `networkidle`: the realtime
+  // sync SSE stream is a persistent connection that keeps the network busy, so
+  // `networkidle` may never settle (it hangs the whole test). Mirrors `login()`.
+  await page.waitForSelector('textarea[placeholder*="Type your message"]', {
+    timeout: 15000,
+  })
 }
 
 /**

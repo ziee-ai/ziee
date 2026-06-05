@@ -8,9 +8,11 @@ import { Page, expect } from '@playwright/test'
 
 export async function goToUserAssistantsPage(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/assistants`)
-  await page.waitForLoadState('networkidle')
+  // NOT `networkidle`: the realtime-sync SSE stream is a persistent connection
+  // that keeps the network busy, so it may never settle. The heading wait below
+  // is the real "page rendered" signal.
   // Wait for the page title (h4 heading in title bar) specifically, not the empty state heading (h3)
-  await page.getByRole('heading', { level: 4, name: /assistants/i }).first().waitFor({ timeout: 10000 })
+  await page.getByRole('heading', { level: 4, name: /assistants/i }).first().waitFor({ timeout: 15000 })
 }
 
 export async function goToTemplateAssistantsSettings(page: Page, baseURL: string) {
