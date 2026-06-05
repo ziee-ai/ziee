@@ -20,7 +20,8 @@ use sqlx::types::Uuid;
 use tokio::sync::Mutex;
 
 use crate::common::AppError;
-use crate::modules::sync::{SyncAction, SyncEntity, publish as sync_publish};
+use crate::modules::llm_model::permissions::LlmModelsRead;
+use crate::modules::sync::{Audience, SyncAction, SyncEntity, publish as sync_publish};
 
 const TIER2_HEALTH_DEADLINE_SECS: u64 = 90;
 
@@ -197,7 +198,7 @@ pub async fn validate_remote_model(
 
     // Detached validation path: notify admin devices that the model's
     // validation_status changed (LlmModel is permission-scoped → owner None).
-    sync_publish(SyncEntity::LlmModel, SyncAction::Update, model_id, None, None);
+    sync_publish(SyncEntity::LlmModel, SyncAction::Update, model_id, Audience::perm::<LlmModelsRead>(), None);
 
     Ok(result)
 }
@@ -219,7 +220,7 @@ async fn run_validation(
     .await;
     // Surface the "Validating…" transition to other admin devices (this runs
     // seconds-to-90s after the trigger handler already returned 202).
-    sync_publish(SyncEntity::LlmModel, SyncAction::Update, model_id, None, None);
+    sync_publish(SyncEntity::LlmModel, SyncAction::Update, model_id, Audience::perm::<LlmModelsRead>(), None);
 
     let outcome = run_tier_internal(pool, model_id, tier, started_at).await;
     let elapsed_ms = started_at.elapsed().as_millis() as u64;
@@ -262,7 +263,7 @@ async fn run_validation(
 
     // Terminal transition (validation_status + capabilities now written) —
     // notify admin devices to refresh the model row.
-    sync_publish(SyncEntity::LlmModel, SyncAction::Update, model_id, None, None);
+    sync_publish(SyncEntity::LlmModel, SyncAction::Update, model_id, Audience::perm::<LlmModelsRead>(), None);
 
     outcome
 }

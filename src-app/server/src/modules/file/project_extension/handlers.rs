@@ -24,7 +24,7 @@ use crate::modules::file::project_extension::models::{
 use crate::modules::file::project_extension::repository::PROJECT_MAX_FILES;
 use crate::modules::permissions::{extractors::RequirePermissions, with_permission};
 use crate::modules::project::permissions::{ProjectsEdit, ProjectsRead};
-use crate::modules::sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
+use crate::modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
 
 #[debug_handler]
 pub async fn list_project_files(
@@ -100,7 +100,7 @@ pub async fn attach_file(
             SyncEntity::Project,
             SyncAction::Update,
             project.id,
-            Some(auth.user.id),
+            Audience::owner(auth.user.id),
             origin.0,
         );
     }
@@ -187,7 +187,7 @@ pub async fn upload_and_attach_file(
             SyncEntity::Project,
             SyncAction::Update,
             project.id,
-            Some(auth.user.id),
+            Audience::owner(auth.user.id),
             origin.0,
         );
     }
@@ -331,7 +331,7 @@ pub async fn detach_file(
         SyncEntity::Project,
         SyncAction::Update,
         project.id,
-        Some(auth.user.id),
+        Audience::owner(auth.user.id),
         origin.0,
     );
     Ok((StatusCode::NO_CONTENT, ()))

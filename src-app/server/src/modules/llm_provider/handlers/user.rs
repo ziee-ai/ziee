@@ -9,7 +9,7 @@ use crate::{
     core::Repos,
     modules::{
         permissions::{extractors::RequirePermissions, with_permission},
-        sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
+        sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
         user::permissions::{ProfileEdit, ProfileRead},
     },
 };
@@ -144,7 +144,7 @@ pub async fn save_user_api_key(
         SyncEntity::ApiKey,
         SyncAction::Update,
         request.provider_id,
-        Some(auth.user.id),
+        Audience::owner(auth.user.id),
         origin.0,
     );
 
@@ -177,7 +177,7 @@ pub async fn delete_user_api_key(
         SyncEntity::ApiKey,
         SyncAction::Delete,
         provider_id,
-        Some(auth.user.id),
+        Audience::owner(auth.user.id),
         origin.0,
     );
 

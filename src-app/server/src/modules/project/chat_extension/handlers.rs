@@ -25,7 +25,7 @@ use crate::modules::project::events::ProjectEvent;
 use crate::modules::project::handlers::PaginationQuery;
 use crate::modules::project::models::Project;
 use crate::modules::project::permissions::{ProjectsEdit, ProjectsRead};
-use crate::modules::sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
+use crate::modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
 
 #[debug_handler]
 pub async fn list_project_conversations(
@@ -179,7 +179,7 @@ pub async fn attach_conversation(
         SyncEntity::Project,
         SyncAction::Update,
         project_id,
-        Some(auth.user.id),
+        Audience::owner(auth.user.id),
         origin.0,
     );
 
@@ -283,7 +283,7 @@ pub async fn detach_conversation(
         SyncEntity::Project,
         SyncAction::Update,
         project_id,
-        Some(auth.user.id),
+        Audience::owner(auth.user.id),
         origin.0,
     );
 

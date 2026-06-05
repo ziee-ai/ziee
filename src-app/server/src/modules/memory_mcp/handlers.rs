@@ -23,7 +23,9 @@ use crate::core::Repos;
 use crate::modules::code_sandbox::types::{JsonRpcError, JsonRpcRequest, JsonRpcResponse};
 use crate::modules::memory::permissions::MemoryWrite;
 use crate::modules::permissions::RequirePermissions;
-use crate::modules::sync::{SyncAction, SyncEntity, publish as sync_publish};
+use crate::modules::sync::{
+    Audience, SyncAction, SyncEntity, publish as sync_publish,
+};
 
 // Shared between memory + memory_mcp handlers (see memory/models.rs).
 use crate::modules::memory::models::MAX_MEMORY_CONTENT_LEN as MAX_CONTENT_LEN;
@@ -236,7 +238,7 @@ async fn remember(user_id: Uuid, args: &Value) -> Result<Value, AppError> {
         SyncEntity::Memory,
         SyncAction::Create,
         row.id,
-        Some(user_id),
+        Audience::owner(user_id),
         None,
     );
     Ok(json!({ "memory_id": row.id, "content": row.content }))
@@ -326,7 +328,7 @@ async fn forget(user_id: Uuid, args: &Value) -> Result<Value, AppError> {
         SyncEntity::Memory,
         SyncAction::Delete,
         args.memory_id,
-        Some(user_id),
+        Audience::owner(user_id),
         None,
     );
     Ok(json!({ "memory_id": args.memory_id, "deleted": true }))

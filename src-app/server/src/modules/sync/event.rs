@@ -9,6 +9,8 @@ use schemars::JsonSchema;
 use serde::Serialize;
 use uuid::Uuid;
 
+use crate::modules::permissions::{PermissionCheck, PermissionList};
+
 /// The kind of entity that changed. Serialized snake_case to match the
 /// frontend's `sync:<entity>` event vocabulary.
 ///
@@ -113,106 +115,73 @@ crate::sse_event_enum! {
     }
 }
 
-/// Resolved delivery scope for one event. Built from `audience_kind` plus
-/// the owner id the emitting handler supplies for owner-scoped entities.
+/// Delivery scope for one event, chosen by the publishing handler. There is
+/// NO central per-entity table: the module that owns the mutation decides who
+/// may learn of it, using its OWN typed permissions. Build it with the typed
+/// constructors below so a renamed/removed permission is a compile error.
 #[derive(Debug, Clone)]
 pub enum Audience {
     /// Only the owning user's connections.
     Owner(Uuid),
-    /// Only connections whose permission snapshot satisfies this perm
+    /// Only connections whose permission snapshot satisfies the rule
     /// (admins always qualify).
-    Permission(&'static str),
+    Perm(PermRule),
     /// Every authenticated connection.
     Everyone,
 }
 
-/// The central authorization table: maps each entity to its delivery
-/// scope. This is the ONE place an audience is decided — keep it
-/// exhaustive and review it for leaks.
-#[derive(Debug, Clone, Copy)]
-enum AudienceKind {
-    Owner,
-    Permission(&'static str),
-    Everyone,
+/// A composable permission requirement (mirrors the frontend `PermissionExpr`).
+#[derive(Debug, Clone)]
+pub enum PermRule {
+    /// The connection must hold EVERY listed permission.
+    All(Vec<&'static str>),
+    /// The connection must hold AT LEAST ONE listed permission.
+    Any(Vec<&'static str>),
 }
 
-fn audience_kind(entity: SyncEntity) -> AudienceKind {
-    match entity {
-        SyncEntity::Project
-        | SyncEntity::Assistant
-        | SyncEntity::McpServer
-        | SyncEntity::Memory
-        | SyncEntity::MemorySettings
-        | SyncEntity::Profile
-        | SyncEntity::ApiKey => AudienceKind::Owner,
+impl Audience {
+    /// Deliver only to `user_id`'s own connections.
+    pub fn owner(user_id: Uuid) -> Self {
+        Audience::Owner(user_id)
+    }
 
-        SyncEntity::LlmProvider => AudienceKind::Permission("llm_providers::read"),
-        SyncEntity::LlmModel => AudienceKind::Permission("llm_models::read"),
-        SyncEntity::UserLlmProvider => {
-            AudienceKind::Permission("user_llm_providers::read")
-        }
-        SyncEntity::Group => AudienceKind::Permission("groups::read"),
-        SyncEntity::User => AudienceKind::Permission("users::read"),
-        // Templates are uniform + non-secret — notify every authenticated
-        // connection (matches the plan). The refetch is still authorized, so a
-        // user who can't read templates just no-ops on the 403.
-        SyncEntity::AssistantTemplate => AudienceKind::Everyone,
-        SyncEntity::McpServerSystem => {
-            AudienceKind::Permission("mcp_servers_admin::read")
-        }
-        SyncEntity::LlmRepository => {
-            AudienceKind::Permission("llm_repositories::read")
-        }
-        // The version catalogue is gated by its OWN read perm (split from
-        // `llm_local_runtime::read` instance-telemetry on purpose) — match the
-        // permission the client's refetch (`RuntimeVersion.list`) requires.
-        SyncEntity::RuntimeVersion => {
-            AudienceKind::Permission("llm_local_runtime::versions_read")
-        }
-        SyncEntity::RuntimeSettings => {
-            AudienceKind::Permission("llm_local_runtime::settings_read")
-        }
-        SyncEntity::MemoryAdminSettings => {
-            AudienceKind::Permission("memory::admin::read")
-        }
-        SyncEntity::CodeSandboxSettings => {
-            AudienceKind::Permission("code_sandbox::resource_limits::read")
-        }
-        SyncEntity::HubSettings => AudienceKind::Permission("hub::catalog::read"),
-        SyncEntity::UserMcpServer => AudienceKind::Permission("mcp_servers::read"),
+    /// Deliver to every authenticated connection.
+    pub fn everyone() -> Self {
+        Audience::Everyone
+    }
 
-        SyncEntity::Session => AudienceKind::Owner,
+    /// Deliver to holders of a single typed permission, e.g.
+    /// `Audience::perm::<LlmModelsRead>()`.
+    pub fn perm<P: PermissionCheck>() -> Self {
+        Audience::Perm(PermRule::All(vec![P::PERMISSION]))
+    }
+
+    /// Deliver to holders of ALL permissions in the tuple, e.g.
+    /// `Audience::all_of::<(LlmProvidersRead, LlmModelsRead)>()`. Reuses the
+    /// same `PermissionList` tuple machinery as `RequirePermissions<(A, B)>`.
+    pub fn all_of<L: PermissionList>() -> Self {
+        Audience::Perm(PermRule::All(L::permissions()))
+    }
+
+    /// Deliver to holders of ANY permission in the tuple, e.g.
+    /// `Audience::any_of::<(McpServersRead, McpServersAdminRead)>()`.
+    pub fn any_of<L: PermissionList>() -> Self {
+        Audience::Perm(PermRule::Any(L::permissions()))
     }
 }
 
-/// Publish a change notification to the appropriate audience.
+/// Publish a change notification to the audience the caller chose.
 ///
-/// `owner` is required for owner-scoped entities (the central table
-/// decides which those are; a missing owner there is a bug and the event
-/// is dropped rather than mis-delivered). `origin_conn` is the
+/// The publishing module decides the `audience` (owner / permission rule /
+/// everyone) — this core has no per-entity policy. `origin_conn` is the
 /// originating SSE connection, skipped to suppress self-echo.
 pub fn publish(
     entity: SyncEntity,
     action: SyncAction,
     id: Uuid,
-    owner: Option<Uuid>,
+    audience: Audience,
     origin_conn: Option<Uuid>,
 ) {
-    let audience = match audience_kind(entity) {
-        AudienceKind::Owner => match owner {
-            Some(u) => Audience::Owner(u),
-            None => {
-                tracing::error!(
-                    ?entity,
-                    "owner-scoped sync event emitted without an owner id; dropping"
-                );
-                return;
-            }
-        },
-        AudienceKind::Permission(p) => Audience::Permission(p),
-        AudienceKind::Everyone => Audience::Everyone,
-    };
-
     super::registry::registry().deliver(audience, SyncEvent { entity, action, id }, origin_conn);
 }
 
@@ -227,70 +196,38 @@ pub fn publish_session_to_users(user_ids: &[Uuid], origin_conn: Option<Uuid>) {
 mod tests {
     use super::*;
 
+    struct PermA;
+    impl PermissionCheck for PermA {
+        const NAME: &'static str = "PermA";
+        const PERMISSION: &'static str = "a::read";
+        const DESCRIPTION: &'static str = "";
+        const MODULE: &'static str = "test";
+    }
+    struct PermB;
+    impl PermissionCheck for PermB {
+        const NAME: &'static str = "PermB";
+        const PERMISSION: &'static str = "b::read";
+        const DESCRIPTION: &'static str = "";
+        const MODULE: &'static str = "test";
+    }
+
     #[test]
-    fn owner_scoped_entities_route_to_owner() {
-        for e in [
-            SyncEntity::Project,
-            SyncEntity::Assistant,
-            SyncEntity::McpServer,
-            SyncEntity::Memory,
-            SyncEntity::MemorySettings,
-            SyncEntity::Profile,
-            SyncEntity::ApiKey,
-            SyncEntity::Session,
-        ] {
-            assert!(
-                matches!(audience_kind(e), AudienceKind::Owner),
-                "{e:?} should be Owner-scoped"
-            );
+    fn perm_constructor_carries_the_typed_permission_string() {
+        match Audience::perm::<PermA>() {
+            Audience::Perm(PermRule::All(ps)) => assert_eq!(ps, vec!["a::read"]),
+            other => panic!("expected Perm(All), got {other:?}"),
         }
     }
 
     #[test]
-    fn admin_entities_route_to_their_read_permission() {
-        let cases = [
-            (SyncEntity::LlmProvider, "llm_providers::read"),
-            (SyncEntity::LlmModel, "llm_models::read"),
-            (SyncEntity::Group, "groups::read"),
-            (SyncEntity::User, "users::read"),
-            (SyncEntity::McpServerSystem, "mcp_servers_admin::read"),
-            (SyncEntity::LlmRepository, "llm_repositories::read"),
-            (SyncEntity::RuntimeVersion, "llm_local_runtime::versions_read"),
-            (SyncEntity::RuntimeSettings, "llm_local_runtime::settings_read"),
-            (SyncEntity::MemoryAdminSettings, "memory::admin::read"),
-            (
-                SyncEntity::CodeSandboxSettings,
-                "code_sandbox::resource_limits::read",
-            ),
-            (SyncEntity::HubSettings, "hub::catalog::read"),
-        ];
-        for (e, perm) in cases {
-            match audience_kind(e) {
-                AudienceKind::Permission(p) => assert_eq!(p, perm, "{e:?}"),
-                other => panic!("{e:?} expected Permission, got {other:?}"),
-            }
+    fn all_of_and_any_of_collect_the_permission_tuple() {
+        match Audience::all_of::<(PermA, PermB)>() {
+            Audience::Perm(PermRule::All(ps)) => assert_eq!(ps, vec!["a::read", "b::read"]),
+            other => panic!("expected Perm(All), got {other:?}"),
         }
-    }
-
-    #[test]
-    fn assistant_templates_route_to_everyone() {
-        assert!(matches!(
-            audience_kind(SyncEntity::AssistantTemplate),
-            AudienceKind::Everyone
-        ));
-    }
-
-    #[test]
-    fn user_facing_views_route_to_the_user_read_permission() {
-        // Group-scoped visibility — safe because notify-only: each recipient
-        // refetches its OWN scoped view.
-        match audience_kind(SyncEntity::UserLlmProvider) {
-            AudienceKind::Permission(p) => assert_eq!(p, "user_llm_providers::read"),
-            other => panic!("expected Permission, got {other:?}"),
-        }
-        match audience_kind(SyncEntity::UserMcpServer) {
-            AudienceKind::Permission(p) => assert_eq!(p, "mcp_servers::read"),
-            other => panic!("expected Permission, got {other:?}"),
+        match Audience::any_of::<(PermA, PermB)>() {
+            Audience::Perm(PermRule::Any(ps)) => assert_eq!(ps, vec!["a::read", "b::read"]),
+            other => panic!("expected Perm(Any), got {other:?}"),
         }
     }
 

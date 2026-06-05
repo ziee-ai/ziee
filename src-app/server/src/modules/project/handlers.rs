@@ -17,7 +17,7 @@ use super::types::{CreateProjectRequest, ProjectListResponse, UpdateProjectReque
 use crate::common::{ApiResult, AppError};
 use crate::core::{EventBus, Repos};
 use crate::modules::permissions::{extractors::RequirePermissions, with_permission};
-use crate::modules::sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
+use crate::modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
 
 // =====================================================
 // Query parameters
@@ -210,7 +210,7 @@ pub async fn create_project(
         SyncEntity::Project,
         SyncAction::Create,
         project.id,
-        Some(auth.user.id),
+        Audience::owner(auth.user.id),
         origin.0,
     );
 
@@ -330,7 +330,7 @@ pub async fn update_project(
         SyncEntity::Project,
         SyncAction::Update,
         project.id,
-        Some(auth.user.id),
+        Audience::owner(auth.user.id),
         origin.0,
     );
 
@@ -377,7 +377,7 @@ pub async fn delete_project(
         SyncEntity::Project,
         SyncAction::Delete,
         id,
-        Some(auth.user.id),
+        Audience::owner(auth.user.id),
         origin.0,
     );
     Ok((StatusCode::NO_CONTENT, ()))
@@ -426,7 +426,7 @@ pub async fn duplicate_project(
         SyncEntity::Project,
         SyncAction::Create,
         project.id,
-        Some(auth.user.id),
+        Audience::owner(auth.user.id),
         origin.0,
     );
     Ok((StatusCode::CREATED, Json(project)))

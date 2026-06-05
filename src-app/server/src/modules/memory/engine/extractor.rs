@@ -18,7 +18,9 @@ use uuid::Uuid;
 
 use crate::common::AppError;
 use crate::core::Repos;
-use crate::modules::sync::{SyncAction, SyncEntity, publish as sync_publish};
+use crate::modules::sync::{
+    Audience, SyncAction, SyncEntity, publish as sync_publish,
+};
 
 /// One extraction op emitted by the LLM.
 #[derive(Debug, Deserialize)]
@@ -257,7 +259,7 @@ async fn apply_add(
         SyncEntity::Memory,
         SyncAction::Create,
         new_row.id,
-        Some(user_id),
+        Audience::owner(user_id),
         None,
     );
     Ok(())
@@ -317,7 +319,7 @@ async fn apply_update(
         SyncEntity::Memory,
         SyncAction::Update,
         row.id,
-        Some(user_id),
+        Audience::owner(user_id),
         None,
     );
     Ok(())
@@ -333,7 +335,7 @@ async fn apply_delete(user_id: Uuid, memory_id: Option<Uuid>) -> Result<(), AppE
             SyncEntity::Memory,
             SyncAction::Delete,
             id,
-            Some(user_id),
+            Audience::owner(user_id),
             None,
         );
     }

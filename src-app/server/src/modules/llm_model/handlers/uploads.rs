@@ -10,8 +10,10 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::common::r#type::{ApiResult, AppError};
+use crate::modules::llm_model::permissions::LlmModelsRead;
+use crate::modules::llm_provider::permissions::UserLlmProvidersRead;
 use crate::modules::permissions::RequirePermissions;
-use crate::modules::sync::{SyncAction, SyncEntity, publish as sync_publish};
+use crate::modules::sync::{Audience, SyncAction, SyncEntity, publish as sync_publish};
 use crate::utils::git::{GitError, GitPhase, GitProgress, GitService};
 
 use super::super::{
@@ -380,14 +382,14 @@ async fn create_model_with_files(
         SyncEntity::LlmModel,
         SyncAction::Create,
         model.id,
-        None,
+        Audience::perm::<LlmModelsRead>(),
         None,
     );
     sync_publish(
         SyncEntity::UserLlmProvider,
         SyncAction::Update,
         model.id,
-        None,
+        Audience::perm::<UserLlmProvidersRead>(),
         None,
     );
 

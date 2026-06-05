@@ -8,7 +8,7 @@ use crate::{
     modules::{
         llm_model::{ModelParameters, permissions::LlmModelsCreate},
         permissions::{RequirePermissions, with_permission},
-        sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
+        sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
     },
 };
 use std::sync::Arc;
@@ -885,7 +885,7 @@ pub async fn refresh_hub_catalog(
         );
     }
 
-    sync_publish(SyncEntity::HubSettings, SyncAction::Update, uuid::Uuid::nil(), None, origin.0);
+    sync_publish(SyncEntity::HubSettings, SyncAction::Update, uuid::Uuid::nil(), Audience::perm::<HubCatalogRead>(), origin.0);
 
     Ok((
         StatusCode::OK,
@@ -1047,7 +1047,7 @@ pub async fn activate_hub_version(
         );
     }
 
-    sync_publish(SyncEntity::HubSettings, SyncAction::Update, uuid::Uuid::nil(), None, origin.0);
+    sync_publish(SyncEntity::HubSettings, SyncAction::Update, uuid::Uuid::nil(), Audience::perm::<HubCatalogRead>(), origin.0);
 
     Ok((
         StatusCode::OK,

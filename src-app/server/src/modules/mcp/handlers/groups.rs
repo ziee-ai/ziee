@@ -15,7 +15,7 @@ use crate::{
     common::ApiResult,
     core::EventBus,
     modules::permissions::{RequirePermissions, with_permission},
-    modules::sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
+    modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
 };
 
 use super::super::{
@@ -64,8 +64,8 @@ pub async fn assign_server_to_groups(
     // Emit group assignment changed event
     event_bus.emit_async(McpServerEvent::group_assignment_changed(id));
 
-    sync_publish(SyncEntity::UserMcpServer, SyncAction::Update, id, None, origin.0);
-    sync_publish(SyncEntity::McpServerSystem, SyncAction::Update, id, None, origin.0);
+    sync_publish(SyncEntity::UserMcpServer, SyncAction::Update, id, Audience::perm::<McpServersRead>(), origin.0);
+    sync_publish(SyncEntity::McpServerSystem, SyncAction::Update, id, Audience::perm::<McpServersAdminRead>(), origin.0);
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
@@ -97,8 +97,8 @@ pub async fn remove_server_from_group(
     // Emit group assignment changed event
     event_bus.emit_async(McpServerEvent::group_assignment_changed(id));
 
-    sync_publish(SyncEntity::UserMcpServer, SyncAction::Update, id, None, origin.0);
-    sync_publish(SyncEntity::McpServerSystem, SyncAction::Update, id, None, origin.0);
+    sync_publish(SyncEntity::UserMcpServer, SyncAction::Update, id, Audience::perm::<McpServersRead>(), origin.0);
+    sync_publish(SyncEntity::McpServerSystem, SyncAction::Update, id, Audience::perm::<McpServersAdminRead>(), origin.0);
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
@@ -230,8 +230,8 @@ pub async fn update_group_system_servers(
             crate::common::AppError::internal_error("Database operation failed")
         })?;
 
-    sync_publish(SyncEntity::UserMcpServer, SyncAction::Update, uuid::Uuid::nil(), None, origin.0);
-    sync_publish(SyncEntity::McpServerSystem, SyncAction::Update, uuid::Uuid::nil(), None, origin.0);
+    sync_publish(SyncEntity::UserMcpServer, SyncAction::Update, uuid::Uuid::nil(), Audience::perm::<McpServersRead>(), origin.0);
+    sync_publish(SyncEntity::McpServerSystem, SyncAction::Update, uuid::Uuid::nil(), Audience::perm::<McpServersAdminRead>(), origin.0);
 
     Ok((StatusCode::OK, Json(GroupSystemServersResponse { servers })))
 }

@@ -17,7 +17,7 @@ use crate::{
     common::{ApiResult, AppError},
     core::EventBus,
     modules::permissions::{RequirePermissions, with_permission},
-    modules::sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
+    modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
 };
 
 use super::super::{
@@ -119,7 +119,7 @@ pub async fn create_user_server(
         SyncEntity::McpServer,
         SyncAction::Create,
         server.id,
-        Some(auth.user.id),
+        Audience::owner(auth.user.id),
         origin.0,
     );
 
@@ -185,7 +185,7 @@ pub async fn update_user_server(
         SyncEntity::McpServer,
         SyncAction::Update,
         server.id,
-        Some(auth.user.id),
+        Audience::owner(auth.user.id),
         origin.0,
     );
 
@@ -222,7 +222,7 @@ pub async fn delete_user_server(
         SyncEntity::McpServer,
         SyncAction::Delete,
         id,
-        Some(auth.user.id),
+        Audience::owner(auth.user.id),
         origin.0,
     );
 
@@ -299,7 +299,7 @@ pub async fn set_server_oauth_config(
         SyncEntity::McpServer,
         SyncAction::Update,
         id,
-        Some(auth.user.id),
+        Audience::owner(auth.user.id),
         origin.0,
     );
     Ok((StatusCode::OK, Json(cfg.to_response())))
@@ -330,7 +330,7 @@ pub async fn delete_server_oauth_config(
         SyncEntity::McpServer,
         SyncAction::Update,
         id,
-        Some(auth.user.id),
+        Audience::owner(auth.user.id),
         origin.0,
     );
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))

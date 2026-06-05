@@ -13,7 +13,7 @@ use crate::modules::llm_local_runtime::permissions::{
     RuntimeSettingsManage, RuntimeSettingsRead,
 };
 use crate::modules::permissions::{RequirePermissions, with_permission};
-use crate::modules::sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
+use crate::modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
 
 /// GET /api/local-runtime/settings
 pub async fn get_runtime_settings(
@@ -43,7 +43,7 @@ pub async fn update_runtime_settings(
         SyncEntity::RuntimeSettings,
         SyncAction::Update,
         uuid::Uuid::nil(),
-        None,
+        Audience::perm::<RuntimeSettingsRead>(),
         origin.0,
     );
     Ok((StatusCode::OK, Json(row)))

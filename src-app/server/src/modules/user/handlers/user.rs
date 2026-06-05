@@ -14,7 +14,7 @@ use crate::{
     common::{ApiResult, AppError, PaginationQuery},
     core::EventBus,
     modules::permissions::{RequirePermissions, with_permission},
-    modules::sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
+    modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
 };
 
 use crate::modules::user::{
@@ -197,7 +197,7 @@ pub async fn create_user(
         SyncEntity::User,
         SyncAction::Create,
         user.id,
-        None,
+        Audience::perm::<UsersRead>(),
         origin.0,
     );
 
@@ -282,7 +282,7 @@ pub async fn update_user(
         SyncEntity::User,
         SyncAction::Update,
         updated_user.id,
-        None,
+        Audience::perm::<UsersRead>(),
         origin.0,
     );
     // Also notify the EDITED user (Owner-scoped) so THEIR other devices
@@ -291,7 +291,7 @@ pub async fn update_user(
         SyncEntity::Profile,
         SyncAction::Update,
         updated_user.id,
-        Some(updated_user.id),
+        Audience::owner(updated_user.id),
         origin.0,
     );
 
@@ -350,12 +350,18 @@ pub async fn toggle_user_active(
     // Mirror update_user: notify admins (User) AND the affected user (Profile,
     // Owner) so their devices re-bootstrap — on deactivation that surfaces the
     // logout immediately rather than after the ≤60s stream re-check.
-    sync_publish(SyncEntity::User, SyncAction::Update, user_id, None, origin.0);
+    sync_publish(
+        SyncEntity::User,
+        SyncAction::Update,
+        user_id,
+        Audience::perm::<UsersRead>(),
+        origin.0,
+    );
     sync_publish(
         SyncEntity::Profile,
         SyncAction::Update,
         user_id,
-        Some(user_id),
+        Audience::owner(user_id),
         origin.0,
     );
 
@@ -461,7 +467,7 @@ pub async fn delete_user(
         SyncEntity::User,
         SyncAction::Delete,
         user_id,
-        None,
+        Audience::perm::<UsersRead>(),
         origin.0,
     );
     // Signal the deleted user's own devices (Owner) so they re-bootstrap
@@ -471,7 +477,7 @@ pub async fn delete_user(
         SyncEntity::Session,
         SyncAction::Update,
         user_id,
-        Some(user_id),
+        Audience::owner(user_id),
         origin.0,
     );
 

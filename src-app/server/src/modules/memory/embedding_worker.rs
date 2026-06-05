@@ -16,7 +16,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use uuid::Uuid;
 
 use crate::common::AppError;
-use crate::modules::sync::{SyncAction, SyncEntity, publish as sync_publish};
+use crate::modules::memory::permissions::MemoryAdminRead;
+use crate::modules::sync::{
+    Audience, SyncAction, SyncEntity, publish as sync_publish,
+};
 use pgvector::HalfVector;
 
 const REBUILD_BATCH_SIZE: i64 = 100;
@@ -141,7 +144,7 @@ async fn run(
             SyncEntity::MemoryAdminSettings,
             SyncAction::Update,
             Uuid::nil(),
-            None,
+            Audience::perm::<MemoryAdminRead>(),
             None,
         );
     }

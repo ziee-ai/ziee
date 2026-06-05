@@ -17,7 +17,7 @@ use crate::{
     common::{ApiResult, AppError},
     core::EventBus,
     modules::permissions::{RequirePermissions, with_permission},
-    modules::sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
+    modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
 };
 
 use super::super::{
@@ -107,8 +107,8 @@ pub async fn create_system_server(
     // Emit creation event for other modules to react
     event_bus.emit_async(McpServerEvent::system_server_created(server.id));
 
-    sync_publish(SyncEntity::McpServerSystem, SyncAction::Create, server.id, None, origin.0);
-    sync_publish(SyncEntity::UserMcpServer, SyncAction::Create, server.id, None, origin.0);
+    sync_publish(SyncEntity::McpServerSystem, SyncAction::Create, server.id, Audience::perm::<McpServersAdminRead>(), origin.0);
+    sync_publish(SyncEntity::UserMcpServer, SyncAction::Create, server.id, Audience::perm::<McpServersRead>(), origin.0);
 
     Ok((StatusCode::CREATED, Json(server)))
 }
@@ -165,8 +165,8 @@ pub async fn update_system_server(
     // Emit update event for other modules to react
     event_bus.emit_async(McpServerEvent::system_server_updated(server.id));
 
-    sync_publish(SyncEntity::McpServerSystem, SyncAction::Update, server.id, None, origin.0);
-    sync_publish(SyncEntity::UserMcpServer, SyncAction::Update, server.id, None, origin.0);
+    sync_publish(SyncEntity::McpServerSystem, SyncAction::Update, server.id, Audience::perm::<McpServersAdminRead>(), origin.0);
+    sync_publish(SyncEntity::UserMcpServer, SyncAction::Update, server.id, Audience::perm::<McpServersRead>(), origin.0);
 
     Ok((StatusCode::OK, Json(server)))
 }
@@ -197,8 +197,8 @@ pub async fn delete_system_server(
     // Emit deletion event for other modules to react (synchronous so cleanup completes before response)
     event_bus.emit(McpServerEvent::system_server_deleted(id)).await;
 
-    sync_publish(SyncEntity::McpServerSystem, SyncAction::Delete, id, None, origin.0);
-    sync_publish(SyncEntity::UserMcpServer, SyncAction::Delete, id, None, origin.0);
+    sync_publish(SyncEntity::McpServerSystem, SyncAction::Delete, id, Audience::perm::<McpServersAdminRead>(), origin.0);
+    sync_publish(SyncEntity::UserMcpServer, SyncAction::Delete, id, Audience::perm::<McpServersRead>(), origin.0);
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }

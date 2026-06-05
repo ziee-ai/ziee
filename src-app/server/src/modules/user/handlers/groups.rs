@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::{
     common::{ApiResult, AppError, PaginationQuery},
     modules::permissions::{RequirePermissions, with_permission},
-    modules::sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
+    modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
 };
 
 use crate::modules::user::{
@@ -113,7 +113,7 @@ pub async fn create_group(
         SyncEntity::Group,
         SyncAction::Create,
         group.id,
-        None,
+        Audience::perm::<GroupsRead>(),
         origin.0,
     );
 
@@ -212,7 +212,7 @@ pub async fn update_group(
         SyncEntity::Group,
         SyncAction::Update,
         group.id,
-        None,
+        Audience::perm::<GroupsRead>(),
         origin.0,
     );
     // Editing a group's permissions changes the effective permissions of
@@ -267,7 +267,7 @@ pub async fn delete_group(
         SyncEntity::Group,
         SyncAction::Delete,
         group_id,
-        None,
+        Audience::perm::<GroupsRead>(),
         origin.0,
     );
 
@@ -359,7 +359,7 @@ pub async fn assign_user_to_group(
         SyncEntity::Session,
         SyncAction::Update,
         request.user_id,
-        Some(request.user_id),
+        Audience::owner(request.user_id),
         origin.0,
     );
 
@@ -368,7 +368,7 @@ pub async fn assign_user_to_group(
         SyncEntity::Group,
         SyncAction::Update,
         request.group_id,
-        None,
+        Audience::perm::<GroupsRead>(),
         origin.0,
     );
 
@@ -411,7 +411,7 @@ pub async fn remove_user_from_group(
         SyncEntity::Session,
         SyncAction::Update,
         user_id,
-        Some(user_id),
+        Audience::owner(user_id),
         origin.0,
     );
 
@@ -420,7 +420,7 @@ pub async fn remove_user_from_group(
         SyncEntity::Group,
         SyncAction::Update,
         group_id,
-        None,
+        Audience::perm::<GroupsRead>(),
         origin.0,
     );
 

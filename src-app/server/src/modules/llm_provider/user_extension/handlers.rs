@@ -25,12 +25,14 @@ use uuid::Uuid;
 use crate::common::{ApiResult, AppError};
 use crate::core::{events::EventBus, repository::Repos};
 use crate::modules::llm_provider::events::LlmProviderEvent;
-use crate::modules::llm_provider::permissions::{LlmProvidersAssignGroups, LlmProvidersRead};
+use crate::modules::llm_provider::permissions::{
+    LlmProvidersAssignGroups, LlmProvidersRead, UserLlmProvidersRead,
+};
 use crate::modules::llm_provider::types::{
     AssignProviderToGroupRequest, GroupProvidersResponse, UpdateGroupProvidersRequest,
 };
 use crate::modules::permissions::{RequirePermissions, with_permission};
-use crate::modules::sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
+use crate::modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
 use crate::modules::user::models::Group;
 
 /// Get all groups assigned to a provider (requires llm_providers::read permission)
@@ -100,8 +102,20 @@ pub async fn assign_provider_to_group(
     // A provider's group visibility changed → notify both audiences: admins
     // (provider table) and every user (their accessible provider set may have
     // changed — each refetches its own group-scoped view).
-    sync_publish(SyncEntity::LlmProvider, SyncAction::Update, provider_id, None, origin.0);
-    sync_publish(SyncEntity::UserLlmProvider, SyncAction::Update, provider_id, None, origin.0);
+    sync_publish(
+        SyncEntity::LlmProvider,
+        SyncAction::Update,
+        provider_id,
+        Audience::perm::<LlmProvidersRead>(),
+        origin.0,
+    );
+    sync_publish(
+        SyncEntity::UserLlmProvider,
+        SyncAction::Update,
+        provider_id,
+        Audience::perm::<UserLlmProvidersRead>(),
+        origin.0,
+    );
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
@@ -155,8 +169,20 @@ pub async fn remove_provider_from_group(
         event_bus
             .emit_async(LlmProviderEvent::group_assignment_changed(provider_id, group_ids).into());
 
-        sync_publish(SyncEntity::LlmProvider, SyncAction::Update, provider_id, None, origin.0);
-        sync_publish(SyncEntity::UserLlmProvider, SyncAction::Update, provider_id, None, origin.0);
+        sync_publish(
+            SyncEntity::LlmProvider,
+            SyncAction::Update,
+            provider_id,
+            Audience::perm::<LlmProvidersRead>(),
+            origin.0,
+        );
+        sync_publish(
+            SyncEntity::UserLlmProvider,
+            SyncAction::Update,
+            provider_id,
+            Audience::perm::<UserLlmProvidersRead>(),
+            origin.0,
+        );
 
         Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
     } else {
@@ -290,8 +316,20 @@ pub async fn update_group_providers(
         let group_ids: Vec<Uuid> = groups.iter().map(|g| g.id).collect();
         event_bus
             .emit_async(LlmProviderEvent::group_assignment_changed(provider_id, group_ids).into());
-        sync_publish(SyncEntity::LlmProvider, SyncAction::Update, provider_id, None, origin.0);
-        sync_publish(SyncEntity::UserLlmProvider, SyncAction::Update, provider_id, None, origin.0);
+        sync_publish(
+            SyncEntity::LlmProvider,
+            SyncAction::Update,
+            provider_id,
+            Audience::perm::<LlmProvidersRead>(),
+            origin.0,
+        );
+        sync_publish(
+            SyncEntity::UserLlmProvider,
+            SyncAction::Update,
+            provider_id,
+            Audience::perm::<UserLlmProvidersRead>(),
+            origin.0,
+        );
     }
 
     // Return updated list

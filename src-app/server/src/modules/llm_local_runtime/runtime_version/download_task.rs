@@ -34,7 +34,8 @@ use uuid::Uuid;
 
 use crate::common::r#type::AppError;
 use crate::modules::llm_local_runtime::engine::EngineType;
-use crate::modules::sync::{SyncAction, SyncEntity, publish as sync_publish};
+use crate::modules::sync::{Audience, SyncAction, SyncEntity, publish as sync_publish};
+use crate::modules::llm_local_runtime::permissions::RuntimeVersionRead;
 use crate::modules::llm_local_runtime::runtime_version::models::RuntimeVersion;
 use crate::modules::llm_local_runtime::BinaryManager;
 
@@ -328,7 +329,7 @@ async fn run_download(
                 SyncEntity::RuntimeVersion,
                 SyncAction::Create,
                 version_row.id,
-                None,
+                Audience::perm::<RuntimeVersionRead>(),
                 None,
             );
         }

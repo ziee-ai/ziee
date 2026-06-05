@@ -20,7 +20,7 @@ use crate::{
     common::{ApiResult, AppError},
     core::{EventBus, Repos},
     modules::permissions::{extractors::RequirePermissions, with_permission},
-    modules::sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
+    modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
 };
 
 // =====================================================
@@ -136,7 +136,7 @@ pub async fn create_user_assistant(
         SyncEntity::Assistant,
         SyncAction::Create,
         assistant.id,
-        Some(auth.user.id),
+        Audience::owner(auth.user.id),
         origin.0,
     );
 
@@ -265,7 +265,7 @@ pub async fn update_user_assistant(
         SyncEntity::Assistant,
         SyncAction::Update,
         assistant.id,
-        Some(auth.user.id),
+        Audience::owner(auth.user.id),
         origin.0,
     );
 
@@ -320,7 +320,7 @@ pub async fn delete_user_assistant(
         SyncEntity::Assistant,
         SyncAction::Delete,
         id,
-        Some(auth.user.id),
+        Audience::owner(auth.user.id),
         origin.0,
     );
 
@@ -398,7 +398,7 @@ pub async fn create_template_assistant(
         SyncEntity::AssistantTemplate,
         SyncAction::Create,
         assistant.id,
-        None,
+        Audience::everyone(),
         origin.0,
     );
 
@@ -509,7 +509,7 @@ pub async fn update_template_assistant(
         SyncEntity::AssistantTemplate,
         SyncAction::Update,
         assistant.id,
-        None,
+        Audience::everyone(),
         origin.0,
     );
 
@@ -554,7 +554,7 @@ pub async fn delete_template_assistant(
         SyncEntity::AssistantTemplate,
         SyncAction::Delete,
         id,
-        None,
+        Audience::everyone(),
         origin.0,
     );
 

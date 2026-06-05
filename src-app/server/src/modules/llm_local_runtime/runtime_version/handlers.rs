@@ -12,7 +12,7 @@ use crate::{
     common::{ApiResult, AppError},
     core::{EventBus, Repos},
     modules::permissions::{RequirePermissions, with_permission},
-    modules::sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
+    modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
 };
 
 use super::super::events::LlmLocalRuntimeEvent;
@@ -511,7 +511,7 @@ pub async fn delete_runtime_version(
         .into(),
     );
 
-    sync_publish(SyncEntity::RuntimeVersion, SyncAction::Delete, version_id, None, origin.0);
+    sync_publish(SyncEntity::RuntimeVersion, SyncAction::Delete, version_id, Audience::perm::<RuntimeVersionRead>(), origin.0);
 
     Ok((StatusCode::NO_CONTENT, ()))
 }
@@ -555,7 +555,7 @@ pub async fn set_system_default(
         .into(),
     );
 
-    sync_publish(SyncEntity::RuntimeVersion, SyncAction::Update, version_id, None, origin.0);
+    sync_publish(SyncEntity::RuntimeVersion, SyncAction::Update, version_id, Audience::perm::<RuntimeVersionRead>(), origin.0);
 
     Ok((StatusCode::OK, Json(RuntimeVersionResponse::from(version_record))))
 }
@@ -707,7 +707,7 @@ pub async fn sync_cache(
             SyncEntity::RuntimeVersion,
             SyncAction::Update,
             uuid::Uuid::nil(),
-            None,
+            Audience::perm::<RuntimeVersionRead>(),
             origin.0,
         );
     }

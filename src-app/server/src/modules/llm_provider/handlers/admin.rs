@@ -12,7 +12,7 @@ use crate::{
     common::{ApiResult, AppError, PaginationQuery},
     core::{events::EventBus, repository::Repos},
     modules::permissions::{RequirePermissions, with_permission},
-    modules::sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
+    modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
 };
 
 use super::super::{
@@ -154,8 +154,20 @@ pub async fn create_provider(
     // Emit event
     event_bus.emit_async(LlmProviderEvent::created(provider.clone()).into());
 
-    sync_publish(SyncEntity::LlmProvider, SyncAction::Create, provider.id, None, origin.0);
-    sync_publish(SyncEntity::UserLlmProvider, SyncAction::Create, provider.id, None, origin.0);
+    sync_publish(
+        SyncEntity::LlmProvider,
+        SyncAction::Create,
+        provider.id,
+        Audience::perm::<LlmProvidersRead>(),
+        origin.0,
+    );
+    sync_publish(
+        SyncEntity::UserLlmProvider,
+        SyncAction::Create,
+        provider.id,
+        Audience::perm::<UserLlmProvidersRead>(),
+        origin.0,
+    );
 
     Ok((
         StatusCode::CREATED,
@@ -243,8 +255,20 @@ pub async fn rotate_proxy_token(
         }
     }
 
-    sync_publish(SyncEntity::LlmProvider, SyncAction::Update, provider_id, None, origin.0);
-    sync_publish(SyncEntity::UserLlmProvider, SyncAction::Update, provider_id, None, origin.0);
+    sync_publish(
+        SyncEntity::LlmProvider,
+        SyncAction::Update,
+        provider_id,
+        Audience::perm::<LlmProvidersRead>(),
+        origin.0,
+    );
+    sync_publish(
+        SyncEntity::UserLlmProvider,
+        SyncAction::Update,
+        provider_id,
+        Audience::perm::<UserLlmProvidersRead>(),
+        origin.0,
+    );
 
     Ok((
         StatusCode::OK,
@@ -317,8 +341,20 @@ pub async fn update_provider(
     // Emit event
     event_bus.emit_async(LlmProviderEvent::updated(provider.clone()).into());
 
-    sync_publish(SyncEntity::LlmProvider, SyncAction::Update, provider.id, None, origin.0);
-    sync_publish(SyncEntity::UserLlmProvider, SyncAction::Update, provider.id, None, origin.0);
+    sync_publish(
+        SyncEntity::LlmProvider,
+        SyncAction::Update,
+        provider.id,
+        Audience::perm::<LlmProvidersRead>(),
+        origin.0,
+    );
+    sync_publish(
+        SyncEntity::UserLlmProvider,
+        SyncAction::Update,
+        provider.id,
+        Audience::perm::<UserLlmProvidersRead>(),
+        origin.0,
+    );
 
     Ok((StatusCode::OK, Json(provider)))
 }
@@ -356,8 +392,20 @@ pub async fn delete_provider(
             if let Some(p) = provider {
                 event_bus.emit_async(LlmProviderEvent::deleted(provider_id, p.name).into());
             }
-            sync_publish(SyncEntity::LlmProvider, SyncAction::Delete, provider_id, None, origin.0);
-            sync_publish(SyncEntity::UserLlmProvider, SyncAction::Delete, provider_id, None, origin.0);
+            sync_publish(
+                SyncEntity::LlmProvider,
+                SyncAction::Delete,
+                provider_id,
+                Audience::perm::<LlmProvidersRead>(),
+                origin.0,
+            );
+            sync_publish(
+                SyncEntity::UserLlmProvider,
+                SyncAction::Delete,
+                provider_id,
+                Audience::perm::<UserLlmProvidersRead>(),
+                origin.0,
+            );
             Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
         }
         Ok(Ok(false)) => Err(AppError::not_found("Provider").into()),

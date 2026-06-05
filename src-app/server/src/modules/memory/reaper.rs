@@ -18,7 +18,9 @@ use std::time::Duration;
 use uuid::Uuid;
 
 use crate::core::Repos;
-use crate::modules::sync::{SyncAction, SyncEntity, publish as sync_publish};
+use crate::modules::sync::{
+    Audience, SyncAction, SyncEntity, publish as sync_publish,
+};
 
 const TICK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 /// Fallback grace days if the admin settings row can't be read (DB
@@ -134,7 +136,7 @@ async fn run_once(pool: &PgPool) -> Result<(), sqlx::Error> {
             SyncEntity::Memory,
             SyncAction::Delete,
             Uuid::nil(),
-            Some(user_id),
+            Audience::owner(user_id),
             None,
         );
     }

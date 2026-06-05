@@ -14,7 +14,7 @@ use crate::{
     common::{ApiResult, AppError, PaginationQuery},
     core::{events::EventBus, repository::Repos},
     modules::permissions::{RequirePermissions, with_permission},
-    modules::sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
+    modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
 };
 use std::sync::Arc;
 
@@ -140,7 +140,7 @@ pub async fn create_repository(
     // Emit event
     event_bus.emit_async(LlmRepositoryEvent::created(repository.clone()).into());
 
-    sync_publish(SyncEntity::LlmRepository, SyncAction::Create, repository.id, None, origin.0);
+    sync_publish(SyncEntity::LlmRepository, SyncAction::Create, repository.id, Audience::perm::<LlmRepositoriesRead>(), origin.0);
 
     Ok((StatusCode::CREATED, Json(repository)))
 }
@@ -231,7 +231,7 @@ pub async fn update_repository(
     // Emit event
     event_bus.emit_async(LlmRepositoryEvent::updated(updated_repository.clone()).into());
 
-    sync_publish(SyncEntity::LlmRepository, SyncAction::Update, repository_id, None, origin.0);
+    sync_publish(SyncEntity::LlmRepository, SyncAction::Update, repository_id, Audience::perm::<LlmRepositoriesRead>(), origin.0);
 
     Ok((StatusCode::OK, Json(updated_repository)))
 }
@@ -271,7 +271,7 @@ pub async fn delete_repository(
             // Emit event
             event_bus
                 .emit_async(LlmRepositoryEvent::deleted(repository_id, repository_name).into());
-            sync_publish(SyncEntity::LlmRepository, SyncAction::Delete, repository_id, None, origin.0);
+            sync_publish(SyncEntity::LlmRepository, SyncAction::Delete, repository_id, Audience::perm::<LlmRepositoriesRead>(), origin.0);
             Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
         }
         Ok(Ok(false)) => Err(AppError::not_found("Repository").into()),

@@ -20,7 +20,7 @@ use crate::common::AppError;
 use crate::modules::permissions::checker::check_permission_union;
 use crate::modules::user::models::{Group, User};
 
-use super::event::{Audience, SyncAction, SyncEntity, SyncEvent, SyncSseEvent};
+use super::event::{Audience, PermRule, SyncAction, SyncEntity, SyncEvent, SyncSseEvent};
 
 /// Global cap on concurrent sync SSE connections across all users.
 const GLOBAL_MAX_CONNECTIONS: usize = 512;
@@ -152,9 +152,18 @@ impl SyncRegistry {
                         }
                     }
                 }
-                Audience::Permission(perm) => {
+                Audience::Perm(rule) => {
                     for (cid, conn) in clients.iter() {
-                        if conn.is_admin || check_permission_union(&conn.user, &conn.groups, perm) {
+                        let granted = conn.is_admin
+                            || match &rule {
+                                PermRule::All(perms) => perms
+                                    .iter()
+                                    .all(|p| check_permission_union(&conn.user, &conn.groups, p)),
+                                PermRule::Any(perms) => perms
+                                    .iter()
+                                    .any(|p| check_permission_union(&conn.user, &conn.groups, p)),
+                            };
+                        if granted {
                             try_send(cid, conn);
                         }
                     }
@@ -343,7 +352,7 @@ mod tests {
         reg.register(Uuid::new_v4(), c_holder).unwrap();
         reg.register(Uuid::new_v4(), c_other).unwrap();
 
-        reg.deliver(Audience::Permission("x::read"), ev(), None);
+        reg.deliver(Audience::Perm(PermRule::All(vec!["x::read"])), ev(), None);
 
         assert!(got(&mut rx_admin), "admin (wildcard) must receive");
         assert!(got(&mut rx_holder), "perm holder must receive");
@@ -404,12 +413,12 @@ mod tests {
         reg.register(id, c).unwrap();
 
         // Before refresh: no perm → excluded from a Permission audience.
-        reg.deliver(Audience::Permission("x::read"), ev(), None);
+        reg.deliver(Audience::Perm(PermRule::All(vec!["x::read"])), ev(), None);
         assert!(!got(&mut rx));
 
         // After a re-check grants the perm, the same connection is included.
         reg.refresh(id, fake_user(uid, false, vec!["x::read".into()]), Vec::new());
-        reg.deliver(Audience::Permission("x::read"), ev(), None);
+        reg.deliver(Audience::Perm(PermRule::All(vec!["x::read"])), ev(), None);
         assert!(got(&mut rx));
     }
 

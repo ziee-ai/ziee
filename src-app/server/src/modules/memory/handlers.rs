@@ -24,7 +24,9 @@ use crate::{
             permissions::{MemoryAdminManage, MemoryAdminRead, MemoryRead, MemoryWrite},
         },
         permissions::{RequirePermissions, with_permission},
-        sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
+        sync::{
+            Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish,
+        },
     },
 };
 
@@ -198,7 +200,7 @@ pub async fn create_memory(
         SyncEntity::Memory,
         SyncAction::Create,
         row.id,
-        Some(auth.user.id),
+        Audience::owner(auth.user.id),
         origin.0,
     );
     Ok((StatusCode::CREATED, Json(row)))
@@ -262,7 +264,7 @@ pub async fn update_memory(
         SyncEntity::Memory,
         SyncAction::Update,
         row.id,
-        Some(auth.user.id),
+        Audience::owner(auth.user.id),
         origin.0,
     );
     Ok((StatusCode::OK, Json(row)))
@@ -291,7 +293,7 @@ pub async fn delete_memory(
         SyncEntity::Memory,
         SyncAction::Delete,
         id,
-        Some(auth.user.id),
+        Audience::owner(auth.user.id),
         origin.0,
     );
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
@@ -318,7 +320,7 @@ pub async fn delete_all_memories(
         SyncEntity::Memory,
         SyncAction::Delete,
         Uuid::nil(),
-        Some(auth.user.id),
+        Audience::owner(auth.user.id),
         origin.0,
     );
     Ok((
@@ -427,7 +429,7 @@ pub async fn update_user_settings(
         SyncEntity::MemorySettings,
         SyncAction::Update,
         auth.user.id,
-        Some(auth.user.id),
+        Audience::owner(auth.user.id),
         origin.0,
     );
     Ok((StatusCode::OK, Json(row)))
@@ -587,7 +589,7 @@ pub async fn update_admin_settings(
         SyncEntity::MemoryAdminSettings,
         SyncAction::Update,
         uuid::Uuid::nil(),
-        None,
+        Audience::perm::<MemoryAdminRead>(),
         origin.0,
     );
 
