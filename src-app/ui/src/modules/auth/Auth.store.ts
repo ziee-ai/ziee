@@ -324,23 +324,49 @@ export const useAuthStore = create<AuthState>()(
 
           try {
             const token = get().token
-            if (token) {
-              // Fetch current user profile with permissions
-              const response = await ApiClient.Auth.me(undefined, undefined)
-              set({
-                user: response.user,
-                permissions: response.permissions,
-                isAuthenticated: true,
-                isLoading: false,
-                isInitializing: false,
-              })
-            } else {
+            if (!token) {
               set({
                 isAuthenticated: false,
                 isLoading: false,
                 isInitializing: false,
               })
+              return
             }
+
+            // Verify the session via /auth/me, retrying TRANSIENT failures.
+            // A momentary network blip on startup (server briefly busy, or
+            // many tabs/devices cold-loading at once) must NOT destroy a
+            // valid session — only a genuine 401 (invalid/expired token)
+            // logs the user out. Without this, a single refused /auth/me
+            // silently logs the user back out at boot.
+            let lastError: unknown
+            for (let attempt = 0; attempt < 3; attempt++) {
+              try {
+                const response = await ApiClient.Auth.me(undefined, undefined)
+                set({
+                  user: response.user,
+                  permissions: response.permissions,
+                  isAuthenticated: true,
+                  isLoading: false,
+                  isInitializing: false,
+                })
+                return
+              } catch (err) {
+                lastError = err
+                // A real auth rejection is terminal — stop retrying.
+                if (
+                  err instanceof Error &&
+                  err.message.includes('status: 401')
+                ) {
+                  break
+                }
+                // Transient: back off (300ms, 600ms) and retry.
+                if (attempt < 2) {
+                  await new Promise(r => setTimeout(r, 300 * 2 ** attempt))
+                }
+              }
+            }
+            throw lastError
           } catch (error) {
             set({
               error:

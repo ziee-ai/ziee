@@ -323,13 +323,35 @@ export const callAsync = async <U extends ApiEndpointUrl>(
       // Create AbortController for SSE stream management if SSE callbacks are provided
       abortController = sseFunction ? new AbortController() : undefined
 
-      // Use fetch for non-FormData requests or when no progress tracking is needed
-      response = await fetch(`${bUrl}${endpointPath}`, {
-        method,
-        headers,
-        body,
-        signal: abortController?.signal,
-      })
+      // Use fetch for non-FormData requests or when no progress tracking is needed.
+      //
+      // Transient network failures (connection refused/reset, DNS blip) reject
+      // fetch() with a TypeError — no HTTP response was ever received, so the
+      // server never processed the request. For idempotent GETs that aren't SSE
+      // streams, retry a few times with backoff rather than surfacing the error:
+      // a momentary blip (server briefly busy, many tabs/devices cold-loading at
+      // once) must not break a data load or, for /auth/me-style calls, brick the
+      // app. Never retried: non-GET (could double-submit), SSE streams (their own
+      // reconnect logic), AbortError (intentional cancel), or an HTTP error
+      // RESPONSE (the server did respond — handled by the status logic below).
+      // The cold-load GETs all fire in parallel and each retries independently,
+      // so the budget below is wall-clock ~6s for the whole burst, not per call.
+      const retryableGet = method === 'GET' && !sseFunction
+      for (let attempt = 0; ; attempt++) {
+        try {
+          response = await fetch(`${bUrl}${endpointPath}`, {
+            method,
+            headers,
+            body,
+            signal: abortController?.signal,
+          })
+          break
+        } catch (err) {
+          if (err instanceof Error && err.name === 'AbortError') throw err
+          if (!retryableGet || attempt >= 5) throw err
+          await new Promise(r => setTimeout(r, 200 * 2 ** attempt))
+        }
+      }
 
       // Send initial __init event with abortController for SSE streams
       if (abortController && sseFunction) {
