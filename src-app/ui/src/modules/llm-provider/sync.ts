@@ -11,14 +11,21 @@ const reloadAdminProviders = () => {
   void useLlmProviderStore.getState().loadLlmProviders()
 }
 
+// `loadLlmProviders` fetches providers AND each provider's models, so the
+// reload needs BOTH reads — gate on both to avoid a sub-admin holding only
+// one of the two perms 403-ing on the other endpoint during resync.
+const adminProvidersPerms = {
+  allOf: [Permissions.LlmProvidersRead, Permissions.LlmModelsRead],
+}
+
 registerSync('llm_provider', {
   onEvent: reloadAdminProviders,
   onResync: reloadAdminProviders,
-  requiredPermission: Permissions.LlmProvidersRead,
+  requiredPermission: adminProvidersPerms,
 })
 
 registerSync('llm_model', {
   onEvent: reloadAdminProviders,
   onResync: reloadAdminProviders,
-  requiredPermission: Permissions.LlmProvidersRead,
+  requiredPermission: adminProvidersPerms,
 })
