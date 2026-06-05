@@ -1755,9 +1755,13 @@ async fn replace_existing_preserves_admin_tunable_fields_mcp() {
         first["server"]["run_in_sandbox"], false,
         "hub install must start with run_in_sandbox=false",
     );
+    // Hub installs now always start DISABLED (the user configures
+    // secrets first, then toggles the Enabled switch which runs the
+    // probe-then-enable flow). See
+    // hub::handlers::build_mcp_server_create_from_hub.
     assert_eq!(
-        first["server"]["enabled"], true,
-        "hub install must start with enabled=true",
+        first["server"]["enabled"], false,
+        "hub install must start with enabled=false (user configures + enables manually)",
     );
 
     // Promote ALL SEVEN admin-tunable fields away from defaults via

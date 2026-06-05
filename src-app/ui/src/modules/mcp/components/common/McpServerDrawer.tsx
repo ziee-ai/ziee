@@ -684,16 +684,37 @@ export function McpServerDrawer() {
 
   // Title with the server-Enabled toggle on the right — keeps the
   // on/off control visible no matter how far the user scrolls.
-  // Disabled in read-only mode (no edit permission).
+  // Disabled in read-only mode (no edit permission). The Tooltip
+  // also surfaces the persisted last-health-check info so the user
+  // knows WHY the server is in its current state without having to
+  // click Test Connection again.
+  const healthAt = editingServer?.last_health_check_at
+  const healthStatus = editingServer?.last_health_check_status
+  const healthReason = editingServer?.last_health_check_reason
+  const formatHealthTooltip = () => {
+    const baseline = enabledValue
+      ? 'Enabled — the server is reachable and queried by the LLM. Click to disable.'
+      : 'Disabled — the server is not started or queried. Click to enable (a connection test will run first).'
+    if (!healthAt || healthStatus === 'untested') {
+      return baseline
+    }
+    const when = new Date(healthAt).toLocaleString()
+    if (healthStatus === 'healthy') {
+      return `${baseline}\n\nLast connection test: passed at ${when}`
+    }
+    return `${baseline}\n\nLast connection test failed at ${when}: ${
+      healthReason ?? 'unknown reason'
+    }`
+  }
   const titleNode = (
     <Flex justify="space-between" align="center" className="w-full pr-6">
       <span>{getTitle()}</span>
       {!!editingServer || mode === 'create' || mode === 'create-system' ? (
         <Tooltip
           title={
-            enabledValue
-              ? 'Enabled — the server is reachable and queried by the LLM. Click to disable.'
-              : 'Disabled — the server is not started or queried. Click to enable.'
+            <span style={{ whiteSpace: 'pre-line' }}>
+              {formatHealthTooltip()}
+            </span>
           }
         >
           <Switch

@@ -38,6 +38,9 @@ fn server_config(url: String) -> McpServer {
         run_in_sandbox: false,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
+        last_health_check_at: None,
+        last_health_check_status: "untested".to_string(),
+        last_health_check_reason: None,
     }
 }
 

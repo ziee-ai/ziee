@@ -226,9 +226,29 @@ pub struct McpServer {
     /// or non-stdio servers. Defaults to false.
     pub run_in_sandbox: bool,
 
+    /// Persisted result of the last connection probe — populated by
+    /// `connection_health` at boot (startup health check), at
+    /// create-time (post-create probe in `enforce_on_create`), at
+    /// enable-transition time (probe in `enforce_on_update_transition`),
+    /// and on every explicit "Test Connection" button press.
+    /// See migration 82.
+    #[serde(default)]
+    pub last_health_check_at: Option<DateTime<Utc>>,
+    /// "untested" | "healthy" | "unhealthy". Defaults to "untested"
+    /// for freshly-created rows that have never been probed.
+    #[serde(default = "default_health_status")]
+    pub last_health_check_status: String,
+    /// Human reason on unhealthy. `None` on healthy / untested.
+    #[serde(default)]
+    pub last_health_check_reason: Option<String>,
+
     // Metadata
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+fn default_health_status() -> String {
+    "untested".to_string()
 }
 
 /// Stored OAuth 2.1 `client_credentials` configuration for an external HTTP MCP

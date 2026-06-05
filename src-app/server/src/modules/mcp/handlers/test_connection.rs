@@ -172,6 +172,9 @@ pub(crate) fn build_ephemeral_server(
         max_concurrent_sessions: None,
         // Connectivity probe only — never routed through the code_sandbox.
         run_in_sandbox: false,
+        last_health_check_at: None,
+        last_health_check_status: "untested".to_string(),
+        last_health_check_reason: None,
         created_at: now,
         updated_at: now,
     }
@@ -293,6 +296,19 @@ pub async fn test_user_connection(
     let server =
         build_ephemeral_server(&request, Some(auth.user.id), false, existing.as_ref());
     let response = run_connection_test(server, oauth).await;
+    // Record the outcome on the persisted server (if `request.id`
+    // pointed at one). Lets the UI surface "last tested: …" outside
+    // the enable flow too. Non-fatal — log on failure.
+    if let Some(server_id) = request.id {
+        let (status, reason) = if response.success {
+            ("healthy", None)
+        } else {
+            ("unhealthy", Some(response.message.as_str()))
+        };
+        if let Err(e) = Repos.mcp.record_health_check(server_id, status, reason).await {
+            tracing::warn!(error = ?e, server_id = %server_id, "mcp::health: failed to record test-connection result");
+        }
+    }
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -327,6 +343,16 @@ pub async fn test_system_connection(
 
     let server = build_ephemeral_server(&request, None, true, existing.as_ref());
     let response = run_connection_test(server, oauth).await;
+    if let Some(server_id) = request.id {
+        let (status, reason) = if response.success {
+            ("healthy", None)
+        } else {
+            ("unhealthy", Some(response.message.as_str()))
+        };
+        if let Err(e) = Repos.mcp.record_health_check(server_id, status, reason).await {
+            tracing::warn!(error = ?e, server_id = %server_id, "mcp::health: failed to record test-connection result");
+        }
+    }
     Ok((StatusCode::OK, Json(response)))
 }
 

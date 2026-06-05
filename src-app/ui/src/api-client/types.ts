@@ -1198,6 +1198,9 @@ export interface McpServer {
   id: string
   is_built_in: boolean
   is_system: boolean
+  last_health_check_at?: string
+  last_health_check_reason?: string
+  last_health_check_status?: string
   max_concurrent_sessions?: number
   name: string
   run_in_sandbox: boolean

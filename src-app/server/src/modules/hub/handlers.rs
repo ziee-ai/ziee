@@ -710,7 +710,15 @@ async fn build_mcp_server_create_from_hub(
             .clone()
             .unwrap_or(hub_server.display_name.clone()),
         description: hub_server.description.clone(),
-        enabled: Some(request.enabled),
+        // Hub installs ALWAYS land disabled — most hub servers ship
+        // with placeholder secrets the user has to configure before
+        // they can connect, so auto-probing on install would just
+        // toast a failure. The user opens the drawer, fills in their
+        // tokens, and toggles the title Enabled Switch — that flow
+        // runs the probe + auto-enables on success (see
+        // `connection_health::enforce_on_update_transition`).
+        // `request.enabled` is ignored here for the same reason.
+        enabled: Some(false),
         transport_type,
         command: hub_server.command.clone(),
         args: hub_server.args.clone(),

@@ -243,6 +243,9 @@ pub(crate) struct McpServerColumnsRaw {
     pub run_in_sandbox: bool,
     pub created_at: time::OffsetDateTime,
     pub updated_at: time::OffsetDateTime,
+    pub last_health_check_at: Option<time::OffsetDateTime>,
+    pub last_health_check_status: String,
+    pub last_health_check_reason: Option<String>,
 }
 
 pub(crate) async fn assemble_mcp_server(
@@ -285,6 +288,11 @@ pub(crate) async fn assemble_mcp_server(
         usage_mode: UsageMode::from_str(&raw.usage_mode)?,
         max_concurrent_sessions: raw.max_concurrent_sessions,
         run_in_sandbox: raw.run_in_sandbox,
+        last_health_check_at: raw.last_health_check_at.and_then(|t|
+            DateTime::from_timestamp(t.unix_timestamp(), 0)
+        ),
+        last_health_check_status: raw.last_health_check_status,
+        last_health_check_reason: raw.last_health_check_reason,
         created_at: DateTime::from_timestamp(raw.created_at.unix_timestamp(), 0)
             .ok_or_else(|| AppError::internal_error("Invalid created_at timestamp"))?,
         updated_at: DateTime::from_timestamp(raw.updated_at.unix_timestamp(), 0)
@@ -375,6 +383,33 @@ impl McpRepository {
     /// don't need this enforcement).
     pub async fn list_enabled_for_health_check(&self) -> Result<Vec<McpServer>, AppError> {
         list_enabled_for_health_check(&self.pool).await
+    }
+
+    /// Update one server's `last_health_check_*` columns. Called by
+    /// every probe site (boot, create, update-enable-transition,
+    /// explicit Test Connection button). `status` is "healthy" or
+    /// "unhealthy"; on healthy `reason` should be None, on unhealthy
+    /// it's the verbatim probe failure message.
+    pub async fn record_health_check(
+        &self,
+        server_id: Uuid,
+        status: &str,
+        reason: Option<&str>,
+    ) -> Result<(), AppError> {
+        sqlx::query!(
+            "UPDATE mcp_servers
+             SET last_health_check_at = NOW(),
+                 last_health_check_status = $2,
+                 last_health_check_reason = $3
+             WHERE id = $1",
+            server_id,
+            status,
+            reason,
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(())
     }
 
     // OAuth client_credentials config (external HTTP servers; Phase 4)
@@ -590,6 +625,7 @@ pub async fn create_user_mcp_server(
             timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
             run_in_sandbox,
+            last_health_check_at, last_health_check_status, last_health_check_reason,
             created_at, updated_at
         "#,
         user_id,
@@ -648,6 +684,9 @@ pub async fn create_user_mcp_server(
         run_in_sandbox: row.run_in_sandbox,
         created_at: row.created_at,
         updated_at: row.updated_at,
+        last_health_check_at: row.last_health_check_at,
+        last_health_check_status: row.last_health_check_status,
+        last_health_check_reason: row.last_health_check_reason,
     };
     assemble_mcp_server(pool, raw).await
 }
@@ -670,6 +709,7 @@ pub async fn get_user_mcp_server(
             timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
             run_in_sandbox,
+            last_health_check_at, last_health_check_status, last_health_check_reason,
             created_at, updated_at
         FROM mcp_servers
         WHERE id = $1 AND user_id = $2 AND is_system = false
@@ -708,6 +748,9 @@ pub async fn get_user_mcp_server(
                 run_in_sandbox: r.run_in_sandbox,
                 created_at: r.created_at,
                 updated_at: r.updated_at,
+                last_health_check_at: r.last_health_check_at,
+                last_health_check_status: r.last_health_check_status,
+                last_health_check_reason: r.last_health_check_reason,
             };
             Ok(Some(assemble_mcp_server(pool, raw).await?))
         }
@@ -736,6 +779,7 @@ pub async fn list_user_mcp_servers(
             timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
             run_in_sandbox,
+            last_health_check_at, last_health_check_status, last_health_check_reason,
             created_at, updated_at
         FROM mcp_servers
         WHERE user_id = $1 AND is_system = false
@@ -777,6 +821,9 @@ pub async fn list_user_mcp_servers(
             run_in_sandbox: r.run_in_sandbox,
             created_at: r.created_at,
             updated_at: r.updated_at,
+            last_health_check_at: r.last_health_check_at,
+            last_health_check_status: r.last_health_check_status,
+            last_health_check_reason: r.last_health_check_reason,
         };
         servers.push(assemble_mcp_server(pool, raw).await?);
     }
@@ -811,6 +858,7 @@ pub async fn list_enabled_for_health_check(pool: &PgPool) -> Result<Vec<McpServe
             timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
             run_in_sandbox,
+            last_health_check_at, last_health_check_status, last_health_check_reason,
             created_at, updated_at
         FROM mcp_servers
         WHERE enabled = true AND is_built_in = false
@@ -847,6 +895,9 @@ pub async fn list_enabled_for_health_check(pool: &PgPool) -> Result<Vec<McpServe
             run_in_sandbox: r.run_in_sandbox,
             created_at: r.created_at,
             updated_at: r.updated_at,
+            last_health_check_at: r.last_health_check_at,
+            last_health_check_status: r.last_health_check_status,
+            last_health_check_reason: r.last_health_check_reason,
         };
         servers.push(assemble_mcp_server(pool, raw).await?);
     }
@@ -965,6 +1016,7 @@ pub async fn update_user_mcp_server(
             timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
             run_in_sandbox,
+            last_health_check_at, last_health_check_status, last_health_check_reason,
             created_at, updated_at
         "#,
         id,
@@ -1027,6 +1079,9 @@ pub async fn update_user_mcp_server(
         run_in_sandbox: row.run_in_sandbox,
         created_at: row.created_at,
         updated_at: row.updated_at,
+        last_health_check_at: row.last_health_check_at,
+        last_health_check_status: row.last_health_check_status,
+        last_health_check_reason: row.last_health_check_reason,
     };
     assemble_mcp_server(pool, raw).await
 }
@@ -1105,6 +1160,7 @@ pub async fn create_system_mcp_server(
             timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
             run_in_sandbox,
+            last_health_check_at, last_health_check_status, last_health_check_reason,
             created_at, updated_at
         "#,
         request.name,
@@ -1163,6 +1219,9 @@ pub async fn create_system_mcp_server(
         run_in_sandbox: row.run_in_sandbox,
         created_at: row.created_at,
         updated_at: row.updated_at,
+        last_health_check_at: row.last_health_check_at,
+        last_health_check_status: row.last_health_check_status,
+        last_health_check_reason: row.last_health_check_reason,
     };
     assemble_mcp_server(pool, raw).await
 }
@@ -1271,6 +1330,7 @@ pub async fn get_any_mcp_server(pool: &PgPool, id: Uuid) -> Result<Option<McpSer
             timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
             run_in_sandbox,
+            last_health_check_at, last_health_check_status, last_health_check_reason,
             created_at, updated_at
         FROM mcp_servers
         WHERE id = $1
@@ -1308,6 +1368,9 @@ pub async fn get_any_mcp_server(pool: &PgPool, id: Uuid) -> Result<Option<McpSer
                 run_in_sandbox: r.run_in_sandbox,
                 created_at: r.created_at,
                 updated_at: r.updated_at,
+                last_health_check_at: r.last_health_check_at,
+                last_health_check_status: r.last_health_check_status,
+                last_health_check_reason: r.last_health_check_reason,
             };
             Ok(Some(assemble_mcp_server(pool, raw).await?))
         }
@@ -1328,6 +1391,7 @@ pub async fn get_system_mcp_server(pool: &PgPool, id: Uuid) -> Result<Option<Mcp
             timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
             run_in_sandbox,
+            last_health_check_at, last_health_check_status, last_health_check_reason,
             created_at, updated_at
         FROM mcp_servers
         WHERE id = $1 AND is_system = true
@@ -1365,6 +1429,9 @@ pub async fn get_system_mcp_server(pool: &PgPool, id: Uuid) -> Result<Option<Mcp
                 run_in_sandbox: r.run_in_sandbox,
                 created_at: r.created_at,
                 updated_at: r.updated_at,
+                last_health_check_at: r.last_health_check_at,
+                last_health_check_status: r.last_health_check_status,
+                last_health_check_reason: r.last_health_check_reason,
             };
             Ok(Some(assemble_mcp_server(pool, raw).await?))
         }
@@ -1394,6 +1461,7 @@ pub async fn list_system_mcp_servers(
             timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
             run_in_sandbox,
+            last_health_check_at, last_health_check_status, last_health_check_reason,
             created_at, updated_at
         FROM mcp_servers
         WHERE is_system = true
@@ -1441,6 +1509,9 @@ pub async fn list_system_mcp_servers(
             run_in_sandbox: r.run_in_sandbox,
             created_at: r.created_at,
             updated_at: r.updated_at,
+            last_health_check_at: r.last_health_check_at,
+            last_health_check_status: r.last_health_check_status,
+            last_health_check_reason: r.last_health_check_reason,
         };
         servers.push(assemble_mcp_server(pool, raw).await?);
     }
@@ -1575,6 +1646,7 @@ pub async fn update_system_mcp_server(
             timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
             run_in_sandbox,
+            last_health_check_at, last_health_check_status, last_health_check_reason,
             created_at, updated_at
         "#,
         id,
@@ -1636,6 +1708,9 @@ pub async fn update_system_mcp_server(
         run_in_sandbox: row.run_in_sandbox,
         created_at: row.created_at,
         updated_at: row.updated_at,
+        last_health_check_at: row.last_health_check_at,
+        last_health_check_status: row.last_health_check_status,
+        last_health_check_reason: row.last_health_check_reason,
     };
     assemble_mcp_server(pool, raw).await
 }
@@ -1699,6 +1774,7 @@ pub async fn get_system_servers_for_group(
                s.timeout_seconds,
                s.supports_sampling, s.usage_mode, s.max_concurrent_sessions,
                s.run_in_sandbox,
+               s.last_health_check_at, s.last_health_check_status, s.last_health_check_reason,
                s.created_at, s.updated_at
         FROM mcp_servers s
         INNER JOIN user_group_mcp_servers ugms ON s.id = ugms.mcp_server_id
@@ -1738,6 +1814,9 @@ pub async fn get_system_servers_for_group(
             run_in_sandbox: r.run_in_sandbox,
             created_at: r.created_at,
             updated_at: r.updated_at,
+            last_health_check_at: r.last_health_check_at,
+            last_health_check_status: r.last_health_check_status,
+            last_health_check_reason: r.last_health_check_reason,
         };
         servers.push(assemble_mcp_server(pool, raw).await?);
     }
@@ -1937,6 +2016,7 @@ pub async fn list_accessible_mcp_servers(
             s.timeout_seconds,
             s.supports_sampling, s.usage_mode, s.max_concurrent_sessions,
             s.run_in_sandbox,
+            s.last_health_check_at, s.last_health_check_status, s.last_health_check_reason,
             s.created_at, s.updated_at
         FROM mcp_servers s
         LEFT JOIN user_group_mcp_servers ugms ON s.id = ugms.mcp_server_id
@@ -1990,6 +2070,9 @@ pub async fn list_accessible_mcp_servers(
             run_in_sandbox: r.run_in_sandbox,
             created_at: r.created_at,
             updated_at: r.updated_at,
+            last_health_check_at: r.last_health_check_at,
+            last_health_check_status: r.last_health_check_status,
+            last_health_check_reason: r.last_health_check_reason,
         };
         servers.push(assemble_mcp_server(pool, raw).await?);
     }
