@@ -451,7 +451,51 @@ export function McpServerDrawer() {
       form.resetFields()
     } catch (error) {
       console.error('Failed to save MCP server:', error)
-      message.error('Failed to save MCP server')
+      // Surface the backend's actual message (e.g. the
+      // `MCP_ENABLE_FAILED_HEALTH_CHECK` probe failure reason)
+      // instead of a generic toast. Use 8s duration so the user has
+      // time to read what went wrong with their enable attempt.
+      const reason =
+        error instanceof Error && error.message
+          ? error.message
+          : 'Unknown error'
+      message.error({
+        content: `Failed to save MCP server: ${reason}`,
+        duration: 8,
+      })
+      // If the failure is the enable-time health check, the backend
+      // already persisted the OTHER fields and reverted enabled to
+      // false. Re-fetch the server so the drawer's Enabled toggle
+      // reflects the actual persisted state (not the user's
+      // optimistic ON). Also reload the parent list so the row's
+      // disabled badge updates.
+      if (
+        error instanceof Error &&
+        error.message &&
+        error.message.includes('MCP_ENABLE_FAILED_HEALTH_CHECK')
+      ) {
+        if (mode === 'edit' && editingServer) {
+          try {
+            const fresh = await Stores.McpServer.getMcpServer(editingServer.id)
+            form.setFieldValue('enabled', fresh.enabled)
+            Stores.McpServerDrawer.openMcpServerDrawer(fresh, 'edit')
+          } catch (e) {
+            console.warn('Failed to refresh server after health check:', e)
+          }
+        } else if (mode === 'edit-system' && editingServer) {
+          try {
+            const fresh = await Stores.SystemMcpServer.getSystemServerById(
+              editingServer.id,
+            )
+            if (fresh) {
+              form.setFieldValue('enabled', fresh.enabled)
+              Stores.McpServerDrawer.openMcpServerDrawer(fresh, 'edit-system')
+            }
+          } catch (e) {
+            console.warn('Failed to refresh system server after health check:', e)
+          }
+        }
+      }
     } finally {
       Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
     }
