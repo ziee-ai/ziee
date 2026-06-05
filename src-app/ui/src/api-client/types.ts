@@ -332,6 +332,7 @@ export interface CreateMcpServerFromHubRequest {
   enabled?: boolean
   hub_id: string
   name?: string
+  replace_existing?: boolean
 }
 
 export interface CreateMcpServerRequest {
@@ -785,6 +786,7 @@ export interface HubMCPServer {
   category?: string
   command?: string
   created_ids?: string[]
+  created_system_ids?: string[]
   display_name: string
   documentation_url?: string
   download_count?: number
@@ -887,6 +889,7 @@ export interface HubUpdateRow {
   hub_category: string
   hub_id: string
   installed_version?: string
+  is_system_mcp_install: boolean
   is_template_install: boolean
 }
 
@@ -2681,6 +2684,7 @@ export const ApiEndpoints = {
   'Hub.createAssistantTemplateFromHub': 'POST /api/hub/assistant-templates/create',
   'Hub.createMcpServerFromHub': 'POST /api/hub/mcp-servers/create',
   'Hub.createModelFromHub': 'POST /api/hub/models/download',
+  'Hub.createSystemMcpServerFromHub': 'POST /api/hub/mcp-servers/create-system',
   'Hub.getAssistants': 'GET /api/hub/assistants',
   'Hub.getAssistantsVersion': 'GET /api/hub/assistants/version',
   'Hub.getCatalog': 'GET /api/hub/index',
@@ -2923,6 +2927,7 @@ export type ApiEndpointParameters = {
   'Hub.createAssistantTemplateFromHub': CreateAssistantFromHubRequest
   'Hub.createMcpServerFromHub': CreateMcpServerFromHubRequest
   'Hub.createModelFromHub': CreateModelFromHubRequest
+  'Hub.createSystemMcpServerFromHub': CreateMcpServerFromHubRequest
   'Hub.getAssistants': { lang?: string }
   'Hub.getAssistantsVersion': void
   'Hub.getCatalog': void
@@ -3165,6 +3170,7 @@ export type ApiEndpointResponses = {
   'Hub.createAssistantTemplateFromHub': AssistantFromHubResponse
   'Hub.createMcpServerFromHub': McpServerFromHubResponse
   'Hub.createModelFromHub': ModelFromHubResponse
+  'Hub.createSystemMcpServerFromHub': McpServerFromHubResponse
   'Hub.getAssistants': HubAssistant[]
   'Hub.getAssistantsVersion': HubVersionResponse
   'Hub.getCatalog': Catalog

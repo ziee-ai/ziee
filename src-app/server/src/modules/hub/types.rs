@@ -82,8 +82,12 @@ pub struct CreateAssistantFromHubRequest {
     pub replace_existing: bool,
 }
 
-/// Request to create MCP server from hub catalog
-/// Note: Hub interface always creates user MCP servers, not system servers
+/// Request to create MCP server from hub catalog.
+///
+/// Used by BOTH `Hub.createMcpServerFromHub` (per-user install) and
+/// `Hub.createSystemMcpServerFromHub` (system-wide install). The
+/// scope is conveyed by endpoint identity, not by a request field —
+/// `RequirePermissions<(...)>` gates each path at the extractor.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CreateMcpServerFromHubRequest {
     /// Hub MCP server ID
@@ -100,6 +104,17 @@ pub struct CreateMcpServerFromHubRequest {
     /// Optional: Override enabled
     #[serde(default = "default_true")]
     pub enabled: bool,
+
+    /// System-only: when true, delete the existing system install
+    /// for this `hub_id` before creating the new one. Used by the
+    /// `/hub/updates` Re-install action to refresh an outdated
+    /// system MCP server; without this the duplicate-prevention
+    /// guard in `Hub.createSystemMcpServerFromHub` would 409.
+    /// Rejected with 400 on the user-scoped install path (per-user
+    /// installs aren't dedup'd). Mirrors `replace_existing` on
+    /// `CreateAssistantFromHubRequest`.
+    #[serde(default)]
+    pub replace_existing: bool,
 }
 
 /// Request to create LLM model from hub catalog (triggers download)
@@ -207,12 +222,21 @@ pub struct HubUpdateRow {
     pub entity_id: Uuid,
     pub installed_version: Option<String>,
     pub current_version: String,
-    /// True when the install was system-wide (`created_by IS NULL` —
-    /// currently only template assistants). The Updates UI uses this
-    /// to route the Re-install action to the template endpoint
-    /// instead of creating a user assistant from a template-origin
-    /// row.
+    /// True when the install was a system-wide ASSISTANT TEMPLATE
+    /// (`created_by IS NULL && entity_type = 'assistant'`). The
+    /// Updates UI uses this to route the Re-install action to the
+    /// template endpoint instead of creating a user assistant from
+    /// a template-origin row.
     pub is_template_install: bool,
+
+    /// True when the install was a system-wide MCP SERVER
+    /// (`created_by IS NULL && entity_type = 'mcp_server'`). The
+    /// Updates UI uses this to route the Re-install action through
+    /// `Hub.createSystemMcpServerFromHub` (with `replace_existing:
+    /// true`) instead of the user-scoped endpoint, which would
+    /// silently demote an outdated system server to a personal
+    /// one. Mirrors `is_template_install` for assistants.
+    pub is_system_mcp_install: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]

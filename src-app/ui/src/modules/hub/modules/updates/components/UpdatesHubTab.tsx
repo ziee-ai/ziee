@@ -11,7 +11,6 @@ import {
   message,
 } from 'antd'
 import { useNavigate } from 'react-router-dom'
-import { ApiClient } from '@/api-client'
 import { Stores } from '@/core/stores'
 
 const { Text } = Typography
@@ -30,21 +29,28 @@ export function UpdatesHubTab() {
   const navigate = useNavigate()
   const [busyId, setBusyId] = useState<string | null>(null)
 
-  // Re-install an assistant / MCP server from the current catalog. Both
-  // only need the hub_id (no provider/quant), so it's a one-click op.
-  // Models need a provider + quantization choice, so those route to the
-  // Models tab instead of installing inline.
+  // Re-install an assistant / MCP server from the current catalog.
+  // Both only need the hub_id (no provider/quant), so it's a one-click
+  // op. Models need a provider + quantization choice, so those route
+  // to the Models tab instead of installing inline.
   //
-  // For assistants: the install path branches on `is_template_install`
-  // — a template-origin row (created_by IS NULL) must re-install via
+  // For assistants: branches on `is_template_install` — a
+  // template-origin row (created_by IS NULL) must re-install via
   // `createAssistantTemplateFromHub`, otherwise the admin would
   // silently get a USER assistant owned by themselves and the stale
   // template would remain outdated.
+  //
+  // For MCP servers: same pattern — branches on
+  // `is_system_mcp_install`. A system-origin row must re-install via
+  // `createSystemMcpServerFromHub` (with `replace_existing: true`),
+  // otherwise the admin would silently get a personal MCP server and
+  // the stale system row would remain outdated.
   const reinstall = async (
     hubId: string,
     category: string,
     entityId: string,
     isTemplateInstall: boolean,
+    isSystemMcpInstall: boolean,
   ) => {
     setBusyId(entityId)
     try {
@@ -53,9 +59,7 @@ export function UpdatesHubTab() {
           // Route through the store so the displaced template's
           // `assistant_template.deleted` + the new template's
           // `assistant_template.created` events fire, keeping the
-          // TemplateAssistants store + hub cards in sync. Calling
-          // ApiClient directly here bypassed those events and left
-          // the admin templates list pointing at a 404 row.
+          // TemplateAssistants store + hub cards in sync.
           //
           // `replace_existing: true` instructs the template handler
           // to delete the outdated template first before creating
@@ -69,10 +73,20 @@ export function UpdatesHubTab() {
           await Stores.HubAssistants.createFromHub({ hub_id: hubId })
         }
       } else if (category === 'mcp_server') {
-        // No store seam exists for hub MCP server installs yet — the
-        // direct API call is the supported path (see hub MCP server
-        // tab; mirror this when one is added).
-        await ApiClient.Hub.createMcpServerFromHub({ hub_id: hubId })
+        if (isSystemMcpInstall) {
+          // Route through the store so displaced + fresh server
+          // events fire (mcp_server.deleted for the old uuid,
+          // mcp_server.created for the new), keeping the
+          // SystemMcpServers store + hub cards in sync. Without
+          // the store seam, the admin MCP servers list would
+          // keep the OLD (now-deleted) row.
+          await Stores.HubMcpServers.createSystemFromHub({
+            hub_id: hubId,
+            replace_existing: true,
+          })
+        } else {
+          await Stores.HubMcpServers.createFromHub({ hub_id: hubId })
+        }
       }
       message.success(`Re-installed ${hubId} from v${catalogVersion ?? '?'}`)
       await Stores.HubUpdates.loadUpdates()
@@ -142,6 +156,10 @@ export function UpdatesHubTab() {
                 <Tag key="scope" color="purple">
                   template
                 </Tag>
+              ) : row.is_system_mcp_install ? (
+                <Tag key="scope" color="purple">
+                  system
+                </Tag>
               ) : null,
               row.hub_category === 'model' ? (
                 <Tooltip
@@ -163,7 +181,9 @@ export function UpdatesHubTab() {
                   description={
                     row.is_template_install
                       ? `Re-install template "${row.hub_id}" from catalog v${row.current_version}? The existing template will be replaced once the new one is created.`
-                      : `Create a fresh "${row.hub_id}" from catalog v${row.current_version}?`
+                      : row.is_system_mcp_install
+                        ? `Re-install system MCP server "${row.hub_id}" from catalog v${row.current_version}? The existing system server will be replaced once the new one is created.`
+                        : `Create a fresh "${row.hub_id}" from catalog v${row.current_version}?`
                   }
                   okText="Re-install"
                   cancelText="Cancel"
@@ -173,6 +193,7 @@ export function UpdatesHubTab() {
                       row.hub_category,
                       row.entity_id,
                       row.is_template_install,
+                      row.is_system_mcp_install,
                     )
                   }
                 >

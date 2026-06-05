@@ -8,6 +8,7 @@ use crate::{
     modules::{
         assistant::{events::AssistantEvent, permissions::AssistantsTemplateCreate},
         llm_model::{ModelParameters, permissions::LlmModelsCreate},
+        mcp::McpServersAdminCreate,
         permissions::{RequirePermissions, with_permission},
     },
 };
@@ -111,11 +112,19 @@ pub async fn get_hub_mcp_servers(
 
     // Get created MCP server IDs for current user
     let created_map = Repos.hub.get_created_mcp_server_ids(auth.user.id).await?;
+    // Get system-wide install IDs (used to disable the "Install as
+    // System" button when a system install already exists, so admins
+    // don't accidentally create duplicates).
+    let system_map = Repos.hub.get_system_mcp_install_ids().await?;
 
-    // Merge created_ids into servers
+    // Merge created_ids + created_system_ids into servers
     let mut mcp_servers = hub_data.mcp_servers;
     for server in &mut mcp_servers {
         server.created_ids = created_map.get(&server.id).cloned().unwrap_or_default();
+        server.created_system_ids = system_map
+            .get(&server.id)
+            .cloned()
+            .unwrap_or_default();
     }
 
     Ok((StatusCode::OK, Json(mcp_servers)))
@@ -539,17 +548,33 @@ pub async fn create_assistant_template_from_hub(
 // MCP SERVER FROM HUB
 // =====================================================
 
-/// Create MCP server from hub catalog
-#[debug_handler]
-pub async fn create_mcp_server_from_hub(
-    auth: RequirePermissions<(HubMcpServersCreate,)>,
-    Extension(event_bus): Extension<Arc<EventBus>>,
-    Json(request): Json<CreateMcpServerFromHubRequest>,
-) -> ApiResult<Json<McpServerFromHubResponse>> {
-    // 1. Load hub MCP server
+/// Output of `build_mcp_server_create_from_hub` — bundles the typed
+/// create-request the caller passes to `Repos.mcp.create_*_server`
+/// with the catalog version that the same lookup resolved against.
+/// Same TOCTOU rationale as `HubAssistantCreatePlan`: capture once,
+/// pass through to `track_hub_entity` so a concurrent
+/// `/hub/activate` swap between lookup and insert can't drift the
+/// `hub_entities.hub_version` stamp.
+struct HubMcpServerCreatePlan {
+    create_request: crate::modules::mcp::CreateMcpServerRequest,
+    hub_version: Option<String>,
+}
+
+/// Shared lookup + validation for both hub MCP server install paths
+/// (user / system). `is_system` is informational only — the permission
+/// gate is at the extractor; the field doesn't ride the request type.
+/// Mirrors `build_assistant_create_from_hub`.
+async fn build_mcp_server_create_from_hub(
+    request: &CreateMcpServerFromHubRequest,
+    _is_system: bool,
+) -> Result<HubMcpServerCreatePlan, AppError> {
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
     let hub_data = hub_manager.load_hub_data_with_locale("en").await?;
+    // Capture the catalog version up front so the same version stamps
+    // the `hub_entities` row downstream — guards against a concurrent
+    // /hub/activate swap between this lookup and the tracking insert.
+    let hub_version = hub_manager.current_version().await.ok();
 
     let hub_server = hub_data
         .mcp_servers
@@ -557,12 +582,13 @@ pub async fn create_mcp_server_from_hub(
         .find(|s| s.id == request.hub_id)
         .ok_or_else(|| AppError::not_found(&format!("Hub MCP server '{}'", request.hub_id)))?;
 
-    // 1b. Reject incompatible items (min_ziee_version > server).
+    // Defense-in-depth: reject incompatible items (min_ziee_version >
+    // server). The UI hides these in the catalog; this is the
+    // backstop for a direct API call.
     hub_manager
         .ensure_installable(HubCategory::McpServer, &request.hub_id)
         .await?;
 
-    // 2. Determine transport type
     let transport_type = hub_server
         .transport_type
         .as_ref()
@@ -574,11 +600,11 @@ pub async fn create_mcp_server_from_hub(
         })
         .unwrap_or(crate::modules::mcp::TransportType::Stdio);
 
-    // 3. Build create MCP server request (WITHOUT source field)
     let create_request = crate::modules::mcp::CreateMcpServerRequest {
-        name: request.name.unwrap_or(hub_server.name.clone()),
+        name: request.name.clone().unwrap_or(hub_server.name.clone()),
         display_name: request
             .display_name
+            .clone()
             .unwrap_or(hub_server.display_name.clone()),
         description: hub_server.description.clone(),
         enabled: Some(request.enabled),
@@ -598,20 +624,58 @@ pub async fn create_mcp_server_from_hub(
         supports_sampling: hub_server.supports_sampling,
         usage_mode: None,
         max_concurrent_sessions: None,
-        // Hub installs are user-scoped, and the
-        // sandbox option only honors admin/system servers — always
-        // off for hub-installed servers.
+        // Hub installs don't surface the sandbox option in the UI;
+        // the option only honors admin/system servers when set
+        // explicitly via the native admin form.
         run_in_sandbox: None,
     };
 
-    // 4. Create user MCP server (hub interface only creates user servers, not system servers)
+    // Validation MUST run before any DB write so the `replace_existing`
+    // re-install path doesn't delete the prior system MCP server and
+    // then fail on transport validation, leaving the admin with no
+    // system server for this hub_id. The native create path runs this
+    // inside `create_*_server`; calling explicitly here hoists it
+    // above the delete.
+    crate::modules::mcp::validate_transport_config(
+        &create_request.transport_type,
+        &create_request,
+    )?;
+
+    Ok(HubMcpServerCreatePlan {
+        create_request,
+        hub_version,
+    })
+}
+
+/// Create a USER-scoped MCP server from the hub catalog.
+#[debug_handler]
+pub async fn create_mcp_server_from_hub(
+    auth: RequirePermissions<(HubMcpServersCreate,)>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
+    Json(request): Json<CreateMcpServerFromHubRequest>,
+) -> ApiResult<Json<McpServerFromHubResponse>> {
+    // `replace_existing` is system-only — reject explicitly so
+    // clients don't silently pass it expecting an idempotent
+    // re-install on the user-scoped path (per-user installs aren't
+    // dedup'd). Mirrors the user-assistant handler.
+    if request.replace_existing {
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "replace_existing is only valid on the system MCP install endpoint",
+        )
+        .into());
+    }
+
+    let plan = build_mcp_server_create_from_hub(&request, false).await?;
+
     let server = Repos
         .mcp
-        .create_user_server(auth.user.id, create_request)
+        .create_user_server(auth.user.id, plan.create_request)
         .await?;
 
-    // 5. Track in hub_entities (stamp the installed catalog version).
-    let hub_version = hub_manager.current_version().await.ok();
+    // Track in hub_entities, stamping the catalog version captured by
+    // the lookup so /hub/updates can detect when this row falls
+    // behind a future catalog activation.
     let hub_tracking = Repos
         .hub
         .track_hub_entity(
@@ -620,16 +684,134 @@ pub async fn create_mcp_server_from_hub(
             &request.hub_id,
             HubCategory::McpServer,
             Some(auth.user.id),
-            hub_version.as_deref(),
+            plan.hub_version.as_deref(),
         )
         .await?;
 
-    // 6. Emit event
     event_bus.emit_async(
-        HubEvent::mcp_server_created_from_hub(server.id, request.hub_id.clone()).into(),
+        HubEvent::mcp_server_created_from_hub(
+            server.id,
+            request.hub_id.clone(),
+            false,
+        )
+        .into(),
     );
 
-    // 7. Return combined response
+    Ok((
+        StatusCode::CREATED,
+        Json(McpServerFromHubResponse {
+            server,
+            hub_tracking,
+        }),
+    ))
+}
+
+/// Create a SYSTEM-WIDE MCP server from the hub catalog.
+/// `is_system=true` + `user_id=NULL` per the mcp_servers table CHECK
+/// constraint (migration 7: `system_server_must_have_no_owner`).
+/// Permission gate is the intersection of "can install from the hub"
+/// + "can author system MCP servers" — admins typically have both.
+#[debug_handler]
+pub async fn create_system_mcp_server_from_hub(
+    _auth: RequirePermissions<(HubMcpServersCreate, McpServersAdminCreate)>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
+    Json(request): Json<CreateMcpServerFromHubRequest>,
+) -> ApiResult<Json<McpServerFromHubResponse>> {
+    // Idempotency guard: look up the existing system install (if any)
+    // but DON'T delete yet. The delete is deferred until AFTER the
+    // catalog lookup + validation succeeds so a failing re-install
+    // (e.g. catalog raised min_ziee_version, transport config is now
+    // invalid) doesn't leave the admin with the prior system server
+    // wiped and no replacement.
+    let existing_id = Repos.hub.find_system_mcp_install(&request.hub_id).await?;
+    if existing_id.is_some() && !request.replace_existing {
+        return Err(AppError::conflict("Hub MCP system server").into());
+    }
+
+    // Carry forward the prior system server's `enabled` on the
+    // `replace_existing` re-install path so a previously-disabled
+    // server doesn't silently get re-enabled by the refresh.
+    // (MCP has no `is_default` analog — there's no clone-on-signup
+    // hook for MCP servers, so carry-forward is `enabled` only.)
+    let mut plan = build_mcp_server_create_from_hub(&request, true).await?;
+    if let Some(existing_id) = existing_id {
+        if let Some(prior) = Repos.mcp.get_any_server(existing_id).await? {
+            plan.create_request.enabled = Some(prior.enabled);
+        }
+    }
+
+    // Validation passed — now delete the prior system server (if any)
+    // and emit `McpServerEvent::SystemServerDeleted` so the hub
+    // module's `CleanupHubEntitiesHandler` removes the orphan
+    // `hub_entities` row. There is NO FK cascade between
+    // `hub_entities.entity_id` and `mcp_servers.id`; cleanup is
+    // event-driven.
+    if let Some(existing_id) = existing_id {
+        // Tolerate "already deleted" — racy with the admin MCP page
+        // deleting the same row in another tab. Any other DB error
+        // still surfaces.
+        match Repos.mcp.delete_system_server(existing_id).await {
+            Ok(()) => {
+                event_bus
+                    .emit(crate::modules::mcp::events::McpServerEvent::system_server_deleted(
+                        existing_id,
+                    ))
+                    .await;
+            }
+            Err(e) if e.status_code() == 404 => (),
+            Err(e) => return Err(e.into()),
+        }
+    }
+
+    let server = Repos.mcp.create_system_server(plan.create_request).await?;
+
+    // Track with `created_by: None` so /hub/updates surfaces this as
+    // a system-wide install (the `is_system_mcp_install` flag on the
+    // outdated row then routes the Re-install UI through this
+    // endpoint).
+    //
+    // Partial unique index `uniq_hub_system_mcp_install` (migration
+    // 80) is the last-line backstop against the TOCTOU race where
+    // two admins both passed the `find_system_mcp_install` check
+    // above concurrently. If the insert hits that index, we delete
+    // the orphan mcp_servers row we just created (rolling back the
+    // partial state) and return 409 — matches the fast-path error
+    // code so clients see a consistent contract regardless of which
+    // serialization layer caught the dup.
+    let hub_tracking = match Repos
+        .hub
+        .track_hub_entity(
+            HubEntityType::McpServer,
+            server.id,
+            &request.hub_id,
+            HubCategory::McpServer,
+            None,
+            plan.hub_version.as_deref(),
+        )
+        .await
+    {
+        Ok(t) => t,
+        Err(e) if e.status_code() == 409 => {
+            let _ = Repos.mcp.delete_system_server(server.id).await;
+            event_bus
+                .emit(crate::modules::mcp::events::McpServerEvent::system_server_deleted(
+                    server.id,
+                ))
+                .await;
+            return Err(AppError::conflict("Hub MCP system server").into());
+        }
+        Err(e) => return Err(e.into()),
+    };
+
+    event_bus.emit_async(
+        HubEvent::mcp_server_created_from_hub(
+            server.id,
+            request.hub_id.clone(),
+            true,
+        )
+        .into(),
+    );
+
     Ok((
         StatusCode::CREATED,
         Json(McpServerFromHubResponse {
@@ -961,8 +1143,44 @@ pub fn create_mcp_server_from_hub_docs(op: TransformOperation) -> TransformOpera
         .tag("Hub")
         .summary("Create MCP server from hub catalog")
         .response::<201, Json<McpServerFromHubResponse>>()
+        .response_with::<400, (), _>(|res| {
+            res.description(
+                "Validation error (invalid transport config, or \
+                 `replace_existing` passed on the user-scoped endpoint)",
+            )
+        })
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("Hub MCP server not found"))
+        .response_with::<422, (), _>(|res| {
+            res.description("Hub item incompatible with this server version")
+        })
+}
+
+pub fn create_system_mcp_server_from_hub_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(HubMcpServersCreate, McpServersAdminCreate)>(op)
+        .id("Hub.createSystemMcpServerFromHub")
+        .tag("Hub")
+        .tag("MCP Servers - System")
+        .summary("Create SYSTEM-WIDE MCP server from hub catalog")
+        .description(
+            "Installs a hub MCP server entry as a system-wide server \
+             (`is_system=true, user_id=NULL`) rather than a personal \
+             user MCP server. Requires both `hub::mcp_servers::create` \
+             and `mcp_servers_admin::create` permissions. Returns 409 \
+             when a system install for this `hub_id` already exists, \
+             unless `replace_existing: true` is passed to overwrite \
+             it. On `replace_existing` the prior server's `enabled` \
+             flag is carried forward.",
+        )
+        .response::<201, Json<McpServerFromHubResponse>>()
+        .response_with::<400, (), _>(|res| {
+            res.description("Validation error (invalid transport config)")
+        })
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("Hub MCP server not found"))
+        .response_with::<409, (), _>(|res| {
+            res.description("System MCP install already exists for this hub_id")
+        })
         .response_with::<422, (), _>(|res| {
             res.description("Hub item incompatible with this server version")
         })
@@ -1167,6 +1385,7 @@ pub async fn get_hub_updates(
                     installed_version: r.installed_version,
                     current_version: catalog.hub_version.clone(),
                     is_template_install: r.is_template_install,
+                    is_system_mcp_install: r.is_system_mcp_install,
                 })
                 .collect(),
         }),

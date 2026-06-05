@@ -1459,7 +1459,16 @@ pub async fn list_accessible_mcp_servers(
 // Validation Helpers
 // =====================================================
 
-fn validate_transport_config(
+/// Validates the transport-specific required fields on a
+/// `CreateMcpServerRequest` (stdio→command; http/sse→url+url-format).
+///
+/// Exposed `pub(crate)` so the hub-install path can call this BEFORE
+/// touching the database — without it, the `replace_existing`
+/// re-install path would delete the prior system MCP server, then
+/// fail on `create_system_server`'s own validation, leaving the
+/// admin with NO system server for that hub_id. The native create
+/// flow runs this internally so callers there don't need to.
+pub(crate) fn validate_transport_config(
     transport_type: &TransportType,
     request: &CreateMcpServerRequest,
 ) -> Result<(), AppError> {

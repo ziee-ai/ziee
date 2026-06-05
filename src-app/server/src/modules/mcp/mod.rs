@@ -17,6 +17,11 @@ mod utils;
 pub use models::*;
 pub use repository::*;
 pub use types::*;
+// Re-exports for cross-module use (hub install paths). Named so the
+// public surface stays explicit — bumping the whole `repository` /
+// `permissions` modules to `pub mod` would leak internals.
+pub use permissions::McpServersAdminCreate;
+pub(crate) use repository::validate_transport_config;
 
 use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleContext, ModuleEntry};
 use aide::axum::ApiRouter;

@@ -5,6 +5,7 @@ import {
   GlobalOutlined,
   GithubOutlined,
   EyeOutlined,
+  CopyOutlined,
 } from '@ant-design/icons'
 import { Permissions, type HubMCPServer } from '@/api-client/types'
 import { useState } from 'react'
@@ -24,10 +25,18 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
   const navigate = useNavigate()
   const [showDetails, setShowDetails] = useState(false)
   const [installing, setInstalling] = useState(false)
+  const [installingSystem, setInstallingSystem] = useState(false)
   const canInstall = usePermission(Permissions.HubMcpServersCreate)
+  const canInstallSystem = usePermission(Permissions.McpServersAdminCreate)
 
   // Check if server was already created from this hub server
   const isAlreadyInstalled = server.created_ids && server.created_ids.length > 0
+  // Check if a SYSTEM-WIDE server already exists for this hub_id
+  // (is_system=true, user_id=NULL). Backend rejects duplicates with
+  // 409; the UI uses this to disable the button + show a clearer
+  // "System Installed" label.
+  const isAlreadyInstalledAsSystem =
+    server.created_system_ids && server.created_system_ids.length > 0
 
   const handleInstall = async () => {
     try {
@@ -52,6 +61,37 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
       )
     } finally {
       setInstalling(false)
+    }
+  }
+
+  const handleInstallAsSystem = async () => {
+    try {
+      setInstallingSystem(true)
+      // Install as a SYSTEM-WIDE MCP server (is_system=true, no
+      // owner — enforced by the `system_server_must_have_no_owner`
+      // CHECK constraint in migration 7). Visible to every user in
+      // the system MCP server list; admins manage via the system
+      // MCP admin page.
+      await Stores.HubMcpServers.createSystemFromHub({
+        hub_id: server.id,
+        name: server.name,
+        display_name: server.display_name,
+        enabled: true,
+      })
+
+      message.success(
+        `System MCP server "${server.display_name}" installed.`,
+      )
+
+      // Navigate to the system MCP admin page so the admin can see it.
+      navigate('/settings/mcp-admin')
+    } catch (error: any) {
+      console.error('Failed to install system MCP server:', error)
+      message.error(
+        `Failed to install as system: ${error.message || 'Unknown error'}`,
+      )
+    } finally {
+      setInstallingSystem(false)
     }
   }
 
@@ -92,6 +132,9 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                   )}
                   {installing && <Tag color="blue">Installing...</Tag>}
                   {isAlreadyInstalled && <Tag color="green">Installed</Tag>}
+                  {isAlreadyInstalledAsSystem && (
+                    <Tag color="purple">System installed</Tag>
+                  )}
                 </Flex>
               </div>
               <div className="flex gap-1 items-center justify-end">
@@ -131,12 +174,46 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                       e.stopPropagation()
                       handleInstall()
                     }}
-                    disabled={installing}
+                    disabled={installing || installingSystem}
                     loading={installing}
+                    data-testid="hub-mcp-install-btn"
                   >
                     Install
                   </Button>
                 ) : null}
+                {/* "Install as System" — admin power-user action.
+                    Shown when the user holds BOTH permissions
+                    (`hub::mcp_servers::create` AND
+                    `mcp_servers_admin::create`) regardless of
+                    whether the per-user "Installed" badge is set
+                    (a personal install doesn't preclude also
+                    installing as system). Default-styled +
+                    distinct `CopyOutlined` icon so it's visually
+                    separable from the primary "Install" action.
+                    Disabled when a system install already exists
+                    — backend rejects duplicates with 409, but
+                    disabling here gives the admin clear feedback
+                    without a round-trip. */}
+                {canInstall && canInstallSystem && (
+                  <Button
+                    icon={<CopyOutlined />}
+                    onClick={e => {
+                      e.stopPropagation()
+                      handleInstallAsSystem()
+                    }}
+                    loading={installingSystem}
+                    disabled={
+                      installing ||
+                      installingSystem ||
+                      isAlreadyInstalledAsSystem
+                    }
+                    data-testid="hub-mcp-install-as-system-btn"
+                  >
+                    {isAlreadyInstalledAsSystem
+                      ? 'System Installed'
+                      : 'Install as System'}
+                  </Button>
+                )}
               </div>
             </div>
 

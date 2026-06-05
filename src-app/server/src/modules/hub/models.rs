@@ -156,6 +156,15 @@ pub struct HubMCPServer {
     /// Array of entity IDs created by current user from this hub server
     #[serde(default)]
     pub created_ids: Vec<Uuid>,
+
+    /// Array of system-wide MCP server IDs installed from this hub
+    /// server (created_by IS NULL, is_system = true). Usually 0-or-1
+    /// entries — the backend rejects duplicate system installs with
+    /// 409. Used by the hub card to disable the "Install as System"
+    /// button when a system install already exists. Mirrors
+    /// `HubAssistant.created_template_ids`.
+    #[serde(default)]
+    pub created_system_ids: Vec<Uuid>,
 }
 
 // =====================================================

@@ -77,6 +77,13 @@ fn minimal_manifest(category: &str, id: &str) -> String {
         "assistant" => format!(
             "id: {id}\nname: {id}\ndisplay_name: {id}\nparameters: {{}}\n"
         ),
+        // MCP servers need a transport-specific required field
+        // (`command` for stdio) or `validate_transport_config` rejects
+        // the install with 400. Default to a no-op `echo` so tests
+        // that install MCP servers via the mock catalog succeed.
+        "mcp-server" => format!(
+            "id: {id}\nname: {id}\ndisplay_name: {id}\ntransport_type: stdio\ncommand: echo\nargs: [\"{id}\"]\n"
+        ),
         _ => format!("id: {id}\nname: {id}\ndisplay_name: {id}\n"),
     }
 }

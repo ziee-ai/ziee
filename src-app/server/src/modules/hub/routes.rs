@@ -63,6 +63,13 @@ pub fn hub_router() -> ApiRouter {
             post_with(create_mcp_server_from_hub, create_mcp_server_from_hub_docs),
         )
         .api_route(
+            "/hub/mcp-servers/create-system",
+            post_with(
+                create_system_mcp_server_from_hub,
+                create_system_mcp_server_from_hub_docs,
+            ),
+        )
+        .api_route(
             "/hub/models/download",
             post_with(create_model_from_hub, create_model_from_hub_docs),
         )
