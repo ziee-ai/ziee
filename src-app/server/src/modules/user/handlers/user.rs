@@ -285,6 +285,15 @@ pub async fn update_user(
         None,
         origin.0,
     );
+    // Also notify the EDITED user (Owner-scoped) so THEIR other devices
+    // re-bootstrap /auth/me — an admin changed their profile / active state.
+    sync_publish(
+        SyncEntity::Profile,
+        SyncAction::Update,
+        updated_user.id,
+        Some(updated_user.id),
+        origin.0,
+    );
 
     Ok((StatusCode::OK, Json(updated_user)))
 }

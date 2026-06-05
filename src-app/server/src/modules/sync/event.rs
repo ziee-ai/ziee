@@ -28,6 +28,10 @@ pub enum SyncEntity {
     McpServer,
     Memory,
     MemorySettings,
+    /// A user's own profile (display fields / active state). Emitted to the
+    /// affected user — e.g. when an admin edits their account — so their
+    /// other devices re-bootstrap `/auth/me`.
+    Profile,
     /// A user's saved LLM-provider API key (`id` is the provider id; only
     /// masked state is ever exposed, and only via refetch).
     ApiKey,
@@ -137,6 +141,7 @@ fn audience_kind(entity: SyncEntity) -> AudienceKind {
         | SyncEntity::McpServer
         | SyncEntity::Memory
         | SyncEntity::MemorySettings
+        | SyncEntity::Profile
         | SyncEntity::ApiKey => AudienceKind::Owner,
 
         SyncEntity::LlmProvider => AudienceKind::Permission("llm_providers::read"),
@@ -146,9 +151,10 @@ fn audience_kind(entity: SyncEntity) -> AudienceKind {
         }
         SyncEntity::Group => AudienceKind::Permission("groups::read"),
         SyncEntity::User => AudienceKind::Permission("users::read"),
-        SyncEntity::AssistantTemplate => {
-            AudienceKind::Permission("assistant_templates::read")
-        }
+        // Templates are uniform + non-secret — notify every authenticated
+        // connection (matches the plan). The refetch is still authorized, so a
+        // user who can't read templates just no-ops on the 403.
+        SyncEntity::AssistantTemplate => AudienceKind::Everyone,
         SyncEntity::McpServerSystem => {
             AudienceKind::Permission("mcp_servers_admin::read")
         }
@@ -214,6 +220,7 @@ mod tests {
             SyncEntity::McpServer,
             SyncEntity::Memory,
             SyncEntity::MemorySettings,
+            SyncEntity::Profile,
             SyncEntity::ApiKey,
             SyncEntity::Session,
         ] {
@@ -231,7 +238,6 @@ mod tests {
             (SyncEntity::LlmModel, "llm_models::read"),
             (SyncEntity::Group, "groups::read"),
             (SyncEntity::User, "users::read"),
-            (SyncEntity::AssistantTemplate, "assistant_templates::read"),
             (SyncEntity::McpServerSystem, "mcp_servers_admin::read"),
             (SyncEntity::LlmRepository, "llm_repositories::read"),
             (SyncEntity::RuntimeVersion, "llm_local_runtime::read"),
@@ -248,6 +254,14 @@ mod tests {
                 other => panic!("{e:?} expected Permission, got {other:?}"),
             }
         }
+    }
+
+    #[test]
+    fn assistant_templates_route_to_everyone() {
+        assert!(matches!(
+            audience_kind(SyncEntity::AssistantTemplate),
+            AudienceKind::Everyone
+        ));
     }
 
     #[test]

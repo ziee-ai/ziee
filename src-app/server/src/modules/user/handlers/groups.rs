@@ -215,6 +215,22 @@ pub async fn update_group(
         None,
         origin.0,
     );
+    // Editing a group's permissions changes the effective permissions of
+    // EVERY member, so fan a permissions-changed signal out to each (Owner-
+    // scoped) — their devices re-bootstrap /auth/me immediately rather than
+    // waiting up to 60s for the per-connection re-check. Best-effort: a query
+    // failure just falls back to that re-check.
+    if let Ok(member_ids) = Repos.group.get_member_ids(group.id).await {
+        for member_id in member_ids {
+            sync_publish(
+                SyncEntity::Session,
+                SyncAction::Update,
+                member_id,
+                Some(member_id),
+                origin.0,
+            );
+        }
+    }
 
     Ok((StatusCode::OK, Json(group)))
 }

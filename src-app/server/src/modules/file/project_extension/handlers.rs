@@ -24,6 +24,7 @@ use crate::modules::file::project_extension::models::{
 use crate::modules::file::project_extension::repository::PROJECT_MAX_FILES;
 use crate::modules::permissions::{extractors::RequirePermissions, with_permission};
 use crate::modules::project::permissions::{ProjectsEdit, ProjectsRead};
+use crate::modules::sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
 
 #[debug_handler]
 pub async fn list_project_files(
@@ -53,6 +54,7 @@ pub async fn attach_file(
     auth: RequirePermissions<(ProjectsEdit,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
+    origin: SyncOrigin,
     Json(request): Json<AttachFileRequest>,
 ) -> ApiResult<()> {
     // Project must exist and be owned by the user.
@@ -93,6 +95,14 @@ pub async fn attach_file(
             file.id,
             auth.user.id,
         ));
+        // The project's file set changed → refresh the owner's other devices.
+        sync_publish(
+            SyncEntity::Project,
+            SyncAction::Update,
+            project.id,
+            Some(auth.user.id),
+            origin.0,
+        );
     }
     Ok((StatusCode::NO_CONTENT, ()))
 }
@@ -127,6 +137,7 @@ pub async fn upload_and_attach_file(
     auth: RequirePermissions<(ProjectsEdit, FilesUpload)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
+    origin: SyncOrigin,
     multipart: Multipart,
 ) -> ApiResult<Json<FileEntity>> {
     // 1. Verify project ownership.
@@ -172,6 +183,13 @@ pub async fn upload_and_attach_file(
             file.id,
             auth.user.id,
         ));
+        sync_publish(
+            SyncEntity::Project,
+            SyncAction::Update,
+            project.id,
+            Some(auth.user.id),
+            origin.0,
+        );
     }
 
     Ok((StatusCode::CREATED, Json(file)))
@@ -292,6 +310,7 @@ pub async fn detach_file(
     auth: RequirePermissions<(ProjectsEdit,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path((id, file_id)): Path<(Uuid, Uuid)>,
+    origin: SyncOrigin,
 ) -> ApiResult<()> {
     let project = Repos
         .project
@@ -308,6 +327,13 @@ pub async fn detach_file(
         file_id,
         auth.user.id,
     ));
+    sync_publish(
+        SyncEntity::Project,
+        SyncAction::Update,
+        project.id,
+        Some(auth.user.id),
+        origin.0,
+    );
     Ok((StatusCode::NO_CONTENT, ()))
 }
 

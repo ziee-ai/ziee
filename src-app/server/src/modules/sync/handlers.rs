@@ -17,7 +17,9 @@ use uuid::Uuid;
 use crate::common::ApiResult;
 use crate::core::Repos;
 use crate::modules::auth::jwt::JwtService;
-use crate::modules::permissions::{extractors::RequirePermissions, with_permission};
+use crate::modules::permissions::{
+    checker::check_permission_union, extractors::RequirePermissions, with_permission,
+};
 use crate::modules::user::permissions::ProfileRead;
 
 use super::event::{SyncConnectedData, SyncSseEvent};
@@ -99,9 +101,10 @@ pub async fn subscribe_sync(
                 }
                 _ = recheck.tick() => {
                     // Re-resolve is_active + permissions. Tear the stream
-                    // down if the account was deactivated/removed;
-                    // otherwise refresh the snapshot used to route
-                    // Permission-audience events.
+                    // down if the account was deactivated/removed OR lost the
+                    // baseline subscribe permission; otherwise refresh the
+                    // snapshot used to route Permission-audience events (so a
+                    // user who loses an admin perm stops receiving its events).
                     match Repos.user.get_by_id(user_id).await {
                         Ok(Some(u)) if u.is_active => {
                             let g = if u.is_admin {
@@ -109,6 +112,12 @@ pub async fn subscribe_sync(
                             } else {
                                 Repos.user.get_user_groups(user_id).await.unwrap_or_default()
                             };
+                            // Baseline gate: a user who no longer holds
+                            // profile::read is no longer entitled to the
+                            // stream (matches the subscribe-time gate).
+                            if !u.is_admin && !check_permission_union(&u, &g, "profile::read") {
+                                break;
+                            }
                             registry().refresh(conn_id, u, g);
                         }
                         _ => break,

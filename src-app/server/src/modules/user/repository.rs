@@ -538,6 +538,19 @@ impl GroupRepository {
         Ok(())
     }
 
+    /// Get just the user ids of a group's members (unpaginated). Used by
+    /// realtime sync to fan a `session/permissions_changed` signal out to
+    /// every member when the group's permissions are edited.
+    pub async fn get_member_ids(&self, group_id: Uuid) -> Result<Vec<Uuid>, AppError> {
+        sqlx::query_scalar!(
+            "SELECT user_id FROM user_groups WHERE group_id = $1",
+            group_id
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::database_error)
+    }
+
     /// Get members of a group with pagination
     pub async fn get_members(
         &self,

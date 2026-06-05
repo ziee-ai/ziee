@@ -40,5 +40,8 @@ declare module '@/core/events' {
     'sync:memory_admin_settings': SyncEntityEvent<'memory_admin_settings'>
     'sync:code_sandbox_settings': SyncEntityEvent<'code_sandbox_settings'>
     'sync:session': SyncEntityEvent<'session'>
+    'sync:profile': SyncEntityEvent<'profile'>
+    'sync:hub_settings': SyncEntityEvent<'hub_settings'>
+    'sync:user_mcp_server': SyncEntityEvent<'user_mcp_server'>
   }
 }

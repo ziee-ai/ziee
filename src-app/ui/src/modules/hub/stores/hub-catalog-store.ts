@@ -22,7 +22,7 @@ import { useHubMcpServersStore } from '@/modules/hub/modules/mcp/stores/hub-mcp-
  * version. The per-category endpoints serve from the rotated `current/`
  * dir, so a reload picks up the switch.
  */
-async function reloadAllTabs(): Promise<void> {
+export async function reloadAllTabs(): Promise<void> {
   await Promise.allSettled([
     useHubModelsStore.getState().loadModels(true),
     useHubAssistantsStore.getState().loadAssistants(true),

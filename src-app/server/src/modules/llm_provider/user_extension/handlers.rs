@@ -30,6 +30,7 @@ use crate::modules::llm_provider::types::{
     AssignProviderToGroupRequest, GroupProvidersResponse, UpdateGroupProvidersRequest,
 };
 use crate::modules::permissions::{RequirePermissions, with_permission};
+use crate::modules::sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
 use crate::modules::user::models::Group;
 
 /// Get all groups assigned to a provider (requires llm_providers::read permission)
@@ -67,6 +68,7 @@ pub async fn assign_provider_to_group(
     _auth: RequirePermissions<(LlmProvidersAssignGroups,)>,
     Path(provider_id): Path<Uuid>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Json(request): Json<AssignProviderToGroupRequest>,
 ) -> ApiResult<StatusCode> {
     Repos
@@ -95,6 +97,12 @@ pub async fn assign_provider_to_group(
     // Emit event
     event_bus.emit_async(LlmProviderEvent::group_assignment_changed(provider_id, group_ids).into());
 
+    // A provider's group visibility changed → notify both audiences: admins
+    // (provider table) and every user (their accessible provider set may have
+    // changed — each refetches its own group-scoped view).
+    sync_publish(SyncEntity::LlmProvider, SyncAction::Update, provider_id, None, origin.0);
+    sync_publish(SyncEntity::UserLlmProvider, SyncAction::Update, provider_id, None, origin.0);
+
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
 
@@ -117,6 +125,7 @@ pub async fn remove_provider_from_group(
     _auth: RequirePermissions<(LlmProvidersAssignGroups,)>,
     Path((provider_id, group_id)): Path<(Uuid, Uuid)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
 ) -> ApiResult<StatusCode> {
     let removed = Repos
         .user_group_llm_provider
@@ -145,6 +154,9 @@ pub async fn remove_provider_from_group(
         // Emit event
         event_bus
             .emit_async(LlmProviderEvent::group_assignment_changed(provider_id, group_ids).into());
+
+        sync_publish(SyncEntity::LlmProvider, SyncAction::Update, provider_id, None, origin.0);
+        sync_publish(SyncEntity::UserLlmProvider, SyncAction::Update, provider_id, None, origin.0);
 
         Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
     } else {
@@ -206,6 +218,7 @@ pub async fn update_group_providers(
     _auth: RequirePermissions<(LlmProvidersAssignGroups,)>,
     Path(group_id): Path<Uuid>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Json(request): Json<UpdateGroupProvidersRequest>,
 ) -> ApiResult<Json<GroupProvidersResponse>> {
     use std::collections::HashSet;
@@ -277,6 +290,8 @@ pub async fn update_group_providers(
         let group_ids: Vec<Uuid> = groups.iter().map(|g| g.id).collect();
         event_bus
             .emit_async(LlmProviderEvent::group_assignment_changed(provider_id, group_ids).into());
+        sync_publish(SyncEntity::LlmProvider, SyncAction::Update, provider_id, None, origin.0);
+        sync_publish(SyncEntity::UserLlmProvider, SyncAction::Update, provider_id, None, origin.0);
     }
 
     // Return updated list

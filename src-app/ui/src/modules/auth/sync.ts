@@ -12,3 +12,11 @@ registerSync('session', {
   onEvent: reBootstrap,
   onResync: reBootstrap,
 })
+
+// The user's own profile changed on another device (e.g. an admin edited
+// their account) — re-bootstrap /auth/me so their displayed identity +
+// active state update.
+registerSync('profile', {
+  onEvent: reBootstrap,
+  onResync: reBootstrap,
+})

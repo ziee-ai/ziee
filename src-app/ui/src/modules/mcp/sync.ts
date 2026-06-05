@@ -22,3 +22,16 @@ registerSync('mcp_server_system', {
     void useSystemMcpServersStore.getState().loadSystemServers()
   },
 })
+
+// A system server's group-visibility changed → a user's ACCESSIBLE server
+// set may have changed. `loadMcpServers` fetches the accessible set
+// (personal + system-via-groups) via listAccessible, so reloading it
+// refreshes the user's view; each client only sees its own scoped set.
+registerSync('user_mcp_server', {
+  onEvent: () => {
+    void useMcpStore.getState().loadMcpServers()
+  },
+  onResync: () => {
+    void useMcpStore.getState().loadMcpServers()
+  },
+})

@@ -6,6 +6,7 @@ import { Permissions } from '@/api-client/types'
 import { useHubCatalogStore } from '@/modules/hub/stores/hub-catalog-store'
 import { useHubUpdatesStore } from '@/modules/hub/stores/hub-updates-store'
 import '@/modules/hub/types'
+import '@/modules/hub/sync' // registerSync('hub_settings') side-effect
 
 // Hub coordination module
 // Sub-modules are auto-discovered from hub/modules/**/module.tsx
