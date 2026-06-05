@@ -1,13 +1,4 @@
-import {
-  Button,
-  Flex,
-  Form,
-  Input,
-  Space,
-  Switch,
-  Tooltip,
-  Typography,
-} from 'antd'
+import { Button, Flex, Form, Input, Switch, Tooltip, Typography } from 'antd'
 import {
   DeleteOutlined,
   KeyOutlined,
@@ -76,19 +67,44 @@ export function KeyValueSecretEditor({
             </Text>
           )}
           {fields.map(field => (
-            <Space.Compact key={field.key} className="w-full" block>
+            // Plain flex layout instead of Space.Compact — Compact
+            // wraps each child in a sizing shell that swallows
+            // `flex` props on the children, which made the rows
+            // un-responsive at narrow drawer widths (key column
+            // pinned to 220px regardless, value column overflowing).
+            // Hidden _was_saved_secret rendered as a visible empty
+            // cell inside the compact group too.
+            <Flex
+              key={field.key}
+              className="w-full"
+              align="start"
+              gap="small"
+              wrap
+            >
               <Form.Item
                 name={[field.name, 'key']}
                 rules={[{ required: true, message: 'key required' }]}
-                noStyle
+                className="!mb-0 flex-1 min-w-40"
               >
                 <Input
                   placeholder={keyPlaceholder}
                   className="font-mono text-xs"
-                  style={{ flex: '0 0 220px' }}
                 />
               </Form.Item>
-              <Form.Item shouldUpdate noStyle>
+              <Form.Item
+                noStyle
+                shouldUpdate={(prev, curr) => {
+                  // Re-render only when this row's is_secret or
+                  // _was_saved_secret changes — avoids a full
+                  // re-render on every keystroke in the value field.
+                  const a = prev?.[name]?.[field.name]
+                  const b = curr?.[name]?.[field.name]
+                  return (
+                    a?.is_secret !== b?.is_secret ||
+                    a?._was_saved_secret !== b?._was_saved_secret
+                  )
+                }}
+              >
                 {({ getFieldValue, setFieldValue }) => {
                   const path = [name, field.name]
                   const isSecret = getFieldValue([...path, 'is_secret'])
@@ -98,7 +114,10 @@ export function KeyValueSecretEditor({
                   ])
                   return (
                     <>
-                      <Form.Item name={[field.name, 'value']} noStyle>
+                      <Form.Item
+                        name={[field.name, 'value']}
+                        className="!mb-0 flex-1 min-w-40"
+                      >
                         {isSecret ? (
                           <Input.Password
                             placeholder={
@@ -108,13 +127,11 @@ export function KeyValueSecretEditor({
                             }
                             autoComplete="new-password"
                             className="font-mono text-xs"
-                            style={{ flex: 1 }}
                           />
                         ) : (
                           <Input
                             placeholder={valuePlaceholder}
                             className="font-mono text-xs"
-                            style={{ flex: 1 }}
                           />
                         )}
                       </Form.Item>
@@ -128,7 +145,7 @@ export function KeyValueSecretEditor({
                         <Form.Item
                           name={[field.name, 'is_secret']}
                           valuePropName="checked"
-                          noStyle
+                          className="!mb-0 shrink-0"
                         >
                           <Switch
                             checkedChildren={<LockOutlined />}
@@ -156,19 +173,25 @@ export function KeyValueSecretEditor({
                   )
                 }}
               </Form.Item>
-              <Form.Item
-                name={[field.name, '_was_saved_secret']}
-                hidden
-                initialValue={false}
-              >
-                <Input type="hidden" />
-              </Form.Item>
               <Button
                 icon={<DeleteOutlined />}
                 onClick={() => remove(field.name)}
                 aria-label={`Remove ${labelSingular}`}
+                className="shrink-0"
               />
-            </Space.Compact>
+              {/* Hidden field for the saved-secret marker — rendered
+                  outside the Flex row so it doesn't take a layout
+                  cell. `display: none` keeps the Form.Item registered
+                  with the form state without occupying space. */}
+              <Form.Item
+                name={[field.name, '_was_saved_secret']}
+                initialValue={false}
+                hidden
+                className="!hidden"
+              >
+                <Input type="hidden" />
+              </Form.Item>
+            </Flex>
           ))}
           <Button
             type="dashed"
