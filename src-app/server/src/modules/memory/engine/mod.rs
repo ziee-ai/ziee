@@ -17,6 +17,7 @@
 //! `prompts.rs` holds shared prompt templates used by extractor and
 //! summarizer.
 
+pub mod capability;
 pub mod dispatch;
 pub mod extractor;
 pub mod prompts;

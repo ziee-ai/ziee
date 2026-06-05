@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Alert,
   Button,
@@ -36,11 +36,24 @@ interface FormValues {
 export function EmbeddingEngineSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const { settings, availableModels, saving, loadingModels } =
+  // `embeddingModels` is server-filtered (capability=text_embedding) by the
+  // store; `availableModels` is the full list used to derive the extraction
+  // candidates. The two pickers draw from different lists, matching the
+  // backend rule that an embedding model can't generate text.
+  const { settings, availableModels, embeddingModels, saving, loadingModels } =
     Stores.MemoryAdmin
   const [form] = Form.useForm<FormValues>()
   const [reembedConfirmOpen, setReembedConfirmOpen] = useState(false)
   const [pendingSwap, setPendingSwap] = useState<FormValues | null>(null)
+
+  // Extraction candidates = every non-embedding model (using "not an
+  // embedder" rather than strictly `chat` so manually added chat models
+  // without a capability flag still appear). Memoized to match the repo's
+  // model-list derivation idiom; must precede the early returns below.
+  const extractionModels = useMemo(
+    () => availableModels.filter((m) => m.capabilities.text_embedding !== true),
+    [availableModels],
+  )
 
   useEffect(() => {
     if (settings) {
@@ -66,7 +79,8 @@ export function EmbeddingEngineSection() {
 
   if (!settings) return null
 
-  const noModelsAvailable = availableModels.length === 0
+  const noModelsAvailable = embeddingModels.length === 0
+  const noExtractionModels = extractionModels.length === 0
 
   const persist = async (values: FormValues, modelChanged: boolean) => {
     try {
@@ -128,9 +142,9 @@ export function EmbeddingEngineSection() {
   }
 
   const swapTargetLabel = pendingSwap
-    ? availableModels.find((m) => m.id === pendingSwap.embedding_model_id)
+    ? embeddingModels.find((m) => m.id === pendingSwap.embedding_model_id)
         ?.display_name ??
-      availableModels.find((m) => m.id === pendingSwap.embedding_model_id)
+      embeddingModels.find((m) => m.id === pendingSwap.embedding_model_id)
         ?.name ??
       pendingSwap.embedding_model_id
     : ''
@@ -179,7 +193,7 @@ export function EmbeddingEngineSection() {
               }
               loading={loadingModels}
               disabled={noModelsAvailable}
-              options={availableModels.map((m) => ({
+              options={embeddingModels.map((m) => ({
                 value: m.id,
                 label: m.display_name || m.name,
               }))}
@@ -194,9 +208,18 @@ export function EmbeddingEngineSection() {
             label="Default extraction model"
             extra="LLM used by the silent extraction pipeline. Users can override per-account. Cheap models (Haiku-class, Gemini Flash) are ideal here."
           >
+            {/* Unlike the embedding Select, this one is never disabled on
+                an empty list: extraction is optional/clearable, so the
+                empty-state placeholder is enough (no model = memory still
+                works for retrieval, just no auto-extraction). */}
             <Select
-              placeholder="Select an extraction model (optional)"
-              options={availableModels.map((m) => ({
+              placeholder={
+                noExtractionModels
+                  ? 'No chat-capable models — add one on the LLM Providers page'
+                  : 'Select an extraction model (optional)'
+              }
+              loading={loadingModels}
+              options={extractionModels.map((m) => ({
                 value: m.id,
                 label: m.display_name || m.name,
               }))}

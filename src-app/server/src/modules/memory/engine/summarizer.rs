@@ -361,8 +361,29 @@ pub async fn refresh_summary(
     let existing = fetch_summary(&pool, branch_id).await?;
 
     let action = decide_summarize_action(&msgs, trigger, keep_recent, existing.as_ref());
+    if matches!(action, SummarizeAction::Noop) {
+        return Ok(());
+    }
+
+    // Load + capability-check the model BEFORE building the prompt — an
+    // embedding model can't generate (served `--embeddings`, no logits),
+    // so skip early rather than do prompt work for a doomed call. Mirrors
+    // the early guard in `extractor::run`. See `engine::capability`.
+    let model = Repos
+        .llm_model
+        .get_by_id(summarization_model_id)
+        .await
+        .map_err(AppError::database_error)?
+        .ok_or_else(|| AppError::not_found("LlmModel"))?;
+    if let Some(reason) =
+        super::capability::generation_unsupported_reason(&model.name, &model.capabilities)
+    {
+        tracing::warn!("memory.summarizer: {reason} — skipping summarization");
+        return Ok(());
+    }
 
     let (prompt, summarized_up_to_id, message_count, mode) = match action {
+        // Already handled above; kept for match exhaustiveness.
         SummarizeAction::Noop => return Ok(()),
         SummarizeAction::Full {
             transcript,
@@ -389,12 +410,6 @@ pub async fn refresh_summary(
         ),
     };
 
-    let model = Repos
-        .llm_model
-        .get_by_id(summarization_model_id)
-        .await
-        .map_err(AppError::database_error)?
-        .ok_or_else(|| AppError::not_found("LlmModel"))?;
     let summary_text = call_summarization_llm(&model, prompt).await?;
     if summary_text.is_empty() {
         tracing::warn!(
