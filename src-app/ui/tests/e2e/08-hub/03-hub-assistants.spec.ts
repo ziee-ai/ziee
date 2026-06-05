@@ -63,8 +63,8 @@ test.describe('Hub Assistants', () => {
       page.getByText(/created.*successfully|assistant.*created/i).first(),
     ).toBeVisible({ timeout: 5000 })
 
-    // The card navigates away to /assistants on success; go back to
-    // the hub to verify the badge.
+    // The card navigates away to /settings/assistants on success; go
+    // back to the hub to verify the badge.
     await navigateToHub(page, testInfra.baseURL, 'assistants')
     await waitForHubDataLoad(page)
 
@@ -197,8 +197,8 @@ test.describe('Hub Assistants', () => {
     const card = page.getByTestId(`hub-assistant-card-${createdAssistantId}`)
     await card.getByRole('button', { name: /view/i }).click()
 
-    // View navigates to /assistants (the user's own assistants list)
-    // per AssistantHubCard. Sanity-check by URL after navigation
+    // View navigates to /settings/assistants (the user's own assistants
+    // list) per AssistantHubCard. Sanity-check by URL after navigation
     // settles, not waitForURL (SPA navigations don't always trip
     // its event hook reliably).
     await page.waitForLoadState('networkidle').catch(() => {})
