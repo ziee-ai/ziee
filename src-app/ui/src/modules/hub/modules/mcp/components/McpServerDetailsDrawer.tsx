@@ -57,15 +57,50 @@ export function McpServerDetailsDrawer({
           )}
         </div>
 
-        {/* Command Information */}
-        <div>
-          <Title level={5}>Command</Title>
-          <Card size="small" className="bg-gray-50">
-            <Text code className="text-xs">
-              {server.command} {server.args?.join(' ')}
-            </Text>
-          </Card>
-        </div>
+        {/* Connection — shape depends on transport. stdio servers
+            launch a local subprocess (show the resolved command line);
+            http/sse servers connect to a remote URL (show as a
+            clickable link). Anything else (or missing transport on
+            legacy manifests) falls through to the stdio-style render
+            since the install helper defaults to stdio. */}
+        {server.transport_type === 'http' ||
+        server.transport_type === 'sse' ||
+        server.transport_type === 'streamable-http' ? (
+          <div>
+            <Title level={5}>URL</Title>
+            <Card size="small" className="bg-gray-50">
+              {server.url ? (
+                <a
+                  href={server.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs break-all"
+                >
+                  <LinkOutlined /> {server.url}
+                </a>
+              ) : (
+                <Text type="secondary" className="text-xs">
+                  No URL specified in manifest.
+                </Text>
+              )}
+            </Card>
+          </div>
+        ) : (
+          <div>
+            <Title level={5}>Command</Title>
+            <Card size="small" className="bg-gray-50">
+              {server.command ? (
+                <Text code className="text-xs break-all">
+                  {server.command} {server.args?.join(' ')}
+                </Text>
+              ) : (
+                <Text type="secondary" className="text-xs">
+                  No command specified in manifest.
+                </Text>
+              )}
+            </Card>
+          </div>
+        )}
 
         {/* Required configuration — primary view for env vars +
             headers that the user must set post-install. Each row

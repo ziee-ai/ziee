@@ -165,11 +165,14 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                       {server.category}
                     </Tag>
                   )}
-                  {server.transport_type && (
-                    <Tag className="text-xs">
-                      {server.transport_type.toUpperCase()}
-                    </Tag>
-                  )}
+                  {/* Always render a transport tag so users can tell
+                      at a glance whether the server runs locally
+                      (stdio) or talks to a remote URL (http/sse).
+                      Missing `transport_type` in the manifest is
+                      treated as stdio per the install helper. */}
+                  <Tag className="text-xs">
+                    {(server.transport_type ?? 'stdio').toUpperCase()}
+                  </Tag>
                   {installing && <Tag color="blue">Installing...</Tag>}
                   {isAlreadyInstalled && <Tag color="green">Installed</Tag>}
                   {isAlreadyInstalledAsSystem && (
