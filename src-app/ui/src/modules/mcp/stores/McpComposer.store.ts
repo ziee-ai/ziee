@@ -136,7 +136,7 @@ interface McpStore {
   userDefaultsLoaded: boolean
   /** Whether the config modal is visible */
   configModalVisible: boolean
-  /** Pending elicitation requests keyed by message_id */
+  /** Pending elicitation requests keyed by elicitation_id */
   elicitationRequests: Map<string, ElicitationRequestState>
 
   // Tool call actions
@@ -1264,17 +1264,20 @@ export const useMcpComposerStore = create<McpStore>()(
           ...(action === 'accept' && content ? { content } : {}),
         })
       } catch (e: unknown) {
-        // 404 = session expired (MCP task already finished or page was reloaded)
-        const is404 = e != null &&
-          typeof e === 'object' &&
-          'status' in e &&
-          (e as { status: number }).status === 404
-        if (is404) {
-          set(state => {
-            const req = state.elicitationRequests.get(elicitation_id)
-            if (req) req.status = 'cancelled'
-          })
-        } else {
+        const status = e != null && typeof e === 'object' && 'status' in e
+          ? (e as { status?: number }).status
+          : undefined
+        set(state => {
+          const req = state.elicitationRequests.get(elicitation_id)
+          if (!req) return
+          // 404 = the elicitation is already gone server-side (the MCP task
+          // finished or the page was reloaded) → treat it as cancelled. On any
+          // other failure (network, 400, 403 owner-bind race, 5xx) the server
+          // did NOT record our answer, so roll the optimistic flip back to
+          // 'pending' so the user can retry instead of seeing a false success.
+          req.status = status === 404 ? 'cancelled' : 'pending'
+        })
+        if (status !== 404) {
           console.error('[MCP Store] Failed to POST elicitation response:', e)
         }
       }

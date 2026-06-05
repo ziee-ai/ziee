@@ -332,7 +332,9 @@ export const callAsync = async <U extends ApiEndpointUrl>(
     ) {
       if (!response.ok) {
         const errorMessage = `HTTP error! status: ${response.status}`
-        throw new Error(errorMessage)
+        const error = new Error(errorMessage) as Error & { status: number }
+        error.status = response.status
+        throw error
       }
 
       const reader = response.body?.getReader()
@@ -434,7 +436,12 @@ export const callAsync = async <U extends ApiEndpointUrl>(
         }
       }
 
-      throw new Error(errorMessage)
+      // Attach the HTTP status so a caller's `catch` can branch on it (e.g.
+      // 404 → the resource is gone). A plain `Error` has no `status` field, so
+      // a `'status' in e` check would silently never match without this.
+      const error = new Error(errorMessage) as Error & { status: number }
+      error.status = response.status
+      throw error
     }
 
     //try to parse the response based on content type
