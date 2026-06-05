@@ -251,7 +251,7 @@ async fn drain_standalone_sse(
     last_event_id: &mut Option<String>,
     backoff_initial_ms: &mut u64,
     reconnect_attempt: &mut u32,
-    ctx: &GetStreamCtx,
+    ctx: &GetStreamContext,
 ) {
     let mut buf = String::new();
     let mut stream = resp.bytes_stream();
@@ -297,6 +297,7 @@ async fn drain_standalone_sse(
                 );
                 *backoff_initial_ms = retry_ms;
             }
+            use std::sync::atomic::Ordering;
             match route_unsolicited_event(server_name, &event_block) {
                 UnsolicitedAction::Handled => {}
                 UnsolicitedAction::Elicitation(json) => {
@@ -309,16 +310,73 @@ async fn drain_standalone_sse(
                         .and_then(|g| g.clone())
                         .filter(|t| t.is_valid())
                         .map(|t| t.access_token);
-                    tokio::spawn(handle_get_stream_elicitation(
-                        json,
-                        server_name.to_string(),
-                        ctx.stream_client.clone(),
-                        ctx.url.clone(),
-                        ctx.session_id.read().ok().and_then(|g| g.clone()),
-                        ctx.protocol_version.read().ok().and_then(|g| g.clone()),
-                        bearer,
-                        ctx.active_call_ctx.read().ok().and_then(|g| g.clone()),
-                    ));
+                    // Soft cap: beyond the limit, route with no active context so
+                    // the handler just POSTs a cancel (cheap — no registry/DB/SSE)
+                    // instead of parking, bounding a flooding server.
+                    let inflight = ctx.inflight.clone();
+                    let over_cap =
+                        inflight.fetch_add(1, Ordering::Relaxed) >= MAX_INFLIGHT_GET_ELICITATIONS;
+                    let active = if over_cap {
+                        tracing::warn!(
+                            "[elicitation] '{server_name}' GET-SSE concurrent elicitation cap \
+                             ({MAX_INFLIGHT_GET_ELICITATIONS}) reached — auto-cancelling"
+                        );
+                        None
+                    } else {
+                        ctx.active_call_ctx.read().ok().and_then(|g| g.clone())
+                    };
+                    let server_name_owned = server_name.to_string();
+                    let stream_client = ctx.stream_client.clone();
+                    let url = ctx.url.clone();
+                    let session_id = ctx.session_id.read().ok().and_then(|g| g.clone());
+                    let protocol_version = ctx.protocol_version.read().ok().and_then(|g| g.clone());
+                    tokio::spawn(async move {
+                        handle_get_stream_elicitation(
+                            json,
+                            server_name_owned,
+                            stream_client,
+                            url,
+                            session_id,
+                            protocol_version,
+                            bearer,
+                            active,
+                        )
+                        .await;
+                        inflight.fetch_sub(1, Ordering::Relaxed);
+                    });
+                }
+                UnsolicitedAction::RejectUnsupported(json) => {
+                    // POST a JSON-RPC method-not-found so the server fails fast.
+                    let req_id = json.get("id").cloned().unwrap_or(Value::Null);
+                    let bearer = ctx
+                        .oauth_token
+                        .read()
+                        .ok()
+                        .and_then(|g| g.clone())
+                        .filter(|t| t.is_valid())
+                        .map(|t| t.access_token);
+                    let stream_client = ctx.stream_client.clone();
+                    let url = ctx.url.clone();
+                    let session_id = ctx.session_id.read().ok().and_then(|g| g.clone());
+                    let protocol_version = ctx.protocol_version.read().ok().and_then(|g| g.clone());
+                    tokio::spawn(async move {
+                        let body = serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "id": req_id,
+                            "error": {
+                                "code": -32601,
+                                "message": "This request type is not supported on the standalone stream"
+                            }
+                        });
+                        let _ = apply_mcp_post_headers(
+                            stream_client.post(&url).json(&body),
+                            session_id,
+                            protocol_version.as_deref(),
+                            bearer.as_deref(),
+                        )
+                        .send()
+                        .await;
+                    });
                 }
             }
         }
@@ -399,7 +457,7 @@ fn sse_event_data(event_block: &str) -> String {
 /// client (see `McpSessionManager`) — so binding the GET-stream elicitation to
 /// "the active call on this client" is unambiguous.
 #[derive(Clone)]
-struct ActiveCallCtx {
+struct ActiveCallContext {
     message_id: Option<uuid::Uuid>,
     sse_tx: Option<
         tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>,
@@ -411,16 +469,32 @@ struct ActiveCallCtx {
     >,
 }
 
+/// Backstop timeout for a GET-stream elicitation handshake. The handler runs in
+/// a *detached* task that is NOT bounded by the tool call's outer timeout (a
+/// `dscc`-style server answers `tools/call` with plain JSON, so `call_tool`
+/// returns before the user replies), so it needs its own bound to reclaim the
+/// task + registry entry (and cancel the server's request) if the user never
+/// answers. Generous enough to fill a form; the server's own request timeout
+/// governs real responsiveness.
+const GET_STREAM_ELICITATION_TIMEOUT: Duration = Duration::from_secs(600);
+
+/// Soft cap on concurrent outstanding GET-stream elicitations per client, to
+/// bound a misbehaving/compromised server that floods the standalone stream
+/// with `elicitation/create` frames. Beyond it, new ones are auto-cancelled.
+const MAX_INFLIGHT_GET_ELICITATIONS: usize = 16;
+
 /// What the standalone GET-SSE task needs to answer an `elicitation/create`
 /// that arrives on the stream: the means to POST the reply back, and the
 /// in-flight call context to route the form to the browser.
-struct GetStreamCtx {
+struct GetStreamContext {
     stream_client: Client,
     url: String,
     session_id: Arc<RwLock<Option<String>>>,
     protocol_version: Arc<RwLock<Option<String>>>,
     oauth_token: Arc<RwLock<Option<StoredToken>>>,
-    active_call_ctx: Arc<RwLock<Option<ActiveCallCtx>>>,
+    active_call_ctx: Arc<RwLock<Option<ActiveCallContext>>>,
+    /// Concurrent outstanding GET-stream elicitations (soft-capped).
+    inflight: Arc<std::sync::atomic::AtomicUsize>,
 }
 
 /// Outcome of classifying an unsolicited GET-stream event.
@@ -429,6 +503,10 @@ enum UnsolicitedAction {
     Handled,
     /// A server→client `elicitation/create` request the caller must answer.
     Elicitation(Value),
+    /// A server→client request ziee can't service on the standalone stream
+    /// (currently `sampling/createMessage`): the caller POSTs a JSON-RPC error
+    /// so the server fails fast instead of timing out.
+    RejectUnsupported(Value),
 }
 
 /// Dispatch an unsolicited SSE event received on the standalone GET stream.
@@ -436,8 +514,10 @@ enum UnsolicitedAction {
 /// POST flow). A server→client `elicitation/create` is returned as
 /// [`UnsolicitedAction::Elicitation`] so the caller can run the handshake
 /// against the in-flight tool call (see `handle_get_stream_elicitation`).
-/// `sampling/createMessage` on the GET stream is still logged-and-dropped
-/// (no GET-path sampling handler yet).
+/// `sampling/createMessage` on the GET stream is returned as
+/// [`UnsolicitedAction::RejectUnsupported`] (no GET-path sampling handler yet)
+/// so the caller can reply with a method-not-found error rather than letting
+/// the server hang — parity with the POST path.
 fn route_unsolicited_event(server_name: &str, event_block: &str) -> UnsolicitedAction {
     let data = sse_event_data(event_block);
     if data.is_empty() {
@@ -481,10 +561,10 @@ fn route_unsolicited_event(server_name: &str, event_block: &str) -> UnsolicitedA
         }
         (Some("sampling/createMessage"), true) => {
             tracing::warn!(
-                "[mcp] '{server_name}' GET-SSE sampling/createMessage received but no \
-                 consumer is attached to the standalone stream — request will time out on \
-                 the server side. Follow-up: wire SamplingHandler into the GET path."
+                "[mcp] '{server_name}' GET-SSE sampling/createMessage received — replying \
+                 method-not-found (sampling is not wired into the GET path)."
             );
+            return UnsolicitedAction::RejectUnsupported(parsed);
         }
         (Some("elicitation/create"), true) => {
             tracing::trace!(
@@ -519,7 +599,7 @@ async fn handle_get_stream_elicitation(
     session_id: Option<String>,
     protocol_version: Option<String>,
     bearer: Option<String>,
-    ctx: Option<ActiveCallCtx>,
+    ctx: Option<ActiveCallContext>,
 ) {
     use crate::modules::mcp::elicitation::{models, registry};
 
@@ -597,11 +677,26 @@ async fn handle_get_stream_elicitation(
         return;
     }
 
-    // Block until the user responds (bounded by the in-flight tool call's outer
-    // timeout, which on expiry drops elicit_rx and resolves this to cancel).
-    let user_response = match elicit_rx.await {
-        Ok(r) => r,
-        Err(_) => models::ElicitationResponse { action: "cancel".to_string(), content: None },
+    // Block until the user responds. This runs in a DETACHED task — for the
+    // GET-stream pattern `call_tool` already returned (the server answered
+    // tools/call with plain JSON), so it is NOT covered by the tool call's outer
+    // timeout. Bound it here so an abandoned elicitation reclaims its task +
+    // registry entry and cancels the server's request instead of parking forever.
+    let user_response = match tokio::time::timeout(GET_STREAM_ELICITATION_TIMEOUT, elicit_rx).await {
+        Ok(Ok(r)) => r,
+        Ok(Err(_)) => {
+            // Channel dropped (SSE closed / registry removed) — treat as cancel.
+            models::ElicitationResponse { action: "cancel".to_string(), content: None }
+        }
+        Err(_) => {
+            tracing::warn!(
+                "[elicitation] '{server_name}' GET-SSE elicitation id={req_id:?} unanswered after \
+                 {}s — cancelling",
+                GET_STREAM_ELICITATION_TIMEOUT.as_secs()
+            );
+            let _ = registry::remove(elicitation_id);
+            models::ElicitationResponse { action: "cancel".to_string(), content: None }
+        }
     };
     let result_value = if user_response.action == "accept" {
         serde_json::json!({ "action": user_response.action, "content": user_response.content.unwrap_or(Value::Null) })
@@ -738,8 +833,11 @@ pub struct HttpMcpClient {
     oauth_token_endpoint: Arc<RwLock<Option<String>>>,
     /// Context of the in-flight tool call, so the standalone GET-SSE task can
     /// answer an `elicitation/create` that a server delivers on the GET stream
-    /// rather than on the tool-call POST response. See [`ActiveCallCtx`].
-    active_call_ctx: Arc<RwLock<Option<ActiveCallCtx>>>,
+    /// rather than on the tool-call POST response. See [`ActiveCallContext`].
+    active_call_ctx: Arc<RwLock<Option<ActiveCallContext>>>,
+    /// Concurrent outstanding GET-stream elicitations (soft-capped to bound a
+    /// flooding server). Shared into the GET task via [`GetStreamContext`].
+    get_elicit_inflight: Arc<std::sync::atomic::AtomicUsize>,
     /// Plan-3 Phase-3 (I2) — standalone GET-SSE consumer. After `initialized`
     /// the client opens a `GET` with `Accept: text/event-stream` to receive
     /// unsolicited server→client messages (notifications/progress beyond the
@@ -747,6 +845,20 @@ pub struct HttpMcpClient {
     /// on `disconnect`; a 405 from the server is the documented "no standalone
     /// stream" signal and the task exits silently.
     get_sse_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
+}
+
+impl Drop for HttpMcpClient {
+    fn drop(&mut self) {
+        // Ephemeral sessions are dropped, not `disconnect()`ed, and dropping a
+        // tokio JoinHandle *detaches* rather than aborts — so without this the
+        // standalone GET task (and its held connection) would leak past the call.
+        // Abort it here, and clear the active-call context so a not-yet-aborted
+        // task can't act on stale channels.
+        self.abort_standalone_get_sse();
+        if let Ok(mut g) = self.active_call_ctx.write() {
+            *g = None;
+        }
+    }
 }
 
 impl HttpMcpClient {
@@ -856,6 +968,7 @@ impl HttpMcpClient {
             oauth_token: Arc::new(RwLock::new(None)),
             oauth_token_endpoint: Arc::new(RwLock::new(None)),
             active_call_ctx: Arc::new(RwLock::new(None)),
+            get_elicit_inflight: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             get_sse_task: Mutex::new(None),
         })
     }
@@ -946,16 +1059,18 @@ impl HttpMcpClient {
         let oauth_token = self.oauth_token.clone();
         let oauth_token_endpoint = self.oauth_token_endpoint.clone();
         let active_call_ctx = self.active_call_ctx.clone();
+        let get_elicit_inflight = self.get_elicit_inflight.clone();
 
         let handle = tokio::spawn(async move {
             // Bundle of what `drain_standalone_sse` needs to answer an
             // `elicitation/create` that arrives on this GET stream.
-            let get_ctx = GetStreamCtx {
+            let get_ctx = GetStreamContext {
                 stream_client: stream_client.clone(),
                 url: url.clone(),
                 session_id: session_id.clone(),
                 protocol_version: protocol_version.clone(),
                 oauth_token: oauth_token.clone(),
+                inflight: get_elicit_inflight,
                 active_call_ctx,
             };
             // Persistent across reconnects.
@@ -2311,7 +2426,7 @@ impl McpClient for HttpMcpClient {
         // Set before the POST is sent, since the elicitation arrives in response
         // to it. Ephemeral sessions ⇒ one active call per client ⇒ unambiguous.
         if let Ok(mut g) = self.active_call_ctx.write() {
-            *g = Some(ActiveCallCtx {
+            *g = Some(ActiveCallContext {
                 message_id,
                 sse_tx: sse_tx.clone(),
                 elicit_notify_tx: elicit_notify_tx.clone(),

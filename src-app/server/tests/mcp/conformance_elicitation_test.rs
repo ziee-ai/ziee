@@ -692,6 +692,10 @@ async fn elicit_delivered_on_standalone_get_stream_completes() {
     tokio::time::sleep(Duration::from_millis(300)).await;
 
     let (notify_tx, mut notify_rx) = mpsc::unbounded_channel::<ElicitationStartedNotification>();
+    // `_sse_rx` is held (named `_`-prefix, not bare `_`) so the channel stays
+    // open: the GET-stream handler sends the `mcpElicitationRequired` event here,
+    // and a dropped receiver would make that send fail → it would take the cancel
+    // path and the test would see action != "accept".
     let (sse_tx, _sse_rx) = mpsc::unbounded_channel::<
         Result<axum::response::sse::Event, std::convert::Infallible>,
     >();
