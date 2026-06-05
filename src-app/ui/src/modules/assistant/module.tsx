@@ -9,6 +9,7 @@ import {
 } from '@/modules/assistant/stores'
 import { useAssistantDrawerStore } from '@/modules/assistant/components/AssistantDrawer.store'
 import '@/modules/assistant/types'
+import '@/modules/assistant/sync' // registerSync('assistant') side-effect
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { Permissions } from '@/api-client/types'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types

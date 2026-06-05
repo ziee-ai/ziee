@@ -13377,6 +13377,62 @@
           }
         }
       }
+    },
+    "/api/sync/subscribe": {
+      "get": {
+        "tags": [
+          "Sync"
+        ],
+        "summary": "Subscribe to realtime cross-device sync events via SSE",
+        "description": "Server-Sent Events stream of `{entity, action, id}` change notifications scoped to the authenticated user (and the permission-/group-visibility rules per entity). The client refetches the changed entity via its normal REST endpoint, so no row data crosses this channel. The first frame (`connected`) carries a connection id to echo back as `X-Sync-Connection-Id` on mutations for self-echo suppression. The stream closes when the access token expires or the account loses access.",
+        "operationId": "Sync.subscribe",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View own profile information",
+                        "name": "ProfileRead",
+                        "value": "profile::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: profile::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncSseEvent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "429": {
+            "description": "Too many open sync connections"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -22547,6 +22603,15 @@
           "restarted"
         ]
       },
+      "SyncAction": {
+        "description": "What happened to the entity.",
+        "type": "string",
+        "enum": [
+          "create",
+          "update",
+          "delete"
+        ]
+      },
       "SyncCacheResponse": {
         "description": "Response after syncing cache with database",
         "type": "object",
@@ -22563,6 +22628,96 @@
         "required": [
           "synced_count",
           "message"
+        ]
+      },
+      "SyncConnectedData": {
+        "description": "Handshake payload: the server-assigned connection id. The client\n echoes it back via the `X-Sync-Connection-Id` header on mutations so\n the fan-out can skip the originating connection (self-echo suppression).",
+        "type": "object",
+        "properties": {
+          "connection_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "connection_id"
+        ]
+      },
+      "SyncEntity": {
+        "description": "The kind of entity that changed. Serialized snake_case to match the\n frontend's `sync:<entity>` event vocabulary.\n\n ADD a variant here when wiring a new domain: `audience_kind`'s match\n is exhaustive, so the build fails until the new entity is assigned an\n audience — a new syncable entity can never silently default to a\n broadcast (the dangerous default becomes a compile error, not a leak).",
+        "oneOf": [
+          {
+            "type": "string",
+            "enum": [
+              "project",
+              "memory",
+              "memory_settings"
+            ]
+          },
+          {
+            "description": "A user-created assistant (NOT a system template — that's a separate\n entity with a different audience).",
+            "type": "string",
+            "const": "assistant"
+          },
+          {
+            "description": "A user-owned MCP server (NOT a system/group-shared server).",
+            "type": "string",
+            "const": "mcp_server"
+          },
+          {
+            "description": "A user's saved LLM-provider API key (`id` is the provider id; only\n masked state is ever exposed, and only via refetch).",
+            "type": "string",
+            "const": "api_key"
+          }
+        ]
+      },
+      "SyncEvent": {
+        "description": "The change notification pushed to clients. Notify-and-refetch only.",
+        "type": "object",
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/SyncAction"
+          },
+          "entity": {
+            "$ref": "#/components/schemas/SyncEntity"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "entity",
+          "action",
+          "id"
+        ]
+      },
+      "SyncSseEvent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "connected": {
+                "$ref": "#/components/schemas/SyncConnectedData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "connected"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sync": {
+                "$ref": "#/components/schemas/SyncEvent"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "sync"
+            ]
+          }
         ]
       },
       "TaskStatus": {

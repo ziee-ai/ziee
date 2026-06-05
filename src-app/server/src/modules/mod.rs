@@ -20,6 +20,7 @@ pub mod memory_mcp;
 pub mod onboarding;
 pub mod permissions;
 pub mod project;
+pub mod sync;
 pub mod user;
 
 // Re-export modules

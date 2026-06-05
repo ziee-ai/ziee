@@ -1,11 +1,12 @@
+import { getBaseUrl } from '@/api-client/getBaseURL'
+import type { SSECallback } from '@/api-client/sse-types'
+import { createSSEHandler } from '@/api-client/sse-types'
 import {
   ApiEndpointUrl,
   ParameterByUrl,
   ResponseByUrl,
 } from '@/api-client/types'
-import type { SSECallback } from '@/api-client/sse-types'
-import { createSSEHandler } from '@/api-client/sse-types'
-import { getBaseUrl } from '@/api-client/getBaseURL'
+import { getSyncConnectionId } from '@/core/sync/connection'
 
 export const getAuthToken = () => {
   // eslint-disable-next-line no-undef
@@ -83,6 +84,17 @@ export const callAsync = async <U extends ApiEndpointUrl>(
       | 'PUT'
       | 'DELETE'
       | 'PATCH'
+
+    // Stamp the originating realtime-sync connection id on mutating
+    // requests so the server skips echoing the resulting change back to
+    // this tab (self-echo suppression). Harmless when absent / on GETs.
+    if (method !== 'GET') {
+      const syncConnId = getSyncConnectionId()
+      if (syncConnId) {
+        headers['X-Sync-Connection-Id'] = syncConnId
+      }
+    }
+
     let endpointPath = endpointUrl.replace(/^[A-Z]+\s+/, '').trim()
     //get {capture} from endpointPath
     const captureMatches = (endpointPath.match(/{([^}]+)}/g) || []).map(match =>

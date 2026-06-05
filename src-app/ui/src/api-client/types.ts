@@ -1984,9 +1984,29 @@ export interface SwapRuntimeVersionResponse {
   version_id: string
 }
 
+export type SyncAction = 'create' | 'update' | 'delete'
+
 export interface SyncCacheResponse {
   message: string
   synced_count: number
+}
+
+export interface SyncConnectedData {
+  connection_id: string
+}
+
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'api_key'
+
+export interface SyncEvent {
+  action: SyncAction
+  entity: SyncEntity
+  id: string
+}
+
+export type SyncSseEvent = {
+  connected: SyncConnectedData
+} | {
+  sync: SyncEvent
 }
 
 export type TaskStatus = 'running' | 'completed' | 'failed'
@@ -2812,6 +2832,7 @@ export const ApiEndpoints = {
   'RuntimeVersion.subscribeDownloadEvents': 'GET /api/local-runtime/versions/downloads/{key}/events',
   'RuntimeVersion.syncCache': 'POST /api/local-runtime/versions/sync-cache',
   'RuntimeVersion.usage': 'GET /api/local-runtime/version-usage',
+  'Sync.subscribe': 'GET /api/sync/subscribe',
   'User.create': 'POST /api/users',
   'User.delete': 'DELETE /api/users/{user_id}',
   'User.get': 'GET /api/users/{user_id}',
@@ -3051,6 +3072,7 @@ export type ApiEndpointParameters = {
   'RuntimeVersion.subscribeDownloadEvents': { key: string }
   'RuntimeVersion.syncCache': void
   'RuntimeVersion.usage': { engine?: string }
+  'Sync.subscribe': void
   'User.create': CreateUserRequest
   'User.delete': { user_id: string }
   'User.get': { user_id: string }
@@ -3290,6 +3312,7 @@ export type ApiEndpointResponses = {
   'RuntimeVersion.subscribeDownloadEvents': SSEEngineDownloadEvent
   'RuntimeVersion.syncCache': SyncCacheResponse
   'RuntimeVersion.usage': VersionUsageResponse
+  'Sync.subscribe': SyncSseEvent
   'User.create': User
   'User.delete': void
   'User.get': User

@@ -9,6 +9,7 @@ import { useMemoryAuditStore } from './stores/MemoryAudit.store'
 import { useCoreMemoryBlocksStore } from './stores/CoreMemoryBlocks.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import './types'
+import './sync' // registerSync('memory' + 'memory_settings') side-effect
 
 // The user page renders sections for each memory mechanism. A user
 // with EITHER MemoryRead or CoreMemoryRead should reach the page —

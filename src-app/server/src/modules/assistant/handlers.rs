@@ -20,6 +20,7 @@ use crate::{
     common::{ApiResult, AppError},
     core::{EventBus, Repos},
     modules::permissions::{extractors::RequirePermissions, with_permission},
+    modules::sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
 };
 
 // =====================================================
@@ -109,6 +110,7 @@ fn validate_assistant_text_lengths(
 pub async fn create_user_assistant(
     auth: RequirePermissions<(AssistantsCreate,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Json(mut request): Json<CreateAssistantRequest>,
 ) -> ApiResult<Json<Assistant>> {
     // Validate name is not empty
@@ -129,6 +131,14 @@ pub async fn create_user_assistant(
 
     // Emit creation event for other modules to react
     event_bus.emit_async(AssistantEvent::created(assistant.id, Some(auth.user.id)));
+
+    sync_publish(
+        SyncEntity::Assistant,
+        SyncAction::Create,
+        assistant.id,
+        Some(auth.user.id),
+        origin.0,
+    );
 
     Ok((StatusCode::CREATED, Json(assistant)))
 }
@@ -220,6 +230,7 @@ pub async fn update_user_assistant(
     auth: RequirePermissions<(AssistantsEdit,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
+    origin: SyncOrigin,
     Json(request): Json<UpdateAssistantRequest>,
 ) -> ApiResult<Json<Assistant>> {
     validate_assistant_text_lengths(
@@ -250,6 +261,14 @@ pub async fn update_user_assistant(
     // Emit update event for other modules to react
     event_bus.emit_async(AssistantEvent::updated(assistant.id, Some(auth.user.id)));
 
+    sync_publish(
+        SyncEntity::Assistant,
+        SyncAction::Update,
+        assistant.id,
+        Some(auth.user.id),
+        origin.0,
+    );
+
     Ok((StatusCode::OK, Json(assistant)))
 }
 
@@ -270,6 +289,7 @@ pub async fn delete_user_assistant(
     Extension(event_bus): Extension<Arc<EventBus>>,
 
     Path(id): Path<Uuid>,
+    origin: SyncOrigin,
 ) -> ApiResult<()> {
     let existing = Repos
         .assistant
@@ -295,6 +315,14 @@ pub async fn delete_user_assistant(
 
     // Emit deletion event for other modules to react (synchronous so cleanup completes before response)
     event_bus.emit(AssistantEvent::deleted(id, Some(auth.user.id))).await;
+
+    sync_publish(
+        SyncEntity::Assistant,
+        SyncAction::Delete,
+        id,
+        Some(auth.user.id),
+        origin.0,
+    );
 
     Ok((StatusCode::NO_CONTENT, ()))
 }

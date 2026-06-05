@@ -9,6 +9,7 @@ use crate::{
     core::Repos,
     modules::{
         permissions::{extractors::RequirePermissions, with_permission},
+        sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
         user::permissions::{ProfileEdit, ProfileRead},
     },
 };
@@ -100,6 +101,7 @@ pub fn list_user_api_keys_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn save_user_api_key(
     auth: RequirePermissions<(ProfileEdit,)>,
+    origin: SyncOrigin,
     Json(request): Json<SaveUserApiKeyRequest>,
 ) -> ApiResult<()> {
     let key = request.api_key.trim().to_string();
@@ -138,6 +140,14 @@ pub async fn save_user_api_key(
         .upsert(auth.user.id, request.provider_id, &key)
         .await?;
 
+    sync_publish(
+        SyncEntity::ApiKey,
+        SyncAction::Update,
+        request.provider_id,
+        Some(auth.user.id),
+        origin.0,
+    );
+
     Ok((StatusCode::NO_CONTENT, ()))
 }
 
@@ -156,11 +166,20 @@ pub fn save_user_api_key_docs(op: TransformOperation) -> TransformOperation {
 pub async fn delete_user_api_key(
     auth: RequirePermissions<(ProfileEdit,)>,
     Path(provider_id): Path<Uuid>,
+    origin: SyncOrigin,
 ) -> ApiResult<()> {
     Repos
         .user_key
         .delete(auth.user.id, provider_id)
         .await?;
+
+    sync_publish(
+        SyncEntity::ApiKey,
+        SyncAction::Delete,
+        provider_id,
+        Some(auth.user.id),
+        origin.0,
+    );
 
     Ok((StatusCode::NO_CONTENT, ()))
 }

@@ -11,6 +11,7 @@ import {
 } from '@/modules/projects/stores'
 import '@/modules/projects/types' // store-merge declaration
 import '@/modules/projects/events' // event-bus type merge
+import '@/modules/projects/sync' // registerSync('project') side-effect
 // Trigger the auto-discovery glob — sibling modules with a
 // `project-extension/extension.tsx` register their knowledge-kind
 // contributions side-effectfully at module-import time. Side-effect

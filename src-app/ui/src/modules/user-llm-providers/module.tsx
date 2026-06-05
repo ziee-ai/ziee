@@ -7,6 +7,7 @@ import { useUserLlmProvidersStore } from './UserLlmProviders.store'
 import { useModelPickerStore } from './ModelPicker.store'
 import { useUserProviderKeysStore } from './UserProviderKeys.store'
 import './types'
+import './sync' // registerSync('api_key') side-effect
 
 const UserLlmProvidersPage = lazyWithPreload(
   () => import('./UserLlmProvidersPage'),

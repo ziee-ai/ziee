@@ -17,6 +17,7 @@ use super::types::{CreateProjectRequest, ProjectListResponse, UpdateProjectReque
 use crate::common::{ApiResult, AppError};
 use crate::core::{EventBus, Repos};
 use crate::modules::permissions::{extractors::RequirePermissions, with_permission};
+use crate::modules::sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
 
 // =====================================================
 // Query parameters
@@ -184,6 +185,7 @@ async fn validate_default_model_exists(model_id: Option<Uuid>) -> Result<(), App
 pub async fn create_project(
     auth: RequirePermissions<(ProjectsCreate,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Json(request): Json<CreateProjectRequest>,
 ) -> ApiResult<Json<Project>> {
     validate_project_name(&request.name)?;
@@ -204,6 +206,13 @@ pub async fn create_project(
         "project: created"
     );
     event_bus.emit_async(ProjectEvent::created(project.id, auth.user.id));
+    sync_publish(
+        SyncEntity::Project,
+        SyncAction::Create,
+        project.id,
+        Some(auth.user.id),
+        origin.0,
+    );
 
     Ok((StatusCode::CREATED, Json(project)))
 }
@@ -274,6 +283,7 @@ pub async fn update_project(
     auth: RequirePermissions<(ProjectsEdit,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
+    origin: SyncOrigin,
     Json(request): Json<UpdateProjectRequest>,
 ) -> ApiResult<Json<Project>> {
     if let Some(name) = &request.name {
@@ -316,6 +326,13 @@ pub async fn update_project(
 
     let project = Repos.project.update(id, auth.user.id, request).await?;
     event_bus.emit_async(ProjectEvent::updated(project.id, auth.user.id));
+    sync_publish(
+        SyncEntity::Project,
+        SyncAction::Update,
+        project.id,
+        Some(auth.user.id),
+        origin.0,
+    );
 
     Ok((StatusCode::OK, Json(project)))
 }
@@ -344,6 +361,7 @@ pub async fn delete_project(
     auth: RequirePermissions<(ProjectsDelete,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
+    origin: SyncOrigin,
 ) -> ApiResult<()> {
     let deleted = Repos.project.delete(id, auth.user.id).await?;
     if !deleted {
@@ -355,6 +373,13 @@ pub async fn delete_project(
         "project: deleted"
     );
     event_bus.emit(ProjectEvent::deleted(id, auth.user.id)).await;
+    sync_publish(
+        SyncEntity::Project,
+        SyncAction::Delete,
+        id,
+        Some(auth.user.id),
+        origin.0,
+    );
     Ok((StatusCode::NO_CONTENT, ()))
 }
 
@@ -377,6 +402,7 @@ pub async fn duplicate_project(
     Extension(event_bus): Extension<Arc<EventBus>>,
     Extension(extension_registry): Extension<Arc<crate::modules::project::ProjectExtensionRegistry>>,
     Path(id): Path<Uuid>,
+    origin: SyncOrigin,
 ) -> ApiResult<Json<Project>> {
     // Open a single outer transaction so the project row insert AND every
     // extension's `on_project_duplicated` hook (e.g. file module cloning
@@ -396,6 +422,13 @@ pub async fn duplicate_project(
         .await?;
     tx.commit().await.map_err(AppError::database_error)?;
     event_bus.emit_async(ProjectEvent::created(project.id, auth.user.id));
+    sync_publish(
+        SyncEntity::Project,
+        SyncAction::Create,
+        project.id,
+        Some(auth.user.id),
+        origin.0,
+    );
     Ok((StatusCode::CREATED, Json(project)))
 }
 
