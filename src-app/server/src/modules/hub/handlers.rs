@@ -431,41 +431,52 @@ pub async fn create_assistant_template_from_hub(
     Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<CreateAssistantFromHubRequest>,
 ) -> ApiResult<Json<AssistantFromHubResponse>> {
-    // Idempotency guard: refuse to create a duplicate template install
-    // for the same hub_id. Without this an admin clicking "Use as
-    // Template" twice (or installing from two browser tabs) would
-    // create two identical templates, each of which then fans out to
-    // every new user's assistant list via the clone-on-signup hook.
-    //
-    // The `replace_existing` flag overrides this for the
-    // `/hub/updates` Re-install path: an outdated template needs to
-    // be replaced, not duplicated. When set, we delete the existing
-    // template first (and emit `AssistantEvent::Deleted` so the hub
-    // module's `CleanupHubEntitiesHandler` removes the orphan
-    // `hub_entities` row — there is NO FK cascade between
-    // `hub_entities.entity_id` and `assistants.id`, the cleanup is
-    // event-driven) and then create afresh.
-    if let Some(existing_id) = Repos.hub.find_template_install(&request.hub_id).await?
-    {
-        if request.replace_existing {
-            // Tolerate "already deleted" — racy with the admin templates
-            // page deleting the same row in another tab. Any other DB
-            // error still surfaces.
-            match Repos.assistant.delete(existing_id).await {
-                Ok(()) => {
-                    event_bus
-                        .emit(AssistantEvent::deleted(existing_id, None))
-                        .await;
-                }
-                Err(e) if e.status_code() == 404 => (),
-                Err(e) => return Err(e.into()),
-            }
-        } else {
-            return Err(AppError::conflict("Hub assistant template").into());
+    // Idempotency guard: look up the existing template install (if
+    // any) but DON'T delete yet. The delete is deferred until AFTER
+    // the catalog lookup + validation succeeds so a failing re-install
+    // (e.g. the upstream maintainer raised min_ziee_version since the
+    // original install, or expanded instructions past the 64 KiB cap)
+    // does NOT leave the admin with the prior template wiped + no
+    // system-wide fallback for new signups.
+    let existing_id = Repos.hub.find_template_install(&request.hub_id).await?;
+    if existing_id.is_some() && !request.replace_existing {
+        return Err(AppError::conflict("Hub assistant template").into());
+    }
+
+    // Carry forward the prior template's `is_default` / `enabled` on
+    // the `replace_existing` re-install path so a previously-promoted
+    // template doesn't silently get demoted off auto-clone duty by the
+    // refresh. (`CloneTemplateAssistantsHandler` only fans out
+    // `is_default && enabled` templates to new users — silently
+    // flipping either OFF would stop new signups receiving the
+    // template until an admin re-promotes manually.)
+    let mut plan = build_assistant_create_from_hub(&request, true).await?;
+    if let Some(existing_id) = existing_id {
+        if let Some(prior) = Repos.assistant.get(existing_id).await? {
+            plan.create_request.is_default = Some(prior.is_default);
+            plan.create_request.enabled = Some(prior.enabled);
         }
     }
 
-    let plan = build_assistant_create_from_hub(&request, true).await?;
+    // Validation passed — now delete the prior template (if any) and
+    // emit `AssistantEvent::Deleted` so the hub module's
+    // `CleanupHubEntitiesHandler` removes the orphan `hub_entities`
+    // row. There is NO FK cascade between `hub_entities.entity_id`
+    // and `assistants.id`; cleanup is event-driven.
+    if let Some(existing_id) = existing_id {
+        // Tolerate "already deleted" — racy with the admin templates
+        // page deleting the same row in another tab. Any other DB
+        // error still surfaces.
+        match Repos.assistant.delete(existing_id).await {
+            Ok(()) => {
+                event_bus
+                    .emit(AssistantEvent::deleted(existing_id, None))
+                    .await;
+            }
+            Err(e) if e.status_code() == 404 => (),
+            Err(e) => return Err(e.into()),
+        }
+    }
 
     // Templates have no owner — pass None for the user-id arg.
     let assistant = Repos.assistant.create(None, plan.create_request).await?;
@@ -474,7 +485,16 @@ pub async fn create_assistant_template_from_hub(
     // a system-wide install (the `is_template_install` flag on the
     // outdated row then routes the Re-install UI through the
     // template endpoint).
-    let hub_tracking = Repos
+    //
+    // Partial unique index `uniq_hub_template_install` (migration 50)
+    // is the last-line backstop against the TOCTOU race where two
+    // admins both passed the `find_template_install` check above
+    // concurrently. If the insert hits that index, we delete the
+    // orphan assistants row we just created (rolling back the partial
+    // state) and return 409 — matches the fast-path error code so
+    // clients see a consistent contract regardless of which
+    // serialization layer caught the dup.
+    let hub_tracking = match Repos
         .hub
         .track_hub_entity(
             HubEntityType::Assistant,
@@ -484,7 +504,18 @@ pub async fn create_assistant_template_from_hub(
             None,
             plan.hub_version.as_deref(),
         )
-        .await?;
+        .await
+    {
+        Ok(t) => t,
+        Err(e) if e.status_code() == 409 => {
+            let _ = Repos.assistant.delete(assistant.id).await;
+            event_bus
+                .emit(AssistantEvent::deleted(assistant.id, None))
+                .await;
+            return Err(AppError::conflict("Hub assistant template").into());
+        }
+        Err(e) => return Err(e.into()),
+    };
 
     event_bus.emit_async(
         HubEvent::assistant_created_from_hub(

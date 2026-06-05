@@ -562,14 +562,231 @@ async fn install_as_template_with_replace_existing_succeeds() {
 
     // A THIRD `replace_existing` install should also succeed — the
     // find_template_install JOIN guards against orphan rows.
-    let third = client
+    let third: Json = client
         .post(server.api_url("/hub/assistant-templates/create"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&json!({ "hub_id": "mock-asst-a", "replace_existing": true }))
         .send()
         .await
-        .expect("third install");
-    assert_eq!(third.status(), 201, "third replace must still 201");
+        .expect("third install")
+        .json()
+        .await
+        .expect("parse third");
+    let third_id = third["assistant"]["id"].as_str().unwrap().to_string();
+
+    // After the third install, ONLY the third uuid should remain
+    // (regression guard against a future change letting cleanup race
+    // with the new track_hub_entity insert and leaving stale rows).
+    let final_listing: Json = client
+        .get(server.api_url("/hub/assistants?lang=en"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("list after third")
+        .json()
+        .await
+        .expect("parse final");
+    let final_row = final_listing
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["id"] == "mock-asst-a")
+        .expect("mock-asst-a in final listing");
+    let final_ids: Vec<String> = final_row["created_template_ids"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(
+        final_ids,
+        vec![third_id.clone()],
+        "after 3 replace installs, only the THIRD uuid should remain",
+    );
+    assert!(
+        !final_ids.contains(&first_id) && !final_ids.contains(&second_id),
+        "1st + 2nd uuids must be gone, got {final_ids:?}",
+    );
+}
+
+#[tokio::test]
+async fn replace_existing_preserves_is_default() {
+    // Re-install via /hub/updates must not silently demote a previously
+    // promoted template (is_default=true). Without this carry-forward,
+    // re-install would set is_default=false (the request body default),
+    // and new signups would stop receiving the template via the
+    // clone-on-signup hook (which filters on is_default && enabled).
+    let mock = spawn_mock_hub(two_versions()).await;
+    let server = TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: mock.test_env(),
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(
+        &server,
+        "admin",
+        &[
+            "hub::catalog::read",
+            "hub::catalog::manage",
+            "hub::assistants::create",
+            "assistant_templates::create",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "version": "9.9.1-test" }))
+        .send()
+        .await
+        .expect("activate")
+        .error_for_status()
+        .expect("activate ok");
+
+    // Install + promote to default in one shot (the API accepts the
+    // is_default flag on install).
+    let first: Json = client
+        .post(server.api_url("/hub/assistant-templates/create"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-asst-a", "is_default": true }))
+        .send()
+        .await
+        .expect("first install")
+        .json()
+        .await
+        .expect("parse first");
+    assert_eq!(first["assistant"]["is_default"], true);
+
+    // Re-install WITHOUT passing is_default (mimics the
+    // UpdatesHubTab Re-install button which passes only hub_id +
+    // replace_existing). The new template must inherit is_default=true.
+    let second: Json = client
+        .post(server.api_url("/hub/assistant-templates/create"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-asst-a", "replace_existing": true }))
+        .send()
+        .await
+        .expect("replace install")
+        .json()
+        .await
+        .expect("parse second");
+    assert_eq!(
+        second["assistant"]["is_default"], true,
+        "re-install must carry forward is_default=true: {second}",
+    );
+}
+
+#[tokio::test]
+async fn replace_existing_aborts_on_validation_failure() {
+    // The `replace_existing` re-install path runs validation BEFORE
+    // the delete so a failed re-install (e.g. catalog moved an item
+    // to an incompatible min_ziee_version) doesn't leave the admin
+    // with the prior template wiped and no system-wide fallback.
+    let mock = spawn_mock_hub(two_versions()).await;
+    let server = TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: mock.test_env(),
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(
+        &server,
+        "admin",
+        &[
+            "hub::catalog::read",
+            "hub::catalog::manage",
+            "hub::assistants::read",
+            "hub::assistants::create",
+            "assistant_templates::create",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    // v9.9.1 has `mock-asst-a` compatible — install fine.
+    client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "version": "9.9.1-test" }))
+        .send()
+        .await
+        .expect("activate v1")
+        .error_for_status()
+        .expect("activate v1 ok");
+    let first: Json = client
+        .post(server.api_url("/hub/assistant-templates/create"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-asst-a" }))
+        .send()
+        .await
+        .expect("first install")
+        .json()
+        .await
+        .expect("parse first");
+    let first_id = first["assistant"]["id"].as_str().unwrap().to_string();
+
+    // Activate v9.9.2 — same `mock-asst-a` is still present and
+    // compatible, but we'll attempt `replace_existing` with an
+    // explicit overflow on description to force a 400.
+    client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "version": "9.9.2-test" }))
+        .send()
+        .await
+        .expect("activate v2")
+        .error_for_status()
+        .expect("activate v2 ok");
+
+    // Oversized description (>4 KiB) triggers
+    // validate_assistant_text_lengths → 400. The prior template must
+    // still exist after this failure (delete is gated on validation).
+    let oversized = "a".repeat(5000);
+    let resp = client
+        .post(server.api_url("/hub/assistant-templates/create"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "hub_id": "mock-asst-a",
+            "replace_existing": true,
+            "description": oversized,
+        }))
+        .send()
+        .await
+        .expect("replace with bad input");
+    assert_eq!(
+        resp.status(),
+        400,
+        "validation failure should 400, got {}",
+        resp.status(),
+    );
+
+    // The prior template MUST still exist in the catalog listing.
+    let listing: Json = client
+        .get(server.api_url("/hub/assistants?lang=en"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("list after failed replace")
+        .json()
+        .await
+        .expect("parse listing");
+    let row = listing
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["id"] == "mock-asst-a")
+        .expect("mock-asst-a in catalog");
+    let ids: Vec<String> = row["created_template_ids"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect();
+    assert!(
+        ids.contains(&first_id),
+        "prior template MUST survive a failed re-install: {ids:?}",
+    );
 }
 
 #[tokio::test]
@@ -646,6 +863,52 @@ async fn template_install_surfaces_in_updates_with_template_flag() {
     assert_eq!(
         row["is_template_install"], true,
         "template install must be flagged: {row}",
+    );
+
+    // Stamp a synthetic outdated MODEL row (also `created_by: NULL`)
+    // and assert that `is_template_install` stays FALSE for it — the
+    // predicate must filter on `entity_type == 'assistant'`, not just
+    // `created_by IS NULL`. Without this guard, a hub model in /hub/
+    // updates would route through the template re-install endpoint
+    // (which would 404 since the model's hub_id isn't in the
+    // assistants table). Inserts directly into `hub_entities` because
+    // a real model install requires a provider + a real download.
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&server.database_url)
+        .await
+        .expect("connect test pool");
+    sqlx::query!(
+        r#"
+        INSERT INTO hub_entities
+            (entity_type, entity_id, hub_id, hub_category, created_by, hub_version)
+        VALUES
+            ('llm_model', gen_random_uuid(), 'mock-model-a', 'model', NULL, '9.9.1-test')
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .expect("insert synthetic model row");
+
+    let updates2: Json = client
+        .get(server.api_url("/hub/updates"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("updates 2")
+        .json()
+        .await
+        .expect("parse updates 2");
+    let model_row = updates2["updates"]
+        .as_array()
+        .expect("updates2 array")
+        .iter()
+        .find(|r| r["hub_id"] == "mock-model-a")
+        .expect("synthetic model row should appear in updates");
+    assert_eq!(
+        model_row["is_template_install"], false,
+        "MODEL install must NOT be flagged as template even though \
+         created_by IS NULL: {model_row}",
     );
 }
 

@@ -154,7 +154,7 @@ pub async fn track_hub_entity(
     let entity_type_str = entity_type.as_str();
     let hub_category_str = hub_category.as_str();
 
-    let record = sqlx::query!(
+    let record = match sqlx::query!(
         r#"
         INSERT INTO hub_entities (entity_type, entity_id, hub_id, hub_category, created_by, hub_version)
         VALUES ($1, $2, $3, $4, $5, $6)
@@ -170,7 +170,21 @@ pub async fn track_hub_entity(
         hub_version
     )
     .fetch_one(pool)
-    .await?;
+    .await
+    {
+        Ok(r) => r,
+        // Translate the partial unique index `uniq_hub_template_install`
+        // (migration 79) into a 409 so the handler can match on it.
+        // SQLSTATE 23505 = unique_violation. This is the TOCTOU
+        // backstop for concurrent template installs that both passed
+        // the application-level `find_template_install` check.
+        Err(sqlx::Error::Database(db_err))
+            if db_err.code().as_deref() == Some("23505") =>
+        {
+            return Err(AppError::conflict("Hub entity"));
+        }
+        Err(e) => return Err(AppError::database_error(e)),
+    };
 
     Ok(HubEntity {
         id: record.id,
