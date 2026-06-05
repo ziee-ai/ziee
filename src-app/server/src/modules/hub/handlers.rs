@@ -740,6 +740,15 @@ pub async fn create_system_mcp_server_from_hub(
     // Without these, an admin who'd hardened a hub-installed system
     // server (e.g. flipped `run_in_sandbox=true`) would see their
     // change silently reverted to the catalog default on Re-install.
+    //
+    // Caveat — `supports_sampling` is NOT carried forward (it's a
+    // catalog-declared capability, not admin-tunable). If a catalog
+    // upgrade flips `supports_sampling` from false→true for the same
+    // hub_id, the carried-forward `timeout_seconds=30` (the
+    // non-sampling default) will pair with the new sampling-capable
+    // server and may cut off long-running sampling calls. Admin
+    // should re-tune the timeout after such an upgrade — flagged in
+    // the release notes for the catalog version that flips the flag.
     let mut plan = build_mcp_server_create_from_hub(&request).await?;
     if let Some(existing_id) = existing_id {
         if let Some(prior) = Repos.mcp.get_any_server(existing_id).await? {

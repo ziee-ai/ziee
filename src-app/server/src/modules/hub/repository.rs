@@ -483,11 +483,12 @@ pub async fn find_template_install(
 
 /// MCP-server analog of `find_template_install`. Find an existing
 /// LIVE SYSTEM MCP server install (`created_by IS NULL` AND the
-/// `mcp_servers` row still exists with `is_system = true`) for a hub
-/// MCP server. Returns the `entity_id` (= server id) when one exists.
-/// Used to enforce idempotency in `Hub.createSystemMcpServerFromHub`
-/// — without this guard the admin clicking "Install as System" twice
-/// would create two identical system servers.
+/// `mcp_servers` row still exists with `is_system = true` AND
+/// `is_built_in = false`) for a hub MCP server. Returns the
+/// `entity_id` (= server id) when one exists. Used to enforce
+/// idempotency in `Hub.createSystemMcpServerFromHub` — without this
+/// guard the admin clicking "Install as System" twice would create
+/// two identical system servers.
 ///
 /// The INNER JOIN against `mcp_servers` filters out orphan
 /// `hub_entities` rows (e.g. from a delete that fired before the
@@ -496,6 +497,16 @@ pub async fn find_template_install(
 /// to delete a row that no longer exists. `ORDER BY created_at DESC
 /// LIMIT 1` makes the result deterministic in the (currently
 /// impossible) case of two live system installs co-existing.
+///
+/// `AND ms.is_built_in = false` is defense-in-depth: built-in
+/// servers (filesystem/fetch/browser/git per migration 25) are
+/// created by their own modules and never go through `hub_entities`
+/// tracking, so this branch is unreachable today. But if a future
+/// migration ever flipped `is_built_in` on a hub-installed row,
+/// `delete_system_mcp_server` would reject the delete with 400
+/// BUILT_IN_SERVER, surfacing a confusing error from the re-install
+/// path. Filtering here keeps the handler's `replace_existing`
+/// branch on the happy path.
 pub async fn find_system_mcp_install(
     pool: &PgPool,
     hub_id: &str,
@@ -509,6 +520,7 @@ pub async fn find_system_mcp_install(
           AND he.hub_id = $1
           AND he.created_by IS NULL
           AND ms.is_system = true
+          AND ms.is_built_in = false
         ORDER BY he.created_at DESC
         LIMIT 1
         "#,

@@ -1670,17 +1670,19 @@ async fn user_mcp_install_rejects_replace_existing_flag() {
 }
 
 #[tokio::test]
-async fn replace_existing_preserves_run_in_sandbox() {
+async fn replace_existing_preserves_admin_tunable_fields_mcp() {
     // Re-install via /hub/updates must not silently demote a
     // previously-promoted system MCP server's admin-tunable runtime
     // fields. Sibling of `replace_existing_preserves_is_default`.
-    // Specifically guards against the Round-1 F-1 silent-demote of
-    // `run_in_sandbox` (sandbox hardening posture) on Re-install.
+    // Specifically guards against the Round-1 F-1 silent-demote on
+    // Re-install for ALL FIVE carried-forward fields — single test
+    // catches a regression on any of the lines at once instead of
+    // one test per field (`run_in_sandbox` alone would let a future
+    // refactor silently drop `usage_mode` carry-forward unnoticed).
     //
-    // We install, then PATCH the row via the native admin endpoint
-    // to flip `run_in_sandbox=true` (the hub install starts it at
-    // false — sandbox is opt-in for hub-installed servers), then
-    // re-install and assert the flag survives.
+    // We install, then PUT the row via the native admin endpoint to
+    // promote all five fields away from the hub defaults, then
+    // re-install and assert every field survives.
     let mock = spawn_mock_hub(mcp_versions()).await;
     let server = TestServer::start_with_options(crate::common::TestServerOptions {
         extra_env: mock.test_env(),
@@ -1722,16 +1724,30 @@ async fn replace_existing_preserves_run_in_sandbox() {
         .await
         .expect("parse first");
     let first_id = first["server"]["id"].as_str().unwrap().to_string();
+    // Sanity: hub install starts with the catalog/code defaults.
     assert_eq!(
         first["server"]["run_in_sandbox"], false,
         "hub install must start with run_in_sandbox=false",
     );
+    assert_eq!(
+        first["server"]["enabled"], true,
+        "hub install must start with enabled=true",
+    );
 
-    // Promote via the native admin PUT.
+    // Promote ALL FIVE admin-tunable fields away from defaults via
+    // native admin PUT. Note: `enabled=false` exercises the
+    // enabled-stays-disabled regression guard; `usage_mode=always`
+    // and the session cap + timeout exercise the other three.
     let promote = client
         .put(server.api_url(&format!("/mcp/system-servers/{}", first_id)))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "run_in_sandbox": true }))
+        .json(&json!({
+            "run_in_sandbox": true,
+            "enabled": false,
+            "usage_mode": "always",
+            "max_concurrent_sessions": 7,
+            "timeout_seconds": 120,
+        }))
         .send()
         .await
         .expect("promote");
@@ -1742,9 +1758,9 @@ async fn replace_existing_preserves_run_in_sandbox() {
         promote.text().await.unwrap_or_default(),
     );
 
-    // Re-install without passing run_in_sandbox in the request
+    // Re-install without passing any of these in the request
     // (mimics UpdatesHubTab.reinstall which only passes hub_id +
-    // replace_existing). Must carry forward run_in_sandbox=true.
+    // replace_existing). All five fields must carry forward.
     let second: Json = client
         .post(server.api_url("/hub/mcp-servers/create-system"))
         .header("Authorization", format!("Bearer {}", admin.token))
@@ -1758,5 +1774,21 @@ async fn replace_existing_preserves_run_in_sandbox() {
     assert_eq!(
         second["server"]["run_in_sandbox"], true,
         "re-install must carry forward run_in_sandbox=true: {second}",
+    );
+    assert_eq!(
+        second["server"]["enabled"], false,
+        "re-install must carry forward enabled=false: {second}",
+    );
+    assert_eq!(
+        second["server"]["usage_mode"], "always",
+        "re-install must carry forward usage_mode=always: {second}",
+    );
+    assert_eq!(
+        second["server"]["max_concurrent_sessions"], 7,
+        "re-install must carry forward max_concurrent_sessions=7: {second}",
+    );
+    assert_eq!(
+        second["server"]["timeout_seconds"], 120,
+        "re-install must carry forward timeout_seconds=120: {second}",
     );
 }
