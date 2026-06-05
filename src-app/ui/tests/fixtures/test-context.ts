@@ -369,11 +369,16 @@ export default defineConfig({
 
     writeFileSync(viteConfigPath, viteConfigContent)
 
-    // 6. Start Vite preview (static) server
+    // 6. Start Vite preview (static) server. Spawn vite DIRECTLY (node + the
+    //    vite.js bin), NOT via `npx`: npx orphans its vite child, so killing
+    //    the npx process on teardown leaks a live preview per test that drains
+    //    the host. Spawning node directly makes viteProcess the server itself,
+    //    so SIGKILL actually kills it.
     console.log(`🎨 Starting Vite preview on port ${vitePort}...`)
+    const viteBin = resolve(projectRoot, '../../node_modules/vite/bin/vite.js')
     const viteProcess = spawn(
-      'npx',
-      ['vite', 'preview', '--config', viteConfigPath],
+      process.execPath,
+      [viteBin, 'preview', '--config', viteConfigPath],
       {
         cwd: projectRoot,
         stdio: ['ignore', 'pipe', 'pipe'],

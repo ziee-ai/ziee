@@ -60,6 +60,11 @@ test.describe('Realtime sync (cross-device)', () => {
   }) => {
     const { baseURL } = testInfra
 
+    // User A = admin, device 1. loginAsAdmin onboards the admin on this test's
+    // fresh backend FIRST, so getAdminToken below can authenticate.
+    await loginAsAdmin(page, baseURL)
+    await goToProjectsPage(page, baseURL)
+
     // A second, distinct user. createTestUser auto-joins the default Users
     // group, so B gets a working app shell + a live sync stream.
     const adminToken = await getAdminToken(baseURL)
@@ -74,10 +79,6 @@ test.describe('Realtime sync (cross-device)', () => {
       password,
       ['profile::read', 'projects::read', 'projects::create'],
     )
-
-    // User A = admin, device 1.
-    await loginAsAdmin(page, baseURL)
-    await goToProjectsPage(page, baseURL)
 
     const ctxA2 = await browser.newContext() // User A, device 2 — positive control
     const pageA2 = await ctxA2.newPage()
