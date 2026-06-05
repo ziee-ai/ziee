@@ -1,5 +1,4 @@
 import { createModule } from '@/core'
-import '@/modules/auth/sync' // registerSync('session') side-effect
 import { useAuthStore } from '@/modules/auth/Auth.store'
 import { useAuthProvidersStore } from '@/modules/auth/AuthProviders.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
@@ -19,7 +18,8 @@ export default createModule({
   metadata: {
     name: 'auth',
     version: '1.0.0',
-    description: 'Authentication module with login, registration, and social sign-in',
+    description:
+      'Authentication module with login, registration, and social sign-in',
   },
   dependencies: ['router'],
   routes: [

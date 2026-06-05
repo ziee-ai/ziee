@@ -1,17 +1,15 @@
-import { createModule } from '@/core'
 import { FolderOutlined } from '@ant-design/icons'
-import { AppLayoutDef } from '@/modules/layouts/app-layout'
-import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { Permissions } from '@/api-client/types'
-
+import { createModule } from '@/core'
+import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import {
-  useProjectsStore,
   useProjectDetailStore,
   useProjectDrawerStore,
+  useProjectsStore,
 } from '@/modules/projects/stores'
+import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/projects/types' // store-merge declaration
 import '@/modules/projects/events' // event-bus type merge
-import '@/modules/projects/sync' // registerSync('project') side-effect
 // Trigger the auto-discovery glob — sibling modules with a
 // `project-extension/extension.tsx` register their knowledge-kind
 // contributions side-effectfully at module-import time. Side-effect

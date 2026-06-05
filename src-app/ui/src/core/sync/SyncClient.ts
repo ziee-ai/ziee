@@ -2,14 +2,14 @@ import { getAuthToken, getBaseUrl } from '@/api-client/core'
 import type { SyncEvent } from '@/api-client/types'
 import { useEventBusStore } from '@/core/events/store'
 import { setSyncConnectionId } from './connection'
-import { resyncAll } from './registry'
 
 // Realtime-sync SSE client. A thin bridge: opens the per-user
 // `GET /api/sync/subscribe` stream and re-emits each `{entity, action,
 // id}` frame onto the client EventBus as a per-entity `sync:<entity>`
-// event. Existing per-module handlers (registerSync) then refetch. Reuses
-// the same fetch + ReadableStream approach as the api-client so header
-// auth works (EventSource can't set Authorization).
+// event. Each store subscribes to its own `sync:<entity>` in its
+// `__init__.__store__` (like any local event) and refetches. Reuses the
+// same fetch + ReadableStream approach as the api-client so header auth
+// works (EventSource can't set Authorization).
 
 const INITIAL_BACKOFF_MS = 1_000
 const MAX_BACKOFF_MS = 30_000
@@ -93,10 +93,11 @@ async function connectOnce(myEpoch: number): Promise<void> {
     throw new Error(`[sync] subscribe failed: ${response.status}`)
   }
 
-  // Connected: reset backoff and resync to cover anything missed while
-  // the stream was down (best-effort durability).
+  // Connected: reset backoff and broadcast a resync signal so every store
+  // reloads to cover anything missed while the stream was down (best-effort
+  // durability). Stores subscribe to `sync:reconnect` alongside their entity.
   backoffMs = INITIAL_BACKOFF_MS
-  resyncAll()
+  void useEventBusStore.getState().emit({ type: 'sync:reconnect', data: {} })
 
   const reader = response.body.getReader()
   const decoder = new globalThis.TextDecoder()
@@ -144,10 +145,10 @@ function handleFrame(event: string, data: unknown): void {
   if (event === 'sync') {
     const ev = data as SyncEvent | null
     if (!ev || !ev.entity || !ev.action || !ev.id) return
-    // Re-emit onto the existing EventBus as a per-entity event; the
-    // module's registerSync handler reacts. Cast: the template-literal
-    // key is a valid `keyof AppEvents` but TS can't narrow it from the
-    // runtime entity string.
+    // Re-emit onto the existing EventBus as a per-entity event; whichever
+    // store subscribed to this `sync:<entity>` reacts. Cast: the
+    // template-literal key is a valid `keyof AppEvents` but TS can't narrow
+    // it from the runtime entity string.
     void useEventBusStore.getState().emit({
       type: `sync:${ev.entity}`,
       data: { action: ev.action, id: ev.id },

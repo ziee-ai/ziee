@@ -1,20 +1,22 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { ApiClient } from '@/api-client'
-import type {
-  McpServer,
-  CreateMcpServerRequest,
-  UpdateMcpServerRequest,
-  TestMcpConnectionRequest,
-  TestMcpConnectionResponse,
+import {
+  type CreateMcpServerRequest,
+  type McpServer,
+  Permissions,
+  type TestMcpConnectionRequest,
+  type TestMcpConnectionResponse,
+  type UpdateMcpServerRequest,
 } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
+import { Stores } from '@/core/stores'
 import {
   emitGroupSystemMcpServersChanged,
   emitMcpServerCreated,
-  emitMcpServerUpdated,
   emitMcpServerDeleted,
+  emitMcpServerUpdated,
 } from '@/modules/mcp/events'
-import { Stores } from '@/core/stores'
 
 /** Debounce timer for system MCP search-term reloads (250ms). */
 let sysMcpSearchDebounce: ReturnType<typeof setTimeout> | null = null
@@ -160,6 +162,16 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
               }))
             }),
           )
+
+          // Cross-device sync for the admin system (deployment-shared)
+          // MCP servers table. Self-gate on mcp_servers_admin::read —
+          // loadSystemServers does NOT gate internally, so guard here.
+          const reload = () => {
+            if (!hasPermissionNow(Permissions.McpServersAdminRead)) return
+            void get().loadSystemServers()
+          }
+          unsubscribers.push(eventBus.on('sync:mcp_server_system', reload))
+          unsubscribers.push(eventBus.on('sync:reconnect', reload))
 
           // Store unsubscribers for cleanup
           set({ _eventUnsubscribers: unsubscribers })

@@ -1,11 +1,10 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import { createStoreProxy } from '@/core/stores'
 import { ApiClient } from '@/api-client'
-import { Stores } from '@/core/stores'
 import { Permissions, type ProviderWithModels } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
+import { createStoreProxy, Stores } from '@/core/stores'
 import { sortProviders } from '@/modules/llm-provider/sortProviders'
 
 interface UserLlmProvidersStore {
@@ -40,11 +39,39 @@ export const useUserLlmProvidersStore = create<UserLlmProvidersStore>()(
           const eventBus = Stores.EventBus
           const GROUP = 'UserLlmProvidersStore'
 
-          eventBus.on('llm_provider.created', async () => { await get().load() }, GROUP)
-          eventBus.on('llm_provider.updated', async () => { await get().load() }, GROUP)
-          eventBus.on('llm_provider.deleted', async () => { await get().load() }, GROUP)
+          eventBus.on(
+            'llm_provider.created',
+            async () => {
+              await get().load()
+            },
+            GROUP,
+          )
+          eventBus.on(
+            'llm_provider.updated',
+            async () => {
+              await get().load()
+            },
+            GROUP,
+          )
+          eventBus.on(
+            'llm_provider.deleted',
+            async () => {
+              await get().load()
+            },
+            GROUP,
+          )
+
+          // Remote sync: an API key or provider/model changed on another
+          // device, or we (re)connected. `load()` self-gates on
+          // UserLlmProvidersRead and refetches its own scoped view.
+          const reload = () => void get().load()
+          eventBus.on('sync:api_key', reload, GROUP)
+          eventBus.on('sync:user_llm_provider', reload, GROUP)
+          eventBus.on('sync:reconnect', reload, GROUP)
         },
-        providers: () => { get().load() },
+        providers: () => {
+          get().load()
+        },
       },
 
       __destroy__: () => {
@@ -77,7 +104,10 @@ export const useUserLlmProvidersStore = create<UserLlmProvidersStore>()(
               ),
             )
             state.userKeys = Object.fromEntries(
-              keysRes.keys.map(k => [k.provider_id, { masked_key: k.masked_key }]),
+              keysRes.keys.map(k => [
+                k.provider_id,
+                { masked_key: k.masked_key },
+              ]),
             )
             state.loading = false
           })
@@ -91,7 +121,9 @@ export const useUserLlmProvidersStore = create<UserLlmProvidersStore>()(
       },
 
       saveKey: async (providerId: string, apiKey: string) => {
-        set(state => { state.saving = true })
+        set(state => {
+          state.saving = true
+        })
         try {
           await ApiClient.LlmProvider.saveUserApiKey(
             { provider_id: providerId, api_key: apiKey },
@@ -99,12 +131,16 @@ export const useUserLlmProvidersStore = create<UserLlmProvidersStore>()(
           )
           await get().load()
         } finally {
-          set(state => { state.saving = false })
+          set(state => {
+            state.saving = false
+          })
         }
       },
 
       deleteKey: async (providerId: string) => {
-        set(state => { state.saving = true })
+        set(state => {
+          state.saving = true
+        })
         try {
           await ApiClient.LlmProvider.deleteUserApiKey(
             { provider_id: providerId },
@@ -112,11 +148,15 @@ export const useUserLlmProvidersStore = create<UserLlmProvidersStore>()(
           )
           await get().load()
         } finally {
-          set(state => { state.saving = false })
+          set(state => {
+            state.saving = false
+          })
         }
       },
     })),
   ),
 )
 
-export const UserLlmProvidersStoreProxy = createStoreProxy(useUserLlmProvidersStore)
+export const UserLlmProvidersStoreProxy = createStoreProxy(
+  useUserLlmProvidersStore,
+)

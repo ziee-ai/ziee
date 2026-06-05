@@ -1,17 +1,16 @@
-import { createModule } from '@/core'
 import { RobotOutlined } from '@ant-design/icons'
+import { createModule } from '@/core'
+import { useAssistantDrawerStore } from '@/modules/assistant/components/AssistantDrawer.store'
+import {
+  useAssistantPickerStore,
+  useTemplateAssistantsStore,
+  useUserAssistantsStore,
+} from '@/modules/assistant/stores'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
-import {
-  useUserAssistantsStore,
-  useTemplateAssistantsStore,
-  useAssistantPickerStore,
-} from '@/modules/assistant/stores'
-import { useAssistantDrawerStore } from '@/modules/assistant/components/AssistantDrawer.store'
 import '@/modules/assistant/types'
-import '@/modules/assistant/sync' // registerSync('assistant') side-effect
-import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { Permissions } from '@/api-client/types'
+import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 
 const UserAssistantsPage = lazyWithPreload(() =>

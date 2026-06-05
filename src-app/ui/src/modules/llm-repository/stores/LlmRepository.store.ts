@@ -2,17 +2,19 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { ApiClient } from '@/api-client'
 import type {
-  LlmRepository,
   CreateLlmRepositoryRequest,
-  UpdateLlmRepositoryRequest,
+  LlmRepository,
   TestRepositoryConnectionRequest,
+  UpdateLlmRepositoryRequest,
 } from '@/api-client/types'
+import { Permissions } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
+import { Stores } from '@/core/stores'
 import {
   emitLlmRepositoryCreated,
-  emitLlmRepositoryUpdated,
   emitLlmRepositoryDeleted,
+  emitLlmRepositoryUpdated,
 } from '@/modules/llm-repository/events'
-import { Stores } from '@/core/stores'
 
 interface LlmRepositoryState {
   // Data
@@ -84,6 +86,9 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
       // for the initial load. We only skip a fresh call when one is
       // already in flight — explicit pagination requests always run.
       loadLlmRepositories: async (page?: number, pageSize?: number) => {
+        if (!hasPermissionNow(Permissions.LlmRepositoriesRead)) {
+          return
+        }
         const state = get()
         if (state.loading) {
           return
@@ -337,6 +342,13 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
             },
             GROUP,
           )
+
+          // Cross-device sync: reload on a server-pushed change or on
+          // reconnect. `loadLlmRepositories` self-gates on the read
+          // permission and skips while a load is in flight.
+          const reload = () => void get().loadLlmRepositories()
+          eventBus.on('sync:llm_repository', reload, GROUP)
+          eventBus.on('sync:reconnect', reload, GROUP)
         },
         repositories: () => get().loadLlmRepositories(),
       },

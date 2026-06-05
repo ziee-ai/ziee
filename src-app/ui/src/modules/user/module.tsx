@@ -1,17 +1,16 @@
-import { createModule } from '@/core'
-import { UserOutlined, TeamOutlined } from '@ant-design/icons'
+import { TeamOutlined, UserOutlined } from '@ant-design/icons'
 import { Permissions } from '@/api-client/types'
+import { createModule } from '@/core'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
-import { useUsersStore, useUserGroupsStore } from '@/modules/user/stores'
 import { useUserGroupDrawerStore } from '@/modules/user/components/group/EditUserGroupDrawer.store'
 import { useGroupMembersDrawerStore } from '@/modules/user/components/group/GroupMembersDrawer.store'
+import { useAssignGroupDrawerStore } from '@/modules/user/components/user/AssignGroupDrawer.store'
 import { useCreateUserDrawerStore } from '@/modules/user/components/user/CreateUserDrawer.store'
 import { useEditUserDrawerStore } from '@/modules/user/components/user/EditUserDrawer.store'
 import { useResetPasswordDrawerStore } from '@/modules/user/components/user/ResetPasswordDrawer.store'
 import { useUserGroupsDrawerStore } from '@/modules/user/components/user/UserGroupsDrawer.store'
-import { useAssignGroupDrawerStore } from '@/modules/user/components/user/AssignGroupDrawer.store'
+import { useUserGroupsStore, useUsersStore } from '@/modules/user/stores'
 import '@/modules/user/types' // Import type augmentation
-import '@/modules/user/sync' // registerSync('user' + 'group') side-effect
 import '@/modules/user/types/GroupWidget' // Register userGroup widget slot
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types

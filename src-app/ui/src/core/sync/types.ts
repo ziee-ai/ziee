@@ -29,5 +29,16 @@ type SyncEntityEvents = {
 }
 
 declare module '@/core/events' {
-  interface AppEvents extends SyncEntityEvents {}
+  interface AppEvents extends SyncEntityEvents {
+    // Broadcast by the SyncClient on every (re)connect so each store can
+    // reload to cover events missed while the stream was down. Not an entity
+    // event — a resync signal stores subscribe to alongside their entity.
+    // `data` is an empty object (every AppEvents member carries `data`, so
+    // omitting it would drop `data` from the union's common keys and break
+    // `emit` typing for ALL events).
+    'sync:reconnect': BaseEvent & {
+      type: 'sync:reconnect'
+      data: Record<string, never>
+    }
+  }
 }

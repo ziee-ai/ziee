@@ -1,8 +1,5 @@
-import { assertSyncCoverage } from './registry'
 import { startSyncClient, stopSyncClient } from './SyncClient'
 
-export type { SyncRegistration } from './registry'
-export { registerSync, resyncAll } from './registry'
 export { startSyncClient, stopSyncClient } from './SyncClient'
 
 interface AuthLike {
@@ -21,8 +18,7 @@ interface AuthStoreLike {
 let initialized = false
 
 /**
- * Wire the SyncClient lifecycle to auth. Call once at app startup, after
- * modules have loaded (so `registerSync` coverage is complete).
+ * Wire the SyncClient lifecycle to auth. Call once at app startup.
  *
  * Starts the stream when a user is present, stops on logout, and
  * restarts on a user switch. Subscribes by user id rather than an
@@ -32,8 +28,6 @@ let initialized = false
 export function initSync(authStore: AuthStoreLike): void {
   if (initialized) return
   initialized = true
-
-  assertSyncCoverage()
 
   let currentUserId: string | undefined
   const apply = (userId: string | undefined) => {

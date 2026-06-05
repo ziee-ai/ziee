@@ -2,12 +2,12 @@ import { create } from 'zustand'
 import { persist, subscribeWithSelector } from 'zustand/middleware'
 import { ApiClient } from '@/api-client'
 import type {
+  CreateUserRequest,
   LinkAccountRequest,
   LoginRequest,
-  CreateUserRequest,
   User,
 } from '@/api-client/types'
-import { type StoreProxy } from '@/core/stores'
+import { type StoreProxy, Stores } from '@/core/stores'
 
 export interface AutoLoginResponse {
   // Nullable: the OAuth callback path passes `null` because the
@@ -42,6 +42,7 @@ interface AuthState {
   clearAuthenticationError: () => void
   initAuth: () => Promise<void>
   setAuthFromAutoLogin: (response: AutoLoginResponse) => void
+  refreshFromSync: () => Promise<void>
 }
 
 // Augment the RegisteredStores interface for IntelliSense
@@ -231,8 +232,52 @@ export const useAuthStore = create<AuthState>()(
           })
         },
 
+        // A permission/group-membership/profile change on another device. Quietly
+        // re-fetch /auth/me and patch user + permissions so this tab's
+        // permission-gated UI updates. Deliberately does NOT call `initAuth()` —
+        // that sets `isInitializing` which blanks the whole app to a fullscreen
+        // spinner. Mirrors the auth store's visibilitychange refetch.
+        refreshFromSync: async () => {
+          const { token, isLoading } = get()
+          if (!token || isLoading) return
+          await ApiClient.Auth.me(undefined, undefined)
+            .then(response => {
+              set({
+                user: response.user,
+                permissions: response.permissions,
+              })
+            })
+            .catch(err => {
+              // 401 → session revoked elsewhere; let the next API call's normal
+              // error handling log the user out rather than yanking them here.
+              console.warn('[sync] session refresh /me failed:', err)
+            })
+        },
+
         __init__: {
           __store__: () => {
+            const eventBus = Stores.EventBus
+            const GROUP = 'AuthStore'
+
+            // Sync events are ordinary EventBus events: a session/profile
+            // change on another device (or a reconnect resync) quietly
+            // re-fetches /me and patches user + permissions.
+            eventBus.on(
+              'sync:session',
+              () => void get().refreshFromSync(),
+              GROUP,
+            )
+            eventBus.on(
+              'sync:profile',
+              () => void get().refreshFromSync(),
+              GROUP,
+            )
+            eventBus.on(
+              'sync:reconnect',
+              () => void get().refreshFromSync(),
+              GROUP,
+            )
+
             // Re-fetch /me when the tab regains focus, so a permissions
             // change made by an admin in another tab self-heals here on
             // the next interaction (permission-plan follow-up).
@@ -252,10 +297,7 @@ export const useAuthStore = create<AuthState>()(
                   // next API call's normal error handling kick in rather
                   // than logging the user out here (which would lose
                   // any in-progress work).
-                  console.warn(
-                    '[Auth] visibility-refetch /me failed:',
-                    err,
-                  )
+                  console.warn('[Auth] visibility-refetch /me failed:', err)
                 })
             }
             document.addEventListener('visibilitychange', visibilityListener)
@@ -266,6 +308,7 @@ export const useAuthStore = create<AuthState>()(
         // listener slots don't accumulate per destroy/re-init cycle.
         // (permission follow-up)
         __destroy__: () => {
+          Stores.EventBus.removeGroupListeners('AuthStore')
           if (visibilityListener) {
             document.removeEventListener('visibilitychange', visibilityListener)
             visibilityListener = null

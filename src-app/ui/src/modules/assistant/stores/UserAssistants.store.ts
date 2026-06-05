@@ -1,19 +1,19 @@
+import { enableMapSet } from 'immer'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import { enableMapSet } from 'immer'
 import { ApiClient } from '@/api-client'
 import type {
   Assistant,
   CreateAssistantRequest,
   UpdateAssistantRequest,
 } from '@/api-client/types'
+import { Stores } from '@/core/stores'
 import {
   emitAssistantCreated,
-  emitAssistantUpdated,
   emitAssistantDeleted,
+  emitAssistantUpdated,
 } from '@/modules/assistant/events'
-import { Stores } from '@/core/stores'
 
 // Enable Map and Set support in Immer
 enableMapSet()
@@ -40,7 +40,7 @@ interface UserAssistantsState {
   __destroy__?: () => void
 
   // Actions
-  loadUserAssistants: () => Promise<void>
+  loadUserAssistants: (force?: boolean) => Promise<void>
   createUserAssistant: (data: CreateAssistantRequest) => Promise<Assistant>
   updateUserAssistant: (
     id: string,
@@ -103,14 +103,19 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
               },
               GROUP,
             )
+
+            // Remote sync: refetch on a remote change or on (re)connect.
+            const reload = () => void get().loadUserAssistants(true)
+            eventBus.on('sync:assistant', reload, GROUP)
+            eventBus.on('sync:reconnect', reload, GROUP)
           },
           assistants: () => get().loadUserAssistants(),
         },
 
         // Actions
-        loadUserAssistants: async (): Promise<void> => {
+        loadUserAssistants: async (force = false): Promise<void> => {
           const state = get()
-          if (state.isInitialized || state.loading) {
+          if ((state.isInitialized && !force) || state.loading) {
             return
           }
           try {

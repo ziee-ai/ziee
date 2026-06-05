@@ -1,26 +1,28 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { ApiClient } from '@/api-client'
-import type {
-  LlmProvider as BaseLlmProvider,
-  CreateLlmModelRequest,
-  CreateLlmProviderRequest,
-  UpdateLlmModelRequest,
-  UpdateLlmProviderRequest,
-  LlmModel,
-  Group,
+import {
+  type LlmProvider as BaseLlmProvider,
+  type CreateLlmModelRequest,
+  type CreateLlmProviderRequest,
+  type Group,
+  type LlmModel,
+  Permissions,
+  type UpdateLlmModelRequest,
+  type UpdateLlmProviderRequest,
 } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
+import { Stores } from '@/core/stores'
 import {
   emitGroupLlmProvidersChanged,
-  emitLlmProviderCreated,
-  emitLlmProviderUpdated,
-  emitLlmProviderDeleted,
-  emitLlmModelEnabled,
-  emitLlmModelDisabled,
   emitLlmModelDeleted,
+  emitLlmModelDisabled,
+  emitLlmModelEnabled,
+  emitLlmProviderCreated,
+  emitLlmProviderDeleted,
   emitLlmProviderGroupsChanged,
+  emitLlmProviderUpdated,
 } from '@/modules/llm-provider/events'
-import { Stores } from '@/core/stores'
 import { sortProviders } from '@/modules/llm-provider/sortProviders'
 
 // Extended type that includes models array
@@ -49,7 +51,7 @@ interface LlmProviderState {
   error: string | null
 
   // Actions
-  loadLlmProviders: () => Promise<void>
+  loadLlmProviders: (force?: boolean) => Promise<void>
   loadModelsForProvider: (providerId: string) => Promise<void>
   createLlmProvider: (
     data: CreateLlmProviderRequest,
@@ -124,9 +126,21 @@ export const useLlmProviderStore = create<LlmProviderState>()(
       error: null,
 
       // Provider actions
-      loadLlmProviders: async () => {
+      loadLlmProviders: async (force = false) => {
+        // `loadLlmProviders` fetches providers AND each provider's models,
+        // so the load needs BOTH reads — gate on both to avoid a sub-admin
+        // holding only one of the two perms 403-ing on the other endpoint
+        // during a sync-driven resync.
+        if (
+          !hasPermissionNow({
+            allOf: [Permissions.LlmProvidersRead, Permissions.LlmModelsRead],
+          })
+        ) {
+          return
+        }
+
         const state = get()
-        if (state.isInitialized || state.loading) {
+        if ((state.isInitialized && !force) || state.loading) {
           return
         }
         try {
@@ -396,10 +410,7 @@ export const useLlmProviderStore = create<LlmProviderState>()(
         return model
       },
 
-      updateLlmModel: async (
-        modelId: string,
-        data: UpdateLlmModelRequest,
-      ) => {
+      updateLlmModel: async (modelId: string, data: UpdateLlmModelRequest) => {
         const updated = await ApiClient.LlmModel.update({
           model_id: modelId,
           ...data,
@@ -830,6 +841,14 @@ export const useLlmProviderStore = create<LlmProviderState>()(
             },
             GROUP,
           )
+
+          // Cross-device sync: the store loads providers WITH their models
+          // in one pass, so a single forced reload covers both `llm_provider`
+          // and `llm_model` admin notifications (and a reconnect resync).
+          const reload = () => void get().loadLlmProviders(true)
+          eventBus.on('sync:llm_provider', reload, GROUP)
+          eventBus.on('sync:llm_model', reload, GROUP)
+          eventBus.on('sync:reconnect', reload, GROUP)
         },
         providers: () => get().loadLlmProviders(),
       },
