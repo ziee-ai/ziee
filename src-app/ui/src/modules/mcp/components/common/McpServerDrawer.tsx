@@ -1,4 +1,15 @@
-import { Button, Form, Input, InputNumber, Select, Switch, App, Divider } from 'antd'
+import {
+  Button,
+  Form,
+  Input,
+  InputNumber,
+  Select,
+  Switch,
+  App,
+  Divider,
+  Flex,
+  Tooltip,
+} from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
 import { Stores } from '@/core/stores'
@@ -461,9 +472,57 @@ export function McpServerDrawer() {
   }
 
   const transportType = Form.useWatch('transport_type', form)
+  const enabledValue = Form.useWatch('enabled', form)
+
+  // Timeout is rendered at the END of each transport-specific block
+  // (after env vars for stdio, after headers for http/sse — before
+  // OAuth). Same Form.Item name so form state binds regardless of
+  // which branch renders. Only one branch is mounted at a time
+  // (gated on transportType), so the duplication is purely JSX
+  // shape, not state.
+  const timeoutField = (
+    <Form.Item
+      label="Timeout (seconds)"
+      name="timeout_seconds"
+      help="Maximum time to wait for a tool call response. Increase for servers that use sampling (multiple LLM calls)."
+    >
+      <InputNumber
+        min={1}
+        max={600}
+        placeholder="30"
+        style={{ width: '100%' }}
+      />
+    </Form.Item>
+  )
+
+  // Title with the server-Enabled toggle on the right — keeps the
+  // on/off control visible no matter how far the user scrolls.
+  // Disabled in read-only mode (no edit permission).
+  const titleNode = (
+    <Flex justify="space-between" align="center" className="w-full pr-6">
+      <span>{getTitle()}</span>
+      {!!editingServer || mode === 'create' || mode === 'create-system' ? (
+        <Tooltip
+          title={
+            enabledValue
+              ? 'Enabled — the server is reachable and queried by the LLM. Click to disable.'
+              : 'Disabled — the server is not started or queried. Click to enable.'
+          }
+        >
+          <Switch
+            checked={!!enabledValue}
+            disabled={!canManage}
+            onChange={v => form.setFieldValue('enabled', v)}
+            checkedChildren="Enabled"
+            unCheckedChildren="Disabled"
+          />
+        </Tooltip>
+      ) : null}
+    </Flex>
+  )
 
   return (
-    <Drawer open={open} onClose={handleClose} title={getTitle()} size={600}>
+    <Drawer open={open} onClose={handleClose} title={titleNode} size={600}>
       <div className="flex flex-col gap-4">
         <Form
           name="mcp-server-form"
@@ -561,6 +620,8 @@ export function McpServerDrawer() {
                   labelSingular="env var"
                 />
               </Form.Item>
+
+              {timeoutField}
             </>
           )}
 
@@ -589,6 +650,8 @@ export function McpServerDrawer() {
                   labelSingular="header"
                 />
               </Form.Item>
+
+              {timeoutField}
 
               {transportType === 'http' && isUserMode && (
                 <>
@@ -656,20 +719,10 @@ export function McpServerDrawer() {
             </>
           )}
 
-          {/* Enabled */}
-          <Form.Item label="Enabled" name="enabled" valuePropName="checked">
-            <Switch />
-          </Form.Item>
-
-          {/* Timeout */}
-          <Form.Item
-            label="Timeout (seconds)"
-            name="timeout_seconds"
-            help="Maximum time to wait for a tool call response. Increase for servers that use sampling (multiple LLM calls)."
-          >
-            <InputNumber min={1} max={600} placeholder="30" style={{ width: '100%' }} />
-          </Form.Item>
-
+          {/* `Enabled` lives in the drawer title now (always visible
+              regardless of scroll). `Timeout` lives at the end of
+              each transport-specific block. Sampling stays here as
+              its own section because it's transport-agnostic. */}
           <Divider className="text-sm text-gray-400 !mt-8">Sampling</Divider>
 
           {/* Supports Sampling */}
