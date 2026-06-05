@@ -1,10 +1,10 @@
-import { test, expect } from '../../fixtures/test-context'
 import {
-  loginAsAdmin,
-  login,
   createTestUser,
   getAdminToken,
+  login,
+  loginAsAdmin,
 } from '../../common/auth-helpers'
+import { expect, test } from '../../fixtures/test-context'
 
 // Realtime sync for the LLM provider / model area. These three entities are
 // admin-permission-scoped or group-scoped (NOT owner-scoped like assistant),
@@ -46,10 +46,7 @@ async function gotoProvidersList(
 }
 
 /** A provider's sidebar menu entry (how providers render in the list). */
-function providerMenuItem(
-  page: import('@playwright/test').Page,
-  name: string,
-) {
+function providerMenuItem(page: import('@playwright/test').Page, name: string) {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   return page
     .locator('[role="menu"]')
@@ -183,10 +180,9 @@ test.describe('Realtime sync — LLM provider / model (admin + cross-role)', () 
       // the 05-llm helpers' networkidle waits would hang on the live shell).
       const name = `Sync Provider ${Date.now()}`
       await page.click('.ant-menu-item:has-text("Add Provider")')
-      await page.waitForSelector(
-        '.ant-drawer-title:has-text("Add Provider")',
-        { timeout: 15_000 },
-      )
+      await page.waitForSelector('.ant-drawer-title:has-text("Add Provider")', {
+        timeout: 15_000,
+      })
 
       // Provider Type select → "Custom" is the last option (index 8). The
       // combobox is readonly, so navigate with the keyboard (mirrors
@@ -212,9 +208,9 @@ test.describe('Realtime sync — LLM provider / model (admin + cross-role)', () 
         .locator('.ant-btn-primary[type="submit"]')
       await submit.focus()
       await submit.press('Enter')
-      await expect(
-        page.getByText('Provider added successfully'),
-      ).toBeVisible({ timeout: 15_000 })
+      await expect(page.getByText('Provider added successfully')).toBeVisible({
+        timeout: 15_000,
+      })
 
       // Device B must show the new provider in its sidebar list WITHOUT a
       // reload — the `sync:llm_provider` event refetches the admin provider
@@ -360,18 +356,14 @@ test.describe('Realtime sync — LLM provider / model (admin + cross-role)', () 
         displayName,
       )
 
-      // The user's ModelSelector must now offer the new model WITHOUT a
-      // reload. Open the dropdown and assert the model option appears. The
-      // dropdown content re-renders from the refetched providers, so this
-      // auto-waits for the sync to land.
-      await expect(async () => {
-        await selector.locator('.ant-select-selector').click()
-        await expect(
-          pageUser
-            .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)')
-            .getByText(displayName),
-        ).toBeVisible({ timeout: 2_000 })
-      }).toPass({ timeout: 15_000 })
+      // The user's ModelSelector must surface the new model WITHOUT a reload.
+      // The provider started with zero models (so nothing was selected), and
+      // the ModelPicker store auto-selects the first enabled model on refetch —
+      // so once the `sync:user_llm_provider` event lands and the store reloads,
+      // the model shows as the selected value in the picker. Assert that text:
+      // it's robust to antd's internal Select DOM (v6 renders
+      // `.ant-select-content`, not v5's `.ant-select-selector`).
+      await expect(selector).toContainText(displayName, { timeout: 15_000 })
     } finally {
       await ctxUser.close()
     }

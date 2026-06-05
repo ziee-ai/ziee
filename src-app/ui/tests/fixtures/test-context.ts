@@ -1,11 +1,15 @@
 import { test as base } from '@playwright/test'
-import { spawn, ChildProcess } from 'child_process'
-import { writeFileSync, mkdirSync, existsSync, rmSync, readFileSync } from 'fs'
-import { resolve, dirname } from 'path'
-import { fileURLToPath } from 'url'
-import pg from 'pg'
+import { ChildProcess, spawn } from 'child_process'
 import crypto from 'crypto'
-import { findAvailablePorts, releasePortLock, updatePortLockHeartbeat } from './port-manager'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { dirname, resolve } from 'path'
+import pg from 'pg'
+import { fileURLToPath } from 'url'
+import {
+  findAvailablePorts,
+  releasePortLock,
+  updatePortLockHeartbeat,
+} from './port-manager'
 
 const { Pool } = pg
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -29,7 +33,12 @@ function prettifyHTML(html: string): string {
       formatted += indentStr.repeat(indent) + token + '\n'
 
       // Increase indent for non-self-closing tags
-      if (!token.endsWith('/>') && !token.match(/<(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)/i)) {
+      if (
+        !token.endsWith('/>') &&
+        !token.match(
+          /<(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)/i,
+        )
+      ) {
         indent++
       }
     } else if (token.trim()) {
@@ -90,7 +99,9 @@ export const test = base.extend<TestFixtures>({
         try {
           const body = await response.text()
           if (body) {
-            networkRequests.push(`  Response Body: ${body.substring(0, 500)}${body.length > 500 ? '...' : ''}`)
+            networkRequests.push(
+              `  Response Body: ${body.substring(0, 500)}${body.length > 500 ? '...' : ''}`,
+            )
           }
         } catch (e) {
           // Body not available or already consumed
@@ -153,7 +164,10 @@ export const test = base.extend<TestFixtures>({
     if (!runId) {
       throw new Error('TEST_RUN_ID not set - global-setup may have failed')
     }
-    const postgresConfigPath = resolve(__dirname, `../.test-configs/postgres-${runId}.json`)
+    const postgresConfigPath = resolve(
+      __dirname,
+      `../.test-configs/postgres-${runId}.json`,
+    )
     const postgresConfig = JSON.parse(readFileSync(postgresConfigPath, 'utf-8'))
     const postgresPort = postgresConfig.port
 
@@ -239,6 +253,7 @@ server:
 
   cors:
     allow_origins:
+      - "http://127.0.0.1:${vitePort}"
       - "http://localhost:${vitePort}"
     allow_methods:
       - "GET"
@@ -271,9 +286,10 @@ jwt:
     // Using shell: true creates a shell parent that orphans child processes when killed
     console.log(`Using cargo from PATH (cross-platform)`)
 
-    const cargoPath = process.platform === 'win32'
-      ? `${process.env.USERPROFILE}\\.cargo\\bin\\cargo`
-      : `${process.env.HOME}/.cargo/bin/cargo`
+    const cargoPath =
+      process.platform === 'win32'
+        ? `${process.env.USERPROFILE}\\.cargo\\bin\\cargo`
+        : `${process.env.HOME}/.cargo/bin/cargo`
 
     // Isolate the hub catalog dir per test. The hub catalog
     // (`current/`) is durable global state; a refresh/activate in one
@@ -300,36 +316,41 @@ jwt:
           // Short-circuit validation to a no-op (debug-only env;
           // compiled out of release builds).
           ZIEE_DISABLE_MODEL_VALIDATION: '1',
-          PATH: process.platform === 'win32'
-            ? `${process.env.USERPROFILE}\\.cargo\\bin;${process.env.PATH}`
-            : `${process.env.HOME}/.cargo/bin:${process.env.PATH}`,
+          PATH:
+            process.platform === 'win32'
+              ? `${process.env.USERPROFILE}\\.cargo\\bin;${process.env.PATH}`
+              : `${process.env.HOME}/.cargo/bin:${process.env.PATH}`,
         },
-      }
+      },
     )
 
-    serverProcess.on('error', (error) => {
+    serverProcess.on('error', error => {
       console.error(`❌ Backend server error:`, error)
     })
 
     // Log backend stdout
-    serverProcess.stdout?.on('data', (data) => {
+    serverProcess.stdout?.on('data', data => {
       const message = data.toString()
       console.log(`[Backend stdout] ${message}`)
     })
 
     // Log backend stderr to help debug issues
-    serverProcess.stderr?.on('data', (data) => {
+    serverProcess.stderr?.on('data', data => {
       const message = data.toString()
       // Log errors, warnings, and info messages (but not debug)
-      if (message.includes('"level":"error"') || message.includes('"level":"warn"') || message.includes('"level":"info"')) {
+      if (
+        message.includes('"level":"error"') ||
+        message.includes('"level":"warn"') ||
+        message.includes('"level":"info"')
+      ) {
         console.error(`[Backend stderr] ${message}`)
       }
     })
 
     // Wait for backend to be ready (120 seconds for cargo compilation on first run)
     const backendReady = await waitForServer(
-      `http://localhost:${backendPort}/api/health`,
-      120
+      `http://127.0.0.1:${backendPort}/api/health`,
+      120,
     )
     if (!backendReady) {
       serverProcess.kill('SIGKILL')
@@ -357,10 +378,20 @@ export default defineConfig({
     host: '127.0.0.1',
     proxy: {
       '/api/': {
-        target: 'http://localhost:${backendPort}',
+        // 127.0.0.1, NOT localhost: the backend binds IPv4-only (host
+        // 127.0.0.1 above). On node 17+ \`localhost\` resolves \`::1\` first and
+        // the Happy-Eyeballs fallback to IPv4 is flaky under the cold-load +
+        // long-lived-SSE connection churn, so some proxied /api calls hit ::1
+        // and ECONNREFUSED non-deterministically.
+        target: 'http://127.0.0.1:${backendPort}',
         changeOrigin: true,
         // X-Forwarded-* for the backend OAuth redirect_uri (social-login E2E).
         xfwd: true,
+        // Never time out the long-lived SSE stream (/api/sync/subscribe); a
+        // proxy timeout would cut it mid-stream (ERR_INCOMPLETE_CHUNKED_ENCODING)
+        // and trigger a reconnect-resync burst.
+        timeout: 0,
+        proxyTimeout: 0,
       },
     },
   },
@@ -383,15 +414,15 @@ export default defineConfig({
         cwd: projectRoot,
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: false,
-      }
+      },
     )
 
-    viteProcess.on('error', (error) => {
+    viteProcess.on('error', error => {
       console.error(`❌ Vite server error:`, error)
     })
 
     // Wait for Vite to be ready
-    const viteReady = await waitForServer(`http://localhost:${vitePort}`, 60)
+    const viteReady = await waitForServer(`http://127.0.0.1:${vitePort}`, 60)
     if (!viteReady) {
       viteProcess.kill('SIGKILL')
       serverProcess.kill('SIGKILL')
@@ -402,19 +433,29 @@ export default defineConfig({
     // Start heartbeat to keep lock alive
     // Update lock every 5 seconds with process PIDs and timestamp
     const heartbeatInterval = setInterval(() => {
-      updatePortLockHeartbeat(vitePort, backendPort, viteProcess.pid, serverProcess.pid)
+      updatePortLockHeartbeat(
+        vitePort,
+        backendPort,
+        viteProcess.pid,
+        serverProcess.pid,
+      )
     }, 5000) // HEARTBEAT_INTERVAL_MS
 
     // Initial heartbeat with PIDs
-    updatePortLockHeartbeat(vitePort, backendPort, viteProcess.pid, serverProcess.pid)
+    updatePortLockHeartbeat(
+      vitePort,
+      backendPort,
+      viteProcess.pid,
+      serverProcess.pid,
+    )
     console.log(`💓 Heartbeat started for ports ${vitePort}/${backendPort}`)
 
     const infrastructure: TestInfrastructure = {
       databaseName,
       backendPort,
       vitePort,
-      baseURL: `http://localhost:${vitePort}`,
-      apiURL: `http://localhost:${backendPort}`,
+      baseURL: `http://127.0.0.1:${vitePort}`,
+      apiURL: `http://127.0.0.1:${backendPort}`,
       serverProcess,
       viteProcess,
       heartbeatInterval,
@@ -458,7 +499,9 @@ export default defineConfig({
     await new Promise(resolve => setTimeout(resolve, 500))
 
     // Kill any remaining processes on our ports (handles orphaned processes)
-    console.log(`🔪 Ensuring all processes on ports ${vitePort} and ${backendPort} are killed...`)
+    console.log(
+      `🔪 Ensuring all processes on ports ${vitePort} and ${backendPort} are killed...`,
+    )
     await killProcessOnPort(vitePort)
     await killProcessOnPort(backendPort)
 
@@ -512,7 +555,10 @@ export default defineConfig({
 
 export { expect } from '@playwright/test'
 
-async function waitForServer(url: string, maxAttempts: number): Promise<boolean> {
+async function waitForServer(
+  url: string,
+  maxAttempts: number,
+): Promise<boolean> {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       const response = await fetch(url)
@@ -531,9 +577,10 @@ async function killProcessOnPort(port: number): Promise<void> {
   try {
     const { execSync } = await import('child_process')
     // Find process using the port
-    const cmd = process.platform === 'win32'
-      ? `netstat -ano | findstr :${port}`
-      : `lsof -ti :${port}`
+    const cmd =
+      process.platform === 'win32'
+        ? `netstat -ano | findstr :${port}`
+        : `lsof -ti :${port}`
 
     const output = execSync(cmd, { encoding: 'utf8', stdio: 'pipe' }).trim()
 
