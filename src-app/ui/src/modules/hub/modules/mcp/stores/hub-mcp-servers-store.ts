@@ -102,20 +102,51 @@ export const useHubMcpServersStore = create<HubMcpServersState>()(
           request: CreateMcpServerFromHubRequest,
         ): Promise<McpServer> => {
           set({ creating: true, error: null })
+          // Snapshot displaced ids BEFORE the call so the
+          // `replace_existing` Re-install path can emit
+          // `mcp_server.deleted` for them after the new row exists.
+          // Without this, the user's MCP server list keeps showing
+          // the OLD (now-deleted) row and clicking it 404s.
+          const displacedIds: string[] = request.replace_existing
+            ? get()
+                .servers.find(s => s.id === request.hub_id)
+                ?.created_ids?.slice() ?? []
+            : []
           try {
             const response = await ApiClient.Hub.createMcpServerFromHub(request)
 
-            // Update the hub MCP server's created_ids directly from response
+            // Update the hub MCP server's created_ids directly from response.
+            // On `replace_existing` we REPLACE the array (not append) so the
+            // stale uuid drops out — the backend deletes the prior user
+            // install + the events emitted below propagate the deletion to
+            // other stores.
             set(state => {
               const server = state.servers.find(s => s.id === request.hub_id)
               if (server) {
-                if (!server.created_ids) {
-                  server.created_ids = []
+                if (request.replace_existing) {
+                  server.created_ids = [response.hub_tracking.entity_id]
+                } else {
+                  if (!server.created_ids) {
+                    server.created_ids = []
+                  }
+                  server.created_ids.push(response.hub_tracking.entity_id)
                 }
-                server.created_ids.push(response.hub_tracking.entity_id)
               }
               state.creating = false
             })
+
+            // Emit deletion events for the displaced user installs so
+            // the UserMcpServers store + settings pages drop the stale
+            // rows. Skip the freshly-installed id (defense-in-depth).
+            for (const oldId of displacedIds) {
+              if (oldId !== response.hub_tracking.entity_id) {
+                try {
+                  await emitMcpServerDeleted(oldId)
+                } catch (e) {
+                  console.warn('Failed to emit mcp_server.deleted:', e)
+                }
+              }
+            }
 
             // Notify downstream caches (UserMcpServers store, settings
             // pages) that a new user MCP server exists. Without this,

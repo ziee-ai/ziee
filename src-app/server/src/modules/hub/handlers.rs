@@ -375,17 +375,40 @@ pub async fn create_assistant_from_hub(
     Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<CreateAssistantFromHubRequest>,
 ) -> ApiResult<Json<AssistantFromHubResponse>> {
-    // `replace_existing` is template-only — reject explicitly so
-    // clients don't silently pass it expecting an idempotent re-install
-    // on the user-scoped path (per-user installs aren't dedup'd).
-    if request.replace_existing {
-        return Err(AppError::bad_request(
-            "VALIDATION_ERROR",
-            "replace_existing is only valid on the template install endpoint",
-        )
-        .into());
-    }
+    // `replace_existing` is the Updates-tab "upgrade my install"
+    // path. Same shape as `create_mcp_server_from_hub` — when set,
+    // delete the user's most-recent live install of the same hub_id
+    // and emit `assistant.deleted` so the hub_entities orphan-cleanup
+    // listener fires before the new row's `track_hub_entity` insert.
+    // Without this, clicking Re-install on a user assistant row in
+    // the Updates tab would create a NEW assistant + leave the OLD
+    // one orphaned at the stale hub_version, so the row never drops
+    // from `list_outdated_entities`.
+    let existing_id = if request.replace_existing {
+        Repos
+            .hub
+            .find_user_assistant_install(&request.hub_id, auth.user.id)
+            .await?
+    } else {
+        None
+    };
+
     let plan = build_assistant_create_from_hub(&request, false).await?;
+
+    if let Some(existing_id) = existing_id {
+        match Repos.assistant.delete(existing_id).await {
+            Ok(()) => {
+                event_bus
+                    .emit(crate::modules::assistant::events::AssistantEvent::deleted(
+                        existing_id,
+                        Some(auth.user.id),
+                    ))
+                    .await;
+            }
+            Err(e) if e.status_code() == 404 => (),
+            Err(e) => return Err(e.into()),
+        }
+    }
 
     let assistant = Repos
         .assistant
@@ -759,19 +782,50 @@ pub async fn create_mcp_server_from_hub(
     Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<CreateMcpServerFromHubRequest>,
 ) -> ApiResult<Json<McpServerFromHubResponse>> {
-    // `replace_existing` is system-only — reject explicitly so
-    // clients don't silently pass it expecting an idempotent
-    // re-install on the user-scoped path (per-user installs aren't
-    // dedup'd). Mirrors the user-assistant handler.
-    if request.replace_existing {
-        return Err(AppError::bad_request(
-            "VALIDATION_ERROR",
-            "replace_existing is only valid on the system MCP install endpoint",
-        )
-        .into());
-    }
+    // `replace_existing` is the Updates-tab "upgrade my user install"
+    // path. When set, deletes the user's most-recent live install of
+    // the same hub_id (filtered by created_by = this user) and emits
+    // the `mcp_server.deleted` event so `CleanupHubEntitiesHandler`
+    // removes the matching `hub_entities` row. Without this, clicking
+    // Re-install on a user MCP row in the Updates tab would create a
+    // NEW row at the current catalog version, leaving the OLD row in
+    // place — `list_outdated_entities` would keep surfacing the old
+    // row indefinitely, making the Updates tab appear broken.
+    //
+    // When false (default — the "Install" hub-card action), creates
+    // an additional copy; a user CAN have multiple installs of the
+    // same hub_id this way (each subsequent click adds another row).
+    // The Updates-tab Re-install flow ALWAYS sets true to avoid that
+    // staircase.
+    let existing_id = if request.replace_existing {
+        Repos
+            .hub
+            .find_user_mcp_install(&request.hub_id, auth.user.id)
+            .await?
+    } else {
+        None
+    };
 
+    // Plan first so a failing lookup / validation doesn't wipe the
+    // prior install with no replacement.
     let plan = build_mcp_server_create_from_hub(&request).await?;
+
+    if let Some(existing_id) = existing_id {
+        // Tolerate "already deleted" — racy with a concurrent delete
+        // (admin page in another tab). Any other DB error surfaces.
+        match Repos.mcp.delete_user_server(existing_id, auth.user.id).await {
+            Ok(()) => {
+                event_bus
+                    .emit(crate::modules::mcp::events::McpServerEvent::user_server_deleted(
+                        existing_id,
+                        auth.user.id,
+                    ))
+                    .await;
+            }
+            Err(e) if e.status_code() == 404 => (),
+            Err(e) => return Err(e.into()),
+        }
+    }
 
     let server = Repos
         .mcp

@@ -70,7 +70,15 @@ export function UpdatesHubTab() {
             replace_existing: true,
           })
         } else {
-          await Stores.HubAssistants.createFromHub({ hub_id: hubId })
+          // User assistant: also pass `replace_existing: true` so the
+          // backend deletes the user's prior install for this hub_id
+          // before creating the new one. Without it, the Re-install
+          // would create a duplicate row and `list_outdated_entities`
+          // would keep surfacing the old stale-version row forever.
+          await Stores.HubAssistants.createFromHub({
+            hub_id: hubId,
+            replace_existing: true,
+          })
         }
       } else if (category === 'mcp_server') {
         if (isSystemMcpInstall) {
@@ -85,7 +93,13 @@ export function UpdatesHubTab() {
             replace_existing: true,
           })
         } else {
-          await Stores.HubMcpServers.createFromHub({ hub_id: hubId })
+          // User MCP server: same Re-install semantics as user
+          // assistants above — the backend deletes the user's prior
+          // install before creating the new one.
+          await Stores.HubMcpServers.createFromHub({
+            hub_id: hubId,
+            replace_existing: true,
+          })
         }
       }
       message.success(`Re-installed ${hubId} from v${catalogVersion ?? '?'}`)
