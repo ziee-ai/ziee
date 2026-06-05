@@ -13,6 +13,15 @@ import { setSyncConnectionId } from './connection'
 
 const INITIAL_BACKOFF_MS = 1_000
 const MAX_BACKOFF_MS = 30_000
+// A connection must stay alive this long before we trust it as "stable" and
+// reset the reconnect backoff. A stream that connects then immediately drops
+// (flapping) keeps backing off instead of hammering the 1s floor.
+const STABLE_AFTER_MS = 3_000
+// Debounce the reconnect resync: emit `sync:reconnect` (which reloads EVERY
+// store) at most this often, so a flapping stream can't drive a continuous
+// all-stores reload storm — which would itself overload the connection and
+// keep it flapping (a self-reinforcing loop).
+const RESYNC_MIN_INTERVAL_MS = 5_000
 
 let started = false
 // Monotonic loop generation. A user-switch (stop→start) bumps this so the
@@ -21,12 +30,18 @@ let started = false
 let epoch = 0
 let activeAbort: AbortController | null = null
 let backoffMs = INITIAL_BACKOFF_MS
+// The first connect needs no resync (stores load on init); only RE-connects
+// after real downtime must catch missed events.
+let hasConnectedOnce = false
+let lastResyncAt = 0
 
 /** Start the sync stream (idempotent). Call when a user is authenticated. */
 export function startSyncClient(): void {
   if (started) return
   started = true
   backoffMs = INITIAL_BACKOFF_MS
+  hasConnectedOnce = false
+  lastResyncAt = 0
   const myEpoch = ++epoch
   void connectLoop(myEpoch)
 }
@@ -93,44 +108,67 @@ async function connectOnce(myEpoch: number): Promise<void> {
     throw new Error(`[sync] subscribe failed: ${response.status}`)
   }
 
-  // Connected: reset backoff and broadcast a resync signal so every store
-  // reloads to cover anything missed while the stream was down (best-effort
-  // durability). Stores subscribe to `sync:reconnect` alongside their entity.
-  backoffMs = INITIAL_BACKOFF_MS
-  void useEventBusStore.getState().emit({ type: 'sync:reconnect', data: {} })
+  // Established. Reset the reconnect backoff only AFTER the stream proves
+  // stable (survives `STABLE_AFTER_MS`); a stream that connects then drops
+  // immediately keeps backing off instead of hammering the 1s floor.
+  const stabilityTimer = globalThis.setTimeout(() => {
+    backoffMs = INITIAL_BACKOFF_MS
+  }, STABLE_AFTER_MS)
+
+  // Resync to cover events missed while disconnected — skipped on the first
+  // connect and debounced (see `maybeResync`).
+  maybeResync()
 
   const reader = response.body.getReader()
   const decoder = new globalThis.TextDecoder()
   let buffer = ''
   let currentEvent = ''
 
-  while (started && myEpoch === epoch) {
-    const { done, value } = await reader.read()
-    if (done) break
+  try {
+    while (started && myEpoch === epoch) {
+      const { done, value } = await reader.read()
+      if (done) break
 
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split(/\r\n|\n/)
-    buffer = lines.pop() || ''
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split(/\r\n|\n/)
+      buffer = lines.pop() || ''
 
-    for (const line of lines) {
-      if (line.trim() === '') {
-        currentEvent = ''
-        continue
-      }
-      if (line.startsWith('event: ')) {
-        currentEvent = line.slice(7).trim()
-      } else if (line.startsWith('data: ')) {
-        const raw = line.slice(6)
-        let parsed: unknown = raw
-        try {
-          parsed = JSON.parse(raw)
-        } catch {
-          // keep as string
+      for (const line of lines) {
+        if (line.trim() === '') {
+          currentEvent = ''
+          continue
         }
-        handleFrame(currentEvent, parsed)
+        if (line.startsWith('event: ')) {
+          currentEvent = line.slice(7).trim()
+        } else if (line.startsWith('data: ')) {
+          const raw = line.slice(6)
+          let parsed: unknown = raw
+          try {
+            parsed = JSON.parse(raw)
+          } catch {
+            // keep as string
+          }
+          handleFrame(currentEvent, parsed)
+        }
       }
     }
+  } finally {
+    globalThis.clearTimeout(stabilityTimer)
   }
+}
+
+// Emit the `sync:reconnect` resync signal, but only for GENUINE reconnects:
+// never on the first connect (stores load on init), and never more often than
+// `RESYNC_MIN_INTERVAL_MS` so a flapping stream can't storm every store.
+function maybeResync(): void {
+  if (!hasConnectedOnce) {
+    hasConnectedOnce = true
+    return
+  }
+  const now = Date.now()
+  if (now - lastResyncAt < RESYNC_MIN_INTERVAL_MS) return
+  lastResyncAt = now
+  void useEventBusStore.getState().emit({ type: 'sync:reconnect', data: {} })
 }
 
 function handleFrame(event: string, data: unknown): void {
