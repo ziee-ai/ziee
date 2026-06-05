@@ -34,6 +34,7 @@ use uuid::Uuid;
 
 use crate::common::r#type::AppError;
 use crate::modules::llm_local_runtime::engine::EngineType;
+use crate::modules::sync::{SyncAction, SyncEntity, publish as sync_publish};
 use crate::modules::llm_local_runtime::runtime_version::models::RuntimeVersion;
 use crate::modules::llm_local_runtime::BinaryManager;
 
@@ -323,9 +324,9 @@ async fn run_download(
             ));
             // Realtime sync: the version row now exists — notify admin
             // devices (background task, so no originating connection).
-            crate::modules::sync::publish(
-                crate::modules::sync::SyncEntity::RuntimeVersion,
-                crate::modules::sync::SyncAction::Create,
+            sync_publish(
+                SyncEntity::RuntimeVersion,
+                SyncAction::Create,
                 version_row.id,
                 None,
                 None,

@@ -27,9 +27,8 @@ pub use extractor::SyncOrigin;
 #[distributed_slice(MODULE_ENTRIES)]
 static SYNC_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {
     name: "sync",
-    // 95 (not 90, which the `app` module uses) — keep module order unique so
-    // the startup "loaded modules" log is deterministic. Sync is a leaf SSE
-    // module with no init-ordering needs.
+    // Leaf SSE module with no init-ordering dependencies; the value is
+    // otherwise arbitrary.
     order: 95,
     description: "Realtime cross-device sync over SSE",
     constructor: || Box::new(SyncModule::new()),

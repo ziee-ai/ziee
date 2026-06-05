@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use crate::common::r#type::{ApiResult, AppError};
 use crate::modules::permissions::RequirePermissions;
+use crate::modules::sync::{SyncAction, SyncEntity, publish as sync_publish};
 use crate::utils::git::{GitError, GitPhase, GitProgress, GitService};
 
 use super::super::{
@@ -375,16 +376,16 @@ async fn create_model_with_files(
     // accessible-providers view (UserLlmProvider). This is a shared helper
     // with no request context, so origin is None (the upload path's
     // originating tab already has the model from its response).
-    crate::modules::sync::publish(
-        crate::modules::sync::SyncEntity::LlmModel,
-        crate::modules::sync::SyncAction::Create,
+    sync_publish(
+        SyncEntity::LlmModel,
+        SyncAction::Create,
         model.id,
         None,
         None,
     );
-    crate::modules::sync::publish(
-        crate::modules::sync::SyncEntity::UserLlmProvider,
-        crate::modules::sync::SyncAction::Update,
+    sync_publish(
+        SyncEntity::UserLlmProvider,
+        SyncAction::Update,
         model.id,
         None,
         None,
