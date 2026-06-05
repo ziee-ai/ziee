@@ -486,7 +486,7 @@ pub async fn create_assistant_template_from_hub(
     // outdated row then routes the Re-install UI through the
     // template endpoint).
     //
-    // Partial unique index `uniq_hub_template_install` (migration 50)
+    // Partial unique index `uniq_hub_template_install` (migration 79)
     // is the last-line backstop against the TOCTOU race where two
     // admins both passed the `find_template_install` check above
     // concurrently. If the insert hits that index, we delete the
