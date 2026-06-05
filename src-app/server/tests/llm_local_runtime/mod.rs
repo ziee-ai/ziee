@@ -19,6 +19,7 @@ mod reaper_drain_test;
 mod settings_test;
 mod sse_logs_test;
 mod supervision_test;
+mod sync_emit_test;
 mod token_rotation_test;
 mod validation_test;
 mod version_usage_test;

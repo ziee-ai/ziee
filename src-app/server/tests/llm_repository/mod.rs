@@ -8,6 +8,7 @@
 
 use serde_json::json;
 
+mod sync_emit_test;
 mod test_connection_user_agent;
 
 #[tokio::test]

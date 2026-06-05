@@ -8,6 +8,7 @@
 pub mod apple_mock;
 pub mod ldap_mock;
 pub mod oauth_mock;
+pub mod sync_probe;
 
 #[path = "harness_inner.rs"]
 mod inner;

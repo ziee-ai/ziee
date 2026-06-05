@@ -3,4 +3,5 @@
 //! covered deterministically by the in-source unit tests in
 //! `modules/sync/{registry,event}.rs`.
 
+mod delivery_test;
 mod subscribe_test;
