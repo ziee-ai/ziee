@@ -537,13 +537,13 @@ export function McpServerDrawer() {
   }
 
   const transportType = Form.useWatch('transport_type', form)
-  // Local mirror for the title's Enabled Switch. Form.useWatch's
-  // subscription to form.setFieldValue from OUTSIDE the <Form>
-  // provider tree was flaky in this codebase — clicks fired but the
-  // Switch didn't re-render (state stayed stale). Local state +
-  // sync-from-form on open + sync-to-form on toggle is the robust
-  // shape.
+  // Local mirror for the title's Enabled Switch + a "currently
+  // toggling" flag that disables the Switch (with a loading
+  // spinner) while a save+probe round-trip is in flight.
+  // Form.useWatch from OUTSIDE the <Form> provider tree was flaky;
+  // local state + sync-from-form on open is the robust shape.
   const [enabledValue, setEnabledValue] = useState(false)
+  const [togglingEnable, setTogglingEnable] = useState(false)
 
   // Sync the local mirror with the form's `enabled` field whenever
   // the drawer opens / switches mode / loads a new server. The form
@@ -581,6 +581,107 @@ export function McpServerDrawer() {
     </Form.Item>
   )
 
+  // Click handler for the title's Enabled Switch — drives the
+  // server's enable lifecycle directly from the title (the bottom
+  // Save button still works for editing other fields without
+  // touching enable).
+  //
+  // Behaviors per direction:
+  //   ON  — save the full current form state (so any in-flight env
+  //         var / header / URL edits land) + force enabled=true;
+  //         backend probes the persisted state. Probe success →
+  //         server stays enabled. Probe failure → 400 with the
+  //         reason, server reverts to enabled=false, Switch reverts.
+  //   OFF — minimal PUT with just `enabled: false`. Does NOT save
+  //         any other in-flight form edits (user explicit choice
+  //         per the design discussion). No probe runs.
+  //
+  // Create mode: the Switch only updates the local form state; the
+  // bottom Create button is what actually persists. Auto-saving on
+  // a half-filled create form would surface validation errors out
+  // of context.
+  const handleEnabledToggle = async (v: boolean) => {
+    if (mode === 'create' || mode === 'create-system') {
+      setEnabledValue(v)
+      form.setFieldsValue({ enabled: v })
+      return
+    }
+    if (!editingServer) return
+
+    setTogglingEnable(true)
+    try {
+      if (v === false) {
+        // Minimal PUT — only the enabled flag, leave everything
+        // else alone. Other in-flight form edits stay in the form
+        // and are picked up by the next bottom-Save action.
+        const payload: UpdateMcpServerRequest = { enabled: false }
+        const updated =
+          mode === 'edit'
+            ? await Stores.McpServer.updateMcpServer(editingServer.id, payload)
+            : await Stores.SystemMcpServer.updateSystemServer(
+                editingServer.id,
+                payload,
+              )
+        setEnabledValue(false)
+        form.setFieldsValue({ enabled: false })
+        Stores.McpServerDrawer.openMcpServerDrawer(updated, mode)
+        message.success('Server disabled')
+        return
+      }
+
+      // ON path — save the full current form (including the new
+      // enabled=true) so the backend probes against the user's
+      // intended config, not the stale persisted state.
+      form.setFieldsValue({ enabled: true })
+      setEnabledValue(true)
+      try {
+        const saved = await persistServer()
+        if (!saved) {
+          // Form validation failed — antd surfaced the field errors.
+          // Revert the optimistic switch since nothing was persisted.
+          setEnabledValue(false)
+          form.setFieldsValue({ enabled: false })
+          return
+        }
+        Stores.McpServerDrawer.openMcpServerDrawer(saved, mode)
+        message.success('Server enabled — connection test passed')
+      } catch (error) {
+        // Most likely cause: MCP_ENABLE_FAILED_HEALTH_CHECK from
+        // the probe (other fields persisted; enabled reverted to
+        // false on the server). Surface the reason verbatim, then
+        // refresh from the backend so the local mirror reflects
+        // the persisted state.
+        const reason =
+          error instanceof Error && error.message
+            ? error.message
+            : 'Unknown error'
+        message.error({
+          content: `Failed to enable: ${reason}`,
+          duration: 8,
+        })
+        try {
+          const fresh =
+            mode === 'edit'
+              ? await Stores.McpServer.getMcpServer(editingServer.id)
+              : Stores.SystemMcpServer.getSystemServerById(editingServer.id)
+          if (fresh) {
+            setEnabledValue(!!fresh.enabled)
+            form.setFieldsValue({ enabled: fresh.enabled })
+            Stores.McpServerDrawer.openMcpServerDrawer(fresh, mode)
+          } else {
+            setEnabledValue(false)
+            form.setFieldsValue({ enabled: false })
+          }
+        } catch {
+          setEnabledValue(false)
+          form.setFieldsValue({ enabled: false })
+        }
+      }
+    } finally {
+      setTogglingEnable(false)
+    }
+  }
+
   // Title with the server-Enabled toggle on the right — keeps the
   // on/off control visible no matter how far the user scrolls.
   // Disabled in read-only mode (no edit permission).
@@ -597,16 +698,9 @@ export function McpServerDrawer() {
         >
           <Switch
             checked={enabledValue}
-            disabled={!canManage}
-            onChange={v => {
-              // Update both the local mirror (for the Switch's
-              // own checked prop) AND the form (so persistServer
-              // reads the new value at save time). Use
-              // setFieldsValue (plural) — more reliable than
-              // setFieldValue (singular) for cross-tree updates.
-              setEnabledValue(v)
-              form.setFieldsValue({ enabled: v })
-            }}
+            loading={togglingEnable}
+            disabled={!canManage || togglingEnable}
+            onChange={handleEnabledToggle}
             checkedChildren="Enabled"
             unCheckedChildren="Disabled"
           />
