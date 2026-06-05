@@ -224,10 +224,13 @@ lzma-rs = "0.3"
 # the runtime crate so the build-time cosign chain matches the
 # runtime refresh chain bit-for-bit. `sha2`/`serde`/`serde_json`
 # are needed for the sha256 sidecar check + GhRelease JSON parsing.
+# `fs2` provides the cross-process advisory lock that serializes
+# concurrent cargo builds racing to rotate the seed cache.
 sigstore = { version = "0.14", default-features = false, features = ["bundle", "sigstore-trust-root", "rustls-tls"] }
 sha2 = "0.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+fs2 = "0.4"
 
 [dev-dependencies]
 mockall.workspace = true

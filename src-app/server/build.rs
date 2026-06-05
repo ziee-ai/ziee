@@ -5,8 +5,6 @@ use std::path::PathBuf;
 mod pandoc;
 #[path = "build_helper/typst.rs"]
 mod typst;
-#[path = "build_helper/hub_seed.rs"]
-mod hub_seed;
 #[path = "build_helper/pdfium.rs"]
 mod pdfium;
 #[path = "build_helper/uv.rs"]
@@ -19,6 +17,11 @@ mod sandbox_runtime;
 mod wsl2_agent;
 #[path = "build_helper/pgvector.rs"]
 mod pgvector_build;
+// hub_seed runs LAST inside setup_external_binaries and PANICS on
+// failure (unlike the helpers above, which warn-and-continue). See
+// the divider comment in setup_external_binaries() for the rationale.
+#[path = "build_helper/hub_seed.rs"]
+mod hub_seed;
 
 /// Redact the password portion of a postgres URL for safe logging.
 /// Closes 14-core F-02 (Critical): build.rs previously echoed the raw
@@ -179,18 +182,6 @@ fn setup_external_binaries() {
         eprintln!("Warning: Failed to setup typst: {}", e);
     }
 
-    // Setup hub seed - downloads the latest ziee-ai/hub release into
-    // binaries/hub-seed/ (target-agnostic). UNLIKE other helpers
-    // (which warn-and-continue on failure), this PANICS — the
-    // embedded seed is the source of truth at runtime for air-gapped
-    // / first-boot users, and shipping with an empty or stale seed
-    // would silently degrade the hub UI. Offline / rate-limited
-    // builds need to either fix network or pin `HUB_RELEASE_TAG=...`
-    // + manually stage `binaries/hub-seed/`.
-    if let Err(e) = hub_seed::setup_hub_seed(&binaries_dir, &out_dir) {
-        panic!("Failed to fetch hub seed from GitHub: {}", e);
-    }
-
     // Setup PDFium - downloads to binaries/{target}/
     if let Err(e) = pdfium::setup_pdfium(&target, &binaries_dir, &out_dir) {
         eprintln!("Warning: Failed to setup PDFium: {}", e);
@@ -252,6 +243,22 @@ fn setup_external_binaries() {
     println!(
         "cargo:rerun-if-changed=vendor/pgvector"
     );
+
+    // ─────────────────────────────────────────────────────────────────
+    // Hub seed — DIFFERENT FAILURE CONTRACT from every helper above.
+    // Every other setup_* returns a Warning on failure and lets the
+    // build continue with degraded runtime behavior. hub_seed PANICS
+    // on failure: the embedded catalog is the source of truth for
+    // air-gapped / first-boot users, and shipping a binary with an
+    // empty or stale `binaries/hub-seed/` would silently degrade the
+    // hub UI without any runtime signal. Operators on networks that
+    // can't reach GitHub or Sigstore must pin `HUB_RELEASE_TAG=...`
+    // and pre-stage `binaries/hub-seed/` (the skip-if-fresh path
+    // consults that cache before any network call).
+    // ─────────────────────────────────────────────────────────────────
+    if let Err(e) = hub_seed::setup_hub_seed(&target, &binaries_dir, &out_dir) {
+        panic!("Failed to fetch hub seed from GitHub: {}", e);
+    }
 }
 
 /// Emit `<OUT_DIR>/pgvector_assets.rs` enumerating staged sql files.

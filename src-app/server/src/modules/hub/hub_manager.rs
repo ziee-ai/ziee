@@ -6,8 +6,13 @@
 //! `.sha256` and a keyless cosign `.cosign.bundle` sidecar.
 //!
 //! On boot the server installs an embedded seed catalog (compiled via
-//! `include_dir!` from `resources/hub-seed/`, sourced from `v0.0.1-alpha`)
-//! so the hub UI renders read-only even when GitHub is unreachable.
+//! `include_dir!` from `binaries/hub-seed/`, which `build_helper/hub_seed.rs`
+//! populates at build time from the latest ziee-ai/hub release —
+//! verified with the same sha256 + cosign chain the runtime refresh
+//! uses) so the hub UI renders read-only even when GitHub is
+//! unreachable post-install. `SEED_HUB_VERSION` is set by the build
+//! helper from the resolved tag; keeping the seed + version in
+//! lockstep is the build's responsibility, not the maintainer's.
 //!
 //! Refresh path: download both files into a staging dir, sha256-check
 //! both, sigstore-verify both against the expected keyless OIDC
@@ -1119,12 +1124,37 @@ fn unpack_safely(tar_gz: &Path, dest: &Path) -> Result<(), AppError> {
                 path.display()
             )));
         }
+        // Reject `..` AND Windows-style `C:\...` prefix / root
+        // components — `Path::is_absolute()` on Linux returns
+        // `false` for `C:\evil`, so a tarball produced on Windows
+        // could otherwise sneak a root-anchored path through.
         for component in path.components() {
-            if matches!(component, std::path::Component::ParentDir) {
-                return Err(AppError::internal_error(format!(
-                    "hub: refusing parent-dir component in archive: {}",
-                    path.display()
-                )));
+            match component {
+                std::path::Component::ParentDir => {
+                    return Err(AppError::internal_error(format!(
+                        "hub: refusing parent-dir component in archive: {}",
+                        path.display()
+                    )));
+                }
+                std::path::Component::RootDir => {
+                    return Err(AppError::internal_error(format!(
+                        "hub: refusing root-dir component in archive: {}",
+                        path.display()
+                    )));
+                }
+                std::path::Component::Prefix(_) => {
+                    return Err(AppError::internal_error(format!(
+                        "hub: refusing windows-prefix component in archive: {}",
+                        path.display()
+                    )));
+                }
+                std::path::Component::CurDir => {
+                    return Err(AppError::internal_error(format!(
+                        "hub: refusing cur-dir component in archive: {}",
+                        path.display()
+                    )));
+                }
+                _ => {}
             }
         }
         entry.unpack_in(dest).map_err(|e| {
