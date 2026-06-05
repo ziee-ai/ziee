@@ -16,6 +16,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use uuid::Uuid;
 
 use crate::common::AppError;
+use crate::modules::sync::{SyncAction, SyncEntity, publish as sync_publish};
 use pgvector::HalfVector;
 
 const REBUILD_BATCH_SIZE: i64 = 100;
@@ -132,6 +133,17 @@ async fn run(
         .execute(&pool)
         .await
         .map_err(AppError::database_error)?;
+
+        // The PUT handler's MemoryAdminSettings emit fired with the OLD
+        // dimension (this worker runs minutes later); notify admin devices
+        // now that the new dimension is committed. Background → origin None.
+        sync_publish(
+            SyncEntity::MemoryAdminSettings,
+            SyncAction::Update,
+            Uuid::nil(),
+            None,
+            None,
+        );
     }
 
     // 2. Re-embed every row whose embedding_model != new_model_name
