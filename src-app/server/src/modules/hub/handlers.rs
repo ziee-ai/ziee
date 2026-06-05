@@ -818,17 +818,45 @@ pub async fn create_system_mcp_server_from_hub(
             // historical row) falls back to the catalog defaults
             // from `build_mcp_server_create_from_hub` rather than
             // crashing the re-install.
-            if let Ok(env) = serde_json::from_value::<
+            //
+            // MERGE (not replace) — start with the helper-seeded map
+            // (catalog defaults + placeholders for any NEW
+            // `required_*` keys the catalog added between installs)
+            // and overlay the prior row's values. Prior values win
+            // for keys the admin set; catalog wins for newly-added
+            // keys the admin hasn't seen. Without this merge, a
+            // catalog upgrade that adds `WORKSPACE_ID` to a server
+            // that previously only needed `API_KEY` would silently
+            // drop the new placeholder on Re-install — the admin
+            // would have no UI signal that new configuration is
+            // needed.
+            if let Ok(prior_env) = serde_json::from_value::<
                 std::collections::HashMap<String, String>,
             >(prior.environment_variables.clone())
             {
-                plan.create_request.environment_variables = Some(env);
+                let mut merged = plan
+                    .create_request
+                    .environment_variables
+                    .take()
+                    .unwrap_or_default();
+                for (k, v) in prior_env {
+                    merged.insert(k, v);
+                }
+                plan.create_request.environment_variables = Some(merged);
             }
-            if let Ok(hdrs) = serde_json::from_value::<
+            if let Ok(prior_hdrs) = serde_json::from_value::<
                 std::collections::HashMap<String, String>,
             >(prior.headers.clone())
             {
-                plan.create_request.headers = Some(hdrs);
+                let mut merged = plan
+                    .create_request
+                    .headers
+                    .take()
+                    .unwrap_or_default();
+                for (k, v) in prior_hdrs {
+                    merged.insert(k, v);
+                }
+                plan.create_request.headers = Some(merged);
             }
         }
     }

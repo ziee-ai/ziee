@@ -42,11 +42,24 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
   // Combined list of required inputs (env vars + headers) the user
   // must configure post-install. Treated as one list for card UX —
   // the structured per-type view lives in the details drawer.
-  const requiredInputs = [
-    ...(server.required_env ?? []),
-    ...(server.required_headers ?? []),
+  // Each entry carries a kind discriminator so the toast text can
+  // disambiguate when a name appears on both surfaces (catalog
+  // author mistake, but worth surfacing rather than rendering it
+  // twice silently).
+  const requiredInputs: { name: string; kind: 'env' | 'header' }[] = [
+    ...(server.required_env ?? []).map(v => ({
+      name: v.name,
+      kind: 'env' as const,
+    })),
+    ...(server.required_headers ?? []).map(v => ({
+      name: v.name,
+      kind: 'header' as const,
+    })),
   ]
   const requiresSetup = requiredInputs.length > 0
+  const requiredInputsLabel = requiredInputs
+    .map(i => (i.kind === 'header' ? `${i.name} (header)` : i.name))
+    .join(', ')
 
   const handleInstall = async () => {
     try {
@@ -65,9 +78,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
         // 6s gives them time to register the list of keys before
         // the message disappears.
         message.success({
-          content: `${server.display_name} installed. Configure ${requiredInputs
-            .map(i => i.name)
-            .join(', ')} in /settings/mcp-servers before using.`,
+          content: `${server.display_name} installed. Configure ${requiredInputsLabel} in /settings/mcp-servers before using.`,
           duration: 6,
         })
       } else {
@@ -103,9 +114,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
 
       if (requiresSetup) {
         message.success({
-          content: `System MCP server "${server.display_name}" installed. Configure ${requiredInputs
-            .map(i => i.name)
-            .join(', ')} in /settings/mcp-admin before using.`,
+          content: `System MCP server "${server.display_name}" installed. Configure ${requiredInputsLabel} in /settings/mcp-admin before using.`,
           duration: 6,
         })
       } else {
@@ -168,9 +177,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                   )}
                   {requiresSetup && (
                     <Tooltip
-                      title={`Requires setup after install: ${requiredInputs
-                        .map(i => i.name)
-                        .join(', ')}`}
+                      title={`Requires setup after install: ${requiredInputsLabel}`}
                     >
                       <Tag
                         color="warning"

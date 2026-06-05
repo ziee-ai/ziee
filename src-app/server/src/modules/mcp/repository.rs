@@ -1562,7 +1562,16 @@ pub(crate) fn normalize_and_validate_headers(
 
     let as_value = serde_json::to_value(map)
         .map_err(|e| AppError::internal_error(format!("Failed to serialize headers: {}", e)))?;
-    let (_parsed, errors) = super::client::http::parse_header_map(&as_value);
+    // Save-time validation runs against the LITERAL header values
+    // (no `${VAR}` expansion). The env map isn't necessarily in
+    // scope at save time, and the runtime call path re-runs
+    // parse_header_map against the resolved env anyway. Passing an
+    // empty Value keeps validation focused on the literal shape +
+    // character set.
+    let (_parsed, errors) = super::client::http::parse_header_map(
+        &as_value,
+        &serde_json::Value::Object(Default::default()),
+    );
     if let Some(first) = errors.first() {
         return Err(AppError::bad_request(
             "INVALID_HEADER",
