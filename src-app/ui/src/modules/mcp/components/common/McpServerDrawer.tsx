@@ -1,4 +1,5 @@
 import {
+  Alert,
   Button,
   Form,
   Input,
@@ -733,6 +734,28 @@ export function McpServerDrawer() {
   return (
     <Drawer open={open} onClose={handleClose} title={titleNode} size={600}>
       <div className="flex flex-col gap-4">
+        {/* Surface the last probe's failure reason at the top of
+            the body as an Alert so it can't be missed. Previously
+            tucked into the title-Switch tooltip; that hid the
+            reason behind a hover the user might never trigger.
+            Renders only on unhealthy + only in edit mode (create
+            mode has no probe history yet). */}
+        {(mode === 'edit' || mode === 'edit-system') &&
+          editingServer?.last_health_check_status === 'unhealthy' && (
+            <Alert
+              type="error"
+              showIcon
+              message={
+                editingServer.last_health_check_at
+                  ? `Connection test failed at ${new Date(editingServer.last_health_check_at).toLocaleString()}`
+                  : 'Connection test failed'
+              }
+              description={
+                editingServer.last_health_check_reason ??
+                'No reason recorded.'
+              }
+            />
+          )}
         <Form
           name="mcp-server-form"
           form={form}

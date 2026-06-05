@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { App, Button, Card, Popconfirm, Tag, Typography, Tooltip, Switch, Flex } from 'antd'
+import { Alert, App, Button, Card, Popconfirm, Tag, Typography, Tooltip, Switch, Flex } from 'antd'
 import {
   EditOutlined,
   ToolOutlined,
@@ -314,6 +314,27 @@ export function McpServerCard({
               )}
             </div>
           </div>
+
+          {/* Surface the last probe's failure reason inline as an
+              Alert so it can't be missed (previously hidden in a
+              Tooltip on the tag). Renders only for the unhealthy
+              case; the Healthy / Untested tags carry their own
+              tooltip with sufficient detail. */}
+          {server.last_health_check_status === 'unhealthy' && (
+            <Alert
+              type="error"
+              showIcon
+              className="!mb-2"
+              message={
+                server.last_health_check_at
+                  ? `Connection test failed at ${new Date(server.last_health_check_at).toLocaleString()}`
+                  : 'Connection test failed'
+              }
+              description={
+                server.last_health_check_reason ?? 'No reason recorded.'
+              }
+            />
+          )}
 
           <div>
             <Text type="secondary" className="text-sm mb-2 block">
