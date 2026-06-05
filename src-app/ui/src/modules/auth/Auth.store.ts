@@ -83,17 +83,28 @@ export const useAuthStore = create<AuthState>()(
           try {
             const response = await ApiClient.Auth.login(credentials, undefined)
 
+            // Seed the token, then COMPLETE the bootstrap by fetching /me for
+            // permissions. The login/register responses don't carry
+            // permissions, and the app shell gates on `permissions` +
+            // `isInitializing`. Finalizing both here (not relying on a
+            // separate initAuth) avoids the post-setup hang: AuthGuard's
+            // initAuth() races this call, early-returns on our `isLoading`,
+            // and would otherwise leave `isInitializing` stuck true forever.
+            set({ token: response.access_token })
+            const me = await ApiClient.Auth.me(undefined, undefined)
             set({
-              user: response.user,
-              token: response.access_token,
+              user: me.user,
+              permissions: me.permissions,
               isAuthenticated: true,
               isLoading: false,
+              isInitializing: false,
               error: null,
             })
           } catch (error) {
             set({
               error: error instanceof Error ? error.message : 'Login failed',
               isLoading: false,
+              isInitializing: false,
               isAuthenticated: false,
               token: null,
               user: null,
@@ -143,11 +154,17 @@ export const useAuthStore = create<AuthState>()(
           try {
             const response = await ApiClient.Auth.register(userData, undefined)
 
+            // Complete the bootstrap here (token → /me for permissions →
+            // isInitializing:false), same as authenticateUser — so the app
+            // shell doesn't hang on the spinner after registration.
+            set({ token: response.access_token })
+            const me = await ApiClient.Auth.me(undefined, undefined)
             set({
-              user: response.user,
-              token: response.access_token,
+              user: me.user,
+              permissions: me.permissions,
               isAuthenticated: true,
               isLoading: false,
+              isInitializing: false,
               error: null,
             })
           } catch (error) {
@@ -155,6 +172,7 @@ export const useAuthStore = create<AuthState>()(
               error:
                 error instanceof Error ? error.message : 'Registration failed',
               isLoading: false,
+              isInitializing: false,
             })
             throw error
           }

@@ -6,9 +6,9 @@ import {
   Empty,
   Flex,
   Menu,
-  Spin,
   Typography,
 } from 'antd'
+import { Loading } from '@/core/components/Loading'
 import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Stores } from '@/modules/llm-provider/stores'
@@ -116,9 +116,7 @@ export function LlmProviderSettings() {
   const renderProviderSettings = () => {
     if (loading) {
       return (
-        <div style={{ textAlign: 'center', padding: '50px' }}>
-          <Spin size="large" />
-        </div>
+        <Loading />
       )
     }
 

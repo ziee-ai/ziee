@@ -46,8 +46,8 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
         `Assistant "${assistant.display_name}" created successfully!`,
       )
 
-      // Navigate to /assistants to see the created assistant
-      navigate('/assistants')
+      // Navigate to the assistants settings page to see the created assistant
+      navigate('/settings/assistants')
     } catch (error: any) {
       console.error('Failed to create assistant:', error)
       message.error(
@@ -101,7 +101,7 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
                     icon={<EyeOutlined />}
                     onClick={e => {
                       e.stopPropagation()
-                      navigate('/assistants')
+                      navigate('/settings/assistants')
                     }}
                   >
                     View Assistant

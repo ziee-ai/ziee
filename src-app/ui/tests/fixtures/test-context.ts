@@ -211,9 +211,15 @@ export const test = base.extend<TestFixtures>({
     database: "${databaseName}"
 
   pool:
-    max_connections: 5
-    min_connections: 1
-    acquire_timeout_secs: 3
+    # The SPA cold-load fires ~15-25 parallel API calls; under host load
+    # (many sequential per-test backends) a 5-connection / 3s-acquire pool
+    # could not absorb that burst (postgres slow to respond), so requests
+    # hit "pool timed out while waiting for an open connection", the backend
+    # looked unhealthy, and the test-context retried until the test cap.
+    # Give the pool headroom + a more forgiving acquire timeout.
+    max_connections: 20
+    min_connections: 2
+    acquire_timeout_secs: 15
     idle_timeout_secs: 10
     max_lifetime_secs: 60
 

@@ -17,11 +17,11 @@ import {
   Flex,
   Pagination,
   Popconfirm,
-  Spin,
   Switch,
   Tooltip,
   Typography,
 } from 'antd'
+import { Loading } from '@/core/components/Loading'
 import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
 import { Can, usePermission } from '@/core/permissions'
@@ -218,9 +218,7 @@ export function UsersSettings() {
             }
           >
             {loadingUsers ? (
-              <div className="flex justify-center py-8">
-                <Spin size="large" />
-              </div>
+              <Loading />
             ) : users.length === 0 ? (
               <div>
                 <Empty description="No users yet" />

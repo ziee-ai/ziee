@@ -5,6 +5,7 @@ import { Permissions, type ProviderWithModels } from '@/api-client/types'
 import { ApiClient } from '@/api-client'
 import { Stores } from '@/core/stores'
 import { hasPermissionNow } from '@/core/permissions'
+import { sortProviders } from '@/modules/llm-provider/sortProviders'
 
 /**
  * ModelPicker store — the chat composer's model selection plus the
@@ -205,7 +206,7 @@ export const useModelPickerStore = create<ModelPickerState>()(
         try {
           const response = await ApiClient.LlmProvider.getUserLlmProviders(undefined, undefined)
           set(state => {
-            state.providers = response.providers
+            state.providers = sortProviders(response.providers)
             state.loading = false
           })
           // Auto-select first model if none is selected yet

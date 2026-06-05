@@ -115,7 +115,14 @@ export default function UserLlmProvidersPage() {
     if (providers.length === 0) {
       return (
         <Empty
-          description="No LLM providers yet"
+          description={
+            <span>
+              No AI providers are available yet.
+              <br />
+              An administrator needs to add a provider and a model before you
+              can configure keys here.
+            </span>
+          }
           image={Empty.PRESENTED_IMAGE_SIMPLE}
         />
       )

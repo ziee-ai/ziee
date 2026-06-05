@@ -7,9 +7,9 @@ import {
   Form,
   Input,
   Pagination,
-  Spin,
   Tooltip,
 } from 'antd'
+import { Loading } from '@/core/components/Loading'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
 import { Stores } from '@/core/stores'
@@ -139,9 +139,7 @@ export function UserGroupsSettings() {
   return (
     <SettingsPageContainer title={titleWithButton}>
       {loadingGroups ? (
-        <div className="flex justify-center py-8">
-          <Spin size="large" />
-        </div>
+        <Loading />
       ) : groups.length === 0 ? (
         <Empty description="No user groups yet" />
       ) : (
