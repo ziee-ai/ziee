@@ -34,16 +34,44 @@ export function UpdatesHubTab() {
   // only need the hub_id (no provider/quant), so it's a one-click op.
   // Models need a provider + quantization choice, so those route to the
   // Models tab instead of installing inline.
+  //
+  // For assistants: the install path branches on `is_template_install`
+  // — a template-origin row (created_by IS NULL) must re-install via
+  // `createAssistantTemplateFromHub`, otherwise the admin would
+  // silently get a USER assistant owned by themselves and the stale
+  // template would remain outdated.
   const reinstall = async (
     hubId: string,
     category: string,
     entityId: string,
+    isTemplateInstall: boolean,
   ) => {
     setBusyId(entityId)
     try {
       if (category === 'assistant') {
-        await ApiClient.Hub.createAssistantFromHub({ hub_id: hubId })
+        if (isTemplateInstall) {
+          // Route through the store so the displaced template's
+          // `assistant_template.deleted` + the new template's
+          // `assistant_template.created` events fire, keeping the
+          // TemplateAssistants store + hub cards in sync. Calling
+          // ApiClient directly here bypassed those events and left
+          // the admin templates list pointing at a 404 row.
+          //
+          // `replace_existing: true` instructs the template handler
+          // to delete the outdated template first before creating
+          // the fresh one — without this the duplicate-prevention
+          // guard would 409 on re-install.
+          await Stores.HubAssistants.createTemplateFromHub({
+            hub_id: hubId,
+            replace_existing: true,
+          })
+        } else {
+          await Stores.HubAssistants.createFromHub({ hub_id: hubId })
+        }
       } else if (category === 'mcp_server') {
+        // No store seam exists for hub MCP server installs yet — the
+        // direct API call is the supported path (see hub MCP server
+        // tab; mirror this when one is added).
         await ApiClient.Hub.createMcpServerFromHub({ hub_id: hubId })
       }
       message.success(`Re-installed ${hubId} from v${catalogVersion ?? '?'}`)
@@ -110,6 +138,11 @@ export function UpdatesHubTab() {
               <Tag key="current" color="green">
                 current v{row.current_version}
               </Tag>,
+              row.is_template_install ? (
+                <Tag key="scope" color="purple">
+                  template
+                </Tag>
+              ) : null,
               row.hub_category === 'model' ? (
                 <Tooltip
                   key="action"
@@ -127,11 +160,20 @@ export function UpdatesHubTab() {
                 <Popconfirm
                   key="action"
                   title="Re-install from current catalog"
-                  description={`Create a fresh "${row.hub_id}" from catalog v${row.current_version}?`}
+                  description={
+                    row.is_template_install
+                      ? `Re-install template "${row.hub_id}" from catalog v${row.current_version}? The existing template will be replaced once the new one is created.`
+                      : `Create a fresh "${row.hub_id}" from catalog v${row.current_version}?`
+                  }
                   okText="Re-install"
                   cancelText="Cancel"
                   onConfirm={() =>
-                    reinstall(row.hub_id, row.hub_category, row.entity_id)
+                    reinstall(
+                      row.hub_id,
+                      row.hub_category,
+                      row.entity_id,
+                      row.is_template_install,
+                    )
                   }
                 >
                   <Button

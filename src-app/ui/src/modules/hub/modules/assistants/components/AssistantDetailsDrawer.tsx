@@ -1,6 +1,8 @@
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Flex, Tag, Typography, Card } from 'antd'
-import type { HubAssistant } from '@/api-client/types'
+import { Button, Flex, Tag, Typography, Card } from 'antd'
+import { CopyOutlined, RobotOutlined } from '@ant-design/icons'
+import { Permissions, type HubAssistant } from '@/api-client/types'
+import { usePermission } from '@/core/permissions'
 
 const { Title, Text } = Typography
 
@@ -8,17 +10,77 @@ interface AssistantDetailsDrawerProps {
   assistant: HubAssistant | null
   open: boolean
   onClose: () => void
+  /** Forwarded from the parent card — invoked when the user clicks
+   *  the drawer-footer install button. The parent owns the loading
+   *  state + toast feedback + navigation. Passing handlers in lets
+   *  the drawer stay stateless and lets the card remain the single
+   *  source of truth for "what's currently installing." */
+  onUseAssistant?: () => void
+  onUseAsTemplate?: () => void
+  isCreating?: boolean
+  isCreatingTemplate?: boolean
+  isAlreadyCreated?: boolean
+  isAlreadyTemplate?: boolean
 }
 
 export function AssistantDetailsDrawer({
   assistant,
   open,
   onClose,
+  onUseAssistant,
+  onUseAsTemplate,
+  isCreating = false,
+  isCreatingTemplate = false,
+  isAlreadyCreated = false,
+  isAlreadyTemplate = false,
 }: AssistantDetailsDrawerProps) {
+  const canCreate = usePermission(Permissions.HubAssistantsCreate)
+  const canCreateTemplate = usePermission(Permissions.AssistantsTemplateCreate)
+
   if (!assistant) return null
 
+  // Footer install actions — same gating as the card so a user who
+  // can't act on a button doesn't see it. The handlers are optional
+  // (a hub catalog that's not yet wired up wouldn't pass them), so
+  // we render no footer when neither handler is supplied.
+  const footer =
+    onUseAssistant || onUseAsTemplate ? (
+      <Flex justify="end" gap="small">
+        {!isAlreadyCreated && canCreate && onUseAssistant && (
+          <Button
+            type="primary"
+            icon={<RobotOutlined />}
+            loading={isCreating}
+            disabled={isCreating || isCreatingTemplate}
+            onClick={onUseAssistant}
+            data-testid="hub-assistant-drawer-use-btn"
+          >
+            Use Assistant
+          </Button>
+        )}
+        {canCreate && canCreateTemplate && onUseAsTemplate && (
+          <Button
+            icon={<CopyOutlined />}
+            loading={isCreatingTemplate}
+            disabled={
+              isCreating || isCreatingTemplate || isAlreadyTemplate
+            }
+            onClick={onUseAsTemplate}
+            data-testid="hub-assistant-drawer-use-as-template-btn"
+          >
+            {isAlreadyTemplate ? 'Template Installed' : 'Use as Template'}
+          </Button>
+        )}
+      </Flex>
+    ) : undefined
+
   return (
-    <Drawer title={assistant.display_name} open={open} onClose={onClose}>
+    <Drawer
+      title={assistant.display_name}
+      open={open}
+      onClose={onClose}
+      footer={footer}
+    >
       <Flex vertical className="gap-4">
         {/* Basic Info */}
         <div>

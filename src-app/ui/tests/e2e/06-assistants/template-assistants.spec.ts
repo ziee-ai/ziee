@@ -343,31 +343,25 @@ test.describe('Template Assistants - Settings Page', () => {
     await assertTemplateAssistantExists(page, longName.substring(0, 50))
   })
 
-  test('should show tooltip for Set as Default switch', async ({ page }) => {
+  test('should show help text for Set as Default switch', async ({ page }) => {
     await openCreateAssistantDrawer(page, false)
 
-    // Find the Form.Item containing "Set as Default", then hover the question-circle icon
+    // The "Set as Default" field renders its help text inline via the
+    // Form.Item `extra` prop (always visible — not a hover tooltip).
     const defaultFormItem = page.locator('.ant-form-item').filter({ hasText: /^Set as Default/ })
-    const tooltipIcon = defaultFormItem.locator('.anticon-question-circle')
-
-    // Hover the tooltip icon to show tooltip
-    await tooltipIcon.hover()
-
-    // Verify tooltip text for templates
-    await expect(page.getByText('Set as the default template assistant for all users', { exact: true })).toBeVisible({ timeout: 2000 })
+    await expect(
+      defaultFormItem.getByText('Set as the default template assistant for all users', { exact: true }),
+    ).toBeVisible()
   })
 
-  test('should show enabled tooltip', async ({ page }) => {
+  test('should show enabled help text', async ({ page }) => {
     await openCreateAssistantDrawer(page, false)
 
-    // Find the Form.Item containing "Enabled", then hover the question-circle icon
+    // The "Enabled" field renders its help text inline via the Form.Item
+    // `extra` prop (always visible — not a hover tooltip).
     const enabledFormItem = page.locator('.ant-form-item').filter({ hasText: /^Enabled/ })
-    const tooltipIcon = enabledFormItem.locator('.anticon-question-circle')
-
-    // Hover the tooltip icon to show tooltip
-    await tooltipIcon.hover()
-
-    // Verify tooltip
-    await expect(page.getByText('Whether this assistant is enabled', { exact: true })).toBeVisible({ timeout: 2000 })
+    await expect(
+      enabledFormItem.getByText('Whether this assistant is enabled', { exact: true }),
+    ).toBeVisible()
   })
 })

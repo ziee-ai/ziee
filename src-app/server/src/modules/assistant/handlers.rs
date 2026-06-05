@@ -78,7 +78,7 @@ fn default_limit() -> i64 {
 const ASSISTANT_MAX_INSTRUCTIONS_BYTES: usize = 65_536;
 const ASSISTANT_MAX_DESCRIPTION_BYTES: usize = 4_096;
 
-fn validate_assistant_text_lengths(
+pub(crate) fn validate_assistant_text_lengths(
     description: Option<&str>,
     instructions: Option<&str>,
 ) -> Result<(), AppError> {

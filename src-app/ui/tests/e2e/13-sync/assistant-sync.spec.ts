@@ -10,7 +10,7 @@ import {
   openCreateAssistantDrawer,
   fillAssistantForm,
   submitAssistantForm,
-  getAssistantCard,
+  getUserAssistantRow,
 } from '../06-assistants/helpers/assistant-helpers'
 
 // Realtime sync for the `assistant` entity (Owner-scoped): a user's assistant
@@ -40,7 +40,7 @@ test.describe('Realtime sync — assistant (owner-scoped)', () => {
 
       // Device B must show it WITHOUT a manual reload — the SSE sync event
       // makes the assistants store refetch. Playwright auto-waits.
-      await expect(await getAssistantCard(pageB, name)).toBeVisible({ timeout: 15_000 })
+      await expect(await getUserAssistantRow(pageB, name)).toBeVisible({ timeout: 15_000 })
     } finally {
       await ctxB.close()
     }
@@ -87,9 +87,9 @@ test.describe('Realtime sync — assistant (owner-scoped)', () => {
       await submitAssistantForm(page)
 
       // Positive control: the owner's OTHER device receives it live.
-      await expect(await getAssistantCard(pageA2, name)).toBeVisible({ timeout: 15_000 })
+      await expect(await getUserAssistantRow(pageA2, name)).toBeVisible({ timeout: 15_000 })
       // Isolation: a different user (same delivery window) never sees it.
-      await expect(await getAssistantCard(pageB, name)).not.toBeVisible()
+      await expect(await getUserAssistantRow(pageB, name)).not.toBeVisible()
     } finally {
       await ctxA2.close()
       await ctxB.close()

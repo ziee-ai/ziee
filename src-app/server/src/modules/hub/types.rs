@@ -71,6 +71,15 @@ pub struct CreateAssistantFromHubRequest {
     /// Whether this assistant is enabled
     #[serde(default = "default_true")]
     pub enabled: bool,
+
+    /// Template-only: when true, delete the existing template install
+    /// for this `hub_id` before creating the new one. Used by the
+    /// `/hub/updates` Re-install action to refresh an outdated
+    /// template; without this the duplicate-prevention guard in
+    /// `Hub.createAssistantTemplateFromHub` would 409. Ignored on the
+    /// user-scoped install path (per-user installs aren't dedup'd).
+    #[serde(default)]
+    pub replace_existing: bool,
 }
 
 /// Request to create MCP server from hub catalog
@@ -198,6 +207,12 @@ pub struct HubUpdateRow {
     pub entity_id: Uuid,
     pub installed_version: Option<String>,
     pub current_version: String,
+    /// True when the install was system-wide (`created_by IS NULL` —
+    /// currently only template assistants). The Updates UI uses this
+    /// to route the Re-install action to the template endpoint
+    /// instead of creating a user assistant from a template-origin
+    /// row.
+    pub is_template_install: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]

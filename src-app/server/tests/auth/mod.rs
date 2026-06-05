@@ -5,6 +5,8 @@ mod admin_providers_test;
 mod apple_test;
 mod ldap_test;
 mod oauth_test;
+// Self-service profile (update profile + change password + has_password).
+mod profile_self_service_test;
 
 #[tokio::test]
 async fn test_auth_registration() {

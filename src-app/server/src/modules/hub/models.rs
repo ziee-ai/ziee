@@ -103,6 +103,14 @@ pub struct HubAssistant {
     /// Array of entity IDs created by current user from this hub assistant
     #[serde(default)]
     pub created_ids: Vec<Uuid>,
+
+    /// Array of system-wide TEMPLATE assistant IDs installed from this
+    /// hub assistant (created_by IS NULL, is_template = true). Usually
+    /// 0-or-1 entries — the backend rejects duplicate template installs
+    /// with 409. Used by the hub card to disable the "Use as Template"
+    /// button when a template install already exists.
+    #[serde(default)]
+    pub created_template_ids: Vec<Uuid>,
 }
 
 /// Hub MCP server entry

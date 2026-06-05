@@ -6,16 +6,15 @@ import {
   useTemplateAssistantsStore,
   useUserAssistantsStore,
 } from '@/modules/assistant/stores'
-import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import '@/modules/assistant/types'
 import { Permissions } from '@/api-client/types'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 
-const UserAssistantsPage = lazyWithPreload(() =>
-  import('./pages/UserAssistantsPage').then(m => ({
-    default: m.UserAssistantsPage,
+const UserAssistantsSettings = lazyWithPreload(() =>
+  import('./pages/UserAssistantsSettings').then(m => ({
+    default: m.UserAssistantsSettings,
   })),
 )
 const AssistantsSettings = lazyWithPreload(() =>
@@ -34,13 +33,14 @@ export default createModule({
   dependencies: ['router'],
   routes: [
     {
-      path: '/assistants',
-      element: UserAssistantsPage,
+      path: '/settings/assistants',
+      element: UserAssistantsSettings,
       requiresAuth: true,
-      layout: AppLayoutDef,
+      permission: Permissions.AssistantsRead,
+      layout: SettingsLayoutDef,
     },
     {
-      path: '/settings/assistants',
+      path: '/settings/assistant-templates',
       element: AssistantsSettings,
       requiresAuth: true,
       permission: Permissions.AssistantsTemplateRead,
@@ -66,21 +66,22 @@ export default createModule({
     },
   ],
   slots: {
-    sidebarTools: [
-      {
-        id: 'assistants',
-        icon: <RobotOutlined />,
-        label: 'Assistants',
-        path: '/assistants',
-        order: 20,
-      },
-    ],
-    settingsAdminPages: [
+    settingsUserPages: [
       {
         id: 'assistants',
         icon: <RobotOutlined />,
         label: 'Assistants',
         path: 'assistants',
+        order: 20,
+        permission: Permissions.AssistantsRead,
+      },
+    ],
+    settingsAdminPages: [
+      {
+        id: 'assistant-templates',
+        icon: <RobotOutlined />,
+        label: 'Assistant Templates',
+        path: 'assistant-templates',
         order: 25,
         permission: Permissions.AssistantsTemplateRead,
       },

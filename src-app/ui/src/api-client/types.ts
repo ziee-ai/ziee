@@ -140,6 +140,11 @@ export interface Catalog {
 
 export type CatalogProvenance = 'seed' | 'github'
 
+export interface ChangePasswordRequest {
+  current_password: string
+  new_password: string
+}
+
 export interface ChatStreamChunk {
   branch_id?: string
   content?: ContentBlockDelta[]
@@ -241,6 +246,7 @@ export interface CreateAssistantFromHubRequest {
   is_default?: boolean
   name?: string
   parameters?: any
+  replace_existing?: boolean
 }
 
 export interface CreateAssistantRequest {
@@ -717,6 +723,7 @@ export interface HubAssistant {
   capabilities_required?: string[]
   category?: string
   created_ids?: string[]
+  created_template_ids?: string[]
   display_name: string
   example_prompts?: string[]
   id: string
@@ -880,6 +887,7 @@ export interface HubUpdateRow {
   hub_category: string
   hub_id: string
   installed_version?: string
+  is_template_install: boolean
 }
 
 export interface HubUpdatesResponse {
@@ -1196,6 +1204,7 @@ export interface McpSettingsResponse {
 }
 
 export interface MeResponse {
+  has_password: boolean
   permissions: string[]
   user: User
 }
@@ -2234,6 +2243,11 @@ export interface UpdateMemoryRequest {
   metadata?: any
 }
 
+export interface UpdateProfileRequest {
+  display_name?: string
+  username?: string
+}
+
 export interface UpdateProjectRequest {
   description?: string
   default_assistant_id?: string
@@ -2626,6 +2640,7 @@ export const ApiEndpoints = {
   'AssistantTemplate.getDefault': 'GET /api/assistant-templates/default',
   'AssistantTemplate.list': 'GET /api/assistant-templates',
   'AssistantTemplate.update': 'PUT /api/assistant-templates/{id}',
+  'Auth.changePassword': 'POST /api/auth/password',
   'Auth.linkAccount': 'POST /api/auth/link-account',
   'Auth.listProviders': 'GET /api/auth/providers',
   'Auth.login': 'POST /api/auth/login',
@@ -2633,6 +2648,7 @@ export const ApiEndpoints = {
   'Auth.me': 'GET /api/auth/me',
   'Auth.refresh': 'POST /api/auth/refresh',
   'Auth.register': 'POST /api/auth/register',
+  'Auth.updateProfile': 'POST /api/auth/profile',
   'AuthProviders.create': 'POST /api/admin/auth-providers',
   'AuthProviders.delete': 'DELETE /api/admin/auth-providers/{id}',
   'AuthProviders.list': 'GET /api/admin/auth-providers',
@@ -2682,6 +2698,7 @@ export const ApiEndpoints = {
   'Health.check': 'GET /api/health',
   'Hub.activateVersion': 'POST /api/hub/activate',
   'Hub.createAssistantFromHub': 'POST /api/hub/assistants/create',
+  'Hub.createAssistantTemplateFromHub': 'POST /api/hub/assistant-templates/create',
   'Hub.createMcpServerFromHub': 'POST /api/hub/mcp-servers/create',
   'Hub.createModelFromHub': 'POST /api/hub/models/download',
   'Hub.getAssistants': 'GET /api/hub/assistants',
@@ -2866,6 +2883,7 @@ export type ApiEndpointParameters = {
   'AssistantTemplate.getDefault': void
   'AssistantTemplate.list': { limit: number; page: number }
   'AssistantTemplate.update': { id: string } & UpdateAssistantRequest
+  'Auth.changePassword': ChangePasswordRequest
   'Auth.linkAccount': LinkAccountRequest
   'Auth.listProviders': void
   'Auth.login': LoginRequest
@@ -2873,6 +2891,7 @@ export type ApiEndpointParameters = {
   'Auth.me': void
   'Auth.refresh': RefreshTokenRequest
   'Auth.register': RegisterRequest
+  'Auth.updateProfile': UpdateProfileRequest
   'AuthProviders.create': CreateAuthProviderRequest
   'AuthProviders.delete': { id: string }
   'AuthProviders.list': void
@@ -2922,6 +2941,7 @@ export type ApiEndpointParameters = {
   'Health.check': void
   'Hub.activateVersion': ActivateHubVersionRequest
   'Hub.createAssistantFromHub': CreateAssistantFromHubRequest
+  'Hub.createAssistantTemplateFromHub': CreateAssistantFromHubRequest
   'Hub.createMcpServerFromHub': CreateMcpServerFromHubRequest
   'Hub.createModelFromHub': CreateModelFromHubRequest
   'Hub.getAssistants': { lang?: string }
@@ -3106,6 +3126,7 @@ export type ApiEndpointResponses = {
   'AssistantTemplate.getDefault': Assistant
   'AssistantTemplate.list': AssistantListResponse
   'AssistantTemplate.update': Assistant
+  'Auth.changePassword': void
   'Auth.linkAccount': AuthResponse
   'Auth.listProviders': PublicProvidersResponse
   'Auth.login': AuthResponse
@@ -3113,6 +3134,7 @@ export type ApiEndpointResponses = {
   'Auth.me': MeResponse
   'Auth.refresh': TokenPair
   'Auth.register': AuthResponse
+  'Auth.updateProfile': User
   'AuthProviders.create': AuthProviderResponse
   'AuthProviders.delete': DeleteProviderResponse
   'AuthProviders.list': AuthProviderResponse[]
@@ -3162,6 +3184,7 @@ export type ApiEndpointResponses = {
   'Health.check': HealthResponse
   'Hub.activateVersion': HubCatalogRefreshResponse
   'Hub.createAssistantFromHub': AssistantFromHubResponse
+  'Hub.createAssistantTemplateFromHub': AssistantFromHubResponse
   'Hub.createMcpServerFromHub': McpServerFromHubResponse
   'Hub.createModelFromHub': ModelFromHubResponse
   'Hub.getAssistants': HubAssistant[]

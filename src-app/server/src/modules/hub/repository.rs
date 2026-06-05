@@ -82,6 +82,31 @@ impl HubRepository {
         get_pinned_version(&self.pool).await
     }
 
+    /// Look up the `hub_entities` row for a hub-installed TEMPLATE
+    /// assistant (matched by hub_id with `created_by IS NULL`).
+    /// Returns Some(entity_id) when a template install already exists
+    /// for this hub_id — used by the `Hub.createAssistantTemplateFromHub`
+    /// handler to refuse duplicate installs (each duplicate fans out
+    /// to every new user via the clone-on-signup hook, multiplying
+    /// the runtime cost).
+    pub async fn find_template_install(
+        &self,
+        hub_id: &str,
+    ) -> Result<Option<Uuid>, AppError> {
+        find_template_install(&self.pool, hub_id).await
+    }
+
+    /// System-wide template installs keyed by hub_id (companion to
+    /// `get_created_assistant_ids` which is per-user). Used to merge
+    /// `created_template_ids` into the catalog response so the hub
+    /// card can disable the "Use as Template" button when a template
+    /// is already installed.
+    pub async fn get_template_install_ids(
+        &self,
+    ) -> Result<HashMap<String, Vec<Uuid>>, AppError> {
+        get_template_install_ids(&self.pool).await
+    }
+
     /// Set (or clear, with None) the admin-pinned catalog version.
     pub async fn set_pinned_version(
         &self,
@@ -101,6 +126,16 @@ pub struct OutdatedHubEntity {
     pub entity_type: String,
     pub entity_id: Uuid,
     pub installed_version: Option<String>,
+    /// True when this hub_entities row has `created_by IS NULL` —
+    /// i.e. it's a system-wide install (template assistant, or any
+    /// future entity type that bypasses per-user ownership). The
+    /// `/hub/updates` UI uses this to route the Re-install action
+    /// to `Hub.createAssistantTemplateFromHub` instead of the
+    /// user-scoped `Hub.createAssistantFromHub` — without this
+    /// discriminator, a "Re-install" on a template-origin row would
+    /// silently create a USER assistant owned by the clicking admin,
+    /// leaving the stale template still outdated.
+    pub is_template_install: bool,
 }
 
 /// Create hub entity tracking record. `hub_version` is the catalog
@@ -119,7 +154,7 @@ pub async fn track_hub_entity(
     let entity_type_str = entity_type.as_str();
     let hub_category_str = hub_category.as_str();
 
-    let record = sqlx::query!(
+    let record = match sqlx::query!(
         r#"
         INSERT INTO hub_entities (entity_type, entity_id, hub_id, hub_category, created_by, hub_version)
         VALUES ($1, $2, $3, $4, $5, $6)
@@ -135,7 +170,21 @@ pub async fn track_hub_entity(
         hub_version
     )
     .fetch_one(pool)
-    .await?;
+    .await
+    {
+        Ok(r) => r,
+        // Translate the partial unique index `uniq_hub_template_install`
+        // (migration 79) into a 409 so the handler can match on it.
+        // SQLSTATE 23505 = unique_violation. This is the TOCTOU
+        // backstop for concurrent template installs that both passed
+        // the application-level `find_template_install` check.
+        Err(sqlx::Error::Database(db_err))
+            if db_err.code().as_deref() == Some("23505") =>
+        {
+            return Err(AppError::conflict("Hub entity"));
+        }
+        Err(e) => return Err(AppError::database_error(e)),
+    };
 
     Ok(HubEntity {
         id: record.id,
@@ -163,6 +212,40 @@ pub async fn get_created_assistant_ids(
         GROUP BY he.hub_id
         "#,
         user_id
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut map = HashMap::new();
+    for record in records {
+        if let Some(entity_ids) = record.entity_ids {
+            map.insert(record.hub_id, entity_ids);
+        }
+    }
+
+    Ok(map)
+}
+
+/// Get TEMPLATE assistant IDs that have been installed from each
+/// hub catalog id (system-wide — templates have NULL created_by).
+/// Used to surface a "Template installed" indicator on the hub card
+/// so admins don't accidentally install duplicates. Returns a map
+/// hub_id → list of template assistant ids; usually 0-or-1 entries
+/// per hub_id (the backend rejects duplicates) but kept as Vec for
+/// future flexibility.
+pub async fn get_template_install_ids(
+    pool: &PgPool,
+) -> Result<HashMap<String, Vec<Uuid>>, AppError> {
+    let records = sqlx::query!(
+        r#"
+        SELECT he.hub_id, ARRAY_AGG(he.entity_id) as entity_ids
+        FROM hub_entities he
+        INNER JOIN assistants a ON a.id = he.entity_id
+        WHERE he.entity_type = 'assistant'
+          AND he.created_by IS NULL
+          AND a.is_template = true
+        GROUP BY he.hub_id
+        "#
     )
     .fetch_all(pool)
     .await?;
@@ -247,7 +330,7 @@ pub async fn list_outdated_entities(
 ) -> Result<Vec<OutdatedHubEntity>, AppError> {
     let rows = sqlx::query!(
         r#"
-        SELECT hub_id, hub_category, entity_type, entity_id, hub_version
+        SELECT hub_id, hub_category, entity_type, entity_id, hub_version, created_by
         FROM hub_entities
         WHERE hub_version IS DISTINCT FROM $1
         ORDER BY hub_category, hub_id
@@ -262,11 +345,60 @@ pub async fn list_outdated_entities(
         .map(|r| OutdatedHubEntity {
             hub_id: r.hub_id,
             hub_category: r.hub_category,
-            entity_type: r.entity_type,
             entity_id: r.entity_id,
             installed_version: r.hub_version,
+            // True ONLY for system-wide ASSISTANT installs — these
+            // are the rows that need the Re-install action routed
+            // through `Hub.createAssistantTemplateFromHub` instead
+            // of `Hub.createAssistantFromHub`. Models also set
+            // `created_by: NULL` but the UI never re-installs them
+            // inline (they require a provider+quant choice), so
+            // tightening the predicate to `entity_type == "assistant"`
+            // keeps the flag's semantic narrow and unambiguous.
+            is_template_install: r.created_by.is_none()
+                && r.entity_type == "assistant",
+            entity_type: r.entity_type,
         })
         .collect())
+}
+
+/// Find an existing LIVE TEMPLATE install (`created_by IS NULL` AND
+/// the assistants row still exists with `is_template = true`) for a
+/// hub assistant. Returns the `entity_id` (= assistant id) when one
+/// exists. Used to enforce idempotency in
+/// `Hub.createAssistantTemplateFromHub` — without this guard the
+/// admin clicking "Use as Template" twice would create two identical
+/// templates, each of which clones into every new user's assistant
+/// list via the signup hook.
+///
+/// The INNER JOIN against `assistants` filters out orphan
+/// `hub_entities` rows (e.g. from a delete that fired before the
+/// `CleanupHubEntitiesHandler` listener landed, or any race) — without
+/// it the `replace_existing` re-install path could trip a 404 trying
+/// to delete a row that no longer exists. `ORDER BY created_at DESC
+/// LIMIT 1` makes the result deterministic in the (currently
+/// impossible) case of two live template installs co-existing.
+pub async fn find_template_install(
+    pool: &PgPool,
+    hub_id: &str,
+) -> Result<Option<Uuid>, AppError> {
+    let row = sqlx::query!(
+        r#"
+        SELECT he.entity_id
+        FROM hub_entities he
+        INNER JOIN assistants a ON a.id = he.entity_id
+        WHERE he.entity_type = 'assistant'
+          AND he.hub_id = $1
+          AND he.created_by IS NULL
+          AND a.is_template = true
+        ORDER BY he.created_at DESC
+        LIMIT 1
+        "#,
+        hub_id,
+    )
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|r| r.entity_id))
 }
 
 /// Read the pinned catalog version from the hub_settings singleton.

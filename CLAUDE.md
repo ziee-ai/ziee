@@ -180,6 +180,71 @@ The vendored pgvector source is a git submodule at
 
 ---
 
+## Hub Seed (build-time fetch)
+
+The embedded hub catalog at `<binary>/binaries/hub-seed/` is fetched
+fresh from the `ziee-ai/hub` GitHub release on every `cargo build`.
+`build_helper/hub_seed.rs` resolves the latest non-prerelease tag,
+downloads the 6 release artifacts (tarball + index + their sha256
+sidecars + cosign keyless bundles), verifies them with the same
+chain the runtime refresh path uses (`hub_manager.rs` verify
+functions), and stages the result into `binaries/hub-seed/` for
+`include_dir!` to bake into the binary. `SEED_HUB_VERSION` is set
+by the build helper via `include_str!(concat!(env!("OUT_DIR"),
+"/hub_seed_version.txt"))` — keeping the version + index in lockstep
+is the build's responsibility, not the maintainer's.
+
+### Failure contract — different from every other build helper
+
+`pandoc`, `typst`, `pdfium`, `uv`, `bun`, `sandbox_runtime` all
+**warn-and-continue** on setup failure. `hub_seed` **panics**: the
+seed is the source of truth at runtime for air-gapped / first-boot
+users, and shipping a binary with an empty or stale seed silently
+degrades the hub UI. See the divider comment in
+`build.rs::setup_external_binaries()` for the rationale.
+
+### Env vars (build time)
+
+- `HUB_RELEASE_TAG=v0.x.y` — pin to a specific release tag instead
+  of resolving the latest. Required for reproducible / air-gapped
+  builds: an operator without GitHub access must set this AND
+  pre-stage `binaries/hub-seed/` (the skip-if-fresh path consults
+  that cache before any network call).
+- `GITHUB_TOKEN=ghp_...` — honored if set. Lifts the unauthenticated
+  60-req/hr-per-IP GitHub API limit to 5000/hr; matters on CI matrix
+  builds that share an egress IP. Falls back to unauthenticated
+  requests if unset.
+
+### Cache (`binaries/hub-seed/`)
+
+Persists across `cargo clean` (it's manifest-relative, not in
+`target/`). The `.tag` sidecar holds the cached release tag; on each
+build the helper queries GitHub for the latest tag and skips the
+download when `.tag` matches.
+
+**Tamper detection limit**: `cargo:rerun-if-changed=<seed_dir>`
+catches add / remove / rename inside the seed dir (directory
+mtime changes), but it does NOT catch in-place file edits
+(cargo only watches the dir's own mtime, not its contents'
+mtimes). The runtime test `seed_index_version_matches_const`
+is the in-place-edit backstop: it compares the on-disk
+`index.json`'s `hub_version` field against `SEED_HUB_VERSION`
+at test time, so a manual edit that bumps content without
+bumping the version fails the test suite.
+
+Concurrent `cargo build` invocations serialize on an advisory
+`flock(2)` over `binaries/.hub-seed.lock` (kernel auto-releases
+on process exit, so SIGKILL is safe).
+
+### Forcing a fresh fetch
+
+```bash
+rm -rf src-app/server/binaries/hub-seed
+cargo check -p ziee
+```
+
+---
+
 ## Code Sandbox
 
 The `code_sandbox` module exposes a bwrap-isolated code-execution
