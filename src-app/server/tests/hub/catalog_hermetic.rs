@@ -235,3 +235,827 @@ async fn install_stamps_current_version_so_updates_stays_empty() {
         "freshly-installed item must NOT appear in updates: {updates}"
     );
 }
+
+// ============================================================================
+// /hub/assistant-templates/create — system-wide template install
+// ============================================================================
+//
+// Companion endpoint to /hub/assistants/create. Same hub-load + verify +
+// track flow, but creates a TEMPLATE (`is_template=true, created_by=NULL`,
+// enforced by the `template_must_have_no_owner` CHECK constraint in
+// migration 6) gated on `hub::assistants::create + assistant_templates::create`.
+
+#[tokio::test]
+async fn install_as_template_creates_template_with_null_owner() {
+    let mock = spawn_mock_hub(two_versions()).await;
+    let server = TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: mock.test_env(),
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(
+        &server,
+        "admin",
+        &[
+            "hub::catalog::read",
+            "hub::catalog::manage",
+            "hub::assistants::create",
+            "assistant_templates::create",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    // Activate v9.9.1 — both compatible assistants are installable here.
+    client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "version": "9.9.1-test" }))
+        .send()
+        .await
+        .expect("activate")
+        .error_for_status()
+        .expect("activate ok");
+
+    let resp = client
+        .post(server.api_url("/hub/assistant-templates/create"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-asst-a" }))
+        .send()
+        .await
+        .expect("create template");
+    assert_eq!(
+        resp.status(),
+        201,
+        "template install should succeed: {}",
+        resp.text().await.unwrap_or_default()
+    );
+    let body: Json = resp.json().await.expect("parse template body");
+    // The created assistant must be a template with no owner.
+    assert_eq!(
+        body["assistant"]["is_template"], true,
+        "is_template must be true: {body}",
+    );
+    assert!(
+        body["assistant"]["created_by"].is_null(),
+        "created_by must be null for templates: {body}",
+    );
+    // The hub_entities row also records created_by=NULL for the
+    // system-wide install (matches the per-user `created_by:
+    // Some(user)` path used by /hub/assistants/create).
+    assert!(
+        body["hub_tracking"]["created_by"].is_null(),
+        "hub_tracking.created_by must be null for template installs: {body}",
+    );
+}
+
+#[tokio::test]
+async fn install_as_template_requires_template_permission() {
+    // User has hub::assistants::create but NOT
+    // assistant_templates::create — endpoint requires BOTH, so 403.
+    let mock = spawn_mock_hub(two_versions()).await;
+    let server = TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: mock.test_env(),
+        ..Default::default()
+    })
+    .await;
+    let user_no_template = create_user_with_permissions(
+        &server,
+        "user_no_template",
+        &["hub::catalog::read", "hub::assistants::create"],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .post(server.api_url("/hub/assistant-templates/create"))
+        .header(
+            "Authorization",
+            format!("Bearer {}", user_no_template.token),
+        )
+        .json(&json!({ "hub_id": "mock-asst-a" }))
+        .send()
+        .await
+        .expect("create template no perm");
+
+    assert_eq!(
+        resp.status(),
+        403,
+        "missing assistant_templates::create → 403"
+    );
+    let body: Json = resp.json().await.unwrap();
+    assert_eq!(body["error_code"], "INSUFFICIENT_PERMISSIONS");
+}
+
+// NOTE: there's no companion test for "user missing
+// `hub::assistants::create` → 403" because migration 27
+// (`fix_default_user_permissions.sql`) grants `hub::assistants::create`
+// to every user by default. The scenario is unreachable without
+// custom permission seeding the test harness doesn't expose.
+// `assistant_templates::create` is the discriminating permission
+// (admin-only) — its absence is covered by the test above.
+
+#[tokio::test]
+async fn install_as_template_rejects_incompatible_item() {
+    // Defense-in-depth: the same compat gate that the user-install
+    // path applies (ensure_installable) also fires for templates.
+    // The future-pinned mock assistant exists in v9.9.2 with
+    // min_ziee_version above the server, so install must 422.
+    let mock = spawn_mock_hub(two_versions()).await;
+    let server = TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: mock.test_env(),
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(
+        &server,
+        "admin",
+        &[
+            "hub::catalog::read",
+            "hub::catalog::manage",
+            "hub::assistants::create",
+            "assistant_templates::create",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "version": "9.9.2-test" }))
+        .send()
+        .await
+        .expect("activate")
+        .error_for_status()
+        .expect("activate ok");
+
+    let resp = client
+        .post(server.api_url("/hub/assistant-templates/create"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-asst-future" }))
+        .send()
+        .await
+        .expect("create incompatible template");
+
+    assert_eq!(resp.status(), 422);
+    let body: Json = resp.json().await.unwrap();
+    assert_eq!(body["error_code"], "HUB_INCOMPATIBLE");
+}
+
+#[tokio::test]
+async fn install_as_template_duplicate_is_409() {
+    // Idempotency guard: a second install with the same hub_id and
+    // no `replace_existing` flag must 409 — otherwise the admin
+    // accidentally creates duplicate templates that both fan out to
+    // every new user via the clone-on-signup hook.
+    let mock = spawn_mock_hub(two_versions()).await;
+    let server = TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: mock.test_env(),
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(
+        &server,
+        "admin",
+        &[
+            "hub::catalog::read",
+            "hub::catalog::manage",
+            "hub::assistants::create",
+            "assistant_templates::create",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "version": "9.9.1-test" }))
+        .send()
+        .await
+        .expect("activate")
+        .error_for_status()
+        .expect("activate ok");
+
+    // First install succeeds.
+    let first = client
+        .post(server.api_url("/hub/assistant-templates/create"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-asst-a" }))
+        .send()
+        .await
+        .expect("first install");
+    assert_eq!(first.status(), 201);
+
+    // Second install (no replace_existing) → 409.
+    let second = client
+        .post(server.api_url("/hub/assistant-templates/create"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-asst-a" }))
+        .send()
+        .await
+        .expect("second install");
+    assert_eq!(
+        second.status(),
+        409,
+        "duplicate template install should 409: {}",
+        second.text().await.unwrap_or_default(),
+    );
+    let body: Json = second.json().await.unwrap();
+    assert_eq!(body["error_code"], "RESOURCE_CONFLICT");
+}
+
+#[tokio::test]
+async fn install_as_template_with_replace_existing_succeeds() {
+    // `replace_existing: true` deletes the prior template + creates
+    // afresh. The new assistant has a different uuid, and the prior
+    // assistants row is gone (cleanup is event-driven via
+    // CleanupHubEntitiesHandler so the dangling hub_entities row is
+    // also removed before the new track_hub_entity runs).
+    let mock = spawn_mock_hub(two_versions()).await;
+    let server = TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: mock.test_env(),
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(
+        &server,
+        "admin",
+        &[
+            "hub::catalog::read",
+            "hub::catalog::manage",
+            "hub::assistants::read",
+            "hub::assistants::create",
+            "assistant_templates::create",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "version": "9.9.1-test" }))
+        .send()
+        .await
+        .expect("activate")
+        .error_for_status()
+        .expect("activate ok");
+
+    let first: Json = client
+        .post(server.api_url("/hub/assistant-templates/create"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-asst-a" }))
+        .send()
+        .await
+        .expect("first install")
+        .json()
+        .await
+        .expect("parse first");
+    let first_id = first["assistant"]["id"].as_str().unwrap().to_string();
+
+    let second: Json = client
+        .post(server.api_url("/hub/assistant-templates/create"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-asst-a", "replace_existing": true }))
+        .send()
+        .await
+        .expect("replace install")
+        .json()
+        .await
+        .expect("parse second");
+    let second_id = second["assistant"]["id"].as_str().unwrap().to_string();
+    assert_ne!(first_id, second_id, "replace must produce a new uuid");
+
+    // The prior template is gone — `created_template_ids` on the hub
+    // listing reflects only the NEW id (INNER JOIN against assistants
+    // in get_template_install_ids self-cleans deletions, and the
+    // CleanupHubEntitiesHandler removes the dangling hub_entities row
+    // event-driven from the AssistantEvent::Deleted emit).
+    let listing: Json = client
+        .get(server.api_url("/hub/assistants?lang=en"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("list after replace")
+        .json()
+        .await
+        .expect("parse listing");
+    let row = listing
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["id"] == "mock-asst-a")
+        .expect("mock-asst-a in listing");
+    let ids: Vec<String> = row["created_template_ids"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(ids, vec![second_id.clone()], "only NEW id should remain");
+    assert!(
+        !ids.contains(&first_id),
+        "old id must be gone from created_template_ids",
+    );
+
+    // A THIRD `replace_existing` install should also succeed — the
+    // find_template_install JOIN guards against orphan rows.
+    let third: Json = client
+        .post(server.api_url("/hub/assistant-templates/create"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-asst-a", "replace_existing": true }))
+        .send()
+        .await
+        .expect("third install")
+        .json()
+        .await
+        .expect("parse third");
+    let third_id = third["assistant"]["id"].as_str().unwrap().to_string();
+
+    // After the third install, ONLY the third uuid should remain
+    // (regression guard against a future change letting cleanup race
+    // with the new track_hub_entity insert and leaving stale rows).
+    let final_listing: Json = client
+        .get(server.api_url("/hub/assistants?lang=en"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("list after third")
+        .json()
+        .await
+        .expect("parse final");
+    let final_row = final_listing
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["id"] == "mock-asst-a")
+        .expect("mock-asst-a in final listing");
+    let final_ids: Vec<String> = final_row["created_template_ids"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(
+        final_ids,
+        vec![third_id.clone()],
+        "after 3 replace installs, only the THIRD uuid should remain",
+    );
+    assert!(
+        !final_ids.contains(&first_id) && !final_ids.contains(&second_id),
+        "1st + 2nd uuids must be gone, got {final_ids:?}",
+    );
+}
+
+#[tokio::test]
+async fn replace_existing_preserves_is_default() {
+    // Re-install via /hub/updates must not silently demote a previously
+    // promoted template (is_default=true). Without this carry-forward,
+    // re-install would set is_default=false (the request body default),
+    // and new signups would stop receiving the template via the
+    // clone-on-signup hook (which filters on is_default && enabled).
+    let mock = spawn_mock_hub(two_versions()).await;
+    let server = TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: mock.test_env(),
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(
+        &server,
+        "admin",
+        &[
+            "hub::catalog::read",
+            "hub::catalog::manage",
+            "hub::assistants::create",
+            "assistant_templates::create",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "version": "9.9.1-test" }))
+        .send()
+        .await
+        .expect("activate")
+        .error_for_status()
+        .expect("activate ok");
+
+    // Install + promote to default in one shot (the API accepts the
+    // is_default flag on install).
+    let first: Json = client
+        .post(server.api_url("/hub/assistant-templates/create"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-asst-a", "is_default": true }))
+        .send()
+        .await
+        .expect("first install")
+        .json()
+        .await
+        .expect("parse first");
+    assert_eq!(first["assistant"]["is_default"], true);
+
+    // Re-install WITHOUT passing is_default (mimics the
+    // UpdatesHubTab Re-install button which passes only hub_id +
+    // replace_existing). The new template must inherit is_default=true.
+    let second: Json = client
+        .post(server.api_url("/hub/assistant-templates/create"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-asst-a", "replace_existing": true }))
+        .send()
+        .await
+        .expect("replace install")
+        .json()
+        .await
+        .expect("parse second");
+    assert_eq!(
+        second["assistant"]["is_default"], true,
+        "re-install must carry forward is_default=true: {second}",
+    );
+}
+
+#[tokio::test]
+async fn replace_existing_aborts_on_validation_failure() {
+    // The `replace_existing` re-install path runs validation BEFORE
+    // the delete so a failed re-install (e.g. catalog moved an item
+    // to an incompatible min_ziee_version) doesn't leave the admin
+    // with the prior template wiped and no system-wide fallback.
+    let mock = spawn_mock_hub(two_versions()).await;
+    let server = TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: mock.test_env(),
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(
+        &server,
+        "admin",
+        &[
+            "hub::catalog::read",
+            "hub::catalog::manage",
+            "hub::assistants::read",
+            "hub::assistants::create",
+            "assistant_templates::create",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    // v9.9.1 has `mock-asst-a` compatible — install fine.
+    client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "version": "9.9.1-test" }))
+        .send()
+        .await
+        .expect("activate v1")
+        .error_for_status()
+        .expect("activate v1 ok");
+    let first: Json = client
+        .post(server.api_url("/hub/assistant-templates/create"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-asst-a" }))
+        .send()
+        .await
+        .expect("first install")
+        .json()
+        .await
+        .expect("parse first");
+    let first_id = first["assistant"]["id"].as_str().unwrap().to_string();
+
+    // Activate v9.9.2 — same `mock-asst-a` is still present and
+    // compatible, but we'll attempt `replace_existing` with an
+    // explicit overflow on description to force a 400.
+    client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "version": "9.9.2-test" }))
+        .send()
+        .await
+        .expect("activate v2")
+        .error_for_status()
+        .expect("activate v2 ok");
+
+    // Oversized description (>4 KiB) triggers
+    // validate_assistant_text_lengths → 400. The prior template must
+    // still exist after this failure (delete is gated on validation).
+    let oversized = "a".repeat(5000);
+    let resp = client
+        .post(server.api_url("/hub/assistant-templates/create"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "hub_id": "mock-asst-a",
+            "replace_existing": true,
+            "description": oversized,
+        }))
+        .send()
+        .await
+        .expect("replace with bad input");
+    assert_eq!(
+        resp.status(),
+        400,
+        "validation failure should 400, got {}",
+        resp.status(),
+    );
+
+    // The prior template MUST still exist in the catalog listing.
+    let listing: Json = client
+        .get(server.api_url("/hub/assistants?lang=en"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("list after failed replace")
+        .json()
+        .await
+        .expect("parse listing");
+    let row = listing
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["id"] == "mock-asst-a")
+        .expect("mock-asst-a in catalog");
+    let ids: Vec<String> = row["created_template_ids"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect();
+    assert!(
+        ids.contains(&first_id),
+        "prior template MUST survive a failed re-install: {ids:?}",
+    );
+}
+
+#[tokio::test]
+async fn template_install_surfaces_in_updates_with_template_flag() {
+    // When the catalog version moves forward AFTER a template install,
+    // /hub/updates surfaces the row with `is_template_install: true`
+    // so the UI routes the Re-install action through the template
+    // endpoint (not the user-install endpoint, which would silently
+    // demote the template to a user-owned assistant).
+    let mock = spawn_mock_hub(two_versions()).await;
+    let server = TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: mock.test_env(),
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(
+        &server,
+        "admin",
+        &[
+            "hub::catalog::read",
+            "hub::catalog::manage",
+            "hub::assistants::create",
+            "assistant_templates::create",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    // Activate v9.9.1, install template, then activate v9.9.2 so the
+    // template's hub_version (9.9.1) is now behind.
+    client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "version": "9.9.1-test" }))
+        .send()
+        .await
+        .expect("activate v1")
+        .error_for_status()
+        .expect("activate v1 ok");
+    client
+        .post(server.api_url("/hub/assistant-templates/create"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-asst-a" }))
+        .send()
+        .await
+        .expect("install")
+        .error_for_status()
+        .expect("install ok");
+    client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "version": "9.9.2-test" }))
+        .send()
+        .await
+        .expect("activate v2")
+        .error_for_status()
+        .expect("activate v2 ok");
+
+    let updates: Json = client
+        .get(server.api_url("/hub/updates"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("updates")
+        .json()
+        .await
+        .expect("parse updates");
+    let row = updates["updates"]
+        .as_array()
+        .expect("updates array")
+        .iter()
+        .find(|r| r["hub_id"] == "mock-asst-a")
+        .expect("template install must appear in updates");
+    assert_eq!(
+        row["is_template_install"], true,
+        "template install must be flagged: {row}",
+    );
+
+    // Stamp a synthetic outdated MODEL row (also `created_by: NULL`)
+    // and assert that `is_template_install` stays FALSE for it — the
+    // predicate must filter on `entity_type == 'assistant'`, not just
+    // `created_by IS NULL`. Without this guard, a hub model in /hub/
+    // updates would route through the template re-install endpoint
+    // (which would 404 since the model's hub_id isn't in the
+    // assistants table). Inserts directly into `hub_entities` because
+    // a real model install requires a provider + a real download.
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&server.database_url)
+        .await
+        .expect("connect test pool");
+    sqlx::query!(
+        r#"
+        INSERT INTO hub_entities
+            (entity_type, entity_id, hub_id, hub_category, created_by, hub_version)
+        VALUES
+            ('llm_model', gen_random_uuid(), 'mock-model-a', 'model', NULL, '9.9.1-test')
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .expect("insert synthetic model row");
+
+    let updates2: Json = client
+        .get(server.api_url("/hub/updates"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("updates 2")
+        .json()
+        .await
+        .expect("parse updates 2");
+    let model_row = updates2["updates"]
+        .as_array()
+        .expect("updates2 array")
+        .iter()
+        .find(|r| r["hub_id"] == "mock-model-a")
+        .expect("synthetic model row should appear in updates");
+    assert_eq!(
+        model_row["is_template_install"], false,
+        "MODEL install must NOT be flagged as template even though \
+         created_by IS NULL: {model_row}",
+    );
+}
+
+#[tokio::test]
+async fn template_install_appears_in_created_template_ids_on_get_assistants() {
+    // After installing a hub assistant as a template, GET /hub/assistants
+    // must populate `created_template_ids` so the UI can disable the
+    // "Use as Template" button + show "Template Installed" without a
+    // separate round-trip.
+    let mock = spawn_mock_hub(two_versions()).await;
+    let server = TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: mock.test_env(),
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(
+        &server,
+        "admin",
+        &[
+            "hub::catalog::read",
+            "hub::catalog::manage",
+            "hub::assistants::read",
+            "hub::assistants::create",
+            "assistant_templates::create",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "version": "9.9.1-test" }))
+        .send()
+        .await
+        .expect("activate")
+        .error_for_status()
+        .expect("activate ok");
+
+    // Pre-install: created_template_ids is empty.
+    let before: Json = client
+        .get(server.api_url("/hub/assistants?lang=en"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("list before")
+        .json()
+        .await
+        .expect("parse before");
+    let pre = before
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["id"] == "mock-asst-a")
+        .expect("mock-asst-a must be in catalog");
+    assert_eq!(
+        pre["created_template_ids"].as_array().map(|a| a.len()),
+        Some(0),
+        "created_template_ids should start empty: {pre}",
+    );
+
+    let install: Json = client
+        .post(server.api_url("/hub/assistant-templates/create"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-asst-a" }))
+        .send()
+        .await
+        .expect("install")
+        .json()
+        .await
+        .expect("parse install");
+    let installed_id = install["assistant"]["id"].as_str().unwrap().to_string();
+
+    let after: Json = client
+        .get(server.api_url("/hub/assistants?lang=en"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("list after")
+        .json()
+        .await
+        .expect("parse after");
+    let post = after
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["id"] == "mock-asst-a")
+        .expect("mock-asst-a must still be in catalog");
+    let ids: Vec<String> = post["created_template_ids"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect();
+    assert!(
+        ids.contains(&installed_id),
+        "created_template_ids must contain the new template uuid: {ids:?}",
+    );
+}
+
+#[tokio::test]
+async fn user_install_rejects_replace_existing_flag() {
+    // `replace_existing` is template-only — passing it on the
+    // user-scoped endpoint must 400 (not silently ignored), so
+    // clients don't expect idempotent re-install behavior the
+    // user path doesn't provide.
+    let mock = spawn_mock_hub(two_versions()).await;
+    let server = TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: mock.test_env(),
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(
+        &server,
+        "admin",
+        &[
+            "hub::catalog::read",
+            "hub::catalog::manage",
+            "hub::assistants::create",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "version": "9.9.1-test" }))
+        .send()
+        .await
+        .expect("activate")
+        .error_for_status()
+        .expect("activate ok");
+
+    let resp = client
+        .post(server.api_url("/hub/assistants/create"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-asst-a", "replace_existing": true }))
+        .send()
+        .await
+        .expect("install");
+    assert_eq!(
+        resp.status(),
+        400,
+        "replace_existing on user endpoint should 400, got {}",
+        resp.status(),
+    );
+    let body: Json = resp.json().await.unwrap();
+    assert_eq!(body["error_code"], "VALIDATION_ERROR");
+}

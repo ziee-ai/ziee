@@ -246,6 +246,7 @@ export interface CreateAssistantFromHubRequest {
   is_default?: boolean
   name?: string
   parameters?: any
+  replace_existing?: boolean
 }
 
 export interface CreateAssistantRequest {
@@ -722,6 +723,7 @@ export interface HubAssistant {
   capabilities_required?: string[]
   category?: string
   created_ids?: string[]
+  created_template_ids?: string[]
   display_name: string
   example_prompts?: string[]
   id: string
@@ -885,6 +887,7 @@ export interface HubUpdateRow {
   hub_category: string
   hub_id: string
   installed_version?: string
+  is_template_install: boolean
 }
 
 export interface HubUpdatesResponse {
@@ -2675,6 +2678,7 @@ export const ApiEndpoints = {
   'Health.check': 'GET /api/health',
   'Hub.activateVersion': 'POST /api/hub/activate',
   'Hub.createAssistantFromHub': 'POST /api/hub/assistants/create',
+  'Hub.createAssistantTemplateFromHub': 'POST /api/hub/assistant-templates/create',
   'Hub.createMcpServerFromHub': 'POST /api/hub/mcp-servers/create',
   'Hub.createModelFromHub': 'POST /api/hub/models/download',
   'Hub.getAssistants': 'GET /api/hub/assistants',
@@ -2916,6 +2920,7 @@ export type ApiEndpointParameters = {
   'Health.check': void
   'Hub.activateVersion': ActivateHubVersionRequest
   'Hub.createAssistantFromHub': CreateAssistantFromHubRequest
+  'Hub.createAssistantTemplateFromHub': CreateAssistantFromHubRequest
   'Hub.createMcpServerFromHub': CreateMcpServerFromHubRequest
   'Hub.createModelFromHub': CreateModelFromHubRequest
   'Hub.getAssistants': { lang?: string }
@@ -3157,6 +3162,7 @@ export type ApiEndpointResponses = {
   'Health.check': HealthResponse
   'Hub.activateVersion': HubCatalogRefreshResponse
   'Hub.createAssistantFromHub': AssistantFromHubResponse
+  'Hub.createAssistantTemplateFromHub': AssistantFromHubResponse
   'Hub.createMcpServerFromHub': McpServerFromHubResponse
   'Hub.createModelFromHub': ModelFromHubResponse
   'Hub.getAssistants': HubAssistant[]

@@ -6,6 +6,7 @@ use crate::{
     common::{ApiResult, AppError},
     core::events::EventBus,
     modules::{
+        assistant::{events::AssistantEvent, permissions::AssistantsTemplateCreate},
         llm_model::{ModelParameters, permissions::LlmModelsCreate},
         permissions::{RequirePermissions, with_permission},
     },
@@ -79,11 +80,19 @@ pub async fn get_hub_assistants(
 
     // Get created assistant IDs for current user
     let created_map = Repos.hub.get_created_assistant_ids(auth.user.id).await?;
+    // Get system-wide template install IDs (used to disable the
+    // "Use as Template" button when a template already exists, so
+    // admins don't accidentally create duplicates).
+    let template_map = Repos.hub.get_template_install_ids().await?;
 
-    // Merge created_ids into assistants
+    // Merge created_ids + created_template_ids into assistants
     let mut assistants = hub_data.assistants;
     for assistant in &mut assistants {
         assistant.created_ids = created_map.get(&assistant.id).cloned().unwrap_or_default();
+        assistant.created_template_ids = template_map
+            .get(&assistant.id)
+            .cloned()
+            .unwrap_or_default();
     }
 
     Ok((StatusCode::OK, Json(assistants)))
@@ -262,17 +271,32 @@ pub async fn refresh_hub_mcp_servers(
 // ASSISTANT FROM HUB
 // =====================================================
 
-/// Create assistant from hub catalog
-#[debug_handler]
-pub async fn create_assistant_from_hub(
-    auth: RequirePermissions<(HubAssistantsCreate,)>,
-    Extension(event_bus): Extension<Arc<EventBus>>,
-    Json(request): Json<CreateAssistantFromHubRequest>,
-) -> ApiResult<Json<AssistantFromHubResponse>> {
-    // 1. Load hub assistant
+/// Output of `build_assistant_create_from_hub` — bundles the typed
+/// create-request the caller passes to `Repos.assistant.create` with
+/// the catalog version that the same lookup resolved against. The
+/// version is captured ONCE here (not re-read after the insert) so
+/// concurrent catalog activation can't drift the
+/// `hub_entities.hub_version` stamp away from the data we actually
+/// installed.
+struct HubAssistantCreatePlan {
+    create_request: crate::modules::assistant::types::CreateAssistantRequest,
+    hub_version: Option<String>,
+}
+
+/// Shared lookup + validation for both hub-assistant install paths
+/// (user / template). `is_template` discriminates the result; the
+/// permission gate is at the extractor, not here.
+async fn build_assistant_create_from_hub(
+    request: &CreateAssistantFromHubRequest,
+    is_template: bool,
+) -> Result<HubAssistantCreatePlan, AppError> {
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
     let hub_data = hub_manager.load_hub_data_with_locale("en").await?;
+    // Capture the catalog version up front so the same version stamps
+    // the `hub_entities` row downstream — guards against a concurrent
+    // /hub/activate swap between this lookup and the tracking insert.
+    let hub_version = hub_manager.current_version().await.ok();
 
     let hub_assistant = hub_data
         .assistants
@@ -280,37 +304,88 @@ pub async fn create_assistant_from_hub(
         .find(|a| a.id == request.hub_id)
         .ok_or_else(|| AppError::not_found(&format!("Hub assistant '{}'", request.hub_id)))?;
 
-    // 1b. Reject incompatible items (min_ziee_version > server). Mirrors
-    // the UI hiding them; this is the defense-in-depth backstop.
+    // Defense-in-depth: reject incompatible items (min_ziee_version >
+    // server). The UI hides these in the catalog; this is the
+    // backstop for a direct API call.
     hub_manager
         .ensure_installable(HubCategory::Assistant, &request.hub_id)
         .await?;
 
-    // 2. Build create assistant request (WITHOUT source field)
     let create_request = crate::modules::assistant::types::CreateAssistantRequest {
-        name: request.name.unwrap_or(hub_assistant.name.clone()),
-        description: request.description.or(hub_assistant.description.clone()),
-        instructions: request.instructions.or(hub_assistant.instructions.clone()),
+        name: request.name.clone().unwrap_or(hub_assistant.name.clone()),
+        description: request
+            .description
+            .clone()
+            .or(hub_assistant.description.clone()),
+        instructions: request
+            .instructions
+            .clone()
+            .or(hub_assistant.instructions.clone()),
         parameters: request
             .parameters
+            .clone()
             .and_then(|p| serde_json::from_value::<ModelParameters>(p).ok())
             .or_else(|| {
                 serde_json::from_value::<ModelParameters>(hub_assistant.parameters.clone()).ok()
             }),
-        is_template: Some(false),
+        is_template: Some(is_template),
         is_default: Some(request.is_default),
         enabled: Some(request.enabled),
     };
 
-    // 3. Create assistant via assistant module
+    // Mirror the native handlers' validation gates
+    // (`assistant::handlers::create_user_assistant` +
+    // `create_template_assistant`). Without these a caller-supplied
+    // empty name or a multi-MB description / instructions would land
+    // straight in the assistants table — and as a TEMPLATE would fan
+    // out to every new user via the clone-on-signup hook, amplifying
+    // token cost on every chat turn.
+    if create_request.name.trim().is_empty() {
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "Assistant name cannot be empty",
+        ));
+    }
+    crate::modules::assistant::handlers::validate_assistant_text_lengths(
+        create_request.description.as_deref(),
+        create_request.instructions.as_deref(),
+    )?;
+
+    Ok(HubAssistantCreatePlan {
+        create_request,
+        hub_version,
+    })
+}
+
+/// Create a user-scoped assistant from the hub catalog. The resulting
+/// row has `is_template=false` and `created_by=<user.id>` — owned by
+/// the caller, only visible to them in the assistant list.
+#[debug_handler]
+pub async fn create_assistant_from_hub(
+    auth: RequirePermissions<(HubAssistantsCreate,)>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
+    Json(request): Json<CreateAssistantFromHubRequest>,
+) -> ApiResult<Json<AssistantFromHubResponse>> {
+    // `replace_existing` is template-only — reject explicitly so
+    // clients don't silently pass it expecting an idempotent re-install
+    // on the user-scoped path (per-user installs aren't dedup'd).
+    if request.replace_existing {
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "replace_existing is only valid on the template install endpoint",
+        )
+        .into());
+    }
+    let plan = build_assistant_create_from_hub(&request, false).await?;
+
     let assistant = Repos
         .assistant
-        .create(Some(auth.user.id), create_request)
+        .create(Some(auth.user.id), plan.create_request)
         .await?;
 
-    // 4. Track in hub_entities, stamping the catalog version installed
-    // from so /hub/updates can detect when it falls behind.
-    let hub_version = hub_manager.current_version().await.ok();
+    // Track in hub_entities, stamping the catalog version captured
+    // by the lookup so /hub/updates can detect when this row falls
+    // behind a future catalog activation.
     let hub_tracking = Repos
         .hub
         .track_hub_entity(
@@ -319,16 +394,138 @@ pub async fn create_assistant_from_hub(
             &request.hub_id,
             HubCategory::Assistant,
             Some(auth.user.id),
-            hub_version.as_deref(),
+            plan.hub_version.as_deref(),
         )
         .await?;
 
-    // 5. Emit event
     event_bus.emit_async(
-        HubEvent::assistant_created_from_hub(assistant.id, request.hub_id.clone()).into(),
+        HubEvent::assistant_created_from_hub(
+            assistant.id,
+            request.hub_id.clone(),
+            false,
+        )
+        .into(),
     );
 
-    // 6. Return combined response
+    Ok((
+        StatusCode::CREATED,
+        Json(AssistantFromHubResponse {
+            assistant,
+            hub_tracking,
+        }),
+    ))
+}
+
+/// Create a SYSTEM-WIDE template assistant from the hub catalog.
+/// `is_template=true` + `created_by=NULL` per the assistants table
+/// CHECK constraint (migration 6: `template_must_have_no_owner`).
+/// The clone-default-templates-on-signup hook in
+/// `assistant::event_handlers` will then propagate this template to
+/// every new user's assistant list.
+///
+/// Permission gate is the intersection of "can install from the
+/// hub" + "can author templates" — admins typically have both.
+#[debug_handler]
+pub async fn create_assistant_template_from_hub(
+    _auth: RequirePermissions<(HubAssistantsCreate, AssistantsTemplateCreate)>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
+    Json(request): Json<CreateAssistantFromHubRequest>,
+) -> ApiResult<Json<AssistantFromHubResponse>> {
+    // Idempotency guard: look up the existing template install (if
+    // any) but DON'T delete yet. The delete is deferred until AFTER
+    // the catalog lookup + validation succeeds so a failing re-install
+    // (e.g. the upstream maintainer raised min_ziee_version since the
+    // original install, or expanded instructions past the 64 KiB cap)
+    // does NOT leave the admin with the prior template wiped + no
+    // system-wide fallback for new signups.
+    let existing_id = Repos.hub.find_template_install(&request.hub_id).await?;
+    if existing_id.is_some() && !request.replace_existing {
+        return Err(AppError::conflict("Hub assistant template").into());
+    }
+
+    // Carry forward the prior template's `is_default` / `enabled` on
+    // the `replace_existing` re-install path so a previously-promoted
+    // template doesn't silently get demoted off auto-clone duty by the
+    // refresh. (`CloneTemplateAssistantsHandler` only fans out
+    // `is_default && enabled` templates to new users — silently
+    // flipping either OFF would stop new signups receiving the
+    // template until an admin re-promotes manually.)
+    let mut plan = build_assistant_create_from_hub(&request, true).await?;
+    if let Some(existing_id) = existing_id {
+        if let Some(prior) = Repos.assistant.get(existing_id).await? {
+            plan.create_request.is_default = Some(prior.is_default);
+            plan.create_request.enabled = Some(prior.enabled);
+        }
+    }
+
+    // Validation passed — now delete the prior template (if any) and
+    // emit `AssistantEvent::Deleted` so the hub module's
+    // `CleanupHubEntitiesHandler` removes the orphan `hub_entities`
+    // row. There is NO FK cascade between `hub_entities.entity_id`
+    // and `assistants.id`; cleanup is event-driven.
+    if let Some(existing_id) = existing_id {
+        // Tolerate "already deleted" — racy with the admin templates
+        // page deleting the same row in another tab. Any other DB
+        // error still surfaces.
+        match Repos.assistant.delete(existing_id).await {
+            Ok(()) => {
+                event_bus
+                    .emit(AssistantEvent::deleted(existing_id, None))
+                    .await;
+            }
+            Err(e) if e.status_code() == 404 => (),
+            Err(e) => return Err(e.into()),
+        }
+    }
+
+    // Templates have no owner — pass None for the user-id arg.
+    let assistant = Repos.assistant.create(None, plan.create_request).await?;
+
+    // Track with `created_by: None` so /hub/updates surfaces this as
+    // a system-wide install (the `is_template_install` flag on the
+    // outdated row then routes the Re-install UI through the
+    // template endpoint).
+    //
+    // Partial unique index `uniq_hub_template_install` (migration 79)
+    // is the last-line backstop against the TOCTOU race where two
+    // admins both passed the `find_template_install` check above
+    // concurrently. If the insert hits that index, we delete the
+    // orphan assistants row we just created (rolling back the partial
+    // state) and return 409 — matches the fast-path error code so
+    // clients see a consistent contract regardless of which
+    // serialization layer caught the dup.
+    let hub_tracking = match Repos
+        .hub
+        .track_hub_entity(
+            HubEntityType::Assistant,
+            assistant.id,
+            &request.hub_id,
+            HubCategory::Assistant,
+            None,
+            plan.hub_version.as_deref(),
+        )
+        .await
+    {
+        Ok(t) => t,
+        Err(e) if e.status_code() == 409 => {
+            let _ = Repos.assistant.delete(assistant.id).await;
+            event_bus
+                .emit(AssistantEvent::deleted(assistant.id, None))
+                .await;
+            return Err(AppError::conflict("Hub assistant template").into());
+        }
+        Err(e) => return Err(e.into()),
+    };
+
+    event_bus.emit_async(
+        HubEvent::assistant_created_from_hub(
+            assistant.id,
+            request.hub_id.clone(),
+            true,
+        )
+        .into(),
+    );
+
     Ok((
         StatusCode::CREATED,
         Json(AssistantFromHubResponse {
@@ -715,8 +912,44 @@ pub fn create_assistant_from_hub_docs(op: TransformOperation) -> TransformOperat
         .tag("Hub")
         .summary("Create assistant from hub catalog")
         .response::<201, Json<AssistantFromHubResponse>>()
+        .response_with::<400, (), _>(|res| {
+            res.description(
+                "Validation error (empty name, oversized description / instructions, \
+                 or `replace_existing` passed on the user-scoped endpoint)",
+            )
+        })
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("Hub assistant not found"))
+        .response_with::<422, (), _>(|res| {
+            res.description("Hub item incompatible with this server version")
+        })
+}
+
+pub fn create_assistant_template_from_hub_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(HubAssistantsCreate, AssistantsTemplateCreate)>(op)
+        .id("Hub.createAssistantTemplateFromHub")
+        .tag("Hub")
+        .tag("Assistant Templates")
+        .summary("Create assistant TEMPLATE from hub catalog")
+        .description(
+            "Installs a hub assistant entry as a system-wide template \
+             (`is_template=true, created_by=NULL`) rather than a personal \
+             user assistant. Requires both `hub::assistants::create` and \
+             `assistant_templates::create` permissions. Returns 409 when \
+             a template install for this `hub_id` already exists, unless \
+             `replace_existing: true` is passed to overwrite it.",
+        )
+        .response::<201, Json<AssistantFromHubResponse>>()
+        .response_with::<400, (), _>(|res| {
+            res.description(
+                "Validation error (empty name, oversized description / instructions)",
+            )
+        })
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("Hub assistant not found"))
+        .response_with::<409, (), _>(|res| {
+            res.description("Template install already exists for this hub_id")
+        })
         .response_with::<422, (), _>(|res| {
             res.description("Hub item incompatible with this server version")
         })
@@ -933,6 +1166,7 @@ pub async fn get_hub_updates(
                     entity_id: r.entity_id,
                     installed_version: r.installed_version,
                     current_version: catalog.hub_version.clone(),
+                    is_template_install: r.is_template_install,
                 })
                 .collect(),
         }),
