@@ -121,29 +121,30 @@ impl HubRepository {
         find_system_mcp_install(&self.pool, hub_id).await
     }
 
-    /// Per-user version of `find_template_install`. Returns the
-    /// entity_id of the user's most-recent live (non-template)
-    /// assistant install for `hub_id`, or None. Used by the
-    /// user-scoped Re-install path so the Updates tab can upgrade
-    /// the user's install in-place instead of duplicating it.
-    pub async fn find_user_assistant_install(
+    /// Per-user version of `find_template_install`. Returns ALL
+    /// entity_ids of the user's live (non-template) assistant
+    /// installs for `hub_id`. Vec (not Option) so the Re-install
+    /// path can wipe legacy duplicates accumulated before the
+    /// replace_existing path existed.
+    pub async fn find_user_assistant_installs(
         &self,
         hub_id: &str,
         user_id: Uuid,
-    ) -> Result<Option<Uuid>, AppError> {
-        find_user_assistant_install(&self.pool, hub_id, user_id).await
+    ) -> Result<Vec<Uuid>, AppError> {
+        find_user_assistant_installs(&self.pool, hub_id, user_id).await
     }
 
-    /// Per-user version of `find_system_mcp_install`. Returns the
-    /// entity_id of the user's most-recent live (non-system) MCP
-    /// server install for `hub_id`, or None. Same Re-install
-    /// motivation as `find_user_assistant_install`.
-    pub async fn find_user_mcp_install(
+    /// Per-user version of `find_system_mcp_install`. Returns ALL
+    /// entity_ids of the user's live (non-system) MCP server
+    /// installs for `hub_id`. Vec (not Option) so the Re-install
+    /// path can wipe legacy duplicates accumulated before the
+    /// replace_existing path existed.
+    pub async fn find_user_mcp_installs(
         &self,
         hub_id: &str,
         user_id: Uuid,
-    ) -> Result<Option<Uuid>, AppError> {
-        find_user_mcp_install(&self.pool, hub_id, user_id).await
+    ) -> Result<Vec<Uuid>, AppError> {
+        find_user_mcp_installs(&self.pool, hub_id, user_id).await
     }
 
     /// System-wide MCP server installs keyed by hub_id (companion
@@ -506,24 +507,31 @@ pub async fn find_template_install(
     Ok(row.map(|r| r.entity_id))
 }
 
-/// Find a USER's most-recent live install of an assistant from this
+/// Find ALL of a USER's live installs of an assistant from this
 /// hub_id. Used by `Hub.createAssistantFromHub` when called with
 /// `replace_existing: true` so the Updates-tab Re-install flow
-/// upgrades the user's existing copy in-place instead of stacking a
-/// duplicate row that keeps the old `hub_version` visible in the
-/// Updates list forever.
+/// upgrades EVERY prior copy in-place, not just the most-recent one.
+///
+/// Returning a Vec (not Option) is the load-bearing detail: a user
+/// who clicked Re-install several times BEFORE the per-user
+/// replace_existing path existed will have multiple `mcp_servers` /
+/// `assistants` rows + multiple `hub_entities` rows for the same
+/// hub_id, all stamped at older `hub_version`s. Wiping only the
+/// most-recent leaves the older orphans behind, and
+/// `list_outdated_entities` keeps surfacing them on the Updates tab
+/// indefinitely. Wiping ALL of them (then creating one fresh) brings
+/// the user back to a clean single-install state.
 ///
 /// `is_template = false` mirrors the user-scoped semantics — the
 /// template version of an install is handled by
-/// `find_template_install`. ORDER BY + LIMIT 1 picks the most-recent
-/// when the user has somehow ended up with multiple (legacy data,
-/// or pre-replace_existing-era duplicate clicks).
-pub async fn find_user_assistant_install(
+/// `find_template_install`. ORDER BY created_at DESC is cosmetic
+/// (cleanup order doesn't matter) but kept for log readability.
+pub async fn find_user_assistant_installs(
     pool: &PgPool,
     hub_id: &str,
     user_id: Uuid,
-) -> Result<Option<Uuid>, AppError> {
-    let row = sqlx::query!(
+) -> Result<Vec<Uuid>, AppError> {
+    let rows = sqlx::query!(
         r#"
         SELECT he.entity_id
         FROM hub_entities he
@@ -533,26 +541,25 @@ pub async fn find_user_assistant_install(
           AND he.created_by = $2
           AND a.is_template = false
         ORDER BY he.created_at DESC
-        LIMIT 1
         "#,
         hub_id,
         user_id,
     )
-    .fetch_optional(pool)
+    .fetch_all(pool)
     .await?;
-    Ok(row.map(|r| r.entity_id))
+    Ok(rows.into_iter().map(|r| r.entity_id).collect())
 }
 
-/// MCP-server analog of `find_user_assistant_install`. Find a USER's
-/// most-recent live install of an MCP server from this hub_id.
+/// MCP-server analog of `find_user_assistant_installs`. Find ALL of
+/// a USER's live installs of an MCP server from this hub_id.
 /// `is_system = false` mirrors the user-scoped semantics. Used by
 /// `Hub.createMcpServerFromHub` with `replace_existing: true`.
-pub async fn find_user_mcp_install(
+pub async fn find_user_mcp_installs(
     pool: &PgPool,
     hub_id: &str,
     user_id: Uuid,
-) -> Result<Option<Uuid>, AppError> {
-    let row = sqlx::query!(
+) -> Result<Vec<Uuid>, AppError> {
+    let rows = sqlx::query!(
         r#"
         SELECT he.entity_id
         FROM hub_entities he
@@ -563,14 +570,13 @@ pub async fn find_user_mcp_install(
           AND ms.is_system = false
           AND ms.is_built_in = false
         ORDER BY he.created_at DESC
-        LIMIT 1
         "#,
         hub_id,
         user_id,
     )
-    .fetch_optional(pool)
+    .fetch_all(pool)
     .await?;
-    Ok(row.map(|r| r.entity_id))
+    Ok(rows.into_iter().map(|r| r.entity_id).collect())
 }
 
 /// MCP-server analog of `find_template_install`. Find an existing

@@ -13,6 +13,7 @@ use crate::{
     },
 };
 use std::sync::Arc;
+use uuid::Uuid;
 
 use super::{
     events::HubEvent,
@@ -384,23 +385,27 @@ pub async fn create_assistant_from_hub(
     // the Updates tab would create a NEW assistant + leave the OLD
     // one orphaned at the stale hub_version, so the row never drops
     // from `list_outdated_entities`.
-    let existing_id = if request.replace_existing {
+    // Find ALL prior user installs (not just the most-recent) so a
+    // user who accumulated duplicates from before the
+    // replace_existing path existed gets brought back to a clean
+    // single-install state on Re-install.
+    let existing_ids: Vec<Uuid> = if request.replace_existing {
         Repos
             .hub
-            .find_user_assistant_install(&request.hub_id, auth.user.id)
+            .find_user_assistant_installs(&request.hub_id, auth.user.id)
             .await?
     } else {
-        None
+        Vec::new()
     };
 
     let plan = build_assistant_create_from_hub(&request, false).await?;
 
-    if let Some(existing_id) = existing_id {
-        match Repos.assistant.delete(existing_id).await {
+    for existing_id in &existing_ids {
+        match Repos.assistant.delete(*existing_id).await {
             Ok(()) => {
                 event_bus
                     .emit(crate::modules::assistant::events::AssistantEvent::deleted(
-                        existing_id,
+                        *existing_id,
                         Some(auth.user.id),
                     ))
                     .await;
@@ -797,27 +802,34 @@ pub async fn create_mcp_server_from_hub(
     // same hub_id this way (each subsequent click adds another row).
     // The Updates-tab Re-install flow ALWAYS sets true to avoid that
     // staircase.
-    let existing_id = if request.replace_existing {
+    // Find ALL prior user installs (not just the most-recent) so a
+    // user who accumulated duplicates from before the
+    // replace_existing path existed gets brought back to a clean
+    // single-install state on Re-install. Without this, the older
+    // duplicates stay at their stale `hub_version` and keep showing
+    // up in `list_outdated_entities` even after a successful
+    // Re-install of the newest copy.
+    let existing_ids: Vec<Uuid> = if request.replace_existing {
         Repos
             .hub
-            .find_user_mcp_install(&request.hub_id, auth.user.id)
+            .find_user_mcp_installs(&request.hub_id, auth.user.id)
             .await?
     } else {
-        None
+        Vec::new()
     };
 
     // Plan first so a failing lookup / validation doesn't wipe the
-    // prior install with no replacement.
+    // prior installs with no replacement.
     let plan = build_mcp_server_create_from_hub(&request).await?;
 
-    if let Some(existing_id) = existing_id {
+    for existing_id in &existing_ids {
         // Tolerate "already deleted" — racy with a concurrent delete
         // (admin page in another tab). Any other DB error surfaces.
-        match Repos.mcp.delete_user_server(existing_id, auth.user.id).await {
+        match Repos.mcp.delete_user_server(*existing_id, auth.user.id).await {
             Ok(()) => {
                 event_bus
                     .emit(crate::modules::mcp::events::McpServerEvent::user_server_deleted(
-                        existing_id,
+                        *existing_id,
                         auth.user.id,
                     ))
                     .await;
