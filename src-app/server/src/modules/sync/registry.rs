@@ -161,3 +161,182 @@ impl SyncRegistry {
         self.inner.lock().unwrap().clients.len()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::sync::event::{SyncAction, SyncEntity, SyncEvent};
+    use tokio::sync::mpsc::UnboundedReceiver;
+
+    fn empty_registry() -> SyncRegistry {
+        SyncRegistry {
+            inner: Mutex::new(RegistryInner {
+                clients: HashMap::new(),
+                by_user: HashMap::new(),
+            }),
+        }
+    }
+
+    fn fake_user(id: Uuid, is_admin: bool, permissions: Vec<String>) -> User {
+        User {
+            id,
+            username: "t".into(),
+            email: "t@example.com".into(),
+            email_verified: true,
+            password_hash: None,
+            display_name: None,
+            avatar_url: None,
+            is_active: true,
+            is_admin,
+            permissions,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            last_login_at: None,
+            password_changed_at: None,
+        }
+    }
+
+    type Rx = UnboundedReceiver<Result<Event, axum::Error>>;
+
+    /// Build a ClientConn + its receiver. `groups` defaults to empty (most
+    /// tests drive permissions via the user's direct `permissions`).
+    fn conn(user: User) -> (ClientConn, Rx) {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let c = ClientConn {
+            user_id: user.id,
+            is_admin: user.is_admin,
+            user,
+            groups: Vec::new(),
+            sender: tx,
+        };
+        (c, rx)
+    }
+
+    fn ev() -> SyncEvent {
+        SyncEvent {
+            entity: SyncEntity::Project,
+            action: SyncAction::Create,
+            id: Uuid::new_v4(),
+        }
+    }
+
+    /// A delivered message is `Ok(_)` on try_recv; a non-delivery is Empty.
+    fn got(rx: &mut Rx) -> bool {
+        rx.try_recv().is_ok()
+    }
+
+    #[test]
+    fn owner_audience_isolates_users() {
+        let reg = empty_registry();
+        let a = Uuid::new_v4();
+        let b = Uuid::new_v4();
+        let (ca, mut rxa) = conn(fake_user(a, false, vec![]));
+        let (cb, mut rxb) = conn(fake_user(b, false, vec![]));
+        let (ida, idb) = (Uuid::new_v4(), Uuid::new_v4());
+        reg.register(ida, ca).unwrap();
+        reg.register(idb, cb).unwrap();
+
+        reg.deliver(Audience::Owner(a), ev(), None);
+
+        assert!(got(&mut rxa), "owner A must receive their own event");
+        assert!(!got(&mut rxb), "user B must NOT receive user A's event");
+    }
+
+    #[test]
+    fn origin_connection_is_skipped_but_other_tabs_are_not() {
+        let reg = empty_registry();
+        let a = Uuid::new_v4();
+        let (c1, mut rx1) = conn(fake_user(a, false, vec![]));
+        let (c2, mut rx2) = conn(fake_user(a, false, vec![]));
+        let (id1, id2) = (Uuid::new_v4(), Uuid::new_v4());
+        reg.register(id1, c1).unwrap();
+        reg.register(id2, c2).unwrap();
+
+        // Mutation originated on conn1.
+        reg.deliver(Audience::Owner(a), ev(), Some(id1));
+
+        assert!(!got(&mut rx1), "originating tab must be skipped (self-echo)");
+        assert!(got(&mut rx2), "the user's OTHER tab must still update");
+    }
+
+    #[test]
+    fn permission_audience_excludes_non_holders_includes_holders_and_admins() {
+        let reg = empty_registry();
+        let (c_admin, mut rx_admin) = conn(fake_user(Uuid::new_v4(), true, vec![]));
+        let (c_holder, mut rx_holder) =
+            conn(fake_user(Uuid::new_v4(), false, vec!["x::read".into()]));
+        let (c_other, mut rx_other) = conn(fake_user(Uuid::new_v4(), false, vec![]));
+        reg.register(Uuid::new_v4(), c_admin).unwrap();
+        reg.register(Uuid::new_v4(), c_holder).unwrap();
+        reg.register(Uuid::new_v4(), c_other).unwrap();
+
+        reg.deliver(Audience::Permission("x::read"), ev(), None);
+
+        assert!(got(&mut rx_admin), "admin (wildcard) must receive");
+        assert!(got(&mut rx_holder), "perm holder must receive");
+        assert!(!got(&mut rx_other), "non-holder must NOT receive");
+    }
+
+    #[test]
+    fn everyone_audience_reaches_all_connections() {
+        let reg = empty_registry();
+        let (c1, mut rx1) = conn(fake_user(Uuid::new_v4(), false, vec![]));
+        let (c2, mut rx2) = conn(fake_user(Uuid::new_v4(), false, vec![]));
+        reg.register(Uuid::new_v4(), c1).unwrap();
+        reg.register(Uuid::new_v4(), c2).unwrap();
+
+        reg.deliver(Audience::Everyone, ev(), None);
+
+        assert!(got(&mut rx1));
+        assert!(got(&mut rx2));
+    }
+
+    #[test]
+    fn per_user_cap_rejects_excess_connections() {
+        let reg = empty_registry();
+        let uid = Uuid::new_v4();
+        for _ in 0..PER_USER_MAX_CONNECTIONS {
+            let (c, _rx) = conn(fake_user(uid, false, vec![]));
+            reg.register(Uuid::new_v4(), c).unwrap();
+        }
+        let (overflow, _rx) = conn(fake_user(uid, false, vec![]));
+        assert!(
+            reg.register(Uuid::new_v4(), overflow).is_err(),
+            "the (cap+1)th connection for one user must be refused (429)"
+        );
+    }
+
+    #[test]
+    fn unregister_cleans_up_indexes() {
+        let reg = empty_registry();
+        let uid = Uuid::new_v4();
+        let (c, _rx) = conn(fake_user(uid, false, vec![]));
+        let id = Uuid::new_v4();
+        reg.register(id, c).unwrap();
+        assert_eq!(reg.connection_count(), 1);
+
+        reg.unregister(id);
+        assert_eq!(reg.connection_count(), 0);
+        // The per-user index entry is removed when its last conn leaves, so a
+        // later Owner delivery is a no-op (and doesn't panic).
+        reg.deliver(Audience::Owner(uid), ev(), None);
+    }
+
+    #[test]
+    fn refresh_updates_permission_snapshot() {
+        let reg = empty_registry();
+        let uid = Uuid::new_v4();
+        let (c, mut rx) = conn(fake_user(uid, false, vec![]));
+        let id = Uuid::new_v4();
+        reg.register(id, c).unwrap();
+
+        // Before refresh: no perm → excluded from a Permission audience.
+        reg.deliver(Audience::Permission("x::read"), ev(), None);
+        assert!(!got(&mut rx));
+
+        // After a re-check grants the perm, the same connection is included.
+        reg.refresh(id, fake_user(uid, false, vec!["x::read".into()]), Vec::new());
+        reg.deliver(Audience::Permission("x::read"), ev(), None);
+        assert!(got(&mut rx));
+    }
+}

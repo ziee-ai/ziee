@@ -201,3 +201,96 @@ pub fn publish(
 
     super::registry::registry().deliver(audience, SyncEvent { entity, action, id }, origin_conn);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn owner_scoped_entities_route_to_owner() {
+        for e in [
+            SyncEntity::Project,
+            SyncEntity::Assistant,
+            SyncEntity::McpServer,
+            SyncEntity::Memory,
+            SyncEntity::MemorySettings,
+            SyncEntity::ApiKey,
+            SyncEntity::Session,
+        ] {
+            assert!(
+                matches!(audience_kind(e), AudienceKind::Owner),
+                "{e:?} should be Owner-scoped"
+            );
+        }
+    }
+
+    #[test]
+    fn admin_entities_route_to_their_read_permission() {
+        let cases = [
+            (SyncEntity::LlmProvider, "llm_providers::read"),
+            (SyncEntity::LlmModel, "llm_models::read"),
+            (SyncEntity::Group, "groups::read"),
+            (SyncEntity::User, "users::read"),
+            (SyncEntity::AssistantTemplate, "assistant_templates::read"),
+            (SyncEntity::McpServerSystem, "mcp_servers_admin::read"),
+            (SyncEntity::LlmRepository, "llm_repositories::read"),
+            (SyncEntity::RuntimeVersion, "llm_local_runtime::read"),
+            (SyncEntity::MemoryAdminSettings, "memory::admin::read"),
+            (
+                SyncEntity::CodeSandboxSettings,
+                "code_sandbox::resource_limits::read",
+            ),
+            (SyncEntity::HubSettings, "hub::catalog::read"),
+        ];
+        for (e, perm) in cases {
+            match audience_kind(e) {
+                AudienceKind::Permission(p) => assert_eq!(p, perm, "{e:?}"),
+                other => panic!("{e:?} expected Permission, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn user_facing_views_route_to_the_user_read_permission() {
+        // Group-scoped visibility — safe because notify-only: each recipient
+        // refetches its OWN scoped view.
+        match audience_kind(SyncEntity::UserLlmProvider) {
+            AudienceKind::Permission(p) => assert_eq!(p, "user_llm_providers::read"),
+            other => panic!("expected Permission, got {other:?}"),
+        }
+        match audience_kind(SyncEntity::UserMcpServer) {
+            AudienceKind::Permission(p) => assert_eq!(p, "mcp_servers::read"),
+            other => panic!("expected Permission, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn wire_payload_is_notify_only_snake_case() {
+        let e = SyncEvent {
+            entity: SyncEntity::McpServerSystem,
+            action: SyncAction::Update,
+            id: Uuid::nil(),
+        };
+        let json = serde_json::to_string(&e).unwrap();
+        assert!(json.contains("\"entity\":\"mcp_server_system\""), "{json}");
+        assert!(json.contains("\"action\":\"update\""), "{json}");
+        // Notify-and-refetch: the wire carries ONLY entity/action/id — never
+        // row data. Guard against accidentally widening the payload.
+        let obj: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(&json).unwrap();
+        assert_eq!(obj.len(), 3, "only entity/action/id may cross the wire: {json}");
+    }
+
+    #[test]
+    fn entity_names_match_the_frontend_sync_vocabulary() {
+        let cases = [
+            (SyncEntity::Project, "project"),
+            (SyncEntity::UserLlmProvider, "user_llm_provider"),
+            (SyncEntity::MemorySettings, "memory_settings"),
+            (SyncEntity::Session, "session"),
+        ];
+        for (e, name) in cases {
+            assert_eq!(serde_json::to_string(&e).unwrap(), format!("\"{name}\""));
+        }
+    }
+}
