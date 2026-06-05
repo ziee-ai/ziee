@@ -11613,10 +11613,11 @@
     "/api/hub/assistant-templates/create": {
       "post": {
         "tags": [
-          "Hub"
+          "Hub",
+          "Assistant Templates"
         ],
         "summary": "Create assistant TEMPLATE from hub catalog",
-        "description": "Installs a hub assistant entry as a system-wide template (`is_template=true, created_by=NULL`) rather than a personal user assistant. Requires both `hub::assistants::create` and `assistant_templates::create` permissions.",
+        "description": "Installs a hub assistant entry as a system-wide template (`is_template=true, created_by=NULL`) rather than a personal user assistant. Requires both `hub::assistants::create` and `assistant_templates::create` permissions. Returns 409 when a template install for this `hub_id` already exists, unless `replace_existing: true` is passed to overwrite it.",
         "operationId": "Hub.createAssistantTemplateFromHub",
         "requestBody": {
           "description": "Request to create assistant from hub catalog",
@@ -11673,6 +11674,9 @@
           },
           "404": {
             "description": "Hub assistant not found"
+          },
+          "409": {
+            "description": "Template install already exists for this hub_id"
           },
           "422": {
             "description": "Hub item incompatible with this server version"
@@ -14712,6 +14716,11 @@
           },
           "parameters": {
             "description": "Optional: Override parameters"
+          },
+          "replace_existing": {
+            "description": "Template-only: when true, delete the existing template install\n for this `hub_id` before creating the new one. Used by the\n `/hub/updates` Re-install action to refresh an outdated\n template; without this the duplicate-prevention guard in\n `Hub.createAssistantTemplateFromHub` would 409. Ignored on the\n user-scoped install path (per-user installs aren't dedup'd).",
+            "type": "boolean",
+            "default": false
           }
         },
         "required": [
@@ -16876,6 +16885,15 @@
               "format": "uuid"
             }
           },
+          "created_template_ids": {
+            "description": "Array of system-wide TEMPLATE assistant IDs installed from this\n hub assistant (created_by IS NULL, is_template = true). Usually\n 0-or-1 entries — the backend rejects duplicate template installs\n with 409. Used by the hub card to disable the \"Use as Template\"\n button when a template install already exists.",
+            "type": "array",
+            "default": [],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
           "display_name": {
             "type": "string"
           },
@@ -17645,6 +17663,10 @@
               "string",
               "null"
             ]
+          },
+          "is_template_install": {
+            "description": "True when the install was system-wide (`created_by IS NULL` —\n currently only template assistants). The Updates UI uses this\n to route the Re-install action to the template endpoint\n instead of creating a user assistant from a template-origin\n row.",
+            "type": "boolean"
           }
         },
         "required": [
@@ -17652,7 +17674,8 @@
           "hub_category",
           "entity_type",
           "entity_id",
-          "current_version"
+          "current_version",
+          "is_template_install"
         ]
       },
       "HubUpdatesResponse": {

@@ -34,15 +34,33 @@ export function UpdatesHubTab() {
   // only need the hub_id (no provider/quant), so it's a one-click op.
   // Models need a provider + quantization choice, so those route to the
   // Models tab instead of installing inline.
+  //
+  // For assistants: the install path branches on `is_template_install`
+  // — a template-origin row (created_by IS NULL) must re-install via
+  // `createAssistantTemplateFromHub`, otherwise the admin would
+  // silently get a USER assistant owned by themselves and the stale
+  // template would remain outdated.
   const reinstall = async (
     hubId: string,
     category: string,
     entityId: string,
+    isTemplateInstall: boolean,
   ) => {
     setBusyId(entityId)
     try {
       if (category === 'assistant') {
-        await ApiClient.Hub.createAssistantFromHub({ hub_id: hubId })
+        if (isTemplateInstall) {
+          // `replace_existing: true` instructs the template handler
+          // to delete the outdated template first before creating
+          // the fresh one — without this the duplicate-prevention
+          // guard would 409 on re-install.
+          await ApiClient.Hub.createAssistantTemplateFromHub({
+            hub_id: hubId,
+            replace_existing: true,
+          })
+        } else {
+          await ApiClient.Hub.createAssistantFromHub({ hub_id: hubId })
+        }
       } else if (category === 'mcp_server') {
         await ApiClient.Hub.createMcpServerFromHub({ hub_id: hubId })
       }
@@ -110,6 +128,11 @@ export function UpdatesHubTab() {
               <Tag key="current" color="green">
                 current v{row.current_version}
               </Tag>,
+              row.is_template_install ? (
+                <Tag key="scope" color="purple">
+                  template
+                </Tag>
+              ) : null,
               row.hub_category === 'model' ? (
                 <Tooltip
                   key="action"
@@ -127,11 +150,20 @@ export function UpdatesHubTab() {
                 <Popconfirm
                   key="action"
                   title="Re-install from current catalog"
-                  description={`Create a fresh "${row.hub_id}" from catalog v${row.current_version}?`}
+                  description={
+                    row.is_template_install
+                      ? `Re-install template "${row.hub_id}" from catalog v${row.current_version}? The existing template will be replaced once the new one is created.`
+                      : `Create a fresh "${row.hub_id}" from catalog v${row.current_version}?`
+                  }
                   okText="Re-install"
                   cancelText="Cancel"
                   onConfirm={() =>
-                    reinstall(row.hub_id, row.hub_category, row.entity_id)
+                    reinstall(
+                      row.hub_id,
+                      row.hub_category,
+                      row.entity_id,
+                      row.is_template_install,
+                    )
                   }
                 >
                   <Button

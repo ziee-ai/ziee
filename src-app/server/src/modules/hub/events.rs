@@ -26,8 +26,16 @@ pub enum HubEvent {
         new_version: String,
     },
 
-    /// An assistant was created from hub catalog
-    AssistantCreatedFromHub { assistant_id: Uuid, hub_id: String },
+    /// An assistant was created from hub catalog.
+    /// `is_template` discriminates user-scoped installs from
+    /// system-wide template installs so downstream listeners can
+    /// invalidate the right cache / emit the right analytics
+    /// without re-querying the assistants table.
+    AssistantCreatedFromHub {
+        assistant_id: Uuid,
+        hub_id: String,
+        is_template: bool,
+    },
 
     /// An MCP server was created from hub catalog
     McpServerCreatedFromHub { server_id: Uuid, hub_id: String },
@@ -62,10 +70,15 @@ impl HubEvent {
     }
 
     /// Create an AssistantCreatedFromHub event
-    pub fn assistant_created_from_hub(assistant_id: Uuid, hub_id: String) -> Self {
+    pub fn assistant_created_from_hub(
+        assistant_id: Uuid,
+        hub_id: String,
+        is_template: bool,
+    ) -> Self {
         Self::AssistantCreatedFromHub {
             assistant_id,
             hub_id,
+            is_template,
         }
     }
 

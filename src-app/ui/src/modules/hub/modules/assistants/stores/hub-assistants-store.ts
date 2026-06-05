@@ -7,6 +7,10 @@ import type {
   Assistant,
   CreateAssistantFromHubRequest,
 } from '@/api-client/types'
+import {
+  emitAssistantCreated,
+  emitAssistantTemplateCreated,
+} from '@/modules/assistant/events'
 import { Stores } from '@/core/stores'
 
 interface HubAssistantsState {
@@ -115,6 +119,16 @@ export const useHubAssistantsStore = create<HubAssistantsState>()(
               state.creating = false
             })
 
+            // Notify downstream caches (UserAssistants store, settings
+            // pages) that a new user assistant exists. Without this,
+            // navigating to /settings/assistants after install doesn't
+            // surface the new row until manual refresh.
+            try {
+              await emitAssistantCreated(response.assistant)
+            } catch (e) {
+              console.warn('Failed to emit assistant.created:', e)
+            }
+
             return response.assistant
           } catch (error: any) {
             set({
@@ -133,15 +147,35 @@ export const useHubAssistantsStore = create<HubAssistantsState>()(
             const response =
               await ApiClient.Hub.createAssistantTemplateFromHub(request)
 
-            // `created_ids` tracks per-user installs of the hub
-            // assistant (used by the card to show the "Created" badge).
-            // Templates have no per-user owner, so we don't push to
-            // `created_ids` here — the badge stays driven purely by
-            // user-scoped installs. A future iteration could surface
-            // a separate "Template installed" indicator if useful.
+            // Track the install on the hub assistant so the card can
+            // surface a "Template installed" indicator + disable the
+            // re-install button. Without this an admin clicking the
+            // button twice silently creates a duplicate template
+            // (backend also rejects with 409 as a safety net).
             set(state => {
+              const assistant = state.assistants.find(
+                a => a.id === request.hub_id,
+              )
+              if (assistant) {
+                if (!assistant.created_template_ids) {
+                  assistant.created_template_ids = []
+                }
+                assistant.created_template_ids.push(
+                  response.hub_tracking.entity_id,
+                )
+              }
               state.creating = false
             })
+
+            // Notify downstream caches (TemplateAssistants store, admin
+            // template-list page) that a new template exists, so the
+            // admin lands on /settings/assistant-templates with the
+            // new row already visible instead of stale data.
+            try {
+              await emitAssistantTemplateCreated(response.assistant)
+            } catch (e) {
+              console.warn('Failed to emit assistant_template.created:', e)
+            }
 
             return response.assistant
           } catch (error: any) {
@@ -166,6 +200,27 @@ export const useHubAssistantsStore = create<HubAssistantsState>()(
                       assistant.created_ids = assistant.created_ids.filter(
                         id => id !== assistantId,
                       )
+                    }
+                  }
+                })
+              },
+              'HubAssistantsStore',
+            )
+            // Symmetric to the user-assistant listener above. Without
+            // this, deleting a template (via the admin templates page)
+            // leaves the "Template installed" tag + disabled button
+            // stuck on the corresponding hub card until full reload.
+            Stores.EventBus.on(
+              'assistant_template.deleted',
+              event => {
+                const { templateId } = event.data
+                set(state => {
+                  for (const assistant of state.assistants) {
+                    if (assistant.created_template_ids) {
+                      assistant.created_template_ids =
+                        assistant.created_template_ids.filter(
+                          id => id !== templateId,
+                        )
                     }
                   }
                 })

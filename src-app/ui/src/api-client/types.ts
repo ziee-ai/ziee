@@ -246,6 +246,7 @@ export interface CreateAssistantFromHubRequest {
   is_default?: boolean
   name?: string
   parameters?: any
+  replace_existing?: boolean
 }
 
 export interface CreateAssistantRequest {
@@ -722,6 +723,7 @@ export interface HubAssistant {
   capabilities_required?: string[]
   category?: string
   created_ids?: string[]
+  created_template_ids?: string[]
   display_name: string
   example_prompts?: string[]
   id: string
@@ -885,6 +887,7 @@ export interface HubUpdateRow {
   hub_category: string
   hub_id: string
   installed_version?: string
+  is_template_install: boolean
 }
 
 export interface HubUpdatesResponse {

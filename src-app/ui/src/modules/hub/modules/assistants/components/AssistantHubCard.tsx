@@ -3,6 +3,7 @@ import {
   InfoCircleOutlined,
   RobotOutlined,
   EyeOutlined,
+  CopyOutlined,
 } from '@ant-design/icons'
 import { Permissions, type HubAssistant } from '@/api-client/types'
 import { useState } from 'react'
@@ -29,6 +30,13 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
   // Check if assistant was already created from this hub assistant
   const isAlreadyCreated =
     assistant.created_ids && assistant.created_ids.length > 0
+  // Check if a system-wide TEMPLATE already exists for this hub_id
+  // (created_by IS NULL). Backend rejects duplicates with 409 as a
+  // safety net; the UI uses this to disable the button + show a
+  // clearer "Template Installed" label.
+  const isAlreadyTemplate =
+    assistant.created_template_ids &&
+    assistant.created_template_ids.length > 0
 
   const handleUseAssistant = async () => {
     setIsCreating(true)
@@ -79,7 +87,7 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
       })
 
       message.success(
-        `Template "${assistant.display_name}" created successfully!`,
+        `Assistant template "${assistant.display_name}" created successfully!`,
       )
 
       // Navigate to the templates admin page so the admin can see it.
@@ -119,10 +127,8 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
                     </Tag>
                   )}
                   {isAlreadyCreated && <Tag color="green">Created</Tag>}
-                  {(isCreating || isCreatingTemplate) && (
-                    <Tag color="blue">
-                      {isCreatingTemplate ? 'Creating template...' : 'Creating...'}
-                    </Tag>
+                  {isAlreadyTemplate && (
+                    <Tag color="purple">Template installed</Tag>
                   )}
                 </Flex>
               </div>
@@ -157,31 +163,38 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
                     }}
                     loading={isCreating}
                     disabled={isCreating || isCreatingTemplate}
+                    data-testid="hub-assistant-use-btn"
                   >
                     Use Assistant
                   </Button>
                 )}
                 {/* "Use as Template" — admin power-user action.
-                    Shown WHENEVER the user has both permissions,
-                    regardless of whether the per-user "Created"
-                    badge is set (a personal install doesn't
-                    preclude also installing as a template).
-                    Default-styled so the primary "Use Assistant"
-                    path stays visually dominant. The backend
-                    requires both `hub::assistants::create` AND
-                    `assistant_templates::create`. */}
+                    Shown when the user holds BOTH permissions
+                    (`hub::assistants::create` AND
+                    `assistant_templates::create`) regardless of
+                    whether the per-user "Created" badge is set
+                    (a personal install doesn't preclude also
+                    installing as a template). Default-styled +
+                    distinct `CopyOutlined` icon so it's visually
+                    separable from the primary "Use Assistant"
+                    action. Disabled when a template already
+                    exists for this hub_id — the backend rejects
+                    duplicates with 409, but disabling here gives
+                    the admin clear feedback without a round-trip. */}
                 {canCreate && canCreateTemplate && (
                   <Button
-                    icon={<RobotOutlined />}
+                    icon={<CopyOutlined />}
                     onClick={e => {
                       e.stopPropagation()
                       handleUseAsTemplate()
                     }}
                     loading={isCreatingTemplate}
-                    disabled={isCreating || isCreatingTemplate}
+                    disabled={
+                      isCreating || isCreatingTemplate || isAlreadyTemplate
+                    }
                     data-testid="hub-assistant-use-as-template-btn"
                   >
-                    Use as Template
+                    {isAlreadyTemplate ? 'Template Installed' : 'Use as Template'}
                   </Button>
                 )}
               </div>
@@ -246,6 +259,12 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
         assistant={showDetails ? assistant : null}
         open={showDetails}
         onClose={() => setShowDetails(false)}
+        onUseAssistant={handleUseAssistant}
+        onUseAsTemplate={handleUseAsTemplate}
+        isCreating={isCreating}
+        isCreatingTemplate={isCreatingTemplate}
+        isAlreadyCreated={!!isAlreadyCreated}
+        isAlreadyTemplate={!!isAlreadyTemplate}
       />
     </>
   )
