@@ -477,7 +477,8 @@ export function McpServerDrawer() {
         if (mode === 'edit' && editingServer) {
           try {
             const fresh = await Stores.McpServer.getMcpServer(editingServer.id)
-            form.setFieldValue('enabled', fresh.enabled)
+            form.setFieldsValue({ enabled: fresh.enabled })
+            setEnabledValue(!!fresh.enabled)
             Stores.McpServerDrawer.openMcpServerDrawer(fresh, 'edit')
           } catch (e) {
             console.warn('Failed to refresh server after health check:', e)
@@ -488,7 +489,8 @@ export function McpServerDrawer() {
               editingServer.id,
             )
             if (fresh) {
-              form.setFieldValue('enabled', fresh.enabled)
+              form.setFieldsValue({ enabled: fresh.enabled })
+            setEnabledValue(!!fresh.enabled)
               Stores.McpServerDrawer.openMcpServerDrawer(fresh, 'edit-system')
             }
           } catch (e) {
@@ -535,7 +537,28 @@ export function McpServerDrawer() {
   }
 
   const transportType = Form.useWatch('transport_type', form)
-  const enabledValue = Form.useWatch('enabled', form)
+  // Local mirror for the title's Enabled Switch. Form.useWatch's
+  // subscription to form.setFieldValue from OUTSIDE the <Form>
+  // provider tree was flaky in this codebase — clicks fired but the
+  // Switch didn't re-render (state stayed stale). Local state +
+  // sync-from-form on open + sync-to-form on toggle is the robust
+  // shape.
+  const [enabledValue, setEnabledValue] = useState(false)
+
+  // Sync the local mirror with the form's `enabled` field whenever
+  // the drawer opens / switches mode / loads a new server. The form
+  // is the source of truth at save time; this just keeps the title
+  // Switch's checked prop in lockstep.
+  useEffect(() => {
+    if (!open) return
+    if (mode === 'edit' || mode === 'edit-system') {
+      setEnabledValue(!!editingServer?.enabled)
+    } else {
+      // Create mode — default to enabled=true (matches the form
+      // initializer at line ~172).
+      setEnabledValue(true)
+    }
+  }, [open, mode, editingServer])
 
   // Timeout is rendered at the END of each transport-specific block
   // (after env vars for stdio, after headers for http/sse — before
@@ -573,9 +596,17 @@ export function McpServerDrawer() {
           }
         >
           <Switch
-            checked={!!enabledValue}
+            checked={enabledValue}
             disabled={!canManage}
-            onChange={v => form.setFieldValue('enabled', v)}
+            onChange={v => {
+              // Update both the local mirror (for the Switch's
+              // own checked prop) AND the form (so persistServer
+              // reads the new value at save time). Use
+              // setFieldsValue (plural) — more reliable than
+              // setFieldValue (singular) for cross-tree updates.
+              setEnabledValue(v)
+              form.setFieldsValue({ enabled: v })
+            }}
             checkedChildren="Enabled"
             unCheckedChildren="Disabled"
           />
