@@ -1,4 +1,5 @@
 import { registerSync } from '@/core/sync'
+import { useModelPickerStore } from '@/modules/user-llm-providers/ModelPicker.store'
 import { useUserLlmProvidersStore } from '@/modules/user-llm-providers/UserLlmProviders.store'
 
 // A saved API key changed on another device (the event id is the provider
@@ -11,4 +12,18 @@ registerSync('api_key', {
   onResync: () => {
     void useUserLlmProvidersStore.getState().load()
   },
+})
+
+// An admin changed a provider or model. The user's accessible-providers
+// view (and the chat model picker) may have changed — each store refetches
+// its OWN group-scoped, sanitized view, so the only thing this notification
+// discloses is "something changed".
+const reloadUserProviders = () => {
+  void useUserLlmProvidersStore.getState().load()
+  void useModelPickerStore.getState().loadProviders()
+}
+
+registerSync('user_llm_provider', {
+  onEvent: reloadUserProviders,
+  onResync: reloadUserProviders,
 })

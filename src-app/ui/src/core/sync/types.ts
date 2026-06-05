@@ -28,5 +28,8 @@ declare module '@/core/events' {
     'sync:memory': SyncEntityEvent<'memory'>
     'sync:memory_settings': SyncEntityEvent<'memory_settings'>
     'sync:api_key': SyncEntityEvent<'api_key'>
+    'sync:llm_provider': SyncEntityEvent<'llm_provider'>
+    'sync:llm_model': SyncEntityEvent<'llm_model'>
+    'sync:user_llm_provider': SyncEntityEvent<'user_llm_provider'>
   }
 }

@@ -31,6 +31,9 @@ const ALL_SYNC_ENTITIES = [
   'memory',
   'memory_settings',
   'api_key',
+  'llm_provider',
+  'llm_model',
+  'user_llm_provider',
 ] as const satisfies readonly SyncEntity[]
 
 /**

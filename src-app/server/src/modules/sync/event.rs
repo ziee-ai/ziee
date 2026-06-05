@@ -31,6 +31,20 @@ pub enum SyncEntity {
     /// A user's saved LLM-provider API key (`id` is the provider id; only
     /// masked state is ever exposed, and only via refetch).
     ApiKey,
+
+    // --- Admin-permission-scoped (delivered to holders of the read perm) ---
+    /// Admin view of an LLM provider (full admin provider table).
+    LlmProvider,
+    /// Admin view of an LLM model.
+    LlmModel,
+
+    // --- Group-scoped user view (delivered to holders of the user read
+    // perm; safe because we only NOTIFY — each recipient refetches its own
+    // group-scoped, sanitized view; the only disclosure is "something
+    // changed"). Emitted ALONGSIDE the admin entity above on the same
+    // mutation, so admins and regular users each refresh their own surface. ---
+    /// A user's accessible-providers (with enabled models) view changed.
+    UserLlmProvider,
 }
 
 /// What happened to the entity.
@@ -97,6 +111,12 @@ fn audience_kind(entity: SyncEntity) -> AudienceKind {
         | SyncEntity::Memory
         | SyncEntity::MemorySettings
         | SyncEntity::ApiKey => AudienceKind::Owner,
+
+        SyncEntity::LlmProvider => AudienceKind::Permission("llm_providers::read"),
+        SyncEntity::LlmModel => AudienceKind::Permission("llm_models::read"),
+        SyncEntity::UserLlmProvider => {
+            AudienceKind::Permission("user_llm_providers::read")
+        }
     }
 }
 

@@ -13320,6 +13320,62 @@
         }
       }
     },
+    "/api/sync/subscribe": {
+      "get": {
+        "tags": [
+          "Sync"
+        ],
+        "summary": "Subscribe to realtime cross-device sync events via SSE",
+        "description": "Server-Sent Events stream of `{entity, action, id}` change notifications scoped to the authenticated user (and the permission-/group-visibility rules per entity). The client refetches the changed entity via its normal REST endpoint, so no row data crosses this channel. The first frame (`connected`) carries a connection id to echo back as `X-Sync-Connection-Id` on mutations for self-echo suppression. The stream closes when the access token expires or the account loses access.",
+        "operationId": "Sync.subscribe",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View own profile information",
+                        "name": "ProfileRead",
+                        "value": "profile::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: profile::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncSseEvent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "429": {
+            "description": "Too many open sync connections"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/app/setup/status": {
       "get": {
         "tags": [
@@ -13376,62 +13432,6 @@
             "description": "no content"
           }
         }
-      }
-    },
-    "/api/sync/subscribe": {
-      "get": {
-        "tags": [
-          "Sync"
-        ],
-        "summary": "Subscribe to realtime cross-device sync events via SSE",
-        "description": "Server-Sent Events stream of `{entity, action, id}` change notifications scoped to the authenticated user (and the permission-/group-visibility rules per entity). The client refetches the changed entity via its normal REST endpoint, so no row data crosses this channel. The first frame (`connected`) carries a connection id to echo back as `X-Sync-Connection-Id` on mutations for self-echo suppression. The stream closes when the access token expires or the account loses access.",
-        "operationId": "Sync.subscribe",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "View own profile information",
-                        "name": "ProfileRead",
-                        "value": "profile::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: profile::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SyncSseEvent"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "429": {
-            "description": "Too many open sync connections"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
       }
     }
   },
@@ -22668,6 +22668,21 @@
             "description": "A user's saved LLM-provider API key (`id` is the provider id; only\n masked state is ever exposed, and only via refetch).",
             "type": "string",
             "const": "api_key"
+          },
+          {
+            "description": "Admin view of an LLM provider (full admin provider table).",
+            "type": "string",
+            "const": "llm_provider"
+          },
+          {
+            "description": "Admin view of an LLM model.",
+            "type": "string",
+            "const": "llm_model"
+          },
+          {
+            "description": "A user's accessible-providers (with enabled models) view changed.",
+            "type": "string",
+            "const": "user_llm_provider"
           }
         ]
       },

@@ -1995,7 +1995,7 @@ export interface SyncConnectedData {
   connection_id: string
 }
 
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'api_key'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'api_key' | 'llm_provider' | 'llm_model' | 'user_llm_provider'
 
 export interface SyncEvent {
   action: SyncAction

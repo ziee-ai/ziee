@@ -20,6 +20,7 @@ import { useGroupLlmProvidersAssignmentStore } from '@/modules/llm-provider/comp
 import { useLlmProviderGroupsAssignmentStore } from '@/modules/llm-provider/components/LlmProviderGroupsAssignmentDrawer.store'
 import { DownloadIndicatorWidget } from '@/modules/llm-provider/components/widgets/DownloadIndicatorWidget'
 import '@/modules/llm-provider/types'
+import '@/modules/llm-provider/sync' // registerSync('llm_provider' + 'llm_model') side-effect
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
