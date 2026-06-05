@@ -156,16 +156,25 @@ export async function loginAsAdmin(
   // the API and land on the app, restoring pre-onboarding login behavior.
   const token = await readAuthToken(page)
   await completeOnboarding(baseURL, token)
-  await page.goto(`${baseURL}/`)
-  await page.waitForLoadState('load')
-  // Wait for the authenticated app shell (the sidebar "New Chat" link) to
-  // render — a stable signal that AuthGuard accepted the token, present on
-  // every authenticated route regardless of provider config. NOT `networkidle`
-  // (the realtime-sync SSE stream is a persistent connection that keeps the
-  // network busy, so it may never settle and hangs the whole test).
-  await page
-    .getByRole('link', { name: 'New Chat' })
-    .waitFor({ state: 'visible', timeout: 15000 })
+  // Land on the authenticated app shell, signalled by the sidebar "New Chat"
+  // link (present on every authenticated route, regardless of provider config).
+  // The post-setup flow auto-navigates the fresh admin to /onboarding, which
+  // races a single goto('/') and leaves the wizard covering the shell — so
+  // re-navigate until the shell actually renders (admins are never redirected
+  // back, so a clean reload sticks). NOT `networkidle`: the realtime-sync SSE
+  // stream keeps the network perpetually busy, so it never settles.
+  const appShell = page.getByRole('link', { name: 'New Chat' })
+  for (let attempt = 0; attempt < 4; attempt++) {
+    await page.goto(`${baseURL}/`)
+    await page.waitForLoadState('load')
+    try {
+      await appShell.waitFor({ state: 'visible', timeout: 8000 })
+      return
+    } catch {
+      // Bounced (e.g. to /onboarding) or slow to paint — retry the navigation.
+    }
+  }
+  await appShell.waitFor({ state: 'visible', timeout: 10000 })
 }
 
 /**
