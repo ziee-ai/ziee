@@ -1,8 +1,9 @@
 pub mod chat_extension;
 pub mod client;
+pub mod connection_health;
 pub mod elicitation;
 pub mod events;
-mod handlers;
+pub(crate) mod handlers;
 mod models;
 mod permissions;
 pub mod project_extension;
@@ -71,6 +72,14 @@ impl AppModule for McpModule {
         utils::embedded::ensure_binaries_extracted()
             .map_err(|e| format!("Failed to extract MCP embedded binaries: {}", e))?;
         tracing::info!("MCP: Embedded binaries ready");
+
+        // Boot health check — probe every enabled non-built-in MCP
+        // server and auto-disable unreachable ones. Fire-and-forget
+        // so it doesn't block boot; the next `cargo run` retries.
+        let health_pool = (*ctx.db_pool).clone();
+        tokio::spawn(async move {
+            connection_health::run_startup_health_check(health_pool).await;
+        });
 
         Ok(())
     }

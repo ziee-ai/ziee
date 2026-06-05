@@ -299,18 +299,37 @@ export function McpServerDrawer() {
 
     let saved: McpServer
     if (mode === 'create') {
-      saved = await Stores.McpServer.createMcpServer(
+      const wrapped = await Stores.McpServer.createMcpServer(
         serverData as CreateMcpServerRequest,
       )
-      message.success('MCP server created successfully')
+      saved = wrapped.server
+      if (wrapped.connection_warning) {
+        // Backend auto-downgraded enabled to false because the
+        // connection probe failed. Surface the reason + 8s duration
+        // so the user has time to read.
+        message.warning({
+          content: `MCP server saved but auto-disabled — ${wrapped.connection_warning.reason}`,
+          duration: 8,
+        })
+      } else {
+        message.success('MCP server created successfully')
+      }
     } else if (mode === 'edit' && editingServer) {
       saved = await Stores.McpServer.updateMcpServer(editingServer.id, updateData)
       message.success('MCP server updated successfully')
     } else if (mode === 'create-system') {
-      saved = await Stores.SystemMcpServer.createSystemServer(
+      const wrapped = await Stores.SystemMcpServer.createSystemServer(
         serverData as CreateMcpServerRequest,
       )
-      message.success('System MCP server created successfully')
+      saved = wrapped.server
+      if (wrapped.connection_warning) {
+        message.warning({
+          content: `System MCP server saved but auto-disabled — ${wrapped.connection_warning.reason}`,
+          duration: 8,
+        })
+      } else {
+        message.success('System MCP server created successfully')
+      }
     } else if (mode === 'edit-system' && editingServer) {
       saved = await Stores.SystemMcpServer.updateSystemServer(
         editingServer.id,

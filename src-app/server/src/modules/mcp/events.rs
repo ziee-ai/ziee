@@ -23,6 +23,11 @@ pub enum McpServerEvent {
     UserServerDeleted { server_id: Uuid, user_id: Uuid },
     /// Group assignments for an MCP server changed
     GroupAssignmentChanged { server_id: Uuid },
+    /// An enabled MCP server failed a connection probe and was
+    /// auto-disabled by the connection-health subsystem (boot-time
+    /// check, or save-time downgrade on a fresh create). UI listens
+    /// to this to refresh the server list and surface a toast.
+    AutoDisabled { server_id: Uuid, reason: String },
 }
 
 impl McpServerEvent {
@@ -59,5 +64,12 @@ impl McpServerEvent {
     /// Create a group assignment changed event
     pub fn group_assignment_changed(server_id: Uuid) -> crate::core::AppEvent {
         crate::core::AppEvent::McpServer(McpServerEvent::GroupAssignmentChanged { server_id })
+    }
+
+    /// Create an auto-disabled event (boot health check or save-time
+    /// downgrade flipped `enabled: false` because the connection
+    /// probe failed).
+    pub fn auto_disabled(server_id: Uuid, reason: String) -> crate::core::AppEvent {
+        crate::core::AppEvent::McpServer(McpServerEvent::AutoDisabled { server_id, reason })
     }
 }

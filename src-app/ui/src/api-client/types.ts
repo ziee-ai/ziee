@@ -1238,6 +1238,11 @@ export interface McpServerOAuthConfigResponse {
   updated_at: string
 }
 
+export interface McpServerWithHealthWarning {
+  connection_warning?: ProbeFailure
+  server: McpServer
+}
+
 export interface McpSettingsResponse {
   settings?: ConversationMcpSettingsResponse
 }
@@ -1551,6 +1556,10 @@ export interface PingResponse {
 
 export interface PreviewQuery {
   page?: number
+}
+
+export interface ProbeFailure {
+  reason: string
 }
 
 export interface Project {
@@ -3277,7 +3286,7 @@ export type ApiEndpointResponses = {
   'Mcp.getDefaults': UserMcpDefaultsGetResponse
   'Mcp.respondToElicitation': RespondToElicitationResponse
   'Mcp.updateDefaults': UserMcpDefaultsResponse
-  'McpServer.create': McpServer
+  'McpServer.create': McpServerWithHealthWarning
   'McpServer.delete': void
   'McpServer.deleteOAuthConfig': void
   'McpServer.get': McpServer
@@ -3295,7 +3304,7 @@ export type ApiEndpointResponses = {
   'McpServerRuntime.ping': PingResponse
   'McpServerRuntime.readResource': ReadResourceResponse
   'McpServerSystem.assignServerToGroups': void
-  'McpServerSystem.create': McpServer
+  'McpServerSystem.create': McpServerWithHealthWarning
   'McpServerSystem.delete': void
   'McpServerSystem.get': McpServer
   'McpServerSystem.getServerGroups': string[]

@@ -6,6 +6,7 @@ import { ApiClient } from '@/api-client'
 import {
   Permissions,
   type McpServer,
+  type McpServerWithHealthWarning,
   type CreateMcpServerRequest,
   type UpdateMcpServerRequest,
   type McpServerOAuthConfigResponse,
@@ -69,7 +70,9 @@ interface McpState {
   loadMcpServers: (page?: number, pageSize?: number) => Promise<void>
   setSearchTerm: (q: string) => void
   setStatusFilter: (status: string) => void
-  createMcpServer: (data: CreateMcpServerRequest) => Promise<McpServer>
+  createMcpServer: (
+    data: CreateMcpServerRequest,
+  ) => Promise<McpServerWithHealthWarning>
   updateMcpServer: (
     serverId: string,
     data: UpdateMcpServerRequest,
@@ -295,14 +298,21 @@ export const useMcpStore = create<McpState>()(
 
         createMcpServer: async (
           data: CreateMcpServerRequest,
-        ): Promise<McpServer> => {
+        ): Promise<McpServerWithHealthWarning> => {
           try {
             set(draft => {
               draft.creating = true
               draft.error = null
             })
 
-            const newServer = await ApiClient.McpServer.create(data)
+            // Response is the new health-warning wrapper. The
+            // backend probes the server on create-with-enabled=true;
+            // on probe failure it persists with enabled=false and
+            // returns a `connection_warning` field with the reason.
+            // Caller (the drawer) handles the warning toast — here
+            // we just unwrap and emit downstream.
+            const wrapped = await ApiClient.McpServer.create(data)
+            const newServer = wrapped.server
 
             // Emit event after successful API call
             // Event handler will update state (no manual state update here)
@@ -317,7 +327,10 @@ export const useMcpStore = create<McpState>()(
 
             set({ creating: false })
 
-            return newServer
+            // Surface the wrapper so the drawer can toast the
+            // connection_warning if present. Backward compat: it
+            // still has a `server` field that callers can reach.
+            return wrapped
           } catch (error) {
             console.error('MCP server creation failed:', error)
             set(draft => {

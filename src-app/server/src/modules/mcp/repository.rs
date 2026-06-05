@@ -302,6 +302,13 @@ impl McpRepository {
         Self { pool }
     }
 
+    /// Borrow the underlying pool — used by the connection-health
+    /// module to run direct SQL against the same DB without taking
+    /// a new PgPool handle.
+    pub fn pool(&self) -> &PgPool {
+        &self.pool
+    }
+
     // User server operations
     pub async fn create_user_server(
         &self,
@@ -359,6 +366,15 @@ impl McpRepository {
 
     pub async fn get_any_server(&self, id: Uuid) -> Result<Option<McpServer>, AppError> {
         get_any_mcp_server(&self.pool, id).await
+    }
+
+    /// All `enabled = true` MCP servers that are NOT built-in.
+    /// Used by the boot-time connection-health check to probe every
+    /// user-configurable enabled server (built-in ones are owned by
+    /// their respective modules — code_sandbox, memory_mcp — and
+    /// don't need this enforcement).
+    pub async fn list_enabled_for_health_check(&self) -> Result<Vec<McpServer>, AppError> {
+        list_enabled_for_health_check(&self.pool).await
     }
 
     // OAuth client_credentials config (external HTTP servers; Phase 4)
@@ -775,6 +791,66 @@ pub async fn list_user_mcp_servers(
     .unwrap_or(0);
 
     Ok((servers, total))
+}
+
+/// All `enabled = true` MCP servers that are NOT built-in. No
+/// pagination, no ordering — the boot health check iterates them
+/// once and the dataset is small (typically <100). Built-in servers
+/// (filesystem, memory_mcp, code_sandbox) are owned by their
+/// modules and their reachability isn't gated on this column.
+pub async fn list_enabled_for_health_check(pool: &PgPool) -> Result<Vec<McpServer>, AppError> {
+    let rows = sqlx::query!(
+        r#"
+        SELECT
+            id, user_id, name, display_name, description,
+            enabled, is_system, is_built_in, transport_type,
+            command, args,
+            environment_variables, environment_variables_encrypted, environment_variables_secret_keys,
+            url,
+            headers, headers_encrypted, headers_secret_keys,
+            timeout_seconds,
+            supports_sampling, usage_mode, max_concurrent_sessions,
+            run_in_sandbox,
+            created_at, updated_at
+        FROM mcp_servers
+        WHERE enabled = true AND is_built_in = false
+        "#,
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut servers: Vec<McpServer> = Vec::with_capacity(rows.len());
+    for r in rows {
+        let raw = McpServerColumnsRaw {
+            id: r.id,
+            user_id: r.user_id,
+            name: r.name,
+            display_name: r.display_name,
+            description: r.description,
+            enabled: r.enabled,
+            is_system: r.is_system,
+            is_built_in: r.is_built_in,
+            transport_type: r.transport_type,
+            command: r.command,
+            args: r.args,
+            environment_variables: r.environment_variables,
+            environment_variables_encrypted: r.environment_variables_encrypted,
+            environment_variables_secret_keys: r.environment_variables_secret_keys,
+            url: r.url,
+            headers: r.headers,
+            headers_encrypted: r.headers_encrypted,
+            headers_secret_keys: r.headers_secret_keys,
+            timeout_seconds: r.timeout_seconds,
+            supports_sampling: r.supports_sampling,
+            usage_mode: r.usage_mode,
+            max_concurrent_sessions: r.max_concurrent_sessions,
+            run_in_sandbox: r.run_in_sandbox,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+        };
+        servers.push(assemble_mcp_server(pool, raw).await?);
+    }
+    Ok(servers)
 }
 
 /// Update user MCP server
