@@ -794,6 +794,25 @@ export interface HubEntity {
   id: string
 }
 
+export interface HubInstalledResponse {
+  catalog_version: string
+  items: HubInstalledRow[]
+}
+
+export interface HubInstalledRow {
+  current_version: string
+  entity_id: string
+  entity_type: string
+  hub_category: string
+  hub_id: string
+  installed_at: string
+  installed_version?: string
+  is_system: boolean
+  is_system_mcp_install: boolean
+  is_template_install: boolean
+  name: string
+}
+
 export interface HubLocalProvider {
   id: string
   name: string
@@ -914,22 +933,6 @@ export interface HubRequiredInput {
   is_secret?: boolean
   name: string
   placeholder?: string
-}
-
-export interface HubUpdateRow {
-  current_version: string
-  entity_id: string
-  entity_type: string
-  hub_category: string
-  hub_id: string
-  installed_version?: string
-  is_system_mcp_install: boolean
-  is_template_install: boolean
-}
-
-export interface HubUpdatesResponse {
-  catalog_version: string
-  updates: HubUpdateRow[]
 }
 
 export interface HubVersionResponse {
@@ -2737,6 +2740,7 @@ export const ApiEndpoints = {
   'Hub.getAssistantsVersion': 'GET /api/hub/assistants/version',
   'Hub.getCatalog': 'GET /api/hub/index',
   'Hub.getCatalogVersion': 'GET /api/hub/version',
+  'Hub.getInstalled': 'GET /api/hub/installed',
   'Hub.getLocalProviders': 'GET /api/hub/models/local-providers',
   'Hub.getMCPServers': 'GET /api/hub/mcp-servers',
   'Hub.getMCPServersVersion': 'GET /api/hub/mcp-servers/version',
@@ -2744,7 +2748,6 @@ export const ApiEndpoints = {
   'Hub.getModels': 'GET /api/hub/models',
   'Hub.getModelsVersion': 'GET /api/hub/models/version',
   'Hub.getReleases': 'GET /api/hub/releases',
-  'Hub.getUpdates': 'GET /api/hub/updates',
   'Hub.refreshAssistants': 'POST /api/hub/assistants/refresh',
   'Hub.refreshCatalog': 'POST /api/hub/refresh',
   'Hub.refreshMCPServers': 'POST /api/hub/mcp-servers/refresh',
@@ -2980,6 +2983,7 @@ export type ApiEndpointParameters = {
   'Hub.getAssistantsVersion': void
   'Hub.getCatalog': void
   'Hub.getCatalogVersion': void
+  'Hub.getInstalled': void
   'Hub.getLocalProviders': void
   'Hub.getMCPServers': { lang?: string }
   'Hub.getMCPServersVersion': void
@@ -2987,7 +2991,6 @@ export type ApiEndpointParameters = {
   'Hub.getModels': { lang?: string }
   'Hub.getModelsVersion': void
   'Hub.getReleases': void
-  'Hub.getUpdates': void
   'Hub.refreshAssistants': void
   'Hub.refreshCatalog': void
   'Hub.refreshMCPServers': void
@@ -3223,6 +3226,7 @@ export type ApiEndpointResponses = {
   'Hub.getAssistantsVersion': HubVersionResponse
   'Hub.getCatalog': Catalog
   'Hub.getCatalogVersion': HubCatalogVersionResponse
+  'Hub.getInstalled': HubInstalledResponse
   'Hub.getLocalProviders': HubLocalProvidersResponse
   'Hub.getMCPServers': HubMCPServer[]
   'Hub.getMCPServersVersion': HubVersionResponse
@@ -3230,7 +3234,6 @@ export type ApiEndpointResponses = {
   'Hub.getModels': HubModel[]
   'Hub.getModelsVersion': HubVersionResponse
   'Hub.getReleases': HubReleasesResponse
-  'Hub.getUpdates': HubUpdatesResponse
   'Hub.refreshAssistants': HubRefreshResponse
   'Hub.refreshCatalog': HubCatalogRefreshResponse
   'Hub.refreshMCPServers': HubRefreshResponse

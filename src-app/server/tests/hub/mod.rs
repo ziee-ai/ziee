@@ -3,7 +3,7 @@
 // ============================================================================
 
 // Phase 1 — unified catalog endpoints (GET /hub/{index,version,manifest},
-// POST /hub/refresh, GET /hub/updates). Kept in a separate file because
+// POST /hub/refresh, GET /hub/installed). Kept in a separate file because
 // the legacy suite below is large and locale-focused.
 mod catalog_v1;
 // Hermetic catalog tests (mock release server, no network/cosign).

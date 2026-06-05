@@ -66,14 +66,14 @@ impl HubRepository {
         delete_hub_tracking(&self.pool, entity_type, entity_id).await
     }
 
-    /// Every hub_entities row whose installed hub_version differs from
-    /// the current catalog version (NULL is also "behind"). Backs
-    /// `GET /api/hub/updates`.
-    pub async fn list_outdated_entities(
+    /// Every tracked hub install in scope. Backs `GET /api/hub/installed`.
+    /// See the free-function for scope semantics.
+    pub async fn list_installed_entities(
         &self,
-        current_version: &str,
-    ) -> Result<Vec<OutdatedHubEntity>, AppError> {
-        list_outdated_entities(&self.pool, current_version).await
+        user_id: Option<Uuid>,
+        include_system: bool,
+    ) -> Result<Vec<InstalledHubEntity>, AppError> {
+        list_installed_entities(&self.pool, user_id, include_system).await
     }
 
     /// The admin-pinned catalog version (without leading `v`), or None
@@ -167,20 +167,35 @@ impl HubRepository {
     }
 }
 
-/// Row returned by `list_outdated_entities` — one installed hub
-/// entity whose version doesn't match the current catalog. The
+/// Row returned by `list_installed_entities` — one tracked hub
+/// install with a display name + timestamps so the Installed tab
+/// can render rich rows without a second round-trip per entity.
 /// `installed_version` is None for rows installed before migration 69.
 #[derive(Debug, Clone)]
-pub struct OutdatedHubEntity {
+pub struct InstalledHubEntity {
     pub hub_id: String,
     pub hub_category: String,
     pub entity_type: String,
     pub entity_id: Uuid,
+    /// Display name resolved from the entity's own table
+    /// (mcp_servers.display_name / assistants.name /
+    /// llm_models.display_name). Empty string when the entity row
+    /// has been deleted out from under the hub_entities row (should
+    /// be cleaned by the deletion-event listeners, but the LEFT JOIN
+    /// surfaces orphans rather than crashing the list).
+    pub name: String,
     pub installed_version: Option<String>,
+    pub installed_at: chrono::DateTime<chrono::Utc>,
+    /// True when `created_by IS NULL` — system-wide install
+    /// (template assistant, hub-installed system MCP, or any model,
+    /// since models are always system-scoped today). The frontend
+    /// uses this to mark the row with a scope tag + to gate the
+    /// Remove action's confirmation copy.
+    pub is_system: bool,
     /// True when this hub_entities row has `created_by IS NULL` —
     /// i.e. it's a system-wide install (template assistant, or any
     /// future entity type that bypasses per-user ownership). The
-    /// `/hub/updates` UI uses this to route the Re-install action
+    /// `/hub/installed` UI uses this to route the Re-install action
     /// to `Hub.createAssistantTemplateFromHub` instead of the
     /// user-scoped `Hub.createAssistantFromHub` — without this
     /// discriminator, a "Re-install" on a template-origin row would
@@ -191,7 +206,7 @@ pub struct OutdatedHubEntity {
     /// `entity_type = 'mcp_server'` — i.e. a system-wide hub MCP
     /// install. Sibling of `is_template_install` (assistants); kept
     /// as a separate boolean so the UI can dispatch independently per
-    /// entity type. The `/hub/updates` UI uses this to route the
+    /// entity type. The `/hub/installed` UI uses this to route the
     /// Re-install action to `Hub.createSystemMcpServerFromHub` with
     /// `replace_existing: true` instead of the user-scoped endpoint
     /// (which would silently demote an outdated system server to
@@ -200,7 +215,7 @@ pub struct OutdatedHubEntity {
 }
 
 /// Create hub entity tracking record. `hub_version` is the catalog
-/// version the entity was installed from — stamped so `/hub/updates`
+/// version the entity was installed from — stamped so `/hub/installed`
 /// can tell whether the install is behind the current catalog. NULL
 /// only for legacy rows that predate migration 69.
 pub async fn track_hub_entity(
@@ -421,46 +436,95 @@ pub async fn get_created_model_ids(pool: &PgPool) -> Result<HashMap<String, Vec<
     Ok(map)
 }
 
-/// List entities whose installed hub_version is not the current
-/// catalog version. NULL counts as "behind" so legacy rows always
-/// surface as updatable.
-pub async fn list_outdated_entities(
+/// List every tracked hub install (not just outdated ones), with the
+/// resolved display name from the underlying entity table so the
+/// Installed tab can render rich rows in a single round-trip.
+///
+/// Scope (per the Installed tab semantics):
+/// - `user_id = Some(uid)`, `include_system = false`: only this user's
+///   user-scoped installs.
+/// - `user_id = Some(uid)`, `include_system = true`: this user's
+///   user-scoped installs PLUS every `created_by IS NULL` install
+///   (system MCP, template assistants, models). The admin view.
+/// - `user_id = None`, `include_system = true`: every install across
+///   every user. Currently unused but kept as a documented mode for
+///   any future "ops dashboard" scope.
+/// - `user_id = None`, `include_system = false`: would return nothing;
+///   the function returns an empty Vec without hitting the DB.
+///
+/// The three LEFT JOINs against `mcp_servers` / `assistants` /
+/// `llm_models` are mutually exclusive per row (matched by
+/// `entity_type`); only one branch supplies the name, the rest are
+/// NULL. `COALESCE` picks the populated one and falls back to an
+/// empty string when the entity has been deleted out from under the
+/// hub_entities row (orphan — the deletion-event cleanup should have
+/// fired, but the LEFT JOIN keeps the list rendering instead of
+/// crashing on a missing row).
+pub async fn list_installed_entities(
     pool: &PgPool,
-    current_version: &str,
-) -> Result<Vec<OutdatedHubEntity>, AppError> {
+    user_id: Option<Uuid>,
+    include_system: bool,
+) -> Result<Vec<InstalledHubEntity>, AppError> {
+    // No-op short-circuit per the doc comment.
+    if user_id.is_none() && !include_system {
+        return Ok(Vec::new());
+    }
+
     let rows = sqlx::query!(
         r#"
-        SELECT hub_id, hub_category, entity_type, entity_id, hub_version, created_by
-        FROM hub_entities
-        WHERE hub_version IS DISTINCT FROM $1
-        ORDER BY hub_category, hub_id
+        SELECT
+            he.hub_id,
+            he.hub_category,
+            he.entity_type,
+            he.entity_id,
+            he.hub_version,
+            he.created_by,
+            he.created_at AS "installed_at!",
+            COALESCE(ms.display_name, a.name, m.display_name, '') AS "name!"
+        FROM hub_entities he
+        LEFT JOIN mcp_servers ms ON he.entity_type = 'mcp_server' AND ms.id = he.entity_id
+        LEFT JOIN assistants  a  ON he.entity_type = 'assistant'  AND a.id  = he.entity_id
+        LEFT JOIN llm_models  m  ON he.entity_type = 'llm_model'  AND m.id  = he.entity_id
+        WHERE
+            -- Per-user rows (only when user_id is Some)
+            ($1::uuid IS NOT NULL AND he.created_by = $1::uuid)
+            OR
+            -- System rows (only when include_system is true)
+            ($2::bool AND he.created_by IS NULL)
+        ORDER BY he.hub_category, he.created_at DESC
         "#,
-        current_version
+        user_id,
+        include_system,
     )
     .fetch_all(pool)
     .await?;
 
     Ok(rows
         .into_iter()
-        .map(|r| OutdatedHubEntity {
+        .map(|r| InstalledHubEntity {
             hub_id: r.hub_id,
             hub_category: r.hub_category,
             entity_id: r.entity_id,
+            name: r.name,
             installed_version: r.hub_version,
-            // True ONLY for system-wide ASSISTANT installs — these
-            // are the rows that need the Re-install action routed
-            // through `Hub.createAssistantTemplateFromHub` instead
-            // of `Hub.createAssistantFromHub`. Models also set
-            // `created_by: NULL` but the UI never re-installs them
-            // inline (they require a provider+quant choice), so
-            // tightening the predicate to `entity_type == "assistant"`
-            // keeps the flag's semantic narrow and unambiguous.
+            // sqlx returns TIMESTAMPTZ as `time::OffsetDateTime` (the
+            // `time`-feature codec wins over chrono when both are on);
+            // the public surface uses chrono::DateTime<Utc> for
+            // consistency with the rest of the hub types, so convert
+            // through unix epoch — same pattern as
+            // `modules/mcp/repository.rs::assemble_mcp_server`.
+            installed_at: chrono::DateTime::<chrono::Utc>::from_timestamp(
+                r.installed_at.unix_timestamp(),
+                0,
+            )
+            .unwrap_or_else(chrono::Utc::now),
+            is_system: r.created_by.is_none(),
+            // True ONLY for system-wide ASSISTANT installs — same
+            // narrow-predicate rationale as before; the Installed tab
+            // uses this to route Re-install through
+            // `Hub.createAssistantTemplateFromHub`.
             is_template_install: r.created_by.is_none()
                 && r.entity_type == "assistant",
-            // Sibling of `is_template_install` for MCP servers.
-            // Narrow predicate so models (also `created_by IS NULL`)
-            // don't accidentally route Re-install through the system
-            // MCP endpoint.
             is_system_mcp_install: r.created_by.is_none()
                 && r.entity_type == "mcp_server",
             entity_type: r.entity_type,

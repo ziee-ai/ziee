@@ -11752,44 +11752,20 @@
         ]
       }
     },
-    "/api/hub/updates": {
+    "/api/hub/installed": {
       "get": {
         "tags": [
           "Hub"
         ],
-        "summary": "Installed hub entities behind the current catalog version (admin only)",
-        "description": "\n\n**Required Permission:** `hub::catalog::read`\n\nView hub catalog versions + pending updates",
-        "operationId": "Hub.getUpdates",
+        "summary": "Every tracked hub install visible to the caller",
+        "operationId": "Hub.getInstalled",
         "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "View hub catalog versions + pending updates",
-                        "name": "HubCatalogRead",
-                        "value": "hub::catalog::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: hub::catalog::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
           "200": {
             "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HubUpdatesResponse"
+                  "$ref": "#/components/schemas/HubInstalledResponse"
                 }
               }
             }
@@ -11797,12 +11773,7 @@
           "401": {
             "description": "Unauthorized"
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       }
     },
     "/api/hub/manifest/{id}": {
@@ -17284,6 +17255,86 @@
           "created_at"
         ]
       },
+      "HubInstalledResponse": {
+        "type": "object",
+        "properties": {
+          "catalog_version": {
+            "description": "Live catalog version — handy on the client so every row can\n compare its `installed_version` to highlight the delta\n without a second round-trip to `/hub/version`.",
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HubInstalledRow"
+            }
+          }
+        },
+        "required": [
+          "catalog_version",
+          "items"
+        ]
+      },
+      "HubInstalledRow": {
+        "description": "Single row in `GET /api/hub/updates` — one installed hub entity\n One tracked install in the user's Installed view. Rich enough\n that the Installed tab can render full rows (display name +\n install date + scope + version delta + Re-install/Remove\n dispatch hints) in a single round-trip.",
+        "type": "object",
+        "properties": {
+          "current_version": {
+            "type": "string"
+          },
+          "entity_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "entity_type": {
+            "type": "string"
+          },
+          "hub_category": {
+            "type": "string"
+          },
+          "hub_id": {
+            "type": "string"
+          },
+          "installed_at": {
+            "description": "When the hub_entities tracking row was first created. Used to\n render \"installed N days ago\" on the row.",
+            "type": "string",
+            "format": "date-time"
+          },
+          "installed_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "is_system": {
+            "description": "`created_by IS NULL`. Frontend renders a scope tag and\n (for non-admin users) suppresses the Remove button.",
+            "type": "boolean"
+          },
+          "is_system_mcp_install": {
+            "description": "Re-install dispatch flag for system MCP servers — routes to\n `Hub.createSystemMcpServerFromHub` (with `replace_existing:\n true`) instead of the user-scoped endpoint.",
+            "type": "boolean"
+          },
+          "is_template_install": {
+            "description": "Re-install dispatch flag for ASSISTANT templates — routes the\n Re-install action to `Hub.createAssistantTemplateFromHub`\n instead of the user-scoped endpoint.",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Display name from the entity's own table. Empty when the\n underlying entity row has been deleted (orphan — should be\n cleaned by the deletion-event listener, but the LEFT JOIN\n surfaces them rather than crashing the page).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hub_id",
+          "hub_category",
+          "entity_type",
+          "entity_id",
+          "name",
+          "current_version",
+          "installed_at",
+          "is_system",
+          "is_template_install",
+          "is_system_mcp_install"
+        ]
+      },
       "HubLocalProvider": {
         "description": "A local LLM provider available as download target",
         "type": "object",
@@ -17888,69 +17939,6 @@
         },
         "required": [
           "name"
-        ]
-      },
-      "HubUpdateRow": {
-        "description": "Single row in `GET /api/hub/updates` — one installed hub entity\n that's behind the current catalog (either NULL hub_version or\n a hub_version different from the catalog).",
-        "type": "object",
-        "properties": {
-          "current_version": {
-            "type": "string"
-          },
-          "entity_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "entity_type": {
-            "type": "string"
-          },
-          "hub_category": {
-            "type": "string"
-          },
-          "hub_id": {
-            "type": "string"
-          },
-          "installed_version": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "is_system_mcp_install": {
-            "description": "True when the install was a system-wide MCP SERVER\n (`created_by IS NULL && entity_type = 'mcp_server'`). The\n Updates UI uses this to route the Re-install action through\n `Hub.createSystemMcpServerFromHub` (with `replace_existing:\n true`) instead of the user-scoped endpoint, which would\n silently demote an outdated system server to a personal\n one. Mirrors `is_template_install` for assistants.",
-            "type": "boolean"
-          },
-          "is_template_install": {
-            "description": "True when the install was a system-wide ASSISTANT TEMPLATE\n (`created_by IS NULL && entity_type = 'assistant'`). The\n Updates UI uses this to route the Re-install action to the\n template endpoint instead of creating a user assistant from\n a template-origin row.",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "hub_id",
-          "hub_category",
-          "entity_type",
-          "entity_id",
-          "current_version",
-          "is_template_install",
-          "is_system_mcp_install"
-        ]
-      },
-      "HubUpdatesResponse": {
-        "type": "object",
-        "properties": {
-          "catalog_version": {
-            "type": "string"
-          },
-          "updates": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/HubUpdateRow"
-            }
-          }
-        },
-        "required": [
-          "catalog_version",
-          "updates"
         ]
       },
       "HubVersionResponse": {

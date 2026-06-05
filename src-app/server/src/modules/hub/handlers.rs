@@ -421,7 +421,7 @@ pub async fn create_assistant_from_hub(
         .await?;
 
     // Track in hub_entities, stamping the catalog version captured
-    // by the lookup so /hub/updates can detect when this row falls
+    // by the lookup so /hub/installed can detect when this row falls
     // behind a future catalog activation.
     let hub_tracking = Repos
         .hub
@@ -518,7 +518,7 @@ pub async fn create_assistant_template_from_hub(
     // Templates have no owner — pass None for the user-id arg.
     let assistant = Repos.assistant.create(None, plan.create_request).await?;
 
-    // Track with `created_by: None` so /hub/updates surfaces this as
+    // Track with `created_by: None` so /hub/installed surfaces this as
     // a system-wide install (the `is_template_install` flag on the
     // outdated row then routes the Re-install UI through the
     // template endpoint).
@@ -845,7 +845,7 @@ pub async fn create_mcp_server_from_hub(
         .await?;
 
     // Track in hub_entities, stamping the catalog version captured by
-    // the lookup so /hub/updates can detect when this row falls
+    // the lookup so /hub/installed can detect when this row falls
     // behind a future catalog activation.
     let hub_tracking = Repos
         .hub
@@ -1075,7 +1075,7 @@ pub async fn create_system_mcp_server_from_hub(
 
     let server = Repos.mcp.create_system_server(plan.create_request).await?;
 
-    // Track with `created_by: None` so /hub/updates surfaces this as
+    // Track with `created_by: None` so /hub/installed surfaces this as
     // a system-wide install (the `is_system_mcp_install` flag on the
     // outdated row then routes the Re-install UI through this
     // endpoint).
@@ -1667,33 +1667,61 @@ pub fn refresh_hub_catalog_docs(op: TransformOperation) -> TransformOperation {
         })
 }
 
-/// GET /api/hub/updates — admin-only. Installed entities whose
-/// `hub_version` lags the catalog. NULL `hub_version` (legacy rows)
-/// counts as behind.
+/// GET /api/hub/installed — every tracked hub install the caller
+/// can see. Per-user view by default; admins (anyone with
+/// `hub::catalog::read`) additionally see system-wide installs
+/// (template assistants, system MCP servers, models — which are
+/// always system-scoped). Replaces the older `/hub/installed`
+/// admin-only endpoint with a strictly richer payload.
 #[debug_handler]
-pub async fn get_hub_updates(
-    _auth: RequirePermissions<(HubCatalogRead,)>,
-) -> ApiResult<Json<HubUpdatesResponse>> {
+pub async fn get_hub_installed(
+    auth: crate::modules::auth::jwt_extractor::JwtAuth,
+) -> ApiResult<Json<HubInstalledResponse>> {
+    // Resolve user + groups so we can check `hub::catalog::read`
+    // inline (the union check needs both arrays). Same shape as the
+    // `/api/auth/me` handler — JwtAuth gives us claims; we load the
+    // rest from the DB.
+    let user_id = uuid::Uuid::parse_str(&auth.claims.sub).map_err(|e| {
+        AppError::internal_error(format!("Invalid user ID in token: {}", e))
+    })?;
+    let user = Repos
+        .user
+        .get_by_id(user_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("User"))?;
+    let groups = Repos.user.get_user_groups(user_id).await?;
+
+    let is_admin_view = crate::modules::permissions::checker::check_permission_union(
+        &user,
+        &groups,
+        "hub::catalog::read",
+    );
+
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
     let catalog = hub_manager.catalog().await?;
+
     let rows = Repos
         .hub
-        .list_outdated_entities(&catalog.hub_version)
+        .list_installed_entities(Some(user_id), is_admin_view)
         .await?;
+
     Ok((
         StatusCode::OK,
-        Json(HubUpdatesResponse {
+        Json(HubInstalledResponse {
             catalog_version: catalog.hub_version.clone(),
-            updates: rows
+            items: rows
                 .into_iter()
-                .map(|r| HubUpdateRow {
+                .map(|r| HubInstalledRow {
                     hub_id: r.hub_id,
                     hub_category: r.hub_category,
                     entity_type: r.entity_type,
                     entity_id: r.entity_id,
+                    name: r.name,
                     installed_version: r.installed_version,
                     current_version: catalog.hub_version.clone(),
+                    installed_at: r.installed_at,
+                    is_system: r.is_system,
                     is_template_install: r.is_template_install,
                     is_system_mcp_install: r.is_system_mcp_install,
                 })
@@ -1702,12 +1730,11 @@ pub async fn get_hub_updates(
     ))
 }
 
-pub fn get_hub_updates_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(HubCatalogRead,)>(op)
-        .id("Hub.getUpdates")
+pub fn get_hub_installed_docs(op: TransformOperation) -> TransformOperation {
+    op.id("Hub.getInstalled")
         .tag("Hub")
-        .summary("Installed hub entities behind the current catalog version (admin only)")
-        .response::<200, Json<HubUpdatesResponse>>()
+        .summary("Every tracked hub install visible to the caller")
+        .response::<200, Json<HubInstalledResponse>>()
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
 }
 

@@ -4,7 +4,7 @@ import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { Permissions } from '@/api-client/types'
 import { useHubCatalogStore } from '@/modules/hub/stores/hub-catalog-store'
-import { useHubUpdatesStore } from '@/modules/hub/stores/hub-updates-store'
+import { useHubInstalledStore } from '@/modules/hub/stores/hub-installed-store'
 import '@/modules/hub/types'
 
 // Hub coordination module
@@ -34,7 +34,7 @@ export default createModule({
   dependencies: ['router'],
   stores: [
     { name: 'HubCatalog', store: useHubCatalogStore },
-    { name: 'HubUpdates', store: useHubUpdatesStore },
+    { name: 'HubInstalled', store: useHubInstalledStore },
   ],
   routes: [
     {

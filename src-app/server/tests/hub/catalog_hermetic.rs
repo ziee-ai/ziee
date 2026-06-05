@@ -239,12 +239,12 @@ async fn install_rejects_incompatible_item() {
 }
 
 #[tokio::test]
-async fn install_stamps_current_version_so_updates_stays_empty() {
+async fn install_stamps_current_version_so_installed_row_is_not_outdated() {
     // Directly exercises the hub_version write-back: installing from the
     // active catalog must stamp hub_entities.hub_version with the current
-    // version, so /hub/updates does NOT immediately flag the fresh install
-    // as "behind". (Regression guard for the bug where every install was
-    // recorded with NULL and showed as needing an update.)
+    // version, so the row's `installed_version` matches `current_version`
+    // (= not outdated). Regression guard for the bug where every install
+    // was recorded with NULL and showed as needing an update.
     let mock = spawn_mock_hub(two_versions()).await;
     let server = TestServer::start_with_options(crate::common::TestServerOptions {
         extra_env: mock.test_env(),
@@ -279,20 +279,26 @@ async fn install_stamps_current_version_so_updates_stays_empty() {
         .error_for_status()
         .expect("install ok");
 
-    // The fresh install was stamped 9.9.1-test == current → not behind.
-    let updates: Json = client
-        .get(server.api_url("/hub/updates"))
+    // The fresh install was stamped 9.9.1-test == current → row exists
+    // but with `installed_version == current_version`, so the UI's
+    // outdated badge is not triggered.
+    let installed: Json = client
+        .get(server.api_url("/hub/installed"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .send()
         .await
-        .expect("updates")
+        .expect("installed")
         .json()
         .await
-        .expect("parse updates");
-    let rows = updates["updates"].as_array().expect("updates array");
-    assert!(
-        rows.iter().all(|r| r["hub_id"] != "mock-asst-a"),
-        "freshly-installed item must NOT appear in updates: {updates}"
+        .expect("parse installed");
+    let rows = installed["items"].as_array().expect("items array");
+    let row = rows
+        .iter()
+        .find(|r| r["hub_id"] == "mock-asst-a")
+        .unwrap_or_else(|| panic!("fresh install must appear in /hub/installed: {installed}"));
+    assert_eq!(
+        row["installed_version"], row["current_version"],
+        "freshly-installed item must be stamped at the current catalog version: {row}"
     );
 }
 
@@ -671,7 +677,7 @@ async fn install_as_template_with_replace_existing_succeeds() {
 
 #[tokio::test]
 async fn replace_existing_preserves_is_default() {
-    // Re-install via /hub/updates must not silently demote a previously
+    // Re-install via /hub/installed must not silently demote a previously
     // promoted template (is_default=true). Without this carry-forward,
     // re-install would set is_default=false (the request body default),
     // and new signups would stop receiving the template via the
@@ -850,9 +856,9 @@ async fn replace_existing_aborts_on_validation_failure() {
 }
 
 #[tokio::test]
-async fn template_install_surfaces_in_updates_with_template_flag() {
+async fn template_install_surfaces_in_installed_with_template_flag() {
     // When the catalog version moves forward AFTER a template install,
-    // /hub/updates surfaces the row with `is_template_install: true`
+    // /hub/installed surfaces the row with `is_template_install: true`
     // so the UI routes the Re-install action through the template
     // endpoint (not the user-install endpoint, which would silently
     // demote the template to a user-owned assistant).
@@ -905,24 +911,28 @@ async fn template_install_surfaces_in_updates_with_template_flag() {
         .error_for_status()
         .expect("activate v2 ok");
 
-    let updates: Json = client
-        .get(server.api_url("/hub/updates"))
+    let installed: Json = client
+        .get(server.api_url("/hub/installed"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .send()
         .await
-        .expect("updates")
+        .expect("installed")
         .json()
         .await
-        .expect("parse updates");
-    let row = updates["updates"]
+        .expect("parse installed");
+    let row = installed["items"]
         .as_array()
-        .expect("updates array")
+        .expect("items array")
         .iter()
         .find(|r| r["hub_id"] == "mock-asst-a")
-        .expect("template install must appear in updates");
+        .expect("template install must appear in /hub/installed");
     assert_eq!(
         row["is_template_install"], true,
         "template install must be flagged: {row}",
+    );
+    assert_ne!(
+        row["installed_version"], row["current_version"],
+        "row must surface as outdated after the v9.9.2 activate: {row}",
     );
 
     // Stamp a synthetic outdated MODEL row (also `created_by: NULL`)
@@ -950,21 +960,21 @@ async fn template_install_surfaces_in_updates_with_template_flag() {
     .await
     .expect("insert synthetic model row");
 
-    let updates2: Json = client
-        .get(server.api_url("/hub/updates"))
+    let installed2: Json = client
+        .get(server.api_url("/hub/installed"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .send()
         .await
-        .expect("updates 2")
+        .expect("installed 2")
         .json()
         .await
-        .expect("parse updates 2");
-    let model_row = updates2["updates"]
+        .expect("parse installed 2");
+    let model_row = installed2["items"]
         .as_array()
-        .expect("updates2 array")
+        .expect("items2 array")
         .iter()
         .find(|r| r["hub_id"] == "mock-model-a")
-        .expect("synthetic model row should appear in updates");
+        .expect("synthetic model row should appear in /hub/installed");
     assert_eq!(
         model_row["is_template_install"], false,
         "MODEL install must NOT be flagged as template even though \
@@ -1426,9 +1436,9 @@ async fn install_as_system_mcp_with_replace_existing_succeeds() {
 }
 
 #[tokio::test]
-async fn system_mcp_install_surfaces_in_updates_with_system_flag() {
+async fn system_mcp_install_surfaces_in_installed_with_system_flag() {
     // When the catalog version moves forward AFTER a system install,
-    // /hub/updates surfaces the row with `is_system_mcp_install: true`
+    // /hub/installed surfaces the row with `is_system_mcp_install: true`
     // (and `is_template_install: false` — the flags must coexist
     // without crossing predicates) so the UI routes the Re-install
     // action through the system MCP endpoint instead of the
@@ -1481,21 +1491,21 @@ async fn system_mcp_install_surfaces_in_updates_with_system_flag() {
         .error_for_status()
         .expect("activate v2 ok");
 
-    let updates: Json = client
-        .get(server.api_url("/hub/updates"))
+    let installed: Json = client
+        .get(server.api_url("/hub/installed"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .send()
         .await
-        .expect("updates")
+        .expect("installed")
         .json()
         .await
-        .expect("parse updates");
-    let row = updates["updates"]
+        .expect("parse installed");
+    let row = installed["items"]
         .as_array()
-        .expect("updates array")
+        .expect("items array")
         .iter()
         .find(|r| r["hub_id"] == "mock-mcp-a")
-        .expect("system install must appear in updates");
+        .expect("system install must appear in /hub/installed");
     assert_eq!(
         row["is_system_mcp_install"], true,
         "system MCP install must be flagged: {row}",
@@ -1503,6 +1513,10 @@ async fn system_mcp_install_surfaces_in_updates_with_system_flag() {
     assert_eq!(
         row["is_template_install"], false,
         "the system MCP row must NOT be flagged as template: {row}",
+    );
+    assert_ne!(
+        row["installed_version"], row["current_version"],
+        "after the v9.9.2 activate, the row must surface as outdated: {row}",
     );
 }
 
@@ -1697,7 +1711,7 @@ async fn user_mcp_install_rejects_replace_existing_flag() {
 
 #[tokio::test]
 async fn replace_existing_preserves_admin_tunable_fields_mcp() {
-    // Re-install via /hub/updates must not silently demote a
+    // Re-install via /hub/installed must not silently demote a
     // previously-promoted system MCP server's admin-tunable runtime
     // fields. Sibling of `replace_existing_preserves_is_default`.
     // Specifically guards against the Round-1 F-1 silent-demote on

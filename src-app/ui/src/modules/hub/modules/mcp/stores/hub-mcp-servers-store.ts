@@ -30,7 +30,7 @@ interface HubMcpServersState {
    *  a 403. The frontend gates the button on `McpServersAdminCreate`
    *  so the action is hidden when the user lacks the permission.
    *  `replace_existing: true` is honored on the re-install path
-   *  (UpdatesHubTab) and overrides the duplicate-prevention 409. */
+   *  (InstalledHubTab) and overrides the duplicate-prevention 409. */
   createSystemFromHub: (
     request: CreateMcpServerFromHubRequest,
   ) => Promise<McpServer>

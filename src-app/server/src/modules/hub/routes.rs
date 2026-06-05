@@ -88,8 +88,8 @@ pub fn hub_router() -> ApiRouter {
             post_with(refresh_hub_catalog, refresh_hub_catalog_docs),
         )
         .api_route(
-            "/hub/updates",
-            get_with(get_hub_updates, get_hub_updates_docs),
+            "/hub/installed",
+            get_with(get_hub_installed, get_hub_installed_docs),
         )
         .api_route(
             "/hub/manifest/{id}",
