@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, Fragment } from 'react'
 import {
   Button,
   Card,
+  Divider,
   Empty,
   Flex,
   Popconfirm,
@@ -24,11 +25,12 @@ import { emitMcpServerDeleted } from '@/modules/mcp/events/emitters'
 import { emitAssistantDeleted } from '@/modules/assistant/events/emitters'
 import type { HubInstalledRow } from '@/api-client/types'
 
-const { Text, Title } = Typography
+const { Text } = Typography
 
-// Category metadata drives the three section cards. Keeping this
-// outside the component so the card-render loop is data-driven
-// instead of three near-identical JSX blocks.
+// Three section cards, data-driven so the row-render loop stays
+// flat. Icons match the per-category icon used elsewhere in the
+// app (Models = Appstore, Assistants = Robot, MCP = Api) so the
+// visual rhythm carries between pages.
 const CATEGORY_CARDS: Array<{
   key: HubInstalledRow['hub_category']
   title: string
@@ -39,31 +41,24 @@ const CATEGORY_CARDS: Array<{
     key: 'model',
     title: 'Models',
     icon: <AppstoreOutlined />,
-    emptyHint: 'No models installed from the hub yet.',
+    emptyHint:
+      'No models installed from the hub yet. Browse the Models tab to install one.',
   },
   {
     key: 'assistant',
     title: 'Assistants',
     icon: <RobotOutlined />,
-    emptyHint: 'No assistants installed from the hub yet.',
+    emptyHint:
+      'No assistants installed from the hub yet. Browse the Assistants tab to install one.',
   },
   {
     key: 'mcp_server',
     title: 'MCP Servers',
     icon: <ApiOutlined />,
-    emptyHint: 'No MCP servers installed from the hub yet.',
+    emptyHint:
+      'No MCP servers installed from the hub yet. Browse the MCP Servers tab to install one.',
   },
 ]
-
-function formatInstalledAt(iso: string): string {
-  // Localized short date + time — readable across UI locales without
-  // pulling in a heavy formatter just for this one field.
-  try {
-    return new Date(iso).toLocaleString()
-  } catch {
-    return iso
-  }
-}
 
 /**
  * Hub Installed tab. Every tracked install the caller can see
@@ -71,6 +66,12 @@ function formatInstalledAt(iso: string): string {
  * three cards: Models / Assistants / MCP Servers. Each row shows
  * name, scope, install date, installed-vs-current version, and
  * Re-install / Remove actions.
+ *
+ * Visual structure mirrors the rest of the settings pages
+ * (SandboxRootfsVersionsSection, McpServerCard,
+ * AuthProvidersListSection) — Card with a simple string title +
+ * `extra` for the count, body is a flex column with `<Divider/>`
+ * between rows, action buttons right-aligned in the row.
  */
 export function InstalledHubTab() {
   const items = Stores.HubInstalled.items
@@ -103,7 +104,8 @@ export function InstalledHubTab() {
   // with `replace_existing: true` so the prior user install (and any
   // legacy duplicates accumulated before the replace path existed)
   // get wiped. Models can't be re-installed inline — they need a
-  // provider + quantization choice, so we link to the Models tab.
+  // provider + quantization choice, so the action is disabled with
+  // a tooltip pointing at the Models tab.
   const reinstall = async (row: HubInstalledRow) => {
     setBusyId(row.entity_id)
     try {
@@ -151,12 +153,8 @@ export function InstalledHubTab() {
   // The DELETE handlers emit the entity-deleted backend event, which the
   // hub module's `CleanupHubEntitiesHandler` listens to and removes the
   // hub_entities tracking row — so we don't need a separate untrack call.
-  // Front-end stores get the deletion via the emit*Deleted helpers so any
-  // open settings page updates without a reload.
-  //
-  // Models: pass `delete_file=true` (the default) so the on-disk weights
-  // get cleaned up too — the user asked for symmetric semantics across
-  // all three entity types.
+  // Models: pass `delete_file=true` so the on-disk weights are wiped too,
+  // matching the symmetric "Remove = gone" semantic across all categories.
   const remove = async (row: HubInstalledRow) => {
     setBusyId(row.entity_id)
     try {
@@ -167,12 +165,12 @@ export function InstalledHubTab() {
         await ApiClient.Assistant.delete({ id: row.entity_id })
         await emitAssistantDeleted(row.entity_id)
       } else if (row.hub_category === 'model') {
-        // delete_file=true wipes the on-disk weights too (the
-        // handler's default, but stated explicitly here so the
-        // intent is obvious). The downstream LLM provider stores
-        // refresh on next navigation — emitting llm_model.deleted
-        // would need a providerId we don't have on this row, and
-        // the user-visible refresh comes from `loadInstalled` below.
+        // delete_file=true wipes on-disk weights too (the handler's
+        // default, but explicit here so the intent is obvious).
+        // Skipping the llm_model.deleted emit — it needs providerId,
+        // which the hub row doesn't carry; downstream stores will
+        // pick up the change on next navigation, and the
+        // `loadInstalled` reload below refreshes this tab.
         await ApiClient.LlmModel.delete({
           model_id: row.entity_id,
           delete_file: true,
@@ -199,21 +197,19 @@ export function InstalledHubTab() {
 
   if (error && items.length === 0) {
     return (
-      <Empty
-        description={
-          <Text type="secondary">Couldn't load installed list: {error}</Text>
-        }
-      />
+      <div className="px-3 pt-3">
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={
+            <Text type="secondary">Couldn't load installed list: {error}</Text>
+          }
+        />
+      </div>
     )
   }
 
   return (
-    <Flex vertical gap="middle" className="px-3 pb-6">
-      {catalogVersion && (
-        <Text type="secondary">
-          Current catalog: <Text strong>v{catalogVersion}</Text>
-        </Text>
-      )}
+    <Flex vertical className="gap-3 px-3 pb-6">
       {CATEGORY_CARDS.map(card => {
         const rows = grouped[card.key] ?? []
         return (
@@ -223,10 +219,13 @@ export function InstalledHubTab() {
               <Flex align="center" gap="small">
                 {card.icon}
                 <span>{card.title}</span>
-                <Tag>{rows.length}</Tag>
               </Flex>
             }
-            size="small"
+            extra={
+              <Tag>
+                {rows.length} {rows.length === 1 ? 'install' : 'installs'}
+              </Tag>
+            }
           >
             {rows.length === 0 ? (
               <Empty
@@ -236,95 +235,119 @@ export function InstalledHubTab() {
                 }
               />
             ) : (
-              <Flex vertical gap="small">
-                {rows.map(row => {
+              <Flex vertical className="gap-1">
+                {rows.map((row, i) => {
                   const installed = row.installed_version
                   const current = row.current_version
                   const isOutdated = installed !== current
+                  const installedAtIso = row.installed_at
+                  const installedAtShort = (() => {
+                    try {
+                      return new Date(installedAtIso).toLocaleDateString()
+                    } catch {
+                      return installedAtIso
+                    }
+                  })()
+                  const installedAtFull = (() => {
+                    try {
+                      return new Date(installedAtIso).toLocaleString()
+                    } catch {
+                      return installedAtIso
+                    }
+                  })()
                   return (
-                    <Flex
-                      key={`${row.entity_type}:${row.entity_id}`}
-                      align="center"
-                      justify="space-between"
-                      gap="small"
-                      wrap="wrap"
-                      className="py-2 border-b last:border-b-0"
-                    >
-                      <Flex vertical gap={2} className="min-w-0 flex-1">
-                        <Flex align="center" gap="small" wrap="wrap">
-                          <Text strong>{row.name || row.hub_id}</Text>
-                          {row.name && row.name !== row.hub_id && (
-                            <Text type="secondary" className="text-xs">
-                              {row.hub_id}
+                    <Fragment key={`${row.entity_type}:${row.entity_id}`}>
+                      {i > 0 && <Divider className="!my-3" />}
+                      <div className="flex items-start gap-3 flex-wrap">
+                        <div className="flex-1 min-w-48">
+                          {/* Title row — name + scope tag + version tag. */}
+                          <Flex align="center" gap="small" wrap>
+                            <Text className="font-semibold">
+                              {row.name || row.hub_id}
                             </Text>
-                          )}
-                          {row.is_system && (
-                            <Tag color="purple">system</Tag>
-                          )}
-                        </Flex>
-                        <Flex align="center" gap="small" wrap="wrap">
-                          <Tooltip
-                            title={`Installed ${formatInstalledAt(row.installed_at)}`}
+                            {row.is_system && (
+                              <Tag color="blue">System</Tag>
+                            )}
+                            <Tooltip
+                              title={
+                                isOutdated
+                                  ? `Installed v${installed ?? 'pre-tracking'}; catalog is at v${current}`
+                                  : `On catalog v${current}`
+                              }
+                            >
+                              <Tag color={isOutdated ? 'orange' : 'green'}>
+                                {isOutdated
+                                  ? `v${installed ?? 'pre-tracking'} → v${current}`
+                                  : `v${current}`}
+                              </Tag>
+                            </Tooltip>
+                          </Flex>
+                          {/* Subtitle row — hub_id (when different from name)
+                              and install date. */}
+                          <Flex
+                            align="center"
+                            gap="small"
+                            wrap
+                            className="mt-1"
                           >
-                            <Text type="secondary" className="text-xs">
-                              installed{' '}
-                              {new Date(row.installed_at).toLocaleDateString()}
-                            </Text>
-                          </Tooltip>
-                          <Tag color={isOutdated ? 'orange' : 'green'}>
-                            v
-                            {installed ?? 'pre-tracking'}
-                            {isOutdated && ` → v${current}`}
-                          </Tag>
-                        </Flex>
-                      </Flex>
-                      <Flex gap="small">
-                        {row.hub_category === 'model' ? (
-                          <Tooltip title="Models re-install via the Models tab (pick a provider + quantization)">
-                            <Button size="small" disabled>
-                              Re-install
-                            </Button>
-                          </Tooltip>
-                        ) : (
+                            {row.name && row.name !== row.hub_id && (
+                              <Text type="secondary" className="text-xs">
+                                {row.hub_id}
+                              </Text>
+                            )}
+                            <Tooltip title={`Installed ${installedAtFull}`}>
+                              <Text type="secondary" className="text-xs">
+                                installed {installedAtShort}
+                              </Text>
+                            </Tooltip>
+                          </Flex>
+                        </div>
+                        <div className="flex gap-2 items-center justify-end">
+                          {row.hub_category === 'model' ? (
+                            <Tooltip title="Models re-install via the Models tab (pick a provider + quantization)">
+                              <Button icon={<ReloadOutlined />} disabled>
+                                Re-install
+                              </Button>
+                            </Tooltip>
+                          ) : (
+                            <Popconfirm
+                              title="Re-install from current catalog"
+                              description={`Re-install "${row.name || row.hub_id}" at v${current}? The existing copy will be replaced.`}
+                              okText="Re-install"
+                              cancelText="Cancel"
+                              onConfirm={() => reinstall(row)}
+                            >
+                              <Button
+                                icon={<ReloadOutlined />}
+                                loading={busyId === row.entity_id}
+                              >
+                                Re-install
+                              </Button>
+                            </Popconfirm>
+                          )}
                           <Popconfirm
-                            title="Re-install from current catalog"
-                            description={`Re-install "${row.name || row.hub_id}" at v${current}? The existing copy will be replaced.`}
-                            okText="Re-install"
+                            title="Remove this install?"
+                            description={
+                              row.hub_category === 'model'
+                                ? `Delete "${row.name || row.hub_id}" and remove the on-disk model files. This can't be undone.`
+                                : `Delete "${row.name || row.hub_id}". This can't be undone.`
+                            }
+                            okText="Remove"
+                            okButtonProps={{ danger: true }}
                             cancelText="Cancel"
-                            onConfirm={() => reinstall(row)}
+                            onConfirm={() => remove(row)}
                           >
                             <Button
-                              size="small"
-                              icon={<ReloadOutlined />}
+                              danger
+                              icon={<DeleteOutlined />}
                               loading={busyId === row.entity_id}
                             >
-                              Re-install
+                              Remove
                             </Button>
                           </Popconfirm>
-                        )}
-                        <Popconfirm
-                          title="Remove this install?"
-                          description={
-                            row.hub_category === 'model'
-                              ? `Delete "${row.name || row.hub_id}" and remove the on-disk model files. This can't be undone.`
-                              : `Delete "${row.name || row.hub_id}". This can't be undone.`
-                          }
-                          okText="Remove"
-                          okButtonProps={{ danger: true }}
-                          cancelText="Cancel"
-                          onConfirm={() => remove(row)}
-                        >
-                          <Button
-                            size="small"
-                            danger
-                            icon={<DeleteOutlined />}
-                            loading={busyId === row.entity_id}
-                          >
-                            Remove
-                          </Button>
-                        </Popconfirm>
-                      </Flex>
-                    </Flex>
+                        </div>
+                      </div>
+                    </Fragment>
                   )
                 })}
               </Flex>
@@ -332,11 +355,6 @@ export function InstalledHubTab() {
           </Card>
         )
       })}
-      {items.length === 0 && !loading && (
-        <Title level={5} type="secondary" className="text-center mt-4">
-          Nothing installed from the hub yet.
-        </Title>
-      )}
     </Flex>
   )
 }
