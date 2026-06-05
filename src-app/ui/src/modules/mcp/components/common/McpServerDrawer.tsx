@@ -105,6 +105,7 @@ export function McpServerDrawer() {
           if (cancelled) return
           setHasExistingOAuth(!!cfg)
           form.setFieldsValue({
+            oauth_enabled: !!cfg,
             oauth_client_id: cfg?.client_id ?? '',
             oauth_client_secret: '',
             oauth_scopes: cfg?.scopes ?? '',
@@ -327,11 +328,18 @@ export function McpServerDrawer() {
 
     // Persist OAuth config for user-owned HTTP servers.
     if (isUserMode && values.transport_type === 'http') {
+      const oauthEnabled = !!values.oauth_enabled
       const clientId = (values.oauth_client_id ?? '').trim()
       const clientSecret = values.oauth_client_secret ?? ''
       const scopes = (values.oauth_scopes ?? '').trim() || null
       try {
-        if (clientId && clientSecret) {
+        if (!oauthEnabled) {
+          // Section toggled off — clear any existing config. No-op if
+          // there was nothing stored to begin with.
+          if (hasExistingOAuth) {
+            await Stores.McpServer.deleteMcpServerOAuthConfig(saved.id)
+          }
+        } else if (clientId && clientSecret) {
           await Stores.McpServer.setMcpServerOAuthConfig(saved.id, {
             client_id: clientId,
             client_secret: clientSecret,
@@ -342,10 +350,12 @@ export function McpServerDrawer() {
           flipToEditIfFreshCreate()
           return null
         } else if (!clientId && hasExistingOAuth) {
-          // Cleared the client id → remove the stored config.
+          // Cleared the client id (with section still enabled) →
+          // remove the stored config.
           await Stores.McpServer.deleteMcpServerOAuthConfig(saved.id)
         }
-        // (clientId set, secret blank, config exists → keep the current secret)
+        // (oauthEnabled + clientId set + secret blank + config exists
+        //  → keep the current secret)
       } catch (error) {
         // The server was already created/updated; rebind a fresh create to edit
         // before the error propagates so a retry can't create a duplicate.
@@ -582,36 +592,64 @@ export function McpServerDrawer() {
 
               {transportType === 'http' && isUserMode && (
                 <>
-                  <Divider className="text-sm text-gray-400">
+                  <Divider className="text-sm text-gray-400 !mt-8">
                     OAuth 2.1
                   </Divider>
+                  {/* Section-level enable toggle at the TOP of the
+                      OAuth block. When off, the client id / secret /
+                      scopes fields disappear entirely — keeps the
+                      drawer compact for the common case (no OAuth)
+                      and makes "turn off OAuth on this server"
+                      explicit (saving with this off clears the
+                      stored OAuth config). */}
                   <Form.Item
-                    label="OAuth Client ID"
-                    name="oauth_client_id"
-                    help="For servers requiring OAuth 2.1 (client_credentials). Leave blank for none; clear to remove."
+                    label="Enable OAuth 2.1"
+                    name="oauth_enabled"
+                    valuePropName="checked"
+                    help="For servers requiring OAuth client_credentials. Turning this off on save clears any stored OAuth config."
                   >
-                    <Input placeholder="client id" autoComplete="off" />
+                    <Switch />
                   </Form.Item>
                   <Form.Item
-                    label="OAuth Client Secret"
-                    name="oauth_client_secret"
-                    help={
-                      hasExistingOAuth
-                        ? 'A secret is stored. Leave blank to keep it; enter a value to replace it.'
-                        : 'Stored securely and never shown again.'
+                    noStyle
+                    shouldUpdate={(prev, curr) =>
+                      prev.oauth_enabled !== curr.oauth_enabled
                     }
                   >
-                    <Input.Password
-                      placeholder={hasExistingOAuth ? '•••••••• (unchanged)' : 'client secret'}
-                      autoComplete="new-password"
-                    />
-                  </Form.Item>
-                  <Form.Item
-                    label="OAuth Scopes"
-                    name="oauth_scopes"
-                    help="Optional, space-separated (e.g. 'mcp read')."
-                  >
-                    <Input placeholder="mcp" autoComplete="off" />
+                    {({ getFieldValue }) =>
+                      getFieldValue('oauth_enabled') ? (
+                        <>
+                          <Form.Item
+                            label="OAuth Client ID"
+                            name="oauth_client_id"
+                            help="Client ID issued by the upstream OAuth server."
+                          >
+                            <Input placeholder="client id" autoComplete="off" />
+                          </Form.Item>
+                          <Form.Item
+                            label="OAuth Client Secret"
+                            name="oauth_client_secret"
+                            help={
+                              hasExistingOAuth
+                                ? 'A secret is stored. Leave blank to keep it; enter a value to replace it.'
+                                : 'Stored securely and never shown again.'
+                            }
+                          >
+                            <Input.Password
+                              placeholder={hasExistingOAuth ? '•••••••• (unchanged)' : 'client secret'}
+                              autoComplete="new-password"
+                            />
+                          </Form.Item>
+                          <Form.Item
+                            label="OAuth Scopes"
+                            name="oauth_scopes"
+                            help="Optional, space-separated (e.g. 'mcp read')."
+                          >
+                            <Input placeholder="mcp" autoComplete="off" />
+                          </Form.Item>
+                        </>
+                      ) : null
+                    }
                   </Form.Item>
                 </>
               )}
@@ -632,7 +670,7 @@ export function McpServerDrawer() {
             <InputNumber min={1} max={600} placeholder="30" style={{ width: '100%' }} />
           </Form.Item>
 
-          <Divider className="text-sm text-gray-400">Sampling</Divider>
+          <Divider className="text-sm text-gray-400 !mt-8">Sampling</Divider>
 
           {/* Supports Sampling */}
           <Form.Item
@@ -644,27 +682,40 @@ export function McpServerDrawer() {
             <Switch />
           </Form.Item>
 
-          {/* Usage Mode */}
+          {/* Sampling sub-fields — only meaningful when sampling is
+              enabled; hide entirely otherwise to reduce noise. */}
           <Form.Item
-            label="Usage Mode"
-            name="usage_mode"
-            help="Auto: LLM decides when to call this server. Always: server is called before every LLM request to enrich context."
+            noStyle
+            shouldUpdate={(prev, curr) =>
+              prev.supports_sampling !== curr.supports_sampling
+            }
           >
-            <Select
-              options={[
-                { label: 'Auto (LLM decides)', value: 'auto' },
-                { label: 'Always (pre-process every prompt)', value: 'always' },
-              ]}
-            />
-          </Form.Item>
+            {({ getFieldValue }) =>
+              getFieldValue('supports_sampling') ? (
+                <>
+                  <Form.Item
+                    label="Usage Mode"
+                    name="usage_mode"
+                    help="Auto: LLM decides when to call this server. Always: server is called before every LLM request to enrich context."
+                  >
+                    <Select
+                      options={[
+                        { label: 'Auto (LLM decides)', value: 'auto' },
+                        { label: 'Always (pre-process every prompt)', value: 'always' },
+                      ]}
+                    />
+                  </Form.Item>
 
-          {/* Max Concurrent Sessions */}
-          <Form.Item
-            label="Max Concurrent Sessions"
-            name="max_concurrent_sessions"
-            help="Limit simultaneous sampling sessions. Leave blank for unlimited. Users over the limit receive a friendly error."
-          >
-            <InputNumber min={1} placeholder="Unlimited" style={{ width: '100%' }} />
+                  <Form.Item
+                    label="Max Concurrent Sessions"
+                    name="max_concurrent_sessions"
+                    help="Limit simultaneous sampling sessions. Leave blank for unlimited. Users over the limit receive a friendly error."
+                  >
+                    <InputNumber min={1} placeholder="Unlimited" style={{ width: '100%' }} />
+                  </Form.Item>
+                </>
+              ) : null
+            }
           </Form.Item>
 
           {/* Run in sandbox (system + stdio only) */}
