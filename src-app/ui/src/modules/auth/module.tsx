@@ -1,4 +1,5 @@
 import { createModule } from '@/core'
+import '@/modules/auth/sync' // registerSync('session') side-effect
 import { useAuthStore } from '@/modules/auth/Auth.store'
 import { useAuthProvidersStore } from '@/modules/auth/AuthProviders.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'

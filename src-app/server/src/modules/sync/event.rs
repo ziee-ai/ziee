@@ -44,6 +44,18 @@ pub enum SyncEntity {
     /// A shared assistant template (visible to any user who can read
     /// templates — non-secret, uniform view).
     AssistantTemplate,
+    /// Admin view of a system (deployment-shared) MCP server.
+    McpServerSystem,
+    /// An LLM repository (admin).
+    LlmRepository,
+    /// A local-runtime engine version (admin).
+    RuntimeVersion,
+    /// Deployment-wide memory admin settings (singleton).
+    MemoryAdminSettings,
+    /// Code-sandbox resource-limit settings (singleton).
+    CodeSandboxSettings,
+    /// Hub catalog settings (singleton).
+    HubSettings,
 
     // --- Group-scoped user view (delivered to holders of the user read
     // perm; safe because we only NOTIFY — each recipient refetches its own
@@ -52,6 +64,14 @@ pub enum SyncEntity {
     // mutation, so admins and regular users each refresh their own surface. ---
     /// A user's accessible-providers (with enabled models) view changed.
     UserLlmProvider,
+    /// A user's accessible (system) MCP-servers view changed.
+    UserMcpServer,
+
+    // --- Owner-scoped signal ---
+    /// The user's session/permissions changed (group membership or a group's
+    /// permissions were edited) — the client re-bootstraps `/auth/me`. `id`
+    /// is the affected user id.
+    Session,
 }
 
 /// What happened to the entity.
@@ -129,6 +149,25 @@ fn audience_kind(entity: SyncEntity) -> AudienceKind {
         SyncEntity::AssistantTemplate => {
             AudienceKind::Permission("assistant_templates::read")
         }
+        SyncEntity::McpServerSystem => {
+            AudienceKind::Permission("mcp_servers_admin::read")
+        }
+        SyncEntity::LlmRepository => {
+            AudienceKind::Permission("llm_repositories::read")
+        }
+        SyncEntity::RuntimeVersion => {
+            AudienceKind::Permission("llm_local_runtime::read")
+        }
+        SyncEntity::MemoryAdminSettings => {
+            AudienceKind::Permission("memory::admin::read")
+        }
+        SyncEntity::CodeSandboxSettings => {
+            AudienceKind::Permission("code_sandbox::resource_limits::read")
+        }
+        SyncEntity::HubSettings => AudienceKind::Permission("hub::catalog::read"),
+        SyncEntity::UserMcpServer => AudienceKind::Permission("mcp_servers::read"),
+
+        SyncEntity::Session => AudienceKind::Owner,
     }
 }
 

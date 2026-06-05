@@ -14,6 +14,7 @@ use crate::{
     common::{ApiResult, AppError, PaginationQuery},
     core::{events::EventBus, repository::Repos},
     modules::permissions::{RequirePermissions, with_permission},
+    modules::sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
 };
 use std::sync::Arc;
 
@@ -118,6 +119,7 @@ pub fn get_repository_docs(op: TransformOperation) -> TransformOperation {
 pub async fn create_repository(
     _auth: RequirePermissions<(LlmRepositoriesCreate,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Json(request): Json<CreateLlmRepositoryRequest>,
 ) -> ApiResult<Json<LlmRepository>> {
     // Validate auth type
@@ -137,6 +139,8 @@ pub async fn create_repository(
 
     // Emit event
     event_bus.emit_async(LlmRepositoryEvent::created(repository.clone()).into());
+
+    sync_publish(SyncEntity::LlmRepository, SyncAction::Create, repository.id, None, origin.0);
 
     Ok((StatusCode::CREATED, Json(repository)))
 }
@@ -159,6 +163,7 @@ pub async fn update_repository(
     _auth: RequirePermissions<(LlmRepositoriesEdit,)>,
     Path(repository_id): Path<Uuid>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Json(request): Json<UpdateLlmRepositoryRequest>,
 ) -> ApiResult<Json<LlmRepository>> {
     // Validate auth type if provided
@@ -226,6 +231,8 @@ pub async fn update_repository(
     // Emit event
     event_bus.emit_async(LlmRepositoryEvent::updated(updated_repository.clone()).into());
 
+    sync_publish(SyncEntity::LlmRepository, SyncAction::Update, repository_id, None, origin.0);
+
     Ok((StatusCode::OK, Json(updated_repository)))
 }
 
@@ -248,6 +255,7 @@ pub async fn delete_repository(
     _auth: RequirePermissions<(LlmRepositoriesDelete,)>,
     Path(repository_id): Path<Uuid>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
 ) -> ApiResult<StatusCode> {
     // Get repository name before deletion for event
     let repository_name = Repos.llm_repository
@@ -263,6 +271,7 @@ pub async fn delete_repository(
             // Emit event
             event_bus
                 .emit_async(LlmRepositoryEvent::deleted(repository_id, repository_name).into());
+            sync_publish(SyncEntity::LlmRepository, SyncAction::Delete, repository_id, None, origin.0);
             Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
         }
         Ok(Ok(false)) => Err(AppError::not_found("Repository").into()),

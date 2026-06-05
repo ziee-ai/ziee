@@ -13,6 +13,7 @@ import {
   useRuntimeDownloadProgressStore,
 } from './stores'
 import './types' // Register event types
+import './sync' // registerSync('runtime_version') side-effect
 
 const RuntimeVersionSettings = lazyWithPreload(() =>
   import('./components/RuntimeVersionSettings').then(m => ({

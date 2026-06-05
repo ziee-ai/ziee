@@ -37,6 +37,12 @@ const ALL_SYNC_ENTITIES = [
   'group',
   'user',
   'assistant_template',
+  'mcp_server_system',
+  'llm_repository',
+  'runtime_version',
+  'memory_admin_settings',
+  'code_sandbox_settings',
+  'session',
 ] as const satisfies readonly SyncEntity[]
 
 /**

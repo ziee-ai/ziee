@@ -7,6 +7,7 @@ import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 import { useSandboxRootfsVersionsStore } from './stores/SandboxRootfsVersions.store'
 import { useSandboxResourceLimitsStore } from './stores/SandboxResourceLimits.store'
 import './types' // CRITICAL: enable store type declaration merging
+import './sync' // registerSync('code_sandbox_settings') side-effect
 
 const SandboxSettingsPage = lazyWithPreload(() =>
   import('./components/SandboxSettingsPage').then(m => ({

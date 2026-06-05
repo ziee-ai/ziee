@@ -12,6 +12,7 @@ use crate::{
     common::{ApiResult, AppError},
     core::{EventBus, Repos},
     modules::permissions::{RequirePermissions, with_permission},
+    modules::sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
 };
 
 use super::super::events::LlmLocalRuntimeEvent;
@@ -125,6 +126,7 @@ pub async fn get_runtime_version(
 pub async fn download_runtime_version(
     _auth: RequirePermissions<(RuntimeVersionCreate,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Json(req): Json<DownloadVersionRequest>,
 ) -> ApiResult<Json<DownloadVersionStartedResponse>> {
     let pool = Repos.pool();
@@ -219,6 +221,8 @@ pub async fn download_runtime_version(
             task.key
         ),
     };
+
+    sync_publish(SyncEntity::RuntimeVersion, SyncAction::Create, uuid::Uuid::nil(), None, origin.0);
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -413,6 +417,7 @@ pub async fn delete_runtime_version(
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(version_id): Path<Uuid>,
     Query(params): Query<DeleteVersionQuery>,
+    origin: SyncOrigin,
 ) -> ApiResult<impl IntoApiResponse> {
     let pool = Repos.pool();
     let binary_manager = BinaryManager::with_cache_dir(pool.clone(), std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()))
@@ -504,6 +509,8 @@ pub async fn delete_runtime_version(
         .into(),
     );
 
+    sync_publish(SyncEntity::RuntimeVersion, SyncAction::Delete, version_id, None, origin.0);
+
     Ok((StatusCode::NO_CONTENT, ()))
 }
 
@@ -512,6 +519,7 @@ pub async fn set_system_default(
     _auth: RequirePermissions<(RuntimeVersionUpdate,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(version_id): Path<Uuid>,
+    origin: SyncOrigin,
 ) -> ApiResult<Json<RuntimeVersionResponse>> {
     let pool = Repos.pool();
     let binary_manager = BinaryManager::with_cache_dir(pool.clone(), std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()))
@@ -544,6 +552,8 @@ pub async fn set_system_default(
         )
         .into(),
     );
+
+    sync_publish(SyncEntity::RuntimeVersion, SyncAction::Update, version_id, None, origin.0);
 
     Ok((StatusCode::OK, Json(RuntimeVersionResponse::from(version_record))))
 }

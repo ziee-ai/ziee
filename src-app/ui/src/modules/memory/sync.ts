@@ -1,5 +1,6 @@
 import { registerSync } from '@/core/sync'
 import { useMemoriesStore } from '@/modules/memory/stores/Memories.store'
+import { useMemoryAdminStore } from '@/modules/memory/stores/MemoryAdmin.store'
 import { useMemorySettingsStore } from '@/modules/memory/stores/MemorySettings.store'
 
 // Memories is a paginated list; `load()` reloads the current page, which
@@ -21,5 +22,15 @@ registerSync('memory_settings', {
   },
   onResync: () => {
     void useMemorySettingsStore.getState().load()
+  },
+})
+
+// Deployment-wide memory admin settings (singleton; event id is nil).
+registerSync('memory_admin_settings', {
+  onEvent: () => {
+    void useMemoryAdminStore.getState().load()
+  },
+  onResync: () => {
+    void useMemoryAdminStore.getState().load()
   },
 })

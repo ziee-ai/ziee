@@ -462,6 +462,7 @@ pub fn get_admin_settings_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn update_admin_settings(
     _auth: RequirePermissions<(MemoryAdminManage,)>,
+    origin: SyncOrigin,
     Json(body): Json<UpdateMemoryAdminSettingsRequest>,
 ) -> ApiResult<Json<MemoryAdminSettings>> {
     if let Some(k) = body.default_top_k {
@@ -581,6 +582,14 @@ pub async fn update_admin_settings(
             }
         }
     }
+
+    sync_publish(
+        SyncEntity::MemoryAdminSettings,
+        SyncAction::Update,
+        uuid::Uuid::nil(),
+        None,
+        origin.0,
+    );
 
     Ok((StatusCode::OK, Json(row)))
 }

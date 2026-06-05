@@ -15,6 +15,7 @@ use crate::{
     common::ApiResult,
     core::EventBus,
     modules::permissions::{RequirePermissions, with_permission},
+    modules::sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
 };
 
 use super::super::{
@@ -55,12 +56,16 @@ pub async fn assign_server_to_groups(
     _auth: RequirePermissions<(McpServersAdminEdit,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
+    origin: SyncOrigin,
     Json(request): Json<ServerGroupsRequest>,
 ) -> ApiResult<StatusCode> {
     Repos.mcp.set_server_groups(id, request.group_ids).await?;
 
     // Emit group assignment changed event
     event_bus.emit_async(McpServerEvent::group_assignment_changed(id));
+
+    sync_publish(SyncEntity::UserMcpServer, SyncAction::Update, id, None, origin.0);
+    sync_publish(SyncEntity::McpServerSystem, SyncAction::Update, id, None, origin.0);
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
@@ -85,11 +90,15 @@ pub async fn remove_server_from_group(
     _auth: RequirePermissions<(McpServersAdminEdit,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path((id, group_id)): Path<(Uuid, Uuid)>,
+    origin: SyncOrigin,
 ) -> ApiResult<StatusCode> {
     Repos.mcp.remove_from_group(group_id, id).await?;
 
     // Emit group assignment changed event
     event_bus.emit_async(McpServerEvent::group_assignment_changed(id));
+
+    sync_publish(SyncEntity::UserMcpServer, SyncAction::Update, id, None, origin.0);
+    sync_publish(SyncEntity::McpServerSystem, SyncAction::Update, id, None, origin.0);
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
@@ -144,6 +153,7 @@ pub async fn update_group_system_servers(
     _auth: RequirePermissions<(McpServersAdminEdit,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(group_id): Path<Uuid>,
+    origin: SyncOrigin,
     Json(request): Json<UpdateGroupSystemServersRequest>,
 ) -> ApiResult<Json<GroupSystemServersResponse>> {
     use std::collections::HashSet;
@@ -219,6 +229,9 @@ pub async fn update_group_system_servers(
             );
             crate::common::AppError::internal_error("Database operation failed")
         })?;
+
+    sync_publish(SyncEntity::UserMcpServer, SyncAction::Update, uuid::Uuid::nil(), None, origin.0);
+    sync_publish(SyncEntity::McpServerSystem, SyncAction::Update, uuid::Uuid::nil(), None, origin.0);
 
     Ok((StatusCode::OK, Json(GroupSystemServersResponse { servers })))
 }

@@ -34,5 +34,11 @@ declare module '@/core/events' {
     'sync:group': SyncEntityEvent<'group'>
     'sync:user': SyncEntityEvent<'user'>
     'sync:assistant_template': SyncEntityEvent<'assistant_template'>
+    'sync:mcp_server_system': SyncEntityEvent<'mcp_server_system'>
+    'sync:llm_repository': SyncEntityEvent<'llm_repository'>
+    'sync:runtime_version': SyncEntityEvent<'runtime_version'>
+    'sync:memory_admin_settings': SyncEntityEvent<'memory_admin_settings'>
+    'sync:code_sandbox_settings': SyncEntityEvent<'code_sandbox_settings'>
+    'sync:session': SyncEntityEvent<'session'>
   }
 }

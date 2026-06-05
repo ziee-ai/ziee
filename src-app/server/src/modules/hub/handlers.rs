@@ -8,6 +8,7 @@ use crate::{
     modules::{
         llm_model::{ModelParameters, permissions::LlmModelsCreate},
         permissions::{RequirePermissions, with_permission},
+        sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
     },
 };
 use std::sync::Arc;
@@ -861,6 +862,7 @@ pub fn get_hub_catalog_version_docs(op: TransformOperation) -> TransformOperatio
 pub async fn refresh_hub_catalog(
     _auth: RequirePermissions<(HubCatalogManage,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
 ) -> ApiResult<Json<HubCatalogRefreshResponse>> {
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
@@ -882,6 +884,8 @@ pub async fn refresh_hub_catalog(
             HubEvent::mcp_servers_refreshed(prev, outcome.new_version.clone()).into(),
         );
     }
+
+    sync_publish(SyncEntity::HubSettings, SyncAction::Update, uuid::Uuid::nil(), None, origin.0);
 
     Ok((
         StatusCode::OK,

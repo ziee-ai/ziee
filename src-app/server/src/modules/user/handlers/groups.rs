@@ -324,7 +324,7 @@ pub fn get_group_members_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn assign_user_to_group(
     auth: RequirePermissions<(GroupsAssignUsers,)>,
-
+    origin: SyncOrigin,
     Json(request): Json<AssignUserToGroupRequest>,
 ) -> ApiResult<StatusCode> {
     // Check if user exists
@@ -342,6 +342,17 @@ pub async fn assign_user_to_group(
         .user
         .assign_to_group(request.user_id, request.group_id, Some(auth.user.id))
         .await?;
+
+    // Signal the affected user that their permissions changed so their
+    // open sessions re-bootstrap /auth/me immediately (the 60s re-check is
+    // the backstop). Owner-scoped to that user only.
+    sync_publish(
+        SyncEntity::Session,
+        SyncAction::Update,
+        request.user_id,
+        Some(request.user_id),
+        origin.0,
+    );
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
@@ -362,6 +373,7 @@ pub fn assign_user_to_group_docs(op: TransformOperation) -> TransformOperation {
 pub async fn remove_user_from_group(
     _auth: RequirePermissions<(GroupsAssignUsers,)>,
     Path((user_id, group_id)): Path<(Uuid, Uuid)>,
+    origin: SyncOrigin,
 ) -> ApiResult<StatusCode> {
     // Check if user exists
     if Repos.user.get_by_id(user_id).await?.is_none() {
@@ -375,6 +387,15 @@ pub async fn remove_user_from_group(
 
     // Remove user from group
     Repos.user.remove_from_group(user_id, group_id).await?;
+
+    // Signal the affected user that their permissions changed (Owner-scoped).
+    sync_publish(
+        SyncEntity::Session,
+        SyncAction::Update,
+        user_id,
+        Some(user_id),
+        origin.0,
+    );
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
