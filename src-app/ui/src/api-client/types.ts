@@ -140,6 +140,11 @@ export interface Catalog {
 
 export type CatalogProvenance = 'seed' | 'github'
 
+export interface ChangePasswordRequest {
+  current_password: string
+  new_password: string
+}
+
 export interface ChatStreamChunk {
   branch_id?: string
   content?: ContentBlockDelta[]
@@ -1196,6 +1201,7 @@ export interface McpSettingsResponse {
 }
 
 export interface MeResponse {
+  has_password: boolean
   permissions: string[]
   user: User
 }
@@ -2213,6 +2219,11 @@ export interface UpdateMemoryRequest {
   metadata?: any
 }
 
+export interface UpdateProfileRequest {
+  display_name?: string
+  username?: string
+}
+
 export interface UpdateProjectRequest {
   description?: string
   default_assistant_id?: string
@@ -2605,6 +2616,7 @@ export const ApiEndpoints = {
   'AssistantTemplate.getDefault': 'GET /api/assistant-templates/default',
   'AssistantTemplate.list': 'GET /api/assistant-templates',
   'AssistantTemplate.update': 'PUT /api/assistant-templates/{id}',
+  'Auth.changePassword': 'POST /api/auth/password',
   'Auth.linkAccount': 'POST /api/auth/link-account',
   'Auth.listProviders': 'GET /api/auth/providers',
   'Auth.login': 'POST /api/auth/login',
@@ -2612,6 +2624,7 @@ export const ApiEndpoints = {
   'Auth.me': 'GET /api/auth/me',
   'Auth.refresh': 'POST /api/auth/refresh',
   'Auth.register': 'POST /api/auth/register',
+  'Auth.updateProfile': 'POST /api/auth/profile',
   'AuthProviders.create': 'POST /api/admin/auth-providers',
   'AuthProviders.delete': 'DELETE /api/admin/auth-providers/{id}',
   'AuthProviders.list': 'GET /api/admin/auth-providers',
@@ -2844,6 +2857,7 @@ export type ApiEndpointParameters = {
   'AssistantTemplate.getDefault': void
   'AssistantTemplate.list': { limit: number; page: number }
   'AssistantTemplate.update': { id: string } & UpdateAssistantRequest
+  'Auth.changePassword': ChangePasswordRequest
   'Auth.linkAccount': LinkAccountRequest
   'Auth.listProviders': void
   'Auth.login': LoginRequest
@@ -2851,6 +2865,7 @@ export type ApiEndpointParameters = {
   'Auth.me': void
   'Auth.refresh': RefreshTokenRequest
   'Auth.register': RegisterRequest
+  'Auth.updateProfile': UpdateProfileRequest
   'AuthProviders.create': CreateAuthProviderRequest
   'AuthProviders.delete': { id: string }
   'AuthProviders.list': void
@@ -3083,6 +3098,7 @@ export type ApiEndpointResponses = {
   'AssistantTemplate.getDefault': Assistant
   'AssistantTemplate.list': AssistantListResponse
   'AssistantTemplate.update': Assistant
+  'Auth.changePassword': void
   'Auth.linkAccount': AuthResponse
   'Auth.listProviders': PublicProvidersResponse
   'Auth.login': AuthResponse
@@ -3090,6 +3106,7 @@ export type ApiEndpointResponses = {
   'Auth.me': MeResponse
   'Auth.refresh': TokenPair
   'Auth.register': AuthResponse
+  'Auth.updateProfile': User
   'AuthProviders.create': AuthProviderResponse
   'AuthProviders.delete': DeleteProviderResponse
   'AuthProviders.list': AuthProviderResponse[]

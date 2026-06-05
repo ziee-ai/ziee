@@ -24,6 +24,10 @@ interface AuthState {
   user?: User | null
   token?: string | null
   permissions?: string[]
+  // Whether the current account has a local password (drives the
+  // self-service "change password" form on the profile page). False
+  // for OAuth/LDAP-only accounts. Sourced from MeResponse.has_password.
+  hasPassword: boolean
   isAuthenticated: boolean
   isLoading: boolean
   isInitializing: boolean
@@ -42,6 +46,10 @@ interface AuthState {
   clearAuthenticationError: () => void
   initAuth: () => Promise<void>
   setAuthFromAutoLogin: (response: AutoLoginResponse) => void
+  // Re-fetch /me and refresh the cached user/permissions/hasPassword.
+  // Called after a self-service profile edit so the sidebar widget and
+  // password-section visibility stay in sync without a page reload.
+  refreshCurrentUser: () => Promise<void>
 }
 
 // Augment the RegisteredStores interface for IntelliSense
@@ -55,6 +63,7 @@ const defaultState = {
   user: null,
   token: null,
   permissions: [],
+  hasPassword: false,
   isAuthenticated: false,
   isLoading: false,
   isInitializing: true,
@@ -66,6 +75,11 @@ const defaultState = {
 // the tab regains focus, so stale permissions self-heal after an admin
 // edits the current user's group in another tab).
 let visibilityListener: (() => void) | null = null
+
+// Guards `refreshCurrentUser` so overlapping callers (mount effect +
+// post-save refresh + visibility refetch) collapse to a single in-flight
+// /me request instead of racing.
+let refreshInFlight: Promise<void> | null = null
 
 export const useAuthStore = create<AuthState>()(
   subscribeWithSelector(
@@ -227,6 +241,7 @@ export const useAuthStore = create<AuthState>()(
                   set({
                     user: response.user,
                     permissions: response.permissions,
+                    hasPassword: response.has_password,
                   })
                 })
                 .catch(err => {
@@ -234,10 +249,7 @@ export const useAuthStore = create<AuthState>()(
                   // next API call's normal error handling kick in rather
                   // than logging the user out here (which would lose
                   // any in-progress work).
-                  console.warn(
-                    '[Auth] visibility-refetch /me failed:',
-                    err,
-                  )
+                  console.warn('[Auth] visibility-refetch /me failed:', err)
                 })
             }
             document.addEventListener('visibilitychange', visibilityListener)
@@ -269,6 +281,7 @@ export const useAuthStore = create<AuthState>()(
               set({
                 user: response.user,
                 permissions: response.permissions,
+                hasPassword: response.has_password,
                 isAuthenticated: true,
                 isLoading: false,
                 isInitializing: false,
@@ -293,6 +306,24 @@ export const useAuthStore = create<AuthState>()(
               user: null,
             })
           }
+        },
+
+        refreshCurrentUser: async () => {
+          // Collapse concurrent callers onto one in-flight /me request.
+          if (refreshInFlight) return refreshInFlight
+          refreshInFlight = (async () => {
+            try {
+              const response = await ApiClient.Auth.me(undefined, undefined)
+              set({
+                user: response.user,
+                permissions: response.permissions,
+                hasPassword: response.has_password,
+              })
+            } finally {
+              refreshInFlight = null
+            }
+          })()
+          return refreshInFlight
         },
       }),
       {

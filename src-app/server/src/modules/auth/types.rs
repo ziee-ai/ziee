@@ -79,6 +79,28 @@ pub struct LinkAccountRequest {
     pub password: String,
 }
 
+/// Self-service profile update for the authenticated user. Only the
+/// safe fields are accepted here: `email` is intentionally NOT
+/// editable (re-verification flow not built; was removed to close an
+/// OAuth account-takeover vector) and `is_active`/`is_admin`/
+/// `permissions` are admin-only and can never be set through this path.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct UpdateProfileRequest {
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default)]
+    pub display_name: Option<String>,
+}
+
+/// Self-service password change for the authenticated user. Requires
+/// the current password as proof. Only valid for local-password
+/// accounts (`password_hash IS NOT NULL`).
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ChangePasswordRequest {
+    pub current_password: String,
+    pub new_password: String,
+}
+
 // =====================================================
 // Response Types
 // =====================================================
@@ -95,6 +117,11 @@ pub struct MeResponse {
     pub user: User,
     /// Effective permissions (union of user's direct permissions + all active group permissions)
     pub permissions: Vec<String>,
+    /// Whether this account has a local password set (`password_hash IS
+    /// NOT NULL`). `password_hash` itself is never serialized, so this
+    /// derived flag is how the client decides whether to offer a
+    /// self-service "change password" form (false for OAuth/LDAP-only).
+    pub has_password: bool,
 }
 
 /// Public-safe summary of an enabled auth provider — what the login
@@ -180,6 +207,84 @@ fn default_true() -> bool {
 // tauri crate (`desktop/tauri/src/modules/tunnel_auth/`) — they
 // depend on the desktop-only `remote_access_settings` table.
 
-// NOTE: `ChangePasswordRequest` moved to the desktop tauri crate
-// (`desktop/tauri/src/modules/tunnel_auth/models.rs`) alongside its
-// only handler (`change_password`).
+// NOTE: the desktop tauri crate keeps its OWN `ChangePasswordRequest`
+// + `change_password` handler at `/users/me/password`
+// (`desktop/tauri/src/modules/tunnel_auth/`) for the Remote Access
+// password gate. The server-crate `ChangePasswordRequest` above backs
+// the web self-service `POST /auth/password` and is intentionally
+// separate (no shared route, no shared handler).
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn update_profile_request_all_fields_optional() {
+        // Empty object → both None (the no-op patch).
+        let r: UpdateProfileRequest = serde_json::from_str("{}").unwrap();
+        assert!(r.username.is_none() && r.display_name.is_none());
+
+        // Display-only.
+        let r: UpdateProfileRequest =
+            serde_json::from_str(r#"{"display_name":"Dee"}"#).unwrap();
+        assert_eq!(r.display_name.as_deref(), Some("Dee"));
+        assert!(r.username.is_none());
+
+        // Username-only.
+        let r: UpdateProfileRequest =
+            serde_json::from_str(r#"{"username":"neo"}"#).unwrap();
+        assert_eq!(r.username.as_deref(), Some("neo"));
+        assert!(r.display_name.is_none());
+
+        // Both.
+        let r: UpdateProfileRequest =
+            serde_json::from_str(r#"{"username":"neo","display_name":"Dee"}"#).unwrap();
+        assert_eq!(r.username.as_deref(), Some("neo"));
+        assert_eq!(r.display_name.as_deref(), Some("Dee"));
+    }
+
+    #[test]
+    fn update_profile_request_distinguishes_empty_string_from_null() {
+        // The handler relies on this: `null` (and absent) deserialize to
+        // None → no-op; empty string deserializes to Some("") → which the
+        // handler normalizes into "clear display_name to NULL".
+        let null: UpdateProfileRequest =
+            serde_json::from_str(r#"{"display_name":null}"#).unwrap();
+        assert!(null.display_name.is_none());
+
+        let empty: UpdateProfileRequest =
+            serde_json::from_str(r#"{"display_name":""}"#).unwrap();
+        assert_eq!(empty.display_name.as_deref(), Some(""));
+    }
+
+    #[test]
+    fn update_profile_request_drops_unknown_privileged_fields() {
+        // serde ignores unknown fields by default — is_admin / permissions
+        // / email / is_active simply don't exist on the struct, so they
+        // can never be set through this path.
+        let r: UpdateProfileRequest = serde_json::from_str(
+            r#"{"display_name":"ok","is_admin":true,"permissions":["*"],"email":"x@y.z","is_active":false}"#,
+        )
+        .unwrap();
+        assert_eq!(r.display_name.as_deref(), Some("ok"));
+        assert!(r.username.is_none());
+    }
+
+    #[test]
+    fn change_password_request_requires_both_fields() {
+        // Both present → ok.
+        let r: ChangePasswordRequest =
+            serde_json::from_str(r#"{"current_password":"a","new_password":"b"}"#).unwrap();
+        assert_eq!(r.current_password, "a");
+        assert_eq!(r.new_password, "b");
+
+        // Missing new_password → deserialization error.
+        assert!(
+            serde_json::from_str::<ChangePasswordRequest>(r#"{"current_password":"a"}"#).is_err()
+        );
+        // Missing current_password → deserialization error.
+        assert!(
+            serde_json::from_str::<ChangePasswordRequest>(r#"{"new_password":"b"}"#).is_err()
+        );
+    }
+}
