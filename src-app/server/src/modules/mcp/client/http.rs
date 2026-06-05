@@ -444,6 +444,38 @@ fn route_unsolicited_event(server_name: &str, event_block: &str) {
     }
 }
 
+/// Apply the headers the MCP Streamable HTTP spec requires on every
+/// client→server POST — including JSON-RPC *responses* to server→client
+/// requests (`elicitation/create`, `sampling/createMessage`) and their
+/// cancels.
+///
+/// Omitting `Accept` is the bug this closes: a spec-compliant server (the
+/// official TypeScript `StreamableHTTPServerTransport`, the Python SDK) replies
+/// `406 Not Acceptable` and silently drops the message when `Accept` does not
+/// list both `application/json` and `text/event-stream`. The server's pending
+/// `elicitation/create` request is then never answered and times out, surfacing
+/// to the user as "server->client request 'elicitation/create' timed out".
+/// `MCP-Protocol-Version` (spec MUST after init) and `Authorization` (else
+/// OAuth servers 401) are required on the same POSTs for the same reason.
+fn apply_mcp_post_headers(
+    builder: reqwest::RequestBuilder,
+    session_id: Option<String>,
+    protocol_version: Option<&str>,
+    bearer: Option<&str>,
+) -> reqwest::RequestBuilder {
+    let mut b = builder.header("Accept", "application/json, text/event-stream");
+    if let Some(s) = session_id {
+        b = b.header("mcp-session-id", s);
+    }
+    if let Some(ver) = protocol_version {
+        b = b.header("MCP-Protocol-Version", ver);
+    }
+    if let Some(token) = bearer {
+        b = b.header("Authorization", format!("Bearer {token}"));
+    }
+    b
+}
+
 /// Attempt to resume a dropped tool-call SSE stream via `GET` +
 /// `Last-Event-Id` (MCP resumability). Runs the bounded backoff retry loop
 /// internally; returns the fresh streaming response on success, or `None` if
@@ -1452,10 +1484,12 @@ impl HttpMcpClient {
                                             "id": req_id,
                                             "result": { "action": "cancel" }
                                         });
-                                        let mut post = stream_client.post(&url).json(&body);
-                                        if let Some(s) = get_sid() {
-                                            post = post.header("mcp-session-id", s);
-                                        }
+                                        let post = apply_mcp_post_headers(
+                                            stream_client.post(&url).json(&body),
+                                            get_sid(),
+                                            protocol_version.as_deref(),
+                                            bearer.as_deref(),
+                                        );
                                         let _ = post.send().await;
                                         continue;
                                     }
@@ -1468,19 +1502,25 @@ impl HttpMcpClient {
                                         "id": req_id,
                                         "result": { "action": "cancel" }
                                     });
-                                    let mut post = stream_client.post(&url).json(&body);
-                                    if let Some(s) = get_sid() {
-                                        post = post.header("mcp-session-id", s);
-                                    }
+                                    let post = apply_mcp_post_headers(
+                                        stream_client.post(&url).json(&body),
+                                        get_sid(),
+                                        protocol_version.as_deref(),
+                                        bearer.as_deref(),
+                                    );
                                     let _ = post.send().await;
                                     continue;
                                 }
 
-                                // Block the loop until the user responds.
-                                // No timeout — the MCP spec defines none and users need time to think.
-                                // Cleanup happens via SSE close: when sse_tx.send() fails,
-                                // registry::remove() is called which drops the tx, causing elicit_rx
-                                // to return Err(RecvError) below.
+                                // Block the loop until the user responds. There is no inner
+                                // timeout here (the MCP spec defines none, and users need time to
+                                // think), but the whole call_tool future is bounded by execute_tool's
+                                // outer timeout (timeout_seconds + 300s): on expiry the future is
+                                // dropped and this await is simply cancelled (torn down) — that is
+                                // what bounds the wait. The Err arm below is instead reached when the
+                                // registry's sender (elicit_tx, held in ELICITATION_REGISTRY) is
+                                // dropped elsewhere — e.g. on SSE close, registry::remove() drops it,
+                                // causing elicit_rx to return Err(RecvError) and we send a cancel.
                                 let user_response = match elicit_rx.await {
                                     Ok(response) => response,
                                     Err(_) => {
@@ -1507,10 +1547,12 @@ impl HttpMcpClient {
                                     "id": req_id,
                                     "result": result_value
                                 });
-                                let mut post = stream_client.post(&url).json(&body);
-                                if let Some(s) = get_sid() {
-                                    post = post.header("mcp-session-id", s);
-                                }
+                                let post = apply_mcp_post_headers(
+                                    stream_client.post(&url).json(&body),
+                                    get_sid(),
+                                    protocol_version.as_deref(),
+                                    bearer.as_deref(),
+                                );
                                 match post.send().await {
                                     Ok(r) => tracing::info!(
                                         "[elicitation] POSTed response id={:?} action='{}' → HTTP {}",
@@ -1545,6 +1587,8 @@ impl HttpMcpClient {
                                             let url = url.clone();
                                             let sid = get_sid();
                                             let req_id = req_id.clone();
+                                            let bearer = bearer.clone();
+                                            let protocol_version = protocol_version.clone();
                                             async move {
                                                 let result = match handler.create_message(sampling_req).await {
                                                     Ok(r) => r,
@@ -1569,10 +1613,12 @@ impl HttpMcpClient {
                                                     "id": req_id,
                                                     "result": result
                                                 });
-                                                let mut post = client.post(&url).json(&body);
-                                                if let Some(s) = sid {
-                                                    post = post.header("mcp-session-id", s);
-                                                }
+                                                let post = apply_mcp_post_headers(
+                                                    client.post(&url).json(&body),
+                                                    sid,
+                                                    protocol_version.as_deref(),
+                                                    bearer.as_deref(),
+                                                );
                                                 match post.send().await {
                                                     Ok(r) => tracing::info!(
                                                         "[sampling] POSTed sampling response id={:?} → HTTP {}",
@@ -1597,6 +1643,8 @@ impl HttpMcpClient {
                                             let url = url.clone();
                                             let sid = get_sid();
                                             let req_id = req_id.clone();
+                                            let bearer = bearer.clone();
+                                            let protocol_version = protocol_version.clone();
                                             async move {
                                                 let error_result = SamplingCreateMessageResult {
                                                     role: "assistant".to_string(),
@@ -1611,10 +1659,12 @@ impl HttpMcpClient {
                                                     "id": req_id,
                                                     "result": error_result
                                                 });
-                                                let mut post = client.post(&url).json(&body);
-                                                if let Some(s) = sid {
-                                                    post = post.header("mcp-session-id", s);
-                                                }
+                                                let post = apply_mcp_post_headers(
+                                                    client.post(&url).json(&body),
+                                                    sid,
+                                                    protocol_version.as_deref(),
+                                                    bearer.as_deref(),
+                                                );
                                                 if let Err(post_err) = post.send().await {
                                                     tracing::error!(
                                                         "[sampling] Failed to POST parse-error response id={:?}: {}",
@@ -1816,10 +1866,12 @@ impl HttpMcpClient {
                                             "id": req_id,
                                             "result": { "action": "cancel" }
                                         });
-                                        let mut post = stream_client.post(&url).json(&body);
-                                        if let Some(s) = get_sid() {
-                                            post = post.header("mcp-session-id", s);
-                                        }
+                                        let post = apply_mcp_post_headers(
+                                            stream_client.post(&url).json(&body),
+                                            get_sid(),
+                                            protocol_version.as_deref(),
+                                            bearer.as_deref(),
+                                        );
                                         let _ = post.send().await;
                                         continue;
                                     }
@@ -1831,10 +1883,12 @@ impl HttpMcpClient {
                                         "id": req_id,
                                         "result": { "action": "cancel" }
                                     });
-                                    let mut post = stream_client.post(&url).json(&body);
-                                    if let Some(s) = get_sid() {
-                                        post = post.header("mcp-session-id", s);
-                                    }
+                                    let post = apply_mcp_post_headers(
+                                        stream_client.post(&url).json(&body),
+                                        get_sid(),
+                                        protocol_version.as_deref(),
+                                        bearer.as_deref(),
+                                    );
                                     let _ = post.send().await;
                                     continue;
                                 }
@@ -1863,10 +1917,12 @@ impl HttpMcpClient {
                                     "id": req_id,
                                     "result": result_value
                                 });
-                                let mut post = stream_client.post(&url).json(&body);
-                                if let Some(s) = get_sid() {
-                                    post = post.header("mcp-session-id", s);
-                                }
+                                let post = apply_mcp_post_headers(
+                                    stream_client.post(&url).json(&body),
+                                    get_sid(),
+                                    protocol_version.as_deref(),
+                                    bearer.as_deref(),
+                                );
                                 match post.send().await {
                                     Ok(r) => tracing::info!(
                                         "[elicitation] POSTed response id={:?} action='{}' → HTTP {}",
@@ -1898,10 +1954,12 @@ impl HttpMcpClient {
                                         "message": "sampling/createMessage is not supported — enable sampling on this MCP server to use this feature"
                                     }
                                 });
-                                let mut post = stream_client.post(&url).json(&body);
-                                if let Some(s) = get_sid() {
-                                    post = post.header("mcp-session-id", s);
-                                }
+                                let post = apply_mcp_post_headers(
+                                    stream_client.post(&url).json(&body),
+                                    get_sid(),
+                                    protocol_version.as_deref(),
+                                    bearer.as_deref(),
+                                );
                                 let _ = post.send().await;
                                 continue;
                             }
