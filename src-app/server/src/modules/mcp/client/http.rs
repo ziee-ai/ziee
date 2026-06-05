@@ -251,6 +251,7 @@ async fn drain_standalone_sse(
     last_event_id: &mut Option<String>,
     backoff_initial_ms: &mut u64,
     reconnect_attempt: &mut u32,
+    ctx: &GetStreamCtx,
 ) {
     let mut buf = String::new();
     let mut stream = resp.bytes_stream();
@@ -296,7 +297,30 @@ async fn drain_standalone_sse(
                 );
                 *backoff_initial_ms = retry_ms;
             }
-            route_unsolicited_event(server_name, &event_block);
+            match route_unsolicited_event(server_name, &event_block) {
+                UnsolicitedAction::Handled => {}
+                UnsolicitedAction::Elicitation(json) => {
+                    // Snapshot the connection state + active-call context and run
+                    // the handshake in its own task so the stream keeps reading.
+                    let bearer = ctx
+                        .oauth_token
+                        .read()
+                        .ok()
+                        .and_then(|g| g.clone())
+                        .filter(|t| t.is_valid())
+                        .map(|t| t.access_token);
+                    tokio::spawn(handle_get_stream_elicitation(
+                        json,
+                        server_name.to_string(),
+                        ctx.stream_client.clone(),
+                        ctx.url.clone(),
+                        ctx.session_id.read().ok().and_then(|g| g.clone()),
+                        ctx.protocol_version.read().ok().and_then(|g| g.clone()),
+                        bearer,
+                        ctx.active_call_ctx.read().ok().and_then(|g| g.clone()),
+                    ));
+                }
+            }
         }
     }
     tracing::debug!(
@@ -367,22 +391,59 @@ fn sse_event_data(event_block: &str) -> String {
         .join("\n")
 }
 
+/// In-flight tool-call context captured so the standalone GET-SSE task can
+/// answer a server→client `elicitation/create` that arrives on the GET stream
+/// rather than on the tool-call POST response. Some servers (e.g. `dscc`)
+/// answer `tools/call` with plain JSON and deliver elicitation on the
+/// standalone stream. Non-built-in sessions are ephemeral — one tool call per
+/// client (see `McpSessionManager`) — so binding the GET-stream elicitation to
+/// "the active call on this client" is unambiguous.
+#[derive(Clone)]
+struct ActiveCallCtx {
+    message_id: Option<uuid::Uuid>,
+    sse_tx: Option<
+        tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>,
+    >,
+    elicit_notify_tx: Option<
+        tokio::sync::mpsc::UnboundedSender<
+            crate::modules::mcp::elicitation::models::ElicitationStartedNotification,
+        >,
+    >,
+}
+
+/// What the standalone GET-SSE task needs to answer an `elicitation/create`
+/// that arrives on the stream: the means to POST the reply back, and the
+/// in-flight call context to route the form to the browser.
+struct GetStreamCtx {
+    stream_client: Client,
+    url: String,
+    session_id: Arc<RwLock<Option<String>>>,
+    protocol_version: Arc<RwLock<Option<String>>>,
+    oauth_token: Arc<RwLock<Option<StoredToken>>>,
+    active_call_ctx: Arc<RwLock<Option<ActiveCallCtx>>>,
+}
+
+/// Outcome of classifying an unsolicited GET-stream event.
+enum UnsolicitedAction {
+    /// Already fully handled (logged) — nothing more for the caller to do.
+    Handled,
+    /// A server→client `elicitation/create` request the caller must answer.
+    Elicitation(Value),
+}
+
 /// Dispatch an unsolicited SSE event received on the standalone GET stream.
-/// Today: parse the JSON-RPC envelope + log by method shape. Tomorrow: route
-/// `sampling/createMessage` to the registered SamplingHandler,
-/// `elicitation/create` to the elicitation channel, `notifications/progress`
-/// to the progress consumer for the matching token, `notifications/cancelled`
-/// into the in-flight cancel set — all those consumer channels are currently
-/// per-call (set on `tools/call`), so there is no live consumer for an
-/// unsolicited arrival outside a POST flow. The skeleton stays here so the
-/// future wiring is mechanical, AND so production logs name the method
-/// instead of dumping the raw JSON.
-fn route_unsolicited_event(server_name: &str, event_block: &str) {
+/// Notifications are logged (there is no per-call consumer for them outside a
+/// POST flow). A server→client `elicitation/create` is returned as
+/// [`UnsolicitedAction::Elicitation`] so the caller can run the handshake
+/// against the in-flight tool call (see `handle_get_stream_elicitation`).
+/// `sampling/createMessage` on the GET stream is still logged-and-dropped
+/// (no GET-path sampling handler yet).
+fn route_unsolicited_event(server_name: &str, event_block: &str) -> UnsolicitedAction {
     let data = sse_event_data(event_block);
     if data.is_empty() {
         // Spec's "priming event" — `id:` with empty `data:` — used for
         // Last-Event-Id seeding (GET-resume support is a Phase-3 follow-up).
-        return;
+        return UnsolicitedAction::Handled;
     }
     let parsed: Value = match serde_json::from_str(&data) {
         Ok(v) => v,
@@ -391,7 +452,7 @@ fn route_unsolicited_event(server_name: &str, event_block: &str) {
                 "[mcp] standalone GET-SSE for '{server_name}' got non-JSON payload: {e}; data={}",
                 data.chars().take(200).collect::<String>()
             );
-            return;
+            return UnsolicitedAction::Handled;
         }
     };
     let method = parsed.get("method").and_then(|m| m.as_str());
@@ -426,11 +487,11 @@ fn route_unsolicited_event(server_name: &str, event_block: &str) {
             );
         }
         (Some("elicitation/create"), true) => {
-            tracing::warn!(
-                "[mcp] '{server_name}' GET-SSE elicitation/create received but no \
-                 consumer is attached to the standalone stream — request will time out. \
-                 Follow-up: wire elicitation channel into the GET path."
+            tracing::trace!(
+                "[elicitation] '{server_name}' GET-SSE raw elicitation/create: {}",
+                data.chars().take(2000).collect::<String>()
             );
+            return UnsolicitedAction::Elicitation(parsed);
         }
         (Some(m), _) => {
             tracing::debug!("[mcp] '{server_name}' GET-SSE {m} (no router branch)");
@@ -441,6 +502,121 @@ fn route_unsolicited_event(server_name: &str, event_block: &str) {
                 data.chars().take(200).collect::<String>()
             );
         }
+    }
+    UnsolicitedAction::Handled
+}
+
+/// Answer a server→client `elicitation/create` that arrived on the standalone
+/// GET stream, mirroring the POST-stream handshake: register a oneshot, surface
+/// the form to the browser via the in-flight call's channels, await the user's
+/// reply, and POST it back through [`apply_mcp_post_headers`]. When there is no
+/// active call (no browser to ask) it auto-cancels so the server isn't stranded.
+async fn handle_get_stream_elicitation(
+    json: Value,
+    server_name: String,
+    stream_client: Client,
+    url: String,
+    session_id: Option<String>,
+    protocol_version: Option<String>,
+    bearer: Option<String>,
+    ctx: Option<ActiveCallCtx>,
+) {
+    use crate::modules::mcp::elicitation::{models, registry};
+
+    let req_id = json.get("id").cloned().unwrap_or(Value::Null);
+    let params = json.get("params").cloned().unwrap_or(Value::Null);
+    let message = params
+        .get("message")
+        .and_then(|m| m.as_str())
+        .unwrap_or("")
+        .to_string();
+    let requested_schema = params.get("requestedSchema").cloned().unwrap_or(Value::Null);
+
+    // POST a JSON-RPC result back to the server with the spec-required headers.
+    let post_result = |result_value: Value| {
+        let body = serde_json::json!({ "jsonrpc": "2.0", "id": req_id.clone(), "result": result_value });
+        apply_mcp_post_headers(
+            stream_client.post(&url).json(&body),
+            session_id.clone(),
+            protocol_version.as_deref(),
+            bearer.as_deref(),
+        )
+    };
+
+    let (message_id, sse_tx, elicit_notify_tx) = match ctx {
+        Some(c) => (c.message_id, c.sse_tx, c.elicit_notify_tx),
+        None => (None, None, None),
+    };
+
+    // No browser to ask → auto-cancel so the server's request doesn't hang.
+    let Some(sse_tx) = sse_tx else {
+        tracing::warn!(
+            "[elicitation] '{server_name}' GET-SSE elicitation/create id={req_id:?} but no active \
+             call context — auto-cancelling"
+        );
+        let _ = post_result(serde_json::json!({ "action": "cancel" })).send().await;
+        return;
+    };
+
+    tracing::info!(
+        "[elicitation] '{server_name}' GET-SSE received elicitation/create id={req_id:?}"
+    );
+
+    let elicitation_id = uuid::Uuid::new_v4();
+    let content_id = uuid::Uuid::new_v4();
+    let (elicit_tx, elicit_rx) = tokio::sync::oneshot::channel::<models::ElicitationResponse>();
+    registry::register(elicitation_id, elicit_tx, Some(content_id));
+
+    // Persist the DB row + bind the owning user (via the extension layer).
+    if let Some(ref notify_tx) = elicit_notify_tx {
+        let _ = notify_tx.send(models::ElicitationStartedNotification {
+            elicitation_id,
+            content_id,
+            message_id,
+            message: message.clone(),
+            requested_schema: requested_schema.clone(),
+            server: server_name.clone(),
+        });
+    }
+
+    // Surface the form to the browser.
+    let event_data = serde_json::json!({
+        "elicitation_id": elicitation_id.to_string(),
+        "message_id": message_id.map(|m| m.to_string()),
+        "message": message,
+        "requested_schema": requested_schema,
+        "server": server_name,
+    });
+    let event = axum::response::sse::Event::default()
+        .event("mcpElicitationRequired")
+        .data(event_data.to_string());
+    if sse_tx.send(Ok(event)).is_err() {
+        tracing::warn!("[elicitation] '{server_name}' GET-SSE channel closed — cancelling id={req_id:?}");
+        let _ = registry::remove(elicitation_id);
+        let _ = post_result(serde_json::json!({ "action": "cancel" })).send().await;
+        return;
+    }
+
+    // Block until the user responds (bounded by the in-flight tool call's outer
+    // timeout, which on expiry drops elicit_rx and resolves this to cancel).
+    let user_response = match elicit_rx.await {
+        Ok(r) => r,
+        Err(_) => models::ElicitationResponse { action: "cancel".to_string(), content: None },
+    };
+    let result_value = if user_response.action == "accept" {
+        serde_json::json!({ "action": user_response.action, "content": user_response.content.unwrap_or(Value::Null) })
+    } else {
+        serde_json::json!({ "action": user_response.action })
+    };
+    let action_str = result_value.get("action").and_then(|v| v.as_str()).unwrap_or("?").to_string();
+    match post_result(result_value).send().await {
+        Ok(r) => tracing::info!(
+            "[elicitation] '{server_name}' GET-SSE POSTed response id={req_id:?} action='{action_str}' → HTTP {}",
+            r.status()
+        ),
+        Err(e) => tracing::error!(
+            "[elicitation] '{server_name}' GET-SSE failed to POST response id={req_id:?}: {e}"
+        ),
     }
 }
 
@@ -560,6 +736,10 @@ pub struct HttpMcpClient {
     /// tool-call tasks so they attach the same bearer.
     oauth_token: Arc<RwLock<Option<StoredToken>>>,
     oauth_token_endpoint: Arc<RwLock<Option<String>>>,
+    /// Context of the in-flight tool call, so the standalone GET-SSE task can
+    /// answer an `elicitation/create` that a server delivers on the GET stream
+    /// rather than on the tool-call POST response. See [`ActiveCallCtx`].
+    active_call_ctx: Arc<RwLock<Option<ActiveCallCtx>>>,
     /// Plan-3 Phase-3 (I2) — standalone GET-SSE consumer. After `initialized`
     /// the client opens a `GET` with `Accept: text/event-stream` to receive
     /// unsolicited server→client messages (notifications/progress beyond the
@@ -675,6 +855,7 @@ impl HttpMcpClient {
             oauth: oauth.map(Arc::new),
             oauth_token: Arc::new(RwLock::new(None)),
             oauth_token_endpoint: Arc::new(RwLock::new(None)),
+            active_call_ctx: Arc::new(RwLock::new(None)),
             get_sse_task: Mutex::new(None),
         })
     }
@@ -764,8 +945,19 @@ impl HttpMcpClient {
         let oauth = self.oauth.clone();
         let oauth_token = self.oauth_token.clone();
         let oauth_token_endpoint = self.oauth_token_endpoint.clone();
+        let active_call_ctx = self.active_call_ctx.clone();
 
         let handle = tokio::spawn(async move {
+            // Bundle of what `drain_standalone_sse` needs to answer an
+            // `elicitation/create` that arrives on this GET stream.
+            let get_ctx = GetStreamCtx {
+                stream_client: stream_client.clone(),
+                url: url.clone(),
+                session_id: session_id.clone(),
+                protocol_version: protocol_version.clone(),
+                oauth_token: oauth_token.clone(),
+                active_call_ctx,
+            };
             // Persistent across reconnects.
             let mut last_event_id: Option<String> = None;
             // SDK-default backoff curve; a server `retry:` field overrides the
@@ -917,6 +1109,7 @@ impl HttpMcpClient {
                     &mut last_event_id,
                     &mut backoff_initial_ms,
                     &mut reconnect_attempt,
+                    &get_ctx,
                 )
                 .await;
 
@@ -2111,6 +2304,19 @@ impl McpClient for HttpMcpClient {
         let protocol_version = self.get_protocol_version();
         // Cached OAuth bearer (acquired at connect/initialize for OAuth servers).
         let bearer = self.current_bearer();
+
+        // Publish this call's channels so the standalone GET-SSE task can route a
+        // server→client `elicitation/create` that arrives on the GET stream (some
+        // servers answer tools/call with plain JSON and elicit on the GET stream).
+        // Set before the POST is sent, since the elicitation arrives in response
+        // to it. Ephemeral sessions ⇒ one active call per client ⇒ unambiguous.
+        if let Ok(mut g) = self.active_call_ctx.write() {
+            *g = Some(ActiveCallCtx {
+                message_id,
+                sse_tx: sse_tx.clone(),
+                elicit_notify_tx: elicit_notify_tx.clone(),
+            });
+        }
 
         // Use sampling-aware SSE streaming if a sampling handler is present.
         // Spawn in a completely independent task so that req.send().await inside

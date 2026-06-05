@@ -669,3 +669,80 @@ async fn elicit_via_sampling_path_response_post_carries_accept_header() {
         "sampling-path response POST must also carry the spec-required Accept header"
     );
 }
+
+// ─── Elicitation delivered on the standalone GET stream (the `dscc` pattern) ──
+//
+// Some servers answer `tools/call` with plain `application/json` and deliver
+// their `elicitation/create` request on the standalone GET-SSE stream rather
+// than on the tool-call POST response. ziee historically dropped GET-stream
+// elicitation ("…will time out"), so such a tool call hung server-side. This
+// test drives that flow end-to-end: connect (opens the GET stream) → call a
+// tool whose result waits on a GET-stream elicitation → respond → assert the
+// tool completes and the server received our reply.
+
+#[tokio::test]
+async fn elicit_delivered_on_standalone_get_stream_completes() {
+    use super::fixtures::mock_get_stream_elicitation_server::MockGetStreamElicitationServer;
+
+    let mock = MockGetStreamElicitationServer::start().await;
+    let mut client = HttpMcpClient::new(server_config(mock.base_url())).unwrap();
+    client.connect().await.expect("connect");
+
+    // Let the standalone GET stream establish before the tool call.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let (notify_tx, mut notify_rx) = mpsc::unbounded_channel::<ElicitationStartedNotification>();
+    let (sse_tx, _sse_rx) = mpsc::unbounded_channel::<
+        Result<axum::response::sse::Event, std::convert::Infallible>,
+    >();
+    let message_id = uuid::Uuid::new_v4();
+
+    let call_handle = tokio::spawn(async move {
+        client
+            .call_tool(
+                "get_stream_tool",
+                serde_json::json!({}),
+                Some(message_id),
+                Some(sse_tx),
+                Some(notify_tx),
+            )
+            .await
+    });
+
+    // The elicitation arrives on the GET stream and must be routed to this
+    // call's context. PRE-FIX it is dropped, so this notification never fires.
+    let notif = tokio::time::timeout(Duration::from_secs(6), notify_rx.recv())
+        .await
+        .expect("a GET-stream elicitation must surface a notification within 6s")
+        .expect("notification channel must yield Some");
+    assert_eq!(notif.message_id, Some(message_id));
+    assert_eq!(
+        notif.requested_schema["properties"]["empirical"]["type"],
+        "boolean"
+    );
+
+    elicitation_registry::respond(
+        notif.elicitation_id,
+        ElicitationResponse {
+            action: "accept".to_string(),
+            content: Some(serde_json::json!({ "empirical": true })),
+        },
+    );
+
+    let result = tokio::time::timeout(Duration::from_secs(8), call_handle)
+        .await
+        .expect("call_tool must complete")
+        .expect("task")
+        .expect("tool result");
+    assert!(!result.is_error);
+    let combined = serde_json::to_string(&result.content).unwrap();
+    assert!(
+        combined.contains("get-stream-tool-done"),
+        "expected the tool result after answering the GET-stream elicitation; got: {combined}"
+    );
+
+    let responses = mock.responses();
+    assert_eq!(responses.len(), 1, "server should have received exactly one elicitation response");
+    assert_eq!(responses[0]["result"]["action"], "accept");
+    assert_eq!(responses[0]["result"]["content"]["empirical"], true);
+}
