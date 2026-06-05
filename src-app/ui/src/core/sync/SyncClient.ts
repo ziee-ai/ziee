@@ -67,6 +67,10 @@ async function connectOnce(myEpoch: number): Promise<void> {
   }
 
   const baseUrl = await getBaseUrl()
+  // `getBaseUrl` awaits (a dynamic-port lookup on desktop/Tauri) — if a
+  // user-switch superseded this loop meanwhile, bail before opening a stream.
+  if (!started || myEpoch !== epoch) return
+
   const abort = new AbortController()
   activeAbort = abort
 
@@ -77,6 +81,13 @@ async function connectOnce(myEpoch: number): Promise<void> {
     },
     signal: abort.signal,
   })
+
+  // Superseded while the fetch was in flight → abort this stream + bail so we
+  // don't clobber the new loop's `activeAbort` or leak a reader.
+  if (!started || myEpoch !== epoch) {
+    abort.abort()
+    return
+  }
 
   if (!response.ok || !response.body) {
     throw new Error(`[sync] subscribe failed: ${response.status}`)

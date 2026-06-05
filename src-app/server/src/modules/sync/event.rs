@@ -54,6 +54,8 @@ pub enum SyncEntity {
     LlmRepository,
     /// A local-runtime engine version (admin).
     RuntimeVersion,
+    /// Deployment-wide local-runtime engine settings (singleton).
+    RuntimeSettings,
     /// Deployment-wide memory admin settings (singleton).
     MemoryAdminSettings,
     /// Code-sandbox resource-limit settings (singleton).
@@ -167,6 +169,9 @@ fn audience_kind(entity: SyncEntity) -> AudienceKind {
         SyncEntity::RuntimeVersion => {
             AudienceKind::Permission("llm_local_runtime::versions_read")
         }
+        SyncEntity::RuntimeSettings => {
+            AudienceKind::Permission("llm_local_runtime::settings_read")
+        }
         SyncEntity::MemoryAdminSettings => {
             AudienceKind::Permission("memory::admin::read")
         }
@@ -251,6 +256,7 @@ mod tests {
             (SyncEntity::McpServerSystem, "mcp_servers_admin::read"),
             (SyncEntity::LlmRepository, "llm_repositories::read"),
             (SyncEntity::RuntimeVersion, "llm_local_runtime::versions_read"),
+            (SyncEntity::RuntimeSettings, "llm_local_runtime::settings_read"),
             (SyncEntity::MemoryAdminSettings, "memory::admin::read"),
             (
                 SyncEntity::CodeSandboxSettings,

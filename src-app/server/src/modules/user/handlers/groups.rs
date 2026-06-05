@@ -363,6 +363,15 @@ pub async fn assign_user_to_group(
         origin.0,
     );
 
+    // The group's member list changed → refresh admins viewing it elsewhere.
+    sync_publish(
+        SyncEntity::Group,
+        SyncAction::Update,
+        request.group_id,
+        None,
+        origin.0,
+    );
+
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
 
@@ -403,6 +412,15 @@ pub async fn remove_user_from_group(
         SyncAction::Update,
         user_id,
         Some(user_id),
+        origin.0,
+    );
+
+    // The group's member list changed → refresh admins viewing it elsewhere.
+    sync_publish(
+        SyncEntity::Group,
+        SyncAction::Update,
+        group_id,
+        None,
         origin.0,
     );
 

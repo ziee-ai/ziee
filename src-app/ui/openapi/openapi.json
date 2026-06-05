@@ -22715,6 +22715,11 @@
             "const": "runtime_version"
           },
           {
+            "description": "Deployment-wide local-runtime engine settings (singleton).",
+            "type": "string",
+            "const": "runtime_settings"
+          },
+          {
             "description": "Deployment-wide memory admin settings (singleton).",
             "type": "string",
             "const": "memory_admin_settings"

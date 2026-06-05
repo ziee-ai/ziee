@@ -688,6 +688,85 @@ cargo test --test integration_tests project:: -- --test-threads=1 \
 
 ---
 
+## Realtime Sync
+
+Cross-device sync over a per-user **Server-Sent-Events** stream. The wire
+payload is **notify-and-refetch only** — `{entity, action, id}`, never row
+data — so a misrouted event can't leak: the client refetches via the
+existing permission-checked REST endpoint, and the SSE channel carries
+nothing sensitive.
+
+### Backend module
+
+`src-app/server/src/modules/sync/{mod,event,registry,handlers,extractor}.rs`.
+
+- **`event.rs::audience_kind`** is the single, auditable authorization table:
+  each `SyncEntity` maps to `Owner(user_id)` | `Permission(&str)` |
+  `Everyone`. The `match` is **exhaustive**, so a new entity can't compile
+  without an explicit audience (a new entity can never silently default to a
+  broadcast). The perm string MUST equal the read-perm gating the client's
+  refetch endpoint.
+- **`registry.rs`** — per-user keyed connection pool (NOT the global
+  broadcast pool used by download/hardware SSE). Caps: `512` global / `12`
+  per-user / `1024` bounded channel depth (a stalled reader is pruned →
+  the client reconnects + resyncs). Mutex is poison-recovering.
+- **`handlers.rs`** — `GET /api/sync/subscribe`, gated by `profile::read`.
+  Sends a `connected{connection_id}` handshake, keep-alive, then a
+  `tokio::select!` over {channel recv, 60s re-check, JWT `exp` deadline}. The
+  re-check re-resolves `is_active` + the baseline perm and tears the stream
+  down on loss; a transient DB error keeps the stream.
+- **`extractor.rs::SyncOrigin`** reads `X-Sync-Connection-Id` (the client
+  echoes the connection id back on mutations) so the fan-out skips the
+  originating connection (self-echo suppression).
+
+### Emitting changes
+
+Mutating handlers call `publish as sync_publish` with
+`(entity, action, id, owner, origin.0)`. Conventions:
+
+- **Owner-scoped** entities pass `Some(owner_id)`; **Permission/Everyone**
+  pass `None`.
+- **Dual-audience** mutations emit BOTH the admin entity AND the user-view
+  entity (e.g. a provider change → `LlmProvider` for admins +
+  `UserLlmProvider` for every user, each refetching its own scoped view).
+- Group-permission edits fan a `Session` signal to **all members** via
+  `publish_session_to_users` (one registry-lock batch) so their devices
+  re-bootstrap `/auth/me` immediately (the 60s re-check is the backstop).
+- Background/detached tasks (e.g. a runtime-version download completing, a
+  model finishing an upload/download) emit on **completion**, with
+  `origin = None`.
+
+### Frontend
+
+`src-app/ui/src/core/sync/` (SyncClient SSE loop + epoch-guarded reconnect,
+`registry.ts`, `connection.ts` header holder) + per-module
+`src-app/ui/src/modules/*/sync.ts` calling
+`registerSync('<entity>', { onEvent, onResync, requiredPermission })`.
+
+- The SyncClient re-emits each frame onto the existing EventBus as a
+  per-entity `sync:<entity>` event; each module's `registerSync` handler
+  refetches its store (per-surface policy lives in the handler).
+- **`ENTITY_COVERAGE`** is a `Record<SyncEntity, 'handled' | 'backend-only'>`
+  — a new generated entity is a COMPILE error until given a decision;
+  `assertSyncCoverage()` fails loudly in dev if a `'handled'` entity has no
+  handler.
+- **`requiredPermission`** gates BOTH `onEvent` and `onResync` (the latter
+  fires for all handlers on reconnect regardless of the server audience), so
+  a non-admin's reconnect never hits an admin endpoint → 403 (the `no-403`
+  E2E gate). Set it on every entity whose refetch is permission-gated (use
+  `{ allOf: [...] }` when a reload hits multiple gated endpoints, e.g. the
+  admin provider reload fetches both providers and models).
+
+### Tests
+
+| Tier | Location | Covers |
+|---|---|---|
+| unit | `modules/sync/{registry,event}.rs` `#[cfg(test)]` | audience routing isolation, self-echo skip, caps→429, snapshot refresh, lagging-conn prune, batch session delivery, the audience table + notify-only wire format |
+| integration | `server/tests/sync/subscribe_test.rs` | subscribe auth-gate (401) + SSE handshake |
+| E2E | `ui/tests/e2e/13-sync/` (`--workers=1`) | cross-device delivery without reload; cross-user isolation (A's 2nd device = positive control) |
+
+---
+
 ## Documentation Index
 
 ### 📐 Architecture

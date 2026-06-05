@@ -321,6 +321,15 @@ async fn run_download(
                     duration_ms,
                 },
             ));
+            // Realtime sync: the version row now exists — notify admin
+            // devices (background task, so no originating connection).
+            crate::modules::sync::publish(
+                crate::modules::sync::SyncEntity::RuntimeVersion,
+                crate::modules::sync::SyncAction::Create,
+                version_row.id,
+                None,
+                None,
+            );
         }
         Err(e) => {
             let msg = e.to_string();

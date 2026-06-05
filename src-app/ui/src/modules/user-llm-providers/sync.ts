@@ -1,3 +1,4 @@
+import { Permissions } from '@/api-client/types'
 import { registerSync } from '@/core/sync'
 import { useModelPickerStore } from '@/modules/user-llm-providers/ModelPicker.store'
 import { useUserLlmProvidersStore } from '@/modules/user-llm-providers/UserLlmProviders.store'
@@ -5,6 +6,8 @@ import { useUserLlmProvidersStore } from '@/modules/user-llm-providers/UserLlmPr
 // A saved API key changed on another device (the event id is the provider
 // id; only masked state is ever exposed). Reload the user's providers +
 // masked-key map. `load()` refetches its own scoped, sanitized view.
+// (The store also self-gates on this perm; the registry gate is for parity
+// with the other handlers.)
 registerSync('api_key', {
   onEvent: () => {
     void useUserLlmProvidersStore.getState().load()
@@ -12,6 +15,7 @@ registerSync('api_key', {
   onResync: () => {
     void useUserLlmProvidersStore.getState().load()
   },
+  requiredPermission: Permissions.UserLlmProvidersRead,
 })
 
 // An admin changed a provider or model. The user's accessible-providers
@@ -26,4 +30,5 @@ const reloadUserProviders = () => {
 registerSync('user_llm_provider', {
   onEvent: reloadUserProviders,
   onResync: reloadUserProviders,
+  requiredPermission: Permissions.UserLlmProvidersRead,
 })

@@ -283,6 +283,7 @@ pub fn get_server_oauth_config_docs(op: TransformOperation) -> TransformOperatio
 pub async fn set_server_oauth_config(
     auth: RequirePermissions<(McpServersEdit,)>,
     Path(id): Path<Uuid>,
+    origin: SyncOrigin,
     Json(request): Json<SetMcpServerOAuthConfigRequest>,
 ) -> ApiResult<Json<McpServerOAuthConfigResponse>> {
     owned_server(id, auth.user.id).await?;
@@ -294,6 +295,13 @@ pub async fn set_server_oauth_config(
         .into());
     }
     let cfg = Repos.mcp.set_oauth_config(id, request).await?;
+    sync_publish(
+        SyncEntity::McpServer,
+        SyncAction::Update,
+        id,
+        Some(auth.user.id),
+        origin.0,
+    );
     Ok((StatusCode::OK, Json(cfg.to_response())))
 }
 

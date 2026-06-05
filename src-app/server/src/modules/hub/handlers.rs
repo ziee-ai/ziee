@@ -1019,6 +1019,7 @@ pub fn get_hub_releases_docs(op: TransformOperation) -> TransformOperation {
 pub async fn activate_hub_version(
     _auth: RequirePermissions<(HubCatalogManage,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Json(request): Json<ActivateHubVersionRequest>,
 ) -> ApiResult<Json<HubCatalogRefreshResponse>> {
     let app_data_dir = crate::core::get_app_data_dir();
@@ -1045,6 +1046,8 @@ pub async fn activate_hub_version(
             HubEvent::mcp_servers_refreshed(prev, outcome.new_version.clone()).into(),
         );
     }
+
+    sync_publish(SyncEntity::HubSettings, SyncAction::Update, uuid::Uuid::nil(), None, origin.0);
 
     Ok((
         StatusCode::OK,

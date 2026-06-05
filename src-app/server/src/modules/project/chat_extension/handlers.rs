@@ -25,6 +25,7 @@ use crate::modules::project::events::ProjectEvent;
 use crate::modules::project::handlers::PaginationQuery;
 use crate::modules::project::models::Project;
 use crate::modules::project::permissions::{ProjectsEdit, ProjectsRead};
+use crate::modules::sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
 
 #[debug_handler]
 pub async fn list_project_conversations(
@@ -106,6 +107,7 @@ pub async fn attach_conversation(
     )>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path((project_id, conversation_id)): Path<(Uuid, Uuid)>,
+    origin: SyncOrigin,
 ) -> ApiResult<Json<ConversationResponse>> {
     // The project-extension registry was previously injected via
     // `axum::Extension` from project's router setup. Now that this
@@ -170,6 +172,17 @@ pub async fn attach_conversation(
         .into_iter()
         .find(|c| c.conversation.id == conversation_id)
         .ok_or_else(|| AppError::not_found("Conversation"))?;
+
+    // The project's conversation membership changed → refresh the owner's
+    // other devices.
+    sync_publish(
+        SyncEntity::Project,
+        SyncAction::Update,
+        project_id,
+        Some(auth.user.id),
+        origin.0,
+    );
+
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -210,6 +223,7 @@ pub async fn detach_conversation(
     )>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path((project_id, conversation_id)): Path<(Uuid, Uuid)>,
+    origin: SyncOrigin,
 ) -> ApiResult<()> {
     let extension_registry = get_project_extension_registry().ok_or_else(|| {
         AppError::internal_error("Project extension registry not initialized")
@@ -262,6 +276,16 @@ pub async fn detach_conversation(
         project_id,
         auth.user.id,
     ));
+
+    // The project's conversation membership changed → refresh the owner's
+    // other devices.
+    sync_publish(
+        SyncEntity::Project,
+        SyncAction::Update,
+        project_id,
+        Some(auth.user.id),
+        origin.0,
+    );
 
     Ok((StatusCode::NO_CONTENT, ()))
 }

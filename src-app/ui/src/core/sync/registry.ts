@@ -56,6 +56,7 @@ const ENTITY_COVERAGE: Record<SyncEntity, 'handled' | 'backend-only'> = {
   user_mcp_server: 'handled',
   llm_repository: 'handled',
   runtime_version: 'handled',
+  runtime_settings: 'handled',
   memory_admin_settings: 'handled',
   code_sandbox_settings: 'handled',
   hub_settings: 'handled',

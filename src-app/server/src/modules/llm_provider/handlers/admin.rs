@@ -192,6 +192,7 @@ pub fn create_provider_docs(
 pub async fn rotate_proxy_token(
     _auth: RequirePermissions<(LlmProvidersEdit,)>,
     Path(provider_id): Path<Uuid>,
+    origin: SyncOrigin,
 ) -> ApiResult<Json<RotateProxyTokenResponse>> {
     // Confirm the provider exists and is local.
     let existing = Repos
@@ -241,6 +242,9 @@ pub async fn rotate_proxy_token(
             crate::modules::llm_local_runtime::proxy::remove_token(t).await;
         }
     }
+
+    sync_publish(SyncEntity::LlmProvider, SyncAction::Update, provider_id, None, origin.0);
+    sync_publish(SyncEntity::UserLlmProvider, SyncAction::Update, provider_id, None, origin.0);
 
     Ok((
         StatusCode::OK,

@@ -38,6 +38,7 @@ declare module '@/core/events' {
     'sync:mcp_server_system': SyncEntityEvent<'mcp_server_system'>
     'sync:llm_repository': SyncEntityEvent<'llm_repository'>
     'sync:runtime_version': SyncEntityEvent<'runtime_version'>
+    'sync:runtime_settings': SyncEntityEvent<'runtime_settings'>
     'sync:memory_admin_settings': SyncEntityEvent<'memory_admin_settings'>
     'sync:code_sandbox_settings': SyncEntityEvent<'code_sandbox_settings'>
     'sync:session': SyncEntityEvent<'session'>

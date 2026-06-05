@@ -126,7 +126,6 @@ pub async fn get_runtime_version(
 pub async fn download_runtime_version(
     _auth: RequirePermissions<(RuntimeVersionCreate,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
-    origin: SyncOrigin,
     Json(req): Json<DownloadVersionRequest>,
 ) -> ApiResult<Json<DownloadVersionStartedResponse>> {
     let pool = Repos.pool();
@@ -222,7 +221,10 @@ pub async fn download_runtime_version(
         ),
     };
 
-    sync_publish(SyncEntity::RuntimeVersion, SyncAction::Create, uuid::Uuid::nil(), None, origin.0);
+    // NOTE: the RuntimeVersion Create sync event is emitted from the detached
+    // download task on COMPLETION (download_task.rs), not here at start — the
+    // version row doesn't exist yet, so publishing now would make clients
+    // refetch and find nothing.
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -681,6 +683,7 @@ pub fn list_version_usage_docs(
 /// Sync cache with database
 pub async fn sync_cache(
     _auth: RequirePermissions<(RuntimeVersionUpdate,)>,
+    origin: SyncOrigin,
 ) -> ApiResult<Json<SyncCacheResponse>> {
     let pool = Repos.pool();
     let binary_manager = BinaryManager::with_cache_dir(pool.clone(), std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()))
@@ -698,6 +701,16 @@ pub async fn sync_cache(
         synced_count,
         message: format!("Synced {} cached binaries to database", synced_count),
     };
+
+    if synced_count > 0 {
+        sync_publish(
+            SyncEntity::RuntimeVersion,
+            SyncAction::Update,
+            uuid::Uuid::nil(),
+            None,
+            origin.0,
+        );
+    }
 
     Ok((StatusCode::OK, Json(response)))
 }

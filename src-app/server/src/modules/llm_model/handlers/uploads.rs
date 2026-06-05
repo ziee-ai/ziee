@@ -370,6 +370,26 @@ async fn create_model_with_files(
         total_size
     );
 
+    // Realtime sync: a model was created (upload-commit or background
+    // repository download). Notify admins (LlmModel) + every user's
+    // accessible-providers view (UserLlmProvider). This is a shared helper
+    // with no request context, so origin is None (the upload path's
+    // originating tab already has the model from its response).
+    crate::modules::sync::publish(
+        crate::modules::sync::SyncEntity::LlmModel,
+        crate::modules::sync::SyncAction::Create,
+        model.id,
+        None,
+        None,
+    );
+    crate::modules::sync::publish(
+        crate::modules::sync::SyncEntity::UserLlmProvider,
+        crate::modules::sync::SyncAction::Update,
+        model.id,
+        None,
+        None,
+    );
+
     Ok(model)
 }
 
