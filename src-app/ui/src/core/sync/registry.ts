@@ -34,6 +34,9 @@ const ALL_SYNC_ENTITIES = [
   'llm_provider',
   'llm_model',
   'user_llm_provider',
+  'group',
+  'user',
+  'assistant_template',
 ] as const satisfies readonly SyncEntity[]
 
 /**

@@ -12,6 +12,7 @@ use uuid::Uuid;
 use crate::{
     common::{ApiResult, AppError, PaginationQuery},
     modules::permissions::{RequirePermissions, with_permission},
+    modules::sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
 };
 
 use crate::modules::user::{
@@ -89,7 +90,7 @@ pub fn get_group_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn create_group(
     _auth: RequirePermissions<(GroupsCreate,)>,
-
+    origin: SyncOrigin,
     Json(request): Json<CreateGroupRequest>,
 ) -> ApiResult<Json<Group>> {
     // Validate group name
@@ -107,6 +108,14 @@ pub async fn create_group(
         .group
         .create(&request.name, request.description, request.permissions)
         .await?;
+
+    sync_publish(
+        SyncEntity::Group,
+        SyncAction::Create,
+        group.id,
+        None,
+        origin.0,
+    );
 
     Ok((StatusCode::CREATED, Json(group)))
 }
@@ -128,7 +137,7 @@ pub fn create_group_docs(op: TransformOperation) -> TransformOperation {
 pub async fn update_group(
     auth: RequirePermissions<(GroupsEdit,)>,
     Path(group_id): Path<Uuid>,
-
+    origin: SyncOrigin,
     Json(request): Json<UpdateGroupRequest>,
 ) -> ApiResult<Json<Group>> {
     // Check if group exists
@@ -199,6 +208,14 @@ pub async fn update_group(
         )
         .await?;
 
+    sync_publish(
+        SyncEntity::Group,
+        SyncAction::Update,
+        group.id,
+        None,
+        origin.0,
+    );
+
     Ok((StatusCode::OK, Json(group)))
 }
 
@@ -220,6 +237,7 @@ pub fn update_group_docs(op: TransformOperation) -> TransformOperation {
 pub async fn delete_group(
     _auth: RequirePermissions<(GroupsDelete,)>,
     Path(group_id): Path<Uuid>,
+    origin: SyncOrigin,
 ) -> ApiResult<StatusCode> {
     // Check if group exists
     let group = Repos
@@ -235,6 +253,14 @@ pub async fn delete_group(
 
     // Delete group
     Repos.group.delete(group_id).await?;
+
+    sync_publish(
+        SyncEntity::Group,
+        SyncAction::Delete,
+        group_id,
+        None,
+        origin.0,
+    );
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }

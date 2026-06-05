@@ -371,6 +371,7 @@ pub fn get_default_user_assistant_docs(op: TransformOperation) -> TransformOpera
 pub async fn create_template_assistant(
     _auth: RequirePermissions<(AssistantsTemplateCreate,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Json(mut request): Json<CreateAssistantRequest>,
 ) -> ApiResult<Json<Assistant>> {
     // Validate name is not empty
@@ -392,6 +393,14 @@ pub async fn create_template_assistant(
 
     // Emit creation event for other modules to react
     event_bus.emit_async(AssistantEvent::created(assistant.id, None));
+
+    sync_publish(
+        SyncEntity::AssistantTemplate,
+        SyncAction::Create,
+        assistant.id,
+        None,
+        origin.0,
+    );
 
     Ok((StatusCode::CREATED, Json(assistant)))
 }
@@ -472,6 +481,7 @@ pub async fn update_template_assistant(
     _auth: RequirePermissions<(AssistantsTemplateEdit,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
+    origin: SyncOrigin,
     Json(request): Json<UpdateAssistantRequest>,
 ) -> ApiResult<Json<Assistant>> {
     validate_assistant_text_lengths(
@@ -495,6 +505,14 @@ pub async fn update_template_assistant(
     // Emit update event for other modules to react
     event_bus.emit_async(AssistantEvent::updated(assistant.id, None));
 
+    sync_publish(
+        SyncEntity::AssistantTemplate,
+        SyncAction::Update,
+        assistant.id,
+        None,
+        origin.0,
+    );
+
     Ok((StatusCode::OK, Json(assistant)))
 }
 
@@ -514,6 +532,7 @@ pub async fn delete_template_assistant(
     _auth: RequirePermissions<(AssistantsTemplateDelete,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
+    origin: SyncOrigin,
 ) -> ApiResult<()> {
     let existing = Repos
         .assistant
@@ -530,6 +549,14 @@ pub async fn delete_template_assistant(
 
     // Emit deletion event for other modules to react (synchronous so cleanup completes before response)
     event_bus.emit(AssistantEvent::deleted(id, None)).await;
+
+    sync_publish(
+        SyncEntity::AssistantTemplate,
+        SyncAction::Delete,
+        id,
+        None,
+        origin.0,
+    );
 
     Ok((StatusCode::NO_CONTENT, ()))
 }

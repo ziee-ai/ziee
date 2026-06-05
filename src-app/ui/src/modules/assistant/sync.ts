@@ -1,4 +1,5 @@
 import { registerSync } from '@/core/sync'
+import { useTemplateAssistantsStore } from '@/modules/assistant/stores/TemplateAssistants.store'
 import { useUserAssistantsStore } from '@/modules/assistant/stores/UserAssistants.store'
 
 // `loadUserAssistants` early-returns once `isInitialized` is set, so a
@@ -12,4 +13,15 @@ const reloadUserAssistants = () => {
 registerSync('assistant', {
   onEvent: reloadUserAssistants,
   onResync: reloadUserAssistants,
+})
+
+// Shared assistant templates. `loadTemplateAssistants` only skips while a
+// load is already in flight, so a plain reload refetches the current page.
+const reloadTemplates = () => {
+  void useTemplateAssistantsStore.getState().loadTemplateAssistants()
+}
+
+registerSync('assistant_template', {
+  onEvent: reloadTemplates,
+  onResync: reloadTemplates,
 })

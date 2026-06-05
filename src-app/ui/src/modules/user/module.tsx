@@ -11,6 +11,7 @@ import { useResetPasswordDrawerStore } from '@/modules/user/components/user/Rese
 import { useUserGroupsDrawerStore } from '@/modules/user/components/user/UserGroupsDrawer.store'
 import { useAssignGroupDrawerStore } from '@/modules/user/components/user/AssignGroupDrawer.store'
 import '@/modules/user/types' // Import type augmentation
+import '@/modules/user/sync' // registerSync('user' + 'group') side-effect
 import '@/modules/user/types/GroupWidget' // Register userGroup widget slot
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types

@@ -37,6 +37,13 @@ pub enum SyncEntity {
     LlmProvider,
     /// Admin view of an LLM model.
     LlmModel,
+    /// A user group (admin tables; includes group permissions).
+    Group,
+    /// A user account (admin users list).
+    User,
+    /// A shared assistant template (visible to any user who can read
+    /// templates — non-secret, uniform view).
+    AssistantTemplate,
 
     // --- Group-scoped user view (delivered to holders of the user read
     // perm; safe because we only NOTIFY — each recipient refetches its own
@@ -116,6 +123,11 @@ fn audience_kind(entity: SyncEntity) -> AudienceKind {
         SyncEntity::LlmModel => AudienceKind::Permission("llm_models::read"),
         SyncEntity::UserLlmProvider => {
             AudienceKind::Permission("user_llm_providers::read")
+        }
+        SyncEntity::Group => AudienceKind::Permission("groups::read"),
+        SyncEntity::User => AudienceKind::Permission("users::read"),
+        SyncEntity::AssistantTemplate => {
+            AudienceKind::Permission("assistant_templates::read")
         }
     }
 }

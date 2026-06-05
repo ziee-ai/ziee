@@ -22680,6 +22680,21 @@
             "const": "llm_model"
           },
           {
+            "description": "A user group (admin tables; includes group permissions).",
+            "type": "string",
+            "const": "group"
+          },
+          {
+            "description": "A user account (admin users list).",
+            "type": "string",
+            "const": "user"
+          },
+          {
+            "description": "A shared assistant template (visible to any user who can read\n templates — non-secret, uniform view).",
+            "type": "string",
+            "const": "assistant_template"
+          },
+          {
             "description": "A user's accessible-providers (with enabled models) view changed.",
             "type": "string",
             "const": "user_llm_provider"

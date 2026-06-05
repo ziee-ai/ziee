@@ -31,5 +31,8 @@ declare module '@/core/events' {
     'sync:llm_provider': SyncEntityEvent<'llm_provider'>
     'sync:llm_model': SyncEntityEvent<'llm_model'>
     'sync:user_llm_provider': SyncEntityEvent<'user_llm_provider'>
+    'sync:group': SyncEntityEvent<'group'>
+    'sync:user': SyncEntityEvent<'user'>
+    'sync:assistant_template': SyncEntityEvent<'assistant_template'>
   }
 }

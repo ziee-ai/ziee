@@ -14,6 +14,7 @@ use crate::{
     common::{ApiResult, AppError, PaginationQuery},
     core::EventBus,
     modules::permissions::{RequirePermissions, with_permission},
+    modules::sync::{SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
 };
 
 use crate::modules::user::{
@@ -103,8 +104,8 @@ pub fn get_user_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn create_user(
     auth: RequirePermissions<(UsersCreate,)>,
-
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Json(request): Json<CreateUserRequest>,
 ) -> ApiResult<Json<User>> {
     // Validate username and email format
@@ -192,6 +193,14 @@ pub async fn create_user(
     // Emit UserCreated event asynchronously
     event_bus.emit_async(UserEvent::created(user.clone()));
 
+    sync_publish(
+        SyncEntity::User,
+        SyncAction::Create,
+        user.id,
+        None,
+        origin.0,
+    );
+
     Ok((StatusCode::CREATED, Json(user)))
 }
 
@@ -212,6 +221,7 @@ pub async fn update_user(
     _auth: RequirePermissions<(UsersEdit,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(user_id): Path<Uuid>,
+    origin: SyncOrigin,
     Json(request): Json<UpdateUserRequest>,
 ) -> ApiResult<Json<User>> {
     // Check if user exists and get user data
@@ -267,6 +277,14 @@ pub async fn update_user(
 
     // Emit update event for other modules to react
     event_bus.emit_async(UserEvent::updated(updated_user.clone()));
+
+    sync_publish(
+        SyncEntity::User,
+        SyncAction::Update,
+        updated_user.id,
+        None,
+        origin.0,
+    );
 
     Ok((StatusCode::OK, Json(updated_user)))
 }
@@ -391,6 +409,7 @@ pub async fn delete_user(
     _auth: RequirePermissions<(UsersDelete,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(user_id): Path<Uuid>,
+    origin: SyncOrigin,
 ) -> ApiResult<StatusCode> {
     // Check if user exists
     let user = Repos
@@ -415,6 +434,14 @@ pub async fn delete_user(
 
     // Emit deletion event for other modules to react
     event_bus.emit_async(UserEvent::deleted(user_id));
+
+    sync_publish(
+        SyncEntity::User,
+        SyncAction::Delete,
+        user_id,
+        None,
+        origin.0,
+    );
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
