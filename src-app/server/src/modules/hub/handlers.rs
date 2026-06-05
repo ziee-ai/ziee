@@ -6,7 +6,7 @@ use crate::{
     common::{ApiResult, AppError},
     core::events::EventBus,
     modules::{
-        assistant::permissions::AssistantsTemplateCreate,
+        assistant::{events::AssistantEvent, permissions::AssistantsTemplateCreate},
         llm_model::{ModelParameters, permissions::LlmModelsCreate},
         permissions::{RequirePermissions, with_permission},
     },
@@ -366,6 +366,16 @@ pub async fn create_assistant_from_hub(
     Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<CreateAssistantFromHubRequest>,
 ) -> ApiResult<Json<AssistantFromHubResponse>> {
+    // `replace_existing` is template-only — reject explicitly so
+    // clients don't silently pass it expecting an idempotent re-install
+    // on the user-scoped path (per-user installs aren't dedup'd).
+    if request.replace_existing {
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "replace_existing is only valid on the template install endpoint",
+        )
+        .into());
+    }
     let plan = build_assistant_create_from_hub(&request, false).await?;
 
     let assistant = Repos
@@ -430,12 +440,26 @@ pub async fn create_assistant_template_from_hub(
     // The `replace_existing` flag overrides this for the
     // `/hub/updates` Re-install path: an outdated template needs to
     // be replaced, not duplicated. When set, we delete the existing
-    // template first (which the assistant repo cascades to its
-    // hub_entities row via the FK ON DELETE) and then create afresh.
+    // template first (and emit `AssistantEvent::Deleted` so the hub
+    // module's `CleanupHubEntitiesHandler` removes the orphan
+    // `hub_entities` row — there is NO FK cascade between
+    // `hub_entities.entity_id` and `assistants.id`, the cleanup is
+    // event-driven) and then create afresh.
     if let Some(existing_id) = Repos.hub.find_template_install(&request.hub_id).await?
     {
         if request.replace_existing {
-            Repos.assistant.delete(existing_id).await?;
+            // Tolerate "already deleted" — racy with the admin templates
+            // page deleting the same row in another tab. Any other DB
+            // error still surfaces.
+            match Repos.assistant.delete(existing_id).await {
+                Ok(()) => {
+                    event_bus
+                        .emit(AssistantEvent::deleted(existing_id, None))
+                        .await;
+                }
+                Err(e) if e.status_code() == 404 => (),
+                Err(e) => return Err(e.into()),
+            }
         } else {
             return Err(AppError::conflict("Hub assistant template").into());
         }
@@ -857,6 +881,12 @@ pub fn create_assistant_from_hub_docs(op: TransformOperation) -> TransformOperat
         .tag("Hub")
         .summary("Create assistant from hub catalog")
         .response::<201, Json<AssistantFromHubResponse>>()
+        .response_with::<400, (), _>(|res| {
+            res.description(
+                "Validation error (empty name, oversized description / instructions, \
+                 or `replace_existing` passed on the user-scoped endpoint)",
+            )
+        })
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("Hub assistant not found"))
         .response_with::<422, (), _>(|res| {
@@ -879,6 +909,11 @@ pub fn create_assistant_template_from_hub_docs(op: TransformOperation) -> Transf
              `replace_existing: true` is passed to overwrite it.",
         )
         .response::<201, Json<AssistantFromHubResponse>>()
+        .response_with::<400, (), _>(|res| {
+            res.description(
+                "Validation error (empty name, oversized description / instructions)",
+            )
+        })
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("Hub assistant not found"))
         .response_with::<409, (), _>(|res| {

@@ -50,18 +50,28 @@ export function UpdatesHubTab() {
     try {
       if (category === 'assistant') {
         if (isTemplateInstall) {
+          // Route through the store so the displaced template's
+          // `assistant_template.deleted` + the new template's
+          // `assistant_template.created` events fire, keeping the
+          // TemplateAssistants store + hub cards in sync. Calling
+          // ApiClient directly here bypassed those events and left
+          // the admin templates list pointing at a 404 row.
+          //
           // `replace_existing: true` instructs the template handler
           // to delete the outdated template first before creating
           // the fresh one — without this the duplicate-prevention
           // guard would 409 on re-install.
-          await ApiClient.Hub.createAssistantTemplateFromHub({
+          await Stores.HubAssistants.createTemplateFromHub({
             hub_id: hubId,
             replace_existing: true,
           })
         } else {
-          await ApiClient.Hub.createAssistantFromHub({ hub_id: hubId })
+          await Stores.HubAssistants.createFromHub({ hub_id: hubId })
         }
       } else if (category === 'mcp_server') {
+        // No store seam exists for hub MCP server installs yet — the
+        // direct API call is the supported path (see hub MCP server
+        // tab; mirror this when one is added).
         await ApiClient.Hub.createMcpServerFromHub({ hub_id: hubId })
       }
       message.success(`Re-installed ${hubId} from v${catalogVersion ?? '?'}`)

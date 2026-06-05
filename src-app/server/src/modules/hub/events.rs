@@ -26,11 +26,12 @@ pub enum HubEvent {
         new_version: String,
     },
 
-    /// An assistant was created from hub catalog.
-    /// `is_template` discriminates user-scoped installs from
-    /// system-wide template installs so downstream listeners can
-    /// invalidate the right cache / emit the right analytics
-    /// without re-querying the assistants table.
+    /// An assistant was created from hub catalog. `is_template`
+    /// discriminates user-scoped installs from system-wide template
+    /// installs — preserved on the payload (rather than re-looked up
+    /// by listeners) because the assistant row may have been deleted
+    /// + re-created by the `replace_existing` re-install path before
+    /// a slow listener gets here.
     AssistantCreatedFromHub {
         assistant_id: Uuid,
         hub_id: String,

@@ -331,32 +331,53 @@ pub async fn list_outdated_entities(
         .map(|r| OutdatedHubEntity {
             hub_id: r.hub_id,
             hub_category: r.hub_category,
-            entity_type: r.entity_type,
             entity_id: r.entity_id,
             installed_version: r.hub_version,
-            is_template_install: r.created_by.is_none(),
+            // True ONLY for system-wide ASSISTANT installs — these
+            // are the rows that need the Re-install action routed
+            // through `Hub.createAssistantTemplateFromHub` instead
+            // of `Hub.createAssistantFromHub`. Models also set
+            // `created_by: NULL` but the UI never re-installs them
+            // inline (they require a provider+quant choice), so
+            // tightening the predicate to `entity_type == "assistant"`
+            // keeps the flag's semantic narrow and unambiguous.
+            is_template_install: r.created_by.is_none()
+                && r.entity_type == "assistant",
+            entity_type: r.entity_type,
         })
         .collect())
 }
 
-/// Find an existing TEMPLATE install (created_by IS NULL) for a hub
-/// assistant. Returns the `entity_id` (= assistant id) when one
+/// Find an existing LIVE TEMPLATE install (`created_by IS NULL` AND
+/// the assistants row still exists with `is_template = true`) for a
+/// hub assistant. Returns the `entity_id` (= assistant id) when one
 /// exists. Used to enforce idempotency in
 /// `Hub.createAssistantTemplateFromHub` — without this guard the
 /// admin clicking "Use as Template" twice would create two identical
 /// templates, each of which clones into every new user's assistant
 /// list via the signup hook.
+///
+/// The INNER JOIN against `assistants` filters out orphan
+/// `hub_entities` rows (e.g. from a delete that fired before the
+/// `CleanupHubEntitiesHandler` listener landed, or any race) — without
+/// it the `replace_existing` re-install path could trip a 404 trying
+/// to delete a row that no longer exists. `ORDER BY created_at DESC
+/// LIMIT 1` makes the result deterministic in the (currently
+/// impossible) case of two live template installs co-existing.
 pub async fn find_template_install(
     pool: &PgPool,
     hub_id: &str,
 ) -> Result<Option<Uuid>, AppError> {
     let row = sqlx::query!(
         r#"
-        SELECT entity_id
-        FROM hub_entities
-        WHERE entity_type = 'assistant'
-          AND hub_id = $1
-          AND created_by IS NULL
+        SELECT he.entity_id
+        FROM hub_entities he
+        INNER JOIN assistants a ON a.id = he.entity_id
+        WHERE he.entity_type = 'assistant'
+          AND he.hub_id = $1
+          AND he.created_by IS NULL
+          AND a.is_template = true
+        ORDER BY he.created_at DESC
         LIMIT 1
         "#,
         hub_id,

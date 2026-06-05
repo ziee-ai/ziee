@@ -73,9 +73,17 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
     try {
       // Install as a system-wide TEMPLATE (is_template=true, no
       // owner — enforced by the `template_must_have_no_owner` CHECK
-      // constraint in migration 6). The clone-default-templates-
-      // on-signup hook in the assistant module then propagates this
-      // template to every new user's assistant list.
+      // constraint in migration 6).
+      //
+      // NOTE: we install with `is_default: false`. The clone-on-signup
+      // hook in `assistant::event_handlers` only fans out templates
+      // that are BOTH `is_default && enabled`, so this row alone does
+      // NOT auto-propagate to new users — the admin must promote it
+      // via the templates admin page (a single "Set default" toggle
+      // there). We don't default to `is_default=true` here because
+      // the assistant repo unsets ALL other template defaults in a
+      // single transaction when a new default is set, which would
+      // silently bump the existing default off auto-clone duty.
       await Stores.HubAssistants.createTemplateFromHub({
         hub_id: assistant.id,
         name: assistant.name,
@@ -86,9 +94,12 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
         enabled: true,
       })
 
-      message.success(
-        `Assistant template "${assistant.display_name}" created successfully!`,
-      )
+      message.success({
+        content: `Template "${assistant.display_name}" installed. \
+Mark it as default in /settings/assistant-templates to auto-clone it \
+for new users.`,
+        duration: 6,
+      })
 
       // Navigate to the templates admin page so the admin can see it.
       navigate('/settings/assistant-templates')

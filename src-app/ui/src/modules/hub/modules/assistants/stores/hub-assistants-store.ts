@@ -10,6 +10,7 @@ import type {
 import {
   emitAssistantCreated,
   emitAssistantTemplateCreated,
+  emitAssistantTemplateDeleted,
 } from '@/modules/assistant/events'
 import { Stores } from '@/core/stores'
 
@@ -143,29 +144,64 @@ export const useHubAssistantsStore = create<HubAssistantsState>()(
           request: CreateAssistantFromHubRequest,
         ): Promise<Assistant> => {
           set({ creating: true, error: null })
+          // Snapshot the ids being displaced BEFORE the call so the
+          // `replace_existing` re-install path can emit
+          // `assistant_template.deleted` for them after the new row
+          // exists. Without this, the admin templates list keeps the
+          // OLD (now-deleted) row and clicking it 404s.
+          const displacedIds: string[] = request.replace_existing
+            ? get()
+                .assistants.find(a => a.id === request.hub_id)
+                ?.created_template_ids?.slice() ?? []
+            : []
           try {
             const response =
               await ApiClient.Hub.createAssistantTemplateFromHub(request)
 
             // Track the install on the hub assistant so the card can
             // surface a "Template installed" indicator + disable the
-            // re-install button. Without this an admin clicking the
-            // button twice silently creates a duplicate template
-            // (backend also rejects with 409 as a safety net).
+            // re-install button. On `replace_existing` we REPLACE the
+            // array (not append) so the stale uuid drops out — the
+            // backend deletes the old assistant + the events emitted
+            // below propagate the deletion to other stores.
             set(state => {
               const assistant = state.assistants.find(
                 a => a.id === request.hub_id,
               )
               if (assistant) {
-                if (!assistant.created_template_ids) {
-                  assistant.created_template_ids = []
+                if (request.replace_existing) {
+                  assistant.created_template_ids = [
+                    response.hub_tracking.entity_id,
+                  ]
+                } else {
+                  if (!assistant.created_template_ids) {
+                    assistant.created_template_ids = []
+                  }
+                  assistant.created_template_ids.push(
+                    response.hub_tracking.entity_id,
+                  )
                 }
-                assistant.created_template_ids.push(
-                  response.hub_tracking.entity_id,
-                )
               }
               state.creating = false
             })
+
+            // Emit deletion events for the displaced templates so the
+            // TemplateAssistants store + admin pages drop the stale
+            // rows. Skip the freshly-installed id (same uuid is
+            // theoretically possible but the backend assigns a fresh
+            // one — the filter is defense-in-depth).
+            for (const oldId of displacedIds) {
+              if (oldId !== response.hub_tracking.entity_id) {
+                try {
+                  await emitAssistantTemplateDeleted(oldId)
+                } catch (e) {
+                  console.warn(
+                    'Failed to emit assistant_template.deleted:',
+                    e,
+                  )
+                }
+              }
+            }
 
             // Notify downstream caches (TemplateAssistants store, admin
             // template-list page) that a new template exists, so the
