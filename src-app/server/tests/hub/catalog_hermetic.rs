@@ -2024,6 +2024,155 @@ async fn replace_existing_preserves_env_var_overrides_mcp() {
 }
 
 #[tokio::test]
+async fn replace_existing_merges_new_catalog_keys_with_admin_values() {
+    // Regression guard for the merge-not-replace carry-forward (Round
+    // 1 of the required-input audit). Without this test, the prior
+    // `_preserves_env_var_overrides_mcp` test would pass on EITHER
+    // the broken (wholesale replace) OR the fixed (merge) carry-
+    // forward — both produce the same single-key result. This test
+    // distinguishes the two by introducing a SECOND required_env key
+    // in the catalog v2 that the admin's prior row doesn't have:
+    //
+    //   v1 catalog: required_env = [KEY_A]
+    //   admin PUTs KEY_A = "real_a"
+    //   v2 catalog: required_env = [KEY_A, KEY_B] (new placeholder pb)
+    //   re-install
+    //
+    //   broken (REPLACE): env = prior_env = {KEY_A: "real_a"}
+    //                     → KEY_B silently dropped, server breaks
+    //   fixed (MERGE):   env = {KEY_A: "real_a", KEY_B: "pb"}
+    //                     → admin still sees the new placeholder
+    let mock = spawn_mock_hub(vec![
+        MockVersion {
+            version: "9.9.2-test",
+            prerelease: true,
+            items: vec![MockItem {
+                category: "mcp-server",
+                id: "mock-mcp-evolving",
+                min_ziee_version: None,
+                extra_yaml: Some(
+                    "required_env:\n\
+                     - name: KEY_A\n\
+                     \x20\x20placeholder: pa\n\
+                     \x20\x20is_secret: true\n\
+                     - name: KEY_B\n\
+                     \x20\x20placeholder: pb\n\
+                     \x20\x20is_secret: true\n",
+                ),
+            }],
+        },
+        MockVersion {
+            version: "9.9.1-test",
+            prerelease: true,
+            items: vec![MockItem {
+                category: "mcp-server",
+                id: "mock-mcp-evolving",
+                min_ziee_version: None,
+                extra_yaml: Some(
+                    "required_env:\n\
+                     - name: KEY_A\n\
+                     \x20\x20placeholder: pa\n\
+                     \x20\x20is_secret: true\n",
+                ),
+            }],
+        },
+    ])
+    .await;
+    let server = TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: mock.test_env(),
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(
+        &server,
+        "admin",
+        &[
+            "hub::catalog::read",
+            "hub::catalog::manage",
+            "hub::mcp_servers::create",
+            "mcp_servers_admin::create",
+            "mcp_servers_admin::edit",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    // v1: install + promote KEY_A to a real value.
+    client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "version": "9.9.1-test" }))
+        .send()
+        .await
+        .expect("activate v1")
+        .error_for_status()
+        .expect("activate v1 ok");
+
+    let first: Json = client
+        .post(server.api_url("/hub/mcp-servers/create-system"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-mcp-evolving" }))
+        .send()
+        .await
+        .expect("first install")
+        .json()
+        .await
+        .expect("parse first");
+    let first_id = first["server"]["id"].as_str().unwrap().to_string();
+    assert_eq!(
+        first["server"]["environment_variables"]["KEY_A"], "pa",
+        "v1 install must seed KEY_A placeholder: {first}",
+    );
+
+    let promote = client
+        .put(server.api_url(&format!("/mcp/system-servers/{}", first_id)))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "environment_variables": { "KEY_A": "real_a" }
+        }))
+        .send()
+        .await
+        .expect("promote");
+    assert_eq!(promote.status(), 200);
+
+    // Activate v2 — catalog now declares KEY_B as also-required.
+    client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "version": "9.9.2-test" }))
+        .send()
+        .await
+        .expect("activate v2")
+        .error_for_status()
+        .expect("activate v2 ok");
+
+    let second: Json = client
+        .post(server.api_url("/hub/mcp-servers/create-system"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-mcp-evolving", "replace_existing": true }))
+        .send()
+        .await
+        .expect("replace")
+        .json()
+        .await
+        .expect("parse replace");
+
+    // MERGE assertion: KEY_A keeps admin's real value, KEY_B is seeded
+    // from the v2 catalog's placeholder. WOULD FAIL on broken
+    // wholesale-replace carry-forward (KEY_B would be absent).
+    assert_eq!(
+        second["server"]["environment_variables"]["KEY_A"], "real_a",
+        "merge MUST preserve admin's prior KEY_A: {second}",
+    );
+    assert_eq!(
+        second["server"]["environment_variables"]["KEY_B"], "pb",
+        "merge MUST seed newly-required KEY_B placeholder from v2 \
+         catalog (this is the load-bearing assertion that proves \
+         merge-not-replace): {second}",
+    );
+}
+
+#[tokio::test]
 async fn replace_existing_preserves_header_overrides_mcp() {
     // Header carry-forward symmetric to the env-var test: install,
     // PUT a header to a real value, re-install, assert the header
