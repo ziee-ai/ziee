@@ -186,44 +186,57 @@ export function McpServerCard({
                 )}
                 {/* Health status from the last probe — surfaces
                     boot-time auto-disable reasons + Test Connection
-                    results + enable-time probe failures without
-                    requiring the user to open the drawer or re-run
-                    the test. Only renders when the server has been
-                    probed at least once (status != 'untested'). */}
-                {server.last_health_check_status === 'unhealthy' && (
-                  <Tooltip
-                    title={
-                      <span style={{ whiteSpace: 'pre-line' }}>
-                        {`Last connection test failed${
+                    results + enable-time probe failures. Always
+                    renders SOMETHING (incl. "Untested") so the
+                    user can confirm at a glance whether the server
+                    has been probed and what the outcome was. */}
+                {(() => {
+                  const status =
+                    server.last_health_check_status ?? 'untested'
+                  if (status === 'unhealthy') {
+                    return (
+                      <Tooltip
+                        title={
+                          <span style={{ whiteSpace: 'pre-line' }}>
+                            {`Last connection test failed${
+                              server.last_health_check_at
+                                ? ` at ${new Date(server.last_health_check_at).toLocaleString()}`
+                                : ''
+                            }${
+                              server.last_health_check_reason
+                                ? `:\n${server.last_health_check_reason}`
+                                : ''
+                            }`}
+                          </span>
+                        }
+                      >
+                        <Tag color="error" data-testid="mcp-health-unhealthy">
+                          Unhealthy
+                        </Tag>
+                      </Tooltip>
+                    )
+                  }
+                  if (status === 'healthy') {
+                    return (
+                      <Tooltip
+                        title={`Last connection test passed${
                           server.last_health_check_at
                             ? ` at ${new Date(server.last_health_check_at).toLocaleString()}`
                             : ''
-                        }${
-                          server.last_health_check_reason
-                            ? `:\n${server.last_health_check_reason}`
-                            : ''
                         }`}
-                      </span>
-                    }
-                  >
-                    <Tag color="error" data-testid="mcp-health-unhealthy">
-                      Unhealthy
-                    </Tag>
-                  </Tooltip>
-                )}
-                {server.last_health_check_status === 'healthy' && (
-                  <Tooltip
-                    title={`Last connection test passed${
-                      server.last_health_check_at
-                        ? ` at ${new Date(server.last_health_check_at).toLocaleString()}`
-                        : ''
-                    }`}
-                  >
-                    <Tag color="success" data-testid="mcp-health-healthy">
-                      Healthy
-                    </Tag>
-                  </Tooltip>
-                )}
+                      >
+                        <Tag color="success" data-testid="mcp-health-healthy">
+                          Healthy
+                        </Tag>
+                      </Tooltip>
+                    )
+                  }
+                  return (
+                    <Tooltip title="Connection has not been tested yet. Click Test Connection or toggle Enabled to run a probe.">
+                      <Tag data-testid="mcp-health-untested">Untested</Tag>
+                    </Tooltip>
+                  )
+                })()}
               </Flex>
             </div>
             <div className="flex gap-2 items-center justify-end">
