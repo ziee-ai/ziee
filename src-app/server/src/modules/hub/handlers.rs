@@ -601,6 +601,59 @@ async fn build_mcp_server_create_from_hub(
         })
         .unwrap_or(crate::modules::mcp::TransportType::Stdio);
 
+    // Seed env + header maps from the catalog values, then merge
+    // `required_*` placeholders for any key the catalog left empty.
+    // This is the whole point of the schema addition: without the
+    // merge, an empty `GITHUB_TOKEN: ""` in the manifest would land
+    // verbatim in the user's MCP row and they'd have no signal that
+    // configuration is needed. With the merge, the user sees
+    // `GITHUB_TOKEN: ghp_xxxxxxxx...` (the placeholder) and knows
+    // exactly what to replace.
+    //
+    // `.entry().or_insert_with(...)` skips keys the catalog already
+    // pre-filled with a concrete example (e.g. postgres-mcp ships a
+    // sample connection string) and keys the user already supplied
+    // via the request override path (future extension).
+    let mut env_map: std::collections::HashMap<String, String> = hub_server
+        .environment_variables
+        .as_ref()
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+    for req in &hub_server.required_env {
+        let placeholder = req.placeholder.clone().unwrap_or_default();
+        env_map
+            .entry(req.name.clone())
+            .and_modify(|existing| {
+                // Treat empty-string entries (the legacy "this is
+                // required" convention) as also needing the seed —
+                // otherwise the new schema's placeholder wouldn't
+                // surface until the manifest also drops the empty
+                // string. Non-empty existing values are respected
+                // (e.g. postgres-mcp's example connection string).
+                if existing.is_empty() {
+                    *existing = placeholder.clone();
+                }
+            })
+            .or_insert_with(|| placeholder);
+    }
+
+    let mut headers_map: std::collections::HashMap<String, String> = hub_server
+        .headers
+        .as_ref()
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+    for req in &hub_server.required_headers {
+        let placeholder = req.placeholder.clone().unwrap_or_default();
+        headers_map
+            .entry(req.name.clone())
+            .and_modify(|existing| {
+                if existing.is_empty() {
+                    *existing = placeholder.clone();
+                }
+            })
+            .or_insert_with(|| placeholder);
+    }
+
     let create_request = crate::modules::mcp::CreateMcpServerRequest {
         name: request.name.clone().unwrap_or(hub_server.name.clone()),
         display_name: request
@@ -612,15 +665,9 @@ async fn build_mcp_server_create_from_hub(
         transport_type,
         command: hub_server.command.clone(),
         args: hub_server.args.clone(),
-        environment_variables: hub_server
-            .environment_variables
-            .as_ref()
-            .and_then(|v| serde_json::from_value(v.clone()).ok()),
+        environment_variables: Some(env_map),
         url: hub_server.url.clone(),
-        headers: hub_server
-            .headers
-            .as_ref()
-            .and_then(|v| serde_json::from_value(v.clone()).ok()),
+        headers: Some(headers_map),
         timeout_seconds: Some(if hub_server.supports_sampling == Some(true) { 300 } else { 30 }),
         supports_sampling: hub_server.supports_sampling,
         usage_mode: None,
@@ -737,9 +784,15 @@ pub async fn create_system_mcp_server_from_hub(
     //   - `usage_mode` — `always`/`never` overrides survive
     //   - `max_concurrent_sessions` — session caps survive
     //   - `timeout_seconds` — admin-tuned timeouts survive
+    //   - `environment_variables` — real tokens / connection strings
+    //     the admin pasted (replacing the install-time placeholders)
+    //     survive instead of being stomped back to placeholders
+    //   - `headers` — same as env vars but for HTTP header values
+    //     taking direct user input (`required_headers` schema entries)
     // Without these, an admin who'd hardened a hub-installed system
-    // server (e.g. flipped `run_in_sandbox=true`) would see their
-    // change silently reverted to the catalog default on Re-install.
+    // server (e.g. flipped `run_in_sandbox=true`) or pasted a real
+    // token into the env map would see their change silently reverted
+    // to the catalog default / placeholder on Re-install.
     //
     // Caveat — `supports_sampling` is NOT carried forward (it's a
     // catalog-declared capability, not admin-tunable). If a catalog
@@ -758,6 +811,25 @@ pub async fn create_system_mcp_server_from_hub(
             plan.create_request.max_concurrent_sessions =
                 prior.max_concurrent_sessions;
             plan.create_request.timeout_seconds = Some(prior.timeout_seconds);
+            // The model stores env / headers as `serde_json::Value`
+            // (the on-disk JSONB column); the create request takes
+            // typed `Option<HashMap<String, String>>`. Round-trip
+            // through serde_json::from_value; failure (malformed
+            // historical row) falls back to the catalog defaults
+            // from `build_mcp_server_create_from_hub` rather than
+            // crashing the re-install.
+            if let Ok(env) = serde_json::from_value::<
+                std::collections::HashMap<String, String>,
+            >(prior.environment_variables.clone())
+            {
+                plan.create_request.environment_variables = Some(env);
+            }
+            if let Ok(hdrs) = serde_json::from_value::<
+                std::collections::HashMap<String, String>,
+            >(prior.headers.clone())
+            {
+                plan.create_request.headers = Some(hdrs);
+            }
         }
     }
 

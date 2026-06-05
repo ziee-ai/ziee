@@ -1,4 +1,4 @@
-import { App, Card, Tag, Typography, Button, Flex } from 'antd'
+import { App, Card, Tag, Tooltip, Typography, Button, Flex } from 'antd'
 import {
   DownloadOutlined,
   StarOutlined,
@@ -6,6 +6,7 @@ import {
   GithubOutlined,
   EyeOutlined,
   CopyOutlined,
+  KeyOutlined,
 } from '@ant-design/icons'
 import { Permissions, type HubMCPServer } from '@/api-client/types'
 import { useState } from 'react'
@@ -38,6 +39,15 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
   const isAlreadyInstalledAsSystem =
     server.created_system_ids && server.created_system_ids.length > 0
 
+  // Combined list of required inputs (env vars + headers) the user
+  // must configure post-install. Treated as one list for card UX —
+  // the structured per-type view lives in the details drawer.
+  const requiredInputs = [
+    ...(server.required_env ?? []),
+    ...(server.required_headers ?? []),
+  ]
+  const requiresSetup = requiredInputs.length > 0
+
   const handleInstall = async () => {
     try {
       setInstalling(true)
@@ -50,7 +60,19 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
         enabled: true,
       })
 
-      message.success(`${server.display_name} installed successfully!`)
+      if (requiresSetup) {
+        // Use a longer-lived toast when the user has work to do —
+        // 6s gives them time to register the list of keys before
+        // the message disappears.
+        message.success({
+          content: `${server.display_name} installed. Configure ${requiredInputs
+            .map(i => i.name)
+            .join(', ')} in /settings/mcp-servers before using.`,
+          duration: 6,
+        })
+      } else {
+        message.success(`${server.display_name} installed successfully!`)
+      }
 
       // Navigate to user MCP servers after creation
       navigate('/settings/mcp-servers')
@@ -79,9 +101,18 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
         enabled: true,
       })
 
-      message.success(
-        `System MCP server "${server.display_name}" installed.`,
-      )
+      if (requiresSetup) {
+        message.success({
+          content: `System MCP server "${server.display_name}" installed. Configure ${requiredInputs
+            .map(i => i.name)
+            .join(', ')} in /settings/mcp-admin before using.`,
+          duration: 6,
+        })
+      } else {
+        message.success(
+          `System MCP server "${server.display_name}" installed.`,
+        )
+      }
 
       // Navigate to the system MCP admin page so the admin can see it.
       navigate('/settings/mcp-admin')
@@ -134,6 +165,22 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                   {isAlreadyInstalled && <Tag color="green">Installed</Tag>}
                   {isAlreadyInstalledAsSystem && (
                     <Tag color="purple">System installed</Tag>
+                  )}
+                  {requiresSetup && (
+                    <Tooltip
+                      title={`Requires setup after install: ${requiredInputs
+                        .map(i => i.name)
+                        .join(', ')}`}
+                    >
+                      <Tag
+                        color="warning"
+                        icon={<KeyOutlined />}
+                        className="text-xs"
+                        data-testid="hub-mcp-requires-setup-tag"
+                      >
+                        Requires setup
+                      </Tag>
+                    </Tooltip>
                   )}
                 </Flex>
               </div>

@@ -804,6 +804,8 @@ export interface HubMCPServer {
   popularity_score?: number
   rating?: number
   repository_url?: string
+  required_env?: HubRequiredInput[]
+  required_headers?: HubRequiredInput[]
   requires_desktop?: boolean
   supports_sampling?: boolean
   tags?: string[]
@@ -880,6 +882,14 @@ export interface HubReleasesResponse {
   active_version?: string
   pinned_version?: string
   releases: HubReleaseInfo[]
+}
+
+export interface HubRequiredInput {
+  description?: string
+  docs_url?: string
+  is_secret?: boolean
+  name: string
+  placeholder?: string
 }
 
 export interface HubUpdateRow {

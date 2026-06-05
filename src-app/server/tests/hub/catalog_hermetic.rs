@@ -27,11 +27,13 @@ fn mcp_versions() -> Vec<MockVersion> {
                     category: "mcp-server",
                     id: "mock-mcp-a",
                     min_ziee_version: None,
+                    extra_yaml: None,
                 },
                 MockItem {
                     category: "mcp-server",
                     id: "mock-mcp-future",
                     min_ziee_version: Some("99.0.0"),
+                    extra_yaml: None,
                 },
             ],
         },
@@ -42,6 +44,7 @@ fn mcp_versions() -> Vec<MockVersion> {
                 category: "mcp-server",
                 id: "mock-mcp-a",
                 min_ziee_version: None,
+                extra_yaml: None,
             }],
         },
     ]
@@ -55,12 +58,23 @@ fn two_versions() -> Vec<MockVersion> {
             version: "9.9.2-test",
             prerelease: true,
             items: vec![
-                MockItem { category: "model", id: "mock-model-a", min_ziee_version: None },
-                MockItem { category: "assistant", id: "mock-asst-a", min_ziee_version: None },
+                MockItem {
+                    category: "model",
+                    id: "mock-model-a",
+                    min_ziee_version: None,
+                    extra_yaml: None,
+                },
+                MockItem {
+                    category: "assistant",
+                    id: "mock-asst-a",
+                    min_ziee_version: None,
+                    extra_yaml: None,
+                },
                 MockItem {
                     category: "assistant",
                     id: "mock-asst-future",
                     min_ziee_version: Some("99.0.0"),
+                    extra_yaml: None,
                 },
             ],
         },
@@ -68,8 +82,18 @@ fn two_versions() -> Vec<MockVersion> {
             version: "9.9.1-test",
             prerelease: true,
             items: vec![
-                MockItem { category: "model", id: "mock-model-a", min_ziee_version: None },
-                MockItem { category: "assistant", id: "mock-asst-a", min_ziee_version: None },
+                MockItem {
+                    category: "model",
+                    id: "mock-model-a",
+                    min_ziee_version: None,
+                    extra_yaml: None,
+                },
+                MockItem {
+                    category: "assistant",
+                    id: "mock-asst-a",
+                    min_ziee_version: None,
+                    extra_yaml: None,
+                },
             ],
         },
     ]
@@ -1506,6 +1530,7 @@ async fn replace_existing_aborts_on_validation_failure_mcp() {
                 category: "mcp-server",
                 id: "mock-mcp-a",
                 min_ziee_version: Some("99.0.0"),
+                extra_yaml: None,
             }],
         },
         MockVersion {
@@ -1515,6 +1540,7 @@ async fn replace_existing_aborts_on_validation_failure_mcp() {
                 category: "mcp-server",
                 id: "mock-mcp-a",
                 min_ziee_version: None,
+                extra_yaml: None,
             }],
         },
     ])
@@ -1734,10 +1760,13 @@ async fn replace_existing_preserves_admin_tunable_fields_mcp() {
         "hub install must start with enabled=true",
     );
 
-    // Promote ALL FIVE admin-tunable fields away from defaults via
+    // Promote ALL SEVEN admin-tunable fields away from defaults via
     // native admin PUT. Note: `enabled=false` exercises the
     // enabled-stays-disabled regression guard; `usage_mode=always`
-    // and the session cap + timeout exercise the other three.
+    // and the session cap + timeout exercise three more.
+    // `environment_variables` + `headers` exercise the
+    // required-input carry-forward (real values pasted by the admin
+    // must survive Re-install, not get stomped back to placeholders).
     let promote = client
         .put(server.api_url(&format!("/mcp/system-servers/{}", first_id)))
         .header("Authorization", format!("Bearer {}", admin.token))
@@ -1747,6 +1776,12 @@ async fn replace_existing_preserves_admin_tunable_fields_mcp() {
             "usage_mode": "always",
             "max_concurrent_sessions": 7,
             "timeout_seconds": 120,
+            "environment_variables": {
+                "ADMIN_SET_KEY": "real_value_pasted_by_admin"
+            },
+            "headers": {
+                "X-Admin-Set-Header": "real_header_value"
+            }
         }))
         .send()
         .await
@@ -1760,7 +1795,7 @@ async fn replace_existing_preserves_admin_tunable_fields_mcp() {
 
     // Re-install without passing any of these in the request
     // (mimics UpdatesHubTab.reinstall which only passes hub_id +
-    // replace_existing). All five fields must carry forward.
+    // replace_existing). All seven fields must carry forward.
     let second: Json = client
         .post(server.api_url("/hub/mcp-servers/create-system"))
         .header("Authorization", format!("Bearer {}", admin.token))
@@ -1790,5 +1825,293 @@ async fn replace_existing_preserves_admin_tunable_fields_mcp() {
     assert_eq!(
         second["server"]["timeout_seconds"], 120,
         "re-install must carry forward timeout_seconds=120: {second}",
+    );
+    assert_eq!(
+        second["server"]["environment_variables"]["ADMIN_SET_KEY"],
+        "real_value_pasted_by_admin",
+        "re-install must carry forward env vars set by admin: {second}",
+    );
+    assert_eq!(
+        second["server"]["headers"]["X-Admin-Set-Header"],
+        "real_header_value",
+        "re-install must carry forward headers set by admin: {second}",
+    );
+}
+
+// ============================================================================
+// Required-input schema — placeholder seeding on install
+// ============================================================================
+//
+// The hub schema gained `required_env` + `required_headers` lists declaring
+// inputs the user must configure. The install path seeds the new MCP row's
+// env / header maps from each required input's `placeholder` so the user
+// sees in the settings page exactly what to replace (instead of an opaque
+// empty string).
+
+#[tokio::test]
+async fn install_with_required_inputs_seeds_placeholders_mcp() {
+    // Mock catalog with one MCP server declaring one required env var
+    // and one required header, each with a recognizable placeholder.
+    // After install, both placeholders must land in the new server
+    // row's `environment_variables` / `headers` maps verbatim.
+    let mock = spawn_mock_hub(vec![MockVersion {
+        version: "9.9.1-test",
+        prerelease: true,
+        items: vec![MockItem {
+            category: "mcp-server",
+            id: "mock-mcp-needs-config",
+            min_ziee_version: None,
+            extra_yaml: Some(
+                "required_env:\n\
+                 - name: MOCK_API_KEY\n\
+                 \x20\x20description: Mock service API key\n\
+                 \x20\x20placeholder: mk_xxxxxxxxxxxxxxxxxxxx\n\
+                 \x20\x20is_secret: true\n\
+                 required_headers:\n\
+                 - name: X-Mock-Tenant\n\
+                 \x20\x20description: Mock tenant identifier\n\
+                 \x20\x20placeholder: tenant_abc123\n\
+                 \x20\x20is_secret: false\n",
+            ),
+        }],
+    }])
+    .await;
+    let server = TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: mock.test_env(),
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(
+        &server,
+        "admin",
+        &[
+            "hub::catalog::read",
+            "hub::catalog::manage",
+            "hub::mcp_servers::create",
+            "mcp_servers_admin::create",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "version": "9.9.1-test" }))
+        .send()
+        .await
+        .expect("activate")
+        .error_for_status()
+        .expect("activate ok");
+
+    let resp: Json = client
+        .post(server.api_url("/hub/mcp-servers/create-system"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-mcp-needs-config" }))
+        .send()
+        .await
+        .expect("install")
+        .json()
+        .await
+        .expect("parse install");
+
+    assert_eq!(
+        resp["server"]["environment_variables"]["MOCK_API_KEY"],
+        "mk_xxxxxxxxxxxxxxxxxxxx",
+        "install must seed env-var placeholder verbatim: {resp}",
+    );
+    assert_eq!(
+        resp["server"]["headers"]["X-Mock-Tenant"],
+        "tenant_abc123",
+        "install must seed header placeholder verbatim: {resp}",
+    );
+}
+
+#[tokio::test]
+async fn replace_existing_preserves_env_var_overrides_mcp() {
+    // Install with placeholder, edit env var to a real value, then
+    // re-install with `replace_existing: true`. The real value must
+    // survive — otherwise Re-install silently breaks the server by
+    // stomping the admin's real token with the placeholder again.
+    let mock = spawn_mock_hub(vec![MockVersion {
+        version: "9.9.1-test",
+        prerelease: true,
+        items: vec![MockItem {
+            category: "mcp-server",
+            id: "mock-mcp-needs-key",
+            min_ziee_version: None,
+            extra_yaml: Some(
+                "required_env:\n\
+                 - name: API_KEY\n\
+                 \x20\x20placeholder: placeholder_value\n\
+                 \x20\x20is_secret: true\n",
+            ),
+        }],
+    }])
+    .await;
+    let server = TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: mock.test_env(),
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(
+        &server,
+        "admin",
+        &[
+            "hub::catalog::read",
+            "hub::catalog::manage",
+            "hub::mcp_servers::create",
+            "mcp_servers_admin::create",
+            "mcp_servers_admin::edit",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "version": "9.9.1-test" }))
+        .send()
+        .await
+        .expect("activate")
+        .error_for_status()
+        .expect("activate ok");
+
+    let first: Json = client
+        .post(server.api_url("/hub/mcp-servers/create-system"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-mcp-needs-key" }))
+        .send()
+        .await
+        .expect("install")
+        .json()
+        .await
+        .expect("parse install");
+    let first_id = first["server"]["id"].as_str().unwrap().to_string();
+
+    // Admin pastes the real value.
+    let promote = client
+        .put(server.api_url(&format!("/mcp/system-servers/{}", first_id)))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "environment_variables": {
+                "API_KEY": "real_secret_token_admin_pasted"
+            }
+        }))
+        .send()
+        .await
+        .expect("promote");
+    assert_eq!(promote.status(), 200);
+
+    let second: Json = client
+        .post(server.api_url("/hub/mcp-servers/create-system"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-mcp-needs-key", "replace_existing": true }))
+        .send()
+        .await
+        .expect("replace")
+        .json()
+        .await
+        .expect("parse replace");
+
+    assert_eq!(
+        second["server"]["environment_variables"]["API_KEY"],
+        "real_secret_token_admin_pasted",
+        "re-install MUST carry forward the admin's real value, not \
+         stomp it back to the placeholder: {second}",
+    );
+}
+
+#[tokio::test]
+async fn replace_existing_preserves_header_overrides_mcp() {
+    // Header carry-forward symmetric to the env-var test: install,
+    // PUT a header to a real value, re-install, assert the header
+    // survives. Covers the `required_headers` path specifically.
+    let mock = spawn_mock_hub(vec![MockVersion {
+        version: "9.9.1-test",
+        prerelease: true,
+        items: vec![MockItem {
+            category: "mcp-server",
+            id: "mock-mcp-needs-header",
+            min_ziee_version: None,
+            extra_yaml: Some(
+                "required_headers:\n\
+                 - name: X-Tenant-ID\n\
+                 \x20\x20placeholder: tenant_placeholder\n\
+                 \x20\x20is_secret: false\n",
+            ),
+        }],
+    }])
+    .await;
+    let server = TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: mock.test_env(),
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(
+        &server,
+        "admin",
+        &[
+            "hub::catalog::read",
+            "hub::catalog::manage",
+            "hub::mcp_servers::create",
+            "mcp_servers_admin::create",
+            "mcp_servers_admin::edit",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "version": "9.9.1-test" }))
+        .send()
+        .await
+        .expect("activate")
+        .error_for_status()
+        .expect("activate ok");
+
+    let first: Json = client
+        .post(server.api_url("/hub/mcp-servers/create-system"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-mcp-needs-header" }))
+        .send()
+        .await
+        .expect("install")
+        .json()
+        .await
+        .expect("parse install");
+    let first_id = first["server"]["id"].as_str().unwrap().to_string();
+
+    let promote = client
+        .put(server.api_url(&format!("/mcp/system-servers/{}", first_id)))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "headers": {
+                "X-Tenant-ID": "tenant_real_id_admin_pasted"
+            }
+        }))
+        .send()
+        .await
+        .expect("promote");
+    assert_eq!(promote.status(), 200);
+
+    let second: Json = client
+        .post(server.api_url("/hub/mcp-servers/create-system"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-mcp-needs-header", "replace_existing": true }))
+        .send()
+        .await
+        .expect("replace")
+        .json()
+        .await
+        .expect("parse replace");
+
+    assert_eq!(
+        second["server"]["headers"]["X-Tenant-ID"],
+        "tenant_real_id_admin_pasted",
+        "re-install MUST carry forward header values set by admin: {second}",
     );
 }
