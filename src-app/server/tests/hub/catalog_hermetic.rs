@@ -1481,3 +1481,282 @@ async fn system_mcp_install_surfaces_in_updates_with_system_flag() {
         "the system MCP row must NOT be flagged as template: {row}",
     );
 }
+
+#[tokio::test]
+async fn replace_existing_aborts_on_validation_failure_mcp() {
+    // MCP analog of `replace_existing_aborts_on_validation_failure`
+    // (the template test). The `replace_existing` re-install path
+    // runs the helper (which calls `ensure_installable` +
+    // `validate_transport_config`) BEFORE the delete, so a failed
+    // re-install — e.g. the upstream maintainer raised
+    // `min_ziee_version` past the server — must NOT leave the admin
+    // with the prior system MCP server wiped.
+    //
+    // MCP requests don't accept transport / command / url overrides,
+    // so we trigger validation failure via `ensure_installable`
+    // by activating a version where `mock-mcp-a` is pinned to
+    // min_ziee_version > server. The mock-mcp-a in the v9.9.1 ARM
+    // is compatible (install fine); the v9.9.4 arm makes the same
+    // hub_id incompatible.
+    let mock = spawn_mock_hub(vec![
+        MockVersion {
+            version: "9.9.4-test",
+            prerelease: true,
+            items: vec![MockItem {
+                category: "mcp-server",
+                id: "mock-mcp-a",
+                min_ziee_version: Some("99.0.0"),
+            }],
+        },
+        MockVersion {
+            version: "9.9.1-test",
+            prerelease: true,
+            items: vec![MockItem {
+                category: "mcp-server",
+                id: "mock-mcp-a",
+                min_ziee_version: None,
+            }],
+        },
+    ])
+    .await;
+    let server = TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: mock.test_env(),
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(
+        &server,
+        "admin",
+        &[
+            "hub::catalog::read",
+            "hub::catalog::manage",
+            "hub::mcp_servers::read",
+            "hub::mcp_servers::create",
+            "mcp_servers_admin::create",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "version": "9.9.1-test" }))
+        .send()
+        .await
+        .expect("activate v1")
+        .error_for_status()
+        .expect("activate v1 ok");
+
+    let first: Json = client
+        .post(server.api_url("/hub/mcp-servers/create-system"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-mcp-a" }))
+        .send()
+        .await
+        .expect("first install")
+        .json()
+        .await
+        .expect("parse first");
+    let first_id = first["server"]["id"].as_str().unwrap().to_string();
+
+    // Activate v9.9.4 — same `mock-mcp-a` is now incompatible.
+    client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "version": "9.9.4-test" }))
+        .send()
+        .await
+        .expect("activate v2")
+        .error_for_status()
+        .expect("activate v2 ok");
+
+    // Attempt re-install — ensure_installable fires → 422.
+    let resp = client
+        .post(server.api_url("/hub/mcp-servers/create-system"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "hub_id": "mock-mcp-a",
+            "replace_existing": true,
+        }))
+        .send()
+        .await
+        .expect("replace with incompatible");
+    assert_eq!(
+        resp.status(),
+        422,
+        "incompatible re-install should 422, got {}: {}",
+        resp.status(),
+        resp.text().await.unwrap_or_default(),
+    );
+
+    // Prior server MUST survive — it's still in `created_system_ids`.
+    let listing: Json = client
+        .get(server.api_url("/hub/mcp-servers?lang=en"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("list after failed replace")
+        .json()
+        .await
+        .expect("parse listing");
+    let row = listing
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == "mock-mcp-a")
+        .expect("mock-mcp-a in catalog");
+    let ids: Vec<String> = row["created_system_ids"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect();
+    assert!(
+        ids.contains(&first_id),
+        "prior system server MUST survive a failed re-install: {ids:?}",
+    );
+}
+
+#[tokio::test]
+async fn user_mcp_install_rejects_replace_existing_flag() {
+    // `replace_existing` is system-only — passing it on the
+    // user-scoped MCP endpoint must 400, not silently ignored.
+    // Mirrors `user_install_rejects_replace_existing_flag` for
+    // assistants.
+    let mock = spawn_mock_hub(mcp_versions()).await;
+    let server = TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: mock.test_env(),
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(
+        &server,
+        "admin",
+        &[
+            "hub::catalog::read",
+            "hub::catalog::manage",
+            "hub::mcp_servers::create",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "version": "9.9.1-test" }))
+        .send()
+        .await
+        .expect("activate")
+        .error_for_status()
+        .expect("activate ok");
+
+    let resp = client
+        .post(server.api_url("/hub/mcp-servers/create"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-mcp-a", "replace_existing": true }))
+        .send()
+        .await
+        .expect("install");
+    assert_eq!(
+        resp.status(),
+        400,
+        "replace_existing on user MCP endpoint should 400, got {}",
+        resp.status(),
+    );
+    let body: Json = resp.json().await.unwrap();
+    assert_eq!(body["error_code"], "VALIDATION_ERROR");
+}
+
+#[tokio::test]
+async fn replace_existing_preserves_run_in_sandbox() {
+    // Re-install via /hub/updates must not silently demote a
+    // previously-promoted system MCP server's admin-tunable runtime
+    // fields. Sibling of `replace_existing_preserves_is_default`.
+    // Specifically guards against the Round-1 F-1 silent-demote of
+    // `run_in_sandbox` (sandbox hardening posture) on Re-install.
+    //
+    // We install, then PATCH the row via the native admin endpoint
+    // to flip `run_in_sandbox=true` (the hub install starts it at
+    // false — sandbox is opt-in for hub-installed servers), then
+    // re-install and assert the flag survives.
+    let mock = spawn_mock_hub(mcp_versions()).await;
+    let server = TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: mock.test_env(),
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(
+        &server,
+        "admin",
+        &[
+            "hub::catalog::read",
+            "hub::catalog::manage",
+            "hub::mcp_servers::create",
+            "mcp_servers_admin::create",
+            "mcp_servers_admin::edit",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    client
+        .post(server.api_url("/hub/activate"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "version": "9.9.1-test" }))
+        .send()
+        .await
+        .expect("activate")
+        .error_for_status()
+        .expect("activate ok");
+
+    let first: Json = client
+        .post(server.api_url("/hub/mcp-servers/create-system"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-mcp-a" }))
+        .send()
+        .await
+        .expect("first install")
+        .json()
+        .await
+        .expect("parse first");
+    let first_id = first["server"]["id"].as_str().unwrap().to_string();
+    assert_eq!(
+        first["server"]["run_in_sandbox"], false,
+        "hub install must start with run_in_sandbox=false",
+    );
+
+    // Promote via the native admin PUT.
+    let promote = client
+        .put(server.api_url(&format!("/mcp/system-servers/{}", first_id)))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "run_in_sandbox": true }))
+        .send()
+        .await
+        .expect("promote");
+    assert_eq!(
+        promote.status(),
+        200,
+        "PUT should succeed: {}",
+        promote.text().await.unwrap_or_default(),
+    );
+
+    // Re-install without passing run_in_sandbox in the request
+    // (mimics UpdatesHubTab.reinstall which only passes hub_id +
+    // replace_existing). Must carry forward run_in_sandbox=true.
+    let second: Json = client
+        .post(server.api_url("/hub/mcp-servers/create-system"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "hub_id": "mock-mcp-a", "replace_existing": true }))
+        .send()
+        .await
+        .expect("replace")
+        .json()
+        .await
+        .expect("parse second");
+    assert_eq!(
+        second["server"]["run_in_sandbox"], true,
+        "re-install must carry forward run_in_sandbox=true: {second}",
+    );
+}

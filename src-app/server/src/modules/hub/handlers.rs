@@ -561,12 +561,13 @@ struct HubMcpServerCreatePlan {
 }
 
 /// Shared lookup + validation for both hub MCP server install paths
-/// (user / system). `is_system` is informational only — the permission
-/// gate is at the extractor; the field doesn't ride the request type.
-/// Mirrors `build_assistant_create_from_hub`.
+/// (user / system). Mirrors `build_assistant_create_from_hub` — but
+/// MCP doesn't need an `is_system` discriminator on the result
+/// because the scope is decided by which `Repos.mcp.create_*_server`
+/// method the caller invokes (the assistants table uses a column
+/// flag; mcp_servers uses two distinct insert paths).
 async fn build_mcp_server_create_from_hub(
     request: &CreateMcpServerFromHubRequest,
-    _is_system: bool,
 ) -> Result<HubMcpServerCreatePlan, AppError> {
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
@@ -666,7 +667,7 @@ pub async fn create_mcp_server_from_hub(
         .into());
     }
 
-    let plan = build_mcp_server_create_from_hub(&request, false).await?;
+    let plan = build_mcp_server_create_from_hub(&request).await?;
 
     let server = Repos
         .mcp
@@ -728,15 +729,26 @@ pub async fn create_system_mcp_server_from_hub(
         return Err(AppError::conflict("Hub MCP system server").into());
     }
 
-    // Carry forward the prior system server's `enabled` on the
-    // `replace_existing` re-install path so a previously-disabled
-    // server doesn't silently get re-enabled by the refresh.
-    // (MCP has no `is_default` analog — there's no clone-on-signup
-    // hook for MCP servers, so carry-forward is `enabled` only.)
-    let mut plan = build_mcp_server_create_from_hub(&request, true).await?;
+    // Carry forward the prior system server's admin-tunable runtime
+    // fields on the `replace_existing` re-install path so a Re-install
+    // doesn't silently undo the admin's prior promotions:
+    //   - `enabled` — previously-disabled servers stay disabled
+    //   - `run_in_sandbox` — bwrap hardening posture survives
+    //   - `usage_mode` — `always`/`never` overrides survive
+    //   - `max_concurrent_sessions` — session caps survive
+    //   - `timeout_seconds` — admin-tuned timeouts survive
+    // Without these, an admin who'd hardened a hub-installed system
+    // server (e.g. flipped `run_in_sandbox=true`) would see their
+    // change silently reverted to the catalog default on Re-install.
+    let mut plan = build_mcp_server_create_from_hub(&request).await?;
     if let Some(existing_id) = existing_id {
         if let Some(prior) = Repos.mcp.get_any_server(existing_id).await? {
             plan.create_request.enabled = Some(prior.enabled);
+            plan.create_request.run_in_sandbox = Some(prior.run_in_sandbox);
+            plan.create_request.usage_mode = Some(prior.usage_mode);
+            plan.create_request.max_concurrent_sessions =
+                prior.max_concurrent_sessions;
+            plan.create_request.timeout_seconds = Some(prior.timeout_seconds);
         }
     }
 
