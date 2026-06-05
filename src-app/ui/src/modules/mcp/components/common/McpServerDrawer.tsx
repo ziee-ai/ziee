@@ -14,9 +14,24 @@ import {
   type UpdateMcpServerRequest,
   type TestMcpConnectionRequest,
   type McpServer,
+  type EnvVarEntry,
+  type HeaderEntry,
 } from '@/api-client/types'
+import { KeyValueSecretEditor } from '@/modules/mcp/components/common/KeyValueSecretEditor'
 
 const { TextArea } = Input
+
+/// Form-state row shape for env vars and HTTP headers in this drawer.
+/// `_was_saved_secret` is a hidden field set by the form initializer
+/// when the entry came back from the server as a write-only secret
+/// (is_secret=true, value=null) — controls the password-input
+/// placeholder. Stripped from API payloads at submit time.
+type EditorRow = {
+  key: string
+  value?: string
+  is_secret: boolean
+  _was_saved_secret?: boolean
+}
 
 const TRANSPORT_TYPES = [
   {
@@ -120,14 +135,29 @@ export function McpServerDrawer() {
           editingServer.args && editingServer.args.length > 0
             ? JSON.stringify(editingServer.args, null, 2)
             : '',
-        env: editingServer.environment_variables
-          ? JSON.stringify(editingServer.environment_variables, null, 2)
-          : '',
-        headers:
-          editingServer.headers &&
-          Object.keys(editingServer.headers).length > 0
-            ? JSON.stringify(editingServer.headers, null, 2)
-            : '',
+        // Structured entries from the server (write-only-secret
+        // semantics — secret values come back as `value: null`). The
+        // hidden `_was_saved_secret` field tells the password input
+        // to render the `••••• (saved)` placeholder. On submit, rows
+        // with `_was_saved_secret && value` empty get translated to
+        // `value: null` in the API payload so the server preserves
+        // the encrypted value.
+        environment_variables_entries: (
+          editingServer.environment_variables_entries ?? []
+        ).map((entry): EditorRow => ({
+          key: entry.key,
+          value: entry.value ?? '',
+          is_secret: entry.is_secret,
+          _was_saved_secret: entry.is_secret && entry.value == null,
+        })),
+        headers_entries: (
+          editingServer.headers_entries ?? []
+        ).map((entry): EditorRow => ({
+          key: entry.key,
+          value: entry.value ?? '',
+          is_secret: entry.is_secret,
+          _was_saved_secret: entry.is_secret && entry.value == null,
+        })),
         enabled: editingServer.enabled,
         supports_sampling: editingServer.supports_sampling ?? false,
         usage_mode: editingServer.usage_mode ?? 'auto',
@@ -147,61 +177,49 @@ export function McpServerDrawer() {
     }
   }, [editingServer, open, mode, form])
 
-  // Parse the JSON-string transport fields (args / env / headers) shared by
-  // save + test. Returns null (after surfacing a message) on malformed input.
-  type ParsedTransport = {
-    args: string[]
-    environmentVariables: Record<string, string>
-    headers: Record<string, string>
-  }
+  // Parse the JSON-string `args` field (still a TextArea — it's a
+  // flat array, no per-entry secret concept). Env vars + headers
+  // come from Form.List as structured `EditorRow[]` and don't need
+  // any JSON parsing here.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const parseTransportFields = (values: any): ParsedTransport | null => {
-    let args: string[] = []
-    if (values.args && values.args.trim()) {
-      try {
-        const parsed = JSON.parse(values.args)
-        if (!Array.isArray(parsed)) {
-          message.error('Arguments must be a JSON array')
-          return null
-        }
-        args = parsed
-      } catch (_error) {
-        message.error('Invalid JSON in arguments')
+  const parseArgsField = (values: any): string[] | null => {
+    if (!values.args || !values.args.trim()) return []
+    try {
+      const parsed = JSON.parse(values.args)
+      if (!Array.isArray(parsed)) {
+        message.error('Arguments must be a JSON array')
         return null
       }
+      return parsed
+    } catch (_error) {
+      message.error('Invalid JSON in arguments')
+      return null
     }
+  }
 
-    let environmentVariables: Record<string, string> = {}
-    if (values.env && values.env.trim()) {
-      try {
-        const parsed = JSON.parse(values.env)
-        if (typeof parsed !== 'object' || Array.isArray(parsed)) {
-          message.error('Environment variables must be a JSON object')
-          return null
-        }
-        environmentVariables = parsed
-      } catch (_error) {
-        message.error('Invalid JSON in environment variables')
-        return null
-      }
-    }
-
-    let headers: Record<string, string> = {}
-    if (values.headers && values.headers.trim()) {
-      try {
-        const parsed = JSON.parse(values.headers)
-        if (typeof parsed !== 'object' || Array.isArray(parsed)) {
-          message.error('HTTP Headers must be a JSON object')
-          return null
-        }
-        headers = parsed
-      } catch (_error) {
-        message.error('Invalid JSON in HTTP Headers')
-        return null
-      }
-    }
-
-    return { args, environmentVariables, headers }
+  /// Convert an `EditorRow[]` from the form to the API's
+  /// `EnvVarEntry[]` / `HeaderEntry[]` shape. Strips the hidden
+  /// `_was_saved_secret` field. For rows where the user left a
+  /// saved-secret blank (didn't re-type the value), send
+  /// `value: null` so the server keeps the existing encrypted
+  /// value — without this the server would treat blank as an
+  /// explicit empty-string and clobber the stored secret.
+  const editorRowsToEntries = <T extends EnvVarEntry | HeaderEntry>(
+    rows: EditorRow[] | undefined,
+  ): T[] => {
+    return (rows ?? [])
+      .filter(row => row && row.key)
+      .map(row => {
+        const keepExistingSecret =
+          row._was_saved_secret &&
+          row.is_secret &&
+          (row.value == null || row.value === '')
+        return {
+          key: row.key,
+          value: keepExistingSecret ? null : (row.value ?? ''),
+          is_secret: !!row.is_secret,
+        } as unknown as T
+      })
   }
 
   // Validate + persist the form (create or update) and return the saved server
@@ -218,9 +236,14 @@ export function McpServerDrawer() {
       return null
     }
 
-    const parsed = parseTransportFields(values)
-    if (!parsed) return null
-    const { args, environmentVariables, headers } = parsed
+    const args = parseArgsField(values)
+    if (args === null) return null
+    const environment_variables_entries = editorRowsToEntries<EnvVarEntry>(
+      values.environment_variables_entries,
+    )
+    const headers_entries = editorRowsToEntries<HeaderEntry>(
+      values.headers_entries,
+    )
 
     const serverData = {
       name: values.name,
@@ -230,8 +253,8 @@ export function McpServerDrawer() {
       url: values.url,
       command: values.command,
       args: args,
-      environment_variables: environmentVariables,
-      headers: headers,
+      environment_variables_entries,
+      headers_entries,
       enabled: values.enabled ?? true,
       supports_sampling: values.supports_sampling ?? false,
       usage_mode: values.usage_mode ?? 'auto',
@@ -249,8 +272,8 @@ export function McpServerDrawer() {
       url: values.url,
       command: values.command,
       args: args,
-      environment_variables: environmentVariables,
-      headers: headers,
+      environment_variables_entries,
+      headers_entries,
       enabled: values.enabled ?? true,
       supports_sampling: values.supports_sampling ?? false,
       usage_mode: values.usage_mode ?? 'auto',
@@ -352,13 +375,19 @@ export function McpServerDrawer() {
         )
       }
 
+      // After persist, the SAVED server's entries are authoritative
+      // (env_vars_entries has redacted secret values where applicable
+      // — that's fine, the test handler falls back to the stored
+      // decrypted value via `id`). For non-secret entries, send the
+      // plaintext value directly.
       const payload: TestMcpConnectionRequest = {
         transport_type: saved.transport_type,
         command: saved.command ?? undefined,
         args: Array.isArray(saved.args) ? saved.args : [],
-        environment_variables: saved.environment_variables ?? {},
+        environment_variables_entries:
+          saved.environment_variables_entries ?? [],
         url: saved.url ?? undefined,
-        headers: saved.headers ?? {},
+        headers_entries: saved.headers_entries ?? [],
         timeout_seconds: saved.timeout_seconds,
         id: saved.id,
       }
@@ -512,13 +541,14 @@ export function McpServerDrawer() {
 
               <Form.Item
                 label="Environment Variables"
-                name="env"
-                help="JSON object format, e.g., {&quot;KEY&quot;: &quot;value&quot;}"
+                help="One row per variable. Toggle 🔒 to encrypt at rest; secret values are never returned to the client after save (leave blank to keep)."
               >
-                <TextArea
-                  placeholder='{"KEY": "value"}'
-                  rows={4}
-                  className="font-mono text-xs"
+                <KeyValueSecretEditor
+                  name="environment_variables_entries"
+                  defaultIsSecret={true}
+                  keyPlaceholder="GITHUB_TOKEN"
+                  valuePlaceholder="value"
+                  labelSingular="env var"
                 />
               </Form.Item>
             </>
@@ -539,13 +569,14 @@ export function McpServerDrawer() {
 
               <Form.Item
                 label="HTTP Headers"
-                name="headers"
-                help={'JSON object format, e.g., {"Authorization": "Bearer token"}'}
+                help="One row per header. Toggle 🔒 to encrypt at rest (recommended for tokens / API keys). `${VAR}` interpolation against env vars is supported in header values."
               >
-                <TextArea
-                  placeholder={'{"Authorization": "Bearer token"}'}
-                  rows={4}
-                  className="font-mono text-xs"
+                <KeyValueSecretEditor
+                  name="headers_entries"
+                  defaultIsSecret={false}
+                  keyPlaceholder="Authorization"
+                  valuePlaceholder="Bearer …"
+                  labelSingular="header"
                 />
               </Form.Item>
 

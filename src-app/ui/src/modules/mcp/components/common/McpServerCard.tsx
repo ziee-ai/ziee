@@ -80,13 +80,18 @@ export function McpServerCard({
     try {
       // Probe the persisted config. The OAuth secret is write-only, so we send
       // the server `id` and let the backend reuse the stored secret (URL matches).
+      // Probe the persisted config. Secret values are write-only in
+      // the response (env_vars_entries / headers_entries carry
+      // is_secret + value=null) — the test handler falls back to the
+      // stored decrypted value via `id`.
       const payload: TestMcpConnectionRequest = {
         transport_type: server.transport_type,
         command: server.command ?? undefined,
         args: Array.isArray(server.args) ? server.args : [],
-        environment_variables: server.environment_variables ?? {},
+        environment_variables_entries:
+          server.environment_variables_entries ?? [],
         url: server.url ?? undefined,
-        headers: server.headers ?? {},
+        headers_entries: server.headers_entries ?? [],
         timeout_seconds: server.timeout_seconds,
         id: server.id,
       }

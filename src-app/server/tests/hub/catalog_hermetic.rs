@@ -1776,12 +1776,12 @@ async fn replace_existing_preserves_admin_tunable_fields_mcp() {
             "usage_mode": "always",
             "max_concurrent_sessions": 7,
             "timeout_seconds": 120,
-            "environment_variables": {
-                "ADMIN_SET_KEY": "real_value_pasted_by_admin"
-            },
-            "headers": {
-                "X-Admin-Set-Header": "real_header_value"
-            }
+            "environment_variables_entries": [
+                { "key": "ADMIN_SET_KEY", "value": "real_value_pasted_by_admin", "is_secret": false }
+            ],
+            "headers_entries": [
+                { "key": "X-Admin-Set-Header", "value": "real_header_value", "is_secret": false }
+            ]
         }))
         .send()
         .await
@@ -1826,14 +1826,28 @@ async fn replace_existing_preserves_admin_tunable_fields_mcp() {
         second["server"]["timeout_seconds"], 120,
         "re-install must carry forward timeout_seconds=120: {second}",
     );
-    assert_eq!(
-        second["server"]["environment_variables"]["ADMIN_SET_KEY"],
-        "real_value_pasted_by_admin",
-        "re-install must carry forward env vars set by admin: {second}",
+    let env_entry = find_entry(
+        &second["server"]["environment_variables_entries"],
+        "ADMIN_SET_KEY",
     );
     assert_eq!(
-        second["server"]["headers"]["X-Admin-Set-Header"],
-        "real_header_value",
+        env_entry["is_secret"], false,
+        "ADMIN_SET_KEY must stay non-secret: {second}",
+    );
+    assert_eq!(
+        env_entry["value"], "real_value_pasted_by_admin",
+        "re-install must carry forward env vars set by admin: {second}",
+    );
+    let hdr_entry = find_entry(
+        &second["server"]["headers_entries"],
+        "X-Admin-Set-Header",
+    );
+    assert_eq!(
+        hdr_entry["is_secret"], false,
+        "X-Admin-Set-Header must stay non-secret: {second}",
+    );
+    assert_eq!(
+        hdr_entry["value"], "real_header_value",
         "re-install must carry forward headers set by admin: {second}",
     );
 }
@@ -1914,17 +1928,89 @@ async fn install_with_required_inputs_seeds_placeholders_mcp() {
         .json()
         .await
         .expect("parse install");
+    let server_id = uuid::Uuid::parse_str(resp["server"]["id"].as_str().unwrap())
+        .expect("server id");
 
-    assert_eq!(
-        resp["server"]["environment_variables"]["MOCK_API_KEY"],
-        "mk_xxxxxxxxxxxxxxxxxxxx",
-        "install must seed env-var placeholder verbatim: {resp}",
+    // API-level assertions on the entries view. The MOCK_API_KEY
+    // placeholder lives in the encrypted column (is_secret=true), so
+    // the API redacts it to value=null on read; the X-Mock-Tenant
+    // placeholder is non-secret so its value is visible.
+    let env_entry = find_entry(
+        &resp["server"]["environment_variables_entries"],
+        "MOCK_API_KEY",
     );
     assert_eq!(
-        resp["server"]["headers"]["X-Mock-Tenant"],
-        "tenant_abc123",
-        "install must seed header placeholder verbatim: {resp}",
+        env_entry["is_secret"], true,
+        "MOCK_API_KEY must be marked secret: {resp}",
     );
+    assert!(
+        env_entry["value"].is_null(),
+        "MOCK_API_KEY value must be redacted to null on read: {resp}",
+    );
+    let hdr_entry = find_entry(&resp["server"]["headers_entries"], "X-Mock-Tenant");
+    assert_eq!(
+        hdr_entry["is_secret"], false,
+        "X-Mock-Tenant must be marked non-secret: {resp}",
+    );
+    assert_eq!(
+        hdr_entry["value"], "tenant_abc123",
+        "X-Mock-Tenant must expose placeholder verbatim: {resp}",
+    );
+
+    // DB-direct assertions: confirm the encrypted-column path is
+    // actually populated (i.e. the placeholder didn't just land in the
+    // plain map for a secret entry).
+    let pool = sqlx::PgPool::connect(&server.database_url)
+        .await
+        .expect("connect to test db");
+    let row = sqlx::query!(
+        r#"SELECT environment_variables_encrypted as "env_enc!: serde_json::Value",
+                   environment_variables_secret_keys as "env_secret_keys!: Vec<String>",
+                   headers as "headers!: serde_json::Value",
+                   headers_secret_keys as "hdr_secret_keys!: Vec<String>"
+            FROM mcp_servers WHERE id = $1"#,
+        server_id,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("fetch mcp row");
+    assert!(
+        row.env_secret_keys.iter().any(|k| k == "MOCK_API_KEY"),
+        "environment_variables_secret_keys must contain MOCK_API_KEY: {:?}",
+        row.env_secret_keys,
+    );
+    let env_enc_value = row.env_enc.get("MOCK_API_KEY").and_then(|v| v.as_str());
+    assert!(
+        env_enc_value.map(|s| !s.is_empty()).unwrap_or(false),
+        "environment_variables_encrypted->>'MOCK_API_KEY' must be a \
+         non-empty string (the base64-encoded placeholder bytes): \
+         got {:?}",
+        env_enc_value,
+    );
+    let hdr_plain_value = row.headers.get("X-Mock-Tenant").and_then(|v| v.as_str());
+    assert_eq!(
+        hdr_plain_value,
+        Some("tenant_abc123"),
+        "headers->>'X-Mock-Tenant' must equal the plaintext placeholder: \
+         got {:?}",
+        hdr_plain_value,
+    );
+    assert!(
+        !row.hdr_secret_keys.iter().any(|k| k == "X-Mock-Tenant"),
+        "headers_secret_keys must NOT contain X-Mock-Tenant: {:?}",
+        row.hdr_secret_keys,
+    );
+}
+
+/// Lookup helper for `*_entries` arrays: returns the JSON value of the
+/// single entry whose `key` field equals `name`. Panics with a clear
+/// message when the key isn't found.
+fn find_entry<'a>(arr: &'a Json, name: &str) -> &'a Json {
+    arr.as_array()
+        .unwrap_or_else(|| panic!("expected entries array, got: {arr}"))
+        .iter()
+        .find(|e| e["key"] == name)
+        .unwrap_or_else(|| panic!("entry with key {name} not found in: {arr}"))
 }
 
 #[tokio::test]
@@ -1989,20 +2075,53 @@ async fn replace_existing_preserves_env_var_overrides_mcp() {
         .await
         .expect("parse install");
     let first_id = first["server"]["id"].as_str().unwrap().to_string();
+    let first_uuid = uuid::Uuid::parse_str(&first_id).expect("first id");
 
-    // Admin pastes the real value.
+    // Sanity: the install seeded the placeholder as a secret entry
+    // (value redacted to null on the API surface).
+    let first_entry = find_entry(
+        &first["server"]["environment_variables_entries"],
+        "API_KEY",
+    );
+    assert_eq!(first_entry["is_secret"], true);
+    assert!(first_entry["value"].is_null());
+
+    // Admin pastes the real value via the new entries shape.
     let promote = client
         .put(server.api_url(&format!("/mcp/system-servers/{}", first_id)))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&json!({
-            "environment_variables": {
-                "API_KEY": "real_secret_token_admin_pasted"
-            }
+            "environment_variables_entries": [
+                { "key": "API_KEY", "value": "real_secret_token_admin_pasted", "is_secret": true }
+            ]
         }))
         .send()
         .await
         .expect("promote");
     assert_eq!(promote.status(), 200);
+
+    // Capture the encrypted bytes BEFORE the re-install — these are
+    // what carry-forward must preserve.
+    let pool = sqlx::PgPool::connect(&server.database_url)
+        .await
+        .expect("connect to test db");
+    let before = sqlx::query!(
+        r#"SELECT environment_variables_encrypted as "env_enc!: serde_json::Value",
+                   environment_variables_secret_keys as "env_secret_keys!: Vec<String>"
+            FROM mcp_servers WHERE id = $1"#,
+        first_uuid,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("fetch before");
+    let encrypted_before = before
+        .env_enc
+        .get("API_KEY")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .expect("API_KEY must be in encrypted column after PUT");
+    assert!(!encrypted_before.is_empty());
+    assert!(before.env_secret_keys.iter().any(|k| k == "API_KEY"));
 
     let second: Json = client
         .post(server.api_url("/hub/mcp-servers/create-system"))
@@ -2014,13 +2133,55 @@ async fn replace_existing_preserves_env_var_overrides_mcp() {
         .json()
         .await
         .expect("parse replace");
+    // `replace_existing` deletes the prior row and creates a NEW one
+    // with a fresh UUID — read the new id from the response, not the
+    // first install's id.
+    let second_id = uuid::Uuid::parse_str(second["server"]["id"].as_str().unwrap())
+        .expect("second id");
 
+    // After re-install, decrypt the encrypted column and assert the
+    // PLAINTEXT is preserved. Byte-equality of the ciphertext is NOT
+    // a correctness criterion — `pgp_sym_encrypt` includes a random
+    // IV per call, so re-encrypting the same plaintext produces
+    // different ciphertext. What matters is that the carry-forward
+    // round-trips the value through decrypt → re-encrypt without
+    // losing it.
+    let _ = encrypted_before; // kept for context — referenced below
+    let after = sqlx::query!(
+        r#"SELECT environment_variables_encrypted as "env_enc!: serde_json::Value",
+                   environment_variables_secret_keys as "env_secret_keys!: Vec<String>"
+            FROM mcp_servers WHERE id = $1"#,
+        second_id,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("fetch after");
+    let encrypted_after = after
+        .env_enc
+        .get("API_KEY")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .expect("API_KEY must still be in encrypted column after re-install");
+    assert!(!encrypted_after.is_empty());
+
+    // Decrypt with the test storage key (configured in the test
+    // harness — see harness_inner.rs::init_storage_key). pgcrypto's
+    // pgp_sym_decrypt expects raw bytes, so base64-decode first.
+    let plaintext: (String,) = sqlx::query_as(
+        "SELECT pgp_sym_decrypt(decode($1, 'base64'), $2)",
+    )
+    .bind(&encrypted_after)
+    .bind("test-storage-key-for-pgcrypto-min-32-chars-long")
+    .fetch_one(&pool)
+    .await
+    .expect("decrypt API_KEY");
     assert_eq!(
-        second["server"]["environment_variables"]["API_KEY"],
-        "real_secret_token_admin_pasted",
-        "re-install MUST carry forward the admin's real value, not \
-         stomp it back to the placeholder: {second}",
+        plaintext.0, "real_secret_token_admin_pasted",
+        "re-install MUST carry forward the admin's real value via \
+         decrypt → re-encrypt round-trip (not stomp it back to the \
+         catalog placeholder)",
     );
+    assert!(after.env_secret_keys.iter().any(|k| k == "API_KEY"));
 }
 
 #[tokio::test]
@@ -2119,21 +2280,48 @@ async fn replace_existing_merges_new_catalog_keys_with_admin_values() {
         .await
         .expect("parse first");
     let first_id = first["server"]["id"].as_str().unwrap().to_string();
-    assert_eq!(
-        first["server"]["environment_variables"]["KEY_A"], "pa",
-        "v1 install must seed KEY_A placeholder: {first}",
+    let first_uuid = uuid::Uuid::parse_str(&first_id).expect("first id");
+    // v1 install seeded KEY_A as a secret entry (placeholder pa lives
+    // in the encrypted column, redacted to value=null on read).
+    let key_a_entry = find_entry(
+        &first["server"]["environment_variables_entries"],
+        "KEY_A",
     );
+    assert_eq!(key_a_entry["is_secret"], true);
+    assert!(key_a_entry["value"].is_null());
 
     let promote = client
         .put(server.api_url(&format!("/mcp/system-servers/{}", first_id)))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&json!({
-            "environment_variables": { "KEY_A": "real_a" }
+            "environment_variables_entries": [
+                { "key": "KEY_A", "value": "real_a", "is_secret": true }
+            ]
         }))
         .send()
         .await
         .expect("promote");
     assert_eq!(promote.status(), 200);
+
+    // Capture KEY_A's encrypted bytes BEFORE v2 re-install.
+    let pool = sqlx::PgPool::connect(&server.database_url)
+        .await
+        .expect("connect to test db");
+    let before = sqlx::query!(
+        r#"SELECT environment_variables_encrypted as "env_enc!: serde_json::Value"
+            FROM mcp_servers WHERE id = $1"#,
+        first_uuid,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("fetch before");
+    let key_a_before = before
+        .env_enc
+        .get("KEY_A")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .expect("KEY_A must be in encrypted column after PUT");
+    assert!(!key_a_before.is_empty());
 
     // Activate v2 — catalog now declares KEY_B as also-required.
     client
@@ -2156,19 +2344,71 @@ async fn replace_existing_merges_new_catalog_keys_with_admin_values() {
         .json()
         .await
         .expect("parse replace");
+    // `replace_existing` deletes the prior row and creates a NEW one
+    // with a fresh UUID — read the new id from the response, not the
+    // first install's id.
+    let second_id = uuid::Uuid::parse_str(second["server"]["id"].as_str().unwrap())
+        .expect("second id");
 
-    // MERGE assertion: KEY_A keeps admin's real value, KEY_B is seeded
-    // from the v2 catalog's placeholder. WOULD FAIL on broken
-    // wholesale-replace carry-forward (KEY_B would be absent).
+    // MERGE assertion: KEY_A's PLAINTEXT survives the carry-forward
+    // (admin's real value preserved via decrypt → re-encrypt round
+    // trip — bytes differ because pgcrypto uses a random IV per
+    // encryption, but plaintext is the load-bearing contract).
+    // KEY_B's placeholder is freshly seeded into the encrypted
+    // column, and BOTH keys appear in
+    // environment_variables_secret_keys. WOULD FAIL on broken
+    // wholesale-replace carry-forward — KEY_B would be absent.
+    let _ = key_a_before; // kept for context
+    let after = sqlx::query!(
+        r#"SELECT environment_variables_encrypted as "env_enc!: serde_json::Value",
+                   environment_variables_secret_keys as "env_secret_keys!: Vec<String>"
+            FROM mcp_servers WHERE id = $1"#,
+        second_id,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("fetch after");
+    let key_a_after = after
+        .env_enc
+        .get("KEY_A")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .expect("KEY_A must still be in encrypted column after re-install");
+    let key_a_plaintext: (String,) = sqlx::query_as(
+        "SELECT pgp_sym_decrypt(decode($1, 'base64'), $2)",
+    )
+    .bind(&key_a_after)
+    .bind("test-storage-key-for-pgcrypto-min-32-chars-long")
+    .fetch_one(&pool)
+    .await
+    .expect("decrypt KEY_A");
     assert_eq!(
-        second["server"]["environment_variables"]["KEY_A"], "real_a",
-        "merge MUST preserve admin's prior KEY_A: {second}",
+        key_a_plaintext.0, "real_a",
+        "merge MUST preserve admin's prior KEY_A plaintext through \
+         the carry-forward (decrypt → re-encrypt round-trip)",
     );
-    assert_eq!(
-        second["server"]["environment_variables"]["KEY_B"], "pb",
+    let key_b_after = after
+        .env_enc
+        .get("KEY_B")
+        .and_then(|v| v.as_str())
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+    assert!(
+        key_b_after,
         "merge MUST seed newly-required KEY_B placeholder from v2 \
-         catalog (this is the load-bearing assertion that proves \
-         merge-not-replace): {second}",
+         catalog into the encrypted column (this is the load-bearing \
+         assertion that proves merge-not-replace): env_enc = {:?}",
+        after.env_enc,
+    );
+    assert!(
+        after.env_secret_keys.iter().any(|k| k == "KEY_A"),
+        "secret_keys must contain KEY_A: {:?}",
+        after.env_secret_keys,
+    );
+    assert!(
+        after.env_secret_keys.iter().any(|k| k == "KEY_B"),
+        "secret_keys must contain KEY_B (the merge-not-replace proof): {:?}",
+        after.env_secret_keys,
     );
 }
 
@@ -2238,9 +2478,9 @@ async fn replace_existing_preserves_header_overrides_mcp() {
         .put(server.api_url(&format!("/mcp/system-servers/{}", first_id)))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&json!({
-            "headers": {
-                "X-Tenant-ID": "tenant_real_id_admin_pasted"
-            }
+            "headers_entries": [
+                { "key": "X-Tenant-ID", "value": "tenant_real_id_admin_pasted", "is_secret": false }
+            ]
         }))
         .send()
         .await
@@ -2258,9 +2498,12 @@ async fn replace_existing_preserves_header_overrides_mcp() {
         .await
         .expect("parse replace");
 
+    // X-Tenant-ID is a non-secret header, so its value is visible in
+    // the entries view (no encryption / redaction).
+    let entry = find_entry(&second["server"]["headers_entries"], "X-Tenant-ID");
+    assert_eq!(entry["is_secret"], false, "X-Tenant-ID must stay non-secret: {second}");
     assert_eq!(
-        second["server"]["headers"]["X-Tenant-ID"],
-        "tenant_real_id_admin_pasted",
+        entry["value"], "tenant_real_id_admin_pasted",
         "re-install MUST carry forward header values set by admin: {second}",
     );
 }

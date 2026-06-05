@@ -610,15 +610,31 @@ async fn build_mcp_server_create_from_hub(
     // `GITHUB_TOKEN: ghp_xxxxxxxx...` (the placeholder) and knows
     // exactly what to replace.
     //
+    // Per-entry `is_secret` is propagated from the `HubRequiredInput`
+    // declaration so credential-bearing inputs land in the new
+    // `*_encrypted` storage columns on insert.
+    //
     // `.entry().or_insert_with(...)` skips keys the catalog already
     // pre-filled with a concrete example (e.g. postgres-mcp ships a
     // sample connection string) and keys the user already supplied
     // via the request override path (future extension).
-    let mut env_map: std::collections::HashMap<String, String> = hub_server
+    let catalog_env: std::collections::HashMap<String, String> = hub_server
         .environment_variables
         .as_ref()
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default();
+    let required_env_secret: std::collections::HashMap<&str, bool> = hub_server
+        .required_env
+        .iter()
+        .map(|r| (r.name.as_str(), r.is_secret))
+        .collect();
+    let mut env_map: std::collections::BTreeMap<String, (String, bool)> = catalog_env
+        .into_iter()
+        .map(|(k, v)| {
+            let is_secret = required_env_secret.get(k.as_str()).copied().unwrap_or(false);
+            (k, (v, is_secret))
+        })
+        .collect();
     for req in &hub_server.required_env {
         let placeholder = req.placeholder.clone().unwrap_or_default();
         env_map
@@ -630,29 +646,62 @@ async fn build_mcp_server_create_from_hub(
                 // surface until the manifest also drops the empty
                 // string. Non-empty existing values are respected
                 // (e.g. postgres-mcp's example connection string).
-                if existing.is_empty() {
-                    *existing = placeholder.clone();
+                if existing.0.is_empty() {
+                    existing.0 = placeholder.clone();
                 }
+                existing.1 = req.is_secret;
             })
-            .or_insert_with(|| placeholder);
+            .or_insert_with(|| (placeholder, req.is_secret));
     }
+    let env_entries: Vec<crate::modules::mcp::EnvVarEntry> = env_map
+        .into_iter()
+        .map(|(k, (v, is_secret))| crate::modules::mcp::EnvVarEntry {
+            key: k,
+            value: Some(v),
+            is_secret,
+        })
+        .collect();
 
-    let mut headers_map: std::collections::HashMap<String, String> = hub_server
+    let catalog_headers: std::collections::HashMap<String, String> = hub_server
         .headers
         .as_ref()
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default();
+    let required_header_secret: std::collections::HashMap<&str, bool> = hub_server
+        .required_headers
+        .iter()
+        .map(|r| (r.name.as_str(), r.is_secret))
+        .collect();
+    let mut header_map: std::collections::BTreeMap<String, (String, bool)> = catalog_headers
+        .into_iter()
+        .map(|(k, v)| {
+            let is_secret = required_header_secret
+                .get(k.as_str())
+                .copied()
+                .unwrap_or(false);
+            (k, (v, is_secret))
+        })
+        .collect();
     for req in &hub_server.required_headers {
         let placeholder = req.placeholder.clone().unwrap_or_default();
-        headers_map
+        header_map
             .entry(req.name.clone())
             .and_modify(|existing| {
-                if existing.is_empty() {
-                    *existing = placeholder.clone();
+                if existing.0.is_empty() {
+                    existing.0 = placeholder.clone();
                 }
+                existing.1 = req.is_secret;
             })
-            .or_insert_with(|| placeholder);
+            .or_insert_with(|| (placeholder, req.is_secret));
     }
+    let header_entries: Vec<crate::modules::mcp::HeaderEntry> = header_map
+        .into_iter()
+        .map(|(k, (v, is_secret))| crate::modules::mcp::HeaderEntry {
+            key: k,
+            value: Some(v),
+            is_secret,
+        })
+        .collect();
 
     let create_request = crate::modules::mcp::CreateMcpServerRequest {
         name: request.name.clone().unwrap_or(hub_server.name.clone()),
@@ -665,9 +714,9 @@ async fn build_mcp_server_create_from_hub(
         transport_type,
         command: hub_server.command.clone(),
         args: hub_server.args.clone(),
-        environment_variables: Some(env_map),
+        environment_variables_entries: Some(env_entries),
         url: hub_server.url.clone(),
-        headers: Some(headers_map),
+        headers_entries: Some(header_entries),
         timeout_seconds: Some(if hub_server.supports_sampling == Some(true) { 300 } else { 30 }),
         supports_sampling: hub_server.supports_sampling,
         usage_mode: None,
@@ -811,18 +860,10 @@ pub async fn create_system_mcp_server_from_hub(
             plan.create_request.max_concurrent_sessions =
                 prior.max_concurrent_sessions;
             plan.create_request.timeout_seconds = Some(prior.timeout_seconds);
-            // The model stores env / headers as `serde_json::Value`
-            // (the on-disk JSONB column); the create request takes
-            // typed `Option<HashMap<String, String>>`. Round-trip
-            // through serde_json::from_value; failure (malformed
-            // historical row) falls back to the catalog defaults
-            // from `build_mcp_server_create_from_hub` rather than
-            // crashing the re-install.
-            //
-            // MERGE (not replace) — start with the helper-seeded map
-            // (catalog defaults + placeholders for any NEW
+            // MERGE (not replace) — start with the helper-seeded
+            // entries (catalog defaults + placeholders for any NEW
             // `required_*` keys the catalog added between installs)
-            // and overlay the prior row's values. Prior values win
+            // and overlay the prior row's entries. Prior entries win
             // for keys the admin set; catalog wins for newly-added
             // keys the admin hasn't seen. Without this merge, a
             // catalog upgrade that adds `WORKSPACE_ID` to a server
@@ -830,33 +871,107 @@ pub async fn create_system_mcp_server_from_hub(
             // drop the new placeholder on Re-install — the admin
             // would have no UI signal that new configuration is
             // needed.
-            if let Ok(prior_env) = serde_json::from_value::<
-                std::collections::HashMap<String, String>,
-            >(prior.environment_variables.clone())
+            //
+            // Per-entry `is_secret` is preserved from the prior row's
+            // `*_entries` (the source of truth on the new storage
+            // shape). For secret entries, `value: None` keeps the
+            // stored encrypted value untouched on insert; non-secret
+            // entries carry the prior plain value forward.
             {
-                let mut merged = plan
+                let prior_env_secret: std::collections::HashMap<&str, bool> = prior
+                    .environment_variables_entries
+                    .iter()
+                    .map(|e| (e.key.as_str(), e.is_secret))
+                    .collect();
+                let mut merged: Vec<crate::modules::mcp::EnvVarEntry> = plan
                     .create_request
+                    .environment_variables_entries
+                    .take()
+                    .unwrap_or_default();
+                let mut seen: std::collections::HashSet<String> =
+                    merged.iter().map(|e| e.key.clone()).collect();
+                // Overlay prior values: replace seeded entry for keys
+                // the admin set, or append new entries the catalog
+                // doesn't declare.
+                let prior_env_map: std::collections::HashMap<String, String> = prior
                     .environment_variables
-                    .take()
+                    .as_object()
+                    .map(|o| {
+                        o.iter()
+                            .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                            .collect()
+                    })
                     .unwrap_or_default();
-                for (k, v) in prior_env {
-                    merged.insert(k, v);
+                for (k, v) in prior_env_map {
+                    let is_secret = prior_env_secret.get(k.as_str()).copied().unwrap_or(false);
+                    // Carry the plain value forward unconditionally —
+                    // for SECRET entries `v` is the DECRYPTED plaintext
+                    // from `prior.environment_variables` (the runtime
+                    // flat map assembled with decrypts by
+                    // `assemble_mcp_server`). The downstream
+                    // `split_entries_for_storage` re-encrypts when
+                    // `is_secret=true`, so the secret round-trips
+                    // through decrypt-then-re-encrypt with a fresh
+                    // pgp_sym_encrypt call. (Originally tried passing
+                    // `value: None` here to preserve the on-disk
+                    // ciphertext byte-for-byte, but the prior row is
+                    // about to be deleted — `split_entries_for_storage`
+                    // never sees a `prior_encrypted` value on the
+                    // create path, so a None drops the secret entirely
+                    // from the new row.)
+                    let value = Some(v);
+                    if seen.insert(k.clone()) {
+                        merged.push(crate::modules::mcp::EnvVarEntry {
+                            key: k,
+                            value,
+                            is_secret,
+                        });
+                    } else if let Some(existing) = merged.iter_mut().find(|e| e.key == k) {
+                        existing.value = value;
+                        existing.is_secret = is_secret;
+                    }
                 }
-                plan.create_request.environment_variables = Some(merged);
+                plan.create_request.environment_variables_entries = Some(merged);
             }
-            if let Ok(prior_hdrs) = serde_json::from_value::<
-                std::collections::HashMap<String, String>,
-            >(prior.headers.clone())
             {
-                let mut merged = plan
+                let prior_hdr_secret: std::collections::HashMap<&str, bool> = prior
+                    .headers_entries
+                    .iter()
+                    .map(|e| (e.key.as_str(), e.is_secret))
+                    .collect();
+                let mut merged: Vec<crate::modules::mcp::HeaderEntry> = plan
                     .create_request
-                    .headers
+                    .headers_entries
                     .take()
                     .unwrap_or_default();
-                for (k, v) in prior_hdrs {
-                    merged.insert(k, v);
+                let mut seen: std::collections::HashSet<String> =
+                    merged.iter().map(|e| e.key.clone()).collect();
+                let prior_hdr_map: std::collections::HashMap<String, String> = prior
+                    .headers
+                    .as_object()
+                    .map(|o| {
+                        o.iter()
+                            .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                for (k, v) in prior_hdr_map {
+                    let is_secret = prior_hdr_secret.get(k.as_str()).copied().unwrap_or(false);
+                    // Same carry-forward semantic as env vars — `v` is
+                    // the decrypted plaintext for secret headers.
+                    let value = Some(v);
+                    if seen.insert(k.clone()) {
+                        merged.push(crate::modules::mcp::HeaderEntry {
+                            key: k,
+                            value,
+                            is_secret,
+                        });
+                    } else if let Some(existing) = merged.iter_mut().find(|e| e.key == k) {
+                        existing.value = value;
+                        existing.is_secret = is_secret;
+                    }
                 }
-                plan.create_request.headers = Some(merged);
+                plan.create_request.headers_entries = Some(merged);
             }
         }
     }

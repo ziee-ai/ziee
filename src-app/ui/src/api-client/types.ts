@@ -341,8 +341,8 @@ export interface CreateMcpServerRequest {
   command?: string
   display_name: string
   enabled?: boolean
-  environment_variables?: any
-  headers?: any
+  environment_variables_entries?: EnvVarEntry[]
+  headers_entries?: HeaderEntry[]
   max_concurrent_sessions?: number
   name: string
   run_in_sandbox?: boolean
@@ -582,6 +582,18 @@ export type EngineDownloadStatus = 'pending' | 'downloading' | 'verifying' | 'ex
 
 export type EngineType = 'mistralrs' | 'llamacpp' | 'none'
 
+export interface EnvVarEntry {
+  is_secret: boolean
+  key: string
+  value?: string
+}
+
+export interface EnvVarView {
+  is_secret: boolean
+  key: string
+  value?: string
+}
+
 export interface File {
   checksum?: string
   created_at: string
@@ -706,6 +718,18 @@ export interface HardwareUsageUpdate {
   gpu_devices: GPUUsage[]
   memory: MemoryUsage
   timestamp: string
+}
+
+export interface HeaderEntry {
+  is_secret: boolean
+  key: string
+  value?: string
+}
+
+export interface HeaderView {
+  is_secret: boolean
+  key: string
+  value?: string
 }
 
 export interface HealthCheckResponse {
@@ -1167,8 +1191,10 @@ export interface McpServer {
   created_at: string
   display_name: string
   enabled: boolean
-  environment_variables: any
-  headers: any
+  environment_variables?: any
+  environment_variables_entries?: EnvVarView[]
+  headers?: any
+  headers_entries?: HeaderView[]
   id: string
   is_built_in: boolean
   is_system: boolean
@@ -2022,8 +2048,8 @@ export interface TestExtractRequest {
 export interface TestMcpConnectionRequest {
   args?: string[]
   command?: string
-  environment_variables?: any
-  headers?: any
+  environment_variables_entries?: EnvVarEntry[]
+  headers_entries?: HeaderEntry[]
   id?: string
   oauth?: SetMcpServerOAuthConfigRequest
   timeout_seconds?: number
@@ -2204,8 +2230,8 @@ export interface UpdateMcpServerRequest {
   command?: string
   display_name?: string
   enabled?: boolean
-  environment_variables?: any
-  headers?: any
+  environment_variables_entries?: EnvVarEntry[]
+  headers_entries?: HeaderEntry[]
   max_concurrent_sessions?: number
   name?: string
   run_in_sandbox?: boolean

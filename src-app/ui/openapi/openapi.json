@@ -15257,22 +15257,24 @@
               "null"
             ]
           },
-          "environment_variables": {
+          "environment_variables_entries": {
+            "description": "Structured env-var entries (replaces the old flat\n `HashMap<String, String>` shape). Each entry's `is_secret`\n flag decides whether the value gets encrypted at rest. None /\n missing → no env vars.",
             "type": [
-              "object",
+              "array",
               "null"
             ],
-            "additionalProperties": {
-              "type": "string"
+            "items": {
+              "$ref": "#/components/schemas/EnvVarEntry"
             }
           },
-          "headers": {
+          "headers_entries": {
+            "description": "Structured HTTP header entries. Same per-entry secret model\n as `environment_variables_entries`.",
             "type": [
-              "object",
+              "array",
               "null"
             ],
-            "additionalProperties": {
-              "type": "string"
+            "items": {
+              "$ref": "#/components/schemas/HeaderEntry"
             }
           },
           "max_concurrent_sessions": {
@@ -16394,6 +16396,51 @@
           "none"
         ]
       },
+      "EnvVarEntry": {
+        "description": "Inbound shape for ONE env-var entry on create/update. Mirrors\n `EnvVarView` (response) but with a different `value` semantic:\n\n * `value: Some(s)` — set/overwrite this entry's value to `s`.\n   For secret entries (`is_secret: true`), the new value is\n   encrypted into `environment_variables_encrypted`. For non-secret,\n   it goes into the plain `environment_variables` map.\n * `value: None` — KEEP existing. Used by the UI when the user\n   didn't touch a saved secret (the form shows `••••• (saved)` and\n   we don't want to clobber it with a blank).\n * `value: Some(\"\")` — explicit empty string. Stored verbatim.\n\n Toggling `is_secret` across saves migrates the entry between the\n plain and encrypted columns; the repo does that move atomically.",
+        "type": "object",
+        "properties": {
+          "is_secret": {
+            "type": "boolean"
+          },
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "key",
+          "is_secret"
+        ]
+      },
+      "EnvVarView": {
+        "description": "A single env var or HTTP header entry on a MCP server, as\n exposed in API RESPONSES. The wire shape replaces the old\n flat `{KEY: \"value\"}` map so the UI knows per-entry which\n keys are secrets without seeing their values.\n\n `value` is `None` when the entry is a secret (write-only — see\n `crate::common::secret` for the pattern) or when the entry is\n genuinely empty. Non-secret entries always include the plain\n value. The UI renders `Some` as a text input pre-filled with the\n value; `None` + `is_secret: true` as an `Input.Password` with\n `••••• (saved)` placeholder.",
+        "type": "object",
+        "properties": {
+          "is_secret": {
+            "type": "boolean"
+          },
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "is_secret"
+        ]
+      },
       "File": {
         "description": "File entity",
         "type": "object",
@@ -16903,6 +16950,51 @@
           "cpu",
           "memory",
           "gpu_devices"
+        ]
+      },
+      "HeaderEntry": {
+        "description": "HTTP-header analog of `EnvVarEntry`. Identical shape; separate\n type so the OpenAPI surface (and form-state types on the FE) stay\n unambiguous between the two editor sections.",
+        "type": "object",
+        "properties": {
+          "is_secret": {
+            "type": "boolean"
+          },
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "key",
+          "is_secret"
+        ]
+      },
+      "HeaderView": {
+        "description": "HTTP-header analog of `EnvVarView`. Same shape; separate type so\n the OpenAPI surface is unambiguous (env vs header inputs render\n in different drawer sections, with different default\n `is_secret` defaults at the UI layer). `Deserialize` is implemented\n only because `McpServer` carries this in a `Vec<HeaderView>` and\n `McpServer` derives `Deserialize` for sqlx + test plumbing — no\n inbound API path takes `HeaderView` (use `HeaderEntry` in\n `types.rs` for that).",
+        "type": "object",
+        "properties": {
+          "is_secret": {
+            "type": "boolean"
+          },
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "is_secret"
         ]
       },
       "HealthCheckResponse": {
@@ -19068,8 +19160,30 @@
           "enabled": {
             "type": "boolean"
           },
-          "environment_variables": true,
-          "headers": true,
+          "environment_variables": {
+            "description": "FLAT decrypted env-var map. Always populated by the repo with\n the FULLY decrypted values (plain entries merged with the\n decrypted secrets) so internal runtime callsites — stdio\n subprocess spawn, http header `${VAR}` interpolation — keep\n working unchanged. NEVER serialized — the public response\n shape is `environment_variables_entries` with secret values\n redacted to `value: None`.",
+            "writeOnly": true
+          },
+          "environment_variables_entries": {
+            "description": "Public structured view of `environment_variables` for the UI\n form editor. Per-entry secret marker; secret values redacted\n to `None`. Populated by the repo from the triple-column\n storage (`environment_variables` + `environment_variables_encrypted` +\n `environment_variables_secret_keys`).",
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/EnvVarView"
+            }
+          },
+          "headers": {
+            "description": "FLAT decrypted header map. Same write-only semantics as\n `environment_variables` — see that field's doc comment.\n `parse_header_map` runs `${VAR}` interpolation against the\n (decrypted) env map at request-build time.",
+            "writeOnly": true
+          },
+          "headers_entries": {
+            "description": "Public structured view of `headers` for the UI form editor.\n Sibling of `environment_variables_entries`.",
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/HeaderView"
+            }
+          },
           "id": {
             "type": "string",
             "format": "uuid"
@@ -19134,8 +19248,6 @@
           "is_built_in",
           "transport_type",
           "args",
-          "environment_variables",
-          "headers",
           "timeout_seconds",
           "supports_sampling",
           "usage_mode",
@@ -23021,22 +23133,23 @@
               "null"
             ]
           },
-          "environment_variables": {
+          "environment_variables_entries": {
+            "description": "Same structured shape as create/update — for entries the user\n hasn't touched (saved-secret entries with `value: None`), the\n test path falls back to the decrypted stored value via `id`\n (mirrors the existing OAuth-secret fallback comment below).",
             "type": [
-              "object",
+              "array",
               "null"
             ],
-            "additionalProperties": {
-              "type": "string"
+            "items": {
+              "$ref": "#/components/schemas/EnvVarEntry"
             }
           },
-          "headers": {
+          "headers_entries": {
             "type": [
-              "object",
+              "array",
               "null"
             ],
-            "additionalProperties": {
-              "type": "string"
+            "items": {
+              "$ref": "#/components/schemas/HeaderEntry"
             }
           },
           "id": {
@@ -23870,22 +23983,24 @@
               "null"
             ]
           },
-          "environment_variables": {
+          "environment_variables_entries": {
+            "description": "Replaces the existing env vars wholesale when present.\n `None` means \"don't touch\" (caller didn't include this field).\n `Some(empty vec)` clears all entries. Per-entry `value: None`\n keeps the existing secret value (see `EnvVarEntry`).",
             "type": [
-              "object",
+              "array",
               "null"
             ],
-            "additionalProperties": {
-              "type": "string"
+            "items": {
+              "$ref": "#/components/schemas/EnvVarEntry"
             }
           },
-          "headers": {
+          "headers_entries": {
+            "description": "Same wholesale-replace semantic as `environment_variables_entries`.",
             "type": [
-              "object",
+              "array",
               "null"
             ],
-            "additionalProperties": {
-              "type": "string"
+            "items": {
+              "$ref": "#/components/schemas/HeaderEntry"
             }
           },
           "max_concurrent_sessions": {
