@@ -14,7 +14,8 @@ use crate::common::{ApiResult, AppError};
 use crate::core::{EventBus, Repos};
 use crate::modules::permissions::{RequirePermissions, with_permission};
 use crate::modules::user::events::UserEvent;
-use crate::modules::user::UserService;
+use crate::modules::user::permissions::ProfileEdit;
+use crate::modules::user::{User, UserService};
 
 use super::jwt::{JwtService, TokenPair};
 use super::jwt_extractor::JwtAuth;
@@ -23,10 +24,11 @@ use super::permissions::{AuthProvidersManage, AuthProvidersRead};
 use super::providers::{AuthResult, create_provider, repository as provider_repo};
 use super::refresh_tokens;
 use super::types::{
-    AppleCallbackForm, AuthProviderResponse, AuthResponse, CreateAuthProviderRequest,
-    DeleteProviderResponse, LinkAccountRequest, LoginRequest, MeResponse, OAuthAuthorizeQuery,
-    OAuthCallbackQuery, PublicProvider, PublicProvidersResponse, RefreshTokenRequest,
-    RegisterRequest, TestProviderResponse, UpdateAuthProviderRequest,
+    AppleCallbackForm, AuthProviderResponse, AuthResponse, ChangePasswordRequest,
+    CreateAuthProviderRequest, DeleteProviderResponse, LinkAccountRequest, LoginRequest,
+    MeResponse, OAuthAuthorizeQuery, OAuthCallbackQuery, PublicProvider, PublicProvidersResponse,
+    RefreshTokenRequest, RegisterRequest, TestProviderResponse, UpdateAuthProviderRequest,
+    UpdateProfileRequest,
 };
 
 // =====================================================
@@ -543,7 +545,16 @@ pub async fn me(auth: JwtAuth) -> ApiResult<Json<MeResponse>> {
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-    Ok((StatusCode::OK, Json(MeResponse { user, permissions })))
+    let has_password = user.password_hash.is_some();
+
+    Ok((
+        StatusCode::OK,
+        Json(MeResponse {
+            user,
+            permissions,
+            has_password,
+        }),
+    ))
 }
 
 /// Documentation for me endpoint
@@ -552,6 +563,166 @@ pub fn me_docs(op: TransformOperation) -> TransformOperation {
         .id("Auth.me")
         .tag("auth")
         .response::<200, Json<MeResponse>>()
+}
+
+/// POST /api/auth/profile
+/// Update the authenticated user's own profile. Gated on `profile::edit`
+/// (the codebase's "edit own profile" permission, held by the default
+/// group) and scoped to the caller. Only `username` + `display_name`
+/// are accepted — `email`, `is_active`, `is_admin`, and `permissions`
+/// can NEVER be set here (the request struct doesn't carry them), which
+/// keeps this path safe from privilege escalation / email-takeover.
+#[debug_handler]
+pub async fn update_profile(
+    auth: RequirePermissions<(ProfileEdit,)>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
+    Json(req): Json<UpdateProfileRequest>,
+) -> ApiResult<Json<User>> {
+    let user_id = auth.user.id;
+
+    // Trim username; a blank one is rejected outright.
+    let username = req.username.map(|u| u.trim().to_string());
+    if let Some(ref u) = username
+        && u.is_empty()
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            AppError::bad_request("INVALID_USERNAME", "Username cannot be empty"),
+        ));
+    }
+
+    // display_name is tri-state: absent/null → keep; a value → set
+    // (trimmed); empty/whitespace → clear back to NULL.
+    let set_display_name = req.display_name.is_some();
+    let display_name = req.display_name.and_then(|d| {
+        let t = d.trim().to_string();
+        if t.is_empty() { None } else { Some(t) }
+    });
+
+    // Username uniqueness friendly pre-check: only a *different* user
+    // holding the name is a conflict — re-submitting your own current
+    // username is a no-op. The DB UNIQUE constraint (mapped to 409 inside
+    // `update_profile`) is the race-safe backstop.
+    if let Some(ref u) = username
+        && let Some(existing) = Repos
+            .user
+            .get_by_username(u)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+        && existing.id != user_id
+    {
+        return Err((StatusCode::CONFLICT, AppError::conflict("Username")));
+    }
+
+    // `to_api_error` carries the AppError's own status: the UNIQUE-violation
+    // race maps to 409, anything else to 500.
+    let updated_user = Repos
+        .user
+        .update_profile(user_id, username, set_display_name, display_name)
+        .await
+        .map_err(AppError::to_api_error)?;
+
+    event_bus.emit_async(UserEvent::updated(updated_user.clone()));
+
+    Ok((StatusCode::OK, Json(updated_user)))
+}
+
+/// Documentation for update_profile endpoint
+pub fn update_profile_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(ProfileEdit,)>(op)
+        .description("Update the authenticated user's own profile (username + display_name)")
+        .id("Auth.updateProfile")
+        .tag("auth")
+        .response::<200, Json<User>>()
+        .response_with::<409, (), _>(|r| r.description("Username already taken"))
+        .response_with::<400, (), _>(|r| r.description("Username is empty"))
+}
+
+/// POST /api/auth/password
+/// Change the authenticated user's own password. Gated on `profile::edit`
+/// and scoped to the caller. Only valid for local-password accounts;
+/// OAuth/LDAP-only users get 400 NO_LOCAL_PASSWORD. Mirrors the desktop
+/// `tunnel_auth` handler but is a separate route (`/auth/password`) so
+/// the two never collide.
+#[debug_handler]
+pub async fn change_password(
+    auth: RequirePermissions<(ProfileEdit,)>,
+    Json(req): Json<ChangePasswordRequest>,
+) -> ApiResult<()> {
+    let user = auth.user;
+
+    // Only local-password accounts can change a password.
+    let current_hash = user.password_hash.as_deref().ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            AppError::bad_request(
+                "NO_LOCAL_PASSWORD",
+                "This account has no local password (you sign in via an external provider).",
+            ),
+        )
+    })?;
+
+    // Verify the current password as proof.
+    let ok = password::verify_password(&req.current_password, current_hash).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::internal_error(format!("Password verification error: {}", e)),
+        )
+    })?;
+    if !ok {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            AppError::unauthorized("INVALID_CREDENTIALS", "Current password is incorrect"),
+        ));
+    }
+
+    // Validate the new password's strength.
+    if let Err(msg) = password::validate_password_strength(&req.new_password) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            AppError::bad_request("WEAK_PASSWORD", msg),
+        ));
+    }
+
+    let new_hash = password::hash_password(&req.new_password).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::internal_error(format!("Failed to hash password: {}", e)),
+        )
+    })?;
+
+    // update_password also bumps password_changed_at.
+    Repos
+        .user
+        .update_password(user.id, &new_hash)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    // Revoke the user's whitelisted refresh tokens on credential rotation
+    // (OWASP session-management). Mirrors `logout`. NOTE: only refresh
+    // tokens carrying a `jti` are whitelisted (those issued by the refresh
+    // rotation path); legacy non-`jti` tokens from register/login bypass
+    // the whitelist and are unaffected — a pre-existing limitation shared
+    // with `logout`, not specific to this endpoint. Outstanding access
+    // tokens also stay valid for their short remaining TTL.
+    refresh_tokens::revoke_all_for_user(Repos.pool(), user.id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    Ok((StatusCode::NO_CONTENT, ()))
+}
+
+/// Documentation for change_password endpoint
+pub fn change_password_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(ProfileEdit,)>(op)
+        .description("Change the authenticated user's own password (requires the current password)")
+        .id("Auth.changePassword")
+        .tag("auth")
+        .response::<204, ()>()
+        .response_with::<401, (), _>(|r| r.description("Current password is incorrect"))
+        .response_with::<400, (), _>(|r| {
+            r.description("New password fails strength check, or account has no local password")
+        })
 }
 
 /// GET /api/auth/oauth/{provider_name}/authorize

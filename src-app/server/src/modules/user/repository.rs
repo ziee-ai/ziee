@@ -229,6 +229,46 @@ impl UserRepository {
         .map_err(AppError::database_error)
     }
 
+    /// Self-service profile update (username + display_name only).
+    ///
+    /// Unlike [`update`], `display_name` is a true tri-state so a user can
+    /// CLEAR it back to NULL: `set_display_name = false` leaves it
+    /// untouched; `set_display_name = true` writes `display_name` verbatim
+    /// (including `None`, which clears it). A concurrent username collision
+    /// that slips past the caller's pre-check is caught by the DB UNIQUE
+    /// constraint here and surfaced as a 409 conflict (not a raw 500).
+    pub async fn update_profile(
+        &self,
+        id: Uuid,
+        username: Option<String>,
+        set_display_name: bool,
+        display_name: Option<String>,
+    ) -> Result<User, AppError> {
+        sqlx::query_as!(
+            User,
+            r#"
+            UPDATE users
+            SET username = COALESCE($2, username),
+                display_name = CASE WHEN $3 THEN $4 ELSE display_name END,
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING id, username, email, email_verified, password_hash, display_name,
+                      avatar_url, is_active, is_admin, permissions,
+                      created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _", password_changed_at as "password_changed_at: _"
+            "#,
+            id,
+            username,
+            set_display_name,
+            display_name,
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| match e {
+            sqlx::Error::Database(db) if db.is_unique_violation() => AppError::conflict("Username"),
+            other => AppError::database_error(other),
+        })
+    }
+
     /// Update password hash. Also bumps `password_changed_at` so the
     /// Remote Access module can tell whether the admin has rotated
     /// the bootstrap default password.
