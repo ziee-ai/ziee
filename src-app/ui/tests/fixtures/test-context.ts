@@ -341,49 +341,25 @@ jwt:
     const viteConfigPath = resolve(configDir, `vite-${testId}.ts`)
     const projectRoot = resolve(__dirname, '../..')
     const srcRoot = resolve(projectRoot, 'src')
+    // Serve the static build produced once in global-setup via `vite preview`.
+    // A static server handles multiple concurrent browser contexts; the HMR dev
+    // server refuses a 2nd context, which broke the multi-context sync specs.
+    // `/api` proxies to THIS test's backend.
+    const distDir = resolve(projectRoot, 'dist-e2e')
     const viteConfigContent = `import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import tailwindcss from '@tailwindcss/vite'
-import path from 'node:path'
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
-  root: '${srcRoot}',
-  // Per-test cache dir so parallel workers don't race over the shared
-  // node_modules/.vite — that race caused intermittent 504 "Outdated
-  // Optimize Dep" errors when worker A re-bundled mid-test and worker
-  // B was still loading the previous hash.
-  cacheDir: '${resolve(projectRoot, 'node_modules/.vite-test', testId)}',
-  resolve: {
-    alias: {
-      '@': path.resolve('${projectRoot}', './src'),
-    },
-  },
-  // Pre-bundle streamdown including its internal hashed chunks
-  // (highlighted-body-XXX.js for Shiki, mermaid-XXX.js, etc.) so
-  // the first chat code-block render doesn't trigger an on-the-fly
-  // optimizer 504 that crashes the React tree. Vite 8 supports glob
-  // patterns in optimizeDeps.include for exactly this case.
-  optimizeDeps: {
-    include: ['streamdown', 'streamdown/dist/*.js'],
-  },
-  server: {
+  root: ${JSON.stringify(srcRoot)},
+  build: { outDir: ${JSON.stringify(distDir)} },
+  preview: {
     port: ${vitePort},
     strictPort: true,
     host: '127.0.0.1',
-    hmr: false,
-    watch: {
-      ignored: ['**/*'],
-    },
     proxy: {
       '/api/': {
         target: 'http://localhost:${backendPort}',
         changeOrigin: true,
-        // xfwd: forward X-Forwarded-* headers so the backend's
-        // OAuth handler can build redirect_uris that point back
-        // through this Vite proxy (which serves the SPA), not the
-        // backend port directly. Required for the social-login E2E
-        // parity test against navikt.
+        // X-Forwarded-* for the backend OAuth redirect_uri (social-login E2E).
         xfwd: true,
       },
     },
@@ -393,11 +369,11 @@ export default defineConfig({
 
     writeFileSync(viteConfigPath, viteConfigContent)
 
-    // 6. Start Vite server
-    console.log(`🎨 Starting Vite server on port ${vitePort}...`)
+    // 6. Start Vite preview (static) server
+    console.log(`🎨 Starting Vite preview on port ${vitePort}...`)
     const viteProcess = spawn(
       'npx',
-      ['vite', '--config', viteConfigPath, '--clearScreen', 'false', '--force'],
+      ['vite', 'preview', '--config', viteConfigPath],
       {
         cwd: projectRoot,
         stdio: ['ignore', 'pipe', 'pipe'],

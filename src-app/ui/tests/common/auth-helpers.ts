@@ -158,13 +158,14 @@ export async function loginAsAdmin(
   await completeOnboarding(baseURL, token)
   await page.goto(`${baseURL}/`)
   await page.waitForLoadState('load')
-  // Wait for the authenticated home page (chat input) to render — a stable
-  // signal that AuthGuard accepted the token. NOT `networkidle`: the realtime
-  // sync SSE stream is a persistent connection that keeps the network busy, so
-  // `networkidle` may never settle (it hangs the whole test). Mirrors `login()`.
-  await page.waitForSelector('textarea[placeholder*="Type your message"]', {
-    timeout: 15000,
-  })
+  // Wait for the authenticated app shell (the sidebar "New Chat" link) to
+  // render — a stable signal that AuthGuard accepted the token, present on
+  // every authenticated route regardless of provider config. NOT `networkidle`
+  // (the realtime-sync SSE stream is a persistent connection that keeps the
+  // network busy, so it may never settle and hangs the whole test).
+  await page
+    .getByRole('link', { name: 'New Chat' })
+    .waitFor({ state: 'visible', timeout: 15000 })
 }
 
 /**
