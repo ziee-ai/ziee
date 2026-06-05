@@ -1,3 +1,4 @@
+import { Permissions } from '@/api-client/types'
 import { registerSync } from '@/core/sync'
 import { useLlmRepositoryStore } from '@/modules/llm-repository/stores/LlmRepository.store'
 
@@ -10,4 +11,5 @@ const reload = () => {
 registerSync('llm_repository', {
   onEvent: reload,
   onResync: reload,
+  requiredPermission: Permissions.LlmRepositoriesRead,
 })

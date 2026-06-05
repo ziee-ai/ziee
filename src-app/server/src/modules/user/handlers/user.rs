@@ -318,6 +318,7 @@ pub async fn toggle_user_active(
     _auth: RequirePermissions<(UsersToggleStatus,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(user_id): Path<Uuid>,
+    origin: SyncOrigin,
 ) -> ApiResult<Json<UserActiveStatusResponse>> {
     // Get current user
     let user = Repos
@@ -345,6 +346,18 @@ pub async fn toggle_user_active(
         .ok_or_else(|| AppError::not_found("User"))?;
 
     event_bus.emit_async(UserEvent::updated(updated_user));
+
+    // Mirror update_user: notify admins (User) AND the affected user (Profile,
+    // Owner) so their devices re-bootstrap — on deactivation that surfaces the
+    // logout immediately rather than after the ≤60s stream re-check.
+    sync_publish(SyncEntity::User, SyncAction::Update, user_id, None, origin.0);
+    sync_publish(
+        SyncEntity::Profile,
+        SyncAction::Update,
+        user_id,
+        Some(user_id),
+        origin.0,
+    );
 
     Ok((
         StatusCode::OK,
@@ -449,6 +462,16 @@ pub async fn delete_user(
         SyncAction::Delete,
         user_id,
         None,
+        origin.0,
+    );
+    // Signal the deleted user's own devices (Owner) so they re-bootstrap
+    // /auth/me, get a 401, and log out immediately instead of lingering until
+    // the ≤60s stream re-check tears the connection down.
+    sync_publish(
+        SyncEntity::Session,
+        SyncAction::Update,
+        user_id,
+        Some(user_id),
         origin.0,
     );
 

@@ -161,8 +161,11 @@ fn audience_kind(entity: SyncEntity) -> AudienceKind {
         SyncEntity::LlmRepository => {
             AudienceKind::Permission("llm_repositories::read")
         }
+        // The version catalogue is gated by its OWN read perm (split from
+        // `llm_local_runtime::read` instance-telemetry on purpose) — match the
+        // permission the client's refetch (`RuntimeVersion.list`) requires.
         SyncEntity::RuntimeVersion => {
-            AudienceKind::Permission("llm_local_runtime::read")
+            AudienceKind::Permission("llm_local_runtime::versions_read")
         }
         SyncEntity::MemoryAdminSettings => {
             AudienceKind::Permission("memory::admin::read")
@@ -208,6 +211,13 @@ pub fn publish(
     super::registry::registry().deliver(audience, SyncEvent { entity, action, id }, origin_conn);
 }
 
+/// Fan a `Session` permissions-changed signal out to many users at once
+/// (used by group-permission edits that affect every member). Delivers via a
+/// SINGLE registry lock acquisition rather than one `publish` call per user.
+pub fn publish_session_to_users(user_ids: &[Uuid], origin_conn: Option<Uuid>) {
+    super::registry::registry().deliver_session_to_users(user_ids, origin_conn);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -240,7 +250,7 @@ mod tests {
             (SyncEntity::User, "users::read"),
             (SyncEntity::McpServerSystem, "mcp_servers_admin::read"),
             (SyncEntity::LlmRepository, "llm_repositories::read"),
-            (SyncEntity::RuntimeVersion, "llm_local_runtime::read"),
+            (SyncEntity::RuntimeVersion, "llm_local_runtime::versions_read"),
             (SyncEntity::MemoryAdminSettings, "memory::admin::read"),
             (
                 SyncEntity::CodeSandboxSettings,

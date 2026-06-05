@@ -1,6 +1,6 @@
 import { getAuthToken, getBaseUrl } from '@/api-client/core'
 import type { SyncEvent } from '@/api-client/types'
-import { Stores } from '@/core/stores'
+import { useEventBusStore } from '@/core/events/store'
 import { setSyncConnectionId } from './connection'
 import { resyncAll } from './registry'
 
@@ -15,7 +15,11 @@ const INITIAL_BACKOFF_MS = 1_000
 const MAX_BACKOFF_MS = 30_000
 
 let started = false
-let abort: AbortController | null = null
+// Monotonic loop generation. A user-switch (stop→start) bumps this so the
+// previous loop — which may be suspended in `reader.read()` — supersedes
+// itself instead of opening a SECOND concurrent stream under the new identity.
+let epoch = 0
+let activeAbort: AbortController | null = null
 let backoffMs = INITIAL_BACKOFF_MS
 
 /** Start the sync stream (idempotent). Call when a user is authenticated. */
@@ -23,39 +27,48 @@ export function startSyncClient(): void {
   if (started) return
   started = true
   backoffMs = INITIAL_BACKOFF_MS
-  void connectLoop()
+  const myEpoch = ++epoch
+  void connectLoop(myEpoch)
 }
 
-/** Stop the sync stream and clear the connection id. Call on logout. */
+/** Stop the sync stream and clear the connection id. Call on logout /
+ *  user-switch. Bumps the epoch so any running loop bails. */
 export function stopSyncClient(): void {
   started = false
-  abort?.abort()
-  abort = null
+  epoch++
+  activeAbort?.abort()
+  activeAbort = null
   setSyncConnectionId(null)
 }
 
-async function connectLoop(): Promise<void> {
-  while (started) {
+async function connectLoop(myEpoch: number): Promise<void> {
+  while (started && myEpoch === epoch) {
     try {
-      await connectOnce()
+      await connectOnce(myEpoch)
     } catch (error) {
-      if (!started) break
+      if (!started || myEpoch !== epoch) break
       if (!(error instanceof DOMException && error.name === 'AbortError')) {
         console.warn('[sync] stream ended; reconnecting', error)
       }
     }
-    if (!started) break
+    if (!started || myEpoch !== epoch) break
     await delay(backoffMs)
     backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS)
   }
 }
 
-async function connectOnce(): Promise<void> {
+async function connectOnce(myEpoch: number): Promise<void> {
   const token = getAuthToken()
-  if (!token) throw new Error('[sync] no auth token')
+  if (!token) {
+    // No token while "started" = the session lapsed (token expiry) without a
+    // logout. Quietly back off and retry rather than throwing/warning each
+    // cycle — a token refresh re-enables us on the next attempt.
+    return
+  }
 
   const baseUrl = await getBaseUrl()
-  abort = new AbortController()
+  const abort = new AbortController()
+  activeAbort = abort
 
   const response = await fetch(`${baseUrl}/api/sync/subscribe`, {
     headers: {
@@ -79,12 +92,12 @@ async function connectOnce(): Promise<void> {
   let buffer = ''
   let currentEvent = ''
 
-  while (started) {
+  while (started && myEpoch === epoch) {
     const { done, value } = await reader.read()
     if (done) break
 
     buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
+    const lines = buffer.split(/\r\n|\n/)
     buffer = lines.pop() || ''
 
     for (const line of lines) {
@@ -124,7 +137,7 @@ function handleFrame(event: string, data: unknown): void {
     // module's registerSync handler reacts. Cast: the template-literal
     // key is a valid `keyof AppEvents` but TS can't narrow it from the
     // runtime entity string.
-    void Stores.EventBus.emit({
+    void useEventBusStore.getState().emit({
       type: `sync:${ev.entity}`,
       data: { action: ev.action, id: ev.id },
     } as never)

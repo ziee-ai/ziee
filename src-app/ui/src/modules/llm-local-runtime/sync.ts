@@ -1,3 +1,4 @@
+import { Permissions } from '@/api-client/types'
 import { registerSync } from '@/core/sync'
 import { useRuntimeVersionStore } from '@/modules/llm-local-runtime/stores/RuntimeVersion.store'
 
@@ -10,4 +11,5 @@ const reload = () => {
 registerSync('runtime_version', {
   onEvent: reload,
   onResync: reload,
+  requiredPermission: Permissions.RuntimeVersionRead,
 })

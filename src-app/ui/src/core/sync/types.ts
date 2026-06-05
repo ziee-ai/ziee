@@ -20,8 +20,9 @@ export interface SyncEntityEvent<E extends SyncEntity = SyncEntity>
 declare module '@/core/events' {
   interface AppEvents {
     // ADD a `sync:<entity>` key here when wiring a new domain. The Rust
-    // `SyncEntity` enum is the source of truth (generated into
-    // `SyncEntity` above); this list grows alongside it.
+    // `SyncEntity` enum is the source of truth (generated into the
+    // `SyncEntity` type in `@/api-client/types`, imported above); this list
+    // grows alongside it.
     'sync:project': SyncEntityEvent<'project'>
     'sync:assistant': SyncEntityEvent<'assistant'>
     'sync:mcp_server': SyncEntityEvent<'mcp_server'>

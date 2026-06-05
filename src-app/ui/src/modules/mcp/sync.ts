@@ -1,3 +1,4 @@
+import { Permissions } from '@/api-client/types'
 import { registerSync } from '@/core/sync'
 import { useMcpStore } from '@/modules/mcp/stores/McpServer.store'
 import { useSystemMcpServersStore } from '@/modules/mcp/stores/SystemMcpServer.store'
@@ -21,6 +22,7 @@ registerSync('mcp_server_system', {
   onResync: () => {
     void useSystemMcpServersStore.getState().loadSystemServers()
   },
+  requiredPermission: Permissions.McpServersAdminRead,
 })
 
 // A system server's group-visibility changed → a user's ACCESSIBLE server

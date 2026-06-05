@@ -1,3 +1,4 @@
+import { Permissions } from '@/api-client/types'
 import { registerSync } from '@/core/sync'
 import { useTemplateAssistantsStore } from '@/modules/assistant/stores/TemplateAssistants.store'
 import { useUserAssistantsStore } from '@/modules/assistant/stores/UserAssistants.store'
@@ -24,4 +25,5 @@ const reloadTemplates = () => {
 registerSync('assistant_template', {
   onEvent: reloadTemplates,
   onResync: reloadTemplates,
+  requiredPermission: Permissions.AssistantsTemplateRead,
 })

@@ -23,7 +23,7 @@ use crate::modules::permissions::{
 use crate::modules::user::permissions::ProfileRead;
 
 use super::event::{SyncConnectedData, SyncSseEvent};
-use super::registry::{ClientConn, registry};
+use super::registry::{ClientConn, SYNC_CHANNEL_CAPACITY, registry};
 
 /// Re-resolve `is_active` + group permissions this often while a stream
 /// is open, so a deactivation / permission change is picked up within the
@@ -53,7 +53,8 @@ pub async fn subscribe_sync(
         .map(|c| c.exp);
 
     let conn_id = Uuid::new_v4();
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Result<Event, axum::Error>>();
+    let (tx, mut rx) =
+        tokio::sync::mpsc::channel::<Result<Event, axum::Error>>(SYNC_CHANNEL_CAPACITY);
 
     registry()
         .register(
@@ -69,7 +70,7 @@ pub async fn subscribe_sync(
         .map_err(|e| e.to_api_error())?;
 
     // Handshake: hand the client its connection id for echo suppression.
-    let _ = tx.send(Ok(SyncSseEvent::Connected(SyncConnectedData {
+    let _ = tx.try_send(Ok(SyncSseEvent::Connected(SyncConnectedData {
         connection_id: conn_id,
     })
     .into()));
@@ -88,6 +89,8 @@ pub async fn subscribe_sync(
 
         let mut recheck =
             tokio::time::interval_at(tokio::time::Instant::now() + RECHECK_INTERVAL, RECHECK_INTERVAL);
+        // After a stall, don't fire missed ticks back-to-back (each does DB work).
+        recheck.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let sleep = tokio::time::sleep_until(deadline);
         tokio::pin!(sleep);
 
@@ -120,7 +123,11 @@ pub async fn subscribe_sync(
                             }
                             registry().refresh(conn_id, u, g);
                         }
-                        _ => break,
+                        // Account removed or deactivated → tear the stream down.
+                        Ok(_) => break,
+                        // Transient DB error → keep the stream; retry next tick
+                        // (don't drop an otherwise-valid connection on a blip).
+                        Err(_) => {}
                     }
                 }
                 _ = &mut sleep => break,

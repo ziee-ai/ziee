@@ -218,18 +218,11 @@ pub async fn update_group(
     // Editing a group's permissions changes the effective permissions of
     // EVERY member, so fan a permissions-changed signal out to each (Owner-
     // scoped) — their devices re-bootstrap /auth/me immediately rather than
-    // waiting up to 60s for the per-connection re-check. Best-effort: a query
-    // failure just falls back to that re-check.
+    // waiting up to 60s for the per-connection re-check. Batched into a single
+    // registry-lock acquisition (the default Users group can contain every
+    // user). Best-effort: a query failure just falls back to the re-check.
     if let Ok(member_ids) = Repos.group.get_member_ids(group.id).await {
-        for member_id in member_ids {
-            sync_publish(
-                SyncEntity::Session,
-                SyncAction::Update,
-                member_id,
-                Some(member_id),
-                origin.0,
-            );
-        }
+        crate::modules::sync::publish_session_to_users(&member_ids, origin.0);
     }
 
     Ok((StatusCode::OK, Json(group)))

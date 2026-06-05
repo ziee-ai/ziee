@@ -20,14 +20,17 @@ pub mod extractor;
 pub mod handlers;
 pub mod registry;
 
-pub use event::{SyncAction, SyncEntity, publish};
+pub use event::{SyncAction, SyncEntity, publish, publish_session_to_users};
 pub use extractor::SyncOrigin;
 
 /// Register the sync module via linkme.
 #[distributed_slice(MODULE_ENTRIES)]
 static SYNC_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {
     name: "sync",
-    order: 90,
+    // 95 (not 90, which the `app` module uses) — keep module order unique so
+    // the startup "loaded modules" log is deterministic. Sync is a leaf SSE
+    // module with no init-ordering needs.
+    order: 95,
     description: "Realtime cross-device sync over SSE",
     constructor: || Box::new(SyncModule::new()),
 };

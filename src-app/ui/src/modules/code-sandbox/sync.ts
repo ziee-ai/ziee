@@ -1,3 +1,4 @@
+import { Permissions } from '@/api-client/types'
 import { registerSync } from '@/core/sync'
 import { useSandboxResourceLimitsStore } from '@/modules/code-sandbox/stores/SandboxResourceLimits.store'
 
@@ -10,4 +11,5 @@ const reload = () => {
 registerSync('code_sandbox_settings', {
   onEvent: reload,
   onResync: reload,
+  requiredPermission: Permissions.CodeSandboxResourceLimitsRead,
 })

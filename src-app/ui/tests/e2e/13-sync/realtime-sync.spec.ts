@@ -53,14 +53,15 @@ test.describe('Realtime sync (cross-device)', () => {
     }
   })
 
-  test("a project created by user A is NOT delivered to user B's stream", async ({
+  test("user A's project reaches A's other device but NOT a different user B", async ({
     page,
     browser,
     testInfra,
   }) => {
     const { baseURL } = testInfra
 
-    // A second, distinct user with just enough to subscribe + use projects.
+    // A second, distinct user. createTestUser auto-joins the default Users
+    // group, so B gets a working app shell + a live sync stream.
     const adminToken = await getAdminToken(baseURL)
     const uniq = Date.now()
     const username = `sync_other_${uniq}`
@@ -74,29 +75,38 @@ test.describe('Realtime sync (cross-device)', () => {
       ['profile::read', 'projects::read', 'projects::create'],
     )
 
-    // User A = admin (device A).
+    // User A = admin, device 1.
     await loginAsAdmin(page, baseURL)
     await goToProjectsPage(page, baseURL)
 
-    // User B = the other user (separate context), with a LIVE sync stream.
-    const ctxB = await browser.newContext()
+    const ctxA2 = await browser.newContext() // User A, device 2 — positive control
+    const pageA2 = await ctxA2.newPage()
+    const ctxB = await browser.newContext() // User B — isolation
     const pageB = await ctxB.newPage()
     try {
+      await loginAsAdmin(pageA2, baseURL)
+      await goToProjectsPage(pageA2, baseURL)
       await login(pageB, baseURL, username, password)
       await goToProjectsPage(pageB, baseURL)
 
       const name = `Isolation E2E ${uniq}`
 
-      // User A creates a project (Owner(admin)).
+      // User A (device 1) creates a project (Owner(admin)).
       await openCreateProjectDrawer(page)
       await fillProjectForm(page, { name })
       await submitProjectForm(page)
 
-      // Give the (incorrect) cross-user delivery a chance to happen, then
-      // assert user B never saw it. B's own list stays empty of A's project.
-      await pageB.waitForTimeout(3_000)
+      // Positive control: A's OTHER device receives it live — proves the sync
+      // event actually fired + was delivered (so B's absence below is
+      // meaningful, not just "sync is dead").
+      await expect(getProjectCard(pageA2, name)).toBeVisible({ timeout: 15_000 })
+
+      // Isolation: user B had the SAME delivery window (A2 already received
+      // it) yet must never see user A's project. No fixed sleep needed — the
+      // positive control above is the synchronization point.
       await expect(getProjectCard(pageB, name)).not.toBeVisible()
     } finally {
+      await ctxA2.close()
       await ctxB.close()
     }
   })

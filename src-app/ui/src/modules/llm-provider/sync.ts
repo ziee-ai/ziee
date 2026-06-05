@@ -1,3 +1,4 @@
+import { Permissions } from '@/api-client/types'
 import { registerSync } from '@/core/sync'
 import { useLlmProviderStore } from '@/modules/llm-provider/stores/LlmProvider.store'
 
@@ -13,9 +14,11 @@ const reloadAdminProviders = () => {
 registerSync('llm_provider', {
   onEvent: reloadAdminProviders,
   onResync: reloadAdminProviders,
+  requiredPermission: Permissions.LlmProvidersRead,
 })
 
 registerSync('llm_model', {
   onEvent: reloadAdminProviders,
   onResync: reloadAdminProviders,
+  requiredPermission: Permissions.LlmProvidersRead,
 })

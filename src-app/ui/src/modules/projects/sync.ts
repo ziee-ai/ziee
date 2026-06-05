@@ -3,14 +3,15 @@ import { useProjectsStore } from '@/modules/projects/stores'
 
 // Projects is a small, fully-loaded per-user list (the sidebar widget +
 // list page). A full reload is cheap and correct for create / update /
-// delete, so the per-surface policy here is simply "reload on any remote
-// change" and "reload on (re)connect". (Paginated or infinite-scroll
-// surfaces would instead do id-aware update / prepend-on-create.)
+// delete. NOTE: `loadProjects` early-returns once `isInitialized` is set, so
+// reset the flag first to force the refetch (otherwise the handler is a
+// permanent no-op after the first load).
+const reload = () => {
+  useProjectsStore.setState({ isInitialized: false })
+  void useProjectsStore.getState().loadProjects()
+}
+
 registerSync('project', {
-  onEvent: () => {
-    void useProjectsStore.getState().loadProjects()
-  },
-  onResync: () => {
-    void useProjectsStore.getState().loadProjects()
-  },
+  onEvent: reload,
+  onResync: reload,
 })

@@ -1,3 +1,4 @@
+import { Permissions } from '@/api-client/types'
 import { registerSync } from '@/core/sync'
 import { useMemoriesStore } from '@/modules/memory/stores/Memories.store'
 import { useMemoryAdminStore } from '@/modules/memory/stores/MemoryAdmin.store'
@@ -33,4 +34,5 @@ registerSync('memory_admin_settings', {
   onResync: () => {
     void useMemoryAdminStore.getState().load()
   },
+  requiredPermission: Permissions.MemoryAdminRead,
 })

@@ -1,6 +1,8 @@
 import type { SyncAction, SyncEntity } from '@/api-client/types'
 import type { AppEvents } from '@/core/events'
-import { Stores } from '@/core/stores'
+import { useEventBusStore } from '@/core/events/store'
+import type { PermissionExpr } from '@/core/permissions'
+import { hasPermissionNow } from '@/core/permissions'
 import type { SyncEntityEvent } from './types'
 
 /**
@@ -11,10 +13,18 @@ import type { SyncEntityEvent } from './types'
  * - `onResync` (optional) reloads the surface wholesale; called on every
  *   (re)connect to cover events missed while the stream was down
  *   (best-effort durability).
+ * - `requiredPermission` (optional) — for entities whose refetch hits a
+ *   permission-gated endpoint, the perm the user must hold. `resyncAll`
+ *   fires for ALL handlers regardless of the server audience, so without
+ *   this a non-admin's reconnect would call admin-only loads → 403 (and the
+ *   `no-403` E2E gate fails). Both `onEvent` and `onResync` are skipped when
+ *   the user lacks it (defense-in-depth; `onEvent` is normally already
+ *   server-gated by the audience routing).
  */
 export interface SyncRegistration {
   onEvent: (action: SyncAction, id: string) => void
   onResync?: () => void
+  requiredPermission?: PermissionExpr
 }
 
 const registrations = new Map<SyncEntity, SyncRegistration>()
@@ -63,9 +73,15 @@ export function registerSync(
 ): void {
   registrations.set(entity, registration)
   const eventType = `sync:${entity}` as keyof AppEvents
-  Stores.EventBus.on(
+  useEventBusStore.getState().on(
     eventType,
     ((event: SyncEntityEvent) => {
+      if (
+        registration.requiredPermission &&
+        !hasPermissionNow(registration.requiredPermission)
+      ) {
+        return
+      }
       registration.onEvent(event.data.action, event.data.id)
     }) as never,
     'sync',
@@ -75,6 +91,14 @@ export function registerSync(
 /** Reload every synced surface — called on each SSE (re)connect. */
 export function resyncAll(): void {
   for (const registration of registrations.values()) {
+    // Skip handlers whose refetch the user isn't permitted to make (a
+    // non-admin reconnecting must not fire admin-only loads → 403).
+    if (
+      registration.requiredPermission &&
+      !hasPermissionNow(registration.requiredPermission)
+    ) {
+      continue
+    }
     try {
       registration.onResync?.()
     } catch (error) {

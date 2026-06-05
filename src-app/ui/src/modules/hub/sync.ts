@@ -1,3 +1,4 @@
+import { Permissions } from '@/api-client/types'
 import { registerSync } from '@/core/sync'
 import { reloadAllTabs } from '@/modules/hub/stores/hub-catalog-store'
 
@@ -11,4 +12,5 @@ registerSync('hub_settings', {
   onResync: () => {
     void reloadAllTabs()
   },
+  requiredPermission: Permissions.HubCatalogRead,
 })

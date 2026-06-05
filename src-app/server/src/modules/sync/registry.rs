@@ -13,20 +13,25 @@ use std::sync::Mutex;
 use axum::http::StatusCode;
 use axum::response::sse::Event;
 use lazy_static::lazy_static;
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::Sender;
 use uuid::Uuid;
 
 use crate::common::AppError;
 use crate::modules::permissions::checker::check_permission_union;
 use crate::modules::user::models::{Group, User};
 
-use super::event::{Audience, SyncEvent, SyncSseEvent};
+use super::event::{Audience, SyncAction, SyncEntity, SyncEvent, SyncSseEvent};
 
 /// Global cap on concurrent sync SSE connections across all users.
 const GLOBAL_MAX_CONNECTIONS: usize = 512;
 /// Per-user cap (multiple tabs/devices). Bounds a single account from
 /// exhausting the global pool.
 const PER_USER_MAX_CONNECTIONS: usize = 12;
+/// Bounded per-connection queue depth. A reader that falls this far behind is
+/// treated as stalled: the connection is dropped (so the client reconnects +
+/// resyncs) rather than buffering unbounded memory. Sized generously so a
+/// normal burst never trips it.
+pub(crate) const SYNC_CHANNEL_CAPACITY: usize = 1024;
 
 type ConnId = Uuid;
 
@@ -39,7 +44,7 @@ pub struct ClientConn {
     pub is_admin: bool,
     pub user: User,
     pub groups: Vec<Group>,
-    pub sender: UnboundedSender<Result<Event, axum::Error>>,
+    pub sender: Sender<Result<Event, axum::Error>>,
 }
 
 struct RegistryInner {
@@ -69,7 +74,7 @@ impl SyncRegistry {
     /// Register a new connection. Returns a 429 `AppError` when a global
     /// or per-user connection cap is hit.
     pub fn register(&self, conn_id: ConnId, conn: ClientConn) -> Result<(), AppError> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
 
         if inner.clients.len() >= GLOBAL_MAX_CONNECTIONS {
             return Err(AppError::new(
@@ -94,7 +99,7 @@ impl SyncRegistry {
 
     /// Remove a connection (called on stream termination).
     pub fn unregister(&self, conn_id: ConnId) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(conn) = inner.clients.remove(&conn_id) {
             if let Some(set) = inner.by_user.get_mut(&conn.user_id) {
                 set.remove(&conn_id);
@@ -107,7 +112,7 @@ impl SyncRegistry {
 
     /// Refresh a connection's permission snapshot (the periodic re-check).
     pub fn refresh(&self, conn_id: ConnId, user: User, groups: Vec<Group>) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(conn) = inner.clients.get_mut(&conn_id) {
             conn.is_admin = user.is_admin;
             conn.user = user;
@@ -116,49 +121,117 @@ impl SyncRegistry {
     }
 
     /// Route one event to the connections its audience permits, skipping
-    /// the originating connection (self-echo suppression).
+    /// the originating connection (self-echo suppression). A connection whose
+    /// bounded queue is full (stalled reader) or closed is pruned.
     pub fn deliver(&self, audience: Audience, event: SyncEvent, origin_conn: Option<ConnId>) {
         let sse: Event = SyncSseEvent::Sync(event).into();
-        let inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
 
-        let send = |conn_id: &ConnId, conn: &ClientConn| {
-            if Some(*conn_id) == origin_conn {
-                return;
+        let mut dead: Vec<ConnId> = Vec::new();
+        {
+            let RegistryInner { clients, by_user } = &*inner;
+            let mut try_send = |conn_id: &ConnId, conn: &ClientConn| {
+                if Some(*conn_id) == origin_conn {
+                    return;
+                }
+                // Full = stalled reader, Closed = receiver dropped. Either
+                // way the connection is no longer useful; prune it (the
+                // client reconnects + resyncs).
+                if conn.sender.try_send(Ok(sse.clone())).is_err() {
+                    dead.push(*conn_id);
+                }
+            };
+
+            match audience {
+                Audience::Owner(uid) => {
+                    if let Some(set) = by_user.get(&uid) {
+                        for cid in set {
+                            if let Some(conn) = clients.get(cid) {
+                                try_send(cid, conn);
+                            }
+                        }
+                    }
+                }
+                Audience::Permission(perm) => {
+                    for (cid, conn) in clients.iter() {
+                        if conn.is_admin || check_permission_union(&conn.user, &conn.groups, perm) {
+                            try_send(cid, conn);
+                        }
+                    }
+                }
+                Audience::Everyone => {
+                    for (cid, conn) in clients.iter() {
+                        try_send(cid, conn);
+                    }
+                }
             }
-            // Errors mean the receiver was dropped; the ConnGuard on the
-            // stream unregisters it, so we just skip here.
-            let _ = conn.sender.send(Ok(sse.clone()));
-        };
+        }
 
-        match audience {
-            Audience::Owner(uid) => {
-                if let Some(set) = inner.by_user.get(&uid) {
-                    for cid in set {
-                        if let Some(conn) = inner.clients.get(cid) {
-                            send(cid, conn);
+        for cid in dead {
+            remove_conn(&mut inner, cid);
+        }
+    }
+
+    /// Deliver a `Session` permissions-changed signal to many users at once,
+    /// taking the registry lock a SINGLE time. Used by group-permission edits
+    /// that fan out to every member (avoids N lock acquisitions). Skips the
+    /// originating connection and prunes stalled connections.
+    pub fn deliver_session_to_users(&self, user_ids: &[Uuid], origin_conn: Option<ConnId>) {
+        if user_ids.is_empty() {
+            return;
+        }
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut dead: Vec<ConnId> = Vec::new();
+        {
+            let RegistryInner { clients, by_user } = &*inner;
+            for &uid in user_ids {
+                let Some(set) = by_user.get(&uid) else {
+                    continue;
+                };
+                let sse: Event = SyncSseEvent::Sync(SyncEvent {
+                    entity: SyncEntity::Session,
+                    action: SyncAction::Update,
+                    id: uid,
+                })
+                .into();
+                for cid in set {
+                    if Some(*cid) == origin_conn {
+                        continue;
+                    }
+                    if let Some(conn) = clients.get(cid) {
+                        if conn.sender.try_send(Ok(sse.clone())).is_err() {
+                            dead.push(*cid);
                         }
                     }
                 }
             }
-            Audience::Permission(perm) => {
-                for (cid, conn) in inner.clients.iter() {
-                    if conn.is_admin || check_permission_union(&conn.user, &conn.groups, perm) {
-                        send(cid, conn);
-                    }
-                }
-            }
-            Audience::Everyone => {
-                for (cid, conn) in inner.clients.iter() {
-                    send(cid, conn);
-                }
-            }
+        }
+        for cid in dead {
+            remove_conn(&mut inner, cid);
         }
     }
 
     /// Number of live connections (test/diagnostic helper).
     #[allow(dead_code)]
     pub fn connection_count(&self) -> usize {
-        self.inner.lock().unwrap().clients.len()
+        self.inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clients
+            .len()
+    }
+}
+
+/// Remove a connection from both indexes (shared by unregister + deliver's
+/// stalled-connection pruning).
+fn remove_conn(inner: &mut RegistryInner, conn_id: ConnId) {
+    if let Some(conn) = inner.clients.remove(&conn_id) {
+        if let Some(set) = inner.by_user.get_mut(&conn.user_id) {
+            set.remove(&conn_id);
+            if set.is_empty() {
+                inner.by_user.remove(&conn.user_id);
+            }
+        }
     }
 }
 
@@ -166,7 +239,7 @@ impl SyncRegistry {
 mod tests {
     use super::*;
     use crate::modules::sync::event::{SyncAction, SyncEntity, SyncEvent};
-    use tokio::sync::mpsc::UnboundedReceiver;
+    use tokio::sync::mpsc::Receiver;
 
     fn empty_registry() -> SyncRegistry {
         SyncRegistry {
@@ -196,12 +269,12 @@ mod tests {
         }
     }
 
-    type Rx = UnboundedReceiver<Result<Event, axum::Error>>;
+    type Rx = Receiver<Result<Event, axum::Error>>;
 
     /// Build a ClientConn + its receiver. `groups` defaults to empty (most
     /// tests drive permissions via the user's direct `permissions`).
     fn conn(user: User) -> (ClientConn, Rx) {
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let (tx, rx) = tokio::sync::mpsc::channel(SYNC_CHANNEL_CAPACITY);
         let c = ClientConn {
             user_id: user.id,
             is_admin: user.is_admin,
@@ -338,5 +411,62 @@ mod tests {
         reg.refresh(id, fake_user(uid, false, vec!["x::read".into()]), Vec::new());
         reg.deliver(Audience::Permission("x::read"), ev(), None);
         assert!(got(&mut rx));
+    }
+
+    /// Build a ClientConn with an explicit channel capacity (to exercise the
+    /// stalled-reader pruning without queueing a full `SYNC_CHANNEL_CAPACITY`).
+    fn conn_with_cap(user: User, cap: usize) -> (ClientConn, Rx) {
+        let (tx, rx) = tokio::sync::mpsc::channel(cap);
+        let c = ClientConn {
+            user_id: user.id,
+            is_admin: user.is_admin,
+            user,
+            groups: Vec::new(),
+            sender: tx,
+        };
+        (c, rx)
+    }
+
+    #[test]
+    fn deliver_session_to_users_targets_only_listed_users_and_skips_origin() {
+        let reg = empty_registry();
+        let a = Uuid::new_v4();
+        let b = Uuid::new_v4();
+        let (a1, mut rx_a1) = conn(fake_user(a, false, vec![]));
+        let (a2, mut rx_a2) = conn(fake_user(a, false, vec![]));
+        let (cb, mut rx_b) = conn(fake_user(b, false, vec![]));
+        let (id_a1, id_a2, id_b) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        reg.register(id_a1, a1).unwrap();
+        reg.register(id_a2, a2).unwrap();
+        reg.register(id_b, cb).unwrap();
+
+        // Fan a session signal to user A only, originating on a1.
+        reg.deliver_session_to_users(&[a], Some(id_a1));
+
+        assert!(!got(&mut rx_a1), "originating connection is skipped");
+        assert!(got(&mut rx_a2), "A's other connection receives the signal");
+        assert!(!got(&mut rx_b), "an unlisted user receives nothing");
+    }
+
+    #[test]
+    fn lagging_connection_is_pruned() {
+        let reg = empty_registry();
+        let uid = Uuid::new_v4();
+        // Capacity 1, and we never read `_rx` — so the second delivery can't
+        // enqueue (Full). Keep `_rx` alive so the channel isn't Closed (which
+        // would also prune, but we're testing the Full → prune path).
+        let (c, _rx) = conn_with_cap(fake_user(uid, false, vec![]), 1);
+        let id = Uuid::new_v4();
+        reg.register(id, c).unwrap();
+
+        reg.deliver(Audience::Owner(uid), ev(), None); // fills the 1-slot queue
+        assert_eq!(reg.connection_count(), 1);
+
+        reg.deliver(Audience::Owner(uid), ev(), None); // Full → prune
+        assert_eq!(
+            reg.connection_count(),
+            0,
+            "a connection whose bounded queue is full must be pruned"
+        );
     }
 }

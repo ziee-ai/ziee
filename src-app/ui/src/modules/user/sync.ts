@@ -1,3 +1,4 @@
+import { Permissions } from '@/api-client/types'
 import { registerSync } from '@/core/sync'
 import { useUserGroupsStore } from '@/modules/user/stores/UserGroups.store'
 import { useUsersStore } from '@/modules/user/stores/Users.store'
@@ -13,6 +14,7 @@ registerSync('user', {
   onResync: () => {
     void useUsersStore.getState().loadUsers()
   },
+  requiredPermission: Permissions.UsersRead,
 })
 
 registerSync('group', {
@@ -22,4 +24,5 @@ registerSync('group', {
   onResync: () => {
     void useUserGroupsStore.getState().loadUserGroups()
   },
+  requiredPermission: Permissions.GroupsRead,
 })
