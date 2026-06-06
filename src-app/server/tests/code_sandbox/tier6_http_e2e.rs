@@ -16,7 +16,7 @@
 
 use crate::code_sandbox::harness::{
     create_test_conversation, enabled_test_server, needs_full_rootfs, post_jsonrpc,
-    test_server_jwt, tool_call,
+    test_server_jwt, tool_call, tool_call_with_timeout,
 };
 use crate::common::test_helpers;
 use serde_json::json;
@@ -178,7 +178,7 @@ async fn e2e_full_rootfs_rscript_runs_without_blas_error() {
     // and (2) a BLAS-using package actually loads (ggplot2 is installed by the
     // recipe's `provision` step and pulls in matrix routines through its deps —
     // strictly stronger evidence that BLAS is wired in correctly, not just present).
-    let body = tool_call(
+    let body = tool_call_with_timeout(
         &server,
         &jwt,
         conv_id,
@@ -190,6 +190,10 @@ async fn e2e_full_rootfs_rscript_runs_without_blas_error() {
             "command": "Rscript -e 'suppressMessages(library(ggplot2)); cat(1 + 1)'",
             "flavor": "full",
         }),
+        // The full rootfs is ~900 MB; the FIRST (cold-cache) call downloads +
+        // verifies + mounts it, which blows past the default 120 s. Give the
+        // cold fetch room — once cached, later runs are fast.
+        std::time::Duration::from_secs(900),
     )
     .await;
     let structured = body
