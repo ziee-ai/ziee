@@ -1080,11 +1080,13 @@ async fn template_install_appears_in_created_template_ids_on_get_assistants() {
 }
 
 #[tokio::test]
-async fn user_install_rejects_replace_existing_flag() {
-    // `replace_existing` is template-only — passing it on the
-    // user-scoped endpoint must 400 (not silently ignored), so
-    // clients don't expect idempotent re-install behavior the
-    // user path doesn't provide.
+async fn user_install_honors_replace_existing_flag() {
+    // `replace_existing` IS honored on the user-scoped endpoint: it is the
+    // Installed-tab "Re-install" path (hub PR #79), where the frontend posts
+    // `replace_existing: true` to wipe the user's prior install of the same
+    // hub_id before creating the fresh one. With no prior install it simply
+    // creates (201). (This replaces the older "template-only → 400" contract,
+    // which PR #75/#79 superseded.)
     let mock = spawn_mock_hub(two_versions()).await;
     let server = TestServer::start_with_options(crate::common::TestServerOptions {
         extra_env: mock.test_env(),
@@ -1122,12 +1124,16 @@ async fn user_install_rejects_replace_existing_flag() {
         .expect("install");
     assert_eq!(
         resp.status(),
-        400,
-        "replace_existing on user endpoint should 400, got {}",
+        201,
+        "replace_existing is honored on the user endpoint (Installed-tab \
+         Re-install path); should create, got {}",
         resp.status(),
     );
     let body: Json = resp.json().await.unwrap();
-    assert_eq!(body["error_code"], "VALIDATION_ERROR");
+    assert!(
+        body["assistant"]["id"].is_string(),
+        "a successful install returns the created assistant: {body}"
+    );
 }
 
 // ============================================================================
@@ -1659,11 +1665,12 @@ async fn replace_existing_aborts_on_validation_failure_mcp() {
 }
 
 #[tokio::test]
-async fn user_mcp_install_rejects_replace_existing_flag() {
-    // `replace_existing` is system-only — passing it on the
-    // user-scoped MCP endpoint must 400, not silently ignored.
-    // Mirrors `user_install_rejects_replace_existing_flag` for
-    // assistants.
+async fn user_mcp_install_honors_replace_existing_flag() {
+    // `replace_existing` IS honored on the user-scoped MCP endpoint: it is the
+    // Installed-tab "Re-install" path (hub PR #79), which posts
+    // `replace_existing: true` to wipe the user's prior install before creating
+    // the fresh one. With no prior install it simply creates (201). Mirrors
+    // `user_install_honors_replace_existing_flag` for assistants.
     let mock = spawn_mock_hub(mcp_versions()).await;
     let server = TestServer::start_with_options(crate::common::TestServerOptions {
         extra_env: mock.test_env(),
@@ -1701,12 +1708,16 @@ async fn user_mcp_install_rejects_replace_existing_flag() {
         .expect("install");
     assert_eq!(
         resp.status(),
-        400,
-        "replace_existing on user MCP endpoint should 400, got {}",
+        201,
+        "replace_existing is honored on the user MCP endpoint (Installed-tab \
+         Re-install path); should create, got {}",
         resp.status(),
     );
     let body: Json = resp.json().await.unwrap();
-    assert_eq!(body["error_code"], "VALIDATION_ERROR");
+    assert!(
+        body["server"]["id"].is_string(),
+        "a successful install returns the created MCP server: {body}"
+    );
 }
 
 #[tokio::test]
