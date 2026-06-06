@@ -37,6 +37,12 @@ pub enum SyncEntity {
     /// A user's saved LLM-provider API key (`id` is the provider id; only
     /// masked state is ever exposed, and only via refetch).
     ApiKey,
+    /// A chat conversation owned by the user. `id` is the conversation id.
+    /// Emitted on create/rename/delete, on each completed message turn, and on
+    /// branch/message edits — the recipient refetches the list and (if open)
+    /// the conversation's messages. Live assistant TOKENS do NOT ride this
+    /// stream; they go over the dedicated `chat/stream` token channel.
+    Conversation,
 
     // --- Admin-permission-scoped (delivered to holders of the read perm) ---
     /// Admin view of an LLM provider (full admin provider table).

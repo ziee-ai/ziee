@@ -26,6 +26,10 @@ mod conversations_test;
 mod messages_test;
 mod branches_test;
 mod streaming_test;
+// New fire-and-forget send + per-user chat-token stream (stub-backed,
+// deterministic) and the `sync:conversation` emit coverage.
+mod chat_stream_test;
+mod sync_emit_test;
 mod ownership_test;
 mod sandbox_real_llm_test;
 mod test_single_assistant_message_architecture;

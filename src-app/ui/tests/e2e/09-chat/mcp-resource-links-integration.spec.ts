@@ -8,7 +8,7 @@ import {
 import { seedAssistantWithToolResult } from './fixtures/mock-tool-result'
 import { goToNewChatPage, selectModelInDropdown } from './helpers/chat-helpers'
 import {
-  mockChatStream,
+  mockChatTokenStream,
   startedEvent,
   textDeltaEvent,
   completeEvent,
@@ -91,7 +91,7 @@ test.describe('Inline file previews — existing-feature integration', () => {
     // doesn't have any tool_results.
     const newUserMsgId = 'umsg_conv_b'
     const newAssistantMsgId = 'amsg_conv_b'
-    await mockChatStream(page, [
+    await mockChatTokenStream(page, [
       [
         startedEvent({ userMessageId: newUserMsgId }),
         textDeltaEvent({ delta: 'plain reply', messageId: newAssistantMsgId }),

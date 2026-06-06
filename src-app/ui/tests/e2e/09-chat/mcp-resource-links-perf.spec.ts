@@ -68,7 +68,7 @@ test.describe('Inline file previews — performance', () => {
       resourceLinks: [{ uri, name: 'data.csv', mime_type: 'text/csv' }],
     })
     const preview = page.locator('[data-testid="inline-file-preview"]').first()
-    await expect(preview.locator('table:has(tbody td)')).toBeVisible({ timeout: 10000 })
+    await expect(preview.locator('.ant-table-row').first()).toBeVisible({ timeout: 10000 })
     expect(mock.callCount(uri)).toBe(1)
     const chevron = preview.locator('[data-testid="inline-file-preview-chevron"]')
     for (let i = 0; i < 5; i++) {
@@ -120,8 +120,8 @@ test.describe('Inline file previews — performance', () => {
     })
     const previews = page.locator('[data-testid="inline-file-preview"]')
     await expect(previews).toHaveCount(2, { timeout: 10000 })
-    await expect(previews.nth(0).locator('table:has(tbody td)')).toBeVisible()
-    await expect(previews.nth(1).locator('table:has(tbody td)')).toBeVisible()
+    await expect(previews.nth(0).locator('.ant-table-row').first()).toBeVisible()
+    await expect(previews.nth(1).locator('.ant-table-row').first()).toBeVisible()
     expect(mock.callCount(u1)).toBe(1)
     expect(mock.callCount(u2)).toBe(1)
   })

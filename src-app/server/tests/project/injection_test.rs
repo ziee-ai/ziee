@@ -70,6 +70,12 @@ async fn anthropic_haiku_model(
 
 /// Drive a chat send through the full pipeline and assemble the
 /// streamed assistant response into a single concatenated string.
+///
+/// Fire-and-forget model: the POST `/messages` returns the persisted ids
+/// immediately and the reply streams over `GET /api/chat/stream`.
+/// `send_and_collect` subscribes BEFORE sending, POSTs, collects to the
+/// terminal frame, and assembles the reply text — exactly the response
+/// content the old `parse_sse_stream` walk produced.
 async fn send_and_collect_response_text(
     server: &crate::common::TestServer,
     token: &str,
@@ -78,28 +84,24 @@ async fn send_and_collect_response_text(
     model_id: Uuid,
     content: &str,
 ) -> String {
-    let response = crate::chat::helpers::send_message_simple(
-        server, token, conv_id, model_id, branch_id, content,
+    let turn = crate::chat::helpers::send_and_collect(
+        server, token, conv_id, branch_id, model_id, content,
     )
     .await;
-    let chunks = crate::chat::helpers::parse_sse_stream(response).await;
+    turn.text
+}
 
-    // Wire shape for a "content" SSE event is
-    //   {"type":"content","content":[{"type":"text_delta","index":N,"delta":"..."}]}
-    // — `content` is an ARRAY of ContentBlockDelta variants, NOT a
-    // string. The earlier `as_str()` filter always returned None and
-    // produced empty text for every real-LLM injection test. Walk the
-    // delta array and concatenate every text_delta's `delta`.
-    //
-    // Also surface SSE Error events to the test log so a real upstream
-    // failure (provider auth, rate limit, model inaccessible) prints
-    // its message rather than being masked by a generic empty-string
-    // panic.
+/// Assemble assistant reply text from streamed `content` events (the shape
+/// `send_body_and_collect_events` returns). A `content` event's `data` is the
+/// inner event `{"type":"content","content":[{"type":"text_delta","delta":"..."}]}`
+/// — an ARRAY of ContentBlockDelta variants. Walk it and concatenate every
+/// `text_delta`'s `delta`; surface any `error` event to the test log.
+fn assemble_text_from_events(events: &[crate::chat::helpers::SSEEvent]) -> String {
     let mut text = String::new();
-    for chunk in &chunks {
-        match chunk.get("type").and_then(|v| v.as_str()) {
-            Some("content") => {
-                if let Some(arr) = chunk.get("content").and_then(|v| v.as_array()) {
+    for e in events {
+        match e.event.as_str() {
+            "content" => {
+                if let Some(arr) = e.data.get("content").and_then(|v| v.as_array()) {
                     for delta in arr {
                         if delta.get("type").and_then(|v| v.as_str()) == Some("text_delta")
                             && let Some(s) = delta.get("delta").and_then(|v| v.as_str())
@@ -109,9 +111,7 @@ async fn send_and_collect_response_text(
                     }
                 }
             }
-            Some("error") => {
-                eprintln!("SSE error event during test: {chunk}");
-            }
+            "error" => eprintln!("SSE error event during test: {:?}", e.data),
             _ => {}
         }
     }
@@ -321,41 +321,22 @@ async fn assistant_and_project_both_shape_response() {
 
     // Send with explicit assistant_id so the assistant extension's
     // before_llm_call fires (it reads SendMessageRequest.assistant_id).
+    // Custom body → subscribe + POST /messages + collect streamed events.
     let payload = json!({
         "content": "Reply with the word 'hi' exactly once between the start and end tokens.",
         "model_id": model_id.to_string(),
         "branch_id": branch_id.to_string(),
         "assistant_id": assistant_id,
     });
-    let response = reqwest::Client::new()
-        .post(server.api_url(&format!("/conversations/{}/messages/stream", conv_id)))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&payload)
-        .send()
-        .await
-        .unwrap();
-    let chunks = crate::chat::helpers::parse_sse_stream(response).await;
-    // Same wire-format note as send_and_collect_response_text: `content`
-    // is an ARRAY of ContentBlockDelta items, not a string. Walk the
-    // delta array and concatenate text_delta.delta.
-    let mut response_text = String::new();
-    for chunk in chunks {
-        match chunk.get("type").and_then(|v| v.as_str()) {
-            Some("content") => {
-                if let Some(arr) = chunk.get("content").and_then(|v| v.as_array()) {
-                    for delta in arr {
-                        if delta.get("type").and_then(|v| v.as_str()) == Some("text_delta")
-                            && let Some(s) = delta.get("delta").and_then(|v| v.as_str())
-                        {
-                            response_text.push_str(s);
-                        }
-                    }
-                }
-            }
-            Some("error") => eprintln!("SSE error event during test: {chunk}"),
-            _ => {}
-        }
-    }
+    let events = crate::chat::helpers::send_body_and_collect_events(
+        &server,
+        &user.token,
+        conv_id,
+        payload,
+        &[],
+    )
+    .await;
+    let response_text = assemble_text_from_events(&events);
 
     eprintln!("LLM response: {response_text}");
     assert!(
@@ -439,41 +420,22 @@ async fn per_message_assistant_override_keeps_project_block() {
     let branch_id = Uuid::parse_str(conv["active_branch_id"].as_str().unwrap()).unwrap();
 
     // Send with the OVERRIDE assistant_id (not the project's default).
+    // Custom body → subscribe + POST /messages + collect streamed events.
     let payload = json!({
         "content": "Say hello.",
         "model_id": model_id.to_string(),
         "branch_id": branch_id.to_string(),
         "assistant_id": override_id,
     });
-    let response = reqwest::Client::new()
-        .post(server.api_url(&format!("/conversations/{}/messages/stream", conv_id)))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&payload)
-        .send()
-        .await
-        .unwrap();
-    let chunks = crate::chat::helpers::parse_sse_stream(response).await;
-    // Same wire-format note as send_and_collect_response_text: `content`
-    // is an ARRAY of ContentBlockDelta items, not a string. Walk the
-    // delta array and concatenate text_delta.delta.
-    let mut response_text = String::new();
-    for chunk in chunks {
-        match chunk.get("type").and_then(|v| v.as_str()) {
-            Some("content") => {
-                if let Some(arr) = chunk.get("content").and_then(|v| v.as_array()) {
-                    for delta in arr {
-                        if delta.get("type").and_then(|v| v.as_str()) == Some("text_delta")
-                            && let Some(s) = delta.get("delta").and_then(|v| v.as_str())
-                        {
-                            response_text.push_str(s);
-                        }
-                    }
-                }
-            }
-            Some("error") => eprintln!("SSE error event during test: {chunk}"),
-            _ => {}
-        }
-    }
+    let events = crate::chat::helpers::send_body_and_collect_events(
+        &server,
+        &user.token,
+        conv_id,
+        payload,
+        &[],
+    )
+    .await;
+    let response_text = assemble_text_from_events(&events);
 
     eprintln!("LLM response: {response_text}");
     assert!(

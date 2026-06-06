@@ -7,14 +7,13 @@ import {
 } from '../../common/provider-helpers'
 import { goToNewChatPage, selectModelInDropdown } from './helpers/chat-helpers'
 import {
-  mockChatStream,
+  mockChatTokenStream,
   startedEvent,
   mcpApprovalRequiredEvent,
   mcpToolStartEvent,
   mcpToolCompleteEvent,
   textDeltaEvent,
   completeEvent,
-  serializeSseScript,
   mockGetMessages,
   mockUserMessage,
   mockAssistantToolUseMessage,
@@ -53,7 +52,7 @@ test.describe('MCP Tool Approval — optimistic UX', () => {
     const serverId = 'mock-server'
 
     // Two-call sequence: first call surfaces approval; second call resumes.
-    await mockChatStream(page, [
+    await mockChatTokenStream(page, [
       [
         startedEvent({ userMessageId: 'umsg_approve_1' }),
         mcpApprovalRequiredEvent({
@@ -121,18 +120,15 @@ test.describe('MCP Tool Approval — optimistic UX', () => {
       }),
     ])
 
-    await goToNewChatPage(page, testInfra.baseURL)
-
-    // First call: approval required. Second call: HTTP 500 (simulates resume failure).
-    let callIndex = 0
-    await page.route(/\/api\/conversations\/[^/]+\/messages\/stream(\?|$)/, async (route, request) => {
-      // Only intercept POST — let GETs fall through to mockGetMessages (above).
-      if (request.method() !== 'POST') {
-        return route.fallback()
-      }
-      callIndex++
-      if (callIndex === 1) {
-        const body = serializeSseScript([
+    // Register the chat-token-stream mock BEFORE navigating: goToNewChatPage
+    // mounts the chat store, which opens the GET /api/chat/stream connection.
+    // If the mock isn't installed yet, that connection binds to the real
+    // backend and never receives the scripted approval frame.
+    // First send: approval required. Second send (resume) returns HTTP 500.
+    await mockChatTokenStream(
+      page,
+      [
+        [
           startedEvent({ userMessageId: 'umsg_fail_1' }),
           mcpApprovalRequiredEvent({
             toolUseId,
@@ -141,18 +137,12 @@ test.describe('MCP Tool Approval — optimistic UX', () => {
             input: {},
           }),
           completeEvent({ finishReason: 'tool_use' }),
-        ])
-        await route.fulfill({ status: 200, contentType: 'text/event-stream', body })
-      } else {
-        // Resume call fails
-        await route.fulfill({
-          status: 500,
-          contentType: 'application/json',
-          body: JSON.stringify({ error: 'simulated resume failure' }),
-        })
-      }
-    })
+        ],
+      ],
+      { failSends: { 1: 500 } },
+    )
 
+    await goToNewChatPage(page, testInfra.baseURL)
     await sendChatMessage(page, 'Please run the risky op')
     const approval = page.locator(`[data-testid="tool-approval-${toolUseId}"]`).first()
     await expect(approval).toBeVisible({ timeout: 10000 })
@@ -182,7 +172,7 @@ test.describe('MCP Tool Approval — optimistic UX', () => {
       }),
     ])
 
-    await mockChatStream(page, [
+    await mockChatTokenStream(page, [
       [
         startedEvent({ userMessageId: 'umsg_deny_1' }),
         mcpApprovalRequiredEvent({
@@ -233,8 +223,6 @@ test.describe('MCP Tool Approval — optimistic UX', () => {
       }),
     ])
 
-    await goToNewChatPage(page, testInfra.baseURL)
-
     // Capture all /mcp-settings PUTs
     const settingsBodies: unknown[] = []
     await page.route(/\/api\/conversations\/[^/]+\/mcp-settings/, async (route, req) => {
@@ -278,7 +266,7 @@ test.describe('MCP Tool Approval — optimistic UX', () => {
       })
     })
 
-    await mockChatStream(page, [
+    await mockChatTokenStream(page, [
       [
         startedEvent({ userMessageId: 'umsg_conv_1' }),
         mcpApprovalRequiredEvent({
@@ -298,6 +286,9 @@ test.describe('MCP Tool Approval — optimistic UX', () => {
       ],
     ])
 
+    // Navigate only AFTER the chat-stream mock is installed (see the note in
+    // the "resume call fails" test) so the scripted approval frame is delivered.
+    await goToNewChatPage(page, testInfra.baseURL)
     await sendChatMessage(page, 'Approve me for the whole conversation')
     await expect(page.locator(`[data-testid="tool-approval-${toolUseId}"]`).first()).toBeVisible({
       timeout: 10000,

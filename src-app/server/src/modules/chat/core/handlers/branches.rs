@@ -14,6 +14,7 @@ use crate::{
             types::CreateBranchRequest,
         },
         permissions::{extractors::RequirePermissions, with_permission},
+        sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
     },
 };
 
@@ -115,7 +116,7 @@ pub fn list_branches_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn activate_branch(
     auth: RequirePermissions<(BranchesSwitch,)>,
-
+    origin: SyncOrigin,
     Path((conversation_id, branch_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<StatusCode> {
     // Verify conversation exists and user owns it
@@ -139,6 +140,14 @@ pub async fn activate_branch(
 
     // Activate the branch
     Repos.chat.core.set_active_branch( conversation_id, branch_id).await?;
+
+    sync_publish(
+        SyncEntity::Conversation,
+        SyncAction::Update,
+        conversation_id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }

@@ -41,9 +41,12 @@ async function gotoTemplateAssistantsSettings(
   page: import('@playwright/test').Page,
   baseURL: string,
 ) {
-  await page.goto(`${baseURL}/settings/assistants`)
+  // Template assistants live at /settings/assistant-templates (the admin page);
+  // /settings/assistants is the per-user "My Assistants" page. Match the
+  // working 06-assistants helper.
+  await page.goto(`${baseURL}/settings/assistant-templates`)
   await page
-    .getByRole('heading', { name: 'Assistants', level: 4 })
+    .getByRole('heading', { name: 'Assistant Templates', level: 4 })
     .waitFor({ timeout: 15000 })
   await page
     .locator('.ant-card-head-title:has-text("Template Assistants")')

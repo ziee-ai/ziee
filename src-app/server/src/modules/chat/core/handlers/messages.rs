@@ -14,6 +14,7 @@ use crate::{
             types::{EditMessageRequest, EditMessageResponse, MessageWithContent},
         },
         permissions::{extractors::RequirePermissions, with_permission},
+        sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
     },
 };
 
@@ -90,7 +91,7 @@ pub fn get_message_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn edit_message(
     auth: RequirePermissions<(MessagesCreate,)>,
-
+    origin: SyncOrigin,
     Path((conversation_id, message_id)): Path<(Uuid, Uuid)>,
     Json(request): Json<EditMessageRequest>,
 ) -> ApiResult<Json<EditMessageResponse>> {
@@ -114,6 +115,14 @@ pub async fn edit_message(
         .edit_message(message_id, conversation_id, request, current_branch_id)
         .await?;
 
+    sync_publish(
+        SyncEntity::Conversation,
+        SyncAction::Update,
+        conversation_id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
+
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -135,11 +144,11 @@ pub fn edit_message_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn delete_message(
     auth: RequirePermissions<(MessagesDelete,)>,
-
+    origin: SyncOrigin,
     Path(message_id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
     // Verify user owns the conversation containing this message
-    let _conversation = Repos.chat.core
+    let conversation = Repos.chat.core
         .verify_message_ownership( message_id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Message"))?;
@@ -149,6 +158,14 @@ pub async fn delete_message(
     if deleted_count == 0 {
         return Err(AppError::not_found("Message").into());
     }
+
+    sync_publish(
+        SyncEntity::Conversation,
+        SyncAction::Update,
+        conversation.id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }

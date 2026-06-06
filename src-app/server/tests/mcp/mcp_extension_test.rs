@@ -189,7 +189,7 @@ async fn test_mcp_extension_enabled_with_no_servers() {
         "enable_mcp": true
     });
 
-    let url = server.api_url(&format!("/conversations/{}/messages/stream", conversation_id));
+    let url = server.api_url(&format!("/conversations/{}/messages", conversation_id));
     let response = reqwest::Client::new()
         .post(&url)
         .header("Authorization", format!("Bearer {}", user.token))
@@ -240,8 +240,12 @@ async fn test_mcp_tools_added_to_llm_request() {
     let model = crate::chat::helpers::get_or_create_test_model(&server, &admin.user_id).await;
     let model_id = crate::chat::helpers::parse_uuid(&model["id"]);
 
-    // Send message with MCP enabled
-    let payload = json!({
+    // Send message with MCP enabled. In the fire-and-forget model the reply +
+    // extension events stream over the per-user chat stream, not the POST
+    // response — `send_body_and_collect_events` subscribes, POSTs, and collects
+    // until the terminal `complete`/`error` (this is auto-approve / default, so
+    // a terminal always arrives). It asserts the POST returned 200.
+    let body = json!({
         "content": "Use the fetch tool to get https://example.com",
         "model_id": model_id,
         "branch_id": branch_id,
@@ -256,23 +260,18 @@ async fn test_mcp_tools_added_to_llm_request() {
         }
     });
 
-    let url = server.api_url(&format!("/conversations/{}/messages/stream", conversation_id));
-    let response = reqwest::Client::new()
-        .post(&url)
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&payload)
-        .send()
-        .await
-        .expect("Failed to send message");
+    let events = crate::chat::helpers::send_body_and_collect_events(
+        &server,
+        &admin.token,
+        conversation_id,
+        body,
+        &[],
+    )
+    .await;
 
-    assert_eq!(response.status(), 200, "Should send message with MCP tools");
-
-    // Verify response contains tool execution
-    let bytes = response.bytes().await.unwrap();
-    let text = String::from_utf8(bytes.to_vec()).unwrap();
-
-    // Should contain SSE events (exact structure depends on provider response)
-    assert!(text.contains("data: "), "Should contain SSE data events");
+    // Should have received streamed generation events (exact structure depends
+    // on the provider response).
+    assert!(!events.is_empty(), "Should receive streamed chat events");
 }
 
 // ============================================================================
@@ -345,7 +344,7 @@ async fn test_mcp_user_can_only_access_own_servers() {
         }
     });
 
-    let url = server.api_url(&format!("/conversations/{}/messages/stream", conversation_id));
+    let url = server.api_url(&format!("/conversations/{}/messages", conversation_id));
     let response = reqwest::Client::new()
         .post(&url)
         .header("Authorization", format!("Bearer {}", user2.token))
@@ -470,7 +469,7 @@ async fn test_mcp_user_can_access_group_servers() {
         }
     });
 
-    let url = server.api_url(&format!("/conversations/{}/messages/stream", conversation_id));
+    let url = server.api_url(&format!("/conversations/{}/messages", conversation_id));
     let response = reqwest::Client::new()
         .post(&url)
         .header("Authorization", format!("Bearer {}", user.token))
@@ -538,7 +537,7 @@ async fn test_mcp_specific_tool_selection() {
         }
     });
 
-    let url = server.api_url(&format!("/conversations/{}/messages/stream", conversation_id));
+    let url = server.api_url(&format!("/conversations/{}/messages", conversation_id));
     let response = reqwest::Client::new()
         .post(&url)
         .header("Authorization", format!("Bearer {}", admin.token))
@@ -604,7 +603,7 @@ async fn test_mcp_all_tools_with_empty_array() {
         }
     });
 
-    let url = server.api_url(&format!("/conversations/{}/messages/stream", conversation_id));
+    let url = server.api_url(&format!("/conversations/{}/messages", conversation_id));
     let response = reqwest::Client::new()
         .post(&url)
         .header("Authorization", format!("Bearer {}", admin.token))
@@ -668,7 +667,7 @@ async fn test_mcp_disabled_servers_ignored() {
         }
     });
 
-    let url = server.api_url(&format!("/conversations/{}/messages/stream", conversation_id));
+    let url = server.api_url(&format!("/conversations/{}/messages", conversation_id));
     let response = reqwest::Client::new()
         .post(&url)
         .header("Authorization", format!("Bearer {}", admin.token))
