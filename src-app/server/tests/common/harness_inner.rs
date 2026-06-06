@@ -377,8 +377,14 @@ secrets:
             // Single-quote the path values (see note above the `data_dir`
             // formatter); Windows paths contain backslashes that break
             // YAML double-quoted scalars.
+            // require_download_consent: false — tests drive execute_command
+            // over a one-shot HTTP call and can't answer the interactive
+            // "download this ~900 MB environment?" consent elicitation. With
+            // consent on, a large (uncached) flavor like `full` would block on
+            // the elicitation for CONSENT_TIMEOUT_SECS (600s) and then decline,
+            // so the rootfs never downloads. Auto-download instead.
             config.push_str(&format!(
-                "\ncode_sandbox:\n  enabled: true\n  rootfs_path: '{}'\n  workspace_root: '{}'\n  cgroup_parent: '{}'\n",
+                "\ncode_sandbox:\n  enabled: true\n  rootfs_path: '{}'\n  workspace_root: '{}'\n  cgroup_parent: '{}'\n  require_download_consent: false\n",
                 rootfs,
                 ws_path.display(),
                 opts.sandbox_cgroup_parent
