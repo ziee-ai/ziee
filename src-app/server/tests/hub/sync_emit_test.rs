@@ -44,6 +44,7 @@ fn one_version() -> Vec<MockVersion> {
             category: "model",
             id: "mock-model-a",
             min_ziee_version: None,
+            extra_yaml: None,
         }],
     }]
 }
