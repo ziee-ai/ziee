@@ -567,16 +567,22 @@ async fn first_auth_required_hf_model(
         .json()
         .await
         .unwrap();
+    // Pin a COMPATIBLE auth_required Hugging Face model. We can't just take the
+    // first auth_required HF model: the v0.0.3-alpha catalog leads with
+    // `deepseek-r1-70b`, a deliberate `min_ziee_version = 99.0.0` sentinel that
+    // the server rejects as HUB_INCOMPATIBLE *before* the repo-auth gate these
+    // tests exercise. `llama-3-1-8b-instruct` (meta-llama, gated) is compatible.
     models
         .as_array()
         .unwrap()
         .iter()
         .find(|m| {
-            m["auth_required"].as_bool() == Some(true)
+            m["id"].as_str() == Some("llama-3-1-8b-instruct")
+                && m["auth_required"].as_bool() == Some(true)
                 && m["repository_url"].as_str() == Some("https://huggingface.co")
         })
         .cloned()
-        .expect("bundled catalog should contain an auth_required Hugging Face model")
+        .expect("bundled catalog should contain auth_required HF model llama-3-1-8b-instruct")
 }
 
 /// The hub download endpoint must BLOCK with a 422 + actionable guidance when the
