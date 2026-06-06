@@ -305,14 +305,98 @@ impl HubManager {
     }
 
     /// On boot: install the embedded seed catalog into
-    /// `<app_data>/hub/current/` if it doesn't already exist. Idempotent.
+    /// `<app_data>/hub/current/` if it doesn't already exist.
+    ///
+    /// Also UPGRADES a stale seed-provenance cache when the binary
+    /// embeds a newer `SEED_HUB_VERSION`. Without this, a long-lived
+    /// data-dir keeps serving the catalog version it was first seeded
+    /// with, even after the user upgrades the binary — admins see
+    /// "installed v2, current v3" in the Updates tab and Re-install
+    /// silently re-stamps the row with the SAME stale catalog version
+    /// (the cache the runtime is reading from), so the row never
+    /// drops off the Updates list.
+    ///
+    /// A GitHub-fetched cache (`provenance == Github`) is NEVER
+    /// auto-replaced — it's been cosign-verified and may legitimately
+    /// be newer than the embedded seed (the seed is bumped on the
+    /// release-engineering cadence; a fetch is on the operator's
+    /// schedule). Operators who want to roll a verified cache forward
+    /// or back go through `/api/hub/refresh` or `/api/hub/activate`.
     pub fn initialize(&self) -> Result<(), AppError> {
         let current = self.current_dir();
-        if current.join("index.json").exists() {
-            // Already initialized (either by a previous boot or by a
-            // successful refresh from GitHub). Don't clobber.
+        let index_path = current.join("index.json");
+
+        if !index_path.exists() {
+            // Fresh install — fall through to install the seed.
+        } else {
+            // Cache already exists. Replace it ONLY when:
+            //   1. it was seeded by a prior boot (has `.seed` marker), AND
+            //   2. the embedded `SEED_HUB_VERSION` is strictly newer
+            //      than the cached `hub_version` (semver compare).
+            // Anything else (GitHub-fetched cache, same-version seed,
+            // unreadable / malformed cache) is left alone.
+            let is_seed = current.join(SEED_MARKER).exists();
+            if !is_seed {
+                // GitHub-fetched cache — operator's source of truth.
+                return Ok(());
+            }
+            let cached_version = match fs::read(&index_path)
+                .ok()
+                .and_then(|bytes| serde_json::from_slice::<Catalog>(&bytes).ok())
+            {
+                Some(cat) => cat.hub_version,
+                None => {
+                    // Marker says seed but the index is unreadable —
+                    // treat as a corrupt cache and reseed.
+                    tracing::warn!(
+                        "hub: seed cache at {} is unreadable; reseeding",
+                        index_path.display()
+                    );
+                    Self::overwrite_with_seed(&current)?;
+                    return Ok(());
+                }
+            };
+
+            // Semver compare; trim the seed-version trailing newline
+            // (`include_str!` keeps the file's terminating `\n`).
+            let seed_ver_str = SEED_HUB_VERSION.trim();
+            let cached_ver = match semver::Version::parse(&cached_version) {
+                Ok(v) => v,
+                Err(_) => {
+                    tracing::warn!(
+                        "hub: cached hub_version '{}' is not valid semver; leaving cache as-is",
+                        cached_version
+                    );
+                    return Ok(());
+                }
+            };
+            let seed_ver = match semver::Version::parse(seed_ver_str) {
+                Ok(v) => v,
+                Err(e) => {
+                    // Build-time invariant guarantees SEED_HUB_VERSION
+                    // is semver — log + bail rather than corrupting the
+                    // cache.
+                    tracing::error!(
+                        "hub: embedded SEED_HUB_VERSION '{}' is not valid semver: {} — leaving cache as-is",
+                        seed_ver_str,
+                        e
+                    );
+                    return Ok(());
+                }
+            };
+
+            if seed_ver > cached_ver {
+                tracing::info!(
+                    "hub: embedded seed v{} > cached seed v{}; upgrading on-disk cache at {}",
+                    seed_ver,
+                    cached_ver,
+                    current.display()
+                );
+                Self::overwrite_with_seed(&current)?;
+            }
             return Ok(());
         }
+
         fs::create_dir_all(&current).map_err(|e| {
             AppError::internal_error(format!(
                 "hub: create {}: {}",
@@ -329,9 +413,60 @@ impl HubManager {
         let _ = fs::write(current.join(SEED_MARKER), b"seed\n");
         tracing::info!(
             "hub: installed embedded seed catalog v{} into {}",
-            SEED_HUB_VERSION,
+            SEED_HUB_VERSION.trim(),
             current.display()
         );
+        Ok(())
+    }
+
+    /// Wipe the current/ directory and re-dump the embedded seed. Used
+    /// for both first-install and the seed-version-upgrade path so the
+    /// disk shape (.seed marker, dumped files, mtimes) is identical.
+    fn overwrite_with_seed(current: &std::path::Path) -> Result<(), AppError> {
+        // Remove every entry under current/ but keep current/ itself —
+        // mirrors the dir's semantics (current dir is referenced by
+        // `hub_root().join("current")` and may have been opened by
+        // other paths).
+        if current.exists() {
+            for entry in fs::read_dir(current).map_err(|e| {
+                AppError::internal_error(format!(
+                    "hub: read {}: {}",
+                    current.display(),
+                    e
+                ))
+            })? {
+                let entry = entry.map_err(|e| {
+                    AppError::internal_error(format!(
+                        "hub: read {} entry: {}",
+                        current.display(),
+                        e
+                    ))
+                })?;
+                let path = entry.path();
+                let res = if path.is_dir() {
+                    fs::remove_dir_all(&path)
+                } else {
+                    fs::remove_file(&path)
+                };
+                res.map_err(|e| {
+                    AppError::internal_error(format!(
+                        "hub: clear {}: {}",
+                        path.display(),
+                        e
+                    ))
+                })?;
+            }
+        } else {
+            fs::create_dir_all(current).map_err(|e| {
+                AppError::internal_error(format!(
+                    "hub: create {}: {}",
+                    current.display(),
+                    e
+                ))
+            })?;
+        }
+        Self::dump_dir(&HUB_SEED, current)?;
+        let _ = fs::write(current.join(SEED_MARKER), b"seed\n");
         Ok(())
     }
 
@@ -1389,6 +1524,121 @@ mod tests {
         assert!(names.contains(&"models"));
         assert!(names.contains(&"assistants"));
         assert!(names.contains(&"mcp-servers"));
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // initialize() — seed-upgrade-on-boot matrix
+    // ─────────────────────────────────────────────────────────────────
+
+    /// Build a temp app-data-dir whose `hub/current/` already has a
+    /// hand-rolled `index.json` at an arbitrary `hub_version`, with
+    /// the `.seed` marker present iff `seed_provenance` is true.
+    /// Returns the data dir (auto-cleaned by the caller).
+    fn fixture_with_existing_catalog(version: &str, seed_provenance: bool) -> PathBuf {
+        let unique = format!(
+            "hub-init-{}-{}",
+            std::process::id(),
+            // Use the version string + provenance as a stable suffix —
+            // tests don't run in parallel here (each writes its own
+            // tempdir) but avoid Date::now() per CLAUDE.md.
+            version.replace('.', "_"),
+        );
+        let data_dir = std::env::temp_dir().join(format!("{unique}-{seed_provenance}"));
+        let current = data_dir.join("hub").join("current");
+        fs::create_dir_all(&current).unwrap();
+        // Minimal valid Catalog shape (matches struct field set).
+        let body = serde_json::json!({
+            "hub_version": version,
+            "generated_at": "1970-01-01T00:00:00Z",
+            "schema_version": 1,
+            "items": [],
+        });
+        fs::write(
+            current.join("index.json"),
+            serde_json::to_vec(&body).unwrap(),
+        )
+        .unwrap();
+        if seed_provenance {
+            fs::write(current.join(SEED_MARKER), b"seed\n").unwrap();
+        }
+        data_dir
+    }
+
+    fn cached_version(data_dir: &std::path::Path) -> String {
+        let path = data_dir.join("hub").join("current").join("index.json");
+        let bytes = fs::read(&path).unwrap();
+        let cat: Catalog = serde_json::from_slice(&bytes).unwrap();
+        cat.hub_version
+    }
+
+    #[test]
+    fn initialize_upgrades_stale_seed_cache_to_embedded_seed_version() {
+        // Cache is from a previous boot that seeded v0.0.0-alpha; the
+        // current binary embeds something newer (whatever
+        // SEED_HUB_VERSION resolves to). The upgrade path MUST replace
+        // the on-disk catalog with the embedded seed.
+        //
+        // 0.0.0-alpha is always strictly less than any real published
+        // seed (releases start at 0.0.1-alpha), so this assertion is
+        // version-independent.
+        let dir = fixture_with_existing_catalog("0.0.0-alpha", true);
+        let mgr = HubManager::new(&dir).unwrap();
+        mgr.initialize().unwrap();
+
+        assert_eq!(
+            cached_version(&dir),
+            SEED_HUB_VERSION.trim(),
+            "stale seed cache should be upgraded to the embedded seed version"
+        );
+        // Marker preserved — still a seed install.
+        assert!(dir.join("hub").join("current").join(SEED_MARKER).exists());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn initialize_leaves_same_version_seed_cache_alone() {
+        // Cache version == seed version → no-op (no churn on every
+        // boot). Use SEED_HUB_VERSION verbatim so the test stays
+        // correct across version bumps.
+        let v = SEED_HUB_VERSION.trim();
+        let dir = fixture_with_existing_catalog(v, true);
+        let mgr = HubManager::new(&dir).unwrap();
+        mgr.initialize().unwrap();
+
+        assert_eq!(cached_version(&dir), v);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn initialize_leaves_github_fetched_cache_alone_even_when_older() {
+        // No `.seed` marker → provenance is Github. Operator-managed
+        // catalog (possibly intentionally older for compat) must NEVER
+        // be auto-replaced by the embedded seed.
+        let dir = fixture_with_existing_catalog("0.0.0-alpha", /* seed */ false);
+        let mgr = HubManager::new(&dir).unwrap();
+        mgr.initialize().unwrap();
+
+        assert_eq!(
+            cached_version(&dir),
+            "0.0.0-alpha",
+            "GitHub-fetched cache must not be silently rewritten by the seed"
+        );
+        // Still no marker — provenance preserved.
+        assert!(!dir.join("hub").join("current").join(SEED_MARKER).exists());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn initialize_installs_seed_on_fresh_data_dir() {
+        let dir = std::env::temp_dir().join(format!("hub-init-fresh-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let mgr = HubManager::new(&dir).unwrap();
+        mgr.initialize().unwrap();
+
+        assert_eq!(cached_version(&dir), SEED_HUB_VERSION.trim());
+        assert!(dir.join("hub").join("current").join(SEED_MARKER).exists());
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

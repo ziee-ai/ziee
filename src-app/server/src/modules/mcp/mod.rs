@@ -1,8 +1,10 @@
 pub mod chat_extension;
 pub mod client;
+pub mod connection_health;
 pub mod elicitation;
+mod event_handlers;
 pub mod events;
-mod handlers;
+pub(crate) mod handlers;
 mod models;
 mod permissions;
 pub mod project_extension;
@@ -17,6 +19,11 @@ mod utils;
 pub use models::*;
 pub use repository::*;
 pub use types::*;
+// Re-exports for cross-module use (hub install paths). Named so the
+// public surface stays explicit — bumping the whole `repository` /
+// `permissions` modules to `pub mod` would leak internals.
+pub use permissions::McpServersAdminCreate;
+pub(crate) use repository::validate_transport_config;
 
 use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleContext, ModuleEntry};
 use aide::axum::ApiRouter;
@@ -67,6 +74,14 @@ impl AppModule for McpModule {
             .map_err(|e| format!("Failed to extract MCP embedded binaries: {}", e))?;
         tracing::info!("MCP: Embedded binaries ready");
 
+        // Boot health check — probe every enabled non-built-in MCP
+        // server and auto-disable unreachable ones. Fire-and-forget
+        // so it doesn't block boot; the next `cargo run` retries.
+        let health_pool = (*ctx.db_pool).clone();
+        tokio::spawn(async move {
+            connection_health::run_startup_health_check(health_pool).await;
+        });
+
         Ok(())
     }
 
@@ -81,6 +96,10 @@ impl AppModule for McpModule {
             tracing::error!("McpModule: Pool not initialized during route registration");
             router
         }
+    }
+
+    fn register_event_handlers(&self) -> Vec<Arc<dyn crate::core::events::EventHandler>> {
+        vec![event_handlers::McpSessionCleanupHandler::new()]
     }
 }
 

@@ -20,6 +20,7 @@ use crate::{
 };
 
 use super::super::{
+    connection_health::{enforce_on_create, enforce_on_update_transition, McpServerWithHealthWarning},
     events::McpServerEvent,
     models::McpServer,
     permissions::*,
@@ -99,13 +100,14 @@ pub async fn create_system_server(
     _auth: RequirePermissions<(McpServersAdminCreate,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<CreateMcpServerRequest>,
-) -> ApiResult<Json<McpServer>> {
+) -> ApiResult<Json<McpServerWithHealthWarning>> {
     let server = Repos.mcp.create_system_server(request).await?;
-
-    // Emit creation event for other modules to react
     event_bus.emit_async(McpServerEvent::system_server_created(server.id));
 
-    Ok((StatusCode::CREATED, Json(server)))
+    // Same downgrade-on-probe-failure semantic as user creates —
+    // built-in servers are skipped inside the helper.
+    let wrapped = enforce_on_create(Repos.mcp.pool(), server, &event_bus).await?;
+    Ok((StatusCode::CREATED, Json(wrapped)))
 }
 
 pub fn create_system_server_docs(op: TransformOperation) -> TransformOperation {
@@ -113,8 +115,14 @@ pub fn create_system_server_docs(op: TransformOperation) -> TransformOperation {
         .id("McpServerSystem.create")
         .tag("MCP Servers - System")
         .summary("Create system MCP server")
-        .description("Create a new system MCP server configuration")
-        .response::<201, Json<McpServer>>()
+        .description(
+            "Create a new system MCP server configuration. Same \
+             health-check-on-create semantic as the user create \
+             endpoint — see `McpServer.create` for the contract on \
+             `connection_warning` and the auto-downgrade-to-disabled \
+             behavior.",
+        )
+        .response::<201, Json<McpServerWithHealthWarning>>()
         .response_with::<400, (), _>(|res| res.description("Bad request - validation failed"))
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<409, (), _>(|res| res.description("Server name already exists"))
@@ -154,10 +162,23 @@ pub async fn update_system_server(
     Path(id): Path<Uuid>,
     Json(request): Json<UpdateMcpServerRequest>,
 ) -> ApiResult<Json<McpServer>> {
-    let server = Repos.mcp.update_system_server(id, request).await?;
+    let prior_enabled = Repos
+        .mcp
+        .get_system_server(id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Server"))?
+        .enabled;
 
-    // Emit update event for other modules to react
-    event_bus.emit_async(McpServerEvent::system_server_updated(server.id));
+    let persisted = Repos.mcp.update_system_server(id, request).await?;
+    event_bus.emit_async(McpServerEvent::system_server_updated(persisted.id));
+
+    let server = enforce_on_update_transition(
+        Repos.mcp.pool(),
+        persisted,
+        prior_enabled,
+        &event_bus,
+    )
+    .await?;
 
     Ok((StatusCode::OK, Json(server)))
 }
@@ -167,9 +188,14 @@ pub fn update_system_server_docs(op: TransformOperation) -> TransformOperation {
         .id("McpServerSystem.update")
         .tag("MCP Servers - System")
         .summary("Update system MCP server")
-        .description("Update a system MCP server configuration")
+        .description(
+            "Update a system MCP server configuration. Same \
+             enable-time health-check semantic as `McpServer.update` \
+             — see that endpoint for the partial-save + \
+             `MCP_ENABLE_FAILED_HEALTH_CHECK` contract.",
+        )
         .response::<200, Json<McpServer>>()
-        .response_with::<400, (), _>(|res| res.description("Bad request - validation failed"))
+        .response_with::<400, (), _>(|res| res.description("Bad request - validation failed (incl. enable-time health check failure with error_code `MCP_ENABLE_FAILED_HEALTH_CHECK`)"))
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("Server not found"))
         .response_with::<409, (), _>(|res| res.description("Server name already exists"))

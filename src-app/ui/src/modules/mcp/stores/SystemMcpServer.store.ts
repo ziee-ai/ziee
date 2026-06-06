@@ -3,6 +3,7 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { ApiClient } from '@/api-client'
 import type {
   McpServer,
+  McpServerWithHealthWarning,
   CreateMcpServerRequest,
   UpdateMcpServerRequest,
   TestMcpConnectionRequest,
@@ -63,7 +64,9 @@ interface SystemMcpServersState {
   loadSystemServers: (page?: number, pageSize?: number) => Promise<void>
   setSearchTerm: (q: string) => void
   setStatusFilter: (status: string) => void
-  createSystemServer: (data: CreateMcpServerRequest) => Promise<McpServer>
+  createSystemServer: (
+    data: CreateMcpServerRequest,
+  ) => Promise<McpServerWithHealthWarning>
   updateSystemServer: (
     id: string,
     data: UpdateMcpServerRequest,
@@ -240,14 +243,17 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
 
       createSystemServer: async (
         data: CreateMcpServerRequest,
-      ): Promise<McpServer> => {
+      ): Promise<McpServerWithHealthWarning> => {
         try {
           set({
             creating: true,
             systemServersError: null,
           })
 
-          const newServer = await ApiClient.McpServerSystem.create(data)
+          // See createMcpServer (user store) for the
+          // health-check-on-create wrapper rationale.
+          const wrapped = await ApiClient.McpServerSystem.create(data)
+          const newServer = wrapped.server
 
           // Emit event after successful API call
           try {
@@ -265,7 +271,7 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
             creating: false,
           }))
 
-          return newServer
+          return wrapped
         } catch (error) {
           console.error('Failed to create system server:', error)
           set({

@@ -82,8 +82,12 @@ pub struct CreateAssistantFromHubRequest {
     pub replace_existing: bool,
 }
 
-/// Request to create MCP server from hub catalog
-/// Note: Hub interface always creates user MCP servers, not system servers
+/// Request to create MCP server from hub catalog.
+///
+/// Used by BOTH `Hub.createMcpServerFromHub` (per-user install) and
+/// `Hub.createSystemMcpServerFromHub` (system-wide install). The
+/// scope is conveyed by endpoint identity, not by a request field —
+/// `RequirePermissions<(...)>` gates each path at the extractor.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CreateMcpServerFromHubRequest {
     /// Hub MCP server ID
@@ -100,6 +104,17 @@ pub struct CreateMcpServerFromHubRequest {
     /// Optional: Override enabled
     #[serde(default = "default_true")]
     pub enabled: bool,
+
+    /// System-only: when true, delete the existing system install
+    /// for this `hub_id` before creating the new one. Used by the
+    /// `/hub/updates` Re-install action to refresh an outdated
+    /// system MCP server; without this the duplicate-prevention
+    /// guard in `Hub.createSystemMcpServerFromHub` would 409.
+    /// Rejected with 400 on the user-scoped install path (per-user
+    /// installs aren't dedup'd). Mirrors `replace_existing` on
+    /// `CreateAssistantFromHubRequest`.
+    #[serde(default)]
+    pub replace_existing: bool,
 }
 
 /// Request to create LLM model from hub catalog (triggers download)
@@ -197,28 +212,46 @@ pub struct HubCatalogRefreshResponse {
 }
 
 /// Single row in `GET /api/hub/updates` — one installed hub entity
-/// that's behind the current catalog (either NULL hub_version or
-/// a hub_version different from the catalog).
+/// One tracked install in the user's Installed view. Rich enough
+/// that the Installed tab can render full rows (display name +
+/// install date + scope + version delta + Re-install/Remove
+/// dispatch hints) in a single round-trip.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct HubUpdateRow {
+pub struct HubInstalledRow {
     pub hub_id: String,
     pub hub_category: String,
     pub entity_type: String,
     pub entity_id: Uuid,
+    /// Display name from the entity's own table. Empty when the
+    /// underlying entity row has been deleted (orphan — should be
+    /// cleaned by the deletion-event listener, but the LEFT JOIN
+    /// surfaces them rather than crashing the page).
+    pub name: String,
     pub installed_version: Option<String>,
     pub current_version: String,
-    /// True when the install was system-wide (`created_by IS NULL` —
-    /// currently only template assistants). The Updates UI uses this
-    /// to route the Re-install action to the template endpoint
-    /// instead of creating a user assistant from a template-origin
-    /// row.
+    /// When the hub_entities tracking row was first created. Used to
+    /// render "installed N days ago" on the row.
+    pub installed_at: chrono::DateTime<chrono::Utc>,
+    /// `created_by IS NULL`. Frontend renders a scope tag and
+    /// (for non-admin users) suppresses the Remove button.
+    pub is_system: bool,
+    /// Re-install dispatch flag for ASSISTANT templates — routes the
+    /// Re-install action to `Hub.createAssistantTemplateFromHub`
+    /// instead of the user-scoped endpoint.
     pub is_template_install: bool,
+    /// Re-install dispatch flag for system MCP servers — routes to
+    /// `Hub.createSystemMcpServerFromHub` (with `replace_existing:
+    /// true`) instead of the user-scoped endpoint.
+    pub is_system_mcp_install: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct HubUpdatesResponse {
+pub struct HubInstalledResponse {
+    /// Live catalog version — handy on the client so every row can
+    /// compare its `installed_version` to highlight the delta
+    /// without a second round-trip to `/hub/version`.
     pub catalog_version: String,
-    pub updates: Vec<HubUpdateRow>,
+    pub items: Vec<HubInstalledRow>,
 }
 
 /// Query parameters for `GET /api/hub/manifest/:id`.

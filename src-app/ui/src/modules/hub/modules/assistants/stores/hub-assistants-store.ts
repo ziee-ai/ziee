@@ -9,6 +9,7 @@ import type {
 } from '@/api-client/types'
 import {
   emitAssistantCreated,
+  emitAssistantDeleted,
   emitAssistantTemplateCreated,
   emitAssistantTemplateDeleted,
 } from '@/modules/assistant/events'
@@ -103,22 +104,45 @@ export const useHubAssistantsStore = create<HubAssistantsState>()(
           request: CreateAssistantFromHubRequest,
         ): Promise<Assistant> => {
           set({ creating: true, error: null })
+          // Snapshot displaced ids BEFORE the call so the
+          // `replace_existing` Re-install path can emit
+          // `assistant.deleted` for them after the new row exists.
+          const displacedIds: string[] = request.replace_existing
+            ? get()
+                .assistants.find(a => a.id === request.hub_id)
+                ?.created_ids?.slice() ?? []
+            : []
           try {
             const response = await ApiClient.Hub.createAssistantFromHub(request)
 
-            // Update the hub assistant's created_ids directly from response
             set(state => {
               const assistant = state.assistants.find(
                 a => a.id === request.hub_id,
               )
               if (assistant) {
-                if (!assistant.created_ids) {
-                  assistant.created_ids = []
+                if (request.replace_existing) {
+                  assistant.created_ids = [response.hub_tracking.entity_id]
+                } else {
+                  if (!assistant.created_ids) {
+                    assistant.created_ids = []
+                  }
+                  assistant.created_ids.push(response.hub_tracking.entity_id)
                 }
-                assistant.created_ids.push(response.hub_tracking.entity_id)
               }
               state.creating = false
             })
+
+            // Emit deletion events for displaced user installs so the
+            // UserAssistants store + settings pages drop the stale rows.
+            for (const oldId of displacedIds) {
+              if (oldId !== response.hub_tracking.entity_id) {
+                try {
+                  await emitAssistantDeleted(oldId)
+                } catch (e) {
+                  console.warn('Failed to emit assistant.deleted:', e)
+                }
+              }
+            }
 
             // Notify downstream caches (UserAssistants store, settings
             // pages) that a new user assistant exists. Without this,

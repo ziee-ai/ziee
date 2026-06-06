@@ -63,6 +63,13 @@ pub fn hub_router() -> ApiRouter {
             post_with(create_mcp_server_from_hub, create_mcp_server_from_hub_docs),
         )
         .api_route(
+            "/hub/mcp-servers/create-system",
+            post_with(
+                create_system_mcp_server_from_hub,
+                create_system_mcp_server_from_hub_docs,
+            ),
+        )
+        .api_route(
             "/hub/models/download",
             post_with(create_model_from_hub, create_model_from_hub_docs),
         )
@@ -81,8 +88,8 @@ pub fn hub_router() -> ApiRouter {
             post_with(refresh_hub_catalog, refresh_hub_catalog_docs),
         )
         .api_route(
-            "/hub/updates",
-            get_with(get_hub_updates, get_hub_updates_docs),
+            "/hub/installed",
+            get_with(get_hub_installed, get_hub_installed_docs),
         )
         .api_route(
             "/hub/manifest/{id}",

@@ -37,8 +37,10 @@ fn server_config(url: String) -> McpServer {
         command: None,
         args: serde_json::json!([]),
         environment_variables: serde_json::json!({}),
+        environment_variables_entries: vec![],
         url: Some(url),
         headers: serde_json::json!({}),
+        headers_entries: vec![],
         // Short: if a regression reuses a dead connection, the hang fails the
         // test in ~5s instead of the 30s default. The passing path never waits.
         timeout_seconds: 5,
@@ -49,6 +51,9 @@ fn server_config(url: String) -> McpServer {
         is_built_in: false,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
+        last_health_check_at: None,
+        last_health_check_status: "untested".to_string(),
+        last_health_check_reason: None,
     }
 }
 

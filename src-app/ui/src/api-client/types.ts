@@ -332,6 +332,7 @@ export interface CreateMcpServerFromHubRequest {
   enabled?: boolean
   hub_id: string
   name?: string
+  replace_existing?: boolean
 }
 
 export interface CreateMcpServerRequest {
@@ -340,8 +341,8 @@ export interface CreateMcpServerRequest {
   command?: string
   display_name: string
   enabled?: boolean
-  environment_variables?: any
-  headers?: any
+  environment_variables_entries?: EnvVarEntry[]
+  headers_entries?: HeaderEntry[]
   max_concurrent_sessions?: number
   name: string
   run_in_sandbox?: boolean
@@ -581,6 +582,18 @@ export type EngineDownloadStatus = 'pending' | 'downloading' | 'verifying' | 'ex
 
 export type EngineType = 'mistralrs' | 'llamacpp' | 'none'
 
+export interface EnvVarEntry {
+  is_secret: boolean
+  key: string
+  value?: string
+}
+
+export interface EnvVarView {
+  is_secret: boolean
+  key: string
+  value?: string
+}
+
 export interface File {
   checksum?: string
   created_at: string
@@ -707,6 +720,18 @@ export interface HardwareUsageUpdate {
   timestamp: string
 }
 
+export interface HeaderEntry {
+  is_secret: boolean
+  key: string
+  value?: string
+}
+
+export interface HeaderView {
+  is_secret: boolean
+  key: string
+  value?: string
+}
+
 export interface HealthCheckResponse {
   healthy: boolean
   message?: string
@@ -769,6 +794,25 @@ export interface HubEntity {
   id: string
 }
 
+export interface HubInstalledResponse {
+  catalog_version: string
+  items: HubInstalledRow[]
+}
+
+export interface HubInstalledRow {
+  current_version: string
+  entity_id: string
+  entity_type: string
+  hub_category: string
+  hub_id: string
+  installed_at: string
+  installed_version?: string
+  is_system: boolean
+  is_system_mcp_install: boolean
+  is_template_install: boolean
+  name: string
+}
+
 export interface HubLocalProvider {
   id: string
   name: string
@@ -785,6 +829,7 @@ export interface HubMCPServer {
   category?: string
   command?: string
   created_ids?: string[]
+  created_system_ids?: string[]
   display_name: string
   documentation_url?: string
   download_count?: number
@@ -802,6 +847,8 @@ export interface HubMCPServer {
   popularity_score?: number
   rating?: number
   repository_url?: string
+  required_env?: HubRequiredInput[]
+  required_headers?: HubRequiredInput[]
   requires_desktop?: boolean
   supports_sampling?: boolean
   tags?: string[]
@@ -880,19 +927,12 @@ export interface HubReleasesResponse {
   releases: HubReleaseInfo[]
 }
 
-export interface HubUpdateRow {
-  current_version: string
-  entity_id: string
-  entity_type: string
-  hub_category: string
-  hub_id: string
-  installed_version?: string
-  is_template_install: boolean
-}
-
-export interface HubUpdatesResponse {
-  catalog_version: string
-  updates: HubUpdateRow[]
+export interface HubRequiredInput {
+  description?: string
+  docs_url?: string
+  is_secret?: boolean
+  name: string
+  placeholder?: string
 }
 
 export interface HubVersionResponse {
@@ -1154,11 +1194,16 @@ export interface McpServer {
   created_at: string
   display_name: string
   enabled: boolean
-  environment_variables: any
-  headers: any
+  environment_variables?: any
+  environment_variables_entries?: EnvVarView[]
+  headers?: any
+  headers_entries?: HeaderView[]
   id: string
   is_built_in: boolean
   is_system: boolean
+  last_health_check_at?: string
+  last_health_check_reason?: string
+  last_health_check_status?: string
   max_concurrent_sessions?: number
   name: string
   run_in_sandbox: boolean
@@ -1197,6 +1242,11 @@ export interface McpServerOAuthConfigResponse {
   scopes?: string
   server_id: string
   updated_at: string
+}
+
+export interface McpServerWithHealthWarning {
+  connection_warning?: ProbeFailure
+  server: McpServer
 }
 
 export interface McpSettingsResponse {
@@ -1512,6 +1562,10 @@ export interface PingResponse {
 
 export interface PreviewQuery {
   page?: number
+}
+
+export interface ProbeFailure {
+  reason: string
 }
 
 export interface Project {
@@ -2009,8 +2063,8 @@ export interface TestExtractRequest {
 export interface TestMcpConnectionRequest {
   args?: string[]
   command?: string
-  environment_variables?: any
-  headers?: any
+  environment_variables_entries?: EnvVarEntry[]
+  headers_entries?: HeaderEntry[]
   id?: string
   oauth?: SetMcpServerOAuthConfigRequest
   timeout_seconds?: number
@@ -2191,8 +2245,8 @@ export interface UpdateMcpServerRequest {
   command?: string
   display_name?: string
   enabled?: boolean
-  environment_variables?: any
-  headers?: any
+  environment_variables_entries?: EnvVarEntry[]
+  headers_entries?: HeaderEntry[]
   max_concurrent_sessions?: number
   name?: string
   run_in_sandbox?: boolean
@@ -2681,10 +2735,12 @@ export const ApiEndpoints = {
   'Hub.createAssistantTemplateFromHub': 'POST /api/hub/assistant-templates/create',
   'Hub.createMcpServerFromHub': 'POST /api/hub/mcp-servers/create',
   'Hub.createModelFromHub': 'POST /api/hub/models/download',
+  'Hub.createSystemMcpServerFromHub': 'POST /api/hub/mcp-servers/create-system',
   'Hub.getAssistants': 'GET /api/hub/assistants',
   'Hub.getAssistantsVersion': 'GET /api/hub/assistants/version',
   'Hub.getCatalog': 'GET /api/hub/index',
   'Hub.getCatalogVersion': 'GET /api/hub/version',
+  'Hub.getInstalled': 'GET /api/hub/installed',
   'Hub.getLocalProviders': 'GET /api/hub/models/local-providers',
   'Hub.getMCPServers': 'GET /api/hub/mcp-servers',
   'Hub.getMCPServersVersion': 'GET /api/hub/mcp-servers/version',
@@ -2692,7 +2748,6 @@ export const ApiEndpoints = {
   'Hub.getModels': 'GET /api/hub/models',
   'Hub.getModelsVersion': 'GET /api/hub/models/version',
   'Hub.getReleases': 'GET /api/hub/releases',
-  'Hub.getUpdates': 'GET /api/hub/updates',
   'Hub.refreshAssistants': 'POST /api/hub/assistants/refresh',
   'Hub.refreshCatalog': 'POST /api/hub/refresh',
   'Hub.refreshMCPServers': 'POST /api/hub/mcp-servers/refresh',
@@ -2923,10 +2978,12 @@ export type ApiEndpointParameters = {
   'Hub.createAssistantTemplateFromHub': CreateAssistantFromHubRequest
   'Hub.createMcpServerFromHub': CreateMcpServerFromHubRequest
   'Hub.createModelFromHub': CreateModelFromHubRequest
+  'Hub.createSystemMcpServerFromHub': CreateMcpServerFromHubRequest
   'Hub.getAssistants': { lang?: string }
   'Hub.getAssistantsVersion': void
   'Hub.getCatalog': void
   'Hub.getCatalogVersion': void
+  'Hub.getInstalled': void
   'Hub.getLocalProviders': void
   'Hub.getMCPServers': { lang?: string }
   'Hub.getMCPServersVersion': void
@@ -2934,7 +2991,6 @@ export type ApiEndpointParameters = {
   'Hub.getModels': { lang?: string }
   'Hub.getModelsVersion': void
   'Hub.getReleases': void
-  'Hub.getUpdates': void
   'Hub.refreshAssistants': void
   'Hub.refreshCatalog': void
   'Hub.refreshMCPServers': void
@@ -3165,10 +3221,12 @@ export type ApiEndpointResponses = {
   'Hub.createAssistantTemplateFromHub': AssistantFromHubResponse
   'Hub.createMcpServerFromHub': McpServerFromHubResponse
   'Hub.createModelFromHub': ModelFromHubResponse
+  'Hub.createSystemMcpServerFromHub': McpServerFromHubResponse
   'Hub.getAssistants': HubAssistant[]
   'Hub.getAssistantsVersion': HubVersionResponse
   'Hub.getCatalog': Catalog
   'Hub.getCatalogVersion': HubCatalogVersionResponse
+  'Hub.getInstalled': HubInstalledResponse
   'Hub.getLocalProviders': HubLocalProvidersResponse
   'Hub.getMCPServers': HubMCPServer[]
   'Hub.getMCPServersVersion': HubVersionResponse
@@ -3176,7 +3234,6 @@ export type ApiEndpointResponses = {
   'Hub.getModels': HubModel[]
   'Hub.getModelsVersion': HubVersionResponse
   'Hub.getReleases': HubReleasesResponse
-  'Hub.getUpdates': HubUpdatesResponse
   'Hub.refreshAssistants': HubRefreshResponse
   'Hub.refreshCatalog': HubCatalogRefreshResponse
   'Hub.refreshMCPServers': HubRefreshResponse
@@ -3235,7 +3292,7 @@ export type ApiEndpointResponses = {
   'Mcp.getDefaults': UserMcpDefaultsGetResponse
   'Mcp.respondToElicitation': RespondToElicitationResponse
   'Mcp.updateDefaults': UserMcpDefaultsResponse
-  'McpServer.create': McpServer
+  'McpServer.create': McpServerWithHealthWarning
   'McpServer.delete': void
   'McpServer.deleteOAuthConfig': void
   'McpServer.get': McpServer
@@ -3253,7 +3310,7 @@ export type ApiEndpointResponses = {
   'McpServerRuntime.ping': PingResponse
   'McpServerRuntime.readResource': ReadResourceResponse
   'McpServerSystem.assignServerToGroups': void
-  'McpServerSystem.create': McpServer
+  'McpServerSystem.create': McpServerWithHealthWarning
   'McpServerSystem.delete': void
   'McpServerSystem.get': McpServer
   'McpServerSystem.getServerGroups': string[]
