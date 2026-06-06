@@ -2,7 +2,7 @@ import { AppstoreOutlined } from '@ant-design/icons'
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { useHubCatalogStore } from '@/modules/hub/stores/hub-catalog-store'
-import { useHubUpdatesStore } from '@/modules/hub/stores/hub-updates-store'
+import { useHubInstalledStore } from '@/modules/hub/stores/hub-installed-store'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/hub/types'
@@ -34,7 +34,7 @@ export default createModule({
   dependencies: ['router'],
   stores: [
     { name: 'HubCatalog', store: useHubCatalogStore },
-    { name: 'HubUpdates', store: useHubUpdatesStore },
+    { name: 'HubInstalled', store: useHubInstalledStore },
   ],
   routes: [
     {

@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 use chrono::{Duration, Utc};
@@ -10,6 +10,32 @@ use super::session::McpSession;
 use crate::common::AppError;
 use crate::core::{config::Config, Repos};
 use crate::modules::auth::jwt::Claims;
+
+/// Process-wide handle to the session manager constructed in
+/// `main.rs`. The event-handler path (`McpSessionCleanupHandler`)
+/// needs to call `close(server_id)` when a server row is deleted —
+/// but event handlers are registered via the `AppModule` trait which
+/// runs BEFORE `main.rs` instantiates the session manager. The
+/// Axum-Extension injection used by HTTP handlers can't reach them.
+///
+/// `main.rs` calls `set_global(...)` once at boot. Read via
+/// `global()`; returns `None` in pre-init test scaffolding (unit
+/// tests that don't go through `main.rs`).
+static MCP_SESSION_MANAGER: OnceLock<Arc<McpSessionManager>> = OnceLock::new();
+
+/// Install the process-wide session-manager handle. Idempotent on the
+/// second call (subsequent `set` attempts are silently dropped — boot
+/// only calls this once, but unit-test harnesses might call it from a
+/// shared setup function).
+pub fn set_global(manager: Arc<McpSessionManager>) {
+    let _ = MCP_SESSION_MANAGER.set(manager);
+}
+
+/// Read the process-wide session-manager handle. None when called
+/// before `set_global` (e.g. unit tests that don't boot `main.rs`).
+pub fn global() -> Option<Arc<McpSessionManager>> {
+    MCP_SESSION_MANAGER.get().cloned()
+}
 
 pub struct McpSessionManager {
     sessions: Arc<RwLock<HashMap<Uuid, Arc<RwLock<McpSession>>>>>,
@@ -173,6 +199,25 @@ impl McpSessionManager {
         }
 
         Ok(())
+    }
+
+    /// Whether a session for `server_id` is currently pooled. Drives
+    /// the cleanup test that asserts `McpSessionCleanupHandler` actually
+    /// removed an entry from the pool after a delete event.
+    pub async fn contains(&self, server_id: Uuid) -> bool {
+        self.sessions.read().await.contains_key(&server_id)
+    }
+
+    /// Forcibly insert a placeholder session, bypassing the
+    /// `get_or_create` path. Test-only — lets the cleanup test seed
+    /// the pool without standing up a real subprocess / HTTP server.
+    #[cfg(test)]
+    pub async fn insert_for_test(
+        &self,
+        server_id: Uuid,
+        session: Arc<RwLock<McpSession>>,
+    ) {
+        self.sessions.write().await.insert(server_id, session);
     }
 
     #[allow(dead_code)] // Phase 3 feature: background task to cleanup idle sessions

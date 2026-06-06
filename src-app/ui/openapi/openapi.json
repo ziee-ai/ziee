@@ -9087,7 +9087,7 @@
           "MCP Servers"
         ],
         "summary": "Create user MCP server",
-        "description": "Create a new personal MCP server configuration",
+        "description": "Create a new personal MCP server configuration. When the request asks for `enabled: true`, the server is probed after creation; on probe failure the row is persisted with `enabled: false` and `connection_warning` carries the failure detail so the UI can surface it.",
         "operationId": "McpServer.create",
         "requestBody": {
           "content": {
@@ -9124,11 +9124,11 @@
             }
           },
           "201": {
-            "description": "",
+            "description": "Wraps a created/updated `McpServer` with an optional connection\n warning, used by the create handlers when the probe failed and\n the server was auto-downgraded to `enabled: false`. `None` on\n success (probe passed, or `enabled: false` was requested so no\n probe ran).",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/McpServer"
+                  "$ref": "#/components/schemas/McpServerWithHealthWarning"
                 }
               }
             }
@@ -9210,7 +9210,7 @@
           "MCP Servers"
         ],
         "summary": "Update user MCP server",
-        "description": "Update a user MCP server configuration",
+        "description": "Update a user MCP server configuration. When the update flips `enabled: false → true`, the persisted state is probed; on probe failure the server is reverted to `enabled: false` and the response is 400 `MCP_ENABLE_FAILED_HEALTH_CHECK`. Other fields in the same request DO persist regardless — the partial save is intentional so concurrent edits aren't lost.",
         "operationId": "McpServer.update",
         "requestBody": {
           "content": {
@@ -9257,7 +9257,7 @@
             }
           },
           "400": {
-            "description": "Bad request - validation failed"
+            "description": "Bad request - validation failed (incl. enable-time health check failure with error_code `MCP_ENABLE_FAILED_HEALTH_CHECK`)"
           },
           "401": {
             "description": "Unauthorized"
@@ -10127,7 +10127,7 @@
           "MCP Servers - System"
         ],
         "summary": "Create system MCP server",
-        "description": "Create a new system MCP server configuration",
+        "description": "Create a new system MCP server configuration. Same health-check-on-create semantic as the user create endpoint — see `McpServer.create` for the contract on `connection_warning` and the auto-downgrade-to-disabled behavior.",
         "operationId": "McpServerSystem.create",
         "requestBody": {
           "content": {
@@ -10164,11 +10164,11 @@
             }
           },
           "201": {
-            "description": "",
+            "description": "Wraps a created/updated `McpServer` with an optional connection\n warning, used by the create handlers when the probe failed and\n the server was auto-downgraded to `enabled: false`. `None` on\n success (probe passed, or `enabled: false` was requested so no\n probe ran).",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/McpServer"
+                  "$ref": "#/components/schemas/McpServerWithHealthWarning"
                 }
               }
             }
@@ -10317,7 +10317,7 @@
           "MCP Servers - System"
         ],
         "summary": "Update system MCP server",
-        "description": "Update a system MCP server configuration",
+        "description": "Update a system MCP server configuration. Same enable-time health-check semantic as `McpServer.update` — see that endpoint for the partial-save + `MCP_ENABLE_FAILED_HEALTH_CHECK` contract.",
         "operationId": "McpServerSystem.update",
         "requestBody": {
           "content": {
@@ -10364,7 +10364,7 @@
             }
           },
           "400": {
-            "description": "Bad request - validation failed"
+            "description": "Bad request - validation failed (incl. enable-time health check failure with error_code `MCP_ENABLE_FAILED_HEALTH_CHECK`)"
           },
           "401": {
             "description": "Unauthorized"
@@ -11479,7 +11479,7 @@
         "description": "\n\n**Required Permission:** `hub::mcp_servers::create`\n\nCreate MCP servers from hub",
         "operationId": "Hub.createMcpServerFromHub",
         "requestBody": {
-          "description": "Request to create MCP server from hub catalog\n Note: Hub interface always creates user MCP servers, not system servers",
+          "description": "Request to create MCP server from hub catalog.\n\n Used by BOTH `Hub.createMcpServerFromHub` (per-user install) and\n `Hub.createSystemMcpServerFromHub` (system-wide install). The\n scope is conveyed by endpoint identity, not by a request field —\n `RequirePermissions<(...)>` gates each path at the extractor.",
           "content": {
             "application/json": {
               "schema": {
@@ -11523,11 +11523,96 @@
               }
             }
           },
+          "400": {
+            "description": "Validation error (invalid transport config, or `replace_existing` passed on the user-scoped endpoint)"
+          },
           "401": {
             "description": "Unauthorized"
           },
           "404": {
             "description": "Hub MCP server not found"
+          },
+          "422": {
+            "description": "Hub item incompatible with this server version"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/mcp-servers/create-system": {
+      "post": {
+        "tags": [
+          "Hub",
+          "MCP Servers - System"
+        ],
+        "summary": "Create SYSTEM-WIDE MCP server from hub catalog",
+        "description": "Installs a hub MCP server entry as a system-wide server (`is_system=true, user_id=NULL`) rather than a personal user MCP server. Requires both `hub::mcp_servers::create` and `mcp_servers_admin::create` permissions. Returns 409 when a system install for this `hub_id` already exists, unless `replace_existing: true` is passed to overwrite it. On `replace_existing` the prior server's `enabled` flag is carried forward.",
+        "operationId": "Hub.createSystemMcpServerFromHub",
+        "requestBody": {
+          "description": "Request to create MCP server from hub catalog.\n\n Used by BOTH `Hub.createMcpServerFromHub` (per-user install) and\n `Hub.createSystemMcpServerFromHub` (system-wide install). The\n scope is conveyed by endpoint identity, not by a request field —\n `RequirePermissions<(...)>` gates each path at the extractor.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMcpServerFromHubRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create MCP servers from hub",
+                        "name": "HubMcpServersCreate",
+                        "value": "hub::mcp_servers::create"
+                      },
+                      {
+                        "description": "Create system MCP servers",
+                        "name": "McpServersAdminCreate",
+                        "value": "mcp_servers_admin::create"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permissions: hub::mcp_servers::create, mcp_servers_admin::create",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Response for MCP server created from hub",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServerFromHubResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error (invalid transport config)"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Hub MCP server not found"
+          },
+          "409": {
+            "description": "System MCP install already exists for this hub_id"
           },
           "422": {
             "description": "Hub item incompatible with this server version"
@@ -11830,44 +11915,20 @@
         ]
       }
     },
-    "/api/hub/updates": {
+    "/api/hub/installed": {
       "get": {
         "tags": [
           "Hub"
         ],
-        "summary": "Installed hub entities behind the current catalog version (admin only)",
-        "description": "\n\n**Required Permission:** `hub::catalog::read`\n\nView hub catalog versions + pending updates",
-        "operationId": "Hub.getUpdates",
+        "summary": "Every tracked hub install visible to the caller",
+        "operationId": "Hub.getInstalled",
         "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "View hub catalog versions + pending updates",
-                        "name": "HubCatalogRead",
-                        "value": "hub::catalog::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: hub::catalog::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
           "200": {
             "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HubUpdatesResponse"
+                  "$ref": "#/components/schemas/HubInstalledResponse"
                 }
               }
             }
@@ -11875,12 +11936,7 @@
           "401": {
             "description": "Unauthorized"
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       }
     },
     "/api/hub/manifest/{id}": {
@@ -15391,7 +15447,7 @@
         ]
       },
       "CreateMcpServerFromHubRequest": {
-        "description": "Request to create MCP server from hub catalog\n Note: Hub interface always creates user MCP servers, not system servers",
+        "description": "Request to create MCP server from hub catalog.\n\n Used by BOTH `Hub.createMcpServerFromHub` (per-user install) and\n `Hub.createSystemMcpServerFromHub` (system-wide install). The\n scope is conveyed by endpoint identity, not by a request field —\n `RequirePermissions<(...)>` gates each path at the extractor.",
         "type": "object",
         "properties": {
           "display_name": {
@@ -15416,6 +15472,11 @@
               "string",
               "null"
             ]
+          },
+          "replace_existing": {
+            "description": "System-only: when true, delete the existing system install\n for this `hub_id` before creating the new one. Used by the\n `/hub/updates` Re-install action to refresh an outdated\n system MCP server; without this the duplicate-prevention\n guard in `Hub.createSystemMcpServerFromHub` would 409.\n Rejected with 400 on the user-scoped install path (per-user\n installs aren't dedup'd). Mirrors `replace_existing` on\n `CreateAssistantFromHubRequest`.",
+            "type": "boolean",
+            "default": false
           }
         },
         "required": [
@@ -15455,22 +15516,24 @@
               "null"
             ]
           },
-          "environment_variables": {
+          "environment_variables_entries": {
+            "description": "Structured env-var entries (replaces the old flat\n `HashMap<String, String>` shape). Each entry's `is_secret`\n flag decides whether the value gets encrypted at rest. None /\n missing → no env vars.",
             "type": [
-              "object",
+              "array",
               "null"
             ],
-            "additionalProperties": {
-              "type": "string"
+            "items": {
+              "$ref": "#/components/schemas/EnvVarEntry"
             }
           },
-          "headers": {
+          "headers_entries": {
+            "description": "Structured HTTP header entries. Same per-entry secret model\n as `environment_variables_entries`.",
             "type": [
-              "object",
+              "array",
               "null"
             ],
-            "additionalProperties": {
-              "type": "string"
+            "items": {
+              "$ref": "#/components/schemas/HeaderEntry"
             }
           },
           "max_concurrent_sessions": {
@@ -16592,6 +16655,51 @@
           "none"
         ]
       },
+      "EnvVarEntry": {
+        "description": "Inbound shape for ONE env-var entry on create/update. Mirrors\n `EnvVarView` (response) but with a different `value` semantic:\n\n * `value: Some(s)` — set/overwrite this entry's value to `s`.\n   For secret entries (`is_secret: true`), the new value is\n   encrypted into `environment_variables_encrypted`. For non-secret,\n   it goes into the plain `environment_variables` map.\n * `value: None` — KEEP existing. Used by the UI when the user\n   didn't touch a saved secret (the form shows `••••• (saved)` and\n   we don't want to clobber it with a blank).\n * `value: Some(\"\")` — explicit empty string. Stored verbatim.\n\n Toggling `is_secret` across saves migrates the entry between the\n plain and encrypted columns; the repo does that move atomically.",
+        "type": "object",
+        "properties": {
+          "is_secret": {
+            "type": "boolean"
+          },
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "key",
+          "is_secret"
+        ]
+      },
+      "EnvVarView": {
+        "description": "A single env var or HTTP header entry on a MCP server, as\n exposed in API RESPONSES. The wire shape replaces the old\n flat `{KEY: \"value\"}` map so the UI knows per-entry which\n keys are secrets without seeing their values.\n\n `value` is `None` when the entry is a secret (write-only — see\n `crate::common::secret` for the pattern) or when the entry is\n genuinely empty. Non-secret entries always include the plain\n value. The UI renders `Some` as a text input pre-filled with the\n value; `None` + `is_secret: true` as an `Input.Password` with\n `••••• (saved)` placeholder.",
+        "type": "object",
+        "properties": {
+          "is_secret": {
+            "type": "boolean"
+          },
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "is_secret"
+        ]
+      },
       "File": {
         "description": "File entity",
         "type": "object",
@@ -17103,6 +17211,51 @@
           "gpu_devices"
         ]
       },
+      "HeaderEntry": {
+        "description": "HTTP-header analog of `EnvVarEntry`. Identical shape; separate\n type so the OpenAPI surface (and form-state types on the FE) stay\n unambiguous between the two editor sections.",
+        "type": "object",
+        "properties": {
+          "is_secret": {
+            "type": "boolean"
+          },
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "key",
+          "is_secret"
+        ]
+      },
+      "HeaderView": {
+        "description": "HTTP-header analog of `EnvVarView`. Same shape; separate type so\n the OpenAPI surface is unambiguous (env vs header inputs render\n in different drawer sections, with different default\n `is_secret` defaults at the UI layer). `Deserialize` is implemented\n only because `McpServer` carries this in a `Vec<HeaderView>` and\n `McpServer` derives `Deserialize` for sqlx + test plumbing — no\n inbound API path takes `HeaderView` (use `HeaderEntry` in\n `types.rs` for that).",
+        "type": "object",
+        "properties": {
+          "is_secret": {
+            "type": "boolean"
+          },
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "is_secret"
+        ]
+      },
       "HealthCheckResponse": {
         "type": "object",
         "properties": {
@@ -17390,6 +17543,86 @@
           "created_at"
         ]
       },
+      "HubInstalledResponse": {
+        "type": "object",
+        "properties": {
+          "catalog_version": {
+            "description": "Live catalog version — handy on the client so every row can\n compare its `installed_version` to highlight the delta\n without a second round-trip to `/hub/version`.",
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HubInstalledRow"
+            }
+          }
+        },
+        "required": [
+          "catalog_version",
+          "items"
+        ]
+      },
+      "HubInstalledRow": {
+        "description": "Single row in `GET /api/hub/updates` — one installed hub entity\n One tracked install in the user's Installed view. Rich enough\n that the Installed tab can render full rows (display name +\n install date + scope + version delta + Re-install/Remove\n dispatch hints) in a single round-trip.",
+        "type": "object",
+        "properties": {
+          "current_version": {
+            "type": "string"
+          },
+          "entity_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "entity_type": {
+            "type": "string"
+          },
+          "hub_category": {
+            "type": "string"
+          },
+          "hub_id": {
+            "type": "string"
+          },
+          "installed_at": {
+            "description": "When the hub_entities tracking row was first created. Used to\n render \"installed N days ago\" on the row.",
+            "type": "string",
+            "format": "date-time"
+          },
+          "installed_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "is_system": {
+            "description": "`created_by IS NULL`. Frontend renders a scope tag and\n (for non-admin users) suppresses the Remove button.",
+            "type": "boolean"
+          },
+          "is_system_mcp_install": {
+            "description": "Re-install dispatch flag for system MCP servers — routes to\n `Hub.createSystemMcpServerFromHub` (with `replace_existing:\n true`) instead of the user-scoped endpoint.",
+            "type": "boolean"
+          },
+          "is_template_install": {
+            "description": "Re-install dispatch flag for ASSISTANT templates — routes the\n Re-install action to `Hub.createAssistantTemplateFromHub`\n instead of the user-scoped endpoint.",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Display name from the entity's own table. Empty when the\n underlying entity row has been deleted (orphan — should be\n cleaned by the deletion-event listener, but the LEFT JOIN\n surfaces them rather than crashing the page).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hub_id",
+          "hub_category",
+          "entity_type",
+          "entity_id",
+          "name",
+          "current_version",
+          "installed_at",
+          "is_system",
+          "is_template_install",
+          "is_system_mcp_install"
+        ]
+      },
       "HubLocalProvider": {
         "description": "A local LLM provider available as download target",
         "type": "object",
@@ -17461,6 +17694,15 @@
           },
           "created_ids": {
             "description": "Array of entity IDs created by current user from this hub server",
+            "type": "array",
+            "default": [],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "created_system_ids": {
+            "description": "Array of system-wide MCP server IDs installed from this hub\n server (created_by IS NULL, is_system = true). Usually 0-or-1\n entries — the backend rejects duplicate system installs with\n 409. Used by the hub card to disable the \"Install as System\"\n button when a system install already exists. Mirrors\n `HubAssistant.created_template_ids`.",
             "type": "array",
             "default": [],
             "items": {
@@ -17560,6 +17802,22 @@
               "string",
               "null"
             ]
+          },
+          "required_env": {
+            "description": "User-supplied env vars the server needs to function (auth\n tokens, connection strings, etc.). Declarative — surfaced in\n the hub card / details drawer and used by the install path to\n seed placeholder values into the new MCP server's env map.\n Empty for servers that need no user-supplied env (filesystem,\n memory). `serde(default)` lets pre-schema catalog versions\n deserialize cleanly with no entries.",
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/HubRequiredInput"
+            }
+          },
+          "required_headers": {
+            "description": "User-supplied HTTP headers the server needs to function.\n Used for HTTP/SSE transports where a header takes direct user\n input (e.g. a per-tenant ID). Headers that interpolate from\n env vars via `${VAR}` should be declared via `required_env`\n instead — the env path is the canonical surface and avoids\n double-listing. Empty for stdio servers + HTTP servers where\n every header is either static or env-interpolated.",
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/HubRequiredInput"
+            }
           },
           "requires_desktop": {
             "type": [
@@ -17932,62 +18190,43 @@
           "releases"
         ]
       },
-      "HubUpdateRow": {
-        "description": "Single row in `GET /api/hub/updates` — one installed hub entity\n that's behind the current catalog (either NULL hub_version or\n a hub_version different from the catalog).",
+      "HubRequiredInput": {
+        "description": "Declares a single required input the user must configure on a\n hub-installed MCP server. ONE struct shape is reused for both\n `HubMCPServer.required_env` (environment variables) and\n `HubMCPServer.required_headers` (HTTP headers) — the target map\n is implied by which field the entry appears in.\n\n Currently the entries only carry display + placeholder metadata;\n the install path uses `placeholder` to seed the new MCP server's\n env/header map so the user sees in `/settings/mcp-servers`\n exactly what to replace. Manifest writers should set\n `is_secret: true` for credential-bearing inputs (env vars\n carrying tokens; headers carrying tokens directly) and `false`\n for non-secret config like tenant IDs.",
         "type": "object",
         "properties": {
-          "current_version": {
-            "type": "string"
-          },
-          "entity_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "entity_type": {
-            "type": "string"
-          },
-          "hub_category": {
-            "type": "string"
-          },
-          "hub_id": {
-            "type": "string"
-          },
-          "installed_version": {
+          "description": {
+            "description": "1-2 sentence human description. Rendered under the name in\n the hub details drawer.",
             "type": [
               "string",
               "null"
             ]
           },
-          "is_template_install": {
-            "description": "True when the install was system-wide (`created_by IS NULL` —\n currently only template assistants). The Updates UI uses this\n to route the Re-install action to the template endpoint\n instead of creating a user assistant from a template-origin\n row.",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "hub_id",
-          "hub_category",
-          "entity_type",
-          "entity_id",
-          "current_version",
-          "is_template_install"
-        ]
-      },
-      "HubUpdatesResponse": {
-        "type": "object",
-        "properties": {
-          "catalog_version": {
+          "docs_url": {
+            "description": "Optional link to upstream docs explaining how to obtain the\n value. Rendered as \"Get one →\" in the details drawer.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "is_secret": {
+            "description": "True when the value carries credential material — UI hides\n the value behind a reveal toggle on the edit form, redacts\n from logs. Defaults to `false` via serde; manifest writers\n should set explicitly per the README convention (true for\n most env vars, false for most direct-input headers).",
+            "type": "boolean",
+            "default": false
+          },
+          "name": {
+            "description": "Key name. For `required_env` this is the env var name (e.g.\n `GITHUB_TOKEN`); for `required_headers` it's the HTTP header\n name (e.g. `X-Tenant-ID`).",
             "type": "string"
           },
-          "updates": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/HubUpdateRow"
-            }
+          "placeholder": {
+            "description": "Recommended example value. The install path writes this\n verbatim into the new MCP server row so the user sees a\n realistic-looking-but-invalid value to replace. When None,\n install writes an empty string and the UI shows just the\n name + description.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
-          "catalog_version",
-          "updates"
+          "name"
         ]
       },
       "HubVersionResponse": {
@@ -19197,8 +19436,30 @@
           "enabled": {
             "type": "boolean"
           },
-          "environment_variables": true,
-          "headers": true,
+          "environment_variables": {
+            "description": "FLAT decrypted env-var map. Always populated by the repo with\n the FULLY decrypted values (plain entries merged with the\n decrypted secrets) so internal runtime callsites — stdio\n subprocess spawn, http header `${VAR}` interpolation — keep\n working unchanged. NEVER serialized — the public response\n shape is `environment_variables_entries` with secret values\n redacted to `value: None`.",
+            "writeOnly": true
+          },
+          "environment_variables_entries": {
+            "description": "Public structured view of `environment_variables` for the UI\n form editor. Per-entry secret marker; secret values redacted\n to `None`. Populated by the repo from the triple-column\n storage (`environment_variables` + `environment_variables_encrypted` +\n `environment_variables_secret_keys`).",
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/EnvVarView"
+            }
+          },
+          "headers": {
+            "description": "FLAT decrypted header map. Same write-only semantics as\n `environment_variables` — see that field's doc comment.\n `parse_header_map` runs `${VAR}` interpolation against the\n (decrypted) env map at request-build time.",
+            "writeOnly": true
+          },
+          "headers_entries": {
+            "description": "Public structured view of `headers` for the UI form editor.\n Sibling of `environment_variables_entries`.",
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/HeaderView"
+            }
+          },
           "id": {
             "type": "string",
             "format": "uuid"
@@ -19208,6 +19469,28 @@
           },
           "is_system": {
             "type": "boolean"
+          },
+          "last_health_check_at": {
+            "description": "Persisted result of the last connection probe — populated by\n `connection_health` at boot (startup health check), at\n create-time (post-create probe in `enforce_on_create`), at\n enable-transition time (probe in `enforce_on_update_transition`),\n and on every explicit \"Test Connection\" button press.\n See migration 82.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "default": null
+          },
+          "last_health_check_reason": {
+            "description": "Human reason on unhealthy. `None` on healthy / untested.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "last_health_check_status": {
+            "description": "\"untested\" | \"healthy\" | \"unhealthy\". Defaults to \"untested\"\n for freshly-created rows that have never been probed.",
+            "type": "string",
+            "default": "untested"
           },
           "max_concurrent_sessions": {
             "type": [
@@ -19263,8 +19546,6 @@
           "is_built_in",
           "transport_type",
           "args",
-          "environment_variables",
-          "headers",
           "timeout_seconds",
           "supports_sampling",
           "usage_mode",
@@ -19397,6 +19678,28 @@
           "has_client_secret",
           "created_at",
           "updated_at"
+        ]
+      },
+      "McpServerWithHealthWarning": {
+        "description": "Wraps a created/updated `McpServer` with an optional connection\n warning, used by the create handlers when the probe failed and\n the server was auto-downgraded to `enabled: false`. `None` on\n success (probe passed, or `enabled: false` was requested so no\n probe ran).",
+        "type": "object",
+        "properties": {
+          "connection_warning": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProbeFailure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "server": {
+            "$ref": "#/components/schemas/McpServer"
+          }
+        },
+        "required": [
+          "server"
         ]
       },
       "McpSettingsResponse": {
@@ -20897,6 +21200,19 @@
             "minimum": 0
           }
         }
+      },
+      "ProbeFailure": {
+        "description": "Structured probe failure carrying the underlying reason so the\n caller can surface it (in the API response, in the boot log, or\n in the UI toast).",
+        "type": "object",
+        "properties": {
+          "reason": {
+            "description": "Human-readable reason — taken verbatim from\n `TestMcpConnectionResponse.message` (timeout / 401 / bad\n command / etc.).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ]
       },
       "Project": {
         "description": "Project entity. One row per personal project.\n\n MCP defaults previously lived inline (mcp_*); they moved to the\n unified `mcp_settings` table (migration 78) owned by the mcp module.\n Clients fetch them via `GET /api/projects/{id}/mcp-settings` (still\n mounted at the same URL — the route now lives in mcp's\n project_extension).",
@@ -23368,22 +23684,23 @@
               "null"
             ]
           },
-          "environment_variables": {
+          "environment_variables_entries": {
+            "description": "Same structured shape as create/update — for entries the user\n hasn't touched (saved-secret entries with `value: None`), the\n test path falls back to the decrypted stored value via `id`\n (mirrors the existing OAuth-secret fallback comment below).",
             "type": [
-              "object",
+              "array",
               "null"
             ],
-            "additionalProperties": {
-              "type": "string"
+            "items": {
+              "$ref": "#/components/schemas/EnvVarEntry"
             }
           },
-          "headers": {
+          "headers_entries": {
             "type": [
-              "object",
+              "array",
               "null"
             ],
-            "additionalProperties": {
-              "type": "string"
+            "items": {
+              "$ref": "#/components/schemas/HeaderEntry"
             }
           },
           "id": {
@@ -24217,22 +24534,24 @@
               "null"
             ]
           },
-          "environment_variables": {
+          "environment_variables_entries": {
+            "description": "Replaces the existing env vars wholesale when present.\n `None` means \"don't touch\" (caller didn't include this field).\n `Some(empty vec)` clears all entries. Per-entry `value: None`\n keeps the existing secret value (see `EnvVarEntry`).",
             "type": [
-              "object",
+              "array",
               "null"
             ],
-            "additionalProperties": {
-              "type": "string"
+            "items": {
+              "$ref": "#/components/schemas/EnvVarEntry"
             }
           },
-          "headers": {
+          "headers_entries": {
+            "description": "Same wholesale-replace semantic as `environment_variables_entries`.",
             "type": [
-              "object",
+              "array",
               "null"
             ],
-            "additionalProperties": {
-              "type": "string"
+            "items": {
+              "$ref": "#/components/schemas/HeaderEntry"
             }
           },
           "max_concurrent_sessions": {

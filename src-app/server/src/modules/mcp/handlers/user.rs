@@ -21,6 +21,7 @@ use crate::{
 };
 
 use super::super::{
+    connection_health::{enforce_on_create, enforce_on_update_transition, McpServerWithHealthWarning},
     events::McpServerEvent,
     models::{McpServer, McpServerOAuthConfigResponse, SetMcpServerOAuthConfigRequest},
     permissions::*,
@@ -109,21 +110,35 @@ pub async fn create_user_server(
     Extension(event_bus): Extension<Arc<EventBus>>,
     origin: SyncOrigin,
     Json(request): Json<CreateMcpServerRequest>,
-) -> ApiResult<Json<McpServer>> {
+) -> ApiResult<Json<McpServerWithHealthWarning>> {
     let server = Repos.mcp.create_user_server(auth.user.id, request).await?;
+    let server_id = server.id;
 
-    // Emit creation event for other modules to react
-    event_bus.emit_async(McpServerEvent::user_server_created(server.id, auth.user.id));
+    // Emit creation event for other modules to react.
+    event_bus.emit_async(McpServerEvent::user_server_created(server_id, auth.user.id));
 
+    // If created with enabled=true, probe the connection. On
+    // failure: downgrade to enabled=false (no data loss — the user's
+    // config is preserved so they can fix + retry) and surface the
+    // failure reason in the response so the UI can toast it.
+    let wrapped = enforce_on_create(
+        Repos.mcp.pool(),
+        server,
+        &event_bus,
+    )
+    .await?;
+
+    // Cross-device sync: notify AFTER enforcement so peers refetch the final
+    // (possibly probe-downgraded) state.
     sync_publish(
         SyncEntity::McpServer,
         SyncAction::Create,
-        server.id,
+        server_id,
         Audience::owner(auth.user.id),
         origin.0,
     );
 
-    Ok((StatusCode::CREATED, Json(server)))
+    Ok((StatusCode::CREATED, Json(wrapped)))
 }
 
 pub fn create_user_server_docs(op: TransformOperation) -> TransformOperation {
@@ -131,8 +146,14 @@ pub fn create_user_server_docs(op: TransformOperation) -> TransformOperation {
         .id("McpServer.create")
         .tag("MCP Servers")
         .summary("Create user MCP server")
-        .description("Create a new personal MCP server configuration")
-        .response::<201, Json<McpServer>>()
+        .description(
+            "Create a new personal MCP server configuration. When the \
+             request asks for `enabled: true`, the server is probed \
+             after creation; on probe failure the row is persisted with \
+             `enabled: false` and `connection_warning` carries the \
+             failure detail so the UI can surface it.",
+        )
+        .response::<201, Json<McpServerWithHealthWarning>>()
         .response_with::<400, (), _>(|res| res.description("Bad request - validation failed"))
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<409, (), _>(|res| res.description("Server name already exists"))
@@ -173,13 +194,37 @@ pub async fn update_user_server(
     origin: SyncOrigin,
     Json(request): Json<UpdateMcpServerRequest>,
 ) -> ApiResult<Json<McpServer>> {
-    let server = Repos
+    // Capture the prior enabled state BEFORE the persist so we can
+    // detect a false→true transition. The probe only fires on that
+    // transition — flipping enabled false (or no change) skips the
+    // health check entirely.
+    let prior_enabled = Repos
+        .mcp
+        .get_user_server(id, auth.user.id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Server"))?
+        .enabled;
+
+    let persisted = Repos
         .mcp
         .update_user_server(id, auth.user.id, request)
         .await?;
 
-    // Emit update event for other modules to react
-    event_bus.emit_async(McpServerEvent::user_server_updated(server.id, auth.user.id));
+    // Emit update event for other modules to react. Done BEFORE the
+    // health check so listeners see the persisted state regardless
+    // of whether the probe forces the row back to enabled=false.
+    event_bus.emit_async(McpServerEvent::user_server_updated(
+        persisted.id,
+        auth.user.id,
+    ));
+
+    let server = enforce_on_update_transition(
+        Repos.mcp.pool(),
+        persisted,
+        prior_enabled,
+        &event_bus,
+    )
+    .await?;
 
     sync_publish(
         SyncEntity::McpServer,
@@ -197,9 +242,17 @@ pub fn update_user_server_docs(op: TransformOperation) -> TransformOperation {
         .id("McpServer.update")
         .tag("MCP Servers")
         .summary("Update user MCP server")
-        .description("Update a user MCP server configuration")
+        .description(
+            "Update a user MCP server configuration. When the update \
+             flips `enabled: false → true`, the persisted state is \
+             probed; on probe failure the server is reverted to \
+             `enabled: false` and the response is 400 \
+             `MCP_ENABLE_FAILED_HEALTH_CHECK`. Other fields in the \
+             same request DO persist regardless — the partial save is \
+             intentional so concurrent edits aren't lost.",
+        )
         .response::<200, Json<McpServer>>()
-        .response_with::<400, (), _>(|res| res.description("Bad request - validation failed"))
+        .response_with::<400, (), _>(|res| res.description("Bad request - validation failed (incl. enable-time health check failure with error_code `MCP_ENABLE_FAILED_HEALTH_CHECK`)"))
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("Server not found"))
         .response_with::<409, (), _>(|res| res.description("Server name already exists"))

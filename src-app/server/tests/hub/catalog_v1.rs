@@ -4,7 +4,7 @@
 //!   - GET    /api/hub/index
 //!   - GET    /api/hub/version
 //!   - POST   /api/hub/refresh    (admin)
-//!   - GET    /api/hub/updates    (admin)
+//!   - GET    /api/hub/installed  (any auth; admin sees system rows too)
 //!   - GET    /api/hub/manifest/:id?category=...
 //!
 //! The seed catalog (v0.0.1-alpha) is install-on-boot via include_dir!,
@@ -141,14 +141,15 @@ async fn catalog_read_cannot_activate() {
         create_user_with_permissions(&server, "catreader", &["hub::catalog::read"]).await;
     let client = reqwest::Client::new();
 
-    // read endpoints OK
+    // read endpoints OK — /hub/installed is per-user; an admin who
+    // can read the catalog also sees system-wide installs.
     let releases = client
-        .get(server.api_url("/hub/updates"))
+        .get(server.api_url("/hub/installed"))
         .header("Authorization", format!("Bearer {}", reader.token))
         .send()
         .await
-        .expect("updates");
-    assert_eq!(releases.status(), 200, "catalog::read may view updates");
+        .expect("installed");
+    assert_eq!(releases.status(), 200, "catalog::read may view installed list");
 
     // manage endpoints forbidden
     let refresh = client
@@ -222,50 +223,57 @@ async fn refresh_endpoint_requires_admin() {
 }
 
 // =====================================================================
-// /hub/updates — admin only, computed against catalog
+// /hub/installed — per-user view; admins (hub::catalog::read) ALSO see
+// system-wide installs. Replaces the old admin-only /hub/updates.
 // =====================================================================
 
 #[tokio::test]
-async fn updates_endpoint_requires_admin() {
+async fn installed_endpoint_open_to_any_authenticated_user() {
+    // No permission gate beyond auth — every user has a personal view of
+    // their own installs. Without an install of their own, the response is
+    // an empty `items` array (system rows only become visible to admins).
     let server = TestServer::start().await;
     let reader = create_user_with_permissions(&server, "reader", &["hub::models::read"]).await;
     let response = reqwest::Client::new()
-        .get(server.api_url("/hub/updates"))
+        .get(server.api_url("/hub/installed"))
         .header("Authorization", format!("Bearer {}", reader.token))
         .send()
         .await
-        .expect("send updates");
-    assert_eq!(
-        response.status(),
-        403,
-        "non-admin user should be 403'd from /hub/updates"
+        .expect("send installed");
+    assert_eq!(response.status(), 200, "any authenticated user can view their installed list");
+    let body: Json = response.json().await.expect("parse json");
+    assert!(
+        body["items"].as_array().expect("items array").is_empty(),
+        "non-admin with no installs sees an empty list (no system rows leak): {body}"
     );
 }
 
 #[tokio::test]
-async fn updates_endpoint_empty_when_no_installs() {
+async fn installed_endpoint_empty_when_no_installs() {
     let server = TestServer::start().await;
     let admin = create_user_with_permissions(&server, "admin", &["hub::catalog::read", "hub::catalog::manage"]).await;
     let response = reqwest::Client::new()
-        .get(server.api_url("/hub/updates"))
+        .get(server.api_url("/hub/installed"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .send()
         .await
-        .expect("send updates as admin");
+        .expect("send installed as admin");
     assert_eq!(response.status(), 200);
     let body: Json = response.json().await.expect("parse json");
     assert_eq!(body["catalog_version"], "0.0.1-alpha");
-    let updates = body["updates"].as_array().expect("updates array");
-    assert!(updates.is_empty(), "no installs yet → no updates: {updates:?}");
+    let items = body["items"].as_array().expect("items array");
+    assert!(items.is_empty(), "no installs yet → empty list: {items:?}");
 }
 
 #[tokio::test]
-async fn updates_endpoint_lists_stale_entities() {
+async fn installed_endpoint_lists_all_tracked_entities() {
     let server = TestServer::start().await;
     let admin = create_user_with_permissions(&server, "admin", &["hub::catalog::read", "hub::catalog::manage"]).await;
 
-    // Insert a synthetic hub_entities row with an OLD hub_version — the
-    // updates query should surface it as behind the catalog.
+    // Insert a synthetic system-wide hub_entities row (created_by NULL)
+    // with an OLD hub_version. /hub/installed lists it regardless of
+    // whether it matches the catalog; the row's `installed_version` vs
+    // `current_version` is what the UI compares to flag staleness.
     let pool = PgPoolOptions::new()
         .max_connections(1)
         .connect(&server.database_url)
@@ -284,26 +292,28 @@ async fn updates_endpoint_lists_stale_entities() {
     pool.close().await;
 
     let response = reqwest::Client::new()
-        .get(server.api_url("/hub/updates"))
+        .get(server.api_url("/hub/installed"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .send()
         .await
-        .expect("send updates as admin");
+        .expect("send installed as admin");
     assert_eq!(response.status(), 200);
     let body: Json = response.json().await.expect("parse json");
-    let updates = body["updates"].as_array().expect("updates array");
-    assert_eq!(updates.len(), 1, "expected exactly one stale row, got {updates:?}");
-    assert_eq!(updates[0]["hub_id"], "code-reviewer");
-    assert_eq!(updates[0]["installed_version"], "0.0.0-test");
-    assert_eq!(updates[0]["current_version"], "0.0.1-alpha");
+    let items = body["items"].as_array().expect("items array");
+    assert_eq!(items.len(), 1, "expected exactly one installed row, got {items:?}");
+    assert_eq!(items[0]["hub_id"], "code-reviewer");
+    assert_eq!(items[0]["installed_version"], "0.0.0-test");
+    assert_eq!(items[0]["current_version"], "0.0.1-alpha");
+    assert_eq!(items[0]["is_system"], true, "created_by NULL → is_system: {body}");
+    assert!(items[0]["installed_at"].is_string(), "installed_at must be serialized: {body}");
 }
 
 // =====================================================================
-// /hub/updates surfaces NULL hub_version (legacy rows pre-migration 69)
+// /hub/installed surfaces NULL hub_version (legacy rows pre-migration 69)
 // =====================================================================
 
 #[tokio::test]
-async fn updates_endpoint_treats_null_version_as_behind() {
+async fn installed_endpoint_surfaces_null_version_rows() {
     let server = TestServer::start().await;
     let admin = create_user_with_permissions(&server, "admin", &["hub::catalog::read", "hub::catalog::manage"]).await;
     let pool = PgPoolOptions::new()
@@ -323,16 +333,16 @@ async fn updates_endpoint_treats_null_version_as_behind() {
     pool.close().await;
 
     let response = reqwest::Client::new()
-        .get(server.api_url("/hub/updates"))
+        .get(server.api_url("/hub/installed"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .send()
         .await
-        .expect("send updates");
+        .expect("send installed");
     let body: Json = response.json().await.expect("parse json");
-    let updates = body["updates"].as_array().expect("array");
-    assert_eq!(updates.len(), 1);
+    let items = body["items"].as_array().expect("array");
+    assert_eq!(items.len(), 1);
     assert!(
-        updates[0]["installed_version"].is_null(),
+        items[0]["installed_version"].is_null(),
         "legacy row should have NULL installed_version: {body}"
     );
 }

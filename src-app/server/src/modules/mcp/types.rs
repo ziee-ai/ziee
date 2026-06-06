@@ -3,10 +3,42 @@
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use uuid::Uuid;
 
 use super::models::{McpServer, SetMcpServerOAuthConfigRequest, TransportType, UsageMode};
+
+/// Inbound shape for ONE env-var entry on create/update. Mirrors
+/// `EnvVarView` (response) but with a different `value` semantic:
+///
+/// * `value: Some(s)` — set/overwrite this entry's value to `s`.
+///   For secret entries (`is_secret: true`), the new value is
+///   encrypted into `environment_variables_encrypted`. For non-secret,
+///   it goes into the plain `environment_variables` map.
+/// * `value: None` — KEEP existing. Used by the UI when the user
+///   didn't touch a saved secret (the form shows `••••• (saved)` and
+///   we don't want to clobber it with a blank).
+/// * `value: Some("")` — explicit empty string. Stored verbatim.
+///
+/// Toggling `is_secret` across saves migrates the entry between the
+/// plain and encrypted columns; the repo does that move atomically.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct EnvVarEntry {
+    pub key: String,
+    #[serde(default)]
+    pub value: Option<String>,
+    pub is_secret: bool,
+}
+
+/// HTTP-header analog of `EnvVarEntry`. Identical shape; separate
+/// type so the OpenAPI surface (and form-state types on the FE) stay
+/// unambiguous between the two editor sections.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct HeaderEntry {
+    pub key: String,
+    #[serde(default)]
+    pub value: Option<String>,
+    pub is_secret: bool,
+}
 
 // =====================================================
 // Request Types
@@ -23,11 +55,17 @@ pub struct CreateMcpServerRequest {
     // stdio transport
     pub command: Option<String>,
     pub args: Option<Vec<String>>,
-    pub environment_variables: Option<HashMap<String, String>>,
+    /// Structured env-var entries (replaces the old flat
+    /// `HashMap<String, String>` shape). Each entry's `is_secret`
+    /// flag decides whether the value gets encrypted at rest. None /
+    /// missing → no env vars.
+    pub environment_variables_entries: Option<Vec<EnvVarEntry>>,
 
     // http/sse transport
     pub url: Option<String>,
-    pub headers: Option<HashMap<String, String>>,
+    /// Structured HTTP header entries. Same per-entry secret model
+    /// as `environment_variables_entries`.
+    pub headers_entries: Option<Vec<HeaderEntry>>,
 
     // Runtime configuration
     pub timeout_seconds: Option<i32>,
@@ -52,11 +90,16 @@ pub struct UpdateMcpServerRequest {
     // stdio transport
     pub command: Option<String>,
     pub args: Option<Vec<String>>,
-    pub environment_variables: Option<HashMap<String, String>>,
+    /// Replaces the existing env vars wholesale when present.
+    /// `None` means "don't touch" (caller didn't include this field).
+    /// `Some(empty vec)` clears all entries. Per-entry `value: None`
+    /// keeps the existing secret value (see `EnvVarEntry`).
+    pub environment_variables_entries: Option<Vec<EnvVarEntry>>,
 
     // http/sse transport
     pub url: Option<String>,
-    pub headers: Option<HashMap<String, String>>,
+    /// Same wholesale-replace semantic as `environment_variables_entries`.
+    pub headers_entries: Option<Vec<HeaderEntry>>,
 
     // Runtime configuration
     pub timeout_seconds: Option<i32>,
@@ -85,11 +128,15 @@ pub struct TestMcpConnectionRequest {
     // stdio transport
     pub command: Option<String>,
     pub args: Option<Vec<String>>,
-    pub environment_variables: Option<HashMap<String, String>>,
+    /// Same structured shape as create/update — for entries the user
+    /// hasn't touched (saved-secret entries with `value: None`), the
+    /// test path falls back to the decrypted stored value via `id`
+    /// (mirrors the existing OAuth-secret fallback comment below).
+    pub environment_variables_entries: Option<Vec<EnvVarEntry>>,
 
     // http transport
     pub url: Option<String>,
-    pub headers: Option<HashMap<String, String>>,
+    pub headers_entries: Option<Vec<HeaderEntry>>,
 
     // Runtime configuration
     pub timeout_seconds: Option<i32>,
