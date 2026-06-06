@@ -35,7 +35,7 @@ async fn version_endpoint_returns_seed_catalog_metadata() {
         .expect("send /hub/version");
     assert_eq!(response.status(), 200, "expected 200 for /hub/version");
     let body: Json = response.json().await.expect("parse json");
-    assert_eq!(body["hub_version"], "0.0.1-alpha");
+    assert_eq!(body["hub_version"], "0.0.3-alpha");
     let server_version = body["server_version"]
         .as_str()
         .expect("server_version is a string");
@@ -44,9 +44,9 @@ async fn version_endpoint_returns_seed_catalog_metadata() {
         "server_version should be set: {body}"
     );
     let counts = &body["counts"];
-    assert_eq!(counts["models"], 5);
-    assert_eq!(counts["assistants"], 3);
-    assert_eq!(counts["mcp_servers"], 5);
+    assert_eq!(counts["models"], 7);
+    assert_eq!(counts["assistants"], 5);
+    assert_eq!(counts["mcp_servers"], 6);
 }
 
 #[tokio::test]
@@ -63,13 +63,13 @@ async fn index_endpoint_lists_seed_items() {
     assert_eq!(response.status(), 200);
     let catalog: Json = response.json().await.expect("parse json");
     assert_eq!(catalog["schema_version"], 1);
-    assert_eq!(catalog["hub_version"], "0.0.1-alpha");
+    assert_eq!(catalog["hub_version"], "0.0.3-alpha");
     let items = catalog["items"]
         .as_array()
         .expect("items should be an array");
-    assert_eq!(items.len(), 13, "seed catalog has 13 items");
+    assert_eq!(items.len(), 18, "seed catalog has 18 items");
 
-    // Spot-check known ids — the seed staging is fixed at v0.0.1-alpha.
+    // Spot-check known ids — the seed staging is fixed at v0.0.3-alpha.
     let ids: Vec<&str> = items.iter().filter_map(|i| i["id"].as_str()).collect();
     assert!(ids.contains(&"code-reviewer"), "missing code-reviewer in {ids:?}");
     assert!(ids.contains(&"llama-3-1-8b-instruct"));
@@ -260,7 +260,7 @@ async fn installed_endpoint_empty_when_no_installs() {
         .expect("send installed as admin");
     assert_eq!(response.status(), 200);
     let body: Json = response.json().await.expect("parse json");
-    assert_eq!(body["catalog_version"], "0.0.1-alpha");
+    assert_eq!(body["catalog_version"], "0.0.3-alpha");
     let items = body["items"].as_array().expect("items array");
     assert!(items.is_empty(), "no installs yet → empty list: {items:?}");
 }
@@ -303,7 +303,7 @@ async fn installed_endpoint_lists_all_tracked_entities() {
     assert_eq!(items.len(), 1, "expected exactly one installed row, got {items:?}");
     assert_eq!(items[0]["hub_id"], "code-reviewer");
     assert_eq!(items[0]["installed_version"], "0.0.0-test");
-    assert_eq!(items[0]["current_version"], "0.0.1-alpha");
+    assert_eq!(items[0]["current_version"], "0.0.3-alpha");
     assert_eq!(items[0]["is_system"], true, "created_by NULL → is_system: {body}");
     assert!(items[0]["installed_at"].is_string(), "installed_at must be serialized: {body}");
 }

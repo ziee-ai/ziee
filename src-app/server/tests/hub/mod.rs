@@ -1999,7 +1999,15 @@ async fn test_create_model_from_hub() {
     );
 
     // Get first model hub_id
-    let first_model = &models.as_array().unwrap()[0];
+    // Pick a COMPATIBLE model: the v0.0.3-alpha catalog leads with
+    // `deepseek-r1-70b`, a deliberate `min_ziee_version = 99.0.0` sentinel that
+    // the server rejects as HUB_INCOMPATIBLE, so `[0]` can no longer be created.
+    let first_model = models
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m.get("id").and_then(|v| v.as_str()) == Some("llama-3-1-8b-instruct"))
+        .expect("compatible model 'llama-3-1-8b-instruct' should be in the catalog");
     let hub_id = first_model.get("id").and_then(|v| v.as_str()).unwrap();
 
     // Verify created_ids is initially empty
@@ -2137,7 +2145,15 @@ async fn test_create_model_from_hub_requires_permission() {
 
     assert_eq!(response.status(), 200);
     let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    let first_model = &models.as_array().unwrap()[0];
+    // Pick a COMPATIBLE model: the v0.0.3-alpha catalog leads with
+    // `deepseek-r1-70b`, a deliberate `min_ziee_version = 99.0.0` sentinel that
+    // the server rejects as HUB_INCOMPATIBLE, so `[0]` can no longer be created.
+    let first_model = models
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m.get("id").and_then(|v| v.as_str()) == Some("llama-3-1-8b-instruct"))
+        .expect("compatible model 'llama-3-1-8b-instruct' should be in the catalog");
     let hub_id = first_model.get("id").and_then(|v| v.as_str()).unwrap();
 
     // Try to create model download without permission
@@ -2252,7 +2268,15 @@ async fn test_create_model_from_hub_invalid_provider_id() {
         .expect("Request failed");
 
     let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    let first_model = &models.as_array().unwrap()[0];
+    // Pick a COMPATIBLE model: the v0.0.3-alpha catalog leads with
+    // `deepseek-r1-70b`, a deliberate `min_ziee_version = 99.0.0` sentinel that
+    // the server rejects as HUB_INCOMPATIBLE, so `[0]` can no longer be created.
+    let first_model = models
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m.get("id").and_then(|v| v.as_str()) == Some("llama-3-1-8b-instruct"))
+        .expect("compatible model 'llama-3-1-8b-instruct' should be in the catalog");
     let hub_id = first_model.get("id").and_then(|v| v.as_str()).unwrap();
 
     // Try to create download with invalid provider_id
@@ -2409,7 +2433,15 @@ async fn test_duplicate_download_prevention() {
         .expect("Request failed");
 
     let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    let first_model = &models.as_array().unwrap()[0];
+    // Pick a COMPATIBLE model: the v0.0.3-alpha catalog leads with
+    // `deepseek-r1-70b`, a deliberate `min_ziee_version = 99.0.0` sentinel that
+    // the server rejects as HUB_INCOMPATIBLE, so `[0]` can no longer be created.
+    let first_model = models
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m.get("id").and_then(|v| v.as_str()) == Some("llama-3-1-8b-instruct"))
+        .expect("compatible model 'llama-3-1-8b-instruct' should be in the catalog");
     let hub_id = first_model.get("id").and_then(|v| v.as_str()).unwrap();
 
     // auth_required model: configure the source repo credential so the gate passes.
