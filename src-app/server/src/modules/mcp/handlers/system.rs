@@ -103,6 +103,7 @@ pub async fn create_system_server(
     origin: SyncOrigin,
     Json(request): Json<CreateMcpServerRequest>,
 ) -> ApiResult<Json<McpServerWithHealthWarning>> {
+    super::validate_sandbox_fields_create(true, &request)?;
     let server = Repos.mcp.create_system_server(request).await?;
     event_bus.emit_async(McpServerEvent::system_server_created(server.id));
 
@@ -172,12 +173,13 @@ pub async fn update_system_server(
     origin: SyncOrigin,
     Json(request): Json<UpdateMcpServerRequest>,
 ) -> ApiResult<Json<McpServer>> {
-    let prior_enabled = Repos
+    let existing = Repos
         .mcp
         .get_system_server(id)
         .await?
-        .ok_or_else(|| AppError::not_found("Server"))?
-        .enabled;
+        .ok_or_else(|| AppError::not_found("Server"))?;
+    let prior_enabled = existing.enabled;
+    super::validate_sandbox_fields_update(&existing, &request)?;
 
     let persisted = Repos.mcp.update_system_server(id, request).await?;
     event_bus.emit_async(McpServerEvent::system_server_updated(persisted.id));

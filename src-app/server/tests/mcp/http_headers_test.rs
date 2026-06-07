@@ -37,6 +37,7 @@ fn server_config_with_headers(url: String, headers: serde_json::Value) -> McpSer
         usage_mode: UsageMode::Auto,
         max_concurrent_sessions: None,
         run_in_sandbox: false,
+        sandbox_flavor: "full".to_string(),
         is_built_in: false,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
