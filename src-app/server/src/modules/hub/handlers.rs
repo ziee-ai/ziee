@@ -842,6 +842,13 @@ pub async fn create_mcp_server_from_hub(
         }
     }
 
+    // Same tiered command + flavor validation the native create path runs
+    // (hub installs are user-owned → host tier).
+    crate::modules::mcp::handlers::validate_sandbox_fields_create(
+        false,
+        &plan.create_request,
+    )?;
+
     let server = Repos
         .mcp
         .create_user_server(auth.user.id, plan.create_request)
@@ -1075,6 +1082,14 @@ pub async fn create_system_mcp_server_from_hub(
             Err(e) => return Err(e.into()),
         }
     }
+
+    // Same tiered command + flavor validation the native create path runs.
+    // Runs AFTER the re-install run_in_sandbox carry-over above, so a
+    // re-installed sandboxed server is correctly treated as sandbox-tier.
+    crate::modules::mcp::handlers::validate_sandbox_fields_create(
+        true,
+        &plan.create_request,
+    )?;
 
     let server = Repos.mcp.create_system_server(plan.create_request).await?;
 
