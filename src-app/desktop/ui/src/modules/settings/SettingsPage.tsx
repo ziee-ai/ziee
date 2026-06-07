@@ -33,18 +33,24 @@ import { Stores } from '@/core/stores'
 // whose `id` is in this set are hidden from the desktop menu.
 //
 //  - Multi-user RBAC surfaces (no role on a single-admin desktop):
-//    users, user-groups, assistants, mcp-admin, auth-providers.
+//    users, user-groups, assistants, auth-providers.
 //  - Core's user+admin pair for Memory (both register id='memory'):
 //    hidden so the combined `memory-desktop` slot is the only one shown.
 //  - `user-llm-providers`: lets a non-admin OVERRIDE the admin-set API
 //    key with their own. On single-admin desktop there's no admin/user
 //    split — the admin sets keys directly on the admin LLM Providers
 //    page. The user-side entry is therefore redundant.
+//
+// Note (2026-06): `mcp-admin` was previously hidden but is now SHOWN
+// on desktop. The desktop user IS the admin, and the System MCP page
+// is where they manage installs that aren't tied to their personal
+// account. The page's per-row group-assignment widget + user-policy
+// card are individually hidden via `Stores.AppMode.multiUserMode`
+// (set to false by the desktop UI bootstrap).
 const HIDDEN_ITEMS = new Set([
   'users',
   'user-groups',
   'assistants',
-  'mcp-admin',
   'auth-providers',
   'memory',
   'memory-admin',

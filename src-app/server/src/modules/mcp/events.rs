@@ -28,6 +28,16 @@ pub enum McpServerEvent {
     /// check, or save-time downgrade on a fresh create). UI listens
     /// to this to refresh the server list and surface a toast.
     AutoDisabled { server_id: Uuid, reason: String },
+    /// The global MCP user-policy singleton was edited by an admin.
+    /// Subscribers: future audit log; UI cache invalidation (the FE
+    /// emits its own `mcp_user_policy.changed` event on the bus from
+    /// the store, this backend event exists for server-side
+    /// observers).
+    UserPolicyUpdated {
+        actor_user_id: Uuid,
+        allowed_transports: Vec<String>,
+        user_stdio_sandbox_flavor: Option<String>,
+    },
 }
 
 impl McpServerEvent {
@@ -71,5 +81,19 @@ impl McpServerEvent {
     /// probe failed).
     pub fn auto_disabled(server_id: Uuid, reason: String) -> crate::core::AppEvent {
         crate::core::AppEvent::McpServer(McpServerEvent::AutoDisabled { server_id, reason })
+    }
+
+    /// Create a user-policy-updated event (admin saved a new
+    /// mcp_user_policy row).
+    pub fn user_policy_updated(
+        actor_user_id: Uuid,
+        allowed_transports: Vec<String>,
+        user_stdio_sandbox_flavor: Option<String>,
+    ) -> crate::core::AppEvent {
+        crate::core::AppEvent::McpServer(McpServerEvent::UserPolicyUpdated {
+            actor_user_id,
+            allowed_transports,
+            user_stdio_sandbox_flavor,
+        })
     }
 }

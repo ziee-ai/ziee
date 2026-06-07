@@ -761,9 +761,17 @@ async fn build_mcp_server_create_from_hub(
         // the option only honors admin/system servers when set
         // explicitly via the native admin form.
         run_in_sandbox: None,
-        // Defaults to `full` (the DB column default) when the admin
-        // later enables run_in_sandbox via the native form.
+        // Sandbox flavor unset on hub installs. The DB column
+        // defaults to 'full' (migration 83) for any system row the
+        // admin later flips `run_in_sandbox=true` on. User-scope
+        // hub installs route through `create_user_server` which
+        // force-applies the active policy flavor regardless.
         sandbox_flavor: None,
+        // Hub-scope tracking: the regular create handler records the
+        // install in `hub_entities` when `hub_id` is set on the
+        // request body — same bookkeeping the dedicated
+        // `/hub/mcp-servers/create*` endpoints do.
+        hub_id: Some(hub_server.id),
     };
 
     // Validation MUST run before any DB write so the `replace_existing`
@@ -823,7 +831,17 @@ pub async fn create_mcp_server_from_hub(
 
     // Plan first so a failing lookup / validation doesn't wipe the
     // prior installs with no replacement.
-    let plan = build_mcp_server_create_from_hub(&request).await?;
+    let mut plan = build_mcp_server_create_from_hub(&request).await?;
+
+    // Policy gate: same rules as the regular `POST /api/mcp/servers`
+    // handler. Done on the planned CreateMcpServerRequest BEFORE the
+    // delete loop so a rejection by policy doesn't wipe the prior
+    // install.
+    let policy = crate::modules::mcp::user_policy::load(Repos.pool()).await?;
+    crate::modules::mcp::user_policy::enforce_on_user_create(
+        &mut plan.create_request,
+        &policy,
+    )?;
 
     for existing_id in &existing_ids {
         // Tolerate "already deleted" — racy with a concurrent delete
@@ -940,6 +958,7 @@ pub async fn create_system_mcp_server_from_hub(
         if let Some(prior) = Repos.mcp.get_any_server(existing_id).await? {
             plan.create_request.enabled = Some(prior.enabled);
             plan.create_request.run_in_sandbox = Some(prior.run_in_sandbox);
+            plan.create_request.sandbox_flavor = Some(prior.sandbox_flavor.clone());
             plan.create_request.usage_mode = Some(prior.usage_mode);
             plan.create_request.max_concurrent_sessions =
                 prior.max_concurrent_sessions;
@@ -1059,6 +1078,17 @@ pub async fn create_system_mcp_server_from_hub(
             }
         }
     }
+
+    // Mirror the regular `POST /api/mcp/system-servers` handler's
+    // tiered command + flavor validation BEFORE the prior-row delete
+    // so a flavor-invalid re-install doesn't wipe the existing system
+    // server with no replacement. Same gate runs again after the
+    // delete (line ~1124) — defensive duplication so the gate fires
+    // in BOTH orderings.
+    crate::modules::mcp::handlers::validate_sandbox_fields_create(
+        true,
+        &plan.create_request,
+    )?;
 
     // Validation passed — now delete the prior system server (if any)
     // and emit `McpServerEvent::SystemServerDeleted` so the hub

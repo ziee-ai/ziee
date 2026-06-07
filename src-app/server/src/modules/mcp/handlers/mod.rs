@@ -56,16 +56,20 @@ fn validate_sandbox_flavor(flavor: Option<&str>) -> Result<(), AppError> {
 }
 
 /// Tiered command + flavor validation for **create**. A stdio server
-/// that won't run in the sandbox (user-owned, or a system server with
-/// run_in_sandbox off) must use a host-allowed command; a sandboxed
-/// server may use any command (bwrap isolation is the guard).
+/// that won't run in the sandbox must use a host-allowed command; a
+/// sandboxed server may use any command (bwrap isolation is the
+/// guard). The `is_system` arg is kept on the signature for backwards
+/// compat with the system handler's existing call site, but isn't
+/// load-bearing — tier is derived from `run_in_sandbox` alone, which
+/// is correct for both system and user paths (user paths run through
+/// `user_policy::enforce_on_user_create` which force-sets
+/// `run_in_sandbox=true` for stdio per the active policy).
 pub(crate) fn validate_sandbox_fields_create(
-    is_system: bool,
+    _is_system: bool,
     req: &CreateMcpServerRequest,
 ) -> Result<(), AppError> {
     validate_sandbox_flavor(req.sandbox_flavor.as_deref())?;
-    let sandboxed = is_system
-        && req.transport_type == TransportType::Stdio
+    let sandboxed = req.transport_type == TransportType::Stdio
         && req.run_in_sandbox.unwrap_or(false);
     if req.transport_type == TransportType::Stdio && !sandboxed {
         if let Some(cmd) = req.command.as_deref() {
@@ -78,6 +82,9 @@ pub(crate) fn validate_sandbox_fields_create(
 /// Tiered command + flavor validation for **update**, using the existing
 /// row to fill in fields the request omits (transport is immutable;
 /// command / run_in_sandbox fall back to the persisted values).
+/// Like the create analog, tier is derived from `run_in_sandbox`
+/// alone — `existing.is_system` is no longer a factor since user-
+/// scope stdio servers are also force-sandboxed by user-policy.
 pub(crate) fn validate_sandbox_fields_update(
     existing: &McpServer,
     req: &UpdateMcpServerRequest,
@@ -85,8 +92,7 @@ pub(crate) fn validate_sandbox_fields_update(
     validate_sandbox_flavor(req.sandbox_flavor.as_deref())?;
     let command = req.command.as_deref().or(existing.command.as_deref());
     let run_in_sandbox = req.run_in_sandbox.unwrap_or(existing.run_in_sandbox);
-    let sandboxed =
-        existing.is_system && existing.transport_type == TransportType::Stdio && run_in_sandbox;
+    let sandboxed = existing.transport_type == TransportType::Stdio && run_in_sandbox;
     if existing.transport_type == TransportType::Stdio && !sandboxed {
         if let Some(cmd) = command {
             require_host_command(cmd)?;

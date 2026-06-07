@@ -76,8 +76,12 @@ pub struct McpSpawnRequest {
     /// boundary). Injected as `--setenv` lines in the bwrap argv, NOT
     /// inherited from the host shell.
     pub extra_setenv: Vec<(String, String)>,
-    /// Rootfs flavor (KNOWN_FLAVORS) to mount for this spawn — from the
-    /// server's `sandbox_flavor` column (defaults to `full`).
+    /// Rootfs flavor (KNOWN_FLAVORS, e.g. `"minimal"` / `"full"`) to
+    /// mount for this spawn — from the server's `sandbox_flavor`
+    /// column. NOT NULL since migration 83 (defaults to `'full'`);
+    /// the create handler validates against `KNOWN_FLAVORS` at
+    /// write-time, so this is always a known flavor by the time it
+    /// reaches the spawn path.
     pub flavor: String,
 }
 
@@ -297,7 +301,9 @@ async fn spawn_on_linux_host(
     };
     use crate::modules::code_sandbox::types::SeccompMode;
 
-    // Lazy-mount the flavor's rootfs (cheap on cache hit).
+    // Lazy-mount the flavor's rootfs (cheap on cache hit). Uses the
+    // per-server `req.flavor` set by `StdioMcpClient::connect_sandboxed`
+    // from `mcp_servers.sandbox_flavor`.
     let ensure = runtime_mount::ensure_rootfs_ready(state, &req.flavor).await?;
     let caps = ensure.caps.clone();
     let rootfs_dir = ensure.mount_dir;

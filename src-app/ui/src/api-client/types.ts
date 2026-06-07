@@ -343,6 +343,7 @@ export interface CreateMcpServerRequest {
   enabled?: boolean
   environment_variables_entries?: EnvVarEntry[]
   headers_entries?: HeaderEntry[]
+  hub_id?: string
   max_concurrent_sessions?: number
   name: string
   run_in_sandbox?: boolean
@@ -1295,6 +1296,7 @@ export interface McpServerWithHealthWarning {
   max_concurrent_sessions?: number
   name: string
   run_in_sandbox: boolean
+  sandbox_flavor: string
   supports_sampling: boolean
   timeout_seconds: number
   transport_type: TransportType
@@ -1306,6 +1308,13 @@ export interface McpServerWithHealthWarning {
 
 export interface McpSettingsResponse {
   settings?: ConversationMcpSettingsResponse
+}
+
+export interface McpUserPolicy {
+  allowed_transports: string[]
+  updated_at: string
+  updated_by?: string
+  user_stdio_sandbox_flavor?: string
 }
 
 export interface MeResponse {
@@ -2321,6 +2330,11 @@ export interface UpdateMcpServerRequest {
   usage_mode?: UsageMode
 }
 
+export interface UpdateMcpUserPolicyRequest {
+  allowed_transports: string[]
+  user_stdio_sandbox_flavor?: string
+}
+
 export interface UpdateMemoryAdminSettingsRequest {
   cosine_threshold?: number
   daily_extraction_quota?: number
@@ -2586,6 +2600,7 @@ export enum Permissions {
   McpServersDelete = 'mcp_servers::delete',
   McpServersEdit = 'mcp_servers::edit',
   McpServersRead = 'mcp_servers::read',
+  McpUserPolicyEdit = 'mcp_user_policy::edit',
   MemoryAdminManage = 'memory::admin::manage',
   MemoryAdminRead = 'memory::admin::read',
   MemoryRead = 'memory::read',
@@ -2691,6 +2706,7 @@ export const PermissionDescriptions: Record<string, string> = {
   McpServersDelete: 'Delete MCP servers',
   McpServersEdit: 'Edit MCP servers',
   McpServersRead: 'View MCP servers',
+  McpUserPolicyEdit: 'Edit MCP user policy (allowed transports + sandbox flavor)',
   MemoryAdminManage: 'Update memory admin settings (embedding model, enable/disable).',
   MemoryAdminRead: 'Read memory admin settings (embedding model, defaults).',
   MemoryRead: 'List and read own memories.',
@@ -2899,6 +2915,8 @@ export const ApiEndpoints = {
   'McpServerSystem.removeServerFromGroup': 'DELETE /api/mcp/system-servers/{id}/groups/{group_id}',
   'McpServerSystem.testConnection': 'POST /api/mcp/system-servers/test-connection',
   'McpServerSystem.update': 'PUT /api/mcp/system-servers/{id}',
+  'McpUserPolicy.get': 'GET /api/mcp/user-policy',
+  'McpUserPolicy.update': 'PUT /api/mcp/user-policy',
   'Memory.create': 'POST /api/memories',
   'Memory.delete': 'DELETE /api/memories/{id}',
   'Memory.deleteAll': 'DELETE /api/memories/all',
@@ -3144,6 +3162,8 @@ export type ApiEndpointParameters = {
   'McpServerSystem.removeServerFromGroup': { id: string; group_id: string }
   'McpServerSystem.testConnection': TestMcpConnectionRequest
   'McpServerSystem.update': { id: string } & UpdateMcpServerRequest
+  'McpUserPolicy.get': void
+  'McpUserPolicy.update': UpdateMcpUserPolicyRequest
   'Memory.create': CreateMemoryRequest
   'Memory.delete': { id: string }
   'Memory.deleteAll': void
@@ -3389,6 +3409,8 @@ export type ApiEndpointResponses = {
   'McpServerSystem.removeServerFromGroup': void
   'McpServerSystem.testConnection': TestMcpConnectionResponse
   'McpServerSystem.update': McpServer
+  'McpUserPolicy.get': McpUserPolicy
+  'McpUserPolicy.update': McpUserPolicy
   'Memory.create': UserMemory
   'Memory.delete': void
   'Memory.deleteAll': DeleteAllResponse
