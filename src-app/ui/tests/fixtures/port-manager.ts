@@ -3,7 +3,13 @@ import { resolve } from 'path'
 import { tmpdir } from 'os'
 import { execSync } from 'child_process'
 
-const LOCK_DIR = resolve(tmpdir(), 'ziee-test-locks')
+// Lock dir is env-overridable so concurrent git worktrees can isolate
+// their E2E runs from each other. Without this, every worktree shares
+// `/tmp/ziee-test-locks` + the same 9000/9100 port base, and one run's
+// stale-lock cleanup kills a sibling worktree's just-starting backend
+// (observed as a graceful "Shutdown signal received" ~20s into startup).
+// Pair with ZIEE_E2E_BASE_VITE_PORT / ZIEE_E2E_BASE_BACKEND_PORT.
+const LOCK_DIR = process.env.ZIEE_E2E_LOCK_DIR || resolve(tmpdir(), 'ziee-test-locks')
 const LOCK_TIMEOUT_MS = 180000 // 3 minutes - max test duration
 // @ts-ignore - Reserved for future use
 const _HEARTBEAT_INTERVAL_MS = 5000 // 5 seconds - heartbeat update frequency (reserved for future use)
@@ -240,8 +246,9 @@ export async function findAvailablePorts(
 ): Promise<{ vite: number; backend: number }> {
   // Try up to 100 port pairs
   const MAX_ATTEMPTS = 100
-  const BASE_VITE_PORT = 9000
-  const BASE_BACKEND_PORT = 9100
+  // Env-overridable port base for cross-worktree isolation (see LOCK_DIR).
+  const BASE_VITE_PORT = parseInt(process.env.ZIEE_E2E_BASE_VITE_PORT || '9000', 10)
+  const BASE_BACKEND_PORT = parseInt(process.env.ZIEE_E2E_BASE_BACKEND_PORT || '9100', 10)
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     // Spread workers across port range to reduce collisions

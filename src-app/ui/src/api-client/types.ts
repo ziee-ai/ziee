@@ -346,6 +346,7 @@ export interface CreateMcpServerRequest {
   max_concurrent_sessions?: number
   name: string
   run_in_sandbox?: boolean
+  sandbox_flavor?: string
   supports_sampling?: boolean
   timeout_seconds?: number
   transport_type: TransportType
@@ -592,6 +593,15 @@ export interface EnvVarView {
   is_secret: boolean
   key: string
   value?: string
+}
+
+export interface EnvironmentInfo {
+  description: string
+  approximate_size_mb: number
+  cached: boolean
+  cached_size_bytes?: number
+  flavor: string
+  mounted: boolean
 }
 
 export interface File {
@@ -1226,6 +1236,7 @@ export interface McpServer {
   max_concurrent_sessions?: number
   name: string
   run_in_sandbox: boolean
+  sandbox_flavor: string
   supports_sampling: boolean
   timeout_seconds: number
   transport_type: TransportType
@@ -2020,6 +2031,11 @@ export interface SSELogLineData {
   line: string
 }
 
+export interface SandboxFlavorsResponse {
+  available: EnvironmentInfo[]
+  host_allowed_commands: string[]
+}
+
 export interface SaveUserApiKeyRequest {
   api_key: string
   provider_id: string
@@ -2298,6 +2314,7 @@ export interface UpdateMcpServerRequest {
   max_concurrent_sessions?: number
   name?: string
   run_in_sandbox?: boolean
+  sandbox_flavor?: string
   supports_sampling?: boolean
   timeout_seconds?: number
   url?: string
@@ -2745,6 +2762,7 @@ export const ApiEndpoints = {
   'CodeSandbox.deleteRootfsVersion': 'DELETE /api/code-sandbox/rootfs/versions/{id}',
   'CodeSandbox.getResourceLimits': 'GET /api/code-sandbox/resource-limits',
   'CodeSandbox.installRootfsVersion': 'POST /api/code-sandbox/rootfs/versions/install',
+  'CodeSandbox.listFlavors': 'GET /api/code-sandbox/flavors',
   'CodeSandbox.listRootfsVersions': 'GET /api/code-sandbox/rootfs/versions',
   'CodeSandbox.setRootfsPin': 'POST /api/code-sandbox/rootfs/versions/set-pin',
   'CodeSandbox.subscribeRootfsInstallProgress': 'GET /api/code-sandbox/rootfs/versions/install/subscribe',
@@ -2989,6 +3007,7 @@ export type ApiEndpointParameters = {
   'CodeSandbox.deleteRootfsVersion': { id: string }
   'CodeSandbox.getResourceLimits': void
   'CodeSandbox.installRootfsVersion': InstallVersionRequest
+  'CodeSandbox.listFlavors': void
   'CodeSandbox.listRootfsVersions': void
   'CodeSandbox.setRootfsPin': SetPinRequest
   'CodeSandbox.subscribeRootfsInstallProgress': void
@@ -3233,6 +3252,7 @@ export type ApiEndpointResponses = {
   'CodeSandbox.deleteRootfsVersion': VersionStatus
   'CodeSandbox.getResourceLimits': CodeSandboxResourceLimits
   'CodeSandbox.installRootfsVersion': InstallTaskState
+  'CodeSandbox.listFlavors': SandboxFlavorsResponse
   'CodeSandbox.listRootfsVersions': VersionStatus
   'CodeSandbox.setRootfsPin': SetPinResponse
   'CodeSandbox.subscribeRootfsInstallProgress': SSEInstallTaskEvent

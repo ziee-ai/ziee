@@ -64,6 +64,16 @@ const TRANSPORT_TYPES = [
   },
 ]
 
+// Mirrors the backend HOST_ALLOWED_COMMANDS (mcp/client/stdio.rs) and
+// KNOWN_FLAVORS (code_sandbox/types.rs). The system-server form fetches
+// the live lists from GET /code-sandbox/flavors; these are the fallback
+// shown before that resolves. The backend re-validates on save.
+const FALLBACK_HOST_COMMANDS = ['npx', 'uvx', 'python', 'python3', 'node']
+const FALLBACK_FLAVOR_OPTIONS = [
+  { value: 'full', label: 'full — Node + uv + python3 + R (~850 MB)' },
+  { value: 'minimal', label: 'minimal — python3 only (~57 MB)' },
+]
+
 export function McpServerDrawer() {
   const [form] = Form.useForm()
   const { message } = App.useApp()
@@ -77,9 +87,18 @@ export function McpServerDrawer() {
   // Local loading for the "Save & Test Connection" action (save, then probe).
   const [testing, setTesting] = useState(false)
 
+  // Sandbox flavor picker data, lazily fetched in system mode only (the
+  // endpoint is admin-gated; non-admins never reach create/edit-system,
+  // so this never fires for them — keeps the no-403 fixture happy).
+  const [flavorOptions, setFlavorOptions] = useState(FALLBACK_FLAVOR_OPTIONS)
+  const [hostCommands, setHostCommands] = useState<string[]>(
+    FALLBACK_HOST_COMMANDS,
+  )
+
   // OAuth is configurable only for user-owned HTTP servers (the endpoints are
   // owner-scoped). Built-in/system servers authenticate differently.
   const isUserMode = mode === 'create' || mode === 'edit'
+  const isSystemMode = mode === 'create-system' || mode === 'edit-system'
 
   // Mirror the user/ + assistants/ pattern (audit I-3): gate the form
   // by mode-specific manage permissions so the drawer becomes read-
@@ -134,6 +153,36 @@ export function McpServerDrawer() {
     }
   }, [editingServer, open, mode, form])
 
+  // Lazily load the sandbox flavor catalog + host command allowlist.
+  // Only in system mode (admin-gated endpoint); falls back to the
+  // hardcoded constants on error so the form still works offline.
+  useEffect(() => {
+    let cancelled = false
+    if (open && isSystemMode) {
+      Stores.McpServer.getSandboxFlavors()
+        .then(resp => {
+          if (cancelled) return
+          if (resp.available.length > 0) {
+            setFlavorOptions(
+              resp.available.map(f => ({
+                value: f.flavor,
+                label: `${f.flavor} — ${f.description} (~${f.approximate_size_mb} MB)`,
+              })),
+            )
+          }
+          if (resp.host_allowed_commands.length > 0) {
+            setHostCommands(resp.host_allowed_commands)
+          }
+        })
+        .catch(() => {
+          // keep fallbacks
+        })
+    }
+    return () => {
+      cancelled = true
+    }
+  }, [open, isSystemMode])
+
   // Populate form when editing server changes
   useEffect(() => {
     if (editingServer && open && (mode === 'edit' || mode === 'edit-system')) {
@@ -176,6 +225,7 @@ export function McpServerDrawer() {
         usage_mode: editingServer.usage_mode ?? 'auto',
         max_concurrent_sessions: editingServer.max_concurrent_sessions ?? undefined,
         run_in_sandbox: editingServer.run_in_sandbox ?? false,
+        sandbox_flavor: editingServer.sandbox_flavor ?? 'full',
         timeout_seconds: editingServer.timeout_seconds ?? 30,
       }
       form.setFieldsValue(formValues)
@@ -186,6 +236,7 @@ export function McpServerDrawer() {
         enabled: true,
         supports_sampling: false,
         usage_mode: 'auto',
+        sandbox_flavor: 'full',
       })
     }
   }, [editingServer, open, mode, form])
@@ -276,6 +327,7 @@ export function McpServerDrawer() {
       // still send it so the field round-trips through create + edit unchanged
       // when the toggle is visible.
       run_in_sandbox: values.run_in_sandbox ?? false,
+      sandbox_flavor: values.sandbox_flavor ?? 'full',
       timeout_seconds: values.timeout_seconds ?? 30,
     }
 
@@ -295,6 +347,7 @@ export function McpServerDrawer() {
       // still send it so the field round-trips through create + edit unchanged
       // when the toggle is visible.
       run_in_sandbox: values.run_in_sandbox ?? false,
+      sandbox_flavor: values.sandbox_flavor ?? 'full',
       timeout_seconds: values.timeout_seconds ?? 30,
     }
 
@@ -543,6 +596,12 @@ export function McpServerDrawer() {
   }
 
   const transportType = Form.useWatch('transport_type', form)
+  const runInSandbox = Form.useWatch('run_in_sandbox', form)
+  // A stdio server runs sandboxed (any command allowed) only when it's a
+  // system server with the toggle on; otherwise it runs on the host and
+  // its command must be in the host allowlist.
+  const isSandboxed =
+    isSystemMode && transportType === 'stdio' && runInSandbox === true
   // Local mirror for the title's Enabled Switch + a "currently
   // toggling" flag that disables the Switch (with a loading
   // spinner) while a save+probe round-trip is in flight.
@@ -908,7 +967,36 @@ export function McpServerDrawer() {
               <Form.Item
                 label="Command"
                 name="command"
-                rules={[{ required: true, message: 'Please enter a command' }]}
+                dependencies={['run_in_sandbox', 'transport_type']}
+                extra={
+                  isSandboxed
+                    ? 'Runs in the sandbox — any command is allowed.'
+                    : `Allowed on host: ${hostCommands.join(', ')}. Enable “Run in sandbox” to use any command.`
+                }
+                rules={[
+                  { required: true, message: 'Please enter a command' },
+                  () => ({
+                    validator(_, value) {
+                      // Read run_in_sandbox from the form (not a captured
+                      // closure) so re-validation triggered by toggling the
+                      // switch sees the just-updated value synchronously.
+                      const sandboxed =
+                        isSystemMode &&
+                        form.getFieldValue('transport_type') === 'stdio' &&
+                        form.getFieldValue('run_in_sandbox') === true
+                      if (sandboxed || !value) return Promise.resolve()
+                      const base = String(value).trim().split(/\s+/)[0]
+                      if (hostCommands.includes(base)) return Promise.resolve()
+                      return Promise.reject(
+                        new Error(
+                          `Command '${base}' is not allowed on the host. Allowed: ${hostCommands.join(
+                            ', ',
+                          )}. Enable “Run in sandbox” to use any command.`,
+                        ),
+                      )
+                    },
+                  }),
+                ]}
               >
                 <Input placeholder="e.g., npx, uvx, node" />
               </Form.Item>
@@ -1091,23 +1179,42 @@ export function McpServerDrawer() {
           {/* Run in sandbox (system + stdio only) */}
           {transportType === 'stdio' &&
             (mode === 'create-system' || mode === 'edit-system') && (
-              <Form.Item
-                label="Run in sandbox"
-                name="run_in_sandbox"
-                valuePropName="checked"
-                help={
-                  <>
-                    Launch this stdio MCP server inside the code_sandbox
-                    bwrap isolation. On Linux runs natively; on macOS /
-                    Windows it routes through a microVM. The server only
-                    sees an isolated workspace — filesystem-oriented MCP
-                    servers will not see your real files. First use may
-                    download a small sandbox image (~57 MB).
-                  </>
-                }
-              >
-                <Switch />
-              </Form.Item>
+              <>
+                <Form.Item
+                  label="Run in sandbox"
+                  name="run_in_sandbox"
+                  valuePropName="checked"
+                  help={
+                    <>
+                      Launch this stdio MCP server inside the code_sandbox
+                      bwrap isolation. On Linux runs natively; on macOS /
+                      Windows it routes through a microVM. The server only
+                      sees an isolated workspace — filesystem-oriented MCP
+                      servers will not see your real files. First use
+                      downloads the selected sandbox image.
+                    </>
+                  }
+                >
+                  <Switch
+                    onChange={() => {
+                      // Re-validate the command field: turning the toggle
+                      // on lifts the host allowlist; turning it off
+                      // re-imposes it.
+                      form.validateFields(['command']).catch(() => {})
+                    }}
+                  />
+                </Form.Item>
+
+                {runInSandbox && (
+                  <Form.Item
+                    label="Sandbox flavor"
+                    name="sandbox_flavor"
+                    help="Rootfs image the sandboxed server runs in. 'full' ships Node (npx), uv (uvx), python3 and R; 'minimal' is python3-only."
+                  >
+                    <Select options={flavorOptions} />
+                  </Form.Item>
+                )}
+              </>
             )}
         </Form>
 

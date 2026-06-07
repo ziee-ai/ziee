@@ -109,6 +109,7 @@ pub async fn create_user_server(
     Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<CreateMcpServerRequest>,
 ) -> ApiResult<Json<McpServerWithHealthWarning>> {
+    super::validate_sandbox_fields_create(false, &request)?;
     let server = Repos.mcp.create_user_server(auth.user.id, request).await?;
     let server_id = server.id;
 
@@ -185,12 +186,13 @@ pub async fn update_user_server(
     // detect a false→true transition. The probe only fires on that
     // transition — flipping enabled false (or no change) skips the
     // health check entirely.
-    let prior_enabled = Repos
+    let existing = Repos
         .mcp
         .get_user_server(id, auth.user.id)
         .await?
-        .ok_or_else(|| AppError::not_found("Server"))?
-        .enabled;
+        .ok_or_else(|| AppError::not_found("Server"))?;
+    let prior_enabled = existing.enabled;
+    super::validate_sandbox_fields_update(&existing, &request)?;
 
     let persisted = Repos
         .mcp
