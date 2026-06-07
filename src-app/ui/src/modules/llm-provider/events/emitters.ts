@@ -71,3 +71,37 @@ export const emitGroupLlmProvidersChanged = async (
     data: { groupId, providerIds },
   })
 }
+
+/**
+ * Fired from `LlmModelDownload.store.ts` on the SSE tick where a row
+ * transitions to `status === 'completed'`. The
+ * `LlmModelDownloadNotifications` listener surfaces a green toast.
+ */
+export const emitLlmModelDownloadCompleted = async (
+  downloadId: string,
+  providerId: string,
+  modelDisplayName: string,
+) => {
+  await Stores.EventBus.emit({
+    type: 'llm_model.download_completed',
+    data: { downloadId, providerId, modelDisplayName },
+  })
+}
+
+/**
+ * Sibling of completed — fired on the transition to
+ * `status === 'failed'`. The listener surfaces a red toast carrying
+ * `errorMessage` so the user sees the backend reason without digging
+ * into provider settings.
+ */
+export const emitLlmModelDownloadFailed = async (
+  downloadId: string,
+  providerId: string,
+  modelDisplayName: string,
+  errorMessage: string,
+) => {
+  await Stores.EventBus.emit({
+    type: 'llm_model.download_failed',
+    data: { downloadId, providerId, modelDisplayName, errorMessage },
+  })
+}

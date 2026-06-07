@@ -303,13 +303,17 @@ export function McpServerDrawer() {
       const wrapped = await Stores.McpServer.createMcpServer(
         serverData as CreateMcpServerRequest,
       )
-      saved = wrapped.server
-      if (wrapped.connection_warning) {
+      // Wrapper is flattened: McpServer fields at top level +
+      // optional `connection_warning` sibling. Strip the warning to
+      // get a plain McpServer for downstream consumers.
+      const { connection_warning, ...row } = wrapped
+      saved = row as McpServer
+      if (connection_warning) {
         // Backend auto-downgraded enabled to false because the
         // connection probe failed. Surface the reason + 8s duration
         // so the user has time to read.
         message.warning({
-          content: `MCP server saved but auto-disabled — ${wrapped.connection_warning.reason}`,
+          content: `MCP server saved but auto-disabled — ${connection_warning.reason}`,
           duration: 8,
         })
       } else {
@@ -322,10 +326,11 @@ export function McpServerDrawer() {
       const wrapped = await Stores.SystemMcpServer.createSystemServer(
         serverData as CreateMcpServerRequest,
       )
-      saved = wrapped.server
-      if (wrapped.connection_warning) {
+      const { connection_warning, ...row } = wrapped
+      saved = row as McpServer
+      if (connection_warning) {
         message.warning({
-          content: `System MCP server saved but auto-disabled — ${wrapped.connection_warning.reason}`,
+          content: `System MCP server saved but auto-disabled — ${connection_warning.reason}`,
           duration: 8,
         })
       } else {
@@ -597,14 +602,94 @@ export function McpServerDrawer() {
   //         any other in-flight form edits (user explicit choice
   //         per the design discussion). No probe runs.
   //
-  // Create mode: the Switch only updates the local form state; the
-  // bottom Create button is what actually persists. Auto-saving on
-  // a half-filled create form would surface validation errors out
-  // of context.
+  // Create mode: the Switch now runs the existing connection-test
+  // endpoint against the form values WITHOUT persisting a row. For
+  // stdio servers the backend spawns the subprocess, runs the
+  // initialize handshake, disconnects + kills the child — exactly
+  // "test the server, try connection, then immediately stop the
+  // server". For HTTP it connects + initializes + disconnects with
+  // no persistent session. The user still has to click the bottom
+  // Create button to actually persist the row; this only previews
+  // whether their config would reach upstream.
+  //
+  // OFF in create mode stays purely local — there's nothing to
+  // disable since nothing was persisted.
   const handleEnabledToggle = async (v: boolean) => {
     if (mode === 'create' || mode === 'create-system') {
-      setEnabledValue(v)
-      form.setFieldsValue({ enabled: v })
+      if (v === false) {
+        setEnabledValue(false)
+        form.setFieldsValue({ enabled: false })
+        return
+      }
+
+      // Validate the form before probing so the user sees a
+      // meaningful "fill in X first" toast instead of a probe error
+      // about an empty command or URL.
+      try {
+        await form.validateFields()
+      } catch {
+        setEnabledValue(false)
+        form.setFieldsValue({ enabled: false })
+        return
+      }
+      const values = form.getFieldsValue()
+
+      setTogglingEnable(true)
+      try {
+        // Build a no-id TestMcpConnectionRequest from form values.
+        // No `id` field → backend treats it as a one-shot ephemeral
+        // probe (spawn for stdio / connect for http / no
+        // persistence / no health-column writes). OAuth client
+        // secret threading matches the form's oauth_* fields.
+        const oauth = values.oauth_enabled
+          ? {
+              client_id: (values.oauth_client_id ?? '').trim(),
+              client_secret: values.oauth_client_secret ?? '',
+              scopes: (values.oauth_scopes ?? '').trim() || null,
+            }
+          : undefined
+        const payload: TestMcpConnectionRequest = {
+          transport_type: values.transport_type,
+          command: values.command || undefined,
+          args: Array.isArray(values.args) ? values.args : [],
+          environment_variables_entries:
+            values.environment_variables_entries ?? [],
+          url: values.url || undefined,
+          headers_entries: values.headers_entries ?? [],
+          timeout_seconds: values.timeout_seconds ?? 30,
+          oauth,
+        }
+        const result =
+          mode === 'create-system'
+            ? await Stores.SystemMcpServer.testSystemServerConnection(payload)
+            : await Stores.McpServer.testMcpServerConnection(payload)
+        if (result.success) {
+          setEnabledValue(true)
+          form.setFieldsValue({ enabled: true })
+          message.success(
+            result.message || 'Connection test passed — enabled in form',
+          )
+        } else {
+          setEnabledValue(false)
+          form.setFieldsValue({ enabled: false })
+          message.error({
+            content:
+              result.message ||
+              'Connection test failed; server will be created disabled',
+            duration: 8,
+          })
+        }
+      } catch (error) {
+        setEnabledValue(false)
+        form.setFieldsValue({ enabled: false })
+        const reason =
+          error instanceof Error && error.message
+            ? error.message
+            : 'Connection test failed'
+        message.error({ content: reason, duration: 8 })
+      } finally {
+        setTogglingEnable(false)
+      }
       return
     }
     if (!editingServer) return

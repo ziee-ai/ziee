@@ -1822,11 +1822,11 @@
             }
           },
           "201": {
-            "description": "LLM Repository database entity\n Represents a row in the llm_repositories table",
+            "description": "Wraps a created/updated `LlmRepository` with an optional connection\n warning, used by the create handler when the probe failed and the\n row was auto-downgraded to `enabled: false`. `None` on success\n (probe passed, or `enabled: false` was requested so no probe ran).",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LlmRepository"
+                  "$ref": "#/components/schemas/LlmRepositoryWithHealthWarning"
                 }
               }
             }
@@ -1899,6 +1899,72 @@
           },
           "401": {
             "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/llm-repositories/{repository_id}/test": {
+      "post": {
+        "tags": [
+          "LLM Repositories"
+        ],
+        "summary": "Test an existing repository's connection and record the outcome",
+        "description": "Probe a saved repository's connection. Form overrides in the request body merge over the persisted row; empty secret fields fall back to the saved secret. The outcome is recorded to `last_health_check_*` columns. A currently-enabled row that fails the probe is auto-disabled.",
+        "operationId": "LlmRepository.testById",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLlmRepositoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit existing LLM repository information and authentication",
+                        "name": "LlmRepositoriesEdit",
+                        "value": "llm_repositories::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_repositories::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestRepositoryConnectionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Repository not found"
           }
         },
         "security": [
@@ -5658,7 +5724,7 @@
           "LLM Models - Downloads"
         ],
         "summary": "Subscribe to download progress via SSE",
-        "description": "Real-time Server-Sent Events stream of download progress. Updates every 2 seconds. Auto-closes when no active downloads remain.",
+        "description": "Real-time Server-Sent Events stream of download progress. Updates every 1 second. Auto-closes when no active downloads remain.",
         "operationId": "LlmModel.subscribeDownloadProgress",
         "responses": {
           "403": {
@@ -18974,6 +19040,23 @@
             "type": "string",
             "format": "uuid"
           },
+          "last_health_check_at": {
+            "description": "Connection-health columns (migration 83). Populated by\n `connection_health::probe` at four points: boot startup\n check, create-flow probe, update-flow enable-transition\n probe, and the explicit form-based test path.\n `last_health_check_at` is NULL on rows that have never been\n probed (default status \"untested\"). UI renders an Alert\n when `last_health_check_status == \"unhealthy\"`.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_health_check_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_health_check_status": {
+            "type": "string"
+          },
           "name": {
             "type": "string"
           },
@@ -18994,7 +19077,8 @@
           "enabled",
           "built_in",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "last_health_check_status"
         ]
       },
       "LlmRepositoryListResponse": {
@@ -19024,6 +19108,81 @@
           "total",
           "page",
           "per_page"
+        ]
+      },
+      "LlmRepositoryWithHealthWarning": {
+        "description": "Wraps a created/updated `LlmRepository` with an optional connection\n warning, used by the create handler when the probe failed and the\n row was auto-downgraded to `enabled: false`. `None` on success\n (probe passed, or `enabled: false` was requested so no probe ran).",
+        "type": "object",
+        "properties": {
+          "auth_config": {
+            "$ref": "#/components/schemas/RepositoryAuthConfig"
+          },
+          "auth_type": {
+            "type": "string"
+          },
+          "built_in": {
+            "type": "boolean"
+          },
+          "connection_warning": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProbeFailure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "last_health_check_at": {
+            "description": "Connection-health columns (migration 83). Populated by\n `connection_health::probe` at four points: boot startup\n check, create-flow probe, update-flow enable-transition\n probe, and the explicit form-based test path.\n `last_health_check_at` is NULL on rows that have never been\n probed (default status \"untested\"). UI renders an Alert\n when `last_health_check_status == \"unhealthy\"`.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_health_check_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_health_check_status": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "url",
+          "auth_type",
+          "auth_config",
+          "enabled",
+          "built_in",
+          "created_at",
+          "updated_at",
+          "last_health_check_status"
         ]
       },
       "LoginRequest": {
@@ -19396,22 +19555,155 @@
         "description": "Wraps a created/updated `McpServer` with an optional connection\n warning, used by the create handlers when the probe failed and\n the server was auto-downgraded to `enabled: false`. `None` on\n success (probe passed, or `enabled: false` was requested so no\n probe ran).",
         "type": "object",
         "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "args": true,
+          "command": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "connection_warning": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/ProbeFailure"
+                "$ref": "#/components/schemas/ProbeFailure2"
               },
               {
                 "type": "null"
               }
             ]
           },
-          "server": {
-            "$ref": "#/components/schemas/McpServer"
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "environment_variables": {
+            "description": "FLAT decrypted env-var map. Always populated by the repo with\n the FULLY decrypted values (plain entries merged with the\n decrypted secrets) so internal runtime callsites — stdio\n subprocess spawn, http header `${VAR}` interpolation — keep\n working unchanged. NEVER serialized — the public response\n shape is `environment_variables_entries` with secret values\n redacted to `value: None`.",
+            "writeOnly": true
+          },
+          "environment_variables_entries": {
+            "description": "Public structured view of `environment_variables` for the UI\n form editor. Per-entry secret marker; secret values redacted\n to `None`. Populated by the repo from the triple-column\n storage (`environment_variables` + `environment_variables_encrypted` +\n `environment_variables_secret_keys`).",
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/EnvVarView"
+            }
+          },
+          "headers": {
+            "description": "FLAT decrypted header map. Same write-only semantics as\n `environment_variables` — see that field's doc comment.\n `parse_header_map` runs `${VAR}` interpolation against the\n (decrypted) env map at request-build time.",
+            "writeOnly": true
+          },
+          "headers_entries": {
+            "description": "Public structured view of `headers` for the UI form editor.\n Sibling of `environment_variables_entries`.",
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/HeaderView"
+            }
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_built_in": {
+            "type": "boolean"
+          },
+          "is_system": {
+            "type": "boolean"
+          },
+          "last_health_check_at": {
+            "description": "Persisted result of the last connection probe — populated by\n `connection_health` at boot (startup health check), at\n create-time (post-create probe in `enforce_on_create`), at\n enable-transition time (probe in `enforce_on_update_transition`),\n and on every explicit \"Test Connection\" button press.\n See migration 82.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "default": null
+          },
+          "last_health_check_reason": {
+            "description": "Human reason on unhealthy. `None` on healthy / untested.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "last_health_check_status": {
+            "description": "\"untested\" | \"healthy\" | \"unhealthy\". Defaults to \"untested\"\n for freshly-created rows that have never been probed.",
+            "type": "string",
+            "default": "untested"
+          },
+          "max_concurrent_sessions": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "run_in_sandbox": {
+            "description": "Admin opt-in: launch the stdio subprocess inside the\n code_sandbox bwrap isolation. Only honored when\n `is_system && transport_type == Stdio` — the spawn path\n ignores it otherwise; the UI hides the toggle for user-owned\n or non-stdio servers. Defaults to false.",
+            "type": "boolean"
+          },
+          "supports_sampling": {
+            "type": "boolean"
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "transport_type": {
+            "$ref": "#/components/schemas/TransportType"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "usage_mode": {
+            "$ref": "#/components/schemas/UsageMode"
+          },
+          "user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           }
         },
         "required": [
-          "server"
+          "id",
+          "name",
+          "display_name",
+          "enabled",
+          "is_system",
+          "is_built_in",
+          "transport_type",
+          "args",
+          "timeout_seconds",
+          "supports_sampling",
+          "usage_mode",
+          "run_in_sandbox",
+          "created_at",
+          "updated_at"
         ]
       },
       "McpSettingsResponse": {
@@ -20914,6 +21206,19 @@
         }
       },
       "ProbeFailure": {
+        "description": "Structured probe failure carrying the underlying reason so the\n caller can surface it (in the API response, in the boot log, or\n in the UI toast).",
+        "type": "object",
+        "properties": {
+          "reason": {
+            "description": "Human-readable reason — taken verbatim from\n `test_repository_connectivity`'s `Err(String)` (timeout / 401 /\n DNS / etc.).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "ProbeFailure2": {
         "description": "Structured probe failure carrying the underlying reason so the\n caller can surface it (in the API response, in the boot log, or\n in the UI toast).",
         "type": "object",
         "properties": {

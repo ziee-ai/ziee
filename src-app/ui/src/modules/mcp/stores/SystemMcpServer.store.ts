@@ -251,9 +251,11 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
           })
 
           // See createMcpServer (user store) for the
-          // health-check-on-create wrapper rationale.
+          // health-check-on-create wrapper rationale. The response is
+          // flattened: McpServer fields at top level + optional
+          // `connection_warning` sibling.
           const wrapped = await ApiClient.McpServerSystem.create(data)
-          const newServer = wrapped.server
+          const { connection_warning: _w, ...newServer } = wrapped
 
           // Emit event after successful API call
           try {

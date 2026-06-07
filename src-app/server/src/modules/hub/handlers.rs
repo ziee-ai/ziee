@@ -1186,6 +1186,33 @@ pub async fn create_model_from_hub(
             ))
         })?;
 
+    // 2a. Block when the source repository is disabled. Mirrors the
+    // auth gate just below — without this, a download against a
+    // disabled repo would either fail later in the background (when
+    // the git/HF client tries to clone) or, worse, silently succeed
+    // because the repo's `enabled` field is purely UI state today.
+    // The UI also gates on this before clicking Download (see
+    // `ModelHubCard.tsx::handleDownload`); this is the defense-in-
+    // depth backstop for direct API calls and stale-UI snapshots.
+    if !repository.enabled {
+        return Err((
+            StatusCode::UNPROCESSABLE_ENTITY,
+            AppError::unprocessable_entity(
+                "HUB_REPOSITORY_DISABLED",
+                format!(
+                    "Downloading \"{}\" requires the \"{}\" repository to be enabled, but \
+                     it's currently disabled. Open the repository's settings and enable it.",
+                    hub_model.display_name, repository.name
+                ),
+            )
+            .with_details(serde_json::json!({
+                "repository_id": repository.id,
+                "repository_name": repository.name,
+                "settings_path": "/settings/llm-repositories",
+            })),
+        ));
+    }
+
     // 2b. Block early with clear guidance when this model needs auth but the
     // source repository has no credential configured. Without this the download
     // is spawned and only fails later in the background with an opaque git auth

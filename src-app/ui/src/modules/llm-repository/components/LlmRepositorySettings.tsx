@@ -5,6 +5,7 @@ import {
   PlusOutlined,
 } from '@ant-design/icons'
 import {
+  Alert,
   App,
   Button,
   Card,
@@ -57,15 +58,21 @@ export function LlmRepositorySettings() {
     }
 
     try {
-      const testData = {
-        name: repository.name,
-        url: repository.url,
-        auth_type: repository.auth_type,
-        auth_config: repository.auth_config,
-      }
-
-      const result =
-        await Stores.LlmRepository.testLlmRepositoryConnection(testData)
+      // Use the persisted by-id endpoint instead of the stateless
+      // `/test` route. The by-id path:
+      //   - reads the decrypted secret from the row (no need to
+      //     POST it from the client),
+      //   - records the test outcome to `last_connection_*` columns,
+      //   - emits `repository.updated` / `repository.auto_disabled`
+      //     events that the list/store auto-reload on,
+      //   - participates in the cross-surface `testing` mutex so a
+      //     drawer probe + list-page probe can't race.
+      // The stateless `testLlmRepositoryConnection` is reserved for
+      // the Add-Repository drawer path where the row doesn't exist yet.
+      const result = await Stores.LlmRepository.testLlmRepositoryById(
+        repository.id,
+        {},
+      )
 
       if (result.success) {
         message.success(
@@ -114,9 +121,19 @@ export function LlmRepositorySettings() {
   ) => {
     try {
       await Stores.LlmRepository.updateLlmRepository(repositoryId, { enabled })
+      message.success(
+        `Repository ${enabled ? 'enabled' : 'disabled'} successfully`,
+      )
     } catch (error: any) {
+      // The backend's `enforce_on_update_transition` returns 400 with
+      // a `LLM_REPOSITORY_ENABLE_FAILED_HEALTH_CHECK` code + readable
+      // reason when an enable-transition probe fails. The store
+      // re-fetches the row in this scenario (auto_disabled event), so
+      // the Switch will snap back + the Alert will render. We just
+      // surface the reason in a longer-lived toast.
       console.error('Failed to toggle repository:', error)
-      message.error(error?.message || 'Failed to toggle repository')
+      const reason = error?.message || 'Failed to toggle repository'
+      message.error({ content: reason, duration: 8 })
     }
   }
 
@@ -265,6 +282,34 @@ export function LlmRepositorySettings() {
                                     : repository.auth_type}
                           </Text>
                         </div>
+
+                        {/* Surface the last probe's failure reason
+                            inline as an Alert so the operator
+                            immediately sees what went wrong without
+                            hovering for a tooltip. Mirrors the
+                            McpServerCard pattern at lines 323-337 of
+                            McpServerCard.tsx — only renders for the
+                            unhealthy case; healthy / untested rows
+                            don't need an attention-grabbing block. */}
+                        {repository.last_health_check_status ===
+                          'unhealthy' && (
+                          <Alert
+                            type="error"
+                            showIcon
+                            className="!mt-2"
+                            message={
+                              repository.last_health_check_at
+                                ? `Connection test failed at ${new Date(
+                                    repository.last_health_check_at,
+                                  ).toLocaleString()}`
+                                : 'Connection test failed'
+                            }
+                            description={
+                              repository.last_health_check_reason ??
+                              'No reason recorded.'
+                            }
+                          />
+                        )}
                       </div>
                     </div>
                     {index < repositories.length - 1 && (

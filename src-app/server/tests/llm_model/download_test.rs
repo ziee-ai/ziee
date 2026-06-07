@@ -567,12 +567,23 @@ async fn first_auth_required_hf_model(
         .json()
         .await
         .unwrap();
+    // IDs that the bundled hub seed deliberately pins to a future ziee
+    // version (`min_ziee_version: 99.0.0`) — they exist to exercise the
+    // HUB_INCOMPATIBLE gate, but THIS test wants a "normal" model so it
+    // can reach the disabled-repo / auth-not-configured gates the test
+    // is actually about. The `/hub/models` response shape does not
+    // surface `min_ziee_version`, so the skip list lives here as a
+    // hard-coded fixture exclusion. Update when the seed changes.
+    const INCOMPATIBLE_FIXTURE_IDS: &[&str] = &["deepseek-r1-70b"];
+
     models
         .as_array()
         .unwrap()
         .iter()
         .find(|m| {
-            m["auth_required"].as_bool() == Some(true)
+            let id = m["id"].as_str().unwrap_or("");
+            !INCOMPATIBLE_FIXTURE_IDS.contains(&id)
+                && m["auth_required"].as_bool() == Some(true)
                 && m["repository_url"].as_str() == Some("https://huggingface.co")
         })
         .cloned()
@@ -651,6 +662,102 @@ async fn test_hub_download_blocked_when_repo_auth_not_configured() {
         downloads["total"].as_i64(),
         Some(0),
         "the blocked request must not create a download instance"
+    );
+}
+
+/// REPOSITORY_DISABLED gate (sibling of the auth gate above). Verifies
+/// that POST /hub/models/download bounces with 422 +
+/// HUB_REPOSITORY_DISABLED when the source repository is disabled,
+/// even if a credential is configured. Defense in depth: the
+/// frontend's `ModelHubCard::handleDownload` flow gates this before
+/// firing the request, but a direct API call (or a stale UI snapshot)
+/// must also bounce cleanly.
+#[tokio::test]
+async fn test_hub_download_blocked_when_repo_is_disabled() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_gate_disabled",
+        &[
+            "hub::models::download",
+            "hub::models::read",
+            "llm_models::create",
+            "llm_models::downloads_read",
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_repositories::read",
+            "llm_repositories::edit",
+        ],
+    )
+    .await;
+
+    let hf = get_huggingface_repository(&server, &user.token, false).await;
+    let repo_id = hf["id"].as_str().unwrap();
+    // Disable the repo via the public API (so the test exercises the
+    // same wire path the UI uses — not a direct SQL UPDATE).
+    let disable_resp = reqwest::Client::new()
+        .post(server.api_url(&format!("/llm-repositories/{}", repo_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "enabled": false }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(disable_resp.status(), StatusCode::OK);
+
+    let provider = get_local_provider(&server, &user.token).await;
+    let provider_id = provider["id"].as_str().unwrap();
+    // Any hub model that lives on the HF repo works — the disable
+    // gate runs BEFORE the auth gate, so an auth-required model
+    // still trips this first.
+    let model = first_auth_required_hf_model(&server, &user.token).await;
+    let hub_id = model["id"].as_str().unwrap();
+
+    let response = reqwest::Client::new()
+        .post(server.api_url("/hub/models/download"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "hub_id": hub_id, "provider_id": provider_id }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "disabled-repo download must 422",
+    );
+    let body: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(
+        body["error_code"].as_str(),
+        Some("HUB_REPOSITORY_DISABLED"),
+        "unexpected error body: {body}"
+    );
+    // The error details carry the repo id + settings path so the UI
+    // can route the user to the right page if they hit this gate via
+    // a direct API call.
+    assert_eq!(
+        body["details"]["repository_id"].as_str(),
+        Some(repo_id),
+        "details.repository_id should match the disabled repo: {body}"
+    );
+    assert_eq!(
+        body["details"]["settings_path"].as_str(),
+        Some("/settings/llm-repositories"),
+    );
+
+    // No download instance should have been created.
+    let downloads: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url("/llm-models/downloads"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        downloads["total"].as_i64(),
+        Some(0),
+        "the disabled-repo request must not create a download instance"
     );
 }
 

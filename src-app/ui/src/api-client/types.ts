@@ -1152,6 +1152,9 @@ export interface LlmRepository {
   created_at: string
   enabled: boolean
   id: string
+  last_health_check_at?: string
+  last_health_check_reason?: string
+  last_health_check_status: string
   name: string
   updated_at: string
   url: string
@@ -1162,6 +1165,22 @@ export interface LlmRepositoryListResponse {
   per_page: number
   repositories: LlmRepository[]
   total: number
+}
+
+export interface LlmRepositoryWithHealthWarning {
+  auth_config: RepositoryAuthConfig
+  auth_type: string
+  built_in: boolean
+  connection_warning?: ProbeFailure
+  created_at: string
+  enabled: boolean
+  id: string
+  last_health_check_at?: string
+  last_health_check_reason?: string
+  last_health_check_status: string
+  name: string
+  updated_at: string
+  url: string
 }
 
 export interface LoginRequest {
@@ -1245,8 +1264,33 @@ export interface McpServerOAuthConfigResponse {
 }
 
 export interface McpServerWithHealthWarning {
-  connection_warning?: ProbeFailure
-  server: McpServer
+  description?: string
+  args: any
+  command?: string
+  connection_warning?: ProbeFailure2
+  created_at: string
+  display_name: string
+  enabled: boolean
+  environment_variables?: any
+  environment_variables_entries?: EnvVarView[]
+  headers?: any
+  headers_entries?: HeaderView[]
+  id: string
+  is_built_in: boolean
+  is_system: boolean
+  last_health_check_at?: string
+  last_health_check_reason?: string
+  last_health_check_status?: string
+  max_concurrent_sessions?: number
+  name: string
+  run_in_sandbox: boolean
+  supports_sampling: boolean
+  timeout_seconds: number
+  transport_type: TransportType
+  updated_at: string
+  url?: string
+  usage_mode: UsageMode
+  user_id?: string
 }
 
 export interface McpSettingsResponse {
@@ -1565,6 +1609,10 @@ export interface PreviewQuery {
 }
 
 export interface ProbeFailure {
+  reason: string
+}
+
+export interface ProbeFailure2 {
   reason: string
 }
 
@@ -2786,6 +2834,7 @@ export const ApiEndpoints = {
   'LlmRepository.get': 'GET /api/llm-repositories/{repository_id}',
   'LlmRepository.list': 'GET /api/llm-repositories',
   'LlmRepository.test': 'POST /api/llm-repositories/test',
+  'LlmRepository.testById': 'POST /api/llm-repositories/{repository_id}/test',
   'LlmRepository.update': 'POST /api/llm-repositories/{repository_id}',
   'LocalLlmProxy.chatCompletions': 'POST /api/local-llm/v1/chat/completions',
   'LocalLlmProxy.embeddings': 'POST /api/local-llm/v1/embeddings',
@@ -3029,6 +3078,7 @@ export type ApiEndpointParameters = {
   'LlmRepository.get': { repository_id: string }
   'LlmRepository.list': PaginationQuery
   'LlmRepository.test': TestRepositoryConnectionRequest
+  'LlmRepository.testById': { repository_id: string } & UpdateLlmRepositoryRequest
   'LlmRepository.update': { repository_id: string } & UpdateLlmRepositoryRequest
   'LocalLlmProxy.chatCompletions': void
   'LocalLlmProxy.embeddings': void
@@ -3267,11 +3317,12 @@ export type ApiEndpointResponses = {
   'LlmProvider.rotateProxyToken': RotateProxyTokenResponse
   'LlmProvider.saveUserApiKey': void
   'LlmProvider.update': LlmProvider
-  'LlmRepository.create': LlmRepository
+  'LlmRepository.create': LlmRepositoryWithHealthWarning
   'LlmRepository.delete': void
   'LlmRepository.get': LlmRepository
   'LlmRepository.list': LlmRepositoryListResponse
   'LlmRepository.test': TestRepositoryConnectionResponse
+  'LlmRepository.testById': TestRepositoryConnectionResponse
   'LlmRepository.update': LlmRepository
   'LocalLlmProxy.chatCompletions': void
   'LocalLlmProxy.embeddings': void
