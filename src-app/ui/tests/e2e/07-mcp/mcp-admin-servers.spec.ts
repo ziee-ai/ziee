@@ -611,3 +611,68 @@ test.describe('MCP - Admin System Servers', () => {
     await expect(page.getByText(/filesystem-oriented/i)).toBeVisible()
   })
 })
+
+test.describe('MCP - Admin System Servers: sandbox flavor + command tiers', () => {
+  test.beforeEach(async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    await goToMcpAdminPage(page, baseURL)
+    await waitForMcpAdminPageLoad(page)
+  })
+
+  test('flavor picker appears only when run-in-sandbox is on, defaults to full', async ({ page }) => {
+    await openAddServerDrawer(page, true)
+    const drawer = page.locator('.ant-drawer.ant-drawer-open')
+
+    // Hidden until the toggle is on.
+    await expect(drawer.getByText('Sandbox flavor')).toHaveCount(0)
+
+    await page.getByLabel('Run in sandbox').click()
+
+    await expect(drawer.getByText('Sandbox flavor')).toBeVisible()
+    // Default selection is `full` (the Select's value renders inside the
+    // form-item; antd v6 uses .ant-select-content).
+    await expect(
+      drawer.locator('.ant-form-item:has-text("Sandbox flavor")'),
+    ).toContainText('full')
+  })
+
+  test('host allowlist blocks a disallowed command unless run-in-sandbox is on', async ({ page }) => {
+    await openAddServerDrawer(page, true)
+    const drawer = page.locator('.ant-drawer.ant-drawer-open')
+
+    await page.getByLabel('Name', { exact: true }).fill(`deno-${Date.now()}`)
+    await page.getByLabel('Display Name').fill('Deno Server')
+    await page.getByLabel('Command').fill('deno')
+
+    // Host tier (run-in-sandbox off) → submit is blocked with an inline error.
+    await drawer.locator('.ant-btn-primary').click()
+    await expect(drawer.getByText(/not allowed on the host/i)).toBeVisible()
+    await expect(drawer).toBeVisible() // drawer stays open (save blocked)
+
+    // Enabling run-in-sandbox lifts the restriction; the error clears.
+    await page.getByLabel('Run in sandbox').click()
+    await expect(drawer.getByText(/not allowed on the host/i)).toHaveCount(0)
+
+    // Save disabled so the create-time connection probe doesn't spawn the command.
+    await page.getByLabel('Enabled').click()
+    await drawer.locator('.ant-btn-primary').click()
+    // A successful save closes the drawer (robust success signal).
+    await expect(page.locator('.ant-drawer.ant-drawer-open')).toHaveCount(0, { timeout: 10000 })
+  })
+
+  test('an allowlisted host command (uvx) saves without sandbox', async ({ page }) => {
+    await openAddServerDrawer(page, true)
+    const drawer = page.locator('.ant-drawer.ant-drawer-open')
+
+    await page.getByLabel('Name', { exact: true }).fill(`uvx-${Date.now()}`)
+    await page.getByLabel('Display Name').fill('Uvx Server')
+    await page.getByLabel('Command').fill('uvx')
+
+    // Disable so the create-time probe (which would spawn uvx) doesn't run.
+    await page.getByLabel('Enabled').click()
+    await drawer.locator('.ant-btn-primary').click()
+    // A successful save closes the drawer (robust success signal).
+    await expect(page.locator('.ant-drawer.ant-drawer-open')).toHaveCount(0, { timeout: 10000 })
+  })
+})

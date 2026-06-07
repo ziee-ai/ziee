@@ -39,6 +39,7 @@ fn server_config(url: String) -> McpServer {
         max_concurrent_sessions: None,
         is_built_in: false,
         run_in_sandbox: false,
+        sandbox_flavor: "full".to_string(),
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
         last_health_check_at: None,

@@ -497,6 +497,49 @@ pub struct EnvironmentsResponse {
     pub available: Vec<EnvironmentInfo>,
 }
 
+/// REST response for the MCP-server form's sandbox flavor picker:
+/// the selectable rootfs flavors plus the host command allowlist.
+#[derive(Debug, serde::Serialize, schemars::JsonSchema)]
+pub struct SandboxFlavorsResponse {
+    pub available: Vec<EnvironmentInfo>,
+    /// Commands allowed for a NON-sandboxed (host) stdio MCP server. A
+    /// sandboxed server (run_in_sandbox) may use any command.
+    pub host_allowed_commands: Vec<String>,
+}
+
+/// GET /code-sandbox/flavors — powers the MCP server form's flavor
+/// picker. Returns KNOWN_FLAVORS + the host command allowlist.
+pub async fn get_sandbox_flavors_handler(
+    _auth: RequirePermissions<(crate::modules::mcp::permissions::McpServersAdminRead,)>,
+) -> crate::common::ApiResult<Json<SandboxFlavorsResponse>> {
+    let env = build_environments_response();
+    let resp = SandboxFlavorsResponse {
+        available: env.available,
+        host_allowed_commands: crate::modules::mcp::client::stdio::HOST_ALLOWED_COMMANDS
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+    };
+    Ok((StatusCode::OK, Json(resp)))
+}
+
+pub fn get_sandbox_flavors_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
+    with_permission::<(crate::modules::mcp::permissions::McpServersAdminRead,)>(op)
+        .id("CodeSandbox.listFlavors")
+        .tag("Code Sandbox")
+        .summary("List selectable sandbox rootfs flavors + host command allowlist")
+        .description(
+            "Powers the MCP server form's sandbox flavor picker. Returns the \
+             KNOWN_FLAVORS catalog (name / description / approximate size / cached) \
+             plus the host-path command allowlist a non-sandboxed stdio server \
+             must use.",
+        )
+        .response::<200, Json<SandboxFlavorsResponse>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+}
+
 
 /// Build the MCP `content[]` array for a tool result.
 ///

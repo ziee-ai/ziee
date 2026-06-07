@@ -320,3 +320,168 @@ async fn list_system_servers_includes_run_in_sandbox() {
     assert_eq!(a["run_in_sandbox"], true);
     assert_eq!(b["run_in_sandbox"], false);
 }
+
+// ---------------------------------------------------------------------
+// sandbox_flavor column + tiered command allowlist
+// ---------------------------------------------------------------------
+
+async fn admin_with(server: &TestServer, perms: &[&str]) -> test_helpers::TestUser {
+    test_helpers::create_user_with_permissions(server, "admin", perms).await
+}
+
+#[tokio::test]
+async fn create_system_server_defaults_sandbox_flavor_to_full() {
+    let server = TestServer::start().await;
+    let admin = admin_with(&server, &["mcp_servers_admin::create"]).await;
+
+    // No sandbox_flavor key → column default 'full'.
+    let body: serde_json::Value = reqwest::Client::new()
+        .post(&server.api_url("/mcp/system-servers"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "name": "flavor_default", "display_name": "Default Flavor",
+            "enabled": false, "transport_type": "stdio", "command": "uvx",
+            "args": [], "environment_variables": {}, "timeout_seconds": 30,
+            "run_in_sandbox": true,
+        }))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    // create wraps the server in { server, connection_warning }.
+    assert_eq!(body["server"]["sandbox_flavor"], "full");
+}
+
+#[tokio::test]
+async fn create_system_server_persists_and_validates_sandbox_flavor() {
+    let server = TestServer::start().await;
+    let admin = admin_with(&server, &["mcp_servers_admin::create"]).await;
+    let client = reqwest::Client::new();
+
+    // Explicit 'minimal' round-trips.
+    let body: serde_json::Value = client
+        .post(&server.api_url("/mcp/system-servers"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "name": "flavor_minimal", "display_name": "Min", "enabled": false,
+            "transport_type": "stdio", "command": "python3", "args": [],
+            "environment_variables": {}, "timeout_seconds": 30,
+            "run_in_sandbox": true, "sandbox_flavor": "minimal",
+        }))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    assert_eq!(body["server"]["sandbox_flavor"], "minimal");
+
+    // Unknown flavor → 400.
+    let resp = client
+        .post(&server.api_url("/mcp/system-servers"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "name": "flavor_bogus", "display_name": "Bogus", "enabled": false,
+            "transport_type": "stdio", "command": "python3", "args": [],
+            "environment_variables": {}, "timeout_seconds": 30,
+            "run_in_sandbox": true, "sandbox_flavor": "does-not-exist",
+        }))
+        .send().await.unwrap();
+    assert_eq!(resp.status(), 400, "unknown flavor must be rejected");
+}
+
+#[tokio::test]
+async fn host_tier_rejects_disallowed_command_but_sandbox_tier_allows_any() {
+    let server = TestServer::start().await;
+    let admin = admin_with(&server, &["mcp_servers_admin::create"]).await;
+    let client = reqwest::Client::new();
+    let url = server.api_url("/mcp/system-servers");
+
+    // Host tier (run_in_sandbox=false): a non-allowlisted command is rejected.
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "name": "host_deno", "display_name": "Host Deno", "enabled": false,
+            "transport_type": "stdio", "command": "deno", "args": [],
+            "environment_variables": {}, "timeout_seconds": 30,
+            "run_in_sandbox": false,
+        }))
+        .send().await.unwrap();
+    assert_eq!(resp.status(), 400, "deno not allowed on the host path");
+
+    // Same command, but sandboxed → accepted (bwrap isolation is the guard).
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "name": "sandbox_deno", "display_name": "Sandbox Deno", "enabled": false,
+            "transport_type": "stdio", "command": "deno", "args": [],
+            "environment_variables": {}, "timeout_seconds": 30,
+            "run_in_sandbox": true, "sandbox_flavor": "full",
+        }))
+        .send().await.unwrap();
+    assert_eq!(resp.status(), 201, "any command allowed when sandboxed");
+
+    // An allowlisted host command (uvx) is fine without sandbox.
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "name": "host_uvx", "display_name": "Host uvx", "enabled": false,
+            "transport_type": "stdio", "command": "uvx", "args": [],
+            "environment_variables": {}, "timeout_seconds": 30,
+            "run_in_sandbox": false,
+        }))
+        .send().await.unwrap();
+    assert_eq!(resp.status(), 201);
+}
+
+#[tokio::test]
+async fn user_create_rejects_disallowed_host_command() {
+    // User servers always run on the host (run_in_sandbox ignored), so a
+    // non-allowlisted command must be rejected even though the user sends
+    // run_in_sandbox=true.
+    let server = TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(
+        &server, "user", &["mcp_servers::create"],
+    ).await;
+
+    let resp = reqwest::Client::new()
+        .post(&server.api_url("/mcp/servers"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "name": "user_deno", "display_name": "User Deno", "enabled": false,
+            "transport_type": "stdio", "command": "deno", "args": [],
+            "environment_variables": {}, "timeout_seconds": 30,
+            "run_in_sandbox": true,
+        }))
+        .send().await.unwrap();
+    assert_eq!(resp.status(), 400);
+}
+
+#[tokio::test]
+async fn update_system_server_can_change_sandbox_flavor() {
+    let server = TestServer::start().await;
+    let admin = admin_with(
+        &server,
+        &["mcp_servers_admin::create", "mcp_servers_admin::edit"],
+    ).await;
+    let client = reqwest::Client::new();
+
+    let created: serde_json::Value = client
+        .post(&server.api_url("/mcp/system-servers"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "name": "flavor_update", "display_name": "FU", "enabled": false,
+            "transport_type": "stdio", "command": "uvx", "args": [],
+            "environment_variables": {}, "timeout_seconds": 30,
+            "run_in_sandbox": true, "sandbox_flavor": "full",
+        }))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    let id = created["server"]["id"].as_str().unwrap();
+    assert_eq!(created["server"]["sandbox_flavor"], "full");
+
+    let updated: serde_json::Value = client
+        .put(&server.api_url(&format!("/mcp/system-servers/{}", id)))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "sandbox_flavor": "minimal" }))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    assert_eq!(updated["sandbox_flavor"], "minimal");
+}

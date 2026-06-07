@@ -761,6 +761,9 @@ async fn build_mcp_server_create_from_hub(
         // the option only honors admin/system servers when set
         // explicitly via the native admin form.
         run_in_sandbox: None,
+        // Defaults to `full` (the DB column default) when the admin
+        // later enables run_in_sandbox via the native form.
+        sandbox_flavor: None,
     };
 
     // Validation MUST run before any DB write so the `replace_existing`

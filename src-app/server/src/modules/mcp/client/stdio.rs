@@ -18,8 +18,13 @@ use crate::modules::code_sandbox::mcp_spawn::{
 use crate::modules::mcp::models::{McpServer, TransportType};
 use crate::modules::mcp::utils::embedded;
 
-// Security: Command allowlist (Phase 1)
-const ALLOWED_COMMANDS: &[&str] = &["npx", "uvx", "python", "python3", "node", "deno"];
+// Security: command allowlist for the HOST (native) spawn path only.
+// These are the launchers `resolve_command` rewrites to the bundled
+// bun/uv binaries. The sandboxed path (connect_sandboxed) does NOT use
+// this list — bwrap isolation lets it run any command resolved against
+// the rootfs PATH. `deno` is intentionally excluded: it is not bundled,
+// so there's no host runtime for it.
+pub(crate) const HOST_ALLOWED_COMMANDS: &[&str] = &["npx", "uvx", "python", "python3", "node"];
 
 // Security: Environment variable blocklist (Phase 1)
 const BLOCKED_ENV_VARS: &[&str] = &[
@@ -231,13 +236,10 @@ impl StdioMcpClient {
         let cmd = self.server_config.command.as_ref().ok_or_else(|| {
             AppError::bad_request("MISSING_COMMAND", "Missing command")
         })?;
-        if !ALLOWED_COMMANDS.contains(&cmd.as_str()) {
-            return Err(AppError::bad_request(
-                "INVALID_COMMAND",
-                format!("Command '{}' not in allowlist {:?}", cmd, ALLOWED_COMMANDS),
-            ));
-        }
-        let (resolved_command, prepended_args) = resolve_command(cmd)?;
+        // No host allowlist here: the sandbox runs the command verbatim
+        // against the rootfs PATH (bwrap isolation is the guard). We do
+        // NOT rewrite to the embedded bun/uv — those are host-arch and
+        // the rootfs ships its own node/uv/python3.
         let server_args = self
             .server_config
             .args
@@ -253,10 +255,9 @@ impl StdioMcpClient {
         let req = McpSpawnRequest {
             server_id: self.server_id,
             original_command: cmd.clone(),
-            resolved_command,
-            prepended_args,
             server_args,
             extra_setenv,
+            flavor: self.server_config.sandbox_flavor.clone(),
         };
 
         let transport = mcp_spawn::start_mcp_in_sandbox(&state, req).await?;
@@ -308,11 +309,11 @@ impl StdioMcpClient {
         let cmd = self.server_config.command.as_ref()
             .ok_or_else(|| AppError::bad_request("MISSING_COMMAND", "Missing command"))?;
 
-        // Security: Validate command against allowlist
-        if !ALLOWED_COMMANDS.contains(&cmd.as_str()) {
+        // Security: Validate command against the host allowlist.
+        if !HOST_ALLOWED_COMMANDS.contains(&cmd.as_str()) {
             return Err(AppError::bad_request(
                 "INVALID_COMMAND",
-                format!("Command '{}' is not allowed. Allowed commands: {:?}", cmd, ALLOWED_COMMANDS)
+                format!("Command '{}' is not allowed on the host. Allowed commands: {:?}. Enable run-in-sandbox to use any command.", cmd, HOST_ALLOWED_COMMANDS)
             ));
         }
 
@@ -583,6 +584,7 @@ mod tests {
             usage_mode: crate::modules::mcp::models::UsageMode::Auto,
             max_concurrent_sessions: None,
             run_in_sandbox: true,
+            sandbox_flavor: "full".into(),
             created_at: Utc::now(),
             updated_at: Utc::now(),
             last_health_check_at: None,

@@ -78,6 +78,10 @@ pub struct CreateMcpServerRequest {
     /// Admin/system stdio servers only: launch inside the
     /// code_sandbox bwrap isolation. See `McpServer::run_in_sandbox`.
     pub run_in_sandbox: Option<bool>,
+
+    /// Rootfs flavor (KNOWN_FLAVORS) for the sandboxed launch. Defaults
+    /// to `full` when absent. See `McpServer::sandbox_flavor`.
+    pub sandbox_flavor: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -112,6 +116,10 @@ pub struct UpdateMcpServerRequest {
     /// Admin/system stdio servers only: launch inside the
     /// code_sandbox bwrap isolation. See `McpServer::run_in_sandbox`.
     pub run_in_sandbox: Option<bool>,
+
+    /// Rootfs flavor (KNOWN_FLAVORS) for the sandboxed launch. Defaults
+    /// to `full` when absent. See `McpServer::sandbox_flavor`.
+    pub sandbox_flavor: Option<String>,
 }
 
 /// Request to test an MCP server connection without persisting anything.
