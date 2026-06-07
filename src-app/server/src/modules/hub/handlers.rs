@@ -761,6 +761,9 @@ async fn build_mcp_server_create_from_hub(
         // the option only honors admin/system servers when set
         // explicitly via the native admin form.
         run_in_sandbox: None,
+        // Defaults to `full` (the DB column default) when the admin
+        // later enables run_in_sandbox via the native form.
+        sandbox_flavor: None,
     };
 
     // Validation MUST run before any DB write so the `replace_existing`
@@ -838,6 +841,13 @@ pub async fn create_mcp_server_from_hub(
             Err(e) => return Err(e.into()),
         }
     }
+
+    // Same tiered command + flavor validation the native create path runs
+    // (hub installs are user-owned → host tier).
+    crate::modules::mcp::handlers::validate_sandbox_fields_create(
+        false,
+        &plan.create_request,
+    )?;
 
     let server = Repos
         .mcp
@@ -1072,6 +1082,14 @@ pub async fn create_system_mcp_server_from_hub(
             Err(e) => return Err(e.into()),
         }
     }
+
+    // Same tiered command + flavor validation the native create path runs.
+    // Runs AFTER the re-install run_in_sandbox carry-over above, so a
+    // re-installed sandboxed server is correctly treated as sandbox-tier.
+    crate::modules::mcp::handlers::validate_sandbox_fields_create(
+        true,
+        &plan.create_request,
+    )?;
 
     let server = Repos.mcp.create_system_server(plan.create_request).await?;
 

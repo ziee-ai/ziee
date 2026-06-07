@@ -85,10 +85,11 @@ fn minimal_manifest(category: &str, id: &str) -> String {
         ),
         // MCP servers need a transport-specific required field
         // (`command` for stdio) or `validate_transport_config` rejects
-        // the install with 400. Default to a no-op `echo` so tests
-        // that install MCP servers via the mock catalog succeed.
+        // the install with 400. Use `npx` — a host-allowed launcher
+        // (HOST_ALLOWED_COMMANDS) — so install passes the tiered command
+        // validation for a non-sandboxed (host) server.
         "mcp-server" => format!(
-            "id: {id}\nname: {id}\ndisplay_name: {id}\ntransport_type: stdio\ncommand: echo\nargs: [\"{id}\"]\n"
+            "id: {id}\nname: {id}\ndisplay_name: {id}\ntransport_type: stdio\ncommand: npx\nargs: [\"{id}\"]\n"
         ),
         _ => format!("id: {id}\nname: {id}\ndisplay_name: {id}\n"),
     }

@@ -6,7 +6,7 @@ mod event_handlers;
 pub mod events;
 pub(crate) mod handlers;
 mod models;
-mod permissions;
+pub(crate) mod permissions;
 pub mod project_extension;
 mod repository;
 mod routes;

@@ -226,6 +226,12 @@ pub struct McpServer {
     /// or non-stdio servers. Defaults to false.
     pub run_in_sandbox: bool,
 
+    /// Rootfs flavor (KNOWN_FLAVORS, e.g. `minimal`/`full`) used when
+    /// `run_in_sandbox` launches this stdio server inside the
+    /// code_sandbox. Defaults to `full` (the flavor that ships Node +
+    /// uv + python3 + R). Ignored when not sandboxed.
+    pub sandbox_flavor: String,
+
     /// Persisted result of the last connection probe — populated by
     /// `connection_health` at boot (startup health check), at
     /// create-time (post-create probe in `enforce_on_create`), at

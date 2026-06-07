@@ -13,6 +13,7 @@ import {
   type SetMcpServerOAuthConfigRequest,
   type TestMcpConnectionRequest,
   type TestMcpConnectionResponse,
+  type SandboxFlavorsResponse,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
 import { useSystemMcpServersStore } from '@/modules/mcp/stores/SystemMcpServer.store'
@@ -82,6 +83,10 @@ interface McpState {
   getMcpServerOAuthConfig: (
     serverId: string,
   ) => Promise<McpServerOAuthConfigResponse | null>
+  // Lazily fetched by the system-server form to populate the sandbox
+  // flavor picker + mirror the host command allowlist. Admin-gated
+  // endpoint; only called from create-system/edit-system mode.
+  getSandboxFlavors: () => Promise<SandboxFlavorsResponse>
   setMcpServerOAuthConfig: (
     serverId: string,
     config: SetMcpServerOAuthConfigRequest,
@@ -488,6 +493,10 @@ export const useMcpStore = create<McpState>()(
 
         getMcpServerOAuthConfig: async (serverId: string) => {
           return await ApiClient.McpServer.getOAuthConfig({ id: serverId })
+        },
+
+        getSandboxFlavors: async () => {
+          return await ApiClient.CodeSandbox.listFlavors()
         },
 
         setMcpServerOAuthConfig: async (

@@ -36,7 +36,7 @@ pub const KNOWN_FLAVORS: &[FlavorMetadata] = &[
     },
     FlavorMetadata {
         flavor: "full",
-        description: "minimal + numpy + pandas + torch + R 4.4 + tidyverse + Node 22 + ts-node.",
+        description: "minimal + numpy + pandas + torch + R 4.4 + tidyverse + Node 24 (npx) + uv (uvx) + ts-node.",
         approximate_size_mb: 853,
     },
 ];

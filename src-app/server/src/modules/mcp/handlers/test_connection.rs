@@ -172,6 +172,7 @@ pub(crate) fn build_ephemeral_server(
         max_concurrent_sessions: None,
         // Connectivity probe only — never routed through the code_sandbox.
         run_in_sandbox: false,
+        sandbox_flavor: "full".to_string(),
         last_health_check_at: None,
         last_health_check_status: "untested".to_string(),
         last_health_check_reason: None,
