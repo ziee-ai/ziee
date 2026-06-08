@@ -78,6 +78,26 @@ pub async fn enforce_on_create(
         });
     }
 
+    // Test-only escape hatch (debug builds): some E2E specs need to
+    // create a fake-URL MCP server and keep `enabled=true` to exercise
+    // the chip-row / status flows. The probe would normally fail and
+    // auto-disable; bypassing leaves the server in the requested state.
+    // Mirrors `ZIEE_DISABLE_MODEL_VALIDATION` in `llm_local_runtime`.
+    // Compiled out of release builds via `cfg!(debug_assertions)` so
+    // production can never silently skip the probe.
+    if cfg!(debug_assertions)
+        && std::env::var("ZIEE_DISABLE_MCP_HEALTH_CHECK").as_deref() == Ok("1")
+    {
+        tracing::warn!(
+            server_id = %server.id,
+            "mcp::health: ZIEE_DISABLE_MCP_HEALTH_CHECK=1 — skipping create probe",
+        );
+        return Ok(McpServerWithHealthWarning {
+            server,
+            connection_warning: None,
+        });
+    }
+
     match probe(pool, &server).await {
         Ok(()) => {
             // Don't fail the create on a record_health_check error —
@@ -152,6 +172,19 @@ pub async fn enforce_on_update_transition(
 ) -> Result<super::models::McpServer, AppError> {
     let transitioned_to_enabled = persisted.enabled && !old_enabled;
     if !transitioned_to_enabled || persisted.is_built_in {
+        return Ok(persisted);
+    }
+
+    // Test-only escape hatch — see the matching block in
+    // `enforce_on_create`. `cfg!(debug_assertions)` gates it out of
+    // release builds.
+    if cfg!(debug_assertions)
+        && std::env::var("ZIEE_DISABLE_MCP_HEALTH_CHECK").as_deref() == Ok("1")
+    {
+        tracing::warn!(
+            server_id = %persisted.id,
+            "mcp::health: ZIEE_DISABLE_MCP_HEALTH_CHECK=1 — skipping enable-transition probe",
+        );
         return Ok(persisted);
     }
 

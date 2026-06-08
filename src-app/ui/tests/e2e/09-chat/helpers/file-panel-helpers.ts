@@ -33,9 +33,14 @@ export const FILE_ASSETS = {
   pdf: path.join(TEST_DATA_DIR, 'test.pdf'),
   xlsx: path.join(TEST_DATA_DIR, 'test.xlsx'),
   html: path.join(TEST_DATA_DIR, 'test.html'),
-  // .docx is processed by the backend but has no frontend viewer registered.
-  // We use it for the "Cannot preview this file" empty-state test.
-  unknown: path.join(TEST_DATA_DIR, 'test.docx'),
+  // PowerPoint (.ppt) is processed by the backend's OfficeProcessor
+  // (it produces a previewable PDF) but the FRONTEND viewer registry
+  // has no rule for the PPT MIME or extension — PdfViewer registers
+  // pdf/docx/doc/rtf/odt only. That's the condition the "Cannot
+  // preview this file" empty-state test wants to exercise. The
+  // previously-used `.docx` stopped working once PdfViewer added docx
+  // coverage (the PdfBody now renders for .docx end-to-end).
+  unknown: path.join(TEST_DATA_DIR, 'test.ppt'),
 } as const
 
 // ─── File attachment via the + dropdown ──────────────────────────────────────

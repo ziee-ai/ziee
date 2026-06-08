@@ -534,7 +534,7 @@ test.describe('Chat - Right Panel + File Viewers', () => {
     // .docx is processed by the backend (so the upload succeeds) but has
     // no frontend viewer registered → FilePanel renders the empty state.
     await attachAndSend(page, FILE_ASSETS.unknown, 'unknown viewer')
-    await openFileInPanel(page, 'test.docx')
+    await openFileInPanel(page, 'test.ppt')
 
     await expect(page.locator('[data-testid="cannot-preview"]')).toBeVisible({
       timeout: 10000,

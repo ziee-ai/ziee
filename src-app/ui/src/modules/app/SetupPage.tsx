@@ -1,3 +1,4 @@
+import React from 'react'
 import { Card, Form, Input, Button, Typography, Alert } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core'
@@ -5,19 +6,25 @@ import { Stores } from '@/core'
 const { Title, Paragraph } = Typography
 
 export default function SetupPage() {
-  const { isSettingUpAdmin, setupError } = Stores.App
+  const { needsSetup, isSettingUpAdmin, setupError } = Stores.App
   const navigate = useNavigate()
   const [form] = Form.useForm()
 
-  // No cross-tab redirect useEffect on `needsSetup === false`:
-  // setupAdmin flips needsSetup BEFORE the in-onFinish
-  // authenticateUser call sets Auth.isLoading=true. Any useEffect
-  // here would race against that microtask gap, fire navigate('/'),
-  // unmount the page mid-fetch, and abort the /me request inside
-  // authenticateUser with "Failed to fetch". The post-setup redirect
-  // is owned by onFinish below; cross-tab completion is left to the
-  // user (the rare-edge UX is "refresh the tab", not silent
-  // navigation that loses the half-filled form anyway).
+  // Redirect away if setup is already done (admin exists). Two paths
+  // benefit:
+  //   1. Cross-tab: tab A still on /setup when tab B completes setup.
+  //   2. Direct nav: tests / users hitting /setup when admin already
+  //      exists (e.g. an API-only setup happened before the page load).
+  //
+  // The earlier race (this navigate firing mid-onFinish and aborting
+  // the in-flight /me from authenticateUser) is now defused upstream:
+  // Auth.store's catch keeps the token across a TypeError/Failed-to-
+  // fetch (abort) so the next mount can retry. Re-enabled here.
+  React.useEffect(() => {
+    if (needsSetup === false) {
+      navigate('/', { replace: true })
+    }
+  }, [needsSetup, navigate])
 
   const onFinish = async (values: any) => {
     try {

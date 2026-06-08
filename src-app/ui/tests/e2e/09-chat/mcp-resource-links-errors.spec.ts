@@ -114,8 +114,11 @@ test.describe('Inline file previews — error + security paths', () => {
     const body = page
       .locator('[data-testid="inline-file-preview"] [data-testid="inline-file-preview-body"]')
       .first()
-    // RawCodeView uses `.whitespace-pre` divs, not a `<pre>` element.
-    await expect(body.locator('.whitespace-pre').first()).toBeVisible({ timeout: 10000 })
+    // RawCodeView now renders via shiki: outer wrapper is the
+    // `raw-code-view` testid; shiki injects `<pre class="shiki ...">`
+    // inside. The old `.whitespace-pre` was from an earlier
+    // pre-shiki layout.
+    await expect(body.locator('[data-testid="raw-code-view"]')).toBeVisible({ timeout: 10000 })
     expect(pageErrors).toEqual([])
   })
 
