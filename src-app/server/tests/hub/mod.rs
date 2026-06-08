@@ -67,78 +67,12 @@ async fn test_get_hub_models_requires_permission() {
     );
 }
 
-// Locale tests are deprecated by the unified catalog: the new hub ships
-// English-only (Phase 1 plan). Localization (per-language manifest
-// overrides) is deferred — until it returns, these tests would fail
-// against the seed catalog where every description is English.
-#[tokio::test]
-#[ignore = "locale support deferred — new catalog is English-only at v1"]
-async fn test_get_hub_models_with_locale() {
-    let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "hub_user",
-        &["hub::models::read"],
-    )
-    .await;
-
-    // Test English locale (default)
-    let url_en = server.api_url("/hub/models?lang=en");
-    let response_en = reqwest::Client::new()
-        .get(&url_en)
-        .header("Authorization", format!("Bearer {}", user.token))
-        .send()
-        .await
-        .expect("Request failed");
-
-    assert_eq!(response_en.status(), 200);
-    let body_en: serde_json::Value = response_en.json().await.expect("Failed to parse JSON");
-
-    // Test Vietnamese locale
-    let url_vi = server.api_url("/hub/models?lang=vi");
-    let response_vi = reqwest::Client::new()
-        .get(&url_vi)
-        .header("Authorization", format!("Bearer {}", user.token))
-        .send()
-        .await
-        .expect("Request failed");
-
-    assert_eq!(response_vi.status(), 200);
-    let body_vi: serde_json::Value = response_vi.json().await.expect("Failed to parse JSON");
-
-    // Both should have same number of models
-    assert_eq!(
-        body_en.as_array().unwrap().len(),
-        body_vi.as_array().unwrap().len(),
-        "Both locales should have same number of models"
-    );
-
-    // Verify that locale files are being loaded (check for translated content if available)
-    // Find a model that has translations in vi.json (e.g., llama-3-1-8b-instruct)
-    let models_en = body_en.as_array().unwrap();
-    let models_vi = body_vi.as_array().unwrap();
-
-    // Find llama-3-1-8b-instruct in both arrays
-    let llama_en = models_en
-        .iter()
-        .find(|m| m.get("id").and_then(|v| v.as_str()) == Some("llama-3-1-8b-instruct"));
-    let llama_vi = models_vi
-        .iter()
-        .find(|m| m.get("id").and_then(|v| v.as_str()) == Some("llama-3-1-8b-instruct"));
-
-    if let (Some(model_en), Some(model_vi)) = (llama_en, llama_vi) {
-        let desc_en = model_en.get("description").and_then(|v| v.as_str());
-        let desc_vi = model_vi.get("description").and_then(|v| v.as_str());
-
-        // If both have descriptions, they should be different (Vietnamese translation)
-        if desc_en.is_some() && desc_vi.is_some() {
-            assert_ne!(
-                desc_en, desc_vi,
-                "Descriptions should be translated for llama-3-1-8b-instruct"
-            );
-        }
-    }
-}
+// `test_get_hub_models_with_locale` deleted: the unified hub
+// catalog (Phase 1) ships English-only; per-language manifest
+// overrides were never re-implemented. The test asserted a feature
+// that doesn't exist, so it's gone rather than `#[ignore]`'d. When
+// localization returns, write a fresh test against whatever shape it
+// ships in.
 
 #[tokio::test]
 async fn test_get_hub_models_response_structure() {
