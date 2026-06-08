@@ -75,6 +75,7 @@ fn with_prlimit_command(argv: Vec<String>, cmd: &str) -> Vec<String> {
 }
 
 #[tokio::test]
+#[ignore = "tier4: requires rootfs + Linux bwrap (or working Mac libkrun vsock); opt-in via --ignored, see CLAUDE.md"]
 async fn fork_bomb_contained_in_sandbox() {
     // The safety property we care about: a fork bomb inside the
     // sandbox MUST NOT escape / hang the dispatcher or VM. The
@@ -125,6 +126,7 @@ exit 0"#,
 }
 
 #[tokio::test]
+#[ignore = "tier4: requires rootfs + Linux bwrap (or working Mac libkrun vsock); opt-in via --ignored, see CLAUDE.md"]
 async fn memory_bomb_killed_by_as_rlimit() {
     // Allocate 4 GiB in Python with RLIMIT_AS=512MiB → MemoryError.
     // Falls back gracefully if python3 isn't present in the test rootfs
@@ -151,6 +153,7 @@ except MemoryError:
 }
 
 #[tokio::test]
+#[ignore = "tier4: requires rootfs + Linux bwrap (or working Mac libkrun vsock); opt-in via --ignored, see CLAUDE.md"]
 async fn argument_injection_after_dashdash_is_inert() {
     // Pass a "filename" containing flag-like text AFTER the --. bwrap
     // must treat it as data, not as a `--ro-bind` flag.
@@ -169,6 +172,7 @@ async fn argument_injection_after_dashdash_is_inert() {
 }
 
 #[tokio::test]
+#[ignore = "tier4: requires rootfs + Linux bwrap (or working Mac libkrun vsock); opt-in via --ignored, see CLAUDE.md"]
 async fn wall_clock_timeout_kills_command() {
     // Pass a 2-second timeout; the command sleeps 30. The backend
     // SIGKILLs and reports timed_out=true. On Linux: bwrap killed
@@ -191,6 +195,7 @@ async fn wall_clock_timeout_kills_command() {
 }
 
 #[tokio::test]
+#[ignore = "tier4: requires rootfs + Linux bwrap (or working Mac libkrun vsock); opt-in via --ignored, see CLAUDE.md"]
 async fn clearenv_wipes_inherited_env() {
     // --clearenv MUST wipe inherited env. Set a sentinel env on the
     // dispatch process, invoke through the sandbox. Without --clearenv
@@ -226,6 +231,7 @@ async fn clearenv_wipes_inherited_env() {
 }
 
 #[tokio::test]
+#[ignore = "tier4: requires rootfs + Linux bwrap (or working Mac libkrun vsock); opt-in via --ignored, see CLAUDE.md"]
 async fn etc_ssl_or_etc_ca_certificates_accessible() {
     // HTTPS-using tools need CA certs. The sandbox argv binds
     // /etc/ssl when present. On Mac the rootfs's own /etc/ssl is
@@ -256,6 +262,7 @@ async fn etc_ssl_or_etc_ca_certificates_accessible() {
 }
 
 #[tokio::test]
+#[ignore = "tier4: requires rootfs + Linux bwrap (or working Mac libkrun vsock); opt-in via --ignored, see CLAUDE.md"]
 async fn usr_bind_is_readonly() {
     // /usr is bound read-only — sandbox user MUST NOT be able to write.
     let argv = with_command(
@@ -279,6 +286,7 @@ async fn usr_bind_is_readonly() {
 }
 
 #[tokio::test]
+#[ignore = "tier4: requires rootfs + Linux bwrap (or working Mac libkrun vsock); opt-in via --ignored, see CLAUDE.md"]
 async fn synthetic_passwd_hides_host_users() {
     // Write the synthetic passwd inline (echo > /etc/passwd-test) so
     // the test doesn't need to plumb a host tempfile into the VM
@@ -306,6 +314,7 @@ async fn synthetic_passwd_hides_host_users() {
 }
 
 #[tokio::test]
+#[ignore = "tier4: requires rootfs + Linux bwrap (or working Mac libkrun vsock); opt-in via --ignored, see CLAUDE.md"]
 async fn fsize_rlimit_enforced_via_prlimit() {
     // FSIZE rlimit (256 MiB in production). Attempt to write 512 MiB
     // via `dd`; expect failure / partial write. Cheap version: 4 MiB
