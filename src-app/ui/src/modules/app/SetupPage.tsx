@@ -5,7 +5,7 @@ import { Stores } from '@/core'
 const { Title, Paragraph } = Typography
 
 export default function SetupPage() {
-  const { needsSetup, isSettingUpAdmin, setupError } = Stores.App
+  const { isSettingUpAdmin, setupError } = Stores.App
   const navigate = useNavigate()
   const [form] = Form.useForm()
 
