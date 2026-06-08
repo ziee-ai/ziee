@@ -231,8 +231,10 @@ async fn user_mode_stdio_create_is_gated_by_user_policy() {
     // coded run_in_sandbox=false. New contract (migration 84 +
     // user_policy::enforce_on_user_create): user stdio is
     // FORCE-sandboxed, requires `code_sandbox.enabled` at deployment
-    // time. With sandbox disabled in tests, the create rejects with
-    // 422 MCP_SANDBOX_DISABLED instead of silently accepting on host.
+    // time. With sandbox disabled in tests, the policy projection in
+    // `user_policy::load` filters `'stdio'` out of `allowed_transports`,
+    // so the user create rejects with 422 MCP_TRANSPORT_NOT_ALLOWED
+    // (the upstream gate) before reaching MCP_SANDBOX_DISABLED.
     let server = TestServer::start().await;
     let user = test_helpers::create_user_with_permissions(
         &server,
@@ -267,7 +269,11 @@ async fn user_mode_stdio_create_is_gated_by_user_policy() {
         "user stdio requires sandbox per user-policy; tests run without sandbox"
     );
     let body: serde_json::Value = response.json().await.unwrap();
-    assert_eq!(body["error_code"], "MCP_SANDBOX_DISABLED");
+    // With sandbox disabled, the policy load filters stdio out of
+    // `allowed_transports` so the upstream transport gate fires
+    // before the sandbox-required gate. Either is correct; the
+    // upstream code is what the user actually hits.
+    assert_eq!(body["error_code"], "MCP_TRANSPORT_NOT_ALLOWED");
 }
 
 #[tokio::test]
@@ -469,7 +475,11 @@ async fn user_create_stdio_is_gated_by_sandbox_policy_not_host_allowlist() {
         .send().await.unwrap();
     assert_eq!(resp.status(), 422, "user stdio gated by sandbox policy, not host allowlist");
     let body: serde_json::Value = resp.json().await.unwrap();
-    assert_eq!(body["error_code"], "MCP_SANDBOX_DISABLED");
+    // With sandbox disabled, the policy load filters stdio out of
+    // `allowed_transports` so the upstream transport gate fires
+    // before the sandbox-required gate. Either is correct; the
+    // point is that the user gets a 422 — NOT a host allowlist hit.
+    assert_eq!(body["error_code"], "MCP_TRANSPORT_NOT_ALLOWED");
 }
 
 #[tokio::test]
