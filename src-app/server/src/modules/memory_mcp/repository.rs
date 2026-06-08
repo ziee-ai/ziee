@@ -15,6 +15,16 @@ impl MemoryMcpRepository {
         Self { pool }
     }
 
+    /// Idempotent upsert of the built-in memory MCP server row.
+    ///
+    /// Built-ins are immutable via the API: `update_system_mcp_server`
+    /// rejects any modification of an `is_built_in` row, so the
+    /// `ON CONFLICT DO UPDATE` clause only re-asserts identity columns
+    /// (`is_system`, `is_built_in`, `transport_type`, `url`) on each boot —
+    /// the loopback `url` carries the live port, which can change between
+    /// restarts. The remaining columns (`enabled`, `display_name`,
+    /// `description`, `timeout_seconds`, `usage_mode`,
+    /// `max_concurrent_sessions`) are deliberately left untouched on conflict.
     pub async fn upsert_builtin_server(
         &self,
         server_id: Uuid,

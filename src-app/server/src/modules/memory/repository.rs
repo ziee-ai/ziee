@@ -574,18 +574,18 @@ impl MemoryRepository {
             MemoryAdminSettings,
             r#"
             UPDATE memory_admin_settings
-            SET embedding_model_id          = CASE WHEN $1::bool THEN $2 ELSE embedding_model_id END,
-                default_extraction_model_id = CASE WHEN $3::bool THEN $4 ELSE default_extraction_model_id END,
-                default_top_k               = COALESCE($5, default_top_k),
-                cosine_threshold            = COALESCE($6, cosine_threshold),
-                enabled                     = COALESCE($7, enabled),
-                soft_delete_grace_days      = COALESCE($8, soft_delete_grace_days),
-                daily_extraction_quota      = COALESCE($9, daily_extraction_quota),
-                summarize_after_tokens  = COALESCE($10, summarize_after_tokens),
-                summarizer_keep_recent_tokens      = COALESCE($11, summarizer_keep_recent_tokens),
-                full_summary_prompt         = CASE WHEN $12::bool THEN $13 ELSE full_summary_prompt END,
-                incremental_summary_prompt  = CASE WHEN $14::bool THEN $15 ELSE incremental_summary_prompt END,
-                updated_at                  = NOW()
+            SET embedding_model_id            = CASE WHEN $1::bool THEN $2 ELSE embedding_model_id END,
+                default_extraction_model_id   = CASE WHEN $3::bool THEN $4 ELSE default_extraction_model_id END,
+                default_top_k                 = COALESCE($5, default_top_k),
+                cosine_threshold              = COALESCE($6, cosine_threshold),
+                enabled                       = COALESCE($7, enabled),
+                soft_delete_grace_days        = COALESCE($8, soft_delete_grace_days),
+                daily_extraction_quota        = COALESCE($9, daily_extraction_quota),
+                summarize_after_tokens        = COALESCE($10, summarize_after_tokens),
+                summarizer_keep_recent_tokens = COALESCE($11, summarizer_keep_recent_tokens),
+                full_summary_prompt           = CASE WHEN $12::bool THEN $13 ELSE full_summary_prompt END,
+                incremental_summary_prompt    = CASE WHEN $14::bool THEN $15 ELSE incremental_summary_prompt END,
+                updated_at                    = NOW()
             WHERE id = 1
             RETURNING
                 id,

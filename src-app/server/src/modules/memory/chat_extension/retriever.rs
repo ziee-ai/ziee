@@ -342,7 +342,15 @@ pub(crate) async fn hybrid_search(
     }
     let mut fused: Vec<(Uuid, f64, String)> =
         scores.into_iter().map(|(id, (s, c))| (id, s, c)).collect();
-    fused.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    // Deterministic order: score DESC, then memory id ASC as a stable
+    // secondary key. The HashMap iteration order is randomized per-instance,
+    // so a score-only sort makes inclusion at the `take(limit)` cutoff vary
+    // run-to-run when fused scores tie (common with RRF).
+    fused.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.0.cmp(&b.0))
+    });
     Ok(fused
         .into_iter()
         .take(limit as usize)

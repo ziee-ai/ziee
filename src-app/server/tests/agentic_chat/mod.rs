@@ -18,7 +18,17 @@
 // compile-verified; first execution may need the usual debugging pass.
 // ============================================================================
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use axum::body::Bytes;
+use axum::extract::State;
+use axum::response::Response;
+use axum::routing::post;
+use axum::Router;
 use serde_json::{Value, json};
+use tokio::net::TcpListener;
+use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 use crate::common::stub_chat::StubChat;
@@ -381,5 +391,237 @@ async fn inline_self_save_persists_memory_without_continuation() {
     assert!(
         rows.iter().any(|(content, scope)| content.contains("dark mode") && scope == "conversation"),
         "a conversation-scoped memory row should be written; rows={rows:?}"
+    );
+}
+
+// ── C-and-loop-07: third-party server excluded when enable_mcp=false ──────────
+//
+// Regression guard for C-and-loop-01: when `enable_mcp=false` and a built-in
+// flag (files/memory) makes the auto-attach list non-empty, the disabled path
+// must request an EXPLICIT EMPTY server list (`Some(vec![])`), NOT `None`.
+// `None` routes to `validate_and_build_config`'s "no specific servers requested
+// → use ALL accessible servers" branch, which would inject (and, for Always-mode
+// servers, PRE-EXECUTE) every third-party MCP server the user can access despite
+// MCP being turned off.
+//
+// This test stands up a real in-process third-party HTTP MCP server exposing a
+// uniquely-named `thirdparty_ping` tool with an AtomicUsize hit counter,
+// registers it as a user-owned (accessible) server, then sends a
+// `read_first_file` chat with `enable_mcp=false`. With the fix: the built-in
+// `read_file` still attaches (≥1), but no recorded request carries
+// `thirdparty_ping`, and the third-party server records ZERO hits during the
+// send. Without the fix, the third-party server is listed (a `tools/list` hit)
+// and its tool name appears in the model's tool set.
+
+/// An in-process third-party MCP server (Streamable HTTP transport). Counts
+/// every JSON-RPC request it receives so a test can assert it was (or wasn't)
+/// reached. `Drop` aborts the background task.
+struct ThirdPartyMcpServer {
+    url: String,
+    hits: Arc<AtomicUsize>,
+    handle: JoinHandle<()>,
+}
+
+impl Drop for ThirdPartyMcpServer {
+    fn drop(&mut self) {
+        self.handle.abort();
+    }
+}
+
+impl ThirdPartyMcpServer {
+    async fn start() -> ThirdPartyMcpServer {
+        let hits = Arc::new(AtomicUsize::new(0));
+        let app = Router::new()
+            .route("/", post(third_party_dispatch))
+            .with_state(hits.clone());
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind third-party mcp server");
+        let port = listener.local_addr().unwrap().port();
+        let url = format!("http://127.0.0.1:{port}");
+        let handle = tokio::spawn(async move {
+            let _ = axum::serve(listener, app.into_make_service()).await;
+        });
+        ThirdPartyMcpServer { url, hits, handle }
+    }
+
+    /// Total JSON-RPC requests received since start (or last reset).
+    fn hits(&self) -> usize {
+        self.hits.load(Ordering::SeqCst)
+    }
+
+    /// Zero the counter — used after registration (whose create-time connection
+    /// probe legitimately hits the server) so the assertion isolates the
+    /// chat-send phase.
+    fn reset(&self) {
+        self.hits.store(0, Ordering::SeqCst);
+    }
+}
+
+/// Minimal MCP Streamable-HTTP handler: counts the hit, answers `initialize`,
+/// `tools/list` (one `thirdparty_ping` tool), and `tools/call`. Enough for the
+/// create-time probe to pass (so the row stays `enabled`) and for any leaked
+/// tool-listing during the chat loop to register as a hit.
+async fn third_party_dispatch(State(hits): State<Arc<AtomicUsize>>, body: Bytes) -> Response {
+    hits.fetch_add(1, Ordering::SeqCst);
+    let v: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+    let id = v.get("id").cloned().unwrap_or(json!(1));
+    let method = v.get("method").and_then(|m| m.as_str()).unwrap_or("");
+
+    let result = match method {
+        "initialize" => json!({
+            "protocolVersion": "2025-03-26",
+            "capabilities": { "tools": {} },
+            "serverInfo": { "name": "thirdparty-stub", "version": "0.1.0" }
+        }),
+        "tools/list" => json!({
+            "tools": [{
+                "name": "thirdparty_ping",
+                "description": "A uniquely-named third-party tool that must NOT be attached when MCP is disabled.",
+                "inputSchema": { "type": "object", "properties": {} }
+            }]
+        }),
+        "tools/call" => json!({
+            "content": [{ "type": "text", "text": "pong" }],
+            "isError": false
+        }),
+        // notifications/initialized and any other method → empty ack.
+        _ => json!({}),
+    };
+
+    let payload = json!({ "jsonrpc": "2.0", "id": id, "result": result });
+    use axum::http::StatusCode;
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/json")
+        .header("mcp-session-id", "thirdparty-session-1")
+        .body(axum::body::Body::from(payload.to_string()))
+        .unwrap()
+}
+
+/// Register `url` as a user-owned (and thus accessible) Streamable-HTTP MCP
+/// server for `user`. Returns the created server id.
+async fn register_user_http_mcp_server(server: &TestServer, user: &TestUser, url: &str) -> String {
+    let unique = &Uuid::new_v4().to_string()[..8];
+    let resp = reqwest::Client::new()
+        .post(server.api_url("/mcp/servers"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "name": format!("thirdparty_{unique}"),
+            "display_name": "Third-party stub",
+            "enabled": true,
+            "transport_type": "http",
+            "url": url,
+            "timeout_seconds": 30,
+        }))
+        .send()
+        .await
+        .expect("create user mcp server");
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::CREATED,
+        "create third-party mcp server: {}",
+        resp.text().await.unwrap_or_default()
+    );
+    // Response is `McpServerWithHealthWarning` → `{ server: {...},
+    // connection_warning? }`. Guard that the create-time probe SUCCEEDED so the
+    // row stays `enabled = true`. A downgraded (disabled) server would be
+    // excluded from the chat loop for the WRONG reason (the `s.enabled` filter,
+    // not the enable_mcp=false empty-list fix), making the exclusion assertion
+    // pass trivially. Failing loud here keeps the test honest.
+    let v: Value = resp.json().await.unwrap();
+    assert!(
+        v["connection_warning"].is_null(),
+        "third-party stub probe failed at create — the test would pass trivially; warning={}",
+        v["connection_warning"]
+    );
+    assert_eq!(
+        v["server"]["enabled"].as_bool(),
+        Some(true),
+        "third-party server must be enabled (probe passed) so the only reason it's \
+         excluded from the disabled-MCP send is the empty-list fix; body={v}"
+    );
+    v["server"]["id"].as_str().unwrap().to_string()
+}
+
+#[tokio::test]
+async fn third_party_mcp_server_excluded_when_enable_mcp_false() {
+    let server = TestServer::start().await;
+    let stub = StubChat::start().await;
+    let thirdparty = ThirdPartyMcpServer::start().await;
+    let user = power_user(&server, "agentic_excl").await;
+    let model_id = crate::common::stub_chat::register_stub_model(
+        &server, &user.token, &user.user_id, &stub.base_url, true, None,
+    )
+    .await;
+
+    // A user-owned third-party MCP server the user CAN access. Its create-time
+    // connection probe hits the loopback (that's expected) — we reset the
+    // counter afterwards so the assertion isolates the chat-send phase.
+    let _server_id = register_user_http_mcp_server(&server, &user, &thirdparty.url).await;
+
+    // A project knowledge file flags the built-in `files` server for auto-attach.
+    let project_id = create_project(&server, &user, "excl-project").await;
+    let file_id = upload_text(&server, &user, "data.txt", "MARKER_EXCL payload body").await;
+    attach_file_to_project(&server, &user, &project_id, &file_id).await;
+    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
+    attach_conversation_to_project(&server, &user, &project_id, &conv_id).await;
+
+    // Turn user MCP OFF for this conversation.
+    let resp = reqwest::Client::new()
+        .put(server.api_url(&format!("/conversations/{conv_id}/mcp-settings")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "enable_mcp": false }))
+        .send()
+        .await
+        .expect("put mcp-settings");
+    assert!(
+        resp.status().is_success(),
+        "mcp-settings: {}",
+        resp.text().await.unwrap_or_default()
+    );
+
+    // Isolate the chat-send phase from the registration probe.
+    thirdparty.reset();
+
+    let _body = send_and_collect(
+        &server,
+        &user,
+        &conv_id,
+        &branch_id,
+        &model_id,
+        "STUB_PLAN=read_first_file read it",
+    )
+    .await;
+
+    // 1. The built-in files server STILL auto-attaches (privileged, MCP-toggle
+    //    independent) — the read tool was attached + called.
+    assert!(
+        stub.requests_with_tool("read_file") >= 1,
+        "built-in files server must auto-attach despite enable_mcp=false; requests={:?}",
+        stub.requests()
+    );
+
+    // 2. The third-party tool is NOWHERE in the model's tool set. (The chat
+    //    extension prefixes third-party tool names with the server id, so we
+    //    match by substring rather than an exact name.)
+    let leaked: Vec<String> = stub
+        .requests()
+        .iter()
+        .flat_map(|r| r.tool_names.clone())
+        .filter(|name| name.contains("thirdparty_ping"))
+        .collect();
+    assert!(
+        leaked.is_empty(),
+        "no third-party tool may be attached when enable_mcp=false; leaked={leaked:?}, requests={:?}",
+        stub.requests()
+    );
+
+    // 3. The third-party server was never reached during the send (no
+    //    tools/list and no tools/call leaked to it).
+    assert_eq!(
+        thirdparty.hits(),
+        0,
+        "the third-party MCP server must record ZERO hits during a disabled-MCP send"
     );
 }

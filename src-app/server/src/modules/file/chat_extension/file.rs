@@ -97,8 +97,15 @@ impl ChatExtension for FileExtension {
         // demand via read_file/grep_files instead of us inlining everything every
         // turn. The CURRENT upload is still inlined below (the user is asking
         // about it now); older files reach the model through the read tools.
+        // Compute the tool-capability once per turn and memoize it into
+        // `context.metadata` (idempotent — whichever extension's
+        // `before_llm_call` runs first seeds it; the rest, plus the per-history
+        // `process_content_for_llm` calls, read the cached boolean).
         let tool_capable =
-            crate::modules::file::available_files::model_supports_tools(&context.metadata).await;
+            crate::modules::file::available_files::ensure_model_tools_capable(
+                &mut context.metadata,
+            )
+            .await;
         if tool_capable {
             match crate::modules::file::available_files::resolve_available_files(
                 context.conversation_id,

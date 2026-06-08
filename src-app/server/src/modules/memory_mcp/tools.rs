@@ -38,7 +38,7 @@ pub fn tool_list() -> Value {
             },
             {
                 "name": "recall",
-                "description": "Search the user's memories by semantic similarity to a query. Returns up to top_k matches.",
+                "description": "Search the user's memories by relevance to a query — hybrid semantic + full-text when an embedding model is configured, otherwise keyword/full-text only. Returns up to top_k matches; pick terms and iterate.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {

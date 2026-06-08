@@ -141,6 +141,16 @@ impl ChatExtension for ProjectExtension {
             >,
         >,
     ) -> Result<BeforeLlmAction, AppError> {
+        // Compute + memoize the model's tool-capability once per turn into
+        // `context.metadata` (idempotent — whichever extension's
+        // `before_llm_call` runs first seeds `model_tools_capable`; the rest
+        // read the cached boolean instead of re-querying the model row).
+        let tool_capable =
+            crate::modules::file::available_files::ensure_model_tools_capable(
+                &mut context.metadata,
+            )
+            .await;
+
         // Resolve project from conversation (user-scoped: never inject a
         // foreign user's project content).
         let project = match Repos
@@ -176,9 +186,8 @@ impl ChatExtension for ProjectExtension {
         // When the model is tool-capable, project knowledge files are exposed via
         // the Track A manifest + the built-in `files` read tools (injected by the
         // file extension), so we do NOT inline their content here — only the
-        // project instructions below. Non-tool-capable models keep the inline path.
-        let tool_capable =
-            crate::modules::file::available_files::model_supports_tools(&context.metadata).await;
+        // project instructions below. Non-tool-capable models keep the inline
+        // path. `tool_capable` was computed + memoized at the top of this fn.
         let project_blocks = if tool_capable {
             Vec::new()
         } else if let Some(registry) =

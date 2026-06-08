@@ -1262,13 +1262,19 @@ impl ChatExtension for McpChatExtension {
 
         // Get mcp_servers from config (only when general MCP is enabled — when
         // ONLY built-in servers are auto-attaching, we attach just those).
+        // NOTE: the disabled path requests an explicit EMPTY list, NOT None.
+        // `validate_and_build_config(.., None)` means "no specific servers
+        // requested → use ALL accessible servers", which would inject (and
+        // pre-execute, for Always-mode servers) every third-party MCP server
+        // the user can access despite MCP being turned off. `Some(vec![])`
+        // produces an empty config so only the appended built-ins survive.
         let mcp_servers = if send_request.enable_mcp {
             send_request
                 .mcp_config
                 .as_ref()
                 .map(|config| config.mcp_servers.clone())
         } else {
-            None
+            Some(Vec::new())
         };
 
         tracing::info!(
@@ -1286,8 +1292,14 @@ impl ChatExtension for McpChatExtension {
         // tool list = all of their tools.
         let mut builtin_servers: Vec<crate::modules::mcp::models::McpServer> = Vec::new();
         for id in &builtin_ids {
+            // `get_any_server` ignores `enabled`; guard it here so a built-in an
+            // operator/health-check disabled is not auto-attached (and approval-
+            // bypassed). No shipping path disables a built-in today, so this is
+            // defense-in-depth.
             if let Some(s) = crate::core::Repos.mcp.get_any_server(*id).await? {
-                builtin_servers.push(s);
+                if s.enabled {
+                    builtin_servers.push(s);
+                }
             }
         }
         for s in &builtin_servers {
@@ -1963,9 +1975,17 @@ impl ChatExtension for McpChatExtension {
                 helpers::send_approval_required_event(tx, tool_use_id, tool_name, &server_name, server_id_str, input).await?;
             }
 
-            // Return Complete to pause conversation - user must approve via API or tool_approvals field
-            tracing::info!("Conversation paused, waiting for {} tool approvals", tools_needing_approval.len());
-            return Ok(ExtensionAction::Complete);
+            // Do NOT pause here. A built-in tool (files/memory) can share the
+            // turn with a third-party tool awaiting approval; its `tool_use` was
+            // already finalized to the DB and bypasses approval by design. We
+            // must execute it + persist its `tool_result` FIRST (the execution
+            // loop below) so the next provider request doesn't fail with
+            // "tool_use ids found without tool_result blocks". The pause happens
+            // AFTER the loop (search: "Pause for pending approvals").
+            tracing::info!(
+                "{} tool(s) await approval; executing approval-exempt tools first, then pausing",
+                tools_needing_approval.len()
+            );
         }
 
         tracing::info!("MCP extension: executing {} auto-approved tools", tools_to_execute.len());
@@ -2588,6 +2608,30 @@ impl ChatExtension for McpChatExtension {
                 }
                 return Ok(ExtensionAction::Complete);
             }
+        }
+
+        // Pause for pending approvals (AFTER the execution loop). Built-in
+        // approval-exempt tools have now executed and their results sit in
+        // `tool_results`. Persist them so the built-in `tool_use` blocks are not
+        // orphaned, then pause for the third-party tools awaiting approval. When
+        // the user approves, the resume path executes those; the built-in result
+        // is already on disk so the next request is protocol-valid.
+        if !tools_needing_approval.is_empty() {
+            if let Some(message_id) = context.message_id {
+                for tr in tool_results.iter() {
+                    let _ = Repos
+                        .chat
+                        .core
+                        .append_content(message_id, &tr.content_type(), tr.clone())
+                        .await;
+                }
+            }
+            tracing::info!(
+                "Conversation paused after executing {} approval-exempt tool result(s); waiting for {} approval(s)",
+                tool_results.len(),
+                tools_needing_approval.len()
+            );
+            return Ok(ExtensionAction::Complete);
         }
 
         // If any tool emitted audience=["user"] content, process references and bypass the LLM.

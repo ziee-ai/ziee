@@ -166,7 +166,7 @@ pub async fn create_memory(
     if content.is_empty() {
         return Err(AppError::bad_request("VALIDATION_ERROR", "content must not be empty").into());
     }
-    if content.len() > MAX_CONTENT_LEN {
+    if content.chars().count() > MAX_CONTENT_LEN {
         return Err(AppError::bad_request(
             "VALIDATION_ERROR",
             "content exceeds 4000 char limit",
@@ -220,7 +220,7 @@ pub async fn update_memory(
                 AppError::bad_request("VALIDATION_ERROR", "content must not be empty").into(),
             );
         }
-        if c.len() > MAX_CONTENT_LEN {
+        if c.chars().count() > MAX_CONTENT_LEN {
             return Err(AppError::bad_request(
                 "VALIDATION_ERROR",
                 "content exceeds 4000 char limit",

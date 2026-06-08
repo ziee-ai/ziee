@@ -103,6 +103,39 @@ impl FileRepository {
         Ok(file)
     }
 
+    /// Batch-fetch files by id, scoped to the owning user. Foreign or
+    /// deleted ids simply don't appear in the result (the caller maps
+    /// by id and drops misses), so this preserves the same ownership +
+    /// existence filtering as `get_by_id_and_user` in a single round-trip.
+    /// Order is unspecified — callers that need ordering re-impose it from
+    /// their own id list.
+    pub async fn get_by_ids_and_user(
+        &self,
+        file_ids: &[Uuid],
+        user_id: Uuid,
+    ) -> Result<Vec<File>, AppError> {
+        let files = sqlx::query_as!(
+            File,
+            r#"
+            SELECT id, user_id, filename, file_size, mime_type, checksum,
+                   has_thumbnail, preview_page_count, text_page_count,
+                   processing_metadata as "processing_metadata!: _",
+                   created_by,
+                   created_at as "created_at: _",
+                   updated_at as "updated_at: _"
+            FROM files
+            WHERE id = ANY($1) AND user_id = $2
+            "#,
+            file_ids,
+            user_id
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+
+        Ok(files)
+    }
+
     /// List files for user with pagination. Defense-in-depth on the
     /// i32 multiplication: cast both factors to i64 BEFORE multiplying
     /// so a (theoretical) bypass of the PaginationQuery deserialize

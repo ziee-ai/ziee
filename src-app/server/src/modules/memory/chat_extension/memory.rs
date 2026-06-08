@@ -98,18 +98,34 @@ impl ChatExtension for MemoryExtension {
         if tool_capable {
             if let Ok(admin) = Repos.memory.get_admin_settings().await {
                 if admin.enabled {
-                    context
-                        .metadata
-                        .insert("attach_memory_mcp".to_string(), serde_json::json!("true"));
-                    request.messages.insert(
-                        0,
-                        ChatMessage {
-                            role: Role::System,
-                            content: vec![ContentBlock::Text {
-                                text: MEMORY_SAVE_NUDGE.to_string(),
-                            }],
-                        },
-                    );
+                    // Honor the per-user extraction opt-out. Inline self-save
+                    // REPLACES the background extractor on tool-capable models
+                    // (after_llm_call skips the extractor when tool_capable), so
+                    // it must obey the SAME `extraction_enabled` gate the
+                    // extractor enforces (engine/extractor.rs) — the privacy-first
+                    // default is OFF (migration 56). Without this, a user who
+                    // turned memory capture off would still get the `remember`
+                    // tool attached + the assistant nudged to persist facts.
+                    let opted_in = Repos
+                        .memory
+                        .get_or_init_user_settings(context.user_id)
+                        .await
+                        .map(|s| s.extraction_enabled)
+                        .unwrap_or(false);
+                    if opted_in {
+                        context
+                            .metadata
+                            .insert("attach_memory_mcp".to_string(), serde_json::json!("true"));
+                        request.messages.insert(
+                            0,
+                            ChatMessage {
+                                role: Role::System,
+                                content: vec![ContentBlock::Text {
+                                    text: MEMORY_SAVE_NUDGE.to_string(),
+                                }],
+                            },
+                        );
+                    }
                 }
             }
         }

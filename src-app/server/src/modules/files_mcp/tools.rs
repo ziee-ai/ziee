@@ -13,14 +13,14 @@ pub fn tool_list() -> Value {
             },
             {
                 "name": "read_file",
-                "description": "Read a file's extracted text by `id` (preferred) or `name`. Slice large files with `offset`/`limit` (lines for text/code, pages for PDF/office). Images are returned for vision; binary/no-text files return a short note. Never reads files outside this conversation.",
+                "description": "Read a file's extracted text by `id` (preferred); `name` also works but only when it uniquely identifies one file. Slice large files with `offset`/`limit` — these are LINES for text/code files and PAGES for PDF/office documents. Images are returned for vision; binary/no-text files return a short note. Never reads files outside this conversation.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "id": { "type": "string", "format": "uuid", "description": "File id from list_files (preferred)." },
                         "name": { "type": "string", "description": "Filename — accepted only when it resolves to exactly one file." },
-                        "offset": { "type": "integer", "minimum": 0, "description": "0-based start (line for text, page for docs)." },
-                        "limit": { "type": "integer", "minimum": 1, "description": "Max lines/pages to return." }
+                        "offset": { "type": "integer", "minimum": 0, "description": "0-based start offset — counts lines for text/code files, pages for PDF/office documents." },
+                        "limit": { "type": "integer", "minimum": 1, "description": "Max items to return — lines for text/code, pages for documents." }
                     }
                 }
             },

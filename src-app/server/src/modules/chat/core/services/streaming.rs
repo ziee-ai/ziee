@@ -1441,6 +1441,14 @@ mod tests {
 const CLEAR_TOOL_RESULTS_TOKEN_THRESHOLD: usize = 30_000;
 /// How many of the most-recent tool_result blocks to keep intact.
 const KEEP_LAST_TOOL_RESULTS: usize = 6;
+/// Per-result char ceiling for a KEPT tool_result. The keep-last-K window
+/// is a fixed COUNT, so a handful of oversized recent results could still
+/// blow the context budget. Truncate any kept result whose text payload
+/// exceeds this; the model can re-call the tool to see the full output.
+const MAX_KEPT_TOOL_RESULT_CHARS: usize = 8000;
+/// Marker appended to a kept-but-truncated tool_result.
+const KEPT_TRUNCATION_MARKER: &str =
+    "\n[…truncated to save context; re-call the tool to see the full result]";
 
 /// Rough char count of a content block's text payload (for token estimation).
 fn block_text_chars(b: &ai_providers::ContentBlock) -> usize {
@@ -1495,6 +1503,49 @@ fn clear_old_tool_results(
             }];
         }
     }
+
+    // Bound the KEPT window too: keep-last is a fixed count, so even the
+    // surviving results can blow the budget if a few are oversized. Truncate
+    // any kept tool_result whose text payload exceeds the per-result ceiling.
+    // The matching tool_use is left intact, and the model can re-call the tool
+    // to recover the full output. Outbound copy only — stored history is not
+    // touched here.
+    for &(mi, bi) in &positions[clear_until..] {
+        if let ai_providers::ContentBlock::ToolResult { content, .. } =
+            &mut messages[mi].content[bi]
+        {
+            let chars: usize =
+                content.iter().map(block_text_chars).sum();
+            if chars > MAX_KEPT_TOOL_RESULT_CHARS {
+                *content = vec![ai_providers::ContentBlock::Text {
+                    text: truncate_kept_result(content),
+                }];
+            }
+        }
+    }
+}
+
+/// Flatten a kept tool_result's text payload and cut it to
+/// `MAX_KEPT_TOOL_RESULT_CHARS`, appending the re-call marker. Char-safe
+/// (truncates on a `char` boundary, not a byte index).
+fn truncate_kept_result(
+    content: &[ai_providers::ContentBlock],
+) -> String {
+    use ai_providers::ContentBlock as CB;
+    let mut flat = String::new();
+    for b in content {
+        match b {
+            CB::Text { text } => flat.push_str(text),
+            CB::Thinking { thinking } => flat.push_str(thinking),
+            CB::ToolUse { input, .. } => {
+                flat.push_str(&input.to_string())
+            }
+            _ => {}
+        }
+    }
+    let kept: String =
+        flat.chars().take(MAX_KEPT_TOOL_RESULT_CHARS).collect();
+    format!("{kept}{KEPT_TRUNCATION_MARKER}")
 }
 
 #[cfg(test)]
@@ -1549,5 +1600,80 @@ mod trim_tests {
         clear_old_tool_results(&mut msgs, 100, 6);
         assert!(!is_cleared(&msgs[0]));
         assert!(!is_cleared(&msgs[1]));
+    }
+
+    fn result_text_chars(m: &ChatMessage) -> usize {
+        match &m.content[0] {
+            ContentBlock::ToolResult { content, .. } => {
+                content.iter().map(block_text_chars).sum()
+            }
+            _ => 0,
+        }
+    }
+
+    #[test]
+    fn caps_oversized_kept_results() {
+        // Several oversized results, all within the keep-last window, so the
+        // count-based clear leaves them untouched — the per-result cap must
+        // still bound them.
+        let huge = "y".repeat(50_000); // ~12.5k est tokens each
+        let mut msgs: Vec<ChatMessage> = (0..6)
+            .map(|i| tool_result_msg(&format!("k{i}"), &huge))
+            .collect();
+        // keep_last == count, so clear_until == 0: nothing is cleared, but
+        // every kept result is over MAX_KEPT_TOOL_RESULT_CHARS.
+        clear_old_tool_results(&mut msgs, 100, 6);
+
+        for (i, m) in msgs.iter().enumerate() {
+            assert!(!is_cleared(m), "result {i} should be kept, not cleared");
+            let chars = result_text_chars(m);
+            assert!(
+                chars
+                    <= MAX_KEPT_TOOL_RESULT_CHARS
+                        + KEPT_TRUNCATION_MARKER.chars().count(),
+                "kept result {i} not bounded: {chars} chars",
+            );
+        }
+
+        // The post-trim estimate must stay bounded: 6 results each at most
+        // (cap + marker) chars, /4 for the token estimate.
+        let total_chars: usize = msgs
+            .iter()
+            .flat_map(|m| m.content.iter())
+            .map(block_text_chars)
+            .sum();
+        let bound = 6
+            * (MAX_KEPT_TOOL_RESULT_CHARS
+                + KEPT_TRUNCATION_MARKER.chars().count());
+        assert!(
+            total_chars <= bound,
+            "post-trim total {total_chars} exceeds bound {bound}",
+        );
+    }
+
+    #[test]
+    fn small_kept_results_not_truncated() {
+        // Oversized older results get cleared; the kept tail is small and must
+        // NOT pick up a truncation marker.
+        let big = "z".repeat(400);
+        let mut msgs: Vec<ChatMessage> = (0..10)
+            .map(|i| tool_result_msg(&format!("s{i}"), &big))
+            .collect();
+        clear_old_tool_results(&mut msgs, 100, 2);
+        // Last two kept and well under the cap → untouched text.
+        for m in &msgs[8..] {
+            assert!(!is_cleared(m));
+            let txt = match &m.content[0] {
+                ContentBlock::ToolResult { content, .. } => match &content[0] {
+                    ContentBlock::Text { text } => text.clone(),
+                    _ => String::new(),
+                },
+                _ => String::new(),
+            };
+            assert!(
+                !txt.contains("truncated to save context"),
+                "small kept result should not be truncated",
+            );
+        }
     }
 }

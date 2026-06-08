@@ -23,15 +23,20 @@ use crate::core::Repos;
 use crate::modules::code_sandbox::types::{
     ConversationIdHeader, JsonRpcError, JsonRpcRequest, JsonRpcResponse,
 };
-use crate::modules::memory::permissions::MemoryWrite;
+use crate::modules::memory::permissions::MemoryRead;
 use crate::modules::permissions::RequirePermissions;
+use crate::modules::permissions::checker::check_permission_union;
+use crate::modules::user::models::{Group, User};
 
 // Shared between memory + memory_mcp handlers (see memory/models.rs).
-use crate::modules::memory::models::MAX_MEMORY_CONTENT_LEN as MAX_CONTENT_LEN;
+use crate::modules::memory::models::{MAX_MEMORY_CONTENT_LEN as MAX_CONTENT_LEN, is_valid_kind};
 
 #[debug_handler]
 pub async fn jsonrpc_handler(
-    auth: RequirePermissions<(MemoryWrite,)>,
+    // Gated on `memory::read` (the lowest-privilege tool, `recall`) so
+    // authentication still runs for every call; `remember`/`forget` additionally
+    // require `memory::write`, enforced per-tool in `dispatch_tool_call`.
+    auth: RequirePermissions<(MemoryRead,)>,
     ConversationIdHeader(conversation_id): ConversationIdHeader,
     body: axum::body::Bytes,
 ) -> Response {
@@ -61,7 +66,6 @@ pub async fn jsonrpc_handler(
         return StatusCode::ACCEPTED.into_response();
     }
 
-    let user_id = auth.user.id;
     let id = req.id.clone();
 
     match req.method.as_str() {
@@ -78,10 +82,19 @@ pub async fn jsonrpc_handler(
         ),
         "tools/list" => ok_response(id, super::tools::tool_list()),
         "ping" => ok_response(id, json!({})),
-        "tools/call" => match dispatch_tool_call(user_id, conversation_id, &req.params).await {
-            Ok(value) => ok_response(id, value),
-            Err(e) => error_response(id, e.0, e.1),
-        },
+        "tools/call" => {
+            match dispatch_tool_call(
+                &auth.user,
+                &auth.groups,
+                conversation_id,
+                &req.params,
+            )
+            .await
+            {
+                Ok(value) => ok_response(id, value),
+                Err(e) => error_response(id, e.0, e.1),
+            }
+        }
         _ => error_response(
             id,
             StatusCode::OK,
@@ -123,17 +136,63 @@ struct ToolCallParams {
     arguments: Value,
 }
 
+/// Check a single permission for `user` (root admin short-circuits, mirroring
+/// `RequirePermissions`). `recall` is a read; `remember`/`forget` are writes.
+fn has_permission(user: &User, groups: &[Group], perm: &str) -> bool {
+    user.is_admin || check_permission_union(user, groups, perm)
+}
+
+/// Map an `AppError` to the closest JSON-RPC error code so client-class errors
+/// (bad `kind`, empty content, validation) surface as -32602 (invalid_params)
+/// instead of collapsing to -32603 (internal). Mirrors files_mcp.
+fn app_error_to_jsonrpc(e: &AppError) -> JsonRpcError {
+    match e.status_code() {
+        400 if e.error_code() == "UNKNOWN_TOOL" => {
+            JsonRpcError::method_not_found(&e.to_string())
+        }
+        400 => JsonRpcError::invalid_params(e.to_string()),
+        404 => JsonRpcError::invalid_params(e.to_string()),
+        _ => JsonRpcError::internal(e.to_string()),
+    }
+}
+
 async fn dispatch_tool_call(
-    user_id: Uuid,
+    user: &User,
+    groups: &[Group],
     conversation_id: Option<Uuid>,
     params: &Value,
 ) -> Result<Value, (StatusCode, JsonRpcError)> {
+    let user_id = user.id;
     let call: ToolCallParams = serde_json::from_value(params.clone()).map_err(|e| {
         (
             StatusCode::OK,
             JsonRpcError::invalid_params(format!("tools/call params: {e}")),
         )
     })?;
+
+    // Per-tool authorization: `recall` is a read; `remember`/`forget` mutate.
+    // The handler extractor only enforces `memory::read`, so writes are gated
+    // here. A denied tool returns a permission-denied JSON-RPC error at
+    // HTTP 200 (JSON-RPC envelopes carry the error, the transport is fine).
+    let required_perm = match call.name.as_str() {
+        "recall" => "memory::read",
+        "remember" | "forget" => "memory::write",
+        other => {
+            return Err((
+                StatusCode::OK,
+                JsonRpcError::method_not_found(&format!("memory tool: {other}")),
+            ));
+        }
+    };
+    if !has_permission(user, groups, required_perm) {
+        return Err((
+            StatusCode::OK,
+            JsonRpcError::invalid_params(format!(
+                "permission denied: '{}' requires '{}'",
+                call.name, required_perm
+            )),
+        ));
+    }
 
     // Validate conversation ownership before using `conversation_id` for scope
     // derivation — a spoofed `x-conversation-id` must not let a user scope a
@@ -169,7 +228,7 @@ async fn dispatch_tool_call(
             "content": [{ "type": "text", "text": v.to_string() }],
             "structuredContent": v,
         })),
-        Err(e) => Err((StatusCode::OK, JsonRpcError::internal(e.to_string()))),
+        Err(e) => Err((StatusCode::OK, app_error_to_jsonrpc(&e))),
     }
 }
 
@@ -231,10 +290,44 @@ async fn remember(
             "content must not be empty",
         ));
     }
-    if content.len() > MAX_CONTENT_LEN {
+    if content.chars().count() > MAX_CONTENT_LEN {
         return Err(AppError::bad_request(
             "VALIDATION_ERROR",
             "content exceeds 4000 char limit",
+        ));
+    }
+    if !is_valid_kind(&args.kind) {
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "kind must be one of: preference, fact, goal, relationship, other",
+        ));
+    }
+
+    let admin = Repos.memory.get_admin_settings().await?;
+
+    // Daily quota: inline `remember` saves write `source='mcp_tool'` and would
+    // otherwise escape the per-user/day cap the background extractor enforces
+    // (which counts only `source='extraction'`). Count both sources against
+    // `daily_extraction_quota` so the two self-save paths share one budget.
+    // Same count-then-insert soft-cap caveat as the extractor (Plan §11).
+    let pool = Repos.memory.pool_clone();
+    let daily_quota = i64::from(admin.daily_extraction_quota);
+    let today_count = sqlx::query_scalar!(
+        r#"
+        SELECT COUNT(*) as "count!"
+        FROM user_memories
+        WHERE user_id = $1
+          AND source IN ('extraction', 'mcp_tool')
+          AND created_at > NOW() - INTERVAL '24 hours'
+        "#,
+        user_id
+    )
+    .fetch_one(&pool)
+    .await?;
+    if today_count >= daily_quota {
+        return Err(AppError::bad_request(
+            "QUOTA_EXCEEDED",
+            "daily memory-save quota reached; try again later",
         ));
     }
 
@@ -257,33 +350,30 @@ async fn remember(
         .await?;
 
     // Best-effort embed write-back so retrieval can find it.
-    if let Ok(admin) = Repos.memory.get_admin_settings().await {
-        if admin.enabled {
-            if let Some(emb_model_id) = admin.embedding_model_id {
-                if let Ok(vec) =
-                    crate::modules::memory::engine::dispatch::embed(emb_model_id, content)
-                        .await
-                {
-                    let model_name = Repos
-                        .llm_model
-                        .get_by_id(emb_model_id)
-                        .await
-                        .ok()
-                        .flatten()
-                        .map(|m| m.name)
-                        .unwrap_or_else(|| emb_model_id.to_string());
-                    let v = HalfVector::from_f32_slice(&vec);
-                    let pool = Repos.memory.pool_clone();
-                    let _ = sqlx::query(
-                        "UPDATE user_memories SET embedding = $1, embedding_model = $2 WHERE id = $3 AND user_id = $4",
-                    )
-                    .bind(&v)
-                    .bind(&model_name)
-                    .bind(row.id)
-                    .bind(user_id)
-                    .execute(&pool)
-                    .await;
-                }
+    if admin.enabled {
+        if let Some(emb_model_id) = admin.embedding_model_id {
+            if let Ok(vec) =
+                crate::modules::memory::engine::dispatch::embed(emb_model_id, content)
+                    .await
+            {
+                let model_name = Repos
+                    .llm_model
+                    .get_by_id(emb_model_id)
+                    .await
+                    .ok()
+                    .flatten()
+                    .map(|m| m.name)
+                    .unwrap_or_else(|| emb_model_id.to_string());
+                let v = HalfVector::from_f32_slice(&vec);
+                let _ = sqlx::query(
+                    "UPDATE user_memories SET embedding = $1, embedding_model = $2 WHERE id = $3 AND user_id = $4",
+                )
+                .bind(&v)
+                .bind(&model_name)
+                .bind(row.id)
+                .bind(user_id)
+                .execute(&pool)
+                .await;
             }
         }
     }

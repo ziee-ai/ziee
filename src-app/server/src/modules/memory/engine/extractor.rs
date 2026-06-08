@@ -18,6 +18,7 @@ use uuid::Uuid;
 
 use crate::common::AppError;
 use crate::core::Repos;
+use crate::modules::memory::models::is_valid_kind;
 
 /// One extraction op emitted by the LLM.
 #[derive(Debug, Deserialize)]
@@ -219,6 +220,13 @@ async fn apply_add(
         Some(c) if !c.trim().is_empty() => c,
         _ => return Ok(()),
     };
+    // Clamp out-of-enum kinds to 'other' so the op degrades gracefully
+    // instead of hitting the `user_memories.kind` CHECK and being dropped.
+    let kind = if is_valid_kind(&kind) {
+        kind
+    } else {
+        "other".to_string()
+    };
     let new_row = Repos
         .memory
         .insert(
@@ -278,6 +286,13 @@ async fn apply_update(
 ) -> Result<(), AppError> {
     let Some(id) = memory_id else {
         return Ok(());
+    };
+    // Clamp out-of-enum kinds to 'other' (see apply_add) so a bad LLM-supplied
+    // kind degrades the op instead of tripping the CHECK and dropping it.
+    let kind = if is_valid_kind(&kind) {
+        kind
+    } else {
+        "other".to_string()
     };
     let updated = Repos
         .memory

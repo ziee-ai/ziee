@@ -7,17 +7,23 @@
 //!     `image` content blocks across the conversation's messages (the `file_id`
 //!     lives in the `message_contents.content` JSONB, no FK).
 //!
-//! This module is the single source of truth for "what files exist for this
-//! conversation", consumed by BOTH the built-in `files` MCP server (Track A
-//! manifest + read tools) and the code sandbox mount (Track C). Uniqueness is
-//! computed HERE, at point-of-use — never by renaming stored files:
+//! This module is the source of truth for the built-in `files` MCP server's
+//! manifest + read tools — "what files exist for this conversation". The code
+//! sandbox mount (Track C) does NOT consume this resolver; it runs its own
+//! active-branch query (`code_sandbox/repository.rs::get_conversation_files`).
+//! The two paths agree on project files but DIVERGE on attachment branch-scope
+//! intentionally: this resolver spans ALL branches (a file referenced from any
+//! message is readable via the tools), while the sandbox mounts only the
+//! conversation's active branch. Uniqueness is computed HERE, at point-of-use —
+//! never by renaming stored files:
 //!   - dedup by `file_id` (a file that's both a project file and an attachment,
 //!     or referenced from multiple messages, appears once with a merged source
 //!     set);
 //!   - dedup by content `(user_id, checksum)` (an accidental re-upload, or the
 //!     same bytes as both a project file and an attachment with different ids,
-//!     collapses to one entry, canonical = earliest upload, with the other
-//!     filenames preserved as `aka` aliases).
+//!     collapses to one entry; the canonical entry is the first in resolution
+//!     order — project files first, then attachments, each ordered by upload
+//!     time — with the other filenames preserved as `aka` aliases).
 //!
 //! Every file is re-validated for ownership via `get_by_id_and_user`, so a
 //! dangling JSONB reference (deleted file) or a foreign file is silently
@@ -67,7 +73,8 @@ pub struct AvailableFile {
     /// Whether the file has LLM-readable extracted text.
     pub text: bool,
     pub size: i64,
-    /// Number of extracted text pages (0 for plain-text-in-one-page or no text).
+    /// Number of extracted text pages. Plain text extracts as a single page
+    /// (`pages == 1`); only files with no extractable text are `0`.
     pub pages: i32,
     /// All the ways this file is reachable (project and/or attachment).
     pub source: Vec<FileSource>,
@@ -148,6 +155,16 @@ const UUID_RE: &str =
 pub async fn model_supports_tools(
     metadata: &std::collections::HashMap<String, serde_json::Value>,
 ) -> bool {
+    // 0. Memoized answer — seeded once per turn by `ensure_model_tools_capable`
+    //    from the earliest `before_llm_call` (which holds `&mut metadata`). The
+    //    boolean is turn-stable (model_id / provider_type / model_name don't
+    //    change mid-turn), so once present we skip the DB + catalog lookups.
+    if let Some(b) = metadata
+        .get("model_tools_capable")
+        .and_then(|v| v.as_bool().or_else(|| v.as_str().and_then(parse_bool_ish)))
+    {
+        return b;
+    }
     // 1. Per-model persisted capability (set for local models at validation, for
     //    cloud models at create time).
     if let Some(model_id) = metadata
@@ -155,10 +172,16 @@ pub async fn model_supports_tools(
         .and_then(|v| v.as_str())
         .and_then(|s| Uuid::parse_str(s).ok())
     {
-        if let Ok(Some(model)) = Repos.llm_model.get_by_id(model_id).await {
-            if let Some(tools) = model.capabilities.tools {
-                return tools;
+        match Repos.llm_model.get_by_id(model_id).await {
+            Ok(Some(model)) => {
+                if let Some(tools) = model.capabilities.tools {
+                    return tools;
+                }
             }
+            Ok(None) => {}
+            Err(e) => tracing::warn!(
+                "model lookup failed during tool-capability resolution: {e}"
+            ),
         }
     }
     // 2. Curated catalog fallback — lookup by model NAME.
@@ -173,6 +196,40 @@ pub async fn model_supports_tools(
         }
     }
     false
+}
+
+/// Parse a bool-ish string ("true"/"false", case-insensitive) into a bool.
+/// Used so the memoized `model_tools_capable` metadata value round-trips
+/// whether stored as a JSON bool or a JSON string.
+fn parse_bool_ish(s: &str) -> Option<bool> {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "true" => Some(true),
+        "false" => Some(false),
+        _ => None,
+    }
+}
+
+/// Compute the model's tool-capability once and memoize it into `metadata`
+/// under `model_tools_capable`, returning the result. Idempotent: if a prior
+/// `before_llm_call` already seeded the key, this re-uses it (and
+/// `model_supports_tools` short-circuits on it too). Call this at the TOP of
+/// each chat extension's `before_llm_call` so whichever extension runs first
+/// pays the lookup cost and the rest read the cached boolean.
+pub async fn ensure_model_tools_capable(
+    metadata: &mut std::collections::HashMap<String, serde_json::Value>,
+) -> bool {
+    if let Some(b) = metadata
+        .get("model_tools_capable")
+        .and_then(|v| v.as_bool().or_else(|| v.as_str().and_then(parse_bool_ish)))
+    {
+        return b;
+    }
+    let capable = model_supports_tools(metadata).await;
+    metadata.insert(
+        "model_tools_capable".to_string(),
+        serde_json::Value::Bool(capable),
+    );
+    capable
 }
 
 /// Best-effort *effective* context window (in tokens) for the chat model
@@ -193,7 +250,16 @@ pub async fn model_context_window(
         .and_then(|v| v.as_str())
         .and_then(|s| Uuid::parse_str(s).ok())
     {
-        if let Ok(Some(model)) = Repos.llm_model.get_by_id(model_id).await {
+        let model = match Repos.llm_model.get_by_id(model_id).await {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::warn!(
+                    "model lookup failed during context-window resolution: {e}"
+                );
+                None
+            }
+        };
+        if let Some(model) = model {
             let native = model.capabilities.context_length;
             // llama.cpp runtime KV-cache window. mistral.rs has no ctx override,
             // so only llamacpp contributes a cap here.
@@ -235,7 +301,8 @@ pub fn render_manifest(files: &[AvailableFile]) -> String {
         "## Files available in this conversation\n\
          These files are NOT included in full below — read them on demand with the \
          file tools: `list_files()`, `read_file(id, offset?, limit?)`, \
-         `grep_files(pattern, id?)`. Address files by `id` (never by name). \
+         `grep_files(pattern, id?)`. Address files by `id` (preferred); a \
+         `name` works only when it uniquely identifies one file. \
          Files marked `no-text` can't be read as text.\n\n",
     );
     for f in files {
@@ -246,8 +313,13 @@ pub fn render_manifest(files: &[AvailableFile]) -> String {
             FileType::Binary => "binary",
         };
         let readable = if f.text {
-            if f.pages > 1 {
-                format!("{} pages", f.pages)
+            // Documents read by PAGE (lines for plain text), so a 1-page doc
+            // still says "1 page" — the read unit, not the byte count, is what
+            // the model needs to size its `offset`/`limit`. Non-document text
+            // reads by line and is simply labelled "text".
+            if f.file_type == FileType::Document {
+                let n = f.pages.max(1);
+                format!("{} page{}", n, if n == 1 { "" } else { "s" })
             } else {
                 "text".to_string()
             }
@@ -285,9 +357,10 @@ pub fn render_manifest(files: &[AvailableFile]) -> String {
 
 /// Resolve the conversation's effective, deduped file set for `user_id`.
 ///
-/// Ownership is enforced per file (`get_by_id_and_user`), so foreign or deleted
-/// files never appear. Order: project files first (canonical-source preference),
-/// then attachments, then content-dedup collapses duplicates.
+/// Ownership is enforced in one batched query (`get_by_ids_and_user`), so
+/// foreign or deleted files never appear. Order: project files first (each by
+/// upload time), then attachments (each by upload time via the query's
+/// `ORDER BY created_at, id`), then content-dedup collapses duplicates.
 pub async fn resolve_available_files(
     conversation_id: Uuid,
     user_id: Uuid,
@@ -306,7 +379,13 @@ pub async fn resolve_available_files(
     //    (cross-message: a file referenced from any message is available).
     //    The `file_id` lives in `message_contents.content` JSONB under either
     //    `file_id` or `source.file_id`. Malformed UUIDs are filtered before the
-    //    cast (user-influenced JSON), mirroring the sandbox query.
+    //    cast (user-influenced JSON), mirroring the sandbox query. Dedup the ids
+    //    in a CTE, then JOIN `files` and `ORDER BY f.created_at, f.id` so the
+    //    attachment order is DETERMINISTIC + stable across calls (the `f.id`
+    //    tiebreaker keeps things stable when several files share a created_at) —
+    //    mirrors `code_sandbox/repository.rs::get_conversation_files`. Without an
+    //    ORDER BY the hash-aggregated DISTINCT returns rows in arbitrary order,
+    //    which would flip the content-dedup canonical pick between turns.
     let attachment_rows = sqlx::query!(
         r#"
         WITH refs AS (
@@ -320,10 +399,16 @@ pub async fn resolve_available_files(
             JOIN message_contents mc ON mc.message_id = bm.message_id
             WHERE c.id = $1
               AND mc.content_type IN ('file_attachment', 'image')
+        ),
+        ids AS (
+            SELECT DISTINCT fid::uuid AS file_id
+            FROM refs
+            WHERE fid ~ $2
         )
-        SELECT DISTINCT fid::uuid AS "file_id!"
-        FROM refs
-        WHERE fid ~ $2
+        SELECT f.id AS "file_id!"
+        FROM ids
+        JOIN files f ON f.id = ids.file_id
+        ORDER BY f.created_at, f.id
         "#,
         conversation_id,
         UUID_RE,
@@ -333,9 +418,20 @@ pub async fn resolve_available_files(
     .map_err(AppError::database_error)?;
     let attachment_file_ids: Vec<Uuid> = attachment_rows.into_iter().map(|r| r.file_id).collect();
 
-    // 3. Load + ownership-check each file, merging sources by file_id.
-    //    Preserve insertion order (project first) so content-dedup's canonical
-    //    pick is stable.
+    // 3. Batch-load + ownership-check the union of project + attachment ids in a
+    //    SINGLE round-trip, then build `AvailableFile`s by walking the ordered id
+    //    lists (project first) so the canonical-source preference and the
+    //    content-dedup canonical pick stay stable. Foreign/deleted ids never make
+    //    it into the map, so they silently drop out — same filtering as the old
+    //    per-id `get_by_id_and_user` loop, minus N sequential queries.
+    let mut union_ids: Vec<Uuid> =
+        Vec::with_capacity(project_file_ids.len() + attachment_file_ids.len());
+    union_ids.extend(project_file_ids.iter().copied());
+    union_ids.extend(attachment_file_ids.iter().copied());
+    let files = Repos.file.get_by_ids_and_user(&union_ids, user_id).await?;
+    let by_uuid: std::collections::HashMap<Uuid, File> =
+        files.into_iter().map(|f| (f.id, f)).collect();
+
     let mut by_id: Vec<AvailableFile> = Vec::new();
     let mut seen: std::collections::HashMap<Uuid, usize> = std::collections::HashMap::new();
 
@@ -348,12 +444,13 @@ pub async fn resolve_available_files(
                 by_id[idx].add_source(source);
                 continue;
             }
-            // Ownership + existence check; dangling/foreign refs drop out.
-            let Some(file) = Repos.file.get_by_id_and_user(fid, user_id).await? else {
+            // Ownership + existence check happened in the batch query;
+            // dangling/foreign refs simply aren't in the map.
+            let Some(file) = by_uuid.get(&fid) else {
                 continue;
             };
             seen.insert(fid, by_id.len());
-            by_id.push(AvailableFile::from_file(&file, source));
+            by_id.push(AvailableFile::from_file(file, source));
         }
     }
 
@@ -361,11 +458,12 @@ pub async fn resolve_available_files(
     Ok(dedup_by_checksum(by_id))
 }
 
-/// Collapse byte-identical files (same `checksum`) into one entry. The
-/// FIRST-seen file with a given checksum is canonical (input is ordered project
-/// files first, then attachments, each by upload order — a stable choice);
-/// later same-content files fold their filename into `aka` and union their
-/// sources. NULL-checksum files are never merged (we can't prove identity).
+/// Collapse byte-identical files (same `checksum`) into one entry. The canonical
+/// entry is the FIRST in resolution order — project files first, then
+/// attachments, each ordered by upload time — a stable choice now that the
+/// attachment query has an explicit `ORDER BY created_at, id`; later
+/// same-content files fold their filename into `aka` and union their sources.
+/// NULL-checksum files are never merged (we can't prove identity).
 fn dedup_by_checksum(files: Vec<AvailableFile>) -> Vec<AvailableFile> {
     use std::collections::HashMap;
     let mut canonical: HashMap<String, usize> = HashMap::new();

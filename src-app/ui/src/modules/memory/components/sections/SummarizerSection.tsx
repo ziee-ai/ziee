@@ -99,7 +99,12 @@ export function SummarizerSection() {
           label="Summarize after N tokens"
           extra="When a conversation branch's estimated tokens (chars/4) exceed this, the summarizer condenses the earliest messages into a single system block. Token-aware (a 5-token message and a 50K-token one are not equal). Lower = sooner summarization (smaller prompts, more LLM cost); higher = longer verbatim history."
         >
-          <InputNumber min={500} max={1000000} step={1000} style={{ width: 160 }} />
+          <InputNumber
+            min={500}
+            max={1000000}
+            step={1000}
+            style={{ width: 160 }}
+          />
         </Form.Item>
         <Form.Item
           name="summarizer_keep_recent_tokens"
@@ -122,7 +127,12 @@ export function SummarizerSection() {
             }),
           ]}
         >
-          <InputNumber min={100} max={999999} step={500} style={{ width: 160 }} />
+          <InputNumber
+            min={100}
+            max={999999}
+            step={500}
+            style={{ width: 160 }}
+          />
         </Form.Item>
 
         <Form.Item

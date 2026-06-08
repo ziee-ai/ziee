@@ -29,6 +29,10 @@ use crate::modules::permissions::RequirePermissions;
 const DEFAULT_PAGE_LIMIT: usize = 10;
 const DEFAULT_LINE_LIMIT: usize = 2000;
 const GREP_MAX_MATCHES: usize = 200;
+/// Per-call byte budget for `grep_files`. Bounds the work a single call
+/// can do when scanning whole file bodies (a zero-match file is otherwise
+/// read end-to-end with no match cap to stop it).
+const GREP_MAX_SCAN_BYTES: usize = 16 * 1024 * 1024;
 
 #[debug_handler]
 pub async fn jsonrpc_handler(
@@ -88,7 +92,7 @@ pub async fn jsonrpc_handler(
             };
             match dispatch_tool_call(user_id, conversation_id, &req.params).await {
                 Ok(value) => ok_response(id, value),
-                Err(e) => error_response(id, StatusCode::OK, JsonRpcError::internal(e.to_string())),
+                Err(e) => error_response(id, StatusCode::OK, app_error_to_jsonrpc(&e)),
             }
         }
         _ => error_response(id, StatusCode::OK, JsonRpcError::method_not_found(&req.method)),
@@ -119,6 +123,21 @@ fn error_response(id: Option<Value>, http: StatusCode, err: JsonRpcError) -> Res
         }),
     )
         .into_response()
+}
+
+/// Map an `AppError` from a tool call onto the right JSON-RPC error class
+/// instead of collapsing every failure to `internal` (-32603). Client-class
+/// errors (bad args, unknown tool, not-found) become `invalid_params`
+/// (-32602) / `method_not_found` (-32601); everything else stays `internal`.
+fn app_error_to_jsonrpc(e: &AppError) -> JsonRpcError {
+    let msg = e.to_string();
+    match e.status_code() {
+        400 if e.error_code() == "UNKNOWN_TOOL" => {
+            JsonRpcError::method_not_found(&msg)
+        }
+        400 | 404 => JsonRpcError::invalid_params(msg),
+        _ => JsonRpcError::internal(msg),
+    }
 }
 
 /// Same NOT_FOUND-for-both semantics as code_sandbox: don't leak conversation
@@ -276,7 +295,15 @@ async fn read_file(
             };
             Ok(text_result(note, None))
         }
-        FileType::Text | FileType::Document => {
+        // Dispatch on the unit semantics implied by `file_type`, NOT on
+        // `pages > 0`: a normally-processed text/code file always has
+        // `pages == 1`, so a `pages > 0` test would route it to the
+        // page reader and `read_text_lines` (the offset/limit-in-lines
+        // path the tool advertises) would be dead.
+        FileType::Text => {
+            read_text_lines(&*storage, user_id, file, args.offset, args.limit).await
+        }
+        FileType::Document => {
             if file.pages > 0 {
                 read_paginated(&*storage, user_id, file, args.offset, args.limit).await
             } else {
@@ -296,9 +323,12 @@ async fn read_paginated(
     let total = file.pages.max(0) as usize;
     let start = offset.unwrap_or(0).min(total);
     let count = limit.unwrap_or(DEFAULT_PAGE_LIMIT).max(1);
-    let end = (start + count).min(total);
+    // saturating_add: `start + count` could overflow before `.min(total)`
+    // since `limit` is fully model-controlled and unbounded.
+    let end = start.saturating_add(count).min(total);
 
     let mut out = String::new();
+    let mut missing: Vec<u32> = Vec::new();
     for page in start..end {
         // pages are stored 1-indexed.
         let page_num = (page + 1) as u32;
@@ -310,7 +340,16 @@ async fn read_paginated(
                     out.push('\n');
                 }
             }
-            Err(_) => continue,
+            Err(_) => {
+                // Surface failed pages explicitly so a non-contiguous
+                // range isn't presented as if it were contiguous.
+                out.push_str(&format!(
+                    "\n--- {} · page {} · [unreadable] ---\n",
+                    file.name,
+                    page + 1
+                ));
+                missing.push(page_num);
+            }
         }
     }
     if out.is_empty() {
@@ -328,6 +367,7 @@ async fn read_paginated(
         Some(json!({
             "file_id": file.id, "name": file.name,
             "page_start": start + 1, "page_end": end, "total_pages": total,
+            "missing_pages": missing,
         })),
     ))
 }
@@ -346,7 +386,9 @@ async fn read_text_lines(
     let total = lines.len();
     let start = offset.unwrap_or(0).min(total);
     let count = limit.unwrap_or(DEFAULT_LINE_LIMIT).max(1);
-    let end = (start + count).min(total);
+    // saturating_add guards against `start + count` overflowing before
+    // the `.min(total)` clamp (`limit` is model-controlled, unbounded).
+    let end = start.saturating_add(count).min(total);
     let mut out = lines[start..end].join("\n");
     if end < total {
         out.push_str(&format!(
@@ -413,22 +455,47 @@ async fn grep_files(
         .collect();
 
     let mut matches: Vec<Value> = Vec::new();
+    // `truncated` is set whenever scanning stopped early (match cap or the
+    // per-call byte budget) so the model can tell a capped result from an
+    // exhaustive one. `missing` records pages that failed to load.
+    let mut truncated = false;
+    let mut scanned: usize = 0;
+    let mut missing: Vec<Value> = Vec::new();
     'outer: for file in targets {
         let pages = if file.pages > 0 { file.pages as usize } else { 1 };
         for page in 0..pages {
             let text = if file.pages > 0 {
-                storage
+                match storage
                     .load_text_page(user_id, file.id, (page + 1) as u32)
                     .await
-                    .unwrap_or_default()
+                {
+                    Ok(t) => t,
+                    Err(_) => {
+                        // Record failed pages rather than silently swapping
+                        // in an empty string (which would lose real matches).
+                        missing.push(json!({
+                            "file_id": file.id,
+                            "name": file.name,
+                            "page": page + 1,
+                        }));
+                        continue;
+                    }
+                }
             } else {
                 let ext = extension_of(&file.name);
-                storage
-                    .load_original(user_id, file.id, ext)
-                    .await
-                    .map(|b| String::from_utf8_lossy(&b).into_owned())
-                    .unwrap_or_default()
+                match storage.load_original(user_id, file.id, ext).await {
+                    Ok(b) => String::from_utf8_lossy(&b).into_owned(),
+                    Err(_) => {
+                        missing.push(json!({
+                            "file_id": file.id,
+                            "name": file.name,
+                            "page": page + 1,
+                        }));
+                        continue;
+                    }
+                }
             };
+            scanned = scanned.saturating_add(text.len());
             for (lineno, line) in text.lines().enumerate() {
                 if re.is_match(line) {
                     matches.push(json!({
@@ -439,14 +506,19 @@ async fn grep_files(
                         "text": line.trim(),
                     }));
                     if matches.len() >= GREP_MAX_MATCHES {
+                        truncated = true;
                         break 'outer;
                     }
                 }
             }
+            if scanned >= GREP_MAX_SCAN_BYTES {
+                truncated = true;
+                break 'outer;
+            }
         }
     }
 
-    let summary = if matches.is_empty() {
+    let mut summary = if matches.is_empty() {
         format!("No matches for '{}'.", args.pattern)
     } else {
         let lines: Vec<String> = matches
@@ -463,12 +535,36 @@ async fn grep_files(
             .collect();
         lines.join("\n")
     };
-    Ok(text_result(summary, Some(json!({ "matches": matches }))))
+    if truncated {
+        summary.push_str(&format!(
+            "\n[showing first {} matches; results truncated — narrow the pattern or pass id]",
+            GREP_MAX_MATCHES
+        ));
+    }
+    if !missing.is_empty() {
+        summary.push_str(&format!(
+            "\n[{} page(s) could not be read and were skipped]",
+            missing.len()
+        ));
+    }
+    Ok(text_result(
+        summary,
+        Some(json!({
+            "matches": matches,
+            "truncated": truncated,
+            "missing_pages": missing,
+        })),
+    ))
 }
 
+/// Derive the on-disk extension the SAME way the upload path does
+/// (`upload.rs`: `filename.rsplit('.').next()...`). `Path::extension()`
+/// returns `None` for a dot-less name (e.g. `photo`), which would look
+/// for `{id}.bin` and 404 even though upload stored it as `{id}.photo`.
 fn extension_of(filename: &str) -> &str {
-    std::path::Path::new(filename)
-        .extension()
-        .and_then(|s| s.to_str())
+    filename
+        .rsplit('.')
+        .next()
+        .filter(|s| !s.is_empty())
         .unwrap_or("bin")
 }

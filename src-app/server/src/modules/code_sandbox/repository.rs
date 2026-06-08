@@ -161,9 +161,11 @@ impl CodeSandboxRepository {
 
     /// Idempotent upsert of the built-in sandbox MCP server row.
     ///
-    /// Critical contract (validated by `tests/code_sandbox/integration/mcp_built_in_protection_test.rs`):
-    /// the `ON CONFLICT DO UPDATE SET` clause must ONLY refresh fields
-    /// that are NOT admin-mutable. The admin UI lets operators tweak
+    /// Critical contract: the `ON CONFLICT DO UPDATE SET` clause must
+    /// ONLY refresh fields that are NOT admin-mutable. Unlike the
+    /// `files`/`memory` zero-config built-ins (whose rows the
+    /// `update_system_mcp_server` guard rejects), the `code_sandbox` row
+    /// IS admin-editable: the admin UI lets operators tweak
     /// `display_name`, `description`, `timeout_seconds`, `usage_mode`,
     /// `max_concurrent_sessions`, and `enabled` via PATCH on the
     /// system-servers endpoint (`mcp/repository.rs:update_system_mcp_server`).

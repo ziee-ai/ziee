@@ -27,14 +27,14 @@ export function FilePreviewList() {
   const advisories = Array.from(
     selectedFiles.values() as IterableIterator<FileEntity>,
   )
-    .map((f) => ({
+    .map(f => ({
       f,
       meta: (f.processing_metadata ?? {}) as {
         suitability?: string
         suggestion?: string
       },
     }))
-    .filter((x) => x.meta.suitability === 'low' && !!x.meta.suggestion)
+    .filter(x => x.meta.suitability === 'low' && !!x.meta.suggestion)
 
   return (
     <>

@@ -166,23 +166,44 @@ async fn load_file_content(ctx: &SandboxContext, filename: &str) -> Result<Strin
             // Try the user-attachment fallback before giving up. Match by
             // filename, but DON'T silently pick one of several same-named files
             // — if the name is ambiguous, error with the candidates so the
-            // caller disambiguates (mirrors the files-MCP rule). file_id is the
-            // unambiguous handle.
+            // caller disambiguates (mirrors the files-MCP rule). `read_file`
+            // only accepts `filename`, so it cannot disambiguate by id; the
+            // working route is `execute_command` + `cat` of the suffixed mount
+            // path (see the error message below).
             let matches: Vec<_> = ctx
                 .files
                 .iter()
                 .filter(|f| f.filename == filename && f.user_id == ctx.user_id)
                 .collect();
             if matches.len() > 1 {
-                let ids: Vec<String> = matches.iter().map(|f| f.file_id.to_string()).collect();
+                // The bwrap mount dedups same-named attachments by suffixing
+                // " (2)", " (3)", … before the extension (see
+                // `sandbox::build_bwrap_argv`). Each copy is bind-mounted into
+                // the sandbox home at `/home/sandboxuser/<name>`. `read_file`
+                // resolves by stored filename only and so cannot reach the
+                // second/third copy — point the model at `execute_command`
+                // instead, which CAN see the suffixed mount paths.
+                let n = matches.len();
+                let p = std::path::Path::new(filename);
+                let stem =
+                    p.file_stem().and_then(|s| s.to_str()).unwrap_or(filename);
+                let ext = p.extension().and_then(|s| s.to_str());
+                let suffixed_examples: Vec<String> = (2..=n)
+                    .map(|i| match ext {
+                        Some(e) => format!("'~/{stem} ({i}).{e}'"),
+                        None => format!("'~/{stem} ({i})'"),
+                    })
+                    .collect();
                 return Err(AppError::new(
                     StatusCode::BAD_REQUEST,
                     "AMBIGUOUS_FILENAME",
                     format!(
-                        "{filename} matches {} attached files (ids: {}); they are mounted under \
-                         distinct names — read by the exact mounted path",
-                        matches.len(),
-                        ids.join(", ")
+                        "{filename} matches {n} attached files. read_file can only \
+                         read the first copy (by its stored name); the others are \
+                         mounted under suffixed paths in the sandbox home. To read \
+                         them, use execute_command, e.g. `cat {}` (paths are \
+                         relative to ~, the sandbox home).",
+                        suffixed_examples.join(" or `cat ")
                     ),
                 ));
             }

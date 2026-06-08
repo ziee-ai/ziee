@@ -74,6 +74,15 @@ impl AppError {
         self.status_code
     }
 
+    /// The machine-readable error code (e.g. `VALIDATION_ERROR`,
+    /// `RESOURCE_NOT_FOUND`). Exposed so the JSON-RPC handlers can map a
+    /// specific code onto the right JSON-RPC error class (e.g.
+    /// `UNKNOWN_TOOL` → method-not-found) rather than collapsing everything
+    /// to a generic internal error.
+    pub fn error_code(&self) -> &str {
+        &self.error_code
+    }
+
     // Common convenience constructors
     pub fn not_found(resource: &str) -> Self {
         Self::new(

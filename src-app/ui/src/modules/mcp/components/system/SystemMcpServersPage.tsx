@@ -44,10 +44,10 @@ export function SystemMcpServersPage() {
   // searchTerm + statusFilter via the store setters. Sort dropped:
   // backend's default ORDER BY display_name ASC covers it.
   //
-  // Hide privileged built-in servers (memory / files / code_sandbox): they're
-  // immutable, always-on, and have zero configurable surface, so showing them as
-  // editable cards is misleading. They auto-attach via the chat extensions.
-  const filteredServers = systemServers.filter(server => !server.is_built_in)
+  // The backend excludes only the zero-config `files`/`memory` built-ins
+  // server-side; configurable built-ins (filesystem / fetch / code_sandbox)
+  // stay visible + editable, so no client-side filtering is needed here.
+  const filteredServers = systemServers
 
   return (
     <SettingsPageContainer

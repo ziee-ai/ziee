@@ -386,6 +386,12 @@ pub async fn refresh_summary(
         Some(o) => trigger.min(o),
         None => trigger,
     };
+    // Preserve keep_recent < trigger after the override. The DB CHECK only
+    // guards the admin row; a fraction-of-window override below keep_recent
+    // (small-context models) would otherwise leave keep_recent >= trigger and
+    // silently disable summarization (the keep-recent loop never breaks and
+    // cutoff walks to 0 → Noop). Re-clamp so summarization still fires.
+    let keep_recent = keep_recent.min(trigger.saturating_sub(1));
 
     let pool = Repos.memory.pool_clone();
     let existing = fetch_summary(&pool, branch_id).await?;
@@ -597,6 +603,44 @@ mod tests {
             decide_summarize_action(&msgs, 100, 100_000, None),
             SummarizeAction::Noop
         ));
+    }
+
+    #[test]
+    fn decide_summarizes_after_keep_recent_clamped_below_trigger() {
+        // Regression for B-correctness-02: a small-context override drops the
+        // trigger below the default keep_recent. `refresh_summary` re-clamps
+        // keep_recent to `trigger - 1`; with that clamp applied here the
+        // branch MUST NOT Noop even though `total < the unclamped keep_recent`.
+        //
+        // Two ~250-token messages (total ~500). Override trigger = 200 (e.g.
+        // 0.75 × a tiny context window), default keep_recent = 3000. Without
+        // the clamp, keep_recent (3000) > total (500) → the keep-recent loop
+        // never breaks, cutoff walks to 0, and the function Noops. With the
+        // clamp keep_recent = trigger - 1 = 199, so the oldest message is
+        // summarized.
+        let big = "x".repeat(1000); // ~250 est tokens
+        let msgs = vec![
+            msg(Uuid::new_v4(), "user", &big),
+            msg(Uuid::new_v4(), "assistant", &big),
+        ];
+        let trigger = 200usize;
+        let keep_recent_clamped = trigger.saturating_sub(1); // mirrors refresh_summary
+        assert!(
+            !matches!(
+                decide_summarize_action(&msgs, trigger, keep_recent_clamped, None),
+                SummarizeAction::Noop
+            ),
+            "clamped keep_recent below the override trigger must still summarize"
+        );
+        // Sanity: the UNclamped large keep_recent would (wrongly) Noop —
+        // proving the clamp is load-bearing.
+        assert!(
+            matches!(
+                decide_summarize_action(&msgs, trigger, 3000, None),
+                SummarizeAction::Noop
+            ),
+            "without the clamp, keep_recent > total disables summarization"
+        );
     }
 
     fn fake_summary(
