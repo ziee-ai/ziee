@@ -15,7 +15,6 @@ use std::time::Duration;
 const TIMEOUT: Duration = Duration::from_secs(15);
 
 #[tokio::test]
-#[ignore = "tier4: requires rootfs + Linux bwrap (or working Mac libkrun vsock); opt-in via --ignored, see CLAUDE.md"]
 async fn strict_mode_proc_self_status_shows_pid_1() {
     let argv: Vec<String> = [
         "--unshare-user",
@@ -58,7 +57,6 @@ async fn strict_mode_proc_self_status_shows_pid_1() {
 }
 
 #[tokio::test]
-#[ignore = "tier4: requires rootfs + Linux bwrap (or working Mac libkrun vsock); opt-in via --ignored, see CLAUDE.md"]
 async fn dev_bind_fallback_shows_real_pid_in_proc() {
     let argv: Vec<String> = [
         "--unshare-user",

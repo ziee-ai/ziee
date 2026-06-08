@@ -19,7 +19,6 @@ use std::time::Duration;
 const TIMEOUT: Duration = Duration::from_secs(15);
 
 #[tokio::test]
-#[ignore = "tier4: requires rootfs + Linux bwrap (or working Mac libkrun vsock); opt-in via --ignored, see CLAUDE.md"]
 async fn cgroup_v2_is_mounted_inside_sandbox() {
     // Inside the active sandbox dispatch, /sys/fs/cgroup should be a
     // cgroup2 filesystem (either delegated from the host on Linux, or
@@ -63,7 +62,6 @@ async fn cgroup_v2_is_mounted_inside_sandbox() {
 }
 
 #[tokio::test]
-#[ignore = "tier4: requires rootfs + Linux bwrap (or working Mac libkrun vsock); opt-in via --ignored, see CLAUDE.md"]
 async fn rlimits_apply_when_cgroup_unavailable() {
     // The fallback contract: even when cgroup delegation is off, the
     // prlimit wrapper in the bwrap argv MUST clamp memory. This is the

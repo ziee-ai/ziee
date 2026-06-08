@@ -27,7 +27,6 @@ const TIMEOUT: Duration = Duration::from_secs(15);
 /// numeric uid back. If THIS fails, every seccomp test below would
 /// false-pass because the dispatch path itself is broken.
 #[tokio::test]
-#[ignore = "tier4: requires rootfs + Linux bwrap (or working Mac libkrun vsock); opt-in via --ignored, see CLAUDE.md"]
 async fn seccomp_smoke_allowed_syscall_works() {
     let argv: Vec<String> = [
         "--unshare-user",

@@ -92,12 +92,6 @@ pub fn rootfs_path() -> Option<PathBuf> {
 /// Override the tag with `ZIEE_SANDBOX_TEST_TAG` to test a different
 /// release. Tests fetch the real GitHub-published, cosign-signed rootfs
 /// — there is no locally-built fixture anymore.
-///
-/// `v0.0.3-alpha` only ships x86_64 assets, so tier4 on Apple Silicon
-/// needs `v0.0.5-alpha`+ (first tag with `aarch64-*` artifacts). The
-/// default stays on `v0.0.3-alpha` to match historical CI baselines;
-/// set `ZIEE_SANDBOX_TEST_TAG=v0.0.5-alpha` (or later) when running
-/// tier4 locally on Mac/ARM. The Linux x86_64 CI path is unaffected.
 pub const TEST_ROOTFS_REPO: &str = "ziee-ai/sandbox-rootfs";
 pub const TEST_ROOTFS_TAG: &str = "v0.0.3-alpha";
 

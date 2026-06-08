@@ -16,7 +16,6 @@ use std::time::Duration;
 const TIMEOUT: Duration = Duration::from_secs(30);
 
 #[tokio::test]
-#[ignore = "tier4: requires rootfs + Linux bwrap (or working Mac libkrun vsock); opt-in via --ignored, see CLAUDE.md"]
 async fn smoke_echo_hello() {
     // Bind the entire rootfs read-only at /, then add the sandbox
     // primitives (/proc, /dev, /tmp). Binding the whole rootfs
@@ -53,7 +52,6 @@ async fn smoke_echo_hello() {
 }
 
 #[tokio::test]
-#[ignore = "tier4: requires rootfs + Linux bwrap (or working Mac libkrun vsock); opt-in via --ignored, see CLAUDE.md"]
 async fn smoke_whoami_is_sandboxuser() {
     // Verifies bwrap's `--uid 1001` actually applies — the in-sandbox
     // process should see uid=1001 regardless of the launching uid.
