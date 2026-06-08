@@ -57,16 +57,33 @@ pub async fn process_file_blocks(
         .as_deref()
         .unwrap_or("application/octet-stream");
 
-    match provider_type {
-        "anthropic" | "gemini" => {
-            if mime == "application/pdf" || mime.starts_with("image/") {
-                process_via_provider_api(pool, file_id, provider_id, mime, user_id).await
-            } else {
-                process_via_base64(file_id, &file.filename, mime, user_id).await
-            }
-        }
-        _ => process_via_base64(file_id, &file.filename, mime, user_id).await,
+    // Native image/PDF for providers that support it (anthropic/gemini).
+    if matches!(provider_type, "anthropic" | "gemini")
+        && (mime == "application/pdf" || mime.starts_with("image/"))
+    {
+        return process_via_provider_api(pool, file_id, provider_id, mime, user_id).await;
     }
+
+    // Office docs (and PDFs on providers without native PDF) that have extracted
+    // text → inline the extracted per-page text instead of dropping to a useless
+    // `[File: x]` placeholder. Frees the old placeholder bug. text/* and JSON-ish
+    // files still go through process_via_base64's verbatim-text branch; images go
+    // there too for base64.
+    if file.text_page_count > 0
+        && !mime.starts_with("image/")
+        && !mime.starts_with("text/")
+        && !crate::modules::file::available_files::is_text_like(mime)
+    {
+        return inline_extracted_text(
+            file_id,
+            &file.filename,
+            file.text_page_count as u32,
+            user_id,
+        )
+        .await;
+    }
+
+    process_via_base64(file_id, &file.filename, mime, user_id).await
 }
 
 async fn process_via_provider_api(
@@ -121,6 +138,28 @@ async fn process_via_provider_api(
             text: format!("[File: {} ({})]", file_id, mime_type),
         }])
     }
+}
+
+/// Inline a doc's already-extracted per-page text as a single Text block. Used
+/// for office docs and (non-native) PDFs so their content reaches the model
+/// instead of a `[File: x]` placeholder.
+async fn inline_extracted_text(
+    file_id: Uuid,
+    filename: &str,
+    pages: u32,
+    user_id: Uuid,
+) -> Result<Vec<ContentBlock>, AppError> {
+    let storage = get_file_storage();
+    let mut text = format!("[File: {filename}]\n");
+    for p in 1..=pages {
+        if let Ok(page) = storage.load_text_page(user_id, file_id, p).await {
+            text.push_str(&page);
+            if !page.ends_with('\n') {
+                text.push('\n');
+            }
+        }
+    }
+    Ok(vec![ContentBlock::Text { text }])
 }
 
 async fn process_via_base64(

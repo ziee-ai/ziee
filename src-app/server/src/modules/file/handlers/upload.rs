@@ -191,6 +191,24 @@ pub async fn upload_file_inner(
             .await?;
     }
 
+    // Upload-time suitability advisory (Track A §2b). Non-blocking: every upload
+    // still succeeds; we just annotate `processing_metadata` so the UI can warn
+    // the user that a file type reads poorly and suggest a better format. Computed
+    // empirically from the actual extraction result, so scanned PDFs / failed
+    // extractions are caught too — not just by mime.
+    let mut processing_metadata = serde_json::to_value(&processing_result.metadata)
+        .unwrap_or(serde_json::json!({}));
+    {
+        let has_text = !processing_result.text_pages.is_empty();
+        let (suitability, suggestion) = file_suitability(mime_type_str, has_text);
+        if let Some(obj) = processing_metadata.as_object_mut() {
+            obj.insert("suitability".to_string(), serde_json::json!(suitability));
+            if let Some(s) = suggestion {
+                obj.insert("suggestion".to_string(), serde_json::json!(s));
+            }
+        }
+    }
+
     // Create database record
     let file = Repos.file
         .create(FileCreateData {
@@ -203,13 +221,80 @@ pub async fn upload_file_inner(
             has_thumbnail: !processing_result.thumbnails.is_empty(),
             preview_page_count: processing_result.images.len() as i32,
             text_page_count: processing_result.text_pages.len() as i32,
-            processing_metadata: serde_json::to_value(&processing_result.metadata)
-                .unwrap_or(serde_json::json!({})),
+            processing_metadata,
             created_by: "user".to_string(),
         })
         .await?;
 
     Ok(file)
+}
+
+/// Classify a file's LLM-suitability for the upload advisory. Returns
+/// `("good"|"low", Option<suggestion>)`. Images and any file with extracted text
+/// are "good"; everything else gets a type-specific nudge toward a better format.
+fn file_suitability(mime: &str, has_text: bool) -> (&'static str, Option<&'static str>) {
+    if mime.starts_with("image/") || has_text {
+        return ("good", None);
+    }
+    if mime == "application/pdf" {
+        return (
+            "low",
+            Some("This PDF has no text layer (scanned) — upload a text-based or OCR'd PDF."),
+        );
+    }
+    if mime.contains("presentationml") || mime == "application/vnd.ms-powerpoint" {
+        return (
+            "low",
+            Some("PowerPoint reads poorly — export to PDF and upload that for best results."),
+        );
+    }
+    if mime == "application/zip"
+        || mime == "application/gzip"
+        || mime == "application/x-tar"
+        || mime.contains("compressed")
+    {
+        return (
+            "low",
+            Some("Archives can't be read — upload the files individually."),
+        );
+    }
+    if mime.starts_with("audio/") || mime.starts_with("video/") {
+        return (
+            "low",
+            Some("Media files aren't read — upload a transcript instead."),
+        );
+    }
+    ("low", Some("This file type can't be read by the assistant."))
+}
+
+#[cfg(test)]
+mod suitability_tests {
+    use super::file_suitability;
+
+    #[test]
+    fn images_and_text_are_good() {
+        assert_eq!(file_suitability("image/png", false).0, "good");
+        assert_eq!(file_suitability("text/markdown", true).0, "good");
+        assert_eq!(file_suitability("application/pdf", true).0, "good");
+    }
+
+    #[test]
+    fn powerpoint_suggests_pdf() {
+        let (s, sug) = file_suitability(
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            false,
+        );
+        assert_eq!(s, "low");
+        assert!(sug.unwrap().contains("PDF"));
+    }
+
+    #[test]
+    fn scanned_pdf_archive_media_are_low() {
+        assert_eq!(file_suitability("application/pdf", false).0, "low");
+        assert_eq!(file_suitability("application/zip", false).0, "low");
+        assert_eq!(file_suitability("audio/mpeg", false).0, "low");
+        assert_eq!(file_suitability("application/octet-stream", false).0, "low");
+    }
 }
 
 /// Upload file handler — thin wrapper around `upload_file_inner` that

@@ -12,7 +12,7 @@ use crate::{
         file::provider_routing::process_file_blocks,
     },
 };
-use ai_providers::{ChatRequest, ContentBlock, ImageSource, Role};
+use ai_providers::{ChatMessage, ChatRequest, ContentBlock, ImageSource, Role};
 use aide::axum::ApiRouter;
 
 use super::types::{FileContent, ImageSource as FileImageSource};
@@ -90,6 +90,44 @@ impl ChatExtension for FileExtension {
         send_request: &SendMessageRequest,
         _tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
     ) -> Result<BeforeLlmAction, AppError> {
+        // Capability-gated manifest (Track A). When the model can use tools,
+        // inject a compact manifest of ALL files available to this conversation
+        // (project knowledge + attachments) and flag the MCP extension to
+        // auto-attach the built-in `files` server. The model then reads files on
+        // demand via read_file/grep_files instead of us inlining everything every
+        // turn. The CURRENT upload is still inlined below (the user is asking
+        // about it now); older files reach the model through the read tools.
+        let tool_capable =
+            crate::modules::file::available_files::model_supports_tools(&context.metadata).await;
+        if tool_capable {
+            match crate::modules::file::available_files::resolve_available_files(
+                context.conversation_id,
+                context.user_id,
+            )
+            .await
+            {
+                Ok(files) if !files.is_empty() => {
+                    let manifest =
+                        crate::modules::file::available_files::render_manifest(&files);
+                    request.messages.insert(
+                        0,
+                        ChatMessage {
+                            role: Role::System,
+                            content: vec![ContentBlock::Text { text: manifest }],
+                        },
+                    );
+                    context
+                        .metadata
+                        .insert("attach_files_mcp".to_string(), serde_json::json!("true"));
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!("file ext: resolve_available_files failed: {e}");
+                }
+            }
+        }
+
+        // Inline the CURRENT message's upload (always — attached to THIS message).
         if let Some(file_ids) = &send_request.file_ids {
             if file_ids.is_empty() {
                 return Ok(BeforeLlmAction::Continue);
@@ -171,7 +209,30 @@ impl ChatExtension for FileExtension {
         };
 
         match file_content {
-            FileContent::FileAttachment { file_id, .. } => {
+            FileContent::FileAttachment {
+                file_id, mime_type, ..
+            } => {
+                // Recency rule (Track A §2): on a tool-capable model, OLD
+                // attachments are DROPPED from the replayed history — they're
+                // listed in the auto-injected manifest and read on demand via
+                // `read_file`, so re-inlining them every turn was pure waste. We
+                // drop rather than insert a marker so the CURRENT-turn upload
+                // (whose attachment block also passes through here, and which
+                // `before_llm_call` re-inlines in full) doesn't end up with both a
+                // misleading "attached earlier" note AND its full content.
+                // IMAGES are kept inlined for vision continuity (they can't be
+                // re-read as text). Non-tool-capable models keep the full inline.
+                let is_image = mime_type
+                    .as_deref()
+                    .map(|m| m.starts_with("image/"))
+                    .unwrap_or(false);
+                let tool_capable =
+                    crate::modules::file::available_files::model_supports_tools(&context.metadata)
+                        .await;
+                if tool_capable && !is_image {
+                    return Ok(None);
+                }
+
                 let provider_id = context
                     .metadata
                     .get("provider_id")
@@ -197,6 +258,14 @@ impl ChatExtension for FileExtension {
                 Ok(blocks.into_iter().next())
             }
             FileContent::Image { source, .. } => {
+                // Images ALWAYS stay inlined (vision continuity), even on a
+                // tool-capable model — unlike `FileAttachment`, an `Image` block
+                // is a URL/base64/tool-produced image with no guaranteed
+                // file-backed entry in the available-files set, so there is no
+                // `read_file(id)` fallback to re-fetch it. Dropping it would
+                // blind the model to an image it previously saw. These cost
+                // nothing extra for URL refs (the provider fetches) and are the
+                // model's only handle on tool-produced images.
                 let ai_source = match source {
                     FileImageSource::Url { url } => ImageSource::Url { url, detail: None },
                     FileImageSource::Base64 { media_type, data } => {

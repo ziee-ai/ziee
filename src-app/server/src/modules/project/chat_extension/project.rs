@@ -173,7 +173,15 @@ impl ChatExtension for ProjectExtension {
         // Provider context comes from chat's StreamContext metadata; the
         // file extension's `collect_chat_knowledge` needs it to route
         // file content through the provider-specific block builders.
-        let project_blocks = if let Some(registry) =
+        // When the model is tool-capable, project knowledge files are exposed via
+        // the Track A manifest + the built-in `files` read tools (injected by the
+        // file extension), so we do NOT inline their content here — only the
+        // project instructions below. Non-tool-capable models keep the inline path.
+        let tool_capable =
+            crate::modules::file::available_files::model_supports_tools(&context.metadata).await;
+        let project_blocks = if tool_capable {
+            Vec::new()
+        } else if let Some(registry) =
             crate::modules::project::core::extension::get_global_registry()
         {
             let provider_id = context

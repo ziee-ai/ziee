@@ -1259,6 +1259,7 @@ pub async fn create_model_from_hub(
             chat: Some(hub_caps.chat),
             text_embedding: Some(hub_caps.text_embedding),
             image_generator: Some(hub_caps.image_generator),
+            context_length: None,
         }
     });
 
