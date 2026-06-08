@@ -33,8 +33,11 @@ impl ziee::EventHandler for AutoAssignProviderHandler {
             if let Ok(groups) = ziee::Repos.group.get_all().await {
                 let group_count = groups.len();
                 for group in groups {
+                    // bcc698d refactor split user-group↔provider mappings out
+                    // of `llm_provider` into the `user_group_llm_provider` sub-
+                    // repo. `assign_to_group` lives on the new repo now.
                     let _ = ziee::Repos
-                        .llm_provider
+                        .user_group_llm_provider
                         .assign_to_group(provider.id, group.id)
                         .await;
                 }
