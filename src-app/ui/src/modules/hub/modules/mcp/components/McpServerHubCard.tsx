@@ -257,62 +257,35 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                     }}
                   />
                 )}
-                {/* Install button layout — permission-based:
-                    * Admin (canInstallSystem) → TWO buttons:
-                      "Install for me" + "Install for the system".
-                      Both open the McpServerDrawer prefilled from
-                      the hub manifest; the user reviews + fills in
-                      secrets, then submits via the regular create
-                      endpoint with `hub_id` forwarded.
-                    * Non-admin → ONE button "Install" (user-scope).
-                    Same behavior on web and desktop (where the
-                    single user is admin and gets both buttons). */}
-                {isAlreadyInstalled && !canInstallSystem ? (
+                {/* Install button layout — per-scope independence:
+                    * User-scope: render "View Server" when already
+                      installed for the current user (collapses the
+                      "Install for me" button), else render the install
+                      button. Label is "Install for me" when the user
+                      also has admin perms (paired with the system
+                      button below), else just "Install".
+                    * System-scope (admin only): always render the
+                      "Install for the system" button; it disables to
+                      "System Installed" when a system install already
+                      exists. The system button is independent of the
+                      user-scope install state so admins can install
+                      for themselves AND for the system in either
+                      order.
+                    Both install paths open the McpServerDrawer
+                    prefilled from the hub manifest; the user reviews
+                    + fills secrets and submits via the regular create
+                    endpoint with `hub_id` forwarded. */}
+                {isAlreadyInstalled ? (
                   <Button
                     icon={<EyeOutlined />}
                     onClick={e => {
                       e.stopPropagation()
                       navigate('/settings/mcp-servers')
                     }}
+                    data-testid="hub-mcp-view-btn"
                   >
                     View Server
                   </Button>
-                ) : canInstallSystem ? (
-                  <>
-                    {canInstall && (
-                      <Button
-                        type="primary"
-                        icon={<DownloadOutlined />}
-                        onClick={e => {
-                          e.stopPropagation()
-                          handleInstall()
-                        }}
-                        disabled={installing || installingSystem}
-                        loading={installing}
-                        data-testid="hub-mcp-install-btn"
-                      >
-                        Install for me
-                      </Button>
-                    )}
-                    <Button
-                      icon={<CopyOutlined />}
-                      onClick={e => {
-                        e.stopPropagation()
-                        handleInstallAsSystem()
-                      }}
-                      loading={installingSystem}
-                      disabled={
-                        installing ||
-                        installingSystem ||
-                        isAlreadyInstalledAsSystem
-                      }
-                      data-testid="hub-mcp-install-as-system-btn"
-                    >
-                      {isAlreadyInstalledAsSystem
-                        ? 'System Installed'
-                        : 'Install for the system'}
-                    </Button>
-                  </>
                 ) : canInstall ? (
                   <Button
                     type="primary"
@@ -325,9 +298,29 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                     loading={installing}
                     data-testid="hub-mcp-install-btn"
                   >
-                    Install
+                    {canInstallSystem ? 'Install for me' : 'Install'}
                   </Button>
                 ) : null}
+                {canInstallSystem && (
+                  <Button
+                    icon={<CopyOutlined />}
+                    onClick={e => {
+                      e.stopPropagation()
+                      handleInstallAsSystem()
+                    }}
+                    loading={installingSystem}
+                    disabled={
+                      installing ||
+                      installingSystem ||
+                      isAlreadyInstalledAsSystem
+                    }
+                    data-testid="hub-mcp-install-as-system-btn"
+                  >
+                    {isAlreadyInstalledAsSystem
+                      ? 'System Installed'
+                      : 'Install for the system'}
+                  </Button>
+                )}
               </div>
             </div>
 

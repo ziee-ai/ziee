@@ -23,6 +23,12 @@ export function SystemMcpServersPage() {
   } = Stores.SystemMcpServer
   const setSearchTerm = Stores.SystemMcpServer.setSearchTerm
   const setStatusFilter = Stores.SystemMcpServer.setStatusFilter
+  // Hoisted out of the .map() below: each Stores.X.<prop> read calls
+  // useEffect + useStore under the hood (proxy in core/stores.ts).
+  // Inside .map() the hook count becomes a function of
+  // filteredServers.length — empty on first render, N on the second
+  // → "Rendered more hooks than during the previous render."
+  const { multiUserMode } = Stores.AppMode
 
   const clearAllFilters = () => {
     setSearchTerm('')
@@ -130,7 +136,7 @@ export function SystemMcpServersPage() {
               data-server-name={server.display_name}
             >
               <McpServerCard server={server} isEditable={true} bordered={false} />
-              {Stores.AppMode.multiUserMode && (
+              {multiUserMode && (
                 <McpServerGroupsAssignmentCard serverId={server.id} />
               )}
             </Card>
