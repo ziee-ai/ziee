@@ -336,13 +336,30 @@ export const useAuthStore = create<AuthState>()(
               })
             }
           } catch (error) {
-            set({
+            // Same logic as `authenticateUser`: a "Failed to fetch"
+            // / aborted error doesn't prove the token is bad — it
+            // usually means the page navigated mid-/me. Preserve
+            // the token so the next mount can retry. Only wipe on
+            // a real auth failure (401 surfaces here as a non-
+            // TypeError with a status-bearing message).
+            const isAbort =
+              error instanceof TypeError &&
+              /failed to fetch|network|aborted/i.test(error.message)
+            const baseError = {
               error:
                 error instanceof Error
                   ? error.message
                   : 'Failed to fetch user information',
               isLoading: false,
               isInitializing: false,
+            }
+            if (isAbort) {
+              // Keep token; AuthGuard will retry initAuth on next mount.
+              set(baseError)
+              return
+            }
+            set({
+              ...baseError,
               isAuthenticated: false,
               token: null,
               user: null,
