@@ -37,7 +37,6 @@ const SURVIVOR_FILES: &[&str] = &[
 ];
 
 #[test]
-#[ignore = "redirects app_data_dir globally + triggers full extract"]
 fn selective_wipe_preserves_unowned_paths() {
     assert!(
         embedded::is_supported(),
