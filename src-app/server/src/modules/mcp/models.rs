@@ -219,17 +219,22 @@ pub struct McpServer {
     pub usage_mode: UsageMode,
     pub max_concurrent_sessions: Option<i32>,
 
-    /// Admin opt-in: launch the stdio subprocess inside the
-    /// code_sandbox bwrap isolation. Only honored when
-    /// `is_system && transport_type == Stdio` — the spawn path
-    /// ignores it otherwise; the UI hides the toggle for user-owned
-    /// or non-stdio servers. Defaults to false.
+    /// Launch the stdio subprocess inside the code_sandbox bwrap
+    /// isolation. Honored for any `transport_type == Stdio` row (both
+    /// system and user-owned) — the user-create handler force-sets this
+    /// to `true` for user-owned stdio servers per the active MCP user
+    /// policy; admins choose freely on system servers via the drawer
+    /// toggle. The spawn path ignores it for non-stdio servers.
     pub run_in_sandbox: bool,
 
     /// Rootfs flavor (KNOWN_FLAVORS, e.g. `minimal`/`full`) used when
     /// `run_in_sandbox` launches this stdio server inside the
     /// code_sandbox. Defaults to `full` (the flavor that ships Node +
-    /// uv + python3 + R). Ignored when not sandboxed.
+    /// uv + python3 + R). Ignored when not sandboxed. For user-owned
+    /// stdio rows the user-create handler force-overwrites this with
+    /// the active `mcp_user_policy.user_stdio_sandbox_flavor` (the
+    /// drawer hides the picker on the user side); admins choose it on
+    /// the system drawer.
     pub sandbox_flavor: String,
 
     /// Persisted result of the last connection probe — populated by

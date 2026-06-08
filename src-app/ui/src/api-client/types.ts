@@ -343,6 +343,7 @@ export interface CreateMcpServerRequest {
   enabled?: boolean
   environment_variables_entries?: EnvVarEntry[]
   headers_entries?: HeaderEntry[]
+  hub_id?: string
   max_concurrent_sessions?: number
   name: string
   run_in_sandbox?: boolean
@@ -1162,6 +1163,9 @@ export interface LlmRepository {
   created_at: string
   enabled: boolean
   id: string
+  last_health_check_at?: string
+  last_health_check_reason?: string
+  last_health_check_status: string
   name: string
   updated_at: string
   url: string
@@ -1172,6 +1176,22 @@ export interface LlmRepositoryListResponse {
   per_page: number
   repositories: LlmRepository[]
   total: number
+}
+
+export interface LlmRepositoryWithHealthWarning {
+  auth_config: RepositoryAuthConfig
+  auth_type: string
+  built_in: boolean
+  connection_warning?: ProbeFailure
+  created_at: string
+  enabled: boolean
+  id: string
+  last_health_check_at?: string
+  last_health_check_reason?: string
+  last_health_check_status: string
+  name: string
+  updated_at: string
+  url: string
 }
 
 export interface LoginRequest {
@@ -1256,12 +1276,45 @@ export interface McpServerOAuthConfigResponse {
 }
 
 export interface McpServerWithHealthWarning {
-  connection_warning?: ProbeFailure
-  server: McpServer
+  description?: string
+  args: any
+  command?: string
+  connection_warning?: ProbeFailure2
+  created_at: string
+  display_name: string
+  enabled: boolean
+  environment_variables?: any
+  environment_variables_entries?: EnvVarView[]
+  headers?: any
+  headers_entries?: HeaderView[]
+  id: string
+  is_built_in: boolean
+  is_system: boolean
+  last_health_check_at?: string
+  last_health_check_reason?: string
+  last_health_check_status?: string
+  max_concurrent_sessions?: number
+  name: string
+  run_in_sandbox: boolean
+  sandbox_flavor: string
+  supports_sampling: boolean
+  timeout_seconds: number
+  transport_type: TransportType
+  updated_at: string
+  url?: string
+  usage_mode: UsageMode
+  user_id?: string
 }
 
 export interface McpSettingsResponse {
   settings?: ConversationMcpSettingsResponse
+}
+
+export interface McpUserPolicy {
+  allowed_transports: string[]
+  updated_at: string
+  updated_by?: string
+  user_stdio_sandbox_flavor?: string
 }
 
 export interface MeResponse {
@@ -1576,6 +1629,10 @@ export interface PreviewQuery {
 }
 
 export interface ProbeFailure {
+  reason: string
+}
+
+export interface ProbeFailure2 {
   reason: string
 }
 
@@ -2273,6 +2330,11 @@ export interface UpdateMcpServerRequest {
   usage_mode?: UsageMode
 }
 
+export interface UpdateMcpUserPolicyRequest {
+  allowed_transports: string[]
+  user_stdio_sandbox_flavor?: string
+}
+
 export interface UpdateMemoryAdminSettingsRequest {
   cosine_threshold?: number
   daily_extraction_quota?: number
@@ -2538,6 +2600,7 @@ export enum Permissions {
   McpServersDelete = 'mcp_servers::delete',
   McpServersEdit = 'mcp_servers::edit',
   McpServersRead = 'mcp_servers::read',
+  McpUserPolicyEdit = 'mcp_user_policy::edit',
   MemoryAdminManage = 'memory::admin::manage',
   MemoryAdminRead = 'memory::admin::read',
   MemoryRead = 'memory::read',
@@ -2643,6 +2706,7 @@ export const PermissionDescriptions: Record<string, string> = {
   McpServersDelete: 'Delete MCP servers',
   McpServersEdit: 'Edit MCP servers',
   McpServersRead: 'View MCP servers',
+  McpUserPolicyEdit: 'Edit MCP user policy (allowed transports + sandbox flavor)',
   MemoryAdminManage: 'Update memory admin settings (embedding model, enable/disable).',
   MemoryAdminRead: 'Read memory admin settings (embedding model, defaults).',
   MemoryRead: 'List and read own memories.',
@@ -2804,6 +2868,7 @@ export const ApiEndpoints = {
   'LlmRepository.get': 'GET /api/llm-repositories/{repository_id}',
   'LlmRepository.list': 'GET /api/llm-repositories',
   'LlmRepository.test': 'POST /api/llm-repositories/test',
+  'LlmRepository.testById': 'POST /api/llm-repositories/{repository_id}/test',
   'LlmRepository.update': 'POST /api/llm-repositories/{repository_id}',
   'LocalLlmProxy.chatCompletions': 'POST /api/local-llm/v1/chat/completions',
   'LocalLlmProxy.embeddings': 'POST /api/local-llm/v1/embeddings',
@@ -2850,6 +2915,8 @@ export const ApiEndpoints = {
   'McpServerSystem.removeServerFromGroup': 'DELETE /api/mcp/system-servers/{id}/groups/{group_id}',
   'McpServerSystem.testConnection': 'POST /api/mcp/system-servers/test-connection',
   'McpServerSystem.update': 'PUT /api/mcp/system-servers/{id}',
+  'McpUserPolicy.get': 'GET /api/mcp/user-policy',
+  'McpUserPolicy.update': 'PUT /api/mcp/user-policy',
   'Memory.create': 'POST /api/memories',
   'Memory.delete': 'DELETE /api/memories/{id}',
   'Memory.deleteAll': 'DELETE /api/memories/all',
@@ -3048,6 +3115,7 @@ export type ApiEndpointParameters = {
   'LlmRepository.get': { repository_id: string }
   'LlmRepository.list': PaginationQuery
   'LlmRepository.test': TestRepositoryConnectionRequest
+  'LlmRepository.testById': { repository_id: string } & UpdateLlmRepositoryRequest
   'LlmRepository.update': { repository_id: string } & UpdateLlmRepositoryRequest
   'LocalLlmProxy.chatCompletions': void
   'LocalLlmProxy.embeddings': void
@@ -3094,6 +3162,8 @@ export type ApiEndpointParameters = {
   'McpServerSystem.removeServerFromGroup': { id: string; group_id: string }
   'McpServerSystem.testConnection': TestMcpConnectionRequest
   'McpServerSystem.update': { id: string } & UpdateMcpServerRequest
+  'McpUserPolicy.get': void
+  'McpUserPolicy.update': UpdateMcpUserPolicyRequest
   'Memory.create': CreateMemoryRequest
   'Memory.delete': { id: string }
   'Memory.deleteAll': void
@@ -3287,11 +3357,12 @@ export type ApiEndpointResponses = {
   'LlmProvider.rotateProxyToken': RotateProxyTokenResponse
   'LlmProvider.saveUserApiKey': void
   'LlmProvider.update': LlmProvider
-  'LlmRepository.create': LlmRepository
+  'LlmRepository.create': LlmRepositoryWithHealthWarning
   'LlmRepository.delete': void
   'LlmRepository.get': LlmRepository
   'LlmRepository.list': LlmRepositoryListResponse
   'LlmRepository.test': TestRepositoryConnectionResponse
+  'LlmRepository.testById': TestRepositoryConnectionResponse
   'LlmRepository.update': LlmRepository
   'LocalLlmProxy.chatCompletions': void
   'LocalLlmProxy.embeddings': void
@@ -3338,6 +3409,8 @@ export type ApiEndpointResponses = {
   'McpServerSystem.removeServerFromGroup': void
   'McpServerSystem.testConnection': TestMcpConnectionResponse
   'McpServerSystem.update': McpServer
+  'McpUserPolicy.get': McpUserPolicy
+  'McpUserPolicy.update': McpUserPolicy
   'Memory.create': UserMemory
   'Memory.delete': void
   'Memory.deleteAll': DeleteAllResponse

@@ -23,6 +23,13 @@ pub fn llm_repository_router() -> ApiRouter {
             post_with(test_repository_connection, test_repository_connection_docs),
         )
         .api_route(
+            "/llm-repositories/{repository_id}/test",
+            post_with(
+                test_repository_connection_by_id,
+                test_repository_connection_by_id_docs,
+            ),
+        )
+        .api_route(
             "/llm-repositories/{repository_id}",
             get_with(get_repository, get_repository_docs),
         )

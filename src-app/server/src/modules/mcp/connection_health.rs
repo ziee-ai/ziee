@@ -47,6 +47,11 @@ pub struct ProbeFailure {
 /// probe ran).
 #[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct McpServerWithHealthWarning {
+    // Flattened so the response shape is `{...McpServer fields,
+    // connection_warning?}` — see the rationale on
+    // `LlmRepositoryWithHealthWarning` in
+    // `modules/llm_repository/connection_health.rs`.
+    #[serde(flatten)]
     pub server: super::models::McpServer,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub connection_warning: Option<ProbeFailure>,

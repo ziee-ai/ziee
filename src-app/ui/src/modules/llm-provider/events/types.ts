@@ -62,6 +62,41 @@ export interface GroupLlmProvidersChangedEvent extends BaseEvent {
   }
 }
 
+/**
+ * Emitted by `LlmModelDownload.store.ts`'s SSE handler the moment a
+ * download row transitions to `status === 'completed'`. Fired EXACTLY
+ * ONCE per download — the handler keeps a pre-update status snapshot
+ * so subsequent broadcasts for the same already-completed row don't
+ * re-fire. Consumed by the globally-mounted
+ * `LlmModelDownloadNotifications` listener to surface a success toast,
+ * even when the user has navigated away from the hub page.
+ */
+export interface LlmModelDownloadCompletedEvent extends BaseEvent {
+  type: 'llm_model.download_completed'
+  data: {
+    downloadId: string
+    providerId: string
+    modelDisplayName: string
+  }
+}
+
+/**
+ * Sibling of `LlmModelDownloadCompletedEvent` for terminal failures.
+ * Same emit-once semantics. `errorMessage` carries the backend's
+ * human-readable reason verbatim — the listener surfaces it in the
+ * toast so the user sees what went wrong without digging into the
+ * provider settings page.
+ */
+export interface LlmModelDownloadFailedEvent extends BaseEvent {
+  type: 'llm_model.download_failed'
+  data: {
+    downloadId: string
+    providerId: string
+    modelDisplayName: string
+    errorMessage: string
+  }
+}
+
 export type LlmProviderModuleEvent =
   | LlmProviderCreatedEvent
   | LlmProviderUpdatedEvent
@@ -71,6 +106,8 @@ export type LlmProviderModuleEvent =
   | LlmModelDeletedEvent
   | LlmProviderGroupsChangedEvent
   | GroupLlmProvidersChangedEvent
+  | LlmModelDownloadCompletedEvent
+  | LlmModelDownloadFailedEvent
 
 declare module '@/core/events' {
   interface AppEvents {
@@ -82,5 +119,7 @@ declare module '@/core/events' {
     'llm_model.deleted': LlmModelDeletedEvent
     'llm_provider.groups_changed': LlmProviderGroupsChangedEvent
     'llm_provider.group_providers_changed': GroupLlmProvidersChangedEvent
+    'llm_model.download_completed': LlmModelDownloadCompletedEvent
+    'llm_model.download_failed': LlmModelDownloadFailedEvent
   }
 }

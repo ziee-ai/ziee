@@ -14,15 +14,17 @@ pub mod runtime_types;
 pub mod sampling;
 pub mod settings;
 mod types;
+pub mod user_policy;
 mod utils;
 
 pub use models::*;
 pub use repository::*;
 pub use types::*;
-// Re-exports for cross-module use (hub install paths). Named so the
-// public surface stays explicit — bumping the whole `repository` /
-// `permissions` modules to `pub mod` would leak internals.
-pub use permissions::McpServersAdminCreate;
+// Re-exports for cross-module use (hub install paths + the
+// code_sandbox environments REST shim). Named so the public surface
+// stays explicit — bumping the whole `repository` / `permissions`
+// modules to `pub mod` would leak internals.
+pub use permissions::{McpServersAdminCreate, McpServersAdminRead};
 pub(crate) use repository::validate_transport_config;
 
 use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleContext, ModuleEntry};
@@ -80,6 +82,40 @@ impl AppModule for McpModule {
         let health_pool = (*ctx.db_pool).clone();
         tokio::spawn(async move {
             connection_health::run_startup_health_check(health_pool).await;
+        });
+
+        // Boot-time sanity check on the MCP user policy. If the
+        // policy allows stdio for users but `code_sandbox` is
+        // disabled in this deployment, user stdio create/update calls
+        // will 422 with `MCP_SANDBOX_DISABLED` and any pre-existing
+        // user stdio rows (force-migrated to sandboxed by migration
+        // 84) won't connect. Surface this misconfiguration loudly at
+        // boot so the operator catches it before users do.
+        let policy_pool = (*ctx.db_pool).clone();
+        tokio::spawn(async move {
+            match user_policy::load(&policy_pool).await {
+                Ok(p) if p.allowed_transports.iter().any(|t| t == "stdio")
+                    && crate::modules::code_sandbox::config::get_state().is_none() =>
+                {
+                    // ERROR-level because this is a misconfiguration
+                    // that BREAKS user stdio MCP servers — every
+                    // create/update 422s and every connect refuses.
+                    // The operator needs to see this in logs even at
+                    // info-or-warn filters.
+                    tracing::error!(
+                        allowed_transports = ?p.allowed_transports,
+                        "MCP user policy includes 'stdio' but code_sandbox is \
+                         DISABLED in this deployment. User stdio MCP servers \
+                         WILL FAIL to connect. Either enable code_sandbox in \
+                         config and restart, or PUT /api/mcp/user-policy to \
+                         remove 'stdio' from allowed_transports."
+                    );
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!(error = %e, "MCP user policy boot check skipped (load failed)");
+                }
+            }
         });
 
         Ok(())

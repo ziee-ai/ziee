@@ -116,6 +116,12 @@ const desktopBaseModule: AppModule = createModule({
   initialize: async () => {
     console.log('[Desktop] Desktop base module initialized')
 
+    // Note: `Stores.AppMode.setMultiUserMode(false)` is set
+    // synchronously in `desktop/ui/src/main.tsx` BEFORE the React
+    // render, so multi-user-only widgets never render even briefly.
+    // Don't move it here — async initialize lets a render frame
+    // sneak in with multiUserMode=true and flash the wrong UI.
+
     if (!window.__TAURI__) {
       console.warn('[Desktop] Tauri not available - running in web mode')
       return

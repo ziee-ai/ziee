@@ -3,11 +3,26 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import type { McpServer } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 
+/**
+ * Pre-fill payload for the "Install from Hub" flow. The Hub MCP
+ * card's "Install" / "Install for the system" buttons call
+ * `openMcpServerDrawer(undefined, mode, prefillData)` with the
+ * manifest's field defaults so the drawer opens fully populated.
+ * The user reviews / fills in secrets, then submits via the normal
+ * create endpoint with `hub_id` in the request body so the backend
+ * still records the install in `hub_entities`.
+ */
+export interface McpServerDrawerPrefill {
+  fields: Partial<McpServer>
+  hub_id?: string
+}
+
 // MCP Server Drawer State
 interface McpServerDrawerState {
   open: boolean
   loading: boolean
   editingServer: McpServer | null
+  prefillData: McpServerDrawerPrefill | null
   isCloning: boolean
   mode: 'create' | 'edit' | 'clone' | 'create-system' | 'edit-system'
 
@@ -15,6 +30,7 @@ interface McpServerDrawerState {
   openMcpServerDrawer: (
     server?: McpServer,
     mode?: 'create' | 'edit' | 'clone' | 'create-system' | 'edit-system',
+    prefillData?: McpServerDrawerPrefill,
   ) => void
   closeMcpServerDrawer: () => void
   setMcpServerDrawerLoading: (loading: boolean) => void
@@ -32,6 +48,7 @@ export const useMcpServerDrawerStore = create<McpServerDrawerState>()(
       open: false,
       loading: false,
       editingServer: null,
+      prefillData: null,
       isCloning: false,
       mode: 'create',
 
@@ -82,10 +99,12 @@ export const useMcpServerDrawerStore = create<McpServerDrawerState>()(
           | 'clone'
           | 'create-system'
           | 'edit-system' = 'create',
+        prefillData?: McpServerDrawerPrefill,
       ) => {
         set({
           open: true,
           editingServer: server || null,
+          prefillData: prefillData ?? null,
           isCloning: mode === 'clone',
           mode,
         })
@@ -96,6 +115,7 @@ export const useMcpServerDrawerStore = create<McpServerDrawerState>()(
           open: false,
           loading: false,
           editingServer: null,
+          prefillData: null,
           isCloning: false,
           mode: 'create',
         })

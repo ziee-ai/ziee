@@ -102,7 +102,20 @@ pub async fn create_system_server(
     Json(request): Json<CreateMcpServerRequest>,
 ) -> ApiResult<Json<McpServerWithHealthWarning>> {
     super::validate_sandbox_fields_create(true, &request)?;
+    let hub_id = request.hub_id.clone();
     let server = Repos.mcp.create_system_server(request).await?;
+    let server_id = server.id;
+
+    // Hub install tracking from the drawer-prefilled flow (Install
+    // for the system).
+    if let Some(hub_id) = hub_id {
+        crate::modules::hub::install_helpers::track_system_mcp_install(
+            server_id,
+            &hub_id,
+        )
+        .await?;
+    }
+
     event_bus.emit_async(McpServerEvent::system_server_created(server.id));
 
     // Same downgrade-on-probe-failure semantic as user creates —

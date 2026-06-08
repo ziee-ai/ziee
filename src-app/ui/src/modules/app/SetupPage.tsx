@@ -1,4 +1,3 @@
-import React from 'react'
 import { Card, Form, Input, Button, Typography, Alert } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core'
@@ -10,13 +9,15 @@ export default function SetupPage() {
   const navigate = useNavigate()
   const [form] = Form.useForm()
 
-  // Redirect to homepage if setup is not needed (e.g. already completed
-  // in another tab). The primary post-setup redirect is in onFinish.
-  React.useEffect(() => {
-    if (needsSetup === false) {
-      navigate('/', { replace: true })
-    }
-  }, [needsSetup, navigate])
+  // No cross-tab redirect useEffect on `needsSetup === false`:
+  // setupAdmin flips needsSetup BEFORE the in-onFinish
+  // authenticateUser call sets Auth.isLoading=true. Any useEffect
+  // here would race against that microtask gap, fire navigate('/'),
+  // unmount the page mid-fetch, and abort the /me request inside
+  // authenticateUser with "Failed to fetch". The post-setup redirect
+  // is owned by onFinish below; cross-tab completion is left to the
+  // user (the rare-edge UX is "refresh the tab", not silent
+  // navigation that loses the half-filled form anyway).
 
   const onFinish = async (values: any) => {
     try {

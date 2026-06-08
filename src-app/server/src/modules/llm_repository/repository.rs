@@ -110,6 +110,35 @@ impl LlmRepositoryRepository {
     pub async fn delete(&self, repository_id: Uuid) -> Result<Result<bool, String>, sqlx::Error> {
         delete_llm_repository(&self.pool, repository_id).await
     }
+
+    /// Persist a connection-probe outcome. See free-function docs.
+    pub async fn record_health_check(
+        &self,
+        repo_id: Uuid,
+        status: &str,
+        reason: Option<&str>,
+    ) -> Result<(), sqlx::Error> {
+        record_health_check(&self.pool, repo_id, status, reason).await
+    }
+
+    /// Every `enabled = TRUE` repository for the boot-time probe.
+    pub async fn list_enabled_for_health_check(&self) -> Result<Vec<LlmRepository>, sqlx::Error> {
+        list_enabled_for_health_check(&self.pool).await
+    }
+
+    /// Used by the boot probe when the EventBus isn't available yet;
+    /// foreground enable-transition reverts go through the normal
+    /// update path so they can emit `AutoDisabled`.
+    pub async fn disable_for_health_failure(&self, repo_id: Uuid) -> Result<(), sqlx::Error> {
+        disable_for_health_failure(&self.pool, repo_id).await
+    }
+
+    /// Pool accessor for connection_health (which runs ad-hoc SQL via
+    /// the same connection — mirrors how `mcp::connection_health`
+    /// reaches the pool through `McpRepository::pool()`).
+    pub fn pool(&self) -> &PgPool {
+        &self.pool
+    }
 }
 
 // =====================================================
@@ -121,7 +150,8 @@ pub async fn get_llm_repository_by_id(
     repository_id: Uuid,
 ) -> Result<Option<LlmRepository>, sqlx::Error> {
     let row = sqlx::query!(
-        r#"SELECT id, name, url, auth_type, auth_config, auth_config_encrypted, enabled, built_in, created_at, updated_at
+        r#"SELECT id, name, url, auth_type, auth_config, auth_config_encrypted, enabled, built_in, created_at, updated_at,
+                  last_health_check_at, last_health_check_status, last_health_check_reason
          FROM llm_repositories
          WHERE id = $1"#,
         repository_id
@@ -145,12 +175,18 @@ pub async fn get_llm_repository_by_id(
         built_in: r.built_in,
         created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
         updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+        last_health_check_at: r
+            .last_health_check_at
+            .and_then(|t| DateTime::from_timestamp(t.unix_timestamp(), 0)),
+        last_health_check_status: r.last_health_check_status,
+        last_health_check_reason: r.last_health_check_reason,
     }))
 }
 
 pub async fn list_llm_repositories(pool: &PgPool) -> Result<Vec<LlmRepository>, sqlx::Error> {
     let rows = sqlx::query!(
-        r#"SELECT id, name, url, auth_type, auth_config, auth_config_encrypted, enabled, built_in, created_at, updated_at
+        r#"SELECT id, name, url, auth_type, auth_config, auth_config_encrypted, enabled, built_in, created_at, updated_at,
+                  last_health_check_at, last_health_check_status, last_health_check_reason
          FROM llm_repositories
          ORDER BY built_in DESC, name ASC"#
     )
@@ -172,6 +208,11 @@ pub async fn list_llm_repositories(pool: &PgPool) -> Result<Vec<LlmRepository>, 
             built_in: r.built_in,
             created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
             updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+            last_health_check_at: r
+                .last_health_check_at
+                .and_then(|t| DateTime::from_timestamp(t.unix_timestamp(), 0)),
+            last_health_check_status: r.last_health_check_status,
+            last_health_check_reason: r.last_health_check_reason,
         });
     }
     Ok(repos)
@@ -212,7 +253,8 @@ pub async fn create_llm_repository(
     let row = sqlx::query!(
         r#"INSERT INTO llm_repositories (id, name, url, auth_type, auth_config, auth_config_encrypted, enabled, built_in)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         RETURNING id, name, url, auth_type, auth_config, auth_config_encrypted, enabled, built_in, created_at, updated_at"#,
+         RETURNING id, name, url, auth_type, auth_config, auth_config_encrypted, enabled, built_in, created_at, updated_at,
+                   last_health_check_at, last_health_check_status, last_health_check_reason"#,
         repository_id,
         &request.name,
         &request.url,
@@ -238,6 +280,11 @@ pub async fn create_llm_repository(
         built_in: row.built_in,
         created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0).unwrap(),
         updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0).unwrap(),
+        last_health_check_at: row
+            .last_health_check_at
+            .and_then(|t| DateTime::from_timestamp(t.unix_timestamp(), 0)),
+        last_health_check_status: row.last_health_check_status,
+        last_health_check_reason: row.last_health_check_reason,
     })
 }
 
@@ -382,7 +429,8 @@ pub async fn find_llm_repository_by_url(
     url: &str,
 ) -> Result<Option<LlmRepository>, sqlx::Error> {
     let row = sqlx::query!(
-        r#"SELECT id, name, url, auth_type, auth_config, auth_config_encrypted, enabled, built_in, created_at, updated_at
+        r#"SELECT id, name, url, auth_type, auth_config, auth_config_encrypted, enabled, built_in, created_at, updated_at,
+                  last_health_check_at, last_health_check_status, last_health_check_reason
          FROM llm_repositories
          WHERE url = $1"#,
         url
@@ -406,5 +454,109 @@ pub async fn find_llm_repository_by_url(
         built_in: r.built_in,
         created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
         updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+        last_health_check_at: r
+            .last_health_check_at
+            .and_then(|t| DateTime::from_timestamp(t.unix_timestamp(), 0)),
+        last_health_check_status: r.last_health_check_status,
+        last_health_check_reason: r.last_health_check_reason,
     }))
+}
+
+// =====================================================
+// Connection-health methods (migration 83)
+// =====================================================
+
+/// Persist the outcome of a connection probe. Called from four sites
+/// in `connection_health.rs`: boot startup check, create-flow probe,
+/// update-flow enable-transition probe, and the explicit form-based
+/// test path. Stamps `last_health_check_at = CURRENT_TIMESTAMP` so the UI can
+/// render a relative timestamp on the Alert.
+///
+/// Status must be one of `"healthy"` | `"unhealthy"` — the CHECK
+/// constraint also accepts `"untested"`, but we never write that
+/// value here (it's the column default). `reason` is required on
+/// unhealthy and ignored on healthy (callers should pass `None`).
+pub async fn record_health_check(
+    pool: &PgPool,
+    repo_id: Uuid,
+    status: &str,
+    reason: Option<&str>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"UPDATE llm_repositories
+           SET last_health_check_at = CURRENT_TIMESTAMP,
+               last_health_check_status = $1,
+               last_health_check_reason = $2
+           WHERE id = $3"#,
+        status,
+        reason,
+        repo_id,
+    )
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Every enabled repository, in scan order for the boot probe. Unlike
+/// MCP we do NOT exclude `built_in` rows — the seed HuggingFace +
+/// GitHub repos are exactly the rows we want to probe (they share the
+/// same connectivity codepath as user-added rows; no separate runtime
+/// owns them).
+pub async fn list_enabled_for_health_check(
+    pool: &PgPool,
+) -> Result<Vec<LlmRepository>, sqlx::Error> {
+    let rows = sqlx::query!(
+        r#"SELECT id, name, url, auth_type, auth_config, auth_config_encrypted, enabled, built_in, created_at, updated_at,
+                  last_health_check_at, last_health_check_status, last_health_check_reason
+         FROM llm_repositories
+         WHERE enabled = TRUE
+         ORDER BY built_in DESC, name ASC"#
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut repos = Vec::with_capacity(rows.len());
+    for r in rows {
+        let auth_value = resolve_auth_config(pool, r.auth_config_encrypted, r.auth_config).await;
+        repos.push(LlmRepository {
+            id: r.id,
+            name: r.name,
+            url: r.url,
+            auth_type: r.auth_type,
+            auth_config: auth_value
+                .and_then(|v| serde_json::from_value(v).ok())
+                .unwrap_or_default(),
+            enabled: r.enabled,
+            built_in: r.built_in,
+            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
+            updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+            last_health_check_at: r
+                .last_health_check_at
+                .and_then(|t| DateTime::from_timestamp(t.unix_timestamp(), 0)),
+            last_health_check_status: r.last_health_check_status,
+            last_health_check_reason: r.last_health_check_reason,
+        });
+    }
+    Ok(repos)
+}
+
+/// Set `enabled = FALSE` directly, bypassing the normal update
+/// pipeline. Used by the boot path which runs BEFORE the EventBus
+/// exists — emitting `AutoDisabled` there would be a no-op + log a
+/// "no handlers" warning. The enable-transition path on the
+/// foreground request handler instead goes through the normal update
+/// + emits the event so the UI's list reloads in real time.
+pub async fn disable_for_health_failure(
+    pool: &PgPool,
+    repo_id: Uuid,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"UPDATE llm_repositories
+           SET enabled = FALSE, updated_at = CURRENT_TIMESTAMP
+           WHERE id = $1"#,
+        repo_id,
+    )
+    .execute(pool)
+    .await?;
+    Ok(())
 }

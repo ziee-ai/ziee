@@ -44,6 +44,11 @@ const LLMProviderGroupWidget = lazyWithPreload(() =>
     default: m.LLMProviderGroupWidget,
   })),
 )
+const LlmModelDownloadNotifications = lazyWithPreload(() =>
+  import('./components/LlmModelDownloadNotifications').then(m => ({
+    default: m.LlmModelDownloadNotifications,
+  })),
+)
 
 export default createModule({
   metadata: {
@@ -129,6 +134,18 @@ export default createModule({
       shouldMount: () =>
         useDelayedFalse(() => Stores.LlmProviderGroupsAssignment.isOpen),
       order: 101,
+    },
+    {
+      // Globally-mounted listener for the
+      // `llm_model.download_{completed,failed}` events emitted from
+      // the LlmModelDownload store's SSE handler. Surfaces toasts so
+      // the user sees completion / failure regardless of which page
+      // they're on at the time (the hub model card alone only updates
+      // for users still on the Hub page). Renders null; safe to mount
+      // always.
+      id: 'llm-model-download-notifications',
+      component: LlmModelDownloadNotifications,
+      order: 102,
     },
   ],
   slots: {
