@@ -403,6 +403,18 @@ impl StreamingService {
                     }
                 }
 
+                // Context trimming: once the assembled context grows past a
+                // token threshold, clear the CONTENT of older tool_result blocks
+                // (keeping the matching tool_use + the most recent K results) so
+                // long agentic loops don't re-send every old tool output. Only
+                // what's SENT is trimmed — stored history is untouched, and the
+                // model can re-read a file (cheap) if it needs a cleared result.
+                clear_old_tool_results(
+                    &mut chat_request.messages,
+                    CLEAR_TOOL_RESULTS_TOKEN_THRESHOLD,
+                    KEEP_LAST_TOOL_RESULTS,
+                );
+
                 // Call AI provider
                 let mut ai_stream = match provider_for_task.chat_stream(chat_request).await {
                     Ok(stream) => {
@@ -1419,5 +1431,123 @@ mod tests {
              got role={:?}",
             last.role
         );
+    }
+}
+
+// ── Context trimming ─────────────────────────────────────────────────────────
+
+/// Clear old tool_result content once the assembled context exceeds this many
+/// estimated tokens (chars/4). ~à la Anthropic's `clear_tool_uses` default.
+const CLEAR_TOOL_RESULTS_TOKEN_THRESHOLD: usize = 30_000;
+/// How many of the most-recent tool_result blocks to keep intact.
+const KEEP_LAST_TOOL_RESULTS: usize = 6;
+
+/// Rough char count of a content block's text payload (for token estimation).
+fn block_text_chars(b: &ai_providers::ContentBlock) -> usize {
+    use ai_providers::ContentBlock as CB;
+    match b {
+        CB::Text { text } => text.chars().count(),
+        CB::Thinking { thinking } => thinking.chars().count(),
+        CB::ToolUse { input, .. } => input.to_string().chars().count(),
+        CB::ToolResult { content, .. } => content.iter().map(block_text_chars).sum(),
+        _ => 0,
+    }
+}
+
+/// When the assembled context exceeds `threshold_tokens`, replace the *content*
+/// of older `tool_result` blocks with a short placeholder, keeping the matching
+/// `tool_use` blocks and the most recent `keep_last` results intact. Mutates only
+/// the outbound messages — stored history is untouched and the model can re-call
+/// a tool (e.g. `read_file`) if it needs a cleared result. Provider-agnostic.
+fn clear_old_tool_results(
+    messages: &mut [ChatMessage],
+    threshold_tokens: usize,
+    keep_last: usize,
+) {
+    let total_chars: usize = messages
+        .iter()
+        .flat_map(|m| m.content.iter())
+        .map(block_text_chars)
+        .sum();
+    if total_chars / 4 <= threshold_tokens {
+        return;
+    }
+
+    // Positions of every tool_result block, in order.
+    let mut positions: Vec<(usize, usize)> = Vec::new();
+    for (mi, m) in messages.iter().enumerate() {
+        for (bi, b) in m.content.iter().enumerate() {
+            if matches!(b, ai_providers::ContentBlock::ToolResult { .. }) {
+                positions.push((mi, bi));
+            }
+        }
+    }
+    if positions.len() <= keep_last {
+        return;
+    }
+    let clear_until = positions.len() - keep_last;
+    for &(mi, bi) in &positions[..clear_until] {
+        if let ai_providers::ContentBlock::ToolResult { content, .. } =
+            &mut messages[mi].content[bi]
+        {
+            *content = vec![ai_providers::ContentBlock::Text {
+                text: "[tool result cleared to save context]".to_string(),
+            }];
+        }
+    }
+}
+
+#[cfg(test)]
+mod trim_tests {
+    use super::*;
+    use ai_providers::{ChatMessage, ContentBlock, Role};
+
+    fn tool_result_msg(id: &str, text: &str) -> ChatMessage {
+        ChatMessage {
+            role: Role::User,
+            content: vec![ContentBlock::ToolResult {
+                tool_use_id: id.to_string(),
+                name: None,
+                content: vec![ContentBlock::Text {
+                    text: text.to_string(),
+                }],
+                is_error: None,
+            }],
+        }
+    }
+
+    fn is_cleared(m: &ChatMessage) -> bool {
+        matches!(&m.content[0], ContentBlock::ToolResult { content, .. }
+            if matches!(&content[0], ContentBlock::Text { text } if text.contains("cleared")))
+    }
+
+    #[test]
+    fn clears_old_keeps_recent_past_threshold() {
+        let big = "x".repeat(400); // ~100 est tokens each
+        let mut msgs: Vec<ChatMessage> = (0..10)
+            .map(|i| tool_result_msg(&format!("t{i}"), &big))
+            .collect();
+        // ~1000 tokens total, threshold 100 → trim; keep last 2.
+        clear_old_tool_results(&mut msgs, 100, 2);
+        assert!(is_cleared(&msgs[0]), "oldest cleared");
+        assert!(is_cleared(&msgs[7]), "8th-from-end cleared");
+        assert!(!is_cleared(&msgs[8]), "kept last 2");
+        assert!(!is_cleared(&msgs[9]), "kept last 2");
+    }
+
+    #[test]
+    fn noop_under_threshold() {
+        let mut msgs = vec![tool_result_msg("t", "small")];
+        clear_old_tool_results(&mut msgs, 30_000, 2);
+        assert!(!is_cleared(&msgs[0]), "nothing trimmed under threshold");
+    }
+
+    #[test]
+    fn noop_when_fewer_than_keep_last() {
+        let big = "x".repeat(4000); // way over threshold
+        let mut msgs = vec![tool_result_msg("a", &big), tool_result_msg("b", &big)];
+        clear_old_tool_results(&mut msgs, 100, 6);
+        assert!(!is_cleared(&msgs[0]));
+        assert!(!is_cleared(&msgs[1]));
     }
 }

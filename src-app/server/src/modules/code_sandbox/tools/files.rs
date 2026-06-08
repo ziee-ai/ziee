@@ -163,12 +163,30 @@ async fn load_file_content(ctx: &SandboxContext, filename: &str) -> Result<Strin
     match tokio::fs::read_to_string(&path).await {
         Ok(s) => Ok(s),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            // Try the user-attachment fallback before giving up.
-            if let Some(att) = ctx
+            // Try the user-attachment fallback before giving up. Match by
+            // filename, but DON'T silently pick one of several same-named files
+            // — if the name is ambiguous, error with the candidates so the
+            // caller disambiguates (mirrors the files-MCP rule). file_id is the
+            // unambiguous handle.
+            let matches: Vec<_> = ctx
                 .files
                 .iter()
-                .find(|f| f.filename == filename && f.user_id == ctx.user_id)
-            {
+                .filter(|f| f.filename == filename && f.user_id == ctx.user_id)
+                .collect();
+            if matches.len() > 1 {
+                let ids: Vec<String> = matches.iter().map(|f| f.file_id.to_string()).collect();
+                return Err(AppError::new(
+                    StatusCode::BAD_REQUEST,
+                    "AMBIGUOUS_FILENAME",
+                    format!(
+                        "{filename} matches {} attached files (ids: {}); they are mounted under \
+                         distinct names — read by the exact mounted path",
+                        matches.len(),
+                        ids.join(", ")
+                    ),
+                ));
+            }
+            if let Some(att) = matches.into_iter().next() {
                 // Match the storage manager's "no extension → bin"
                 // convention used in handlers::stage_attachments.
                 // Naïve `rsplit('.').next()` returns the whole name for

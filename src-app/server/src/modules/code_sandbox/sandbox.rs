@@ -604,15 +604,40 @@ pub(crate) fn build_bwrap_argv(
     // Conversation attachments are read-only-bound into the sandbox.
     // Skip filenames containing path separators or NUL — we already
     // store a basename, but defense-in-depth.
+    // Collision-safe mount names: two attachments with the SAME filename would
+    // otherwise both bind to `/home/sandboxuser/<name>` and the later one would
+    // shadow the earlier. Dedup deterministically (input is ordered by
+    // created_at) by suffixing " (2)", " (3)", … before the extension. Stored
+    // filenames are never changed — only the in-sandbox mount path.
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     let extra_ro_binds: Vec<(String, String)> = ctx
         .files
         .iter()
         .filter(|f| !f.filename.contains('/') && !f.filename.contains('\0'))
         .map(|f| {
             let host_path = workspace_attachment_path(workspace_root, f.file_id);
+            let dest_name = if seen.insert(f.filename.clone()) {
+                f.filename.clone()
+            } else {
+                let p = std::path::Path::new(&f.filename);
+                let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or(&f.filename);
+                let ext = p.extension().and_then(|s| s.to_str());
+                let mut chosen = f.filename.clone();
+                for i in 2.. {
+                    let cand = match ext {
+                        Some(e) => format!("{stem} ({i}).{e}"),
+                        None => format!("{stem} ({i})"),
+                    };
+                    if seen.insert(cand.clone()) {
+                        chosen = cand;
+                        break;
+                    }
+                }
+                chosen
+            };
             (
                 host_path.display().to_string(),
-                format!("/home/sandboxuser/{}", f.filename),
+                format!("/home/sandboxuser/{}", dest_name),
             )
         })
         .collect();

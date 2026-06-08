@@ -1570,6 +1570,16 @@ pub async fn update_system_mcp_server(
         .await?
         .ok_or_else(|| AppError::not_found("Server"))?;
 
+    // Built-in system servers (memory / files / code_sandbox) are privileged +
+    // immutable — no editing/disabling via the admin API (mirrors the delete
+    // guard at `delete_system_mcp_server`).
+    if existing.is_built_in {
+        return Err(AppError::bad_request(
+            "BUILT_IN_SERVER",
+            "Cannot modify a built-in system server",
+        ));
+    }
+
     // Validate transport-specific updates
     validate_transport_update(&existing.transport_type, &request)?;
 

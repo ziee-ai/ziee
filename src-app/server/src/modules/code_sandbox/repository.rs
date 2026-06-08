@@ -96,12 +96,27 @@ impl CodeSandboxRepository {
             -- well-formed UUID strings before casting; malformed
             -- entries are silently dropped (they wouldn't have
             -- matched a real `files` row anyway).
-            file_refs AS (
+            attachment_refs AS (
                 SELECT DISTINCT file_id_str::uuid AS file_id
                 FROM raw_refs
                 WHERE file_id_str ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+            ),
+            -- Also include the PROJECT knowledge files of the project this
+            -- conversation belongs to (if any) — so the sandbox sees the same
+            -- effective file set as the chat (Track A manifest), not just
+            -- attachments. Consistency gap fix.
+            project_refs AS (
+                SELECT pf.file_id
+                FROM project_conversations pc
+                JOIN project_files pf ON pf.project_id = pc.project_id
+                WHERE pc.conversation_id = $1
+            ),
+            file_refs AS (
+                SELECT file_id FROM attachment_refs
+                UNION
+                SELECT file_id FROM project_refs
             )
-            SELECT
+            SELECT DISTINCT
                 f.id AS file_id,
                 f.filename,
                 f.user_id,
@@ -109,7 +124,10 @@ impl CodeSandboxRepository {
                 f.created_at
             FROM files f
             JOIN file_refs fr ON fr.file_id = f.id
-            ORDER BY f.created_at
+            -- `f.id` tiebreaker keeps the order (and therefore the collision
+            -- suffixing in build_bwrap_argv) deterministic + stable across calls
+            -- even when several files share a created_at (bulk project uploads).
+            ORDER BY f.created_at, f.id
             "#,
         )
         .bind(conversation_id)
