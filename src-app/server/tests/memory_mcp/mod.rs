@@ -187,3 +187,58 @@ async fn test_recall_requires_memory_enabled() {
         "recall must error when memory disabled; got: {body}"
     );
 }
+
+async fn remember_scope(
+    server: &crate::common::TestServer,
+    token: &str,
+    args: Value,
+) -> String {
+    let res = jsonrpc_call(
+        server,
+        token,
+        "tools/call",
+        json!({ "name": "remember", "arguments": args }),
+    )
+    .send()
+    .await
+    .unwrap();
+    let body: Value = res.json().await.unwrap();
+    body["result"]["structuredContent"]["scope"]
+        .as_str()
+        .unwrap_or("")
+        .to_string()
+}
+
+#[tokio::test]
+async fn test_remember_scope_derivation_fallbacks() {
+    // Without an x-conversation-id header, every scope choice falls back to
+    // user-global: explicit 'user', 'conversation' (no conversation → user), and
+    // omitted (default 'conversation' → no conversation → user).
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "mcp_scope",
+        &["memory::write"],
+    )
+    .await;
+
+    assert_eq!(
+        remember_scope(&server, &user.token, json!({ "content": "fact A", "scope": "user" })).await,
+        "user"
+    );
+    assert_eq!(
+        remember_scope(
+            &server,
+            &user.token,
+            json!({ "content": "fact B", "scope": "conversation" })
+        )
+        .await,
+        "user",
+        "conversation scope with no conversation context falls back to user"
+    );
+    assert_eq!(
+        remember_scope(&server, &user.token, json!({ "content": "fact C" })).await,
+        "user",
+        "omitted scope falls back to user when there's no conversation"
+    );
+}

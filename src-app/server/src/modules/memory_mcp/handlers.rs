@@ -20,7 +20,9 @@ use uuid::Uuid;
 
 use crate::common::AppError;
 use crate::core::Repos;
-use crate::modules::code_sandbox::types::{JsonRpcError, JsonRpcRequest, JsonRpcResponse};
+use crate::modules::code_sandbox::types::{
+    ConversationIdHeader, JsonRpcError, JsonRpcRequest, JsonRpcResponse,
+};
 use crate::modules::memory::permissions::MemoryWrite;
 use crate::modules::permissions::RequirePermissions;
 
@@ -30,6 +32,7 @@ use crate::modules::memory::models::MAX_MEMORY_CONTENT_LEN as MAX_CONTENT_LEN;
 #[debug_handler]
 pub async fn jsonrpc_handler(
     auth: RequirePermissions<(MemoryWrite,)>,
+    ConversationIdHeader(conversation_id): ConversationIdHeader,
     body: axum::body::Bytes,
 ) -> Response {
     let raw: Value = match serde_json::from_slice(&body) {
@@ -75,7 +78,7 @@ pub async fn jsonrpc_handler(
         ),
         "tools/list" => ok_response(id, super::tools::tool_list()),
         "ping" => ok_response(id, json!({})),
-        "tools/call" => match dispatch_tool_call(user_id, &req.params).await {
+        "tools/call" => match dispatch_tool_call(user_id, conversation_id, &req.params).await {
             Ok(value) => ok_response(id, value),
             Err(e) => error_response(id, e.0, e.1),
         },
@@ -122,6 +125,7 @@ struct ToolCallParams {
 
 async fn dispatch_tool_call(
     user_id: Uuid,
+    conversation_id: Option<Uuid>,
     params: &Value,
 ) -> Result<Value, (StatusCode, JsonRpcError)> {
     let call: ToolCallParams = serde_json::from_value(params.clone()).map_err(|e| {
@@ -131,9 +135,26 @@ async fn dispatch_tool_call(
         )
     })?;
 
+    // Validate conversation ownership before using `conversation_id` for scope
+    // derivation — a spoofed `x-conversation-id` must not let a user scope a
+    // memory into a conversation/project they don't own. If not owned, drop it
+    // (falls back to user scope) rather than erroring the whole call.
+    let conversation_id = match conversation_id {
+        Some(cid) => {
+            let owner = Repos
+                .code_sandbox
+                .get_conversation_user_id(cid)
+                .await
+                .ok()
+                .flatten();
+            if owner == Some(user_id) { Some(cid) } else { None }
+        }
+        None => None,
+    };
+
     let result = match call.name.as_str() {
-        "remember" => remember(user_id, &call.arguments).await,
-        "recall" => recall(user_id, &call.arguments).await,
+        "remember" => remember(user_id, conversation_id, &call.arguments).await,
+        "recall" => recall(user_id, conversation_id, &call.arguments).await,
         "forget" => forget(user_id, &call.arguments).await,
         other => {
             return Err((
@@ -159,6 +180,35 @@ struct RememberArgs {
     kind: String,
     #[serde(default = "default_importance")]
     importance: i16,
+    /// 'user' | 'project' | 'conversation'. The model supplies only the scope
+    /// NAME; the server derives the real ids (never trusts a raw project_id).
+    #[serde(default)]
+    scope: Option<String>,
+}
+
+/// Derive the (scope, project_id, conversation_id) to store from the LLM-chosen
+/// scope name + the trusted conversation context. Fallbacks: omitted ⇒
+/// conversation (least surprising); 'project' with no project ⇒ user.
+async fn derive_scope(
+    requested: Option<&str>,
+    conversation_id: Option<Uuid>,
+) -> (String, Option<Uuid>, Option<Uuid>) {
+    match requested.unwrap_or("conversation") {
+        "user" => ("user".to_string(), None, None),
+        "project" => {
+            if let Some(cid) = conversation_id {
+                if let Ok(Some(pid)) = Repos.project.project_id_for_conversation(cid).await {
+                    return ("project".to_string(), Some(pid), None);
+                }
+            }
+            ("user".to_string(), None, None)
+        }
+        // "conversation" + any unknown value.
+        _ => match conversation_id {
+            Some(cid) => ("conversation".to_string(), None, Some(cid)),
+            None => ("user".to_string(), None, None),
+        },
+    }
 }
 fn default_kind() -> String {
     "fact".to_string()
@@ -167,7 +217,11 @@ fn default_importance() -> i16 {
     50
 }
 
-async fn remember(user_id: Uuid, args: &Value) -> Result<Value, AppError> {
+async fn remember(
+    user_id: Uuid,
+    conversation_id: Option<Uuid>,
+    args: &Value,
+) -> Result<Value, AppError> {
     let args: RememberArgs = serde_json::from_value(args.clone())
         .map_err(|e| AppError::bad_request("INVALID_ARGS", e.to_string()))?;
     let content = args.content.trim();
@@ -184,6 +238,8 @@ async fn remember(user_id: Uuid, args: &Value) -> Result<Value, AppError> {
         ));
     }
 
+    let (scope, project_id, conv_id) = derive_scope(args.scope.as_deref(), conversation_id).await;
+
     let row = Repos
         .memory
         .insert(
@@ -194,6 +250,9 @@ async fn remember(user_id: Uuid, args: &Value) -> Result<Value, AppError> {
             &args.kind,
             &json!({}),
             None,
+            &scope,
+            project_id,
+            conv_id,
         )
         .await?;
 
@@ -229,7 +288,7 @@ async fn remember(user_id: Uuid, args: &Value) -> Result<Value, AppError> {
         }
     }
 
-    Ok(json!({ "memory_id": row.id, "content": row.content }))
+    Ok(json!({ "memory_id": row.id, "content": row.content, "scope": scope }))
 }
 
 #[derive(Debug, Deserialize)]
@@ -242,7 +301,11 @@ fn default_top_k() -> i64 {
     8
 }
 
-async fn recall(user_id: Uuid, args: &Value) -> Result<Value, AppError> {
+async fn recall(
+    user_id: Uuid,
+    conversation_id: Option<Uuid>,
+    args: &Value,
+) -> Result<Value, AppError> {
     let args: RecallArgs = serde_json::from_value(args.clone())
         .map_err(|e| AppError::bad_request("INVALID_ARGS", e.to_string()))?;
     let admin = Repos.memory.get_admin_settings().await?;
@@ -252,13 +315,6 @@ async fn recall(user_id: Uuid, args: &Value) -> Result<Value, AppError> {
             "memory is disabled by the administrator",
         ));
     }
-    let Some(emb_model_id) = admin.embedding_model_id else {
-        return Err(AppError::bad_request(
-            "MEMORY_DISABLED",
-            "no embedding model configured",
-        ));
-    };
-
     let limit = args.top_k.clamp(1, 50);
     let q = args.query.trim();
     if q.is_empty() {
@@ -268,31 +324,44 @@ async fn recall(user_id: Uuid, args: &Value) -> Result<Value, AppError> {
         ));
     }
 
-    let vec = crate::modules::memory::engine::dispatch::embed(emb_model_id, q).await?;
-    let pool = Repos.memory.pool_clone();
-    let rows: Vec<(Uuid, String, f32)> = sqlx::query_as(
-        r#"
-        SELECT id, content, (embedding <=> $2)::real AS distance
-        FROM user_memories
-        WHERE user_id = $1
-          AND deleted_at IS NULL
-          AND embedding IS NOT NULL
-          AND (embedding <=> $2)::real < $4
-        ORDER BY embedding <=> $2
-        LIMIT $3
-        "#,
-    )
-    .bind(user_id)
-    .bind(&HalfVector::from_f32_slice(&vec))
-    .bind(limit)
-    .bind(admin.cosine_threshold)
-    .fetch_all(&pool)
-    .await
-    .map_err(AppError::database_error)?;
+    // Scope union (user + this-project + this-conversation), same as the
+    // automatic retriever.
+    let project_id = match conversation_id {
+        Some(cid) => Repos
+            .project
+            .project_id_for_conversation(cid)
+            .await
+            .ok()
+            .flatten(),
+        None => None,
+    };
+
+    use crate::modules::memory::chat_extension::retriever;
+    // Hybrid (vector ⊕ FTS via RRF) when an embedding model is configured;
+    // FTS-only fallback otherwise — so recall works embedding-free instead of
+    // hard-erroring.
+    let hits = match admin.embedding_model_id {
+        Some(emb_id) => match crate::modules::memory::engine::dispatch::embed(emb_id, q).await {
+            Ok(v) => {
+                retriever::hybrid_search(
+                    user_id,
+                    project_id,
+                    conversation_id,
+                    HalfVector::from_f32_slice(&v),
+                    admin.cosine_threshold,
+                    q,
+                    limit,
+                )
+                .await?
+            }
+            Err(_) => retriever::fts_search(user_id, project_id, conversation_id, q, limit).await?,
+        },
+        None => retriever::fts_search(user_id, project_id, conversation_id, q, limit).await?,
+    };
 
     Ok(json!({
-        "memories": rows.into_iter().map(|(id, content, distance)| {
-            json!({ "id": id, "content": content, "distance": distance })
+        "memories": hits.into_iter().map(|(id, content)| {
+            json!({ "id": id, "content": content })
         }).collect::<Vec<_>>()
     }))
 }

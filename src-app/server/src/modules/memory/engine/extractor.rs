@@ -229,6 +229,11 @@ async fn apply_add(
             &kind,
             &serde_json::json!({}),
             source_message_id,
+            // Background extraction stays user-global (scope-aware extraction is
+            // a documented future option; only explicit `remember` is scoped).
+            "user",
+            None,
+            None,
         )
         .await?;
 

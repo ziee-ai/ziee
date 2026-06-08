@@ -190,6 +190,10 @@ pub async fn create_memory(
             &body.kind,
             &body.metadata,
             None,
+            // Manual REST adds are user-global.
+            "user",
+            None,
+            None,
         )
         .await?;
     Ok((StatusCode::CREATED, Json(row)))
@@ -490,8 +494,8 @@ pub async fn update_admin_settings(
             body.enabled,
             body.soft_delete_grace_days,
             body.daily_extraction_quota,
-            body.summarize_after_n_messages,
-            body.summarizer_keep_recent,
+            body.summarize_after_tokens,
+            body.summarizer_keep_recent_tokens,
             full_summary_prompt,
             incremental_summary_prompt,
         )
@@ -740,6 +744,9 @@ pub async fn test_summarize(
     crate::modules::memory::engine::summarizer::refresh_summary(
         body.branch_id,
         body.model_id,
+        // Manual/admin-triggered refresh has no chat-model context → use the flat
+        // admin threshold (no fraction-of-window override).
+        None,
     )
     .await?;
     Ok((StatusCode::OK, Json(serde_json::json!({ "ok": true }))))

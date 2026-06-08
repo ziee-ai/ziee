@@ -37,11 +37,11 @@ use crate::core::Repos;
 /// Fallback summarizer thresholds — used only if the admin settings
 /// row can't be read on a given call (transient DB blip). Match the
 /// column DEFAULTs in migration 52. The runtime values come from
-/// `memory_admin_settings.summarize_after_n_messages` /
-/// `.summarizer_keep_recent` and can be tuned per-deployment from the
+/// `memory_admin_settings.summarize_after_tokens` /
+/// `.summarizer_keep_recent_tokens` and can be tuned per-deployment from the
 /// admin UI without a redeploy.
-const FALLBACK_SUMMARIZE_AFTER_N_MESSAGES: usize = 50;
-const FALLBACK_KEEP_RECENT: usize = 10;
+const FALLBACK_SUMMARIZE_AFTER_TOKENS: usize = 12000;
+const FALLBACK_KEEP_RECENT_TOKENS: usize = 3000;
 
 /// Default prompt for the FULL-summarize path. Used when
 /// `memory_admin_settings.full_summary_prompt` is NULL. Exposed as
@@ -122,14 +122,33 @@ pub enum SummarizeAction {
 /// pure (no I/O, no clock, no DB) so the tests are fast and stable.
 pub fn decide_summarize_action(
     msgs: &[SummarizableMessage],
-    trigger: usize,
-    keep_recent: usize,
+    trigger_tokens: usize,
+    keep_recent_tokens: usize,
     existing: Option<&ConversationSummary>,
 ) -> SummarizeAction {
-    if msgs.len() <= trigger {
+    // Token-aware (chars/4): summarize once the branch's text exceeds
+    // `trigger_tokens`, keeping the newest message-boundary suffix that fits in
+    // `keep_recent_tokens` verbatim. The cutoff stays on a message boundary, so
+    // the message-id anchor + incremental refresh are unchanged — only the
+    // trigger/cutoff arithmetic moved from message counts to estimated tokens.
+    let total_tokens: usize = msgs
+        .iter()
+        .map(|m| crate::common::tokens::estimate_tokens(&m.text))
+        .sum();
+    if total_tokens <= trigger_tokens {
         return SummarizeAction::Noop;
     }
-    let cutoff = msgs.len().saturating_sub(keep_recent);
+    let mut acc = 0usize;
+    let mut cutoff = msgs.len();
+    for i in (0..msgs.len()).rev() {
+        let t = crate::common::tokens::estimate_tokens(&msgs[i].text);
+        // Always keep the newest message; then keep older ones while under budget.
+        if cutoff < msgs.len() && acc + t > keep_recent_tokens {
+            break;
+        }
+        acc += t;
+        cutoff = i;
+    }
     if cutoff == 0 {
         return SummarizeAction::Noop;
     }
@@ -322,6 +341,10 @@ pub fn apply_summary_block(summary: &ConversationSummary, chat_request: &mut Cha
 pub async fn refresh_summary(
     branch_id: Uuid,
     summarization_model_id: Uuid,
+    // Fraction-of-window override (0.75× the chat model's context window). When
+    // set, the effective trigger is `min(admin.summarize_after_tokens, override)`
+    // so a small-context model summarizes before it overflows.
+    trigger_override: Option<usize>,
 ) -> Result<(), AppError> {
     let history = Repos.chat.core.get_conversation_history(branch_id).await?;
     let msgs: Vec<SummarizableMessage> = history
@@ -337,8 +360,8 @@ pub async fn refresh_summary(
     let (trigger, keep_recent, full_prompt, incremental_prompt) =
         match Repos.memory.get_admin_settings().await {
             Ok(s) => (
-                s.summarize_after_n_messages as usize,
-                s.summarizer_keep_recent as usize,
+                s.summarize_after_tokens as usize,
+                s.summarizer_keep_recent_tokens as usize,
                 s.full_summary_prompt
                     .unwrap_or_else(|| DEFAULT_FULL_SUMMARY_PROMPT.to_string()),
                 s.incremental_summary_prompt
@@ -349,13 +372,20 @@ pub async fn refresh_summary(
                     "memory.summarizer: get_admin_settings failed ({e}); using compiled-in defaults"
                 );
                 (
-                    FALLBACK_SUMMARIZE_AFTER_N_MESSAGES,
-                    FALLBACK_KEEP_RECENT,
+                    FALLBACK_SUMMARIZE_AFTER_TOKENS,
+                    FALLBACK_KEEP_RECENT_TOKENS,
                     DEFAULT_FULL_SUMMARY_PROMPT.to_string(),
                     DEFAULT_INCREMENTAL_SUMMARY_PROMPT.to_string(),
                 )
             }
         };
+
+    // Apply the fraction-of-window override: summarize at the SMALLER of the
+    // admin cap and 0.75× the model's context window.
+    let trigger = match trigger_override {
+        Some(o) => trigger.min(o),
+        None => trigger,
+    };
 
     let pool = Repos.memory.pool_clone();
     let existing = fetch_summary(&pool, branch_id).await?;
@@ -532,6 +562,41 @@ mod tests {
             role: role.to_string(),
             text: text.to_string(),
         }
+    }
+
+    #[test]
+    fn decide_is_token_based_not_message_count() {
+        // 3 messages but two are LARGE (~250 tokens each). With a token trigger
+        // of 100 this MUST summarize; the old message-COUNT logic (3 <= 100)
+        // would no-op. Proves the trigger is token-based.
+        let big = "x".repeat(1000); // ~250 est tokens
+        let msgs = vec![
+            msg(Uuid::new_v4(), "user", &big),
+            msg(Uuid::new_v4(), "assistant", &big),
+            msg(Uuid::new_v4(), "user", "ok"),
+        ];
+        assert!(
+            !matches!(
+                decide_summarize_action(&msgs, 100, 100, None),
+                SummarizeAction::Noop
+            ),
+            "large-token messages must trigger even at a small message count"
+        );
+    }
+
+    #[test]
+    fn decide_keep_recent_is_a_token_budget() {
+        // keep_recent_tokens large enough to hold everything verbatim → nothing
+        // old enough to summarize → Noop, even though total exceeds the trigger.
+        let big = "x".repeat(1000);
+        let msgs = vec![
+            msg(Uuid::new_v4(), "user", &big),
+            msg(Uuid::new_v4(), "assistant", &big),
+        ];
+        assert!(matches!(
+            decide_summarize_action(&msgs, 100, 100_000, None),
+            SummarizeAction::Noop
+        ));
     }
 
     fn fake_summary(

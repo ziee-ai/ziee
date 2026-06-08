@@ -53,21 +53,21 @@ async fn test_summarizer_threshold_round_trip() {
         .put(server.api_url("/memory/admin-settings"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&json!({
-            "summarize_after_n_messages": 75,
-            "summarizer_keep_recent": 15,
+            "summarize_after_tokens": 7500,
+            "summarizer_keep_recent_tokens": 1500,
         }))
         .send()
         .await
         .unwrap();
     assert_eq!(res.status(), 200);
     let row: Value = res.json().await.unwrap();
-    assert_eq!(row["summarize_after_n_messages"], 75);
-    assert_eq!(row["summarizer_keep_recent"], 15);
+    assert_eq!(row["summarize_after_tokens"], 7500);
+    assert_eq!(row["summarizer_keep_recent_tokens"], 1500);
 }
 
 #[tokio::test]
 async fn test_summarizer_threshold_check_constraint_keep_recent_below_trigger() {
-    // The migration enforces summarizer_keep_recent < summarize_after_n_messages
+    // The migration enforces summarizer_keep_recent_tokens < summarize_after_tokens
     // via a row-level CHECK. Sending an invalid pair must fail (the
     // sqlx error path bubbles up as a 5xx, but the row in the DB is
     // unchanged — that's the property we care about).
@@ -76,8 +76,8 @@ async fn test_summarizer_threshold_check_constraint_keep_recent_below_trigger() 
         .put(server.api_url("/memory/admin-settings"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&json!({
-            "summarize_after_n_messages": 50,
-            "summarizer_keep_recent": 50,  // not < 50
+            "summarize_after_tokens": 5000,
+            "summarizer_keep_recent_tokens": 5000,  // not < 5000
         }))
         .send()
         .await
@@ -100,9 +100,9 @@ async fn test_summarizer_threshold_check_constraint_keep_recent_below_trigger() 
         .json()
         .await
         .unwrap();
-    // Either the defaults (50/10) or whatever was there before — but
-    // NOT (50/50), which would mean the bad write landed.
-    assert_ne!(after["summarizer_keep_recent"], 50);
+    // Either the defaults or whatever was there before — but NOT
+    // (5000/5000), which would mean the bad write landed.
+    assert_ne!(after["summarizer_keep_recent_tokens"], 5000);
 }
 
 #[tokio::test]

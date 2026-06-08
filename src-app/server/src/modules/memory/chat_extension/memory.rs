@@ -7,7 +7,17 @@ use axum::response::sse::Event;
 use sqlx::PgPool;
 use std::convert::Infallible;
 
-use ai_providers::ChatRequest;
+use ai_providers::{ChatMessage, ChatRequest, ContentBlock, Role};
+
+/// System-prompt nudge injected on tool-capable models so the assistant saves
+/// durable facts itself (inline self-save) instead of relying on the silent
+/// background extractor.
+const MEMORY_SAVE_NUDGE: &str = "## Saving memories\n\
+    When the user states a durable, non-obvious fact about themselves — \
+    especially an explicit 'remember …' request — call the `remember` tool to \
+    persist it. Save only durable facts, not ephemeral chatter. Choose the \
+    narrowest scope that fits: `conversation` = only this thread; `project` = \
+    this project's work; `user` = always true about the person.";
 
 use crate::common::AppError;
 use crate::core::Repos;
@@ -78,6 +88,32 @@ impl ChatExtension for MemoryExtension {
         {
             tracing::warn!("memory.before_llm_call: retrieve_and_inject error: {e}");
         }
+
+        // Inline self-save (Track B): on tool-capable models, attach the memory
+        // `remember` tool (via the MCP extension) and nudge the model to use it.
+        // The background extractor is skipped for these models in after_llm_call,
+        // so saving is transparent + scoped rather than a silent separate call.
+        let tool_capable =
+            crate::modules::file::available_files::model_supports_tools(&context.metadata).await;
+        if tool_capable {
+            if let Ok(admin) = Repos.memory.get_admin_settings().await {
+                if admin.enabled {
+                    context
+                        .metadata
+                        .insert("attach_memory_mcp".to_string(), serde_json::json!("true"));
+                    request.messages.insert(
+                        0,
+                        ChatMessage {
+                            role: Role::System,
+                            content: vec![ContentBlock::Text {
+                                text: MEMORY_SAVE_NUDGE.to_string(),
+                            }],
+                        },
+                    );
+                }
+            }
+        }
+
         Ok(BeforeLlmAction::Continue)
     }
 
@@ -108,21 +144,37 @@ impl ChatExtension for MemoryExtension {
 
         let user_id = context.user_id;
         let source_message_id = Some(final_message.id);
-        tokio::spawn(async move {
-            super::super::engine::extractor::extract_and_persist(
-                user_id,
-                user_text,
-                assistant_text,
-                source_message_id,
-            )
-            .await;
-        });
+
+        // Tool-capable models do their own inline self-save via the `remember`
+        // tool (see before_llm_call), so skip the silent background extractor for
+        // them — avoids double-saving. Non-capable models keep the extractor.
+        let tool_capable =
+            crate::modules::file::available_files::model_supports_tools(&context.metadata).await;
+        if !tool_capable {
+            tokio::spawn(async move {
+                super::super::engine::extractor::extract_and_persist(
+                    user_id,
+                    user_text,
+                    assistant_text,
+                    source_message_id,
+                )
+                .await;
+            });
+        }
 
         // Auto-refresh the summarizer when the branch crosses the
         // threshold. Fire-and-forget (separate spawn so it can run
         // concurrently with extraction). Plan §6 Phase 6.
         let branch_id = context.branch_id;
         let message_count = history.len();
+        // Fraction-of-window: clamp the flat summary trigger by 0.75× the CHAT
+        // model's context window (local: native context_length; cloud: registry)
+        // so a small-context local model summarizes before it overflows. None
+        // when the window is unknown → the flat admin threshold stands.
+        let trigger_override: Option<usize> =
+            crate::modules::file::available_files::model_context_window(&context.metadata)
+                .await
+                .map(|w| (w as f64 * 0.75) as usize);
         tokio::spawn(async move {
             // Load admin once — we need both the trigger threshold and
             // the model id from the same row.
@@ -130,7 +182,11 @@ impl ChatExtension for MemoryExtension {
                 Ok(a) => a,
                 Err(_) => return,
             };
-            if message_count < admin.summarize_after_n_messages as usize {
+            // Token-aware trigger: the authority is the (token-based)
+            // `decide_summarize_action` inside `refresh_summary`. Keep only a
+            // cheap guard that skips brand-new branches (avoids a needless
+            // history reload before there's anything worth summarizing).
+            if message_count < 4 {
                 return;
             }
             if !admin.enabled {
@@ -142,7 +198,13 @@ impl ChatExtension for MemoryExtension {
             let Some(model_id) = admin.default_extraction_model_id else {
                 return;
             };
-            if let Err(e) = super::super::engine::summarizer::refresh_summary(branch_id, model_id).await {
+            if let Err(e) = super::super::engine::summarizer::refresh_summary(
+                branch_id,
+                model_id,
+                trigger_override,
+            )
+            .await
+            {
                 tracing::warn!("memory.summarizer: refresh failed for branch {branch_id}: {e}");
             }
         });

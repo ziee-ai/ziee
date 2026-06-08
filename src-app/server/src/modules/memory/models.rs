@@ -80,10 +80,10 @@ pub struct MemoryAdminSettings {
     pub soft_delete_grace_days: i32,
     /// Per-user/day extraction quota (rows created via extraction).
     pub daily_extraction_quota: i32,
-    /// Summarizer trigger threshold (branch message count).
-    pub summarize_after_n_messages: i32,
-    /// Summarizer messages kept verbatim alongside the summary.
-    pub summarizer_keep_recent: i32,
+    /// Summarizer trigger threshold (estimated tokens, chars/4).
+    pub summarize_after_tokens: i32,
+    /// Estimated tokens of recent messages kept verbatim alongside the summary.
+    pub summarizer_keep_recent_tokens: i32,
     /// Override for the full-resummarize LLM prompt. NULL = use the
     /// compiled-in default. Must contain `{transcript}` if set.
     pub full_summary_prompt: Option<String>,
@@ -155,8 +155,8 @@ pub struct UpdateMemoryAdminSettingsRequest {
     pub enabled: Option<bool>,
     pub soft_delete_grace_days: Option<i32>,
     pub daily_extraction_quota: Option<i32>,
-    pub summarize_after_n_messages: Option<i32>,
-    pub summarizer_keep_recent: Option<i32>,
+    pub summarize_after_tokens: Option<i32>,
+    pub summarizer_keep_recent_tokens: Option<i32>,
     #[serde(default, deserialize_with = "deserialize_nullable_field")]
     pub full_summary_prompt: Option<Option<String>>,
     #[serde(default, deserialize_with = "deserialize_nullable_field")]
