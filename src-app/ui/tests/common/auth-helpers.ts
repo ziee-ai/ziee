@@ -104,9 +104,10 @@ export async function loginAsAdmin(
     await page.fill('#setup-form_confirm_password', password)
     await page.click('button[type="submit"]')
 
-    // Navigation may redirect to /onboarding; the token wait below is the real signal.
-
-    // CRITICAL: Wait for authentication token to be stored in localStorage
+    // Wait for the persisted token. authenticateUser's catch block
+    // preserves the token across an aborted /me (see Auth.store.ts) —
+    // navigating away while /me is in flight no longer logs the user
+    // back out — so the token-in-localStorage check is sufficient.
     await page.waitForFunction(
       () => {
         const authStorage = localStorage.getItem('auth-storage')
