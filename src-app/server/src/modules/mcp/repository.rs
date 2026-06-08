@@ -82,9 +82,16 @@ async fn split_entries_for_storage(
     let mut secret_keys: Vec<String> = Vec::new();
 
     for entry in entries {
+        // Trim leading/trailing whitespace on values at storage time
+        // — covers the common pasted-token-with-newline case (HTTP
+        // header values: RFC 7230 §3.2.4 prohibits flanking
+        // whitespace; env var values: leading/trailing whitespace is
+        // virtually always a bug). Mirrors the runtime trim in
+        // `parse_header_map`.
+        let trimmed_value = entry.value.map(|v| v.trim());
         if entry.is_secret {
             secret_keys.push(entry.key.to_string());
-            match entry.value {
+            match trimmed_value {
                 Some(v) => {
                     let bytes = match encrypt_secret(pool, v, storage_key).await? {
                         Some(b) => b,
@@ -109,7 +116,7 @@ async fn split_entries_for_storage(
         } else {
             plain_map.insert(
                 entry.key.to_string(),
-                serde_json::Value::String(entry.value.unwrap_or("").to_string()),
+                serde_json::Value::String(trimmed_value.unwrap_or("").to_string()),
             );
         }
     }
@@ -617,7 +624,7 @@ pub async fn create_user_mcp_server(
             run_in_sandbox, sandbox_flavor
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, false,
-                $17, $18, $19, $20, $21)
+                $17, $18, $19, $20, COALESCE($21, 'full'))
         RETURNING
             id, user_id, name, display_name, description,
             enabled, is_system, is_built_in, transport_type,
@@ -1161,7 +1168,7 @@ pub async fn create_system_mcp_server(
             run_in_sandbox, sandbox_flavor
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, true,
-                $16, $17, $18, $19, $20)
+                $16, $17, $18, $19, COALESCE($20, 'full'))
         RETURNING
             id, user_id, name, display_name, description,
             enabled, is_system, is_built_in, transport_type,
