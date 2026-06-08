@@ -1,4 +1,4 @@
-import { Divider } from 'antd'
+import { Alert, Divider } from 'antd'
 import { FileCard } from '@/modules/file/components/FileCard'
 import { Stores } from '@/core/stores'
 import type { FileUploadProgress } from '@/modules/file/stores/File.store'
@@ -20,6 +20,21 @@ export function FilePreviewList() {
   if (!hasFiles) {
     return null
   }
+
+  // Upload-time suitability advisory (Track A §2b): non-blocking nudge when a
+  // file type reads poorly (e.g. PowerPoint, scanned PDF, archive). The backend
+  // annotates `processing_metadata.suitability/suggestion` at upload time.
+  const advisories = Array.from(
+    selectedFiles.values() as IterableIterator<FileEntity>,
+  )
+    .map((f) => ({
+      f,
+      meta: (f.processing_metadata ?? {}) as {
+        suitability?: string
+        suggestion?: string
+      },
+    }))
+    .filter((x) => x.meta.suitability === 'low' && !!x.meta.suggestion)
 
   return (
     <>
@@ -61,6 +76,23 @@ export function FilePreviewList() {
             </div>
           ))}
         </div>
+
+        {advisories.length > 0 && (
+          <div className="flex flex-col gap-1" style={{ marginTop: 8 }}>
+            {advisories.map(({ f, meta }) => (
+              <Alert
+                key={f.id}
+                type="warning"
+                showIcon
+                message={
+                  <span>
+                    <strong>{f.filename}</strong>: {meta.suggestion}
+                  </span>
+                }
+              />
+            ))}
+          </div>
+        )}
       </div>
     </>
   )

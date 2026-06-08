@@ -19622,13 +19622,13 @@
             "type": "integer",
             "format": "int32"
           },
-          "summarize_after_n_messages": {
-            "description": "Summarizer trigger threshold (branch message count).",
+          "summarize_after_tokens": {
+            "description": "Summarizer trigger threshold (estimated tokens, chars/4).",
             "type": "integer",
             "format": "int32"
           },
-          "summarizer_keep_recent": {
-            "description": "Summarizer messages kept verbatim alongside the summary.",
+          "summarizer_keep_recent_tokens": {
+            "description": "Estimated tokens of recent messages kept verbatim alongside the summary.",
             "type": "integer",
             "format": "int32"
           },
@@ -19645,8 +19645,8 @@
           "enabled",
           "soft_delete_grace_days",
           "daily_extraction_quota",
-          "summarize_after_n_messages",
-          "summarizer_keep_recent",
+          "summarize_after_tokens",
+          "summarizer_keep_recent_tokens",
           "updated_at"
         ]
       },
@@ -20507,6 +20507,15 @@
               "boolean",
               "null"
             ]
+          },
+          "context_length": {
+            "description": "Native max context window (tokens). Parsed from GGUF / safetensors for\n local models and serialized into the capabilities JSONB by the\n llm_local_runtime validator; surfaced here so the UI can show the ceiling\n and the summarizer can use the effective window. (B6a)",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
           },
           "image_generator": {
             "description": "Image generation capability - can generate images from text descriptions",
@@ -24303,14 +24312,14 @@
             ],
             "format": "int32"
           },
-          "summarize_after_n_messages": {
+          "summarize_after_tokens": {
             "type": [
               "integer",
               "null"
             ],
             "format": "int32"
           },
-          "summarizer_keep_recent": {
+          "summarizer_keep_recent_tokens": {
             "type": [
               "integer",
               "null"

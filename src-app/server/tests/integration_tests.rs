@@ -1,12 +1,14 @@
 // Integration tests for ziee backend API
 // Each module contains tests for specific functionality
 
+mod agentic_chat;
 mod assistant;
 mod auth;
 mod chat;
 mod code_sandbox;
 mod common;
 mod file;
+mod files_mcp;
 mod hardware;
 mod hub;
 mod llm_local_runtime;
