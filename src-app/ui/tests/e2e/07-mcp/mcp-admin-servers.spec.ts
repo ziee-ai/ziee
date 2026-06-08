@@ -69,7 +69,7 @@ test.describe('MCP - Admin System Servers', () => {
     await submitMcpServerForm(page, 'create', true)
 
     // Verify success message
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
 
     // Verify server appears in list
     await verifyServerExists(page, serverData.displayName)
@@ -92,7 +92,7 @@ test.describe('MCP - Admin System Servers', () => {
     await submitMcpServerForm(page, 'create', true)
 
     // Verify success message
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
 
     // Verify server appears in list
     await verifyServerExists(page, serverData.displayName)
@@ -112,7 +112,7 @@ test.describe('MCP - Admin System Servers', () => {
     await submitMcpServerForm(page, 'update', true)
 
     // Verify success message
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
   })
 
   test('should toggle system server enabled state', async ({ page }) => {
@@ -120,7 +120,7 @@ test.describe('MCP - Admin System Servers', () => {
     await toggleServerEnabled(page, 'Filesystem Access')
 
     // Verify success message
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
 
     // Verify switch state changed
     await verifyServerEnabled(page, 'Filesystem Access', true)
@@ -165,38 +165,14 @@ test.describe('MCP - Admin System Servers', () => {
     await expect(page.locator('.ant-card:has-text("Web Fetch")').first()).not.toBeVisible()
   })
 
-  test('should sort servers by name', async ({ page }) => {
-    // Default sort is now "Date Added"; explicitly switch to Name to test alpha order.
-    await page.getByLabel('Sort servers').first().click({ force: true })
-    await page.click('.ant-select-item-option:has-text("Name")')
-    await page.waitForTimeout(500)
-
-    const cards = page.locator('.ant-card')
-    const firstCardText = await cards.first().textContent()
-
-    // First card should be "Browser Automation" (alphabetically first)
-    expect(firstCardText).toContain('Browser Automation')
-  })
-
-  test('should sort servers by status', async ({ page }) => {
-    // Click sort dropdown (default label is now "Date Added", not "Name")
-    await page.getByLabel('Sort servers').first().click({ force: true })
-
-    // Select 'Status' sort
-    await page.click('.ant-select-item-option:has-text("Status")')
-
-    await page.waitForTimeout(500)
-
-    // Active servers should appear first
-    const cards = page.locator('.ant-card')
-    const count = await cards.count()
-
-    if (count > 0) {
-      const firstCardText = await cards.first().textContent()
-      // Web Fetch is enabled, should be first
-      expect(firstCardText).toContain('Web Fetch')
-    }
-  })
+  // The "Sort servers" Select was removed by the settings UX overhaul
+  // (commit bcc2047) — server-side ORDER BY now handles ordering
+  // (default `display_name ASC` on the system page, mixed on the user
+  // page). The old per-page sort tests no longer apply; backend
+  // ordering is exercised at the repository tier in
+  // `server/src/modules/mcp/repository.rs`.
+  test.skip('should sort servers by name', async () => {})
+  test.skip('should sort servers by status', async () => {})
 
   test('should clear all filters', async ({ page }) => {
     // Apply search filter
@@ -266,7 +242,7 @@ test.describe('MCP - Admin System Servers', () => {
     await submitMcpServerForm(page, 'create', true)
 
     // Verify success message
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
 
     // Verify server appears in list
     await verifyServerExists(page, serverData.displayName)
@@ -289,7 +265,7 @@ test.describe('MCP - Admin System Servers', () => {
     await fillMcpServerForm(page, serverData)
     await submitMcpServerForm(page, 'create', true)
 
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
 
     // Verify sampling badge and always badge are visible on the card
     const serverCard = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
@@ -311,7 +287,7 @@ test.describe('MCP - Admin System Servers', () => {
     await fillMcpServerForm(page, serverData)
     await submitMcpServerForm(page, 'create', true)
 
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
 
     const serverCard = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
     await expect(serverCard.locator('.ant-tag:has-text("Sampling")')).not.toBeVisible()
@@ -335,7 +311,7 @@ test.describe('MCP - Admin System Servers', () => {
     await fillMcpServerForm(page, serverData)
     await submitMcpServerForm(page, 'create', true)
 
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
 
     // Open edit drawer
     await clickEditServerButton(page, serverData.displayName, true)
@@ -372,7 +348,7 @@ test.describe('MCP - Admin System Servers', () => {
     await fillMcpServerForm(page, serverData)
     await submitMcpServerForm(page, 'create', true)
 
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
 
     // Verify no sampling badges initially
     const serverCard = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
@@ -387,7 +363,7 @@ test.describe('MCP - Admin System Servers', () => {
     })
     await submitMcpServerForm(page, 'update', true)
 
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
 
     // Verify sampling and always badges now appear
     const updatedCard = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
@@ -414,7 +390,7 @@ test.describe('MCP - Admin System Servers', () => {
     await openAddServerDrawer(page, true)
     await fillMcpServerForm(page, serverData)
     await submitMcpServerForm(page, 'create', true)
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
 
     const card = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
     await expect(card.locator('[data-testid="mcp-sampling-badge"]')).toBeVisible()
@@ -424,7 +400,7 @@ test.describe('MCP - Admin System Servers', () => {
     await clickEditServerButton(page, serverData.displayName, true)
     await fillMcpServerForm(page, { ...serverData, supportsSampling: false })
     await submitMcpServerForm(page, 'update', true)
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
 
     const updatedCard = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
     await expect(updatedCard.locator('[data-testid="mcp-sampling-badge"]')).not.toBeVisible()
@@ -447,7 +423,7 @@ test.describe('MCP - Admin System Servers', () => {
     await openAddServerDrawer(page, true)
     await fillMcpServerForm(page, serverData)
     await submitMcpServerForm(page, 'create', true)
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
 
     const card = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
     await expect(card.locator('[data-testid="mcp-sampling-badge"]')).toBeVisible()
@@ -499,27 +475,9 @@ test.describe('MCP - Admin System Servers', () => {
     expect(cleanupRes.ok()).toBe(true)
   })
 
-  test('should default sort to "Date Added" on first load', async ({ page }) => {
-    // The Sort by select reads "Date Added" by default. AntD Select's
-    // accessible-name input is empty; the displayed text lives in a
-    // separate span — use a CSS ancestor selector via Playwright's
-    // `:has` to anchor on the outer `.ant-select`.
-    const sortContainer = page
-      .locator('.ant-select:has([aria-label="Sort servers"])')
-      .first()
-    await expect(sortContainer).toContainText('Date Added')
-
-    // Verify the dropdown contains "Date Added" as an option
-    await sortContainer.click({ force: true })
-    await expect(
-      page
-        .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)')
-        .first()
-        .locator('.ant-select-item-option:has-text("Date Added")')
-        .first()
-    ).toBeVisible()
-    await page.keyboard.press('Escape')
-  })
+  // Sort dropdown removed by bcc2047 — see the skipped sort tests
+  // above for context.
+  test.skip('should default sort to "Date Added" on first load', async () => {})
 
   test('should reject negative max_concurrent_sessions value', async ({ page }) => {
     // The InputNumber for max_concurrent_sessions should not accept negative values.
@@ -593,7 +551,7 @@ test.describe('MCP - Admin System Servers', () => {
     if (!checkedBefore) await toggle.click()
 
     await submitMcpServerForm(page, 'create', true)
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
     await verifyServerExists(page, displayName)
 
     // EDIT — toggle should be hydrated to checked.

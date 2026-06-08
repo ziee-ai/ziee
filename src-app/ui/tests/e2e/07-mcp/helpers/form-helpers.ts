@@ -149,9 +149,15 @@ export async function submitMcpServerForm(page: Page, action: 'create' | 'update
 
   await page.locator('.ant-drawer.ant-drawer-open').last().locator('.ant-btn-primary').click()
 
-  // Wait for success message to appear (before checking if drawer closed)
-  // This must happen first because Ant Design messages auto-dismiss after ~3 seconds
-  await page.waitForSelector('.ant-message-success', { state: 'visible', timeout: 5000 })
+  // Wait for success OR auto-disabled warning toast (Ant Design
+  // auto-dismisses after ~3s, so this must happen before checking
+  // drawer-closed). connection_health probes enabled creates and
+  // downgrades to warning when the URL is unreachable — that's still
+  // a successful round-trip from the test's perspective.
+  await page.waitForSelector(
+    '.ant-message-success, .ant-message-warning',
+    { state: 'visible', timeout: 5000 },
+  )
 
   // Wait for specific drawer to close by waiting for its title to disappear
   await page.waitForSelector(`.ant-drawer-title:has-text("${drawerTitle}")`, {
@@ -185,8 +191,13 @@ export async function toggleServerEnabled(page: Page, serverName: string) {
   const serverCard = page.locator(`.ant-card:has-text("${serverName}")`).first()
   const switchButton = serverCard.locator('.ant-switch').first()
   await switchButton.click()
-  // Wait for success message to appear
-  await page.waitForSelector('.ant-message-success', { state: 'visible', timeout: 5000 })
+  // Enable-toggle runs a connection-health probe; success path =
+  // success toast, probe-failure path = warning toast that
+  // auto-disables. Either means the round-trip happened.
+  await page.waitForSelector(
+    '.ant-message-success, .ant-message-warning',
+    { state: 'visible', timeout: 5000 },
+  )
 }
 
 export async function verifyServerEnabled(page: Page, serverName: string, enabled: boolean) {
