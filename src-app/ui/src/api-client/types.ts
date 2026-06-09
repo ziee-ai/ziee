@@ -155,6 +155,21 @@ export interface ChatStreamChunk {
   usage?: Usage
 }
 
+export interface ChatStreamConnectedData {
+  connectionId: string
+}
+
+export interface ChatStreamFrame {
+  conversationId: string
+  event: SSEChatStreamEvent
+}
+
+export type ChatStreamSseEvent = {
+  kind: 'connected'
+} | {
+  kind: 'frame'
+}
+
 export interface CodeSandboxResourceLimits {
   address_space_bytes: number
   cpu_max: string
@@ -2063,6 +2078,11 @@ export interface SendMessageRequest {
   tool_approvals?: ToolApprovalDecision[]
 }
 
+export interface SendMessageResponse {
+  assistant_message_id: string
+  user_message_id?: string
+}
+
 export interface ServerGroupsRequest {
   group_ids: string[]
 }
@@ -2081,6 +2101,10 @@ export interface SetPinRequest {
 export interface SetPinResponse {
   status: VersionStatus
   swap: SwapOutcome
+}
+
+export interface SetSubscriptionRequest {
+  conversation_id?: string
 }
 
 export interface SetupAdminRequest {
@@ -2120,9 +2144,29 @@ export interface SwapRuntimeVersionResponse {
   version_id: string
 }
 
+export type SyncAction = 'create' | 'update' | 'delete'
+
 export interface SyncCacheResponse {
   message: string
   synced_count: number
+}
+
+export interface SyncConnectedData {
+  connection_id: string
+}
+
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'user_llm_provider' | 'user_mcp_server' | 'session'
+
+export interface SyncEvent {
+  action: SyncAction
+  entity: SyncEntity
+  id: string
+}
+
+export type SyncSseEvent = {
+  connected: SyncConnectedData
+} | {
+  sync: SyncEvent
 }
 
 export type TaskStatus = 'running' | 'completed' | 'failed'
@@ -2775,6 +2819,8 @@ export const ApiEndpoints = {
   'Branch.getPendingApprovals': 'GET /api/branches/{branch_id}/pending-approvals',
   'Branch.list': 'GET /api/conversations/{id}/branches',
   'Chat.getUserLlmProviders': 'GET /api/chat/llm-providers',
+  'ChatStream.setSubscription': 'PUT /api/chat/stream/subscription',
+  'ChatStream.subscribe': 'GET /api/chat/stream',
   'CodeSandbox.deleteRootfsVersion': 'DELETE /api/code-sandbox/rootfs/versions/{id}',
   'CodeSandbox.getResourceLimits': 'GET /api/code-sandbox/resource-limits',
   'CodeSandbox.installRootfsVersion': 'POST /api/code-sandbox/rootfs/versions/install',
@@ -2938,7 +2984,8 @@ export const ApiEndpoints = {
   'Message.getAssistant': 'GET /api/messages/{id}/assistant',
   'Message.getHistory': 'GET /api/conversations/{id}/messages',
   'Message.getMcpServers': 'GET /api/messages/{id}/mcp-servers',
-  'Message.sendStream': 'POST /api/conversations/{id}/messages/stream',
+  'Message.send': 'POST /api/conversations/{id}/messages',
+  'Message.stopGeneration': 'POST /api/conversations/{conversation_id}/messages/{assistant_message_id}/stop',
   'Onboarding.complete': 'POST /api/onboarding/{guide_id}/complete',
   'Onboarding.completeStep': 'POST /api/onboarding/{guide_id}/steps/{step_id}/complete',
   'Onboarding.getProgress': 'GET /api/onboarding/progress',
@@ -2969,6 +3016,7 @@ export const ApiEndpoints = {
   'RuntimeVersion.subscribeDownloadEvents': 'GET /api/local-runtime/versions/downloads/{key}/events',
   'RuntimeVersion.syncCache': 'POST /api/local-runtime/versions/sync-cache',
   'RuntimeVersion.usage': 'GET /api/local-runtime/version-usage',
+  'Sync.subscribe': 'GET /api/sync/subscribe',
   'User.create': 'POST /api/users',
   'User.delete': 'DELETE /api/users/{user_id}',
   'User.get': 'GET /api/users/{user_id}',
@@ -3022,6 +3070,8 @@ export type ApiEndpointParameters = {
   'Branch.getPendingApprovals': { branch_id: string }
   'Branch.list': { id: string }
   'Chat.getUserLlmProviders': void
+  'ChatStream.setSubscription': SetSubscriptionRequest
+  'ChatStream.subscribe': void
   'CodeSandbox.deleteRootfsVersion': { id: string }
   'CodeSandbox.getResourceLimits': void
   'CodeSandbox.installRootfsVersion': InstallVersionRequest
@@ -3185,7 +3235,8 @@ export type ApiEndpointParameters = {
   'Message.getAssistant': { id: string }
   'Message.getHistory': { id: string }
   'Message.getMcpServers': { id: string }
-  'Message.sendStream': { id: string } & SendMessageRequest
+  'Message.send': { id: string } & SendMessageRequest
+  'Message.stopGeneration': { conversation_id: string; assistant_message_id: string }
   'Onboarding.complete': { guide_id: string }
   'Onboarding.completeStep': { guide_id: string; step_id: string }
   'Onboarding.getProgress': void
@@ -3216,6 +3267,7 @@ export type ApiEndpointParameters = {
   'RuntimeVersion.subscribeDownloadEvents': { key: string }
   'RuntimeVersion.syncCache': void
   'RuntimeVersion.usage': { engine?: string }
+  'Sync.subscribe': void
   'User.create': CreateUserRequest
   'User.delete': { user_id: string }
   'User.get': { user_id: string }
@@ -3269,6 +3321,8 @@ export type ApiEndpointResponses = {
   'Branch.getPendingApprovals': PendingApprovalsResponse
   'Branch.list': Branch[]
   'Chat.getUserLlmProviders': GetUserProvidersResponse2
+  'ChatStream.setSubscription': void
+  'ChatStream.subscribe': ChatStreamSseEvent
   'CodeSandbox.deleteRootfsVersion': VersionStatus
   'CodeSandbox.getResourceLimits': CodeSandboxResourceLimits
   'CodeSandbox.installRootfsVersion': InstallTaskState
@@ -3432,7 +3486,8 @@ export type ApiEndpointResponses = {
   'Message.getAssistant': MessageAssistantResponse
   'Message.getHistory': MessageWithContent[]
   'Message.getMcpServers': MessageMcpServersResponse
-  'Message.sendStream': SSEChatStreamEvent
+  'Message.send': SendMessageResponse
+  'Message.stopGeneration': void
   'Onboarding.complete': OnboardingProgress
   'Onboarding.completeStep': OnboardingProgress
   'Onboarding.getProgress': OnboardingProgress
@@ -3463,6 +3518,7 @@ export type ApiEndpointResponses = {
   'RuntimeVersion.subscribeDownloadEvents': SSEEngineDownloadEvent
   'RuntimeVersion.syncCache': SyncCacheResponse
   'RuntimeVersion.usage': VersionUsageResponse
+  'Sync.subscribe': SyncSseEvent
   'User.create': User
   'User.delete': void
   'User.get': User

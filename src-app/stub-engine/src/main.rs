@@ -18,6 +18,9 @@
 //!   `/health` return 503 forever (drives the auto-start-timeout → 504 test).
 //! - request-body field `"stub_hang_ms": N` on `/v1/chat/completions` sleeps
 //!   N ms before responding (drives the drain / in-flight-blocks-reaper test).
+//! - `--chunk-delay-ms <N>` paces the streaming deltas (N ms before each delta
+//!   after the leading role chunk) so a chat turn is slow enough to be observed
+//!   mid-flight / cancelled (drives the chat-stream cancel + replay tests).
 //!
 //! All other llama-server / mistralrs-server flags (`--model`,
 //! `--model-path`, `--host`, `--ctx-size`, `--n-gpu-layers`, `--embeddings`,
@@ -39,6 +42,10 @@ struct StubState {
     api_key: Option<String>,
     /// `/health` returns 503 when true.
     unhealthy: bool,
+    /// Streaming `/v1/chat/completions`: sleep this long before each delta
+    /// (the leading `role` chunk excepted) so generation is slow enough to be
+    /// observed mid-flight / cancelled. Driven by `--chunk-delay-ms`.
+    chunk_delay_ms: u64,
 }
 
 #[tokio::main]
@@ -47,6 +54,7 @@ async fn main() {
 
     let mut port: u16 = 0;
     let mut api_key: Option<String> = None;
+    let mut chunk_delay_ms: u64 = 0;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -59,6 +67,12 @@ async fn main() {
             "--api-key" => {
                 api_key = args.get(i + 1).cloned();
                 i += 1;
+            }
+            "--chunk-delay-ms" => {
+                if let Some(v) = args.get(i + 1) {
+                    chunk_delay_ms = v.parse().unwrap_or(0);
+                    i += 1;
+                }
             }
             // Every other flag (and its value) is ignored.
             _ => {}
@@ -85,7 +99,11 @@ async fn main() {
         unhealthy
     );
 
-    let state = StubState { api_key, unhealthy };
+    let state = StubState {
+        api_key,
+        unhealthy,
+        chunk_delay_ms,
+    };
     let app = Router::new()
         .route("/health", get(health))
         .route("/v1/models", get(models))
@@ -205,12 +223,21 @@ async fn chat_completions(
             sse_chunk(&model, serde_json::json!({"role": "assistant"}), None),
             sse_chunk(&model, serde_json::json!({"content": "Hello"}), None),
             sse_chunk(&model, serde_json::json!({"content": " from stub"}), Some("stop")),
+            Event::default().data("[DONE]"),
         ];
-        let stream = futures::stream::iter(
-            events
-                .into_iter()
-                .map(Ok::<Event, Infallible>)
-                .chain(std::iter::once(Ok(Event::default().data("[DONE]")))),
+        let delay = s.chunk_delay_ms;
+        // `unfold` lets each emission `.await` a sleep, pacing the deltas so a
+        // test can subscribe / cancel mid-stream. The leading role chunk
+        // (index 0) is sent immediately; every later chunk waits `delay`.
+        let stream = futures::stream::unfold(
+            (events.into_iter().enumerate(), delay),
+            |(mut iter, delay)| async move {
+                let (idx, ev) = iter.next()?;
+                if delay > 0 && idx > 0 {
+                    tokio::time::sleep(Duration::from_millis(delay)).await;
+                }
+                Some((Ok::<Event, Infallible>(ev), (iter, delay)))
+            },
         );
         return Sse::new(stream).into_response();
     }

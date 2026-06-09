@@ -1,12 +1,14 @@
-import { useMemo, useEffect } from 'react'
-import { ThemeProvider } from '@/components/ThemeProvider'
+import { useEffect, useMemo } from 'react'
 import { AppErrorBoundary } from '@/components/AppErrorBoundary'
-import { loadModules } from '@/modules/loader'
-import { setupAccessibilityFixes } from '@/utils/accessibilityFixes'
-import { usePrefetchModules } from '@/hooks/usePrefetchModules'
-import { Stores } from '@/core/stores'
+import { ThemeProvider } from '@/components/ThemeProvider'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import type { ComponentRegistration } from '@/core/module-system/types'
+import { Stores } from '@/core/stores'
+import { initSync } from '@/core/sync'
+import { usePrefetchModules } from '@/hooks/usePrefetchModules'
+import { useAuthStore } from '@/modules/auth/Auth.store'
+import { loadModules } from '@/modules/loader'
+import { setupAccessibilityFixes } from '@/utils/accessibilityFixes'
 
 // Load all modules before rendering
 loadModules()
@@ -57,6 +59,12 @@ function App() {
     return cleanup
   }, [])
 
+  // Wire the realtime-sync SSE stream to the auth lifecycle (idempotent;
+  // starts on login, stops on logout, restarts on user switch).
+  useEffect(() => {
+    initSync(useAuthStore)
+  }, [])
+
   // Prefetch lazy-loaded modules when browser is idle
   usePrefetchModules()
 
@@ -68,16 +76,12 @@ function App() {
   return (
     <ThemeProvider>
       {/* Render components from modules (sorted by order). Each module is
-        * wrapped in its own ErrorBoundary so a single module crash
-        * isolates to that module — other modules + the shell keep
-        * working. The outer boundary in main.tsx catches anything that
-        * escapes this layer (e.g. a ThemeProvider throw). */}
+       * wrapped in its own ErrorBoundary so a single module crash
+       * isolates to that module — other modules + the shell keep
+       * working. The outer boundary in main.tsx catches anything that
+       * escapes this layer (e.g. a ThemeProvider throw). */}
       {sortedComponents.map(comp => (
-        <AppErrorBoundary
-          key={comp.id}
-          label={comp.id}
-          fallback={() => null}
-        >
+        <AppErrorBoundary key={comp.id} label={comp.id} fallback={() => null}>
           <ConditionalComponent registration={comp} />
         </AppErrorBoundary>
       ))}

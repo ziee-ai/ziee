@@ -1,4 +1,4 @@
-import { Upload, message, theme } from 'antd'
+import { App, Upload, theme } from 'antd'
 import { PaperClipOutlined } from '@ant-design/icons'
 import type { UploadProps } from 'antd'
 import { Stores } from '@/core/stores'
@@ -11,6 +11,7 @@ const MAX_FILE_SIZE = 100 * 1024 * 1024
  * Menu item inside the + dropdown for attaching files
  */
 export function FileAttachMenuItem() {
+  const { message } = App.useApp()
   const { token } = theme.useToken()
   const { uploadFiles } = Stores.File
   const { close } = usePlusDropdown()

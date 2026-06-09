@@ -259,6 +259,10 @@ fn forward_progress_notification(
         None => return,
     };
     let event_data = serde_json::json!({
+        // The multiplexed chat-token client routes raw extension events by
+        // `data.type` (it cannot see the SSE `event:` line once frames share one
+        // stream), so this MUST carry its own `type` like every other event.
+        "type": "mcpToolProgress",
         "message_id": message_id.map(|m| m.to_string()),
         "server": server_name,
         "progress_token": params.get("progressToken").cloned(),
@@ -1500,6 +1504,10 @@ impl HttpMcpClient {
                                 // Send SSE event to browser (raw JSON — no import from chat/)
                                 if let Some(ref tx) = sse_tx {
                                     let event_data = serde_json::json!({
+                                        // Carry `type` so the multiplexed chat-token
+                                        // client routes this raw event (it keys on
+                                        // `data.type`, not the SSE `event:` line).
+                                        "type": "mcpElicitationRequired",
                                         "elicitation_id": elicitation_id.to_string(),
                                         "message_id": message_id.map(|m| m.to_string()),
                                         "message": message,
@@ -1865,6 +1873,10 @@ impl HttpMcpClient {
 
                                 if let Some(ref tx) = sse_tx {
                                     let event_data = serde_json::json!({
+                                        // Carry `type` so the multiplexed chat-token
+                                        // client routes this raw event (it keys on
+                                        // `data.type`, not the SSE `event:` line).
+                                        "type": "mcpElicitationRequired",
                                         "elicitation_id": elicitation_id.to_string(),
                                         "message_id": message_id.map(|m| m.to_string()),
                                         "message": message,

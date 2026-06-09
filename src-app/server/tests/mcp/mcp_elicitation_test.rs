@@ -15,7 +15,6 @@
 //! Uses [`MockElicitationServer`] as the upstream MCP server (in-process
 //! axum) and a real LLM provider to make the tool-calling decision.
 
-use futures_util::StreamExt;
 use serde_json::{json, Value};
 use std::time::Duration;
 use uuid::Uuid;
@@ -115,8 +114,10 @@ async fn set_mcp_settings_auto_approve(
     assert!(response.status().is_success(), "auto-approve must apply");
 }
 
-/// Send a chat message and return the raw streaming Response (do NOT consume
-/// the body — the caller will stream it incrementally to handle elicitation).
+/// Fire-and-forget send: POST `/conversations/{id}/messages`. The reply +
+/// extension events (incl. `mcpElicitationRequired` / `complete`) now stream
+/// over the per-user `GET /api/chat/stream`, NOT this response — the caller
+/// drives a [`ChatStreamProbe`] for them. Asserts the POST returned 200.
 async fn send_streaming_message(
     server: &TestServer,
     token: &str,
@@ -125,7 +126,7 @@ async fn send_streaming_message(
     model_id: Uuid,
     mcp_server_id: Uuid,
     content: &str,
-) -> reqwest::Response {
+) {
     let payload = json!({
         "content": content,
         "model_id": model_id,
@@ -137,7 +138,7 @@ async fn send_streaming_message(
     });
     let resp = reqwest::Client::new()
         .post(server.api_url(&format!(
-            "/conversations/{}/messages/stream",
+            "/conversations/{}/messages",
             conversation_id
         )))
         .header("Authorization", format!("Bearer {}", token))
@@ -145,8 +146,7 @@ async fn send_streaming_message(
         .send()
         .await
         .expect("send chat message");
-    assert_eq!(resp.status(), 200, "stream request must succeed");
-    resp
+    assert_eq!(resp.status(), 200, "send request must succeed");
 }
 
 #[derive(Debug, Clone)]
@@ -155,15 +155,23 @@ struct ChatSseEvent {
     data: Value,
 }
 
-/// Stream the chat SSE response and intercept `mcpElicitationRequired`
-/// events. When one fires, POST the given response back to the elicitation
-/// endpoint. Returns all events observed plus the captured elicitation_ids.
+/// Drive the per-user chat-stream probe for `conversation_id`, intercepting
+/// `mcpElicitationRequired` frames. When one fires, POST the given response
+/// back to the elicitation endpoint, which unblocks the detached server-side
+/// generation; collection then resumes until the next elicitation or the
+/// terminal `complete`/`error`. Returns all frames observed plus the captured
+/// elicitation_ids.
+///
+/// CRITICAL: the generation BLOCKS awaiting the respond POST, so no terminal
+/// `complete` arrives until we answer — hence we stop at each elicitation,
+/// respond, and re-collect rather than waiting for `complete` outright.
 ///
 /// Bounded by a generous timeout so a stuck stream fails the test fast.
 async fn stream_until_complete(
     server: &TestServer,
     user_token: &str,
-    response: reqwest::Response,
+    probe: &mut crate::common::chat_stream_probe::ChatStreamProbe,
+    conversation_id: Uuid,
     answer: ElicitAnswer,
     overall_timeout: Duration,
 ) -> (Vec<ChatSseEvent>, Vec<String>) {
@@ -171,75 +179,52 @@ async fn stream_until_complete(
     let mut elicitation_ids: Vec<String> = Vec::new();
 
     let task = async {
-        let mut stream = response.bytes_stream();
-        let mut buffer = String::new();
+        loop {
+            // Collect until the next elicitation gate OR a terminal frame.
+            let frames = probe
+                .collect_until(
+                    conversation_id,
+                    &["mcpElicitationRequired"],
+                    overall_timeout,
+                )
+                .await;
 
-        while let Some(chunk) = stream.next().await {
-            let chunk = match chunk {
-                Ok(c) => c,
-                Err(e) => panic!("stream chunk error: {}", e),
-            };
-            buffer.push_str(&String::from_utf8_lossy(&chunk));
-
-            // Split on \n\n event separator
-            while let Some(idx) = buffer.find("\n\n") {
-                let raw = buffer[..idx].to_string();
-                buffer.drain(..idx + 2);
-
-                let mut name = String::from("message");
-                let mut data_str = String::new();
-                for line in raw.lines() {
-                    if let Some(rest) = line.strip_prefix("event: ") {
-                        name = rest.trim().to_string();
-                    }
-                    if let Some(rest) = line.strip_prefix("data: ") {
-                        // SSE allows multi-line data fields; concatenate.
-                        if !data_str.is_empty() {
-                            data_str.push('\n');
-                        }
-                        data_str.push_str(rest);
-                    }
-                }
-                if data_str.is_empty() {
-                    continue;
-                }
-                let data: Value = match serde_json::from_str(&data_str) {
-                    Ok(v) => v,
-                    Err(_) => continue,
-                };
-
+            for f in &frames {
                 events.push(ChatSseEvent {
-                    event: name.clone(),
-                    data: data.clone(),
+                    event: f.event_type.clone(),
+                    data: f.data.clone(),
                 });
+            }
 
-                if name == "mcpElicitationRequired" {
-                    let eid = data["elicitation_id"]
-                        .as_str()
-                        .expect("elicitation_id in event")
-                        .to_string();
-                    elicitation_ids.push(eid.clone());
+            let Some(last) = frames.last() else { return };
 
-                    // POST the user's response.
-                    let url = server.api_url(&format!("/mcp/elicitation/{}/respond", eid));
-                    let body = answer.to_body();
-                    let resp = reqwest::Client::new()
-                        .post(&url)
-                        .header("Authorization", format!("Bearer {}", user_token))
-                        .json(&body)
-                        .send()
-                        .await
-                        .expect("respond POST");
-                    assert_eq!(
-                        resp.status(),
-                        200,
-                        "elicitation respond must succeed for id={}", eid
-                    );
-                }
+            if last.event_type == "mcpElicitationRequired" {
+                let eid = last.data["elicitation_id"]
+                    .as_str()
+                    .expect("elicitation_id in event")
+                    .to_string();
+                elicitation_ids.push(eid.clone());
 
-                if name == "complete" {
-                    return;
-                }
+                // POST the user's response (unblocks the detached generation).
+                let url = server.api_url(&format!("/mcp/elicitation/{}/respond", eid));
+                let body = answer.to_body();
+                let resp = reqwest::Client::new()
+                    .post(&url)
+                    .header("Authorization", format!("Bearer {}", user_token))
+                    .json(&body)
+                    .send()
+                    .await
+                    .expect("respond POST");
+                assert_eq!(
+                    resp.status(),
+                    200,
+                    "elicitation respond must succeed for id={}", eid
+                );
+                // Loop: keep collecting (resumed generation may elicit again
+                // or finally `complete`).
+            } else {
+                // Terminal (complete/error) — done.
+                return;
             }
         }
     };
@@ -304,7 +289,12 @@ async fn run_elicit_scenario(
 
     set_mcp_settings_auto_approve(server, &user.token, conversation_id).await;
 
-    let resp = send_streaming_message(
+    // Subscribe to the chat stream BEFORE sending so no frame is missed.
+    let mut probe =
+        crate::common::chat_stream_probe::ChatStreamProbe::open(server, &user.token).await;
+    probe.subscribe(Some(conversation_id)).await;
+
+    send_streaming_message(
         server,
         &user.token,
         conversation_id,
@@ -315,8 +305,15 @@ async fn run_elicit_scenario(
     )
     .await;
 
-    let (events, eids) =
-        stream_until_complete(server, &user.token, resp, answer, overall_timeout).await;
+    let (events, eids) = stream_until_complete(
+        server,
+        &user.token,
+        &mut probe,
+        conversation_id,
+        answer,
+        overall_timeout,
+    )
+    .await;
     (events, eids, mock, conversation_id)
 }
 

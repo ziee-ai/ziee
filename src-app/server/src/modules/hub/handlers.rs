@@ -10,6 +10,7 @@ use crate::{
         llm_model::{ModelParameters, permissions::LlmModelsCreate},
         mcp::McpServersAdminCreate,
         permissions::{RequirePermissions, with_permission},
+        sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
     },
 };
 use std::sync::Arc;
@@ -1697,6 +1698,7 @@ pub fn get_hub_catalog_version_docs(op: TransformOperation) -> TransformOperatio
 pub async fn refresh_hub_catalog(
     _auth: RequirePermissions<(HubCatalogManage,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
 ) -> ApiResult<Json<HubCatalogRefreshResponse>> {
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
@@ -1718,6 +1720,8 @@ pub async fn refresh_hub_catalog(
             HubEvent::mcp_servers_refreshed(prev, outcome.new_version.clone()).into(),
         );
     }
+
+    sync_publish(SyncEntity::HubSettings, SyncAction::Update, uuid::Uuid::nil(), Audience::perm::<HubCatalogRead>(), origin.0);
 
     Ok((
         StatusCode::OK,
@@ -1880,6 +1884,7 @@ pub fn get_hub_releases_docs(op: TransformOperation) -> TransformOperation {
 pub async fn activate_hub_version(
     _auth: RequirePermissions<(HubCatalogManage,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Json(request): Json<ActivateHubVersionRequest>,
 ) -> ApiResult<Json<HubCatalogRefreshResponse>> {
     let app_data_dir = crate::core::get_app_data_dir();
@@ -1906,6 +1911,8 @@ pub async fn activate_hub_version(
             HubEvent::mcp_servers_refreshed(prev, outcome.new_version.clone()).into(),
         );
     }
+
+    sync_publish(SyncEntity::HubSettings, SyncAction::Update, uuid::Uuid::nil(), Audience::perm::<HubCatalogRead>(), origin.0);
 
     Ok((
         StatusCode::OK,

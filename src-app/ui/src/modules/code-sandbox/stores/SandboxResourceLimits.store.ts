@@ -2,10 +2,13 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
-import type {
-  CodeSandboxResourceLimits,
-  UpdateCodeSandboxResourceLimits,
+import {
+  type CodeSandboxResourceLimits,
+  Permissions,
+  type UpdateCodeSandboxResourceLimits,
 } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
+import { Stores } from '@/core/stores'
 
 /**
  * Runtime-configurable resource caps for the code sandbox (Plan 1 §6).
@@ -23,8 +26,11 @@ interface SandboxResourceLimitsStore {
   error: string | null
 
   __init__: {
+    __store__?: () => void
     limits?: () => Promise<void>
   }
+
+  __destroy__?: () => void
 
   loadLimits: () => Promise<void>
   saveLimits: (patch: UpdateCodeSandboxResourceLimits) => Promise<void>
@@ -33,13 +39,23 @@ interface SandboxResourceLimitsStore {
 export const useSandboxResourceLimitsStore =
   create<SandboxResourceLimitsStore>()(
     subscribeWithSelector(
-      immer((set, _get) => ({
+      immer((set, get) => ({
         limits: null,
         loading: false,
         saving: false,
         error: null,
 
         __init__: {
+          __store__: () => {
+            const eventBus = Stores.EventBus
+            const GROUP = 'SandboxResourceLimitsStore'
+            // Code-sandbox resource-limit settings (singleton). Refetch on a
+            // remote change (the event id is nil — it's a singleton row) or on
+            // SSE reconnect.
+            const reload = () => void get().loadLimits()
+            eventBus.on('sync:code_sandbox_settings', reload, GROUP)
+            eventBus.on('sync:reconnect', reload, GROUP)
+          },
           limits: async () => {
             set(s => {
               s.loading = true
@@ -62,13 +78,15 @@ export const useSandboxResourceLimitsStore =
         },
 
         loadLimits: async () => {
+          if (!hasPermissionNow(Permissions.CodeSandboxResourceLimitsRead)) {
+            return
+          }
           set(s => {
             s.loading = true
             s.error = null
           })
           try {
-            const res =
-              await ApiClient.CodeSandbox.getResourceLimits(undefined)
+            const res = await ApiClient.CodeSandbox.getResourceLimits(undefined)
             set(s => {
               s.limits = res
               s.loading = false
@@ -99,6 +117,10 @@ export const useSandboxResourceLimitsStore =
             })
             throw e
           }
+        },
+
+        __destroy__: () => {
+          Stores.EventBus.removeGroupListeners('SandboxResourceLimitsStore')
         },
       })),
     ),

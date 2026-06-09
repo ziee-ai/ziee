@@ -1,13 +1,13 @@
-import { createModule } from '@/core'
 import { BookOutlined } from '@ant-design/icons'
-import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { Permissions } from '@/api-client/types'
+import { createModule } from '@/core'
+import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
+import { lazyWithPreload } from '@/utils/lazyWithPreload'
+import { useCoreMemoryBlocksStore } from './stores/CoreMemoryBlocks.store'
 import { useMemoriesStore } from './stores/Memories.store'
-import { useMemorySettingsStore } from './stores/MemorySettings.store'
 import { useMemoryAdminStore } from './stores/MemoryAdmin.store'
 import { useMemoryAuditStore } from './stores/MemoryAudit.store'
-import { useCoreMemoryBlocksStore } from './stores/CoreMemoryBlocks.store'
-import { lazyWithPreload } from '@/utils/lazyWithPreload'
+import { useMemorySettingsStore } from './stores/MemorySettings.store'
 import './types'
 
 // The user page renders sections for each memory mechanism. A user
@@ -19,10 +19,12 @@ const MEMORY_USER_READ_PERM = {
 }
 
 const MemorySettingsPage = lazyWithPreload(() =>
-  import('./pages/MemorySettingsPage').then((m) => ({ default: m.MemorySettingsPage })),
+  import('./pages/MemorySettingsPage').then(m => ({
+    default: m.MemorySettingsPage,
+  })),
 )
 const MemoryAdminPage = lazyWithPreload(() =>
-  import('./pages/MemoryAdminPage').then((m) => ({ default: m.MemoryAdminPage })),
+  import('./pages/MemoryAdminPage').then(m => ({ default: m.MemoryAdminPage })),
 )
 
 export default createModule({

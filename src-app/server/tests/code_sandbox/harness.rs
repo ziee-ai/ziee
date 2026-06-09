@@ -665,12 +665,37 @@ pub async fn tool_call(
     tool: &str,
     arguments: serde_json::Value,
 ) -> serde_json::Value {
-    let resp = post_jsonrpc(
+    tool_call_with_timeout(
+        server,
+        jwt,
+        conv_id,
+        tool,
+        arguments,
+        std::time::Duration::from_secs(120),
+    )
+    .await
+}
+
+/// Like [`tool_call`] but with an explicit per-request timeout. Needed for
+/// `execute_command` calls that trigger a COLD rootfs fetch: the full-flavor
+/// rootfs is ~900 MB, so its FIRST download + sha256/cosign verify + squashfuse
+/// mount cannot finish inside the default 120 s. Once cached under
+/// `.ziee-cache/.../e2e`, subsequent calls reuse it and the default suffices.
+pub async fn tool_call_with_timeout(
+    server: &TestServer,
+    jwt: &str,
+    conv_id: Uuid,
+    tool: &str,
+    arguments: serde_json::Value,
+    timeout: std::time::Duration,
+) -> serde_json::Value {
+    let resp = post_jsonrpc_with_timeout(
         server,
         jwt,
         Some(conv_id),
         "tools/call",
         serde_json::json!({ "name": tool, "arguments": arguments }),
+        timeout,
     )
     .await;
     let status = resp.status();

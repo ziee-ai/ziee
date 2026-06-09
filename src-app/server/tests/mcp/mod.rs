@@ -1246,6 +1246,7 @@ mod rate_limit_test;              // Global rate-limiter on/off regression (gove
 mod test_connection_test;         // Connection-test endpoints (user + system test-connection)
 mod http_headers_test;            // Custom-header transmission + trim/validation (create/update/test)
 mod http_connection_reuse_test;   // Stale keep-alive reuse regression (proxy/tunnel reap → fresh conn per request)
+mod sync_emit_test;               // Realtime-sync emission: mcp_server (owner) + system dual-audience
 
 // ============================================================================
 // Sampling Field CRUD Tests

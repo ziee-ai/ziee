@@ -17,5 +17,6 @@ mod files_test;
 mod injection_test;
 mod mcp_test;
 mod permissions_test;
+mod sync_emit_test;
 
 mod helpers;

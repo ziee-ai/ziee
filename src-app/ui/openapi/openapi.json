@@ -8417,16 +8417,14 @@
             "bearerAuth": []
           }
         ]
-      }
-    },
-    "/api/conversations/{id}/messages/stream": {
+      },
       "post": {
         "tags": [
           "Chat"
         ],
-        "summary": "Send message and stream AI response",
-        "description": "Send a user message to a conversation and receive the AI response as a Server-Sent Events (SSE) stream. Events include: 'content' (incremental content deltas), 'complete' (stream finished), 'error' (stream error), and extension events like 'titleUpdated'.",
-        "operationId": "Message.sendStream",
+        "summary": "Send a message (fire-and-forget; reply streams over /api/chat/stream)",
+        "description": "Sends a user message and starts the assistant reply, returning the persisted `{userMessageId, assistantMessageId}` immediately. The reply is delivered as live token frames over the per-user `GET /api/chat/stream` (to which the device subscribes for this conversation), and the finished turn is announced via a `sync:conversation` notification so other surfaces refetch.",
+        "operationId": "Message.send",
         "requestBody": {
           "description": "Request to send a message in a conversation\n\n Extensions contribute fields by creating an extension.rs file with a RequestFields struct.\n The build script automatically discovers and registers these extensions.",
           "content": {
@@ -8463,11 +8461,11 @@
             }
           },
           "200": {
-            "description": "SSE event enum for chat streaming\n\n This enum represents all possible Server-Sent Events that can be streamed\n during a chat message request.\n\n # Extension Architecture\n\n **EXTENSIONS SHOULD send their own SSE events** instead of adding fields to ChatStreamChunk.\n Extensions add new event variants through the SSEChatStreamEventVariants enum using\n the compose_chat_stream_events macro.\n\n Example: The title extension sends a separate `TitleUpdated` event instead of\n adding a title field to ChatStreamChunk.\n\n Events are sent with proper `event:` names (e.g., \"started\", \"content\", \"complete\", \"error\", \"titleUpdated\")\n for type-safe client-side handling.",
+            "description": "Response to a fire-and-forget send: the persisted message ids. The assistant\n reply arrives as live frames over `GET /api/chat/stream` (tokens), and the\n finished turn lands via `sync:conversation` + refetch.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SSEChatStreamEvent"
+                  "$ref": "#/components/schemas/SendMessageResponse"
                 }
               }
             }
@@ -8477,6 +8475,55 @@
           },
           "401": {
             "description": "no content"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/messages/{assistant_message_id}/stop": {
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Stop an in-flight assistant generation",
+        "description": "Cancels the detached generation for the given assistant message. A `complete` frame with `finishReason: cancelled` is emitted on the chat-token stream.",
+        "operationId": "Message.stopGeneration",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Send messages in conversations",
+                        "name": "MessagesCreate",
+                        "value": "messages::create"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: messages::create",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Cancellation requested"
+          },
+          "404": {
+            "description": "Message not found"
+          },
+          "409": {
+            "description": "No in-flight generation to stop"
           }
         },
         "security": [
@@ -8876,6 +8923,122 @@
           },
           "401": {
             "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/chat/stream": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Subscribe to live assistant-token frames via SSE",
+        "description": "Per-user Server-Sent Events stream of live chat generation frames (`started`/`content`/`complete`/`error`), each tagged with its `conversationId`. The first frame (`connected`) carries a connection id to echo as `X-Chat-Stream-Connection-Id` on `PUT /api/chat/stream/subscription`, which scopes delivery to the one conversation the device is viewing (and replays the reply-so-far if it is mid-generation).",
+        "operationId": "ChatStream.subscribe",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View own profile information",
+                        "name": "ProfileRead",
+                        "value": "profile::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: profile::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "A documentation-only union of everything that can cross the stream, so the\n frame + handshake shapes surface in the generated OpenAPI/TS types. The\n real wire frames are built via [`ChatStreamFrame::to_sse`] /\n [`connected_event`] (which keep the inner event name on the `event:` line).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatStreamSseEvent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "429": {
+            "description": "Too many open chat-stream connections"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/chat/stream/subscription": {
+      "put": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Scope a chat-stream connection to one conversation",
+        "description": "Sets which conversation's live tokens the calling chat-stream connection (identified by the `X-Chat-Stream-Connection-Id` header) receives. `conversationId: null` unsubscribes. If the target conversation is mid-generation its reply-so-far is replayed.",
+        "operationId": "ChatStream.setSubscription",
+        "requestBody": {
+          "description": "Body of `PUT /api/chat/stream/subscription`: the conversation whose live\n tokens this connection wants (or `null` to receive nothing).",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetSubscriptionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View own profile information",
+                        "name": "ProfileRead",
+                        "value": "profile::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: profile::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Subscription updated"
+          },
+          "400": {
+            "description": "Missing connection id"
+          },
+          "404": {
+            "description": "Conversation not found"
           }
         },
         "security": [
@@ -13880,6 +14043,62 @@
           }
         }
       }
+    },
+    "/api/sync/subscribe": {
+      "get": {
+        "tags": [
+          "Sync"
+        ],
+        "summary": "Subscribe to realtime cross-device sync events via SSE",
+        "description": "Server-Sent Events stream of `{entity, action, id}` change notifications scoped to the authenticated user (and the permission-/group-visibility rules per entity). The client refetches the changed entity via its normal REST endpoint, so no row data crosses this channel. The first frame (`connected`) carries a connection id to echo back as `X-Sync-Connection-Id` on mutations for self-echo suppression. The stream closes when the access token expires or the account loses access.",
+        "operationId": "Sync.subscribe",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View own profile information",
+                        "name": "ProfileRead",
+                        "value": "profile::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: profile::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncSseEvent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "429": {
+            "description": "Too many open sync connections"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -14557,6 +14776,75 @@
             ]
           }
         }
+      },
+      "ChatStreamConnectedData": {
+        "description": "Handshake frame opening the stream: the server-assigned connection id, which\n the client echoes on `PUT /api/chat/stream/subscription` to scope delivery.",
+        "type": "object",
+        "properties": {
+          "connectionId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "connectionId"
+        ]
+      },
+      "ChatStreamFrame": {
+        "description": "One generation frame, tagged with the conversation it belongs to. The inner\n `event` is the unchanged per-request `SSEChatStreamEvent`; the envelope only\n adds the routing key (today's `ChatStreamChunk.conversation_id` is sent only\n on the first content chunk, which is ambiguous on a multiplexed stream).",
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "event": {
+            "$ref": "#/components/schemas/SSEChatStreamEvent"
+          }
+        },
+        "required": [
+          "conversationId",
+          "event"
+        ]
+      },
+      "ChatStreamSseEvent": {
+        "description": "A documentation-only union of everything that can cross the stream, so the\n frame + handshake shapes surface in the generated OpenAPI/TS types. The\n real wire frames are built via [`ChatStreamFrame::to_sse`] /\n [`connected_event`] (which keep the inner event name on the `event:` line).",
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "connected"
+              }
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ChatStreamConnectedData"
+              }
+            ],
+            "required": [
+              "kind"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "frame"
+              }
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ChatStreamFrame"
+              }
+            ],
+            "required": [
+              "kind"
+            ]
+          }
+        ]
       },
       "CodeSandboxResourceLimits": {
         "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
@@ -23502,6 +23790,27 @@
           "branch_id"
         ]
       },
+      "SendMessageResponse": {
+        "description": "Response to a fire-and-forget send: the persisted message ids. The assistant\n reply arrives as live frames over `GET /api/chat/stream` (tokens), and the\n finished turn lands via `sync:conversation` + refetch.",
+        "type": "object",
+        "properties": {
+          "assistant_message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "user_message_id": {
+            "description": "None if an extension suppressed the user message (e.g. tool-approval resume).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "assistant_message_id"
+        ]
+      },
       "ServerGroupsRequest": {
         "type": "object",
         "properties": {
@@ -23572,6 +23881,19 @@
           "swap",
           "status"
         ]
+      },
+      "SetSubscriptionRequest": {
+        "description": "Body of `PUT /api/chat/stream/subscription`: the conversation whose live\n tokens this connection wants (or `null` to receive nothing).",
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        }
       },
       "SetupAdminRequest": {
         "type": "object",
@@ -23710,6 +24032,15 @@
           "restarted"
         ]
       },
+      "SyncAction": {
+        "description": "What happened to the entity.",
+        "type": "string",
+        "enum": [
+          "create",
+          "update",
+          "delete"
+        ]
+      },
       "SyncCacheResponse": {
         "description": "Response after syncing cache with database",
         "type": "object",
@@ -23726,6 +24057,181 @@
         "required": [
           "synced_count",
           "message"
+        ]
+      },
+      "SyncConnectedData": {
+        "description": "Handshake payload: the server-assigned connection id. The client\n echoes it back via the `X-Sync-Connection-Id` header on mutations so\n the fan-out can skip the originating connection (self-echo suppression).",
+        "type": "object",
+        "properties": {
+          "connection_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "connection_id"
+        ]
+      },
+      "SyncEntity": {
+        "description": "The kind of entity that changed. Serialized snake_case to match the\n frontend's `sync:<entity>` event vocabulary.\n\n ADD a variant here when wiring a new domain: `audience_kind`'s match\n is exhaustive, so the build fails until the new entity is assigned an\n audience — a new syncable entity can never silently default to a\n broadcast (the dangerous default becomes a compile error, not a leak).",
+        "oneOf": [
+          {
+            "type": "string",
+            "enum": [
+              "project",
+              "memory",
+              "memory_settings"
+            ]
+          },
+          {
+            "description": "A user-created assistant (NOT a system template — that's a separate\n entity with a different audience).",
+            "type": "string",
+            "const": "assistant"
+          },
+          {
+            "description": "A user-owned MCP server (NOT a system/group-shared server).",
+            "type": "string",
+            "const": "mcp_server"
+          },
+          {
+            "description": "A user's own profile (display fields / active state). Emitted to the\n affected user — e.g. when an admin edits their account — so their\n other devices re-bootstrap `/auth/me`.",
+            "type": "string",
+            "const": "profile"
+          },
+          {
+            "description": "A user's saved LLM-provider API key (`id` is the provider id; only\n masked state is ever exposed, and only via refetch).",
+            "type": "string",
+            "const": "api_key"
+          },
+          {
+            "description": "A chat conversation owned by the user. `id` is the conversation id.\n Emitted on create/rename/delete, on each completed message turn, and on\n branch/message edits — the recipient refetches the list and (if open)\n the conversation's messages. Live assistant TOKENS do NOT ride this\n stream; they go over the dedicated `chat/stream` token channel.",
+            "type": "string",
+            "const": "conversation"
+          },
+          {
+            "description": "Admin view of an LLM provider (full admin provider table).",
+            "type": "string",
+            "const": "llm_provider"
+          },
+          {
+            "description": "Admin view of an LLM model.",
+            "type": "string",
+            "const": "llm_model"
+          },
+          {
+            "description": "A user group (admin tables; includes group permissions).",
+            "type": "string",
+            "const": "group"
+          },
+          {
+            "description": "A user account (admin users list).",
+            "type": "string",
+            "const": "user"
+          },
+          {
+            "description": "A shared assistant template (visible to any user who can read\n templates — non-secret, uniform view).",
+            "type": "string",
+            "const": "assistant_template"
+          },
+          {
+            "description": "Admin view of a system (deployment-shared) MCP server.",
+            "type": "string",
+            "const": "mcp_server_system"
+          },
+          {
+            "description": "An LLM repository (admin).",
+            "type": "string",
+            "const": "llm_repository"
+          },
+          {
+            "description": "A local-runtime engine version (admin).",
+            "type": "string",
+            "const": "runtime_version"
+          },
+          {
+            "description": "Deployment-wide local-runtime engine settings (singleton).",
+            "type": "string",
+            "const": "runtime_settings"
+          },
+          {
+            "description": "Deployment-wide memory admin settings (singleton).",
+            "type": "string",
+            "const": "memory_admin_settings"
+          },
+          {
+            "description": "Code-sandbox resource-limit settings (singleton).",
+            "type": "string",
+            "const": "code_sandbox_settings"
+          },
+          {
+            "description": "Hub catalog settings (singleton).",
+            "type": "string",
+            "const": "hub_settings"
+          },
+          {
+            "description": "A user's accessible-providers (with enabled models) view changed.",
+            "type": "string",
+            "const": "user_llm_provider"
+          },
+          {
+            "description": "A user's accessible (system) MCP-servers view changed.",
+            "type": "string",
+            "const": "user_mcp_server"
+          },
+          {
+            "description": "The user's session/permissions changed (group membership or a group's\n permissions were edited) — the client re-bootstraps `/auth/me`. `id`\n is the affected user id.",
+            "type": "string",
+            "const": "session"
+          }
+        ]
+      },
+      "SyncEvent": {
+        "description": "The change notification pushed to clients. Notify-and-refetch only.",
+        "type": "object",
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/SyncAction"
+          },
+          "entity": {
+            "$ref": "#/components/schemas/SyncEntity"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "entity",
+          "action",
+          "id"
+        ]
+      },
+      "SyncSseEvent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "connected": {
+                "$ref": "#/components/schemas/SyncConnectedData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "connected"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sync": {
+                "$ref": "#/components/schemas/SyncEvent"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "sync"
+            ]
+          }
         ]
       },
       "TaskStatus": {

@@ -126,6 +126,11 @@ async fn set_mcp_settings(
     }
 }
 
+/// Fire-and-forget send (new model): subscribe to the chat stream, POST
+/// `/messages`, and collect the streamed extension events until the terminal
+/// `complete`/`error`. Sampling tests run in auto-approve mode (no approval
+/// gate), so the turn always reaches a terminal frame. Asserts the POST
+/// returned 200.
 async fn send_message_with_mcp(
     server: &TestServer,
     token: &str,
@@ -134,8 +139,8 @@ async fn send_message_with_mcp(
     model_id: Uuid,
     mcp_server_id: Uuid,
     content: &str,
-) -> reqwest::Response {
-    let payload = json!({
+) -> Vec<crate::chat::helpers::SSEEvent> {
+    let body = json!({
         "content": content,
         "model_id": model_id,
         "branch_id": branch_id,
@@ -145,14 +150,14 @@ async fn send_message_with_mcp(
         }
     });
 
-    let url = server.api_url(&format!("/conversations/{}/messages/stream", conversation_id));
-    reqwest::Client::new()
-        .post(&url)
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&payload)
-        .send()
-        .await
-        .expect("Failed to send message")
+    crate::chat::helpers::send_body_and_collect_events(
+        server,
+        token,
+        conversation_id,
+        body,
+        &[],
+    )
+    .await
 }
 
 // ============================================================================
@@ -207,7 +212,7 @@ async fn run_sampling_scenario_with_mock(
 
     set_mcp_settings(server, &user.token, conversation_id, "auto_approve", vec![]).await;
 
-    let response = send_message_with_mcp(
+    let events = send_message_with_mcp(
         server,
         &user.token,
         conversation_id,
@@ -217,9 +222,6 @@ async fn run_sampling_scenario_with_mock(
         prompt,
     )
     .await;
-
-    assert_eq!(response.status(), 200, "Stream request should succeed");
-    let events = crate::chat::helpers::parse_sse_events(response).await;
 
     tracing::debug!("=== sampling scenario: received {} events ===", events.len());
     for (i, e) in events.iter().enumerate() {

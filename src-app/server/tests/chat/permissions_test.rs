@@ -179,24 +179,22 @@ async fn test_send_message_requires_permission() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    // Get a test model
-    let model = super::helpers::get_or_create_test_model(&server, &admin.user_id).await;
+    // Get a test model (deterministic stub — the 403 fires at the
+    // RequirePermissions gate before any model lookup, so the model is
+    // unused; the stub just avoids an API-key dependency).
+    let (_stub, model) = super::helpers::create_stub_model(&server, &admin.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
-    let payload = json!({
-        "content": "Hello, world!",
-        "model_id": model_id.to_string(),
-        "branch_id": branch_id.to_string()
-    });
-
     // User without permission tries to send message
-    let response = reqwest::Client::new()
-        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&payload)
-        .send()
-        .await
-        .unwrap();
+    let response = super::helpers::send_message_simple(
+        &server,
+        &user.token,
+        conversation_id,
+        model_id,
+        branch_id,
+        "Hello, world!",
+    )
+    .await;
 
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }

@@ -2,18 +2,20 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { ApiClient } from '@/api-client'
 import type {
-  Group,
   CreateGroupRequest,
+  Group,
   UpdateGroupRequest,
 } from '@/api-client/types'
+import { Permissions } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
+import { Stores } from '@/core/stores'
 import {
   emitGroupCreated,
-  emitGroupUpdated,
   emitGroupDeleted,
   emitGroupMemberAdded,
   emitGroupMemberRemoved,
+  emitGroupUpdated,
 } from '@/modules/user/events'
-import { Stores } from '@/core/stores'
 
 interface GroupMember {
   id: string
@@ -86,6 +88,9 @@ export const useUserGroupsStore = create<UserGroupsState>()(
 
       // Actions
       loadUserGroups: async (page?: number, pageSize?: number) => {
+        if (!hasPermissionNow(Permissions.GroupsRead)) {
+          return
+        }
         try {
           const currentState = get()
           const requestPage = page || currentState.currentPage
@@ -442,6 +447,12 @@ export const useUserGroupsStore = create<UserGroupsState>()(
             },
             GROUP,
           )
+
+          // Remote sync: refetch on a remote change or on (re)connect.
+          // loadUserGroups self-gates on GroupsRead.
+          const reload = () => void get().loadUserGroups()
+          eventBus.on('sync:group', reload, GROUP)
+          eventBus.on('sync:reconnect', reload, GROUP)
         },
         groups: () => get().loadUserGroups(),
       },

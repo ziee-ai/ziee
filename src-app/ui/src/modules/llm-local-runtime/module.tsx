@@ -1,23 +1,23 @@
-import { createModule } from '@/core'
 import { CloudServerOutlined } from '@ant-design/icons'
-import { lazyWithPreload } from '@/utils/lazyWithPreload'
-import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { Permissions } from '@/api-client/types'
+import { createModule } from '@/core'
+import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
+import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import {
-  useRuntimeVersionStore,
-  useRuntimeUpdateStore,
-  useRuntimeDownloadDrawerStore,
-  useRuntimeDeleteConfirmStore,
   useRuntimeConfigStore,
-  useRuntimeModelUsageStore,
+  useRuntimeDeleteConfirmStore,
+  useRuntimeDownloadDrawerStore,
   useRuntimeDownloadProgressStore,
+  useRuntimeModelUsageStore,
+  useRuntimeUpdateStore,
+  useRuntimeVersionStore,
 } from './stores'
 import './types' // Register event types
 
 const RuntimeVersionSettings = lazyWithPreload(() =>
   import('./components/RuntimeVersionSettings').then(m => ({
-    default: m.RuntimeVersionSettings
-  }))
+    default: m.RuntimeVersionSettings,
+  })),
 )
 
 export default createModule({
@@ -33,7 +33,7 @@ export default createModule({
       requiresAuth: true,
       permission: Permissions.LocalRuntimeRead,
       layout: SettingsLayoutDef,
-    }
+    },
   ],
 
   stores: [
@@ -64,7 +64,7 @@ export default createModule({
     {
       name: 'RuntimeDownloadProgress',
       store: useRuntimeDownloadProgressStore,
-    }
+    },
   ],
 
   slots: {
@@ -82,7 +82,7 @@ export default createModule({
         path: 'llm-runtime',
         order: 52, // After LLM Providers (51), before LLM Repositories (53)
         permission: Permissions.LocalRuntimeRead,
-      }
-    ]
-  }
+      },
+    ],
+  },
 })

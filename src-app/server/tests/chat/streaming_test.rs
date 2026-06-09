@@ -1,668 +1,237 @@
-//! SSE streaming integration tests
+//! Streaming integration tests — migrated to the fire-and-forget model.
+//!
+//! The old per-request SSE response (`POST /messages/stream`) is gone; the
+//! reply now streams over the per-user `GET /api/chat/stream`. These tests use
+//! the deterministic stub-engine-backed model (`helpers::create_stub_model`) +
+//! `ChatStreamProbe`, so they run WITHOUT API keys. The raw transport-format
+//! assertions (content-type, `data:` lines) moved to `chat_stream_test.rs`;
+//! what remains here is the extension behaviour that rides the stream
+//! (titleUpdated, assistant system-message injection) plus the invalid-model
+//! guard.
+
+use std::time::Duration;
 
 use reqwest::StatusCode;
+use serde_json::json;
 
-// =====================================================
-// Basic Streaming Tests
-// =====================================================
+use super::helpers;
+use crate::common::chat_stream_probe::ChatStreamProbe;
 
-#[tokio::test]
-async fn test_send_message_returns_sse_content_type() {
+const TURN_TIMEOUT: Duration = Duration::from_secs(20);
+
+fn perms() -> &'static [&'static str] {
+    &[
+        "conversations::create",
+        "conversations::read",
+        "messages::create",
+        "messages::read",
+        "llm_models::read",
+    ]
+}
+
+async fn setup(
+    name: &str,
+) -> (
+    crate::common::TestServer,
+    crate::common::test_helpers::TestUser,
+    crate::common::stub_engine::StubEngine,
+    uuid::Uuid, // model_id
+) {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "user",
-        &[
-            "conversations::create",
-            "messages::create",
-            "llm_models::read",
-            "llm_models::create",
-            "llm_providers::read",
-            "llm_providers::create",
-            "llm_providers::edit",
-        ],
-    )
-    .await;
-
-    let conversation = super::helpers::create_conversation(&server, &user.token, None, None).await;
-    let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
-    let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
-
-    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
-    let model_id = super::helpers::parse_uuid(&model["id"]);
-
-    let response = super::helpers::send_message_simple(
-        &server,
-        &user.token,
-        conversation_id,
-        model_id,
-        branch_id,
-        "Hello"
-    ).await;
-
-    // Verify SSE content type
-    let content_type = response.headers().get("content-type").unwrap();
-    assert!(
-        content_type.to_str().unwrap().contains("text/event-stream"),
-        "Expected SSE content-type"
-    );
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, name, perms()).await;
+    let (stub, model) = helpers::create_stub_model(&server, &user.user_id).await;
+    let model_id = helpers::parse_uuid(&model["id"]);
+    (server, user, stub, model_id)
 }
 
 #[tokio::test]
-async fn test_send_message_stream_contains_data_events() {
+async fn test_invalid_model_returns_404() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "user",
-        &[
-            "conversations::create",
-            "messages::create",
-            "llm_models::read",
-            "llm_models::create",
-            "llm_providers::read",
-            "llm_providers::create",
-            "llm_providers::edit",
-        ],
-    )
-    .await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", perms()).await;
 
-    let conversation = super::helpers::create_conversation(&server, &user.token, None, None).await;
-    let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
-    let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
+    let conversation = helpers::create_conversation(&server, &user.token, None, None).await;
+    let conversation_id = helpers::parse_uuid(&conversation["id"]);
+    let branch_id = helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
-    let model_id = super::helpers::parse_uuid(&model["id"]);
-
-    let response = super::helpers::send_message_simple(
+    // POST /messages with a non-existent model must 404 before generation.
+    let response = helpers::send_message_simple(
         &server,
         &user.token,
         conversation_id,
-        model_id,
+        uuid::Uuid::new_v4(),
         branch_id,
-        "Test message"
-    ).await;
-
-    let bytes = response.bytes().await.unwrap();
-    let text = String::from_utf8(bytes.to_vec()).unwrap();
-
-    // Should contain SSE data events
-    assert!(text.contains("data: "), "Should contain SSE data events");
-}
-
-#[tokio::test]
-async fn test_send_message_stream_parses_json_chunks() {
-    let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "user",
-        &[
-            "conversations::create",
-            "messages::create",
-            "llm_models::read",
-            "llm_models::create",
-            "llm_providers::read",
-            "llm_providers::create",
-            "llm_providers::edit",
-        ],
+        "Error test",
     )
     .await;
 
-    let conversation = super::helpers::create_conversation(&server, &user.token, None, None).await;
-    let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
-    let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
-
-    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
-    let model_id = super::helpers::parse_uuid(&model["id"]);
-
-    let response = super::helpers::send_message_simple(
-        &server,
-        &user.token,
-        conversation_id,
-        model_id,
-        branch_id,
-        "Parse test"
-    ).await;
-
-    let _chunks = super::helpers::parse_sse_stream(response).await;
-
-    // Should be able to parse the SSE stream without panicking
-    // (actual AI response may vary, so we just verify parsing works)
-}
-
-// =====================================================
-// Chunk Structure Tests
-// =====================================================
-
-#[tokio::test]
-async fn test_stream_chunks_have_expected_fields() {
-    let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "user",
-        &[
-            "conversations::create",
-            "messages::create",
-            "llm_models::read",
-            "llm_models::create",
-            "llm_providers::read",
-            "llm_providers::create",
-            "llm_providers::edit",
-        ],
-    )
-    .await;
-
-    let conversation = super::helpers::create_conversation(&server, &user.token, None, None).await;
-    let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
-    let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
-
-    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
-    let model_id = super::helpers::parse_uuid(&model["id"]);
-
-    let response = super::helpers::send_message_simple(
-        &server,
-        &user.token,
-        conversation_id,
-        model_id,
-        branch_id,
-        "Chunk test"
-    ).await;
-
-    let chunks = super::helpers::parse_sse_stream(response).await;
-
-    // Filter to content chunks only (exclude titleUpdated, etc.)
-    let content_chunks: Vec<_> = chunks
-        .iter()
-        .filter(|chunk| chunk.get("type").and_then(|t| t.as_str()) == Some("content"))
-        .collect();
-
-    // If we have content chunks, verify they have expected fields
-    if !content_chunks.is_empty() {
-        let first_content_chunk = content_chunks[0];
-
-        // ChatStreamChunk should have these fields (may be null/empty)
-        assert!(first_content_chunk.get("content").is_some(), "Should have content field");
-        assert!(first_content_chunk.get("message_id").is_some(), "Should have message_id field");
-        assert!(first_content_chunk.get("conversation_id").is_some(), "Should have conversation_id field");
-        assert!(first_content_chunk.get("branch_id").is_some(), "Should have branch_id field");
-    }
-}
-
-// =====================================================
-// Error Handling Tests
-// =====================================================
-
-#[tokio::test]
-async fn test_stream_error_on_invalid_model() {
-    let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "user",
-        &[
-            "conversations::create",
-            "messages::create",
-            "llm_models::read",
-        ],
-    )
-    .await;
-
-    let conversation = super::helpers::create_conversation(&server, &user.token, None, None).await;
-    let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
-    let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
-
-    let fake_model_id = uuid::Uuid::new_v4();
-
-    let response = super::helpers::send_message_simple(
-        &server,
-        &user.token,
-        conversation_id,
-        fake_model_id,
-        branch_id,
-        "Error test"
-    ).await;
-
-    // Should return 404 before streaming starts
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
-async fn test_sse_stream_has_event_names() {
-    let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "user",
-        &["conversations::create", "messages::create", "llm_models::read"],
-    ).await;
+async fn test_stream_has_content_and_exactly_one_complete() {
+    let (server, user, _stub, model_id) = setup("stream_user").await;
+    let conversation = helpers::create_conversation(&server, &user.token, Some(model_id), None).await;
+    let conv_id = helpers::parse_uuid(&conversation["id"]);
+    let branch_id = helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let conversation = super::helpers::create_conversation(&server, &user.token, None, None).await;
-    let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
-    let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
+    let turn = helpers::send_and_collect(&server, &user.token, conv_id, branch_id, model_id, "Hi").await;
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
-    let model_id = super::helpers::parse_uuid(&model["id"]);
-
-    let payload = serde_json::json!({
-        "content": "Hello",
-        "model_id": model_id.to_string(),
-        "branch_id": branch_id.to_string()
-    });
-
-    let response = reqwest::Client::new()
-        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&payload)
-        .send()
-        .await
-        .unwrap();
-
-    let bytes = response.bytes().await.unwrap();
-    let text = String::from_utf8(bytes.to_vec()).unwrap();
-
-    // SSE format should have "event:" lines followed by "data:" lines
-    assert!(text.contains("event: content"), "Stream should contain 'event: content' lines");
-    assert!(text.contains("data: "), "Stream should contain 'data:' lines");
-
-    // Count event lines
-    let event_count = text.lines().filter(|line| line.starts_with("event:")).count();
-    assert!(event_count > 0, "Stream should have at least one event line");
-
-    eprintln!("✅ SSE stream properly formatted with {} event lines", event_count);
+    let content = turn.frames.iter().filter(|f| f.event_type == "content").count();
+    assert!(content > 0, "stream should carry content frames");
+    let complete = turn.frames.iter().filter(|f| f.event_type == "complete").count();
+    assert_eq!(complete, 1, "stream should end on exactly one complete frame");
+    assert_eq!(turn.text, "Hello from stub");
 }
 
-// =====================================================
-// Extension Event Tests
-// =====================================================
-
 #[tokio::test]
-async fn test_title_extension_sends_title_updated_event() {
-    let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "user",
-        &["conversations::create", "messages::create", "llm_models::read"],
-    )
-    .await;
+async fn test_title_updated_event_on_first_message() {
+    let (server, user, _stub, model_id) = setup("title_user").await;
+    let conversation = helpers::create_conversation(&server, &user.token, Some(model_id), None).await;
+    let conv_id = helpers::parse_uuid(&conversation["id"]);
+    let branch_id = helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let conversation = super::helpers::create_conversation(&server, &user.token, None, None).await;
-    let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
-    let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
+    let turn = helpers::send_and_collect(&server, &user.token, conv_id, branch_id, model_id, "Hi").await;
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
-    let model_id = super::helpers::parse_uuid(&model["id"]);
-
-    // Send first message to trigger title generation
-    let response = super::helpers::send_message_simple(
-        &server,
-        &user.token,
-        conversation_id,
-        model_id,
-        branch_id,
-        "What is the capital of France?",
-    )
-    .await;
-
-    let events = super::helpers::parse_sse_events(response).await;
-
-    // Debug: Print all event names
-    eprintln!("DEBUG: Received {} events", events.len());
-    for (i, event) in events.iter().enumerate() {
-        eprintln!("DEBUG: Event {}: name='{}', has_type={}", i, event.event, event.data.get("type").is_some());
-    }
-
-    // Find titleUpdated event
-    let title_event = events.iter().find(|e| e.event == "titleUpdated");
-
-    if title_event.is_none() {
-        // Print what we actually got for debugging
-        eprintln!("ERROR: No titleUpdated event found. Events received:");
-        for event in &events {
-            eprintln!("  - event: {}, data: {}", event.event, event.data);
-        }
-    }
-
+    let title_frame = turn.frames.iter().find(|f| f.event_type == "titleUpdated");
     assert!(
-        title_event.is_some(),
-        "Stream should contain titleUpdated event after first message exchange. Got {} events",
-        events.len()
+        title_frame.is_some(),
+        "first message should emit a titleUpdated frame; got {:?}",
+        turn.frames.iter().map(|f| &f.event_type).collect::<Vec<_>>()
     );
-
-    let title_data = &title_event.unwrap().data;
-    assert!(
-        title_data.get("title").is_some(),
-        "titleUpdated event should have title field"
-    );
-    assert!(
-        title_data["title"].is_string(),
-        "title field should be a string"
-    );
-
-    let title_str = title_data["title"].as_str().unwrap();
-    assert!(
-        !title_str.is_empty(),
-        "Generated title should not be empty"
-    );
-
-    eprintln!("✅ Title extension generated title: '{}'", title_str);
+    let title = title_frame.unwrap().data["title"].as_str().unwrap_or("");
+    assert!(!title.is_empty(), "generated title should not be empty");
 }
 
 #[tokio::test]
 async fn test_title_not_generated_for_subsequent_messages() {
-    let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "user",
-        &["conversations::create", "messages::create", "llm_models::read"],
-    )
-    .await;
+    let (server, user, _stub, model_id) = setup("title_2nd_user").await;
+    let conversation = helpers::create_conversation(&server, &user.token, Some(model_id), None).await;
+    let conv_id = helpers::parse_uuid(&conversation["id"]);
+    let branch_id = helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let conversation = super::helpers::create_conversation(&server, &user.token, None, None).await;
-    let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
-    let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
-
-    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
-    let model_id = super::helpers::parse_uuid(&model["id"]);
-
-    // Send first message
-    let _first_response = super::helpers::send_message_simple(
-        &server,
-        &user.token,
-        conversation_id,
-        model_id,
-        branch_id,
-        "First message",
-    )
-    .await;
-
-    // Send second message - should NOT generate title
-    let second_response = super::helpers::send_message_simple(
-        &server,
-        &user.token,
-        conversation_id,
-        model_id,
-        branch_id,
-        "Second message",
-    )
-    .await;
-
-    let events = super::helpers::parse_sse_events(second_response).await;
-
-    // Should NOT have titleUpdated event
-    let title_event = events.iter().find(|e| e.event == "titleUpdated");
+    let _first = helpers::send_and_collect(&server, &user.token, conv_id, branch_id, model_id, "First").await;
+    let second = helpers::send_and_collect(&server, &user.token, conv_id, branch_id, model_id, "Second").await;
 
     assert!(
-        title_event.is_none(),
-        "Stream should NOT contain titleUpdated event for subsequent messages"
+        second.frames.iter().all(|f| f.event_type != "titleUpdated"),
+        "subsequent messages must NOT emit titleUpdated"
     );
-
-    eprintln!("✅ Title extension correctly skips title generation for subsequent messages");
-}
-
-#[tokio::test]
-async fn test_sse_events_have_correct_structure() {
-    let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "user",
-        &["conversations::create", "messages::create", "llm_models::read"],
-    )
-    .await;
-
-    let conversation = super::helpers::create_conversation(&server, &user.token, None, None).await;
-    let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
-    let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
-
-    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
-    let model_id = super::helpers::parse_uuid(&model["id"]);
-
-    let response = super::helpers::send_message_simple(
-        &server,
-        &user.token,
-        conversation_id,
-        model_id,
-        branch_id,
-        "Test event structure",
-    )
-    .await;
-
-    let events = super::helpers::parse_sse_events(response).await;
-
-    // Should have content events
-    let content_events: Vec<_> = events.iter().filter(|e| e.event == "content").collect();
-    assert!(
-        !content_events.is_empty(),
-        "Stream should contain content events"
-    );
-
-    // Verify content event structure
-    for event in &content_events {
-        assert!(
-            event.data.get("type").is_some(),
-            "Content event should have 'type' field"
-        );
-        let event_type = event.data["type"].as_str().unwrap();
-        assert_eq!(
-            event_type, "content",
-            "Content event should have type='content'"
-        );
-    }
-
-    // Should have complete event
-    let complete_events: Vec<_> = events.iter().filter(|e| e.event == "complete").collect();
-    assert_eq!(
-        complete_events.len(),
-        1,
-        "Stream should contain exactly one complete event"
-    );
-
-    // Verify complete event structure
-    let complete_data = &complete_events[0].data;
-    assert!(
-        complete_data.get("type").is_some(),
-        "Complete event should have 'type' field"
-    );
-    assert_eq!(
-        complete_data["type"].as_str().unwrap(),
-        "complete",
-        "Complete event should have type='complete'"
-    );
-    assert!(
-        complete_data.get("finish_reason").is_some(),
-        "Complete event should have finish_reason field"
-    );
-
-    eprintln!("✅ SSE events have correct structure:");
-    eprintln!("   - {} content events", content_events.len());
-    eprintln!("   - {} complete events", complete_events.len());
 }
 
 #[tokio::test]
 async fn test_title_persisted_in_database() {
-    let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "user",
-        &["conversations::create", "conversations::read", "messages::create", "llm_models::read"],
-    )
-    .await;
+    let (server, user, _stub, model_id) = setup("title_db_user").await;
+    let conversation = helpers::create_conversation(&server, &user.token, Some(model_id), None).await;
+    let conv_id = helpers::parse_uuid(&conversation["id"]);
+    let branch_id = helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let conversation = super::helpers::create_conversation(&server, &user.token, None, None).await;
-    let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
-    let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
+    let before = helpers::get_conversation(&server, &user.token, conv_id).await;
+    assert!(before["title"].is_null(), "no title before the first exchange");
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
-    let model_id = super::helpers::parse_uuid(&model["id"]);
+    // The title is written synchronously in `finalize()` (before the terminal
+    // frame), so once the turn completes it is already persisted.
+    let _turn = helpers::send_and_collect(&server, &user.token, conv_id, branch_id, model_id, "Tell me about Paris").await;
 
-    // Verify conversation has no title initially
-    let before = super::helpers::get_conversation(&server, &user.token, conversation_id).await;
-    assert!(
-        before["title"].is_null(),
-        "Conversation should not have a title initially"
-    );
-
-    // Send message to trigger title generation
-    let response = super::helpers::send_message_simple(
-        &server,
-        &user.token,
-        conversation_id,
-        model_id,
-        branch_id,
-        "Tell me about Paris",
-    )
-    .await;
-
-    // Consume the entire SSE stream to ensure finalize() completes
-    let _events = super::helpers::parse_sse_events(response).await;
-
-    // Verify conversation now has a title
-    let after = super::helpers::get_conversation(&server, &user.token, conversation_id).await;
-    assert!(
-        after["title"].is_string(),
-        "Conversation should have a title after first exchange"
-    );
-
-    let title = after["title"].as_str().unwrap();
-    assert!(
-        !title.is_empty(),
-        "Generated title should not be empty"
-    );
-
-    eprintln!("✅ Title persisted to database: '{}'", title);
+    let after = helpers::get_conversation(&server, &user.token, conv_id).await;
+    assert!(after["title"].is_string(), "title should be persisted after first exchange");
+    assert!(!after["title"].as_str().unwrap().is_empty());
 }
-
-// =====================================================
-// Assistant Extension Tests
-// =====================================================
 
 #[tokio::test]
 async fn test_assistant_extension_injects_system_message() {
-    let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "user",
-        &[
-            "conversations::create",
-            "messages::create",
-            "llm_models::read",
-            "assistants::create",
-            "assistants::read",
-        ],
-    )
-    .await;
+    let (server, user, _stub, model_id) = {
+        let server = crate::common::TestServer::start().await;
+        let user = crate::common::test_helpers::create_user_with_permissions(
+            &server,
+            "assistant_user",
+            &[
+                "conversations::create",
+                "conversations::read",
+                "messages::create",
+                "messages::read",
+                "llm_models::read",
+                "assistants::create",
+                "assistants::read",
+            ],
+        )
+        .await;
+        let (stub, model) = helpers::create_stub_model(&server, &user.user_id).await;
+        let model_id = helpers::parse_uuid(&model["id"]);
+        (server, user, stub, model_id)
+    };
 
-    // Create an assistant with system instructions
-    let assistant_payload = serde_json::json!({
-        "name": "Test Assistant",
-        "description": "Test assistant for SSE tests",
-        "instructions": "You are a helpful assistant. Always be concise and friendly.",
-        "parameters": {},
-        "is_template": false,
-        "enabled": true
-    });
-
+    // Create an assistant with system instructions.
     let assistant_response = reqwest::Client::new()
         .post(server.api_url("/assistants"))
         .header("Authorization", format!("Bearer {}", user.token))
-        .json(&assistant_payload)
+        .json(&json!({
+            "name": "Test Assistant",
+            "description": "Test assistant for streaming tests",
+            "instructions": "You are a helpful assistant. Be concise.",
+            "parameters": {},
+            "is_template": false,
+            "enabled": true
+        }))
         .send()
         .await
         .unwrap();
-
-    assert_eq!(assistant_response.status(), reqwest::StatusCode::CREATED);
+    assert_eq!(assistant_response.status(), StatusCode::CREATED);
     let assistant: serde_json::Value = assistant_response.json().await.unwrap();
-    let assistant_id = super::helpers::parse_uuid(&assistant["id"]);
+    let assistant_id = helpers::parse_uuid(&assistant["id"]);
 
-    // Create conversation
-    let conversation = super::helpers::create_conversation(&server, &user.token, None, None).await;
-    let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
-    let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
+    let conversation = helpers::create_conversation(&server, &user.token, Some(model_id), None).await;
+    let conv_id = helpers::parse_uuid(&conversation["id"]);
+    let branch_id = helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
-    let model_id = super::helpers::parse_uuid(&model["id"]);
-
-    // Send message with assistant_id
-    let payload = serde_json::json!({
-        "content": "What is 2+2?",
-        "model_id": model_id.to_string(),
-        "branch_id": branch_id.to_string(),
-        "assistant_id": assistant_id.to_string()
-    });
-
-    let response = reqwest::Client::new()
-        .post(server.api_url(&format!(
-            "/conversations/{}/messages/stream",
-            conversation_id
-        )))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&payload)
-        .send()
-        .await
-        .unwrap();
-
-    // Should successfully stream (assistant extension doesn't fail on errors)
-    assert_eq!(response.status(), reqwest::StatusCode::OK);
-
-    let events = super::helpers::parse_sse_events(response).await;
-
-    // Should have content events (meaning the message was sent successfully)
-    let content_events: Vec<_> = events.iter().filter(|e| e.event == "content").collect();
-    assert!(
-        !content_events.is_empty(),
-        "Should have content events when using assistant"
-    );
-
-    eprintln!(
-        "✅ Assistant extension successfully processed request with {} content events",
-        content_events.len()
-    );
+    // Send with assistant_id; the reply still streams to completion.
+    let content = send_with_assistant(&server, &user.token, conv_id, branch_id, model_id, Some(assistant_id), "What is 2+2?").await;
+    assert!(content > 0, "assistant-driven turn should carry content frames");
 }
 
 #[tokio::test]
 async fn test_assistant_extension_handles_missing_assistant() {
-    let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "user",
-        &["conversations::create", "messages::create", "llm_models::read"],
-    )
-    .await;
+    let (server, user, _stub, model_id) = setup("missing_assistant_user").await;
+    let conversation = helpers::create_conversation(&server, &user.token, Some(model_id), None).await;
+    let conv_id = helpers::parse_uuid(&conversation["id"]);
+    let branch_id = helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let conversation = super::helpers::create_conversation(&server, &user.token, None, None).await;
-    let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
-    let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
+    // A non-existent assistant_id must not fail the turn (extension logs + skips).
+    let content = send_with_assistant(&server, &user.token, conv_id, branch_id, model_id, Some(uuid::Uuid::new_v4()), "Test").await;
+    assert!(content > 0, "missing assistant should still produce a reply");
+}
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
-    let model_id = super::helpers::parse_uuid(&model["id"]);
+/// Subscribe → POST `/messages` with an optional `assistant_id` → collect until
+/// terminal; return the number of content frames seen.
+async fn send_with_assistant(
+    server: &crate::common::TestServer,
+    token: &str,
+    conv_id: uuid::Uuid,
+    branch_id: uuid::Uuid,
+    model_id: uuid::Uuid,
+    assistant_id: Option<uuid::Uuid>,
+    content: &str,
+) -> usize {
+    let mut probe = ChatStreamProbe::open(server, token).await;
+    probe.subscribe(Some(conv_id)).await;
 
-    // Send message with non-existent assistant_id
-    let fake_assistant_id = uuid::Uuid::new_v4();
-    let payload = serde_json::json!({
-        "content": "Test message",
+    let mut body = json!({
+        "content": content,
         "model_id": model_id.to_string(),
         "branch_id": branch_id.to_string(),
-        "assistant_id": fake_assistant_id.to_string()
     });
+    if let Some(a) = assistant_id {
+        body["assistant_id"] = json!(a.to_string());
+    }
 
-    let response = reqwest::Client::new()
-        .post(server.api_url(&format!(
-            "/conversations/{}/messages/stream",
-            conversation_id
-        )))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&payload)
+    let resp = reqwest::Client::new()
+        .post(server.api_url(&format!("/conversations/{}/messages", conv_id)))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&body)
         .send()
         .await
         .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "send with assistant should be 200");
 
-    // Should still succeed (assistant extension logs warning but doesn't fail)
-    assert_eq!(response.status(), reqwest::StatusCode::OK);
-
-    let events = super::helpers::parse_sse_events(response).await;
-
-    // Should still have content events
-    let content_events: Vec<_> = events.iter().filter(|e| e.event == "content").collect();
-    assert!(
-        !content_events.is_empty(),
-        "Should have content events even with missing assistant"
-    );
-
-    eprintln!("✅ Assistant extension gracefully handles missing assistant");
+    let frames = probe.collect_until_terminal(conv_id, TURN_TIMEOUT).await;
+    frames.iter().filter(|f| f.event_type == "content").count()
 }

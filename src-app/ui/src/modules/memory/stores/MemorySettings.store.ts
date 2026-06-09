@@ -6,6 +6,7 @@ import type {
   UpdateUserMemorySettingsRequest,
   UserMemorySettings,
 } from '@/api-client/types'
+import { Stores } from '@/core/stores'
 import { emitMemorySettingsUpdated } from '@/modules/memory/events'
 
 // Widened patch type — `retention_days` + `extraction_model_id` are
@@ -26,8 +27,11 @@ interface MemorySettingsStore {
   error: string | null
 
   __init__: {
+    __store__?: () => void
     settings: () => Promise<void>
   }
+
+  __destroy__?: () => void
 
   load: () => Promise<void>
   update: (patch: MemorySettingsUpdatePatch) => Promise<UserMemorySettings>
@@ -64,7 +68,20 @@ export const useMemorySettingsStore = create<MemorySettingsStore>()(
       error: null,
 
       __init__: {
+        __store__: () => {
+          const eventBus = Stores.EventBus
+          const GROUP = 'MemorySettings'
+          // Memory settings is a per-user singleton — refetch it.
+          // No permission self-gate needed.
+          const reload = () => void loadSettings(set)
+          eventBus.on('sync:memory_settings', reload, GROUP)
+          eventBus.on('sync:reconnect', reload, GROUP)
+        },
         settings: () => loadSettings(set),
+      },
+
+      __destroy__: () => {
+        Stores.EventBus.removeGroupListeners('MemorySettings')
       },
 
       load: () => loadSettings(set),
@@ -95,8 +112,7 @@ export const useMemorySettingsStore = create<MemorySettingsStore>()(
           return row
         } catch (error) {
           set(s => {
-            s.error =
-              error instanceof Error ? error.message : 'Update failed'
+            s.error = error instanceof Error ? error.message : 'Update failed'
             s.saving = false
           })
           throw error

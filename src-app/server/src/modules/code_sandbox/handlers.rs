@@ -28,6 +28,7 @@ use crate::modules::code_sandbox::types::{
 };
 use crate::modules::code_sandbox::{code_sandbox_server_id, streaming, tools};
 use crate::modules::permissions::extractors::RequirePermissions;
+use crate::modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
 
 /// Per-conversation mutex map. Two parallel tool calls in the same
 /// conversation serialize; different conversations stay parallel.
@@ -1226,6 +1227,7 @@ pub fn get_resource_limits_docs(
 /// PUT /code-sandbox/resource-limits
 pub async fn update_resource_limits_handler(
     _auth: RequirePermissions<(CodeSandboxResourceLimitsManage,)>,
+    origin: SyncOrigin,
     Json(patch): Json<UpdateCodeSandboxResourceLimits>,
 ) -> crate::common::ApiResult<Json<CodeSandboxResourceLimits>> {
     patch.validate()?;
@@ -1236,6 +1238,7 @@ pub async fn update_resource_limits_handler(
     // module-private accessor rather than threading state through every
     // handler signature.
     crate::modules::code_sandbox::resource_limits_cache::invalidate(&row);
+    sync_publish(SyncEntity::CodeSandboxSettings, SyncAction::Update, uuid::Uuid::nil(), Audience::perm::<CodeSandboxResourceLimitsRead>(), origin.0);
     Ok((StatusCode::OK, Json(row)))
 }
 

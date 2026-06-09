@@ -17,6 +17,7 @@ use crate::{
     common::{ApiResult, AppError},
     core::EventBus,
     modules::permissions::{RequirePermissions, with_permission},
+    modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
 };
 
 use super::super::{
@@ -99,6 +100,7 @@ pub fn list_system_servers_docs(op: TransformOperation) -> TransformOperation {
 pub async fn create_system_server(
     _auth: RequirePermissions<(McpServersAdminCreate,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Json(request): Json<CreateMcpServerRequest>,
 ) -> ApiResult<Json<McpServerWithHealthWarning>> {
     super::validate_sandbox_fields_create(true, &request)?;
@@ -118,9 +120,16 @@ pub async fn create_system_server(
 
     event_bus.emit_async(McpServerEvent::system_server_created(server.id));
 
+    let server_id = server.id;
     // Same downgrade-on-probe-failure semantic as user creates —
     // built-in servers are skipped inside the helper.
     let wrapped = enforce_on_create(Repos.mcp.pool(), server, &event_bus).await?;
+
+    // Cross-device sync: notify AFTER enforcement so peers refetch the final
+    // (possibly probe-downgraded) state.
+    sync_publish(SyncEntity::McpServerSystem, SyncAction::Create, server_id, Audience::perm::<McpServersAdminRead>(), origin.0);
+    sync_publish(SyncEntity::UserMcpServer, SyncAction::Create, server_id, Audience::perm::<McpServersRead>(), origin.0);
+
     Ok((StatusCode::CREATED, Json(wrapped)))
 }
 
@@ -174,6 +183,7 @@ pub async fn update_system_server(
     _auth: RequirePermissions<(McpServersAdminEdit,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
+    origin: SyncOrigin,
     Json(request): Json<UpdateMcpServerRequest>,
 ) -> ApiResult<Json<McpServer>> {
     let existing = Repos
@@ -194,6 +204,9 @@ pub async fn update_system_server(
         &event_bus,
     )
     .await?;
+
+    sync_publish(SyncEntity::McpServerSystem, SyncAction::Update, server.id, Audience::perm::<McpServersAdminRead>(), origin.0);
+    sync_publish(SyncEntity::UserMcpServer, SyncAction::Update, server.id, Audience::perm::<McpServersRead>(), origin.0);
 
     Ok((StatusCode::OK, Json(server)))
 }
@@ -222,11 +235,15 @@ pub async fn delete_system_server(
     _auth: RequirePermissions<(McpServersAdminDelete,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
+    origin: SyncOrigin,
 ) -> ApiResult<StatusCode> {
     Repos.mcp.delete_system_server(id).await?;
 
     // Emit deletion event for other modules to react (synchronous so cleanup completes before response)
     event_bus.emit(McpServerEvent::system_server_deleted(id)).await;
+
+    sync_publish(SyncEntity::McpServerSystem, SyncAction::Delete, id, Audience::perm::<McpServersAdminRead>(), origin.0);
+    sync_publish(SyncEntity::UserMcpServer, SyncAction::Delete, id, Audience::perm::<McpServersRead>(), origin.0);
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }

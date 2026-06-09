@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Alert, Button, Flex, Modal, Spin, Tag, Typography } from 'antd'
+import { Alert, App, Button, Flex, Spin, Tag, Typography } from 'antd'
 import { ReloadOutlined, StarOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -18,6 +18,7 @@ import {
 const { Text } = Typography
 
 export function SandboxRootfsVersionsSection() {
+  const { modal } = App.useApp()
   // Hook-safety: every `Stores.X.field` read is a `useStore` hook under the
   // hood, so ALL needed fields are read at the TOP before any early return.
   // `conversationCount` / `mcpServerWorkspaceCount` are only consumed inside
@@ -110,7 +111,7 @@ export function SandboxRootfsVersionsSection() {
     if (isMajorBump(pinnedVersion, version)) {
       const convCount = conversationCount ?? 0
       const mcpCount = mcpServerWorkspaceCount ?? 0
-      Modal.confirm({
+      modal.confirm({
         title: `Set v${version} as default (major version bump)`,
         content: (
           <div>

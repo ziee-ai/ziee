@@ -1,22 +1,22 @@
-import { createModule } from '@/core'
-import { Stores } from '@/core/stores'
 import { ApiOutlined } from '@ant-design/icons'
 import { Permissions } from '@/api-client/types'
-import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
-import {
-  useMcpStore,
-  useSystemMcpServersStore,
-  useMcpServerDrawerStore,
-  useMcpComposerStore,
-} from '@/modules/mcp/stores'
+import { createModule } from '@/core'
+import { Stores } from '@/core/stores'
+import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { useMcpUserPolicyStore } from '@/modules/mcp/stores/McpUserPolicy.store'
-import { useSystemMcpServerGroupCardStore } from '@/modules/mcp/components/system/McpServerGroupsAssignmentCard.store'
-import { useGroupSystemMcpServersWidgetStore } from '@/modules/mcp/widgets/GroupSystemMcpServersWidget.store'
 import { useGroupSystemMcpServersAssignmentStore } from '@/modules/mcp/components/system/GroupSystemMcpServersAssignmentDrawer.store'
+import { useSystemMcpServerGroupCardStore } from '@/modules/mcp/components/system/McpServerGroupsAssignmentCard.store'
 import { useMcpServerGroupsAssignmentStore } from '@/modules/mcp/components/system/McpServerGroupsAssignmentDrawer.store'
 import { useProjectMcpSettingsStore } from '@/modules/mcp/project-extension/stores/ProjectMcpSettings.store'
+import {
+  useMcpComposerStore,
+  useMcpServerDrawerStore,
+  useMcpStore,
+  useSystemMcpServersStore,
+} from '@/modules/mcp/stores'
+import { useGroupSystemMcpServersWidgetStore } from '@/modules/mcp/widgets/GroupSystemMcpServersWidget.store'
+import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import '@/modules/mcp/types' // CRITICAL: Import to enable type declaration merging
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 import '@/modules/mcp/project-extension/events/types' // Project↔MCP event declaration merging

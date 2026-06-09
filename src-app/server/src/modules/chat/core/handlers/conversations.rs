@@ -20,6 +20,7 @@ use crate::{
             types::{ConversationResponse, CreateConversationRequest, UpdateConversationRequest},
         },
         permissions::{extractors::RequirePermissions, with_permission},
+        sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
     },
 };
 
@@ -53,7 +54,7 @@ fn default_limit() -> i64 {
 #[debug_handler]
 pub async fn create_conversation(
     auth: RequirePermissions<(ConversationsCreate,)>,
-
+    origin: SyncOrigin,
     Json(request): Json<CreateConversationRequest>,
 ) -> ApiResult<Json<Conversation>> {
     // Validate title length if provided
@@ -65,6 +66,14 @@ pub async fn create_conversation(
     let conversation =
         Repos.chat.core.create_conversation(auth.user.id, request.model_id, request.title)
             .await?;
+
+    sync_publish(
+        SyncEntity::Conversation,
+        SyncAction::Create,
+        conversation.id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
 
     Ok((StatusCode::CREATED, Json(conversation)))
 }
@@ -140,6 +149,7 @@ pub fn list_conversations_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn update_conversation(
     auth: RequirePermissions<(ConversationsEdit,)>,
+    origin: SyncOrigin,
     Path(id): Path<Uuid>,
     Json(request): Json<UpdateConversationRequest>,
 ) -> ApiResult<Json<Conversation>> {
@@ -155,6 +165,14 @@ pub async fn update_conversation(
         .update_conversation(id, auth.user.id, request.title)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
+
+    sync_publish(
+        SyncEntity::Conversation,
+        SyncAction::Update,
+        conversation.id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
 
     Ok((StatusCode::OK, Json(conversation)))
 }
@@ -174,7 +192,7 @@ pub fn update_conversation_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn delete_conversation(
     auth: RequirePermissions<(ConversationsDelete,)>,
-
+    origin: SyncOrigin,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
     let deleted = Repos.chat.core.delete_conversation( id, auth.user.id).await?;
@@ -182,6 +200,14 @@ pub async fn delete_conversation(
     if !deleted {
         return Err(AppError::not_found("Conversation").into());
     }
+
+    sync_publish(
+        SyncEntity::Conversation,
+        SyncAction::Delete,
+        id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }

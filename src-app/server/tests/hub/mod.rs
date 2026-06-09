@@ -9,6 +9,9 @@ mod catalog_v1;
 // Hermetic catalog tests (mock release server, no network/cosign).
 mod catalog_hermetic;
 mod mock_release_server;
+// Realtime-sync emission for the `hub_settings` entity (reuses the hermetic
+// mock release server to drive POST /hub/activate).
+mod sync_emit_test;
 
 // ============================================================================
 // Hub Models Tests

@@ -7,7 +7,7 @@ import {
 } from '../../common/provider-helpers'
 import { goToNewChatPage, selectModelInDropdown } from './helpers/chat-helpers'
 import {
-  mockChatStream,
+  mockChatTokenStream,
   startedEvent,
   mcpElicitationRequiredEvent,
   completeEvent,
@@ -274,7 +274,7 @@ async function seedElicitation(
   const requestedSchema = { type: 'object', ...schemaPartial }
   const promptText = `Test elicitation #${elicitCounter}`
 
-  await mockChatStream(page, [
+  await mockChatTokenStream(page, [
     [
       startedEvent({ userMessageId }),
       mcpElicitationRequiredEvent({

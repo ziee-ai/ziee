@@ -1,10 +1,10 @@
-import { createModule } from '@/core'
 import { AppstoreOutlined } from '@ant-design/icons'
-import { AppLayoutDef } from '@/modules/layouts/app-layout'
-import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { Permissions } from '@/api-client/types'
+import { createModule } from '@/core'
 import { useHubCatalogStore } from '@/modules/hub/stores/hub-catalog-store'
 import { useHubInstalledStore } from '@/modules/hub/stores/hub-installed-store'
+import { AppLayoutDef } from '@/modules/layouts/app-layout'
+import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/hub/types'
 
 // Hub coordination module

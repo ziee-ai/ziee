@@ -1,28 +1,28 @@
+import { enableMapSet } from 'immer'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import { enableMapSet } from 'immer'
 import { ApiClient } from '@/api-client'
 import {
-  Permissions,
-  type McpServer,
   type McpServerWithHealthWarning,
   type CreateMcpServerRequest,
-  type UpdateMcpServerRequest,
+  type McpServer,
   type McpServerOAuthConfigResponse,
+  Permissions,
   type SetMcpServerOAuthConfigRequest,
   type TestMcpConnectionRequest,
   type TestMcpConnectionResponse,
+  type UpdateMcpServerRequest,
   type SandboxFlavorsResponse,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { useSystemMcpServersStore } from '@/modules/mcp/stores/SystemMcpServer.store'
+import { Stores } from '@/core/stores'
 import {
   emitMcpServerCreated,
-  emitMcpServerUpdated,
   emitMcpServerDeleted,
+  emitMcpServerUpdated,
 } from '@/modules/mcp/events'
-import { Stores } from '@/core/stores'
+import { useSystemMcpServersStore } from '@/modules/mcp/stores/SystemMcpServer.store'
 
 // Enable Map and Set support in Immer
 enableMapSet()
@@ -219,12 +219,26 @@ export const useMcpStore = create<McpState>()(
               },
               GROUP,
             )
+
+            // Cross-device sync. `loadMcpServers` is permission-gated
+            // internally (skips when the user lacks mcp_servers::read),
+            // so no extra self-gate is needed here.
+            const reload = () => void get().loadMcpServers()
+            // Personal (user-owned) MCP servers changed remotely.
+            eventBus.on('sync:mcp_server', reload, GROUP)
+            // A system server's group-visibility changed → a user's
+            // ACCESSIBLE set may differ; listAccessible reloads it.
+            eventBus.on('sync:user_mcp_server', reload, GROUP)
+            eventBus.on('sync:reconnect', reload, GROUP)
           },
           servers: () => get().loadMcpServers(),
         },
 
         // Actions
-        loadMcpServers: async (page?: number, pageSize?: number): Promise<void> => {
+        loadMcpServers: async (
+          page?: number,
+          pageSize?: number,
+        ): Promise<void> => {
           // Permission-gate the shell-eager-load fetch (audit
           // follow-up): AppLayout triggers this store's __init__ on
           // every render regardless of route, and for users without

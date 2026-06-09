@@ -169,7 +169,11 @@ async fn get_mcp_settings(
     response.json().await.expect("Failed to parse response")
 }
 
-/// Send message with MCP enabled
+/// Send message with MCP enabled (fire-and-forget model): subscribe to the
+/// chat stream, POST `/messages`, and collect the streamed extension events
+/// until the terminal `complete`/`error`. These loop-settings tests run in
+/// auto-approve mode (no approval gate), so the turn always reaches a terminal
+/// frame. Asserts the POST returned 200, mirroring the old status assertion.
 async fn send_message_with_mcp(
     server: &TestServer,
     token: &str,
@@ -178,8 +182,8 @@ async fn send_message_with_mcp(
     model_id: Uuid,
     mcp_server_id: Uuid,
     content: &str,
-) -> reqwest::Response {
-    let payload = json!({
+) -> Vec<crate::chat::helpers::SSEEvent> {
+    let body = json!({
         "content": content,
         "model_id": model_id,
         "branch_id": branch_id,
@@ -194,14 +198,14 @@ async fn send_message_with_mcp(
         }
     });
 
-    let url = server.api_url(&format!("/conversations/{}/messages/stream", conversation_id));
-    reqwest::Client::new()
-        .post(&url)
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&payload)
-        .send()
-        .await
-        .expect("Failed to send message")
+    crate::chat::helpers::send_body_and_collect_events(
+        server,
+        token,
+        conversation_id,
+        body,
+        &[],
+    )
+    .await
 }
 
 // ============================================================================
@@ -341,7 +345,7 @@ async fn test_loop_settings_max_iteration_limit() {
     set_mcp_settings_with_loop(&server, &user.token, conversation_id, "auto_approve", Some(loop_settings)).await;
 
     // Send message that triggers tool use
-    let response = send_message_with_mcp(
+    let events = send_message_with_mcp(
         &server,
         &user.token,
         conversation_id,
@@ -351,11 +355,6 @@ async fn test_loop_settings_max_iteration_limit() {
         TOOL_USE_PROMPT,
     )
     .await;
-
-    assert_eq!(response.status(), 200, "Should send message successfully");
-
-    // Parse SSE events
-    let events = crate::chat::helpers::parse_sse_events(response).await;
 
     eprintln!("\n=== Test: test_loop_settings_max_iteration_limit ===");
     eprintln!("Total events received: {}", events.len());
@@ -412,7 +411,7 @@ async fn test_loop_settings_max_iteration_zero_unlimited() {
     set_mcp_settings_with_loop(&server, &user.token, conversation_id, "auto_approve", Some(loop_settings)).await;
 
     // Send message that triggers tool use
-    let response = send_message_with_mcp(
+    let events = send_message_with_mcp(
         &server,
         &user.token,
         conversation_id,
@@ -422,11 +421,6 @@ async fn test_loop_settings_max_iteration_zero_unlimited() {
         TOOL_USE_PROMPT,
     )
     .await;
-
-    assert_eq!(response.status(), 200, "Should send message successfully");
-
-    // Parse SSE events
-    let events = crate::chat::helpers::parse_sse_events(response).await;
 
     eprintln!("\n=== Test: test_loop_settings_max_iteration_zero_unlimited ===");
     eprintln!("Total events received: {}", events.len());
@@ -497,7 +491,7 @@ async fn test_loop_settings_stop_when_tools_called() {
     set_mcp_settings_with_loop(&server, &user.token, conversation_id, "auto_approve", Some(loop_settings)).await;
 
     // Send message that triggers the fetch tool
-    let response = send_message_with_mcp(
+    let events = send_message_with_mcp(
         &server,
         &user.token,
         conversation_id,
@@ -507,11 +501,6 @@ async fn test_loop_settings_stop_when_tools_called() {
         TOOL_USE_PROMPT,
     )
     .await;
-
-    assert_eq!(response.status(), 200, "Should send message successfully");
-
-    // Parse SSE events
-    let events = crate::chat::helpers::parse_sse_events(response).await;
 
     eprintln!("\n=== Test: test_loop_settings_stop_when_tools_called ===");
     eprintln!("Total events received: {}", events.len());
@@ -572,7 +561,7 @@ async fn test_loop_settings_stop_when_no_tool_calling_true() {
     set_mcp_settings_with_loop(&server, &user.token, conversation_id, "auto_approve", Some(loop_settings)).await;
 
     // Send message that triggers tool use
-    let response = send_message_with_mcp(
+    let events = send_message_with_mcp(
         &server,
         &user.token,
         conversation_id,
@@ -582,11 +571,6 @@ async fn test_loop_settings_stop_when_no_tool_calling_true() {
         TOOL_USE_PROMPT,
     )
     .await;
-
-    assert_eq!(response.status(), 200, "Should send message successfully");
-
-    // Parse SSE events
-    let events = crate::chat::helpers::parse_sse_events(response).await;
 
     eprintln!("\n=== Test: test_loop_settings_stop_when_no_tool_calling_true ===");
     eprintln!("Total events received: {}", events.len());

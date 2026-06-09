@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, Dropdown, theme, message as antMessage } from 'antd'
+import { App, Button, Dropdown, theme } from 'antd'
 import { SendOutlined, PlusOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { ExtensionSlot, chatExtensionRegistry } from '@/modules/chat/core/extensions'
@@ -21,6 +21,7 @@ export function ChatInput({
   className = '',
   style,
 }: ChatInputProps) {
+  const { message } = App.useApp()
   const { token } = theme.useToken()
   const [focused, setFocused] = useState(false)
   const [plusOpen, setPlusOpen] = useState(false)
@@ -45,7 +46,7 @@ export function ChatInput({
       await sendMessage()
     } catch (error: any) {
       console.error('Failed to send message:', error)
-      antMessage.error(error.message || 'Failed to send message')
+      message.error(error.message || 'Failed to send message')
     }
   }
 

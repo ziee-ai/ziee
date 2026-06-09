@@ -17,6 +17,7 @@ use crate::{
     common::{ApiResult, AppError},
     core::EventBus,
     modules::permissions::{RequirePermissions, with_permission},
+    modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
 };
 
 use super::super::{
@@ -108,6 +109,7 @@ pub fn list_accessible_servers_docs(op: TransformOperation) -> TransformOperatio
 pub async fn create_user_server(
     auth: RequirePermissions<(McpServersCreate,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Json(mut request): Json<CreateMcpServerRequest>,
 ) -> ApiResult<Json<McpServerWithHealthWarning>> {
     // Policy gate FIRST: load the active MCP user policy and force-
@@ -150,6 +152,16 @@ pub async fn create_user_server(
         &event_bus,
     )
     .await?;
+
+    // Cross-device sync: notify AFTER enforcement so peers refetch the final
+    // (possibly probe-downgraded) state.
+    sync_publish(
+        SyncEntity::McpServer,
+        SyncAction::Create,
+        server_id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
 
     Ok((StatusCode::CREATED, Json(wrapped)))
 }
@@ -204,6 +216,7 @@ pub async fn update_user_server(
     auth: RequirePermissions<(McpServersEdit,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
+    origin: SyncOrigin,
     Json(mut request): Json<UpdateMcpServerRequest>,
 ) -> ApiResult<Json<McpServer>> {
     // Capture the prior server BEFORE the persist so we can both
@@ -251,6 +264,14 @@ pub async fn update_user_server(
     )
     .await?;
 
+    sync_publish(
+        SyncEntity::McpServer,
+        SyncAction::Update,
+        server.id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
+
     Ok((StatusCode::OK, Json(server)))
 }
 
@@ -281,11 +302,20 @@ pub async fn delete_user_server(
     auth: RequirePermissions<(McpServersDelete,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
+    origin: SyncOrigin,
 ) -> ApiResult<StatusCode> {
     Repos.mcp.delete_user_server(id, auth.user.id).await?;
 
     // Emit deletion event for other modules to react (synchronous so cleanup completes before response)
     event_bus.emit(McpServerEvent::user_server_deleted(id, auth.user.id)).await;
+
+    sync_publish(
+        SyncEntity::McpServer,
+        SyncAction::Delete,
+        id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
@@ -344,6 +374,7 @@ pub fn get_server_oauth_config_docs(op: TransformOperation) -> TransformOperatio
 pub async fn set_server_oauth_config(
     auth: RequirePermissions<(McpServersEdit,)>,
     Path(id): Path<Uuid>,
+    origin: SyncOrigin,
     Json(request): Json<SetMcpServerOAuthConfigRequest>,
 ) -> ApiResult<Json<McpServerOAuthConfigResponse>> {
     owned_server(id, auth.user.id).await?;
@@ -355,6 +386,13 @@ pub async fn set_server_oauth_config(
         .into());
     }
     let cfg = Repos.mcp.set_oauth_config(id, request).await?;
+    sync_publish(
+        SyncEntity::McpServer,
+        SyncAction::Update,
+        id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
     Ok((StatusCode::OK, Json(cfg.to_response())))
 }
 
@@ -375,9 +413,17 @@ pub fn set_server_oauth_config_docs(op: TransformOperation) -> TransformOperatio
 pub async fn delete_server_oauth_config(
     auth: RequirePermissions<(McpServersEdit,)>,
     Path(id): Path<Uuid>,
+    origin: SyncOrigin,
 ) -> ApiResult<StatusCode> {
     owned_server(id, auth.user.id).await?;
     Repos.mcp.delete_oauth_config(id).await?;
+    sync_publish(
+        SyncEntity::McpServer,
+        SyncAction::Update,
+        id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
 

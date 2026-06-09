@@ -24,6 +24,7 @@ mod tier3_http;
 mod tier3_concurrency;
 mod tier3_versions;
 mod tier3_resource_limits;
+mod sync_emit_test;
 mod tier4_sandbox_smoke;
 mod tier4_hardening;
 mod tier4_pid_ns_fallback;

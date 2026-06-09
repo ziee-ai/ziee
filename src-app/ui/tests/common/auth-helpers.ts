@@ -1,4 +1,4 @@
-import { Page, expect } from '@playwright/test'
+import { expect, Page } from '@playwright/test'
 
 /**
  * Common authentication helpers used across multiple test suites
@@ -28,7 +28,7 @@ export const DEFAULT_ADMIN_CREDENTIALS: AdminCredentials = {
 export async function completeOnboarding(
   baseURL: string,
   token: string,
-  guideId: string = 'getting-started'
+  guideId: string = 'getting-started',
 ) {
   const res = await fetch(`${baseURL}/api/onboarding/${guideId}/complete`, {
     method: 'POST',
@@ -36,7 +36,7 @@ export async function completeOnboarding(
   })
   if (!res.ok) {
     throw new Error(
-      `completeOnboarding failed: ${res.status} - ${await res.text()}`
+      `completeOnboarding failed: ${res.status} - ${await res.text()}`,
     )
   }
 }
@@ -57,7 +57,7 @@ async function readAuthToken(page: Page): Promise<string> {
 export async function loginAsAdmin(
   page: Page,
   baseURL: string,
-  credentials: AdminCredentials = DEFAULT_ADMIN_CREDENTIALS
+  credentials: AdminCredentials = DEFAULT_ADMIN_CREDENTIALS,
 ) {
   const {
     username = 'admin',
@@ -76,7 +76,7 @@ export async function loginAsAdmin(
     await Promise.race([
       page.waitForSelector('#setup-form_username', { timeout: 5000 }),
       page.waitForURL(/\/auth/, { timeout: 5000 }),
-      page.waitForURL(/\/$/, { timeout: 5000 }) // Sometimes redirects to home
+      page.waitForURL(/\/$/, { timeout: 5000 }), // Sometimes redirects to home
     ])
   } catch {
     // If both timeout, wait a bit more and check URL
@@ -114,12 +114,14 @@ export async function loginAsAdmin(
         if (!authStorage) return false
         try {
           const parsed = JSON.parse(authStorage)
-          return parsed.state?.token !== null && parsed.state?.token !== undefined
+          return (
+            parsed.state?.token !== null && parsed.state?.token !== undefined
+          )
         } catch {
           return false
         }
       },
-      { timeout: 10000 }
+      { timeout: 10000 },
     )
   } else {
     // Admin already exists - login instead. Same Vite 504 reload-retry
@@ -144,12 +146,14 @@ export async function loginAsAdmin(
         if (!authStorage) return false
         try {
           const parsed = JSON.parse(authStorage)
-          return parsed.state?.token !== null && parsed.state?.token !== undefined
+          return (
+            parsed.state?.token !== null && parsed.state?.token !== undefined
+          )
         } catch {
           return false
         }
       },
-      { timeout: 10000 }
+      { timeout: 10000 },
     )
   }
 
@@ -157,8 +161,20 @@ export async function loginAsAdmin(
   // the API and land on the app, restoring pre-onboarding login behavior.
   const token = await readAuthToken(page)
   await completeOnboarding(baseURL, token)
+  // Land on the authenticated app shell, signalled by the sidebar "New Chat"
+  // link (present on every authenticated route, regardless of provider config).
+  // Navigate ONCE and wait generously — do NOT re-navigate on a short timeout:
+  // each goto('/') throws away the in-progress cold-load and fires a fresh
+  // ~25-request burst, and the heavy admin pages (many stores) take ~15-25s
+  // when two contexts cold-load concurrently against the single debug-build
+  // backend, so a re-nav only deepens the connection-queue saturation.
+  // Onboarding is API-marked complete above and admins are never redirected by
+  // OnboardingRedirect, so a single fresh goto won't bounce. NOT `networkidle`:
+  // the realtime-sync SSE stream keeps the network busy so it never settles.
+  const appShell = page.getByRole('link', { name: 'New Chat' })
   await page.goto(`${baseURL}/`)
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
+  await appShell.waitFor({ state: 'visible', timeout: 45000 })
 }
 
 /**
@@ -179,7 +195,7 @@ export async function login(
   baseURL: string,
   username: string,
   password: string,
-  options: { completeOnboarding?: boolean } = {}
+  options: { completeOnboarding?: boolean } = {},
 ) {
   // Get token via the backend.
   const loginResponse = await fetch(`${baseURL}/api/auth/login`, {
@@ -206,7 +222,7 @@ export async function login(
   // Inject the token BEFORE any app JS runs — addInitScript runs on every
   // page navigation in this context, so Zustand's persist middleware will
   // see the token during its very first hydration pass.
-  await page.addInitScript((token) => {
+  await page.addInitScript(token => {
     try {
       localStorage.setItem(
         'auth-storage',
@@ -251,7 +267,7 @@ export async function login(
         return false
       }
     },
-    { timeout: 10000 }
+    { timeout: 10000 },
   )
 }
 
@@ -263,7 +279,7 @@ export async function loginExpectingOnboarding(
   page: Page,
   baseURL: string,
   username: string,
-  password: string
+  password: string,
 ) {
   const res = await fetch(`${baseURL}/api/auth/login`, {
     method: 'POST',
@@ -272,19 +288,21 @@ export async function loginExpectingOnboarding(
   })
   if (!res.ok) {
     throw new Error(
-      `loginExpectingOnboarding: API returned ${res.status}: ${await res.text()}`
+      `loginExpectingOnboarding: API returned ${res.status}: ${await res.text()}`,
     )
   }
   const { access_token } = await res.json()
   if (!access_token) {
-    throw new Error('loginExpectingOnboarding: API response had no access_token')
+    throw new Error(
+      'loginExpectingOnboarding: API response had no access_token',
+    )
   }
 
-  await page.addInitScript((token) => {
+  await page.addInitScript(token => {
     try {
       localStorage.setItem(
         'auth-storage',
-        JSON.stringify({ state: { token }, version: 0 })
+        JSON.stringify({ state: { token }, version: 0 }),
       )
     } catch {
       /* ignore */
@@ -305,7 +323,7 @@ export async function createTestUser(
   username: string,
   email: string,
   password: string,
-  permissions: string[] = []
+  permissions: string[] = [],
 ): Promise<string> {
   const response = await fetch(`${apiURL}/api/users`, {
     method: 'POST',
@@ -341,7 +359,7 @@ export async function createTestUser(
  */
 export async function getAdminToken(
   apiURL: string,
-  credentials: AdminCredentials = DEFAULT_ADMIN_CREDENTIALS
+  credentials: AdminCredentials = DEFAULT_ADMIN_CREDENTIALS,
 ): Promise<string> {
   const {
     username = 'admin',
@@ -386,7 +404,9 @@ export async function getAdminToken(
 
   if (!response.ok) {
     const text = await response.text()
-    throw new Error(`Failed to get admin token: ${response.statusText} - ${text}`)
+    throw new Error(
+      `Failed to get admin token: ${response.statusText} - ${text}`,
+    )
   }
 
   const data = await response.json()

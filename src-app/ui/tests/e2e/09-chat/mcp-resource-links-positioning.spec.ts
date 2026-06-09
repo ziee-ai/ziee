@@ -12,7 +12,7 @@ import {
 } from './fixtures/mock-tool-result'
 import { goToNewChatPage, selectModelInDropdown } from './helpers/chat-helpers'
 import {
-  mockChatStream,
+  mockChatTokenStream,
   startedEvent,
   textDeltaEvent,
   completeEvent,
@@ -52,7 +52,7 @@ test.describe('Inline file previews — per-block positioning', () => {
   }) => {
     const userMsgId = 'umsg_textonly'
     const assistantMsgId = 'amsg_textonly'
-    await mockChatStream(page, [
+    await mockChatTokenStream(page, [
       [
         startedEvent({ userMessageId: userMsgId }),
         textDeltaEvent({ delta: 'just a text reply', messageId: assistantMsgId }),
