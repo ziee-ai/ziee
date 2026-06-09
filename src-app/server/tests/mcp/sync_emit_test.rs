@@ -33,8 +33,16 @@ use crate::common::sync_probe::SyncProbe;
 const EVENT_TIMEOUT: Duration = Duration::from_secs(5);
 const SILENCE_WINDOW: Duration = Duration::from_secs(1);
 
-/// POST /mcp/servers as `token` (a user's OWN stdio MCP server), returning the
-/// new server id. Body mirrors `tests/mcp/mod.rs::test_create_user_mcp_server`.
+/// POST /mcp/servers as `token` (a user's OWN HTTP MCP server), returning
+/// the new server id.
+///
+/// HTTP (not stdio) on purpose: the MCP user policy default from
+/// migration 84 (`allowed_transports: ['http', 'stdio']`) forces stdio
+/// user-server creates into the sandbox, which the test deployment has
+/// disabled (`code_sandbox.enabled = false`). That makes a stdio create
+/// 422 with `MCP_SANDBOX_DISABLED` BEFORE the create handler ever calls
+/// `sync_publish`, so the sync emit we want to observe never fires.
+/// Mirrors the same fix in `catalog_hermetic.rs::user_mcp_install_*`.
 async fn create_user_mcp_server(
     server: &crate::common::TestServer,
     token: &str,
@@ -46,15 +54,19 @@ async fn create_user_mcp_server(
         .json(&json!({
             "name": name,
             "display_name": "Sync User Server",
-            "transport_type": "stdio",
-            "command": "node",
-            "args": ["server.js"],
+            "transport_type": "http",
+            "url": "https://example.invalid/mcp",
         }))
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), 201, "user MCP server create should return 201");
-    let row: serde_json::Value = res.json().await.unwrap();
+    let status = res.status();
+    let body = res.text().await.unwrap_or_default();
+    assert_eq!(
+        status, 201,
+        "user MCP server create should return 201, got {status}: {body}"
+    );
+    let row: serde_json::Value = serde_json::from_str(&body).unwrap();
     row["id"].as_str().unwrap().to_string()
 }
 
