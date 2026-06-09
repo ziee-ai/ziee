@@ -18,6 +18,9 @@
 //!   `/health` return 503 forever (drives the auto-start-timeout → 504 test).
 //! - request-body field `"stub_hang_ms": N` on `/v1/chat/completions` sleeps
 //!   N ms before responding (drives the drain / in-flight-blocks-reaper test).
+//! - the full received argv is echoed to stdout as `stub-engine: argv: …`
+//!   (captured by the deployment's log ring) so integration tests can assert
+//!   the model's engine_settings actually reached the spawned process.
 //! - `--chunk-delay-ms <N>` paces the streaming deltas (N ms before each delta
 //!   after the leading role chunk) so a chat turn is slow enough to be observed
 //!   mid-flight / cancelled (drives the chat-stream cancel + replay tests).
@@ -89,6 +92,14 @@ async fn main() {
     // forces a permanently-unhealthy engine without needing env (which the
     // deployment clears).
     let unhealthy = args.iter().any(|a| a.contains("stub-unhealthy"));
+
+    // Echo the full received argv (everything after the binary path) so
+    // integration tests can assert the deployment passed the model's
+    // engine_settings through. Captured by the deployment's stdout ring.
+    println!(
+        "stub-engine: argv: {}",
+        args.iter().skip(1).cloned().collect::<Vec<_>>().join(" ")
+    );
 
     // The deployment pipes stdout into its log ring + SSE broadcast, so
     // this line is observable by the live-logs test. Rust's stdout is

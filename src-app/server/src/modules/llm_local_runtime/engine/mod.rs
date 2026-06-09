@@ -27,4 +27,4 @@ pub use download::{
 };
 pub use health::{HealthEvent, HealthStateMachine, InstanceState, Transition};
 pub use metadata::{extract_model_capabilities, ModelCapabilities};
-pub use types::{EngineType, LlamaCppSettings, MistralRsSettings};
+pub use types::EngineType;
