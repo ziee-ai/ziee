@@ -155,10 +155,12 @@ const UUID_RE: &str =
 pub async fn model_supports_tools(
     metadata: &std::collections::HashMap<String, serde_json::Value>,
 ) -> bool {
-    // 0. Memoized answer — seeded once per turn by `ensure_model_tools_capable`
+    // 0. Memoized answer — seeded each LLM iteration by `ensure_model_tools_capable`
     //    from the earliest `before_llm_call` (which holds `&mut metadata`). The
-    //    boolean is turn-stable (model_id / provider_type / model_name don't
-    //    change mid-turn), so once present we skip the DB + catalog lookups.
+    //    metadata map is rebuilt per tool-loop iteration, so the memo is re-seeded
+    //    each iteration; the recomputed value is identical (model_id /
+    //    provider_type / model_name don't change mid-turn). When present we skip
+    //    the DB + catalog lookups for the rest of this iteration's before-calls.
     if let Some(b) = metadata
         .get("model_tools_capable")
         .and_then(|v| v.as_bool().or_else(|| v.as_str().and_then(parse_bool_ish)))

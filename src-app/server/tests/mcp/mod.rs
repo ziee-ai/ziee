@@ -665,6 +665,191 @@ async fn test_delete_system_server() {
     );
 }
 
+// ----------------------------------------------------------------------------
+// Built-in update-guard regression (r2-fresh-sweep-01).
+//
+// Commit 52a5953b narrowed the `update_system_mcp_server` "built-in is
+// immutable" guard (repository.rs) so it gates ONLY the two zero-config
+// privileged built-ins — `files_mcp_server_id()` / `memory_mcp_server_id()`.
+// The admin-CONFIGURABLE built-ins (filesystem/fetch/browser/git from
+// migrations 7+25, code_sandbox) must stay editable. This pins BOTH sides.
+//
+// NOTE: the deterministic ids are `Uuid::new_v5(NAMESPACE_URL, b"<name>")`,
+// matching `files_mcp::files_mcp_server_id()` / `memory_mcp::memory_mcp_server_id()`.
+// Those server-crate fns are NOT re-exported through `ziee::` (their module
+// tree is private), so we recompute the v5 UUID inline rather than import it.
+// ----------------------------------------------------------------------------
+
+fn files_mcp_server_id() -> Uuid {
+    Uuid::new_v5(&Uuid::NAMESPACE_URL, b"files.ziee.internal")
+}
+
+fn memory_mcp_server_id() -> Uuid {
+    Uuid::new_v5(&Uuid::NAMESPACE_URL, b"memory.ziee.internal")
+}
+
+/// The zero-config built-in rows (files/memory) are upserted by an async
+/// `tokio::spawn` at module init, so a GET right after `TestServer::start`
+/// can race the upsert. Poll the per-id GET in a short bounded loop until
+/// the row materializes (status 200) before exercising the PUT guard.
+async fn wait_for_system_server(
+    server: &crate::common::TestServer,
+    token: &str,
+    id: Uuid,
+) -> serde_json::Value {
+    let get_url = server.api_url(&format!("/mcp/system-servers/{}", id));
+    for _ in 0..40 {
+        let response = reqwest::Client::new()
+            .get(&get_url)
+            .header("Authorization", format!("Bearer {}", token))
+            .send()
+            .await
+            .expect("Request failed");
+        if response.status() == 200 {
+            return response.json().await.expect("Failed to parse JSON");
+        }
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    }
+    panic!("built-in system server {} never materialized after boot upsert", id);
+}
+
+#[tokio::test]
+async fn test_update_configurable_builtin_is_editable() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["mcp_servers_admin::read", "mcp_servers_admin::edit"],
+    )
+    .await;
+
+    // Find the seeded `filesystem` row (migration 7 — a random UUID, so it is
+    // NOT in the zero-config guard set and must remain editable).
+    let list_url = server.api_url("/mcp/system-servers");
+    let list_body: serde_json::Value = reqwest::Client::new()
+        .get(&list_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed")
+        .json()
+        .await
+        .expect("Failed to parse JSON");
+    let servers = list_body["servers"]
+        .as_array()
+        .expect("Should have servers array");
+    let filesystem = servers
+        .iter()
+        .find(|s| s["name"] == "filesystem")
+        .expect("Should have seeded filesystem server");
+    let filesystem_id = filesystem["id"].as_str().expect("Should have server ID");
+
+    // PUT a benign config change (mirror `test_update_system_server` shape).
+    let update_payload = json!({
+        "display_name": "Filesystem Access",
+        "description": "Edited filesystem description",
+        "transport_type": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem"]
+    });
+
+    let update_url = server.api_url(&format!("/mcp/system-servers/{}", filesystem_id));
+    let response = reqwest::Client::new()
+        .put(&update_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&update_payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(
+        status, 200,
+        "Admin-configurable built-in (filesystem) must stay editable; got: {body}"
+    );
+    assert_eq!(body["description"], "Edited filesystem description");
+
+    // Confirm persistence via a follow-up GET.
+    let get_url = server.api_url(&format!("/mcp/system-servers/{}", filesystem_id));
+    let get_body: serde_json::Value = reqwest::Client::new()
+        .get(&get_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed")
+        .json()
+        .await
+        .expect("Failed to parse JSON");
+    assert_eq!(
+        get_body["description"], "Edited filesystem description",
+        "Edit must persist for the admin-configurable built-in"
+    );
+}
+
+#[tokio::test]
+async fn test_update_zero_config_builtin_is_immutable() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["mcp_servers_admin::read", "mcp_servers_admin::edit"],
+    )
+    .await;
+
+    // Trivial, benign update payload. The zero-config guard fires BEFORE
+    // transport validation, so the body never has to be valid for the row's
+    // transport — only that the guard rejects it.
+    let update_payload = json!({
+        "display_name": "Hijacked",
+        "description": "should not apply"
+    });
+
+    // files_mcp built-in — must reject with BUILT_IN_SERVER / 400.
+    let files_id = files_mcp_server_id();
+    wait_for_system_server(&server, &admin.token, files_id).await;
+    let update_url = server.api_url(&format!("/mcp/system-servers/{}", files_id));
+    let response = reqwest::Client::new()
+        .put(&update_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&update_payload)
+        .send()
+        .await
+        .expect("Request failed");
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(
+        status, 400,
+        "files built-in must be immutable; got: {body}"
+    );
+    assert_eq!(
+        body["error_code"], "BUILT_IN_SERVER",
+        "files built-in rejection must carry BUILT_IN_SERVER; got: {body}"
+    );
+
+    // memory_mcp built-in — same immutability.
+    let memory_id = memory_mcp_server_id();
+    wait_for_system_server(&server, &admin.token, memory_id).await;
+    let update_url = server.api_url(&format!("/mcp/system-servers/{}", memory_id));
+    let response = reqwest::Client::new()
+        .put(&update_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&update_payload)
+        .send()
+        .await
+        .expect("Request failed");
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(
+        status, 400,
+        "memory built-in must be immutable; got: {body}"
+    );
+    assert_eq!(
+        body["error_code"], "BUILT_IN_SERVER",
+        "memory built-in rejection must carry BUILT_IN_SERVER; got: {body}"
+    );
+}
+
 // ============================================================================
 // Group Assignment Tests
 // ============================================================================

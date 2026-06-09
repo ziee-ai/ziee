@@ -1477,7 +1477,8 @@ fn clear_old_tool_results(
         .flat_map(|m| m.content.iter())
         .map(block_text_chars)
         .sum();
-    if total_chars / 4 <= threshold_tokens {
+    // Shared chars→tokens heuristic (ceil/4), same as the summarizer.
+    if crate::common::tokens::tokens_from_chars(total_chars) <= threshold_tokens {
         return;
     }
 
@@ -1490,10 +1491,12 @@ fn clear_old_tool_results(
             }
         }
     }
-    if positions.len() <= keep_last {
-        return;
-    }
-    let clear_until = positions.len() - keep_last;
+    // Older results (everything before the keep-last window) get their CONTENT
+    // replaced with a placeholder. `saturating_sub` yields 0 when there are
+    // `<= keep_last` results, so nothing OLD is cleared in that case — but the
+    // kept-window cap below still runs (a handful of oversized recent results
+    // can blow the budget on their own).
+    let clear_until = positions.len().saturating_sub(keep_last);
     for &(mi, bi) in &positions[..clear_until] {
         if let ai_providers::ContentBlock::ToolResult { content, .. } =
             &mut messages[mi].content[bi]

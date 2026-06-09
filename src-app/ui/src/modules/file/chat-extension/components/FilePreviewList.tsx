@@ -84,7 +84,7 @@ export function FilePreviewList() {
                 key={f.id}
                 type="warning"
                 showIcon
-                message={
+                title={
                   <span>
                     <strong>{f.filename}</strong>: {meta.suggestion}
                   </span>

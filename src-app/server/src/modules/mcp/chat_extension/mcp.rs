@@ -1863,7 +1863,12 @@ impl ChatExtension for McpChatExtension {
         for id in auto_attach_builtin_ids(&context.metadata) {
             if !accessible_servers.iter().any(|s| s.id == id) {
                 if let Some(bs) = crate::core::Repos.mcp.get_any_server(id).await? {
-                    accessible_servers.push(bs);
+                    // Mirror the before_llm_call guard: never resolve a disabled
+                    // built-in (get_any_server ignores `enabled`). With both
+                    // sites guarded a disabled built-in hits "Server not found".
+                    if bs.enabled {
+                        accessible_servers.push(bs);
+                    }
                 }
             }
         }

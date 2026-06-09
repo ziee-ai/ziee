@@ -162,6 +162,81 @@ async fn test_cross_user_forget_is_404() {
 }
 
 #[tokio::test]
+async fn test_write_tools_denied_for_read_only_user() {
+    // The JSON-RPC extractor only enforces `memory::read`; the per-tool
+    // write gate (`remember`/`forget` require `memory::write`) is a MANUAL
+    // match inside `dispatch_tool_call` (handlers.rs). This pins that gate:
+    // a read-only user is denied remember/forget but passes the read gate on
+    // recall (which then hits MEMORY_DISABLED by default — NOT a denial).
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "mcp_readonly",
+        &["memory::read"],
+    )
+    .await;
+
+    // remember -> permission-denied (-32602 at HTTP 200)
+    let res = jsonrpc_call(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({ "name": "remember", "arguments": { "content": "x" } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: Value = res.json().await.unwrap();
+    assert!(body["result"].is_null());
+    let msg = body["error"]["message"].as_str().unwrap_or("");
+    assert!(
+        msg.contains("permission denied") && msg.contains("memory::write"),
+        "remember must be denied for read-only user; got: {body}"
+    );
+
+    // forget -> same denial
+    let res = jsonrpc_call(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({
+            "name": "forget",
+            "arguments": { "memory_id": uuid::Uuid::new_v4() },
+        }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: Value = res.json().await.unwrap();
+    let msg = body["error"]["message"].as_str().unwrap_or("");
+    assert!(
+        msg.contains("permission denied") && msg.contains("memory::write"),
+        "forget must be denied for read-only user; got: {body}"
+    );
+
+    // recall passes the read gate (then MEMORY_DISABLED by default); assert
+    // it is NOT the permission-denied error.
+    let res = jsonrpc_call(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({ "name": "recall", "arguments": { "query": "anything" } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: Value = res.json().await.unwrap();
+    let msg = body["error"]["message"].as_str().unwrap_or("");
+    assert!(
+        !msg.contains("permission denied"),
+        "recall must pass the read gate for a read-only user; got: {body}"
+    );
+}
+
+#[tokio::test]
 async fn test_recall_requires_memory_enabled() {
     let server = crate::common::TestServer::start().await;
     let user = crate::common::test_helpers::create_user_with_permissions(

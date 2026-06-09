@@ -144,16 +144,10 @@ fn has_permission(user: &User, groups: &[Group], perm: &str) -> bool {
 
 /// Map an `AppError` to the closest JSON-RPC error code so client-class errors
 /// (bad `kind`, empty content, validation) surface as -32602 (invalid_params)
-/// instead of collapsing to -32603 (internal). Mirrors files_mcp.
+/// instead of collapsing to -32603 (internal). Shared with files_mcp via
+/// `JsonRpcError::from_app_error`.
 fn app_error_to_jsonrpc(e: &AppError) -> JsonRpcError {
-    match e.status_code() {
-        400 if e.error_code() == "UNKNOWN_TOOL" => {
-            JsonRpcError::method_not_found(&e.to_string())
-        }
-        400 => JsonRpcError::invalid_params(e.to_string()),
-        404 => JsonRpcError::invalid_params(e.to_string()),
-        _ => JsonRpcError::internal(e.to_string()),
-    }
+    JsonRpcError::from_app_error(e)
 }
 
 async fn dispatch_tool_call(

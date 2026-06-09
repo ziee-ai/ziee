@@ -126,18 +126,10 @@ fn error_response(id: Option<Value>, http: StatusCode, err: JsonRpcError) -> Res
 }
 
 /// Map an `AppError` from a tool call onto the right JSON-RPC error class
-/// instead of collapsing every failure to `internal` (-32603). Client-class
-/// errors (bad args, unknown tool, not-found) become `invalid_params`
-/// (-32602) / `method_not_found` (-32601); everything else stays `internal`.
+/// instead of collapsing every failure to `internal` (-32603). Shared with the
+/// memory built-in via `JsonRpcError::from_app_error` so the two can't drift.
 fn app_error_to_jsonrpc(e: &AppError) -> JsonRpcError {
-    let msg = e.to_string();
-    match e.status_code() {
-        400 if e.error_code() == "UNKNOWN_TOOL" => {
-            JsonRpcError::method_not_found(&msg)
-        }
-        400 | 404 => JsonRpcError::invalid_params(msg),
-        _ => JsonRpcError::internal(msg),
-    }
+    JsonRpcError::from_app_error(e)
 }
 
 /// Same NOT_FOUND-for-both semantics as code_sandbox: don't leak conversation
@@ -505,7 +497,11 @@ async fn grep_files(
                         "line": lineno + 1,
                         "text": line.trim(),
                     }));
-                    if matches.len() >= GREP_MAX_MATCHES {
+                    // Flag truncation only when a (MAX+1)th match actually
+                    // exists — pushing one sentinel past the cap, then trimming
+                    // it below. A corpus with EXACTLY GREP_MAX_MATCHES matches is
+                    // exhaustive, not truncated.
+                    if matches.len() > GREP_MAX_MATCHES {
                         truncated = true;
                         break 'outer;
                     }
@@ -535,11 +531,15 @@ async fn grep_files(
             .collect();
         lines.join("\n")
     };
+    // Trim the one-past-the-cap sentinel we pushed to detect truncation.
+    if matches.len() > GREP_MAX_MATCHES {
+        matches.truncate(GREP_MAX_MATCHES);
+    }
     if truncated {
-        summary.push_str(&format!(
-            "\n[showing first {} matches; results truncated — narrow the pattern or pass id]",
-            GREP_MAX_MATCHES
-        ));
+        // Cause-neutral: truncation can be the match cap OR the scan-byte budget
+        // (in which case `matches.len()` may be well under GREP_MAX_MATCHES), so
+        // don't claim a specific count was "shown".
+        summary.push_str("\n[results truncated — narrow the pattern or pass id]");
     }
     if !missing.is_empty() {
         summary.push_str(&format!(

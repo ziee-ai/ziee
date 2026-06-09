@@ -63,8 +63,25 @@ pub struct RecordedRequest {
 
 impl RecordedRequest {
     pub fn has_tool(&self, name: &str) -> bool {
-        self.tool_names.iter().any(|t| t == name)
+        self.tool_names.iter().any(|t| tool_name_matches(t, name))
     }
+}
+
+/// MCP tools reach the model namespaced as `{server_id}__{tool}` (see
+/// `mcp/chat_extension/helpers.rs::convert_mcp_tool_to_ai_tool`), so a test
+/// asking for the bare `read_file`/`remember` must match the prefixed wire name.
+fn tool_name_matches(wire_name: &str, bare: &str) -> bool {
+    wire_name == bare || wire_name.ends_with(&format!("__{bare}"))
+}
+
+/// Resolve the FULL wire name (e.g. `{server_id}__read_file`) for a bare tool the
+/// stub wants to call. The chat loop recovers the route by splitting on `__`, so
+/// the stub MUST emit the prefixed name it actually saw, not the bare one.
+fn resolve_wire_name<'a>(tool_names: &'a [String], bare: &str) -> Option<&'a str> {
+    tool_names
+        .iter()
+        .find(|t| tool_name_matches(t, bare))
+        .map(|s| s.as_str())
 }
 
 #[derive(Clone)]
@@ -236,9 +253,11 @@ fn script(
 ) -> (Option<String>, Option<(String, Value)>) {
     match plan {
         "read_first_file" => {
-            if !had_tool_result && tool_names.iter().any(|t| t == "read_file") {
+            if let (false, Some(wire)) =
+                (had_tool_result, resolve_wire_name(tool_names, "read_file"))
+            {
                 if let Some(id) = first_manifest_id(system_text) {
-                    return (None, Some(("read_file".into(), json!({ "id": id }))));
+                    return (None, Some((wire.to_string(), json!({ "id": id }))));
                 }
                 // No id resolvable — degrade to text so the loop terminates.
                 return (Some("No readable files were listed.".into()), None);
@@ -252,15 +271,19 @@ fn script(
             )
         }
         "grep_first_file" => {
-            if !had_tool_result && tool_names.iter().any(|t| t == "grep_files") {
+            if let (false, Some(wire)) =
+                (had_tool_result, resolve_wire_name(tool_names, "grep_files"))
+            {
                 let pattern = parse_token(last_user, "STUB_GREP=").unwrap_or_else(|| "the".into());
-                return (None, Some(("grep_files".into(), json!({ "pattern": pattern }))));
+                return (None, Some((wire.to_string(), json!({ "pattern": pattern }))));
             }
             let echoed = last_tool_result_text(messages);
             (Some(format!("Matches: {echoed}")), None)
         }
         "remember" => {
-            if !had_tool_result && tool_names.iter().any(|t| t == "remember") {
+            if let (false, Some(wire)) =
+                (had_tool_result, resolve_wire_name(tool_names, "remember"))
+            {
                 let content = parse_token(last_user, "STUB_PLAN=remember ")
                     .filter(|c| !c.trim().is_empty())
                     .unwrap_or_else(|| "The user shared a durable fact.".into());
@@ -268,7 +291,7 @@ fn script(
                 return (
                     Some("Got it — I'll remember that.".into()),
                     Some((
-                        "remember".into(),
+                        wire.to_string(),
                         json!({ "content": content, "scope": "conversation" }),
                     )),
                 );

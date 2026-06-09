@@ -1,5 +1,4 @@
 import {
-  Alert,
   Card,
   Divider,
   Flex,
@@ -13,21 +12,8 @@ import {
 
 const { Text } = Typography
 
-interface LlmModelLlamaCppSettingsSectionProps {
-  // The model's native trained context length (capabilities.context_length).
-  // Surfaced so the Context Size field can show the ceiling and warn when the
-  // configured ctx_size exceeds the trained length.
-  contextLength?: number
-}
-
-export function LlmModelLlamaCppSettingsSection({
-  contextLength,
-}: LlmModelLlamaCppSettingsSectionProps) {
+export function LlmModelLlamaCppSettingsSection() {
   const getFieldName = (field: string) => ['engine_settings', 'llamacpp', field]
-
-  const ctxSizeDescription = contextLength
-    ? `Size of the prompt context (--ctx-size, default: 8192). Model max context: ${contextLength}`
-    : 'Size of the prompt context (--ctx-size, default: 8192)'
 
   const ResponsiveConfigItem = ({
     title,
@@ -56,7 +42,7 @@ export function LlmModelLlamaCppSettingsSection({
         <Flex vertical className="gap-2 w-full">
           <ResponsiveConfigItem
             title="Context Size"
-            description={ctxSizeDescription}
+            description="Size of the prompt context (--ctx-size, default: 8192)"
           >
             <Form.Item
               name={getFieldName('ctx_size')}
@@ -64,36 +50,12 @@ export function LlmModelLlamaCppSettingsSection({
             >
               <InputNumber
                 min={512}
-                max={contextLength ? Math.max(contextLength, 131072) : 131072}
+                max={131072}
                 placeholder="8192"
                 style={{ width: '100%' }}
               />
             </Form.Item>
           </ResponsiveConfigItem>
-
-          {contextLength != null && (
-            <Form.Item
-              noStyle
-              shouldUpdate={(prev, cur) =>
-                prev.engine_settings?.llamacpp?.ctx_size !==
-                cur.engine_settings?.llamacpp?.ctx_size
-              }
-            >
-              {({ getFieldValue }) => {
-                const ctxSize = getFieldValue(getFieldName('ctx_size'))
-                if (ctxSize == null || ctxSize <= contextLength) {
-                  return null
-                }
-                return (
-                  <Alert
-                    type="warning"
-                    showIcon
-                    message={`Exceeds the model's native context (${contextLength}); quality degrades past the trained length.`}
-                  />
-                )
-              }}
-            </Form.Item>
-          )}
 
           <Divider style={{ margin: 0 }} />
 

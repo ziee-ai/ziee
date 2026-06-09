@@ -1,18 +1,26 @@
 //! Cheap, provider-agnostic token estimation.
 //!
-//! Uses the `chars / 4` heuristic — no tokenizer dependency, stable
-//! across providers and local engines. Shared by the chat context-trimming
-//! transform (clear old tool results past a threshold) and the token-aware
-//! conversation summarizer. It is intentionally an ESTIMATE: it is never
-//! used for billing, only for "is this getting large enough to act on it".
+//! Uses the `ceil(chars / 4)` heuristic — no tokenizer dependency, stable
+//! across providers and local engines. Genuinely shared (via
+//! [`tokens_from_chars`]) by the chat context-trimming transform
+//! (`clear_old_tool_results`) and the token-aware conversation summarizer. It is
+//! intentionally an ESTIMATE: never used for billing, only for "is this getting
+//! large enough to act on it".
+
+/// Convert a precomputed Unicode-scalar count into estimated tokens as
+/// `ceil(chars / 4)`. The single source of truth for the chars→tokens rounding,
+/// so callers that already have a char total (e.g. summed over many content
+/// blocks) don't re-implement (and drift on) the heuristic.
+pub fn tokens_from_chars(chars: usize) -> usize {
+    chars.div_ceil(4)
+}
 
 /// Estimate the number of tokens in `s` as `ceil(chars / 4)`.
 ///
 /// Counts Unicode scalar values (not bytes) so multibyte text isn't
 /// over-counted. Empty string → 0.
 pub fn estimate_tokens(s: &str) -> usize {
-    let chars = s.chars().count();
-    chars.div_ceil(4)
+    tokens_from_chars(s.chars().count())
 }
 
 /// Estimate tokens across many strings (e.g. all text blocks of a message).

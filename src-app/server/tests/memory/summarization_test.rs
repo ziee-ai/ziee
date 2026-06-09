@@ -8,7 +8,7 @@
 // the admin-tunable knobs that drive the summarizer:
 //
 //   * default_extraction_model_id round-trip (the model the summarizer uses)
-//   * summarize_after_n_messages / summarizer_keep_recent round-trip + CHECK
+//   * summarize_after_tokens / summarizer_keep_recent_tokens round-trip + CHECK
 //   * full_summary_prompt / incremental_summary_prompt placeholder validation
 //   * NULL-as-fallback semantics (clearing back to the compiled-in defaults)
 //
