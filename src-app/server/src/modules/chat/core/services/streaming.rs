@@ -297,6 +297,28 @@ impl StreamingService {
                     serde_json::json!(provider_id.to_string()),
                 );
 
+                // Memoize the model's tool-capability into the shared metadata up
+                // front (one DB+catalog lookup per iteration) so the per-block
+                // replay path (process_content_for_llm) reads the cached boolean
+                // instead of re-resolving it for every attachment block.
+                crate::modules::file::available_files::ensure_model_tools_capable(
+                    &mut context_metadata,
+                )
+                .await;
+
+                // Resolve the conversation's available files ONCE per iteration
+                // and seed them here, so the manifest injection (file
+                // before_llm_call) and the replay recency-drop
+                // (process_content_for_llm) share a SINGLE resolution and can't
+                // disagree — a resolve failure makes both degrade to the safe
+                // inline path rather than dropping content with no manifest.
+                crate::modules::file::available_files::seed_available_files(
+                    &mut context_metadata,
+                    conversation_id,
+                    user_id,
+                )
+                .await;
+
                 // Create context for content transformation
                 let transform_context = StreamContext {
                     conversation_id,

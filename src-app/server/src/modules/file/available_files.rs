@@ -30,7 +30,7 @@
 //! dropped — the same "no longer available" path the read tools rely on.
 
 use chrono::{DateTime, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::common::AppError;
@@ -38,7 +38,7 @@ use crate::core::Repos;
 use crate::modules::file::models::File;
 
 /// Coarse LLM-facing file category (see the four extractability categories).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum FileType {
     /// Plain text / code / config / csv / md / html / json / yaml / ipynb …
@@ -52,7 +52,7 @@ pub enum FileType {
 }
 
 /// Where a file is reachable from for this conversation. A file can be BOTH.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum FileSource {
     Project,
@@ -60,7 +60,7 @@ pub enum FileSource {
 }
 
 /// One row of the conversation's manifest / mount set.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AvailableFile {
     pub id: Uuid,
     pub name: String,
@@ -232,6 +232,59 @@ pub async fn ensure_model_tools_capable(
         serde_json::Value::Bool(capable),
     );
     capable
+}
+
+/// Metadata key holding the JSON-serialized resolved available-files set.
+const META_AVAILABLE_FILES: &str = "available_files";
+/// Metadata key holding whether a non-empty available-files set resolved.
+const META_FILES_MANIFEST_AVAILABLE: &str = "files_manifest_available";
+
+/// Resolve the conversation's available files ONCE per LLM iteration and seed
+/// them into the chat `metadata` (both a bool gate and the serialized set).
+/// Called from the chat streaming loop BEFORE building the history-replay
+/// transform context, so the value is shared by the file extension's
+/// `before_llm_call` (which renders the manifest from it) AND
+/// `process_content_for_llm` (which gates the recency-drop on it). Sharing one
+/// resolution means the two can never disagree — a resolve failure seeds an
+/// empty set (`manifest_available=false`), which degrades the drop to the safe
+/// inline path instead of dropping content with no manifest to recover it.
+pub async fn seed_available_files(
+    metadata: &mut std::collections::HashMap<String, serde_json::Value>,
+    conversation_id: Uuid,
+    user_id: Uuid,
+) {
+    let files = resolve_available_files(conversation_id, user_id)
+        .await
+        .unwrap_or_default();
+    metadata.insert(
+        META_FILES_MANIFEST_AVAILABLE.to_string(),
+        serde_json::Value::Bool(!files.is_empty()),
+    );
+    if let Ok(v) = serde_json::to_value(&files) {
+        metadata.insert(META_AVAILABLE_FILES.to_string(), v);
+    }
+}
+
+/// Read the seeded available-files set back out of `metadata` (empty when
+/// absent/unparseable — `files_manifest_available` is then false too).
+pub fn available_files_from_metadata(
+    metadata: &std::collections::HashMap<String, serde_json::Value>,
+) -> Vec<AvailableFile> {
+    metadata
+        .get(META_AVAILABLE_FILES)
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default()
+}
+
+/// Whether a non-empty available-files set resolved this iteration (gates the
+/// replay recency-drop — never drop when the manifest is unavailable).
+pub fn files_manifest_available(
+    metadata: &std::collections::HashMap<String, serde_json::Value>,
+) -> bool {
+    metadata
+        .get(META_FILES_MANIFEST_AVAILABLE)
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
 }
 
 /// Best-effort *effective* context window (in tokens) for the chat model

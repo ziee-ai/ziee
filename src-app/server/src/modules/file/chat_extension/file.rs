@@ -93,89 +93,98 @@ impl ChatExtension for FileExtension {
         // Capability-gated manifest (Track A). When the model can use tools,
         // inject a compact manifest of ALL files available to this conversation
         // (project knowledge + attachments) and flag the MCP extension to
-        // auto-attach the built-in `files` server. The model then reads files on
-        // demand via read_file/grep_files instead of us inlining everything every
-        // turn. The CURRENT upload is still inlined below (the user is asking
-        // about it now); older files reach the model through the read tools.
-        // Compute the tool-capability once per LLM iteration and memoize it into
-        // `context.metadata` (idempotent — whichever extension's `before_llm_call`
-        // runs first seeds it; the other before-call extensions read the cached
-        // boolean). The per-history `process_content_for_llm` path runs on a
-        // SEPARATE `transform_context`, which streaming.rs now seeds with the
-        // same model/provider metadata, so its `model_supports_tools` call
-        // resolves correctly and the recency-drop below actually fires.
+        // auto-attach the built-in `files` server, so the model reads files on
+        // demand via read_file/grep_files instead of us inlining everything.
+        //
+        // The available-files set was resolved ONCE this iteration by
+        // streaming.rs::seed_available_files and shared via `context.metadata`,
+        // so the manifest here and the replay recency-drop
+        // (process_content_for_llm) use the SAME resolution and cannot disagree —
+        // a resolve failure leaves `manifest_available` false, which makes BOTH
+        // the manifest skip and the drop fall back to inlining (no data loss).
         let tool_capable =
             crate::modules::file::available_files::ensure_model_tools_capable(
                 &mut context.metadata,
             )
             .await;
-        if tool_capable {
-            match crate::modules::file::available_files::resolve_available_files(
-                context.conversation_id,
-                context.user_id,
-            )
-            .await
-            {
-                Ok(files) if !files.is_empty() => {
-                    let manifest =
-                        crate::modules::file::available_files::render_manifest(&files);
-                    request.messages.insert(
-                        0,
-                        ChatMessage {
-                            role: Role::System,
-                            content: vec![ContentBlock::Text { text: manifest }],
-                        },
-                    );
-                    context
-                        .metadata
-                        .insert("attach_files_mcp".to_string(), serde_json::json!("true"));
-                }
-                Ok(_) => {}
-                Err(e) => {
-                    tracing::warn!("file ext: resolve_available_files failed: {e}");
-                }
-            }
+        let avail =
+            crate::modules::file::available_files::available_files_from_metadata(&context.metadata);
+        let manifest_available =
+            crate::modules::file::available_files::files_manifest_available(&context.metadata);
+        if tool_capable && manifest_available {
+            let manifest = crate::modules::file::available_files::render_manifest(&avail);
+            request.messages.insert(
+                0,
+                ChatMessage {
+                    role: Role::System,
+                    content: vec![ContentBlock::Text { text: manifest }],
+                },
+            );
+            context
+                .metadata
+                .insert("attach_files_mcp".to_string(), serde_json::json!("true"));
         }
 
-        // Inline the CURRENT message's upload (always — attached to THIS message).
-        if let Some(file_ids) = &send_request.file_ids {
-            if file_ids.is_empty() {
-                return Ok(BeforeLlmAction::Continue);
-            }
+        // Inline the CURRENT message's upload. Division of labor with the
+        // history-replay path (process_content_for_llm), which processes EVERY
+        // attachment block — including this message's:
+        //   - tool-capable + manifest available: replay DROPS old (and this
+        //     message's) NON-image attachments (recovered via the manifest +
+        //     read_file) and KEEPS images inlined. So here we inline ONLY the
+        //     current upload's NON-image files (the content the user is asking
+        //     about now); images — current or old — are inlined by replay.
+        //   - otherwise (non-tool-capable, or resolve failed): replay inlines
+        //     every attachment (current + old), so we inline NOTHING here to
+        //     avoid double-inlining the current upload.
+        if tool_capable && manifest_available {
+            if let Some(file_ids) = &send_request.file_ids {
+                if !file_ids.is_empty() {
+                    let provider_id = context
+                        .metadata
+                        .get("provider_id")
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| Uuid::parse_str(s).ok())
+                        .ok_or_else(|| AppError::internal_error("Provider ID not in context"))?;
 
-            let provider_id = context
-                .metadata
-                .get("provider_id")
-                .and_then(|v| v.as_str())
-                .and_then(|s| Uuid::parse_str(s).ok())
-                .ok_or_else(|| AppError::internal_error("Provider ID not in context"))?;
+                    let provider_type = context
+                        .metadata
+                        .get("provider_type")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| AppError::internal_error("Provider type not in context"))?;
 
-            let provider_type = context
-                .metadata
-                .get("provider_type")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| AppError::internal_error("Provider type not in context"))?;
+                    let mut file_blocks = Vec::new();
+                    for file_id in file_ids {
+                        // Images are inlined by the replay path (vision); skip
+                        // them here to avoid doubling. An id not in the resolved
+                        // set is treated as non-image and inlined.
+                        let is_image = avail
+                            .iter()
+                            .find(|f| f.id == *file_id)
+                            .map(|f| {
+                                f.file_type
+                                    == crate::modules::file::available_files::FileType::Image
+                            })
+                            .unwrap_or(false);
+                        if is_image {
+                            continue;
+                        }
+                        let blocks = process_file_blocks(
+                            &self.pool,
+                            *file_id,
+                            provider_id,
+                            provider_type,
+                            context.user_id,
+                        )
+                        .await?;
+                        file_blocks.extend(blocks);
+                    }
 
-            // Process each file via the shared free function —
-            // single source of truth for provider-specific routing
-            // (see modules/file/provider_routing.rs).
-            let mut file_blocks = Vec::new();
-            for file_id in file_ids {
-                let blocks = process_file_blocks(
-                    &self.pool,
-                    *file_id,
-                    provider_id,
-                    provider_type,
-                    context.user_id,
-                )
-                .await?;
-                file_blocks.extend(blocks);
-            }
-
-            if let Some(last_message) = request.messages.last_mut()
-                && last_message.role == Role::User
-            {
-                last_message.content.extend(file_blocks);
+                    if let Some(last_message) = request.messages.last_mut()
+                        && last_message.role == Role::User
+                    {
+                        last_message.content.extend(file_blocks);
+                    }
+                }
             }
         }
 
@@ -187,7 +196,13 @@ impl ChatExtension for FileExtension {
     }
 
     fn handled_content_types(&self) -> Vec<&'static str> {
-        vec!["file"]
+        // The serde tags of the content variants this extension owns (NOT the
+        // extension name "file"). Registry dispatch (process_content_for_llm /
+        // should_skip_in_assistant_forwarding / process_content_from_db) is an
+        // exact match on `MessageContentData::content_type()`, which for the
+        // file ext's variants serializes to "file_attachment" / "image". With
+        // the wrong name here those hooks were never dispatched for file content.
+        vec!["file_attachment", "image"]
     }
 
     /// File-attachment blocks that landed on ASSISTANT messages (via MCP
@@ -222,16 +237,17 @@ impl ChatExtension for FileExtension {
             FileContent::FileAttachment {
                 file_id, mime_type, ..
             } => {
-                // Recency rule (Track A §2): on a tool-capable model, OLD
-                // attachments are DROPPED from the replayed history — they're
-                // listed in the auto-injected manifest and read on demand via
-                // `read_file`, so re-inlining them every turn was pure waste. We
-                // drop rather than insert a marker so the CURRENT-turn upload
-                // (whose attachment block also passes through here, and which
-                // `before_llm_call` re-inlines in full) doesn't end up with both a
-                // misleading "attached earlier" note AND its full content.
-                // IMAGES are kept inlined for vision continuity (they can't be
-                // re-read as text). Non-tool-capable models keep the full inline.
+                // Recency rule (Track A §2): on a tool-capable model with a
+                // resolved manifest, NON-image attachments are DROPPED from the
+                // replayed history — they're listed in the auto-injected manifest
+                // and read on demand via `read_file`, so re-inlining them every
+                // turn was pure waste. The current-turn upload's attachment block
+                // ALSO passes through here and is dropped; `before_llm_call`
+                // re-inlines the current upload (so it lands exactly once). IMAGES
+                // are kept inlined for vision continuity (current + old). The drop
+                // is gated on `manifest_available` so that if file resolution
+                // failed (no manifest), we fall back to inlining instead of
+                // silently losing content; non-tool-capable models always inline.
                 let is_image = mime_type
                     .as_deref()
                     .map(|m| m.starts_with("image/"))
@@ -239,7 +255,11 @@ impl ChatExtension for FileExtension {
                 let tool_capable =
                     crate::modules::file::available_files::model_supports_tools(&context.metadata)
                         .await;
-                if tool_capable && !is_image {
+                let manifest_available =
+                    crate::modules::file::available_files::files_manifest_available(
+                        &context.metadata,
+                    );
+                if tool_capable && manifest_available && !is_image {
                     return Ok(None);
                 }
 

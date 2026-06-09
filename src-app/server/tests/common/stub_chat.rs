@@ -59,6 +59,10 @@ pub struct RecordedRequest {
     pub has_manifest: bool,
     /// The `STUB_PLAN=` token parsed from the last user message (or `"text"`).
     pub plan: String,
+    /// Concatenated visible text of EVERY message in the request (system + user
+    /// + tool). Lets a test assert whether a file's inlined content bytes are
+    /// present (e.g. that an old attachment was NOT re-inlined on a later turn).
+    pub all_text: String,
 }
 
 impl RecordedRequest {
@@ -226,10 +230,13 @@ async fn chat_completions(State(s): State<StubState>, body: axum::body::Bytes) -
         .unwrap_or_default();
     let plan = parse_token(&last_user, "STUB_PLAN=").unwrap_or_else(|| "text".to_string());
 
+    let all_text: String = messages.iter().map(message_text).collect::<Vec<_>>().join("\n");
+
     s.requests.lock().unwrap().push(RecordedRequest {
         tool_names: tool_names.clone(),
         had_tool_result,
         has_manifest,
+        all_text,
         plan: plan.clone(),
     });
 

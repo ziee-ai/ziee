@@ -205,7 +205,109 @@ async fn enable_memory(server: &TestServer, user: &TestUser) {
     );
 }
 
+/// Send a chat message carrying `file_ids` (a current-turn upload) and drain the
+/// SSE so the whole turn completes server-side.
+async fn send_with_files(
+    server: &TestServer,
+    user: &TestUser,
+    conversation_id: &str,
+    branch_id: &str,
+    model_id: &str,
+    content: &str,
+    file_ids: &[String],
+) {
+    let resp = reqwest::Client::new()
+        .post(server.api_url(&format!(
+            "/conversations/{conversation_id}/messages/stream"
+        )))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "content": content,
+            "model_id": model_id,
+            "branch_id": branch_id,
+            "file_ids": file_ids,
+        }))
+        .send()
+        .await
+        .expect("send with files");
+    assert!(resp.status().is_success(), "send status {}", resp.status());
+    let _ = resp.text().await;
+}
+
 // ── Track A ─────────────────────────────────────────────────────────────────
+
+/// Track A recency-drop: a file attached on turn 1 is inlined THAT turn, but on
+/// turn 2 it is an OLD attachment — dropped from the replayed history (the model
+/// gets the manifest + read_file instead of the bytes re-inlined every turn).
+/// This pins the dispatch + shared-resolution fix (the recency-drop was a no-op
+/// while the file ext declared the wrong handled_content_types).
+#[tokio::test]
+async fn old_attachment_dropped_from_replay_for_tool_capable() {
+    let server = TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = power_user(&server, "agentic_recency").await;
+    let model_id = crate::common::stub_chat::register_stub_model(
+        &server, &user.token, &user.user_id, &stub.base_url, true, None,
+    )
+    .await;
+
+    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
+    // Name carries no marker; only the CONTENT does, so the manifest (which lists
+    // names, not bytes) never trips the marker assertion.
+    let file_id = upload_text(
+        &server,
+        &user,
+        "notes.txt",
+        "INLINE_MARKER_QZ7 the secret figure is 42",
+    )
+    .await;
+
+    // Turn 1: attach the file — the current upload is inlined this turn.
+    send_with_files(
+        &server,
+        &user,
+        &conv_id,
+        &branch_id,
+        &model_id,
+        "STUB_PLAN=text what is in my notes?",
+        &[file_id.clone()],
+    )
+    .await;
+
+    // Turn 2: no new attachment — the turn-1 file is now an OLD attachment.
+    send_with_files(
+        &server,
+        &user,
+        &conv_id,
+        &branch_id,
+        &model_id,
+        "STUB_PLAN=text and now?",
+        &[],
+    )
+    .await;
+
+    let reqs = stub.requests();
+    // Turn-1 main generation (manifest + the turn-1 user text) inlined the bytes.
+    let turn1 = reqs
+        .iter()
+        .find(|r| r.all_text.contains("what is in my notes?") && r.has_manifest)
+        .expect("a turn-1 main generation request with the manifest");
+    assert!(
+        turn1.all_text.contains("INLINE_MARKER_QZ7"),
+        "turn-1 current upload should be inlined in full"
+    );
+    // Turn-2 main generation (carries the turn-2 user text) must NOT re-inline the
+    // old attachment's bytes, but the manifest must still list the file.
+    let turn2 = reqs
+        .iter()
+        .find(|r| r.all_text.contains("and now?") && r.has_manifest)
+        .expect("a turn-2 main generation request with the manifest");
+    assert!(
+        !turn2.all_text.contains("INLINE_MARKER_QZ7"),
+        "turn-2 must NOT re-inline the old attachment bytes (recency-drop); got: {}",
+        turn2.all_text
+    );
+}
 
 /// The headline Track A behaviour: a project knowledge file is surfaced via the
 /// injected manifest (not inlined), and a tool-capable model reads it on demand
