@@ -136,7 +136,13 @@ impl ChatExtension for FileExtension {
         //   - otherwise (non-tool-capable, or resolve failed): replay inlines
         //     every attachment (current + old), so we inline NOTHING here to
         //     avoid double-inlining the current upload.
-        if tool_capable && manifest_available {
+        // ONLY on iteration 1: `before_llm_call` runs every tool-loop iteration,
+        // but the "current upload" belongs to the first generation. On a
+        // continuation (iteration >= 2) the last message is a Tool result (not
+        // User), so re-inlining would push a stray User turn between the tool
+        // round-trip and the model's continuation AND re-send the very bytes the
+        // manifest exists to leave out. The model recovers them via read_file.
+        if tool_capable && manifest_available && context.iteration == 1 {
             if let Some(file_ids) = &send_request.file_ids {
                 if !file_ids.is_empty() {
                     let provider_id = context

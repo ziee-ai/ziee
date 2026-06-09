@@ -63,6 +63,10 @@ pub struct RecordedRequest {
     /// + tool). Lets a test assert whether a file's inlined content bytes are
     /// present (e.g. that an old attachment was NOT re-inlined on a later turn).
     pub all_text: String,
+    /// The `role` of every message in order. Lets a test assert request
+    /// structure — e.g. that a continuation (had_tool_result) request doesn't end
+    /// with a stray `user` turn re-inlining the upload after the tool round-trip.
+    pub roles: Vec<String>,
 }
 
 impl RecordedRequest {
@@ -231,12 +235,22 @@ async fn chat_completions(State(s): State<StubState>, body: axum::body::Bytes) -
     let plan = parse_token(&last_user, "STUB_PLAN=").unwrap_or_else(|| "text".to_string());
 
     let all_text: String = messages.iter().map(message_text).collect::<Vec<_>>().join("\n");
+    let roles: Vec<String> = messages
+        .iter()
+        .map(|m| {
+            m.get("role")
+                .and_then(|r| r.as_str())
+                .unwrap_or("")
+                .to_string()
+        })
+        .collect();
 
     s.requests.lock().unwrap().push(RecordedRequest {
         tool_names: tool_names.clone(),
         had_tool_result,
         has_manifest,
         all_text,
+        roles,
         plan: plan.clone(),
     });
 

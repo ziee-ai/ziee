@@ -309,6 +309,58 @@ async fn old_attachment_dropped_from_replay_for_tool_capable() {
     );
 }
 
+/// Regression (round 8): on a tool-loop CONTINUATION (iteration >= 2) the
+/// current upload must NOT be re-inlined as a stray trailing `user` turn after
+/// the assistant tool round-trip (that both corrupts the tool_use→tool_result
+/// structure and re-sends the bytes the manifest exists to omit). We trigger a
+/// read_file round-trip (=> iteration 2) with an attachment present and assert
+/// no continuation request ends with a `user` role.
+#[tokio::test]
+async fn current_upload_not_reinlined_on_tool_loop_continuation() {
+    let server = TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = power_user(&server, "agentic_iter2").await;
+    let model_id = crate::common::stub_chat::register_stub_model(
+        &server, &user.token, &user.user_id, &stub.base_url, true, None,
+    )
+    .await;
+
+    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
+    let file_id = upload_text(&server, &user, "notes.txt", "ITER2_MARKER the data is here").await;
+
+    // One turn that triggers a read_file round-trip (=> a 2nd loop iteration)
+    // with the attachment present as the current upload.
+    send_with_files(
+        &server,
+        &user,
+        &conv_id,
+        &branch_id,
+        &model_id,
+        "STUB_PLAN=read_first_file summarize my notes",
+        &[file_id.clone()],
+    )
+    .await;
+
+    let reqs = stub.requests();
+    // A tool-loop continuation actually happened (so the assertion is meaningful).
+    assert!(
+        reqs.iter().any(|r| r.had_tool_result),
+        "expected a tool-loop continuation request; requests={reqs:?}"
+    );
+    // No continuation (had_tool_result) request may END with a `user` role — that
+    // would be the stray re-inlined-upload turn pushed after the tool result.
+    for r in &reqs {
+        if r.had_tool_result {
+            assert_ne!(
+                r.roles.last().map(String::as_str),
+                Some("user"),
+                "continuation request must not end with a stray re-inlined user turn; roles={:?}",
+                r.roles
+            );
+        }
+    }
+}
+
 /// The headline Track A behaviour: a project knowledge file is surfaced via the
 /// injected manifest (not inlined), and a tool-capable model reads it on demand
 /// — proving the manifest → files MCP → file storage → tool_result →
