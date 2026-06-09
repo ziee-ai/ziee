@@ -1,10 +1,10 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import { createStoreProxy } from '@/core/stores'
 import { ApiClient } from '@/api-client'
-import { Permissions, type ConversationResponse } from '@/api-client/types'
+import { type ConversationResponse, Permissions } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
+import { createStoreProxy } from '@/core/stores'
 
 /**
  * ChatHistory Store
@@ -120,7 +120,9 @@ export const useChatHistoryStore = create<ChatHistoryStore>()(
             // Update filtered conversations if searching
             if (draft.searchQuery) {
               draft.filteredConversations = draft.conversations.filter(conv =>
-                conv.title?.toLowerCase().includes(draft.searchQuery.toLowerCase()),
+                conv.title
+                  ?.toLowerCase()
+                  .includes(draft.searchQuery.toLowerCase()),
               )
             }
           })
@@ -173,7 +175,9 @@ export const useChatHistoryStore = create<ChatHistoryStore>()(
           await ApiClient.Conversation.delete({ id })
 
           set(draft => {
-            draft.conversations = draft.conversations.filter(conv => conv.id !== id)
+            draft.conversations = draft.conversations.filter(
+              conv => conv.id !== id,
+            )
             draft.recentConversations = draft.recentConversations.filter(
               conv => conv.id !== id,
             )
@@ -238,7 +242,10 @@ export const useChatHistoryStore = create<ChatHistoryStore>()(
             draft.deleting = false
           })
         } catch (error) {
-          console.error('[ChatHistory] Failed to bulk delete conversations:', error)
+          console.error(
+            '[ChatHistory] Failed to bulk delete conversations:',
+            error,
+          )
           set({
             error: 'Failed to delete selected conversations',
             deleting: false,
@@ -265,8 +272,9 @@ export const useChatHistoryStore = create<ChatHistoryStore>()(
        */
       selectAll: () => {
         set(draft => {
-          const visibleConversations =
-            draft.searchQuery ? draft.filteredConversations : draft.conversations
+          const visibleConversations = draft.searchQuery
+            ? draft.filteredConversations
+            : draft.conversations
 
           visibleConversations.forEach(conv => {
             draft.selectedIds.add(conv.id)
@@ -305,7 +313,10 @@ export const useChatHistoryStore = create<ChatHistoryStore>()(
             draft.filteredConversations.forEach(updateTitle)
           })
         } catch (error) {
-          console.error('[ChatHistory] Failed to update conversation title:', error)
+          console.error(
+            '[ChatHistory] Failed to update conversation title:',
+            error,
+          )
           set({ error: 'Failed to update conversation title' })
           throw error
         }
@@ -342,7 +353,10 @@ export const useChatHistoryStore = create<ChatHistoryStore>()(
                 // Update total
                 draft.total = draft.conversations.length
               })
-              console.log('[ChatHistory] Added new conversation:', conversation.id)
+              console.log(
+                '[ChatHistory] Added new conversation:',
+                conversation.id,
+              )
             },
             'ChatHistory',
           )
@@ -362,7 +376,10 @@ export const useChatHistoryStore = create<ChatHistoryStore>()(
                 draft.recentConversations.forEach(updateTitle)
                 draft.filteredConversations.forEach(updateTitle)
               })
-              console.log('[ChatHistory] Updated conversation title:', conversationId)
+              console.log(
+                '[ChatHistory] Updated conversation title:',
+                conversationId,
+              )
             },
             'ChatHistory',
           )
@@ -382,8 +399,46 @@ export const useChatHistoryStore = create<ChatHistoryStore>()(
                 draft.recentConversations.forEach(update)
                 draft.filteredConversations.forEach(update)
               })
-              console.log('[ChatHistory] Updated message count for:', conversationId, messageCount)
+              console.log(
+                '[ChatHistory] Updated message count for:',
+                conversationId,
+                messageCount,
+              )
             },
+            'ChatHistory',
+          )
+
+          // Cross-device sync: a conversation was created/changed/deleted on
+          // ANOTHER device. Notify-and-refetch — the event carries only
+          // {action, id}, so reload the first page (covers a new conversation,
+          // recency bump, title, and message count) or drop it on delete.
+          Stores.EventBus.on(
+            'sync:conversation',
+            async event => {
+              const { action, id } = event.data
+              if (action === 'delete') {
+                set(draft => {
+                  draft.conversations = draft.conversations.filter(
+                    c => c.id !== id,
+                  )
+                  draft.recentConversations = draft.recentConversations.filter(
+                    c => c.id !== id,
+                  )
+                  draft.filteredConversations =
+                    draft.filteredConversations.filter(c => c.id !== id)
+                  draft.total = draft.conversations.length
+                })
+              } else {
+                await get().loadConversations(1)
+              }
+            },
+            'ChatHistory',
+          )
+
+          // On (re)connect, resync the list to cover anything missed offline.
+          Stores.EventBus.on(
+            'sync:reconnect',
+            () => void get().loadConversations(1),
             'ChatHistory',
           )
         },

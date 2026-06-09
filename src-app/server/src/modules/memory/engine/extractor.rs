@@ -19,6 +19,9 @@ use uuid::Uuid;
 use crate::common::AppError;
 use crate::core::Repos;
 use crate::modules::memory::models::is_valid_kind;
+use crate::modules::sync::{
+    Audience, SyncAction, SyncEntity, publish as sync_publish,
+};
 
 /// One extraction op emitted by the LLM.
 #[derive(Debug, Deserialize)]
@@ -263,6 +266,15 @@ async fn apply_add(
         .await
         .map_err(AppError::database_error)?;
     }
+    // Background path: notify the user's other devices to refresh the
+    // memories list (origin None — not from a request connection).
+    sync_publish(
+        SyncEntity::Memory,
+        SyncAction::Create,
+        new_row.id,
+        Audience::owner(user_id),
+        None,
+    );
     Ok(())
 }
 
@@ -323,6 +335,13 @@ async fn apply_update(
         .await
         .map_err(AppError::database_error)?;
     }
+    sync_publish(
+        SyncEntity::Memory,
+        SyncAction::Update,
+        row.id,
+        Audience::owner(user_id),
+        None,
+    );
     Ok(())
 }
 
@@ -330,7 +349,16 @@ async fn apply_delete(user_id: Uuid, memory_id: Option<Uuid>) -> Result<(), AppE
     let Some(id) = memory_id else {
         return Ok(());
     };
-    let _ = Repos.memory.soft_delete_owned(user_id, id).await?;
+    let deleted = Repos.memory.soft_delete_owned(user_id, id).await?;
+    if deleted {
+        sync_publish(
+            SyncEntity::Memory,
+            SyncAction::Delete,
+            id,
+            Audience::owner(user_id),
+            None,
+        );
+    }
     Ok(())
 }
 

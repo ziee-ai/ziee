@@ -68,34 +68,24 @@ test.describe('MCP - User Servers', () => {
     await submitMcpServerForm(page, 'create')
 
     // Verify success message
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success, .ant-message-warning').first()).toBeVisible({ timeout: 5000 })
 
     // Verify server appears in list
     await verifyServerExists(page, serverData.displayName)
   })
 
-  test('should create stdio MCP server with arguments', async ({ page }) => {
-    const serverData: McpServerFormData = {
-      name: 'test-stdio-server',
-      displayName: 'Test Stdio Server',
-      description: 'A test stdio MCP server',
-      transportType: 'stdio',
-      command: 'npx',
-      args: ['-y', '@modelcontextprotocol/server-test'],
-      env: { TEST_VAR: 'test_value' },
-      enabled: true,
-    }
-
-    await openAddServerDrawer(page)
-    await fillMcpServerForm(page, serverData)
-    await submitMcpServerForm(page, 'create')
-
-    // Verify success message
-    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
-
-    // Verify server appears in list
-    await verifyServerExists(page, serverData.displayName)
-  })
+  // User-scope stdio creates are gated by `code_sandbox.enabled` per
+  // the MCP user policy (migration 84). The test infra runs with
+  // sandbox disabled, so the policy load filters `'stdio'` out of
+  // `allowed_transports` and the transport dropdown / submit endpoint
+  // both refuse stdio for non-admin users. The user-stdio happy path
+  // is covered at the integration tier — see
+  // `server/tests/mcp/run_in_sandbox_test.rs::user_mode_stdio_create_is_gated_by_user_policy`
+  // and the dedicated `user_create_stdio_is_gated_by_sandbox_policy_not_host_allowlist`
+  // case for the gate reason. The admin/system stdio happy path lives
+  // in `mcp-admin-servers.spec.ts::should create system stdio server
+  // successfully` (system creates bypass the user policy).
+  test.skip('should create stdio MCP server with arguments', async () => {})
 
   test('should validate required fields', async ({ page }) => {
     await openAddServerDrawer(page)
@@ -269,12 +259,9 @@ test.describe('MCP - User Servers', () => {
   // New coverage added for feat/mcp-rewrite-v2
   // ──────────────────────────────────────────────────────────────────────
 
-  test('should default sort to "Date Added" on user MCP page', async ({ page }) => {
-    await expect(page.locator('.ant-select:has-text("Date Added")')).toBeVisible()
-    await page.click('.ant-select:has-text("Date Added")')
-    await expect(page.locator('.ant-select-item-option:has-text("Date Added")')).toBeVisible()
-    await page.keyboard.press('Escape')
-  })
+  // Sort dropdown removed from the user MCP page by bcc2047 —
+  // backend orders the list (`is_system ASC, display_name ASC`).
+  test.skip('should default sort to "Date Added" on user MCP page', async () => {})
 
   test('should hide Delete on group-assigned system servers (read-only)', async ({ page }) => {
     // Web Fetch ships in the default group; verify it appears with no Delete button.

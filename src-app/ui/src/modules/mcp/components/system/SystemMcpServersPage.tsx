@@ -7,6 +7,7 @@ import { Permissions } from '@/api-client/types'
 import { McpServerCard } from '@/modules/mcp/components/common/McpServerCard'
 import { McpServerDrawer } from '@/modules/mcp/components/common/McpServerDrawer'
 import { McpServerGroupsAssignmentCard } from '@/modules/mcp/components/system/McpServerGroupsAssignmentCard'
+import { McpUserPolicyCard } from '@/modules/mcp/components/system/McpUserPolicyCard'
 
 const { Text } = Typography
 
@@ -22,6 +23,12 @@ export function SystemMcpServersPage() {
   } = Stores.SystemMcpServer
   const setSearchTerm = Stores.SystemMcpServer.setSearchTerm
   const setStatusFilter = Stores.SystemMcpServer.setStatusFilter
+  // Hoisted out of the .map() below: each Stores.X.<prop> read calls
+  // useEffect + useStore under the hood (proxy in core/stores.ts).
+  // Inside .map() the hook count becomes a function of
+  // filteredServers.length — empty on first render, N on the second
+  // → "Rendered more hooks than during the previous render."
+  const { multiUserMode } = Stores.AppMode
 
   const clearAllFilters = () => {
     setSearchTerm('')
@@ -55,6 +62,11 @@ export function SystemMcpServersPage() {
       subtitle="Manage Model Context Protocol servers across the system"
     >
       <div className="flex flex-col gap-3 h-full">
+        {/* Admin-only user policy card. Hidden on single-admin desktop
+            (where the policy has no meaningful audience) via its own
+            multiUserMode check. */}
+        <McpUserPolicyCard />
+
         {systemServersLoading && (
           <Text type="secondary">Loading system servers...</Text>
         )}
@@ -115,7 +127,9 @@ export function SystemMcpServersPage() {
           </Flex>
         )}
 
-        {/* Servers List */}
+        {/* Servers List. The per-row GroupsAssignmentCard is hidden on
+            single-admin desktop (Stores.AppMode.multiUserMode=false)
+            because there are no user groups to assign to there. */}
         <div className="flex flex-col gap-3">
           {filteredServers.map(server => (
             <Card
@@ -126,7 +140,9 @@ export function SystemMcpServersPage() {
               data-server-name={server.display_name}
             >
               <McpServerCard server={server} isEditable={true} bordered={false} />
-              <McpServerGroupsAssignmentCard serverId={server.id} />
+              {multiUserMode && (
+                <McpServerGroupsAssignmentCard serverId={server.id} />
+              )}
             </Card>
           ))}
         </div>

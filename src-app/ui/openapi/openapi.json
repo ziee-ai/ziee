@@ -1822,11 +1822,11 @@
             }
           },
           "201": {
-            "description": "LLM Repository database entity\n Represents a row in the llm_repositories table",
+            "description": "Wraps a created/updated `LlmRepository` with an optional connection\n warning, used by the create handler when the probe failed and the\n row was auto-downgraded to `enabled: false`. `None` on success\n (probe passed, or `enabled: false` was requested so no probe ran).",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LlmRepository"
+                  "$ref": "#/components/schemas/LlmRepositoryWithHealthWarning"
                 }
               }
             }
@@ -1899,6 +1899,72 @@
           },
           "401": {
             "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/llm-repositories/{repository_id}/test": {
+      "post": {
+        "tags": [
+          "LLM Repositories"
+        ],
+        "summary": "Test an existing repository's connection and record the outcome",
+        "description": "Probe a saved repository's connection. Form overrides in the request body merge over the persisted row; empty secret fields fall back to the saved secret. The outcome is recorded to `last_health_check_*` columns. A currently-enabled row that fails the probe is auto-disabled.",
+        "operationId": "LlmRepository.testById",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLlmRepositoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit existing LLM repository information and authentication",
+                        "name": "LlmRepositoriesEdit",
+                        "value": "llm_repositories::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_repositories::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestRepositoryConnectionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Repository not found"
           }
         },
         "security": [
@@ -5658,7 +5724,7 @@
           "LLM Models - Downloads"
         ],
         "summary": "Subscribe to download progress via SSE",
-        "description": "Real-time Server-Sent Events stream of download progress. Updates every 2 seconds. Auto-closes when no active downloads remain.",
+        "description": "Real-time Server-Sent Events stream of download progress. Updates every 1 second. Auto-closes when no active downloads remain.",
         "operationId": "LlmModel.subscribeDownloadProgress",
         "responses": {
           "403": {
@@ -8351,16 +8417,14 @@
             "bearerAuth": []
           }
         ]
-      }
-    },
-    "/api/conversations/{id}/messages/stream": {
+      },
       "post": {
         "tags": [
           "Chat"
         ],
-        "summary": "Send message and stream AI response",
-        "description": "Send a user message to a conversation and receive the AI response as a Server-Sent Events (SSE) stream. Events include: 'content' (incremental content deltas), 'complete' (stream finished), 'error' (stream error), and extension events like 'titleUpdated'.",
-        "operationId": "Message.sendStream",
+        "summary": "Send a message (fire-and-forget; reply streams over /api/chat/stream)",
+        "description": "Sends a user message and starts the assistant reply, returning the persisted `{userMessageId, assistantMessageId}` immediately. The reply is delivered as live token frames over the per-user `GET /api/chat/stream` (to which the device subscribes for this conversation), and the finished turn is announced via a `sync:conversation` notification so other surfaces refetch.",
+        "operationId": "Message.send",
         "requestBody": {
           "description": "Request to send a message in a conversation\n\n Extensions contribute fields by creating an extension.rs file with a RequestFields struct.\n The build script automatically discovers and registers these extensions.",
           "content": {
@@ -8397,11 +8461,11 @@
             }
           },
           "200": {
-            "description": "SSE event enum for chat streaming\n\n This enum represents all possible Server-Sent Events that can be streamed\n during a chat message request.\n\n # Extension Architecture\n\n **EXTENSIONS SHOULD send their own SSE events** instead of adding fields to ChatStreamChunk.\n Extensions add new event variants through the SSEChatStreamEventVariants enum using\n the compose_chat_stream_events macro.\n\n Example: The title extension sends a separate `TitleUpdated` event instead of\n adding a title field to ChatStreamChunk.\n\n Events are sent with proper `event:` names (e.g., \"started\", \"content\", \"complete\", \"error\", \"titleUpdated\")\n for type-safe client-side handling.",
+            "description": "Response to a fire-and-forget send: the persisted message ids. The assistant\n reply arrives as live frames over `GET /api/chat/stream` (tokens), and the\n finished turn lands via `sync:conversation` + refetch.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SSEChatStreamEvent"
+                  "$ref": "#/components/schemas/SendMessageResponse"
                 }
               }
             }
@@ -8411,6 +8475,55 @@
           },
           "401": {
             "description": "no content"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/messages/{assistant_message_id}/stop": {
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Stop an in-flight assistant generation",
+        "description": "Cancels the detached generation for the given assistant message. A `complete` frame with `finishReason: cancelled` is emitted on the chat-token stream.",
+        "operationId": "Message.stopGeneration",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Send messages in conversations",
+                        "name": "MessagesCreate",
+                        "value": "messages::create"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: messages::create",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Cancellation requested"
+          },
+          "404": {
+            "description": "Message not found"
+          },
+          "409": {
+            "description": "No in-flight generation to stop"
           }
         },
         "security": [
@@ -8810,6 +8923,122 @@
           },
           "401": {
             "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/chat/stream": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Subscribe to live assistant-token frames via SSE",
+        "description": "Per-user Server-Sent Events stream of live chat generation frames (`started`/`content`/`complete`/`error`), each tagged with its `conversationId`. The first frame (`connected`) carries a connection id to echo as `X-Chat-Stream-Connection-Id` on `PUT /api/chat/stream/subscription`, which scopes delivery to the one conversation the device is viewing (and replays the reply-so-far if it is mid-generation).",
+        "operationId": "ChatStream.subscribe",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View own profile information",
+                        "name": "ProfileRead",
+                        "value": "profile::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: profile::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "A documentation-only union of everything that can cross the stream, so the\n frame + handshake shapes surface in the generated OpenAPI/TS types. The\n real wire frames are built via [`ChatStreamFrame::to_sse`] /\n [`connected_event`] (which keep the inner event name on the `event:` line).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatStreamSseEvent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "429": {
+            "description": "Too many open chat-stream connections"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/chat/stream/subscription": {
+      "put": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Scope a chat-stream connection to one conversation",
+        "description": "Sets which conversation's live tokens the calling chat-stream connection (identified by the `X-Chat-Stream-Connection-Id` header) receives. `conversationId: null` unsubscribes. If the target conversation is mid-generation its reply-so-far is replayed.",
+        "operationId": "ChatStream.setSubscription",
+        "requestBody": {
+          "description": "Body of `PUT /api/chat/stream/subscription`: the conversation whose live\n tokens this connection wants (or `null` to receive nothing).",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetSubscriptionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View own profile information",
+                        "name": "ProfileRead",
+                        "value": "profile::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: profile::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Subscription updated"
+          },
+          "400": {
+            "description": "Missing connection id"
+          },
+          "404": {
+            "description": "Conversation not found"
           }
         },
         "security": [
@@ -9859,6 +10088,124 @@
         ]
       }
     },
+    "/api/mcp/user-policy": {
+      "get": {
+        "tags": [
+          "MCP Servers - User Policy"
+        ],
+        "summary": "Get MCP user policy",
+        "description": "Read the global MCP user policy. Gated on `mcp_servers::read` — the UI uses this to gate the Add button on /settings/mcp-servers and the visibility of the MCP tab in the Hub for users who can read MCP servers but don't have admin install rights.",
+        "operationId": "McpUserPolicy.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View MCP servers",
+                        "name": "McpServersRead",
+                        "value": "mcp_servers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "The global MCP user-policy row (singleton; id always = 1 in the DB).\n\n Drives what regular users can install:\n   - `allowed_transports == []` → no Add button, no Hub MCP tab for\n     non-admins.\n   - `'stdio' ∈ allowed_transports` → user-installed stdio MCP rows\n     get `run_in_sandbox = true` + `sandbox_flavor =\n     user_stdio_sandbox_flavor` force-applied at create/update time.\n\n Admin-only edits via PUT /api/mcp/user-policy (perm\n `McpUserPolicyEdit`); read is open to any authenticated user (the\n UI needs it to gate the Add button + Hub tab visibility).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpUserPolicy"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "MCP Servers - User Policy"
+        ],
+        "summary": "Update MCP user policy",
+        "description": "Update the global MCP user policy: which transports regular users may install (subset of {\"http\",\"stdio\"}) and, when stdio is allowed, which sandbox flavor user-installed stdio servers must run inside. 422 on validation errors (MCP_INVALID_TRANSPORT, MCP_FLAVOR_REQUIRED, MCP_UNKNOWN_FLAVOR, MCP_SANDBOX_DISABLED).",
+        "operationId": "McpUserPolicy.update",
+        "requestBody": {
+          "description": "PUT body. `updated_by` is taken from the auth context, not the\n request.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMcpUserPolicyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit MCP user policy (allowed transports + sandbox flavor)",
+                        "name": "McpUserPolicyEdit",
+                        "value": "mcp_user_policy::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_user_policy::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "The global MCP user-policy row (singleton; id always = 1 in the DB).\n\n Drives what regular users can install:\n   - `allowed_transports == []` → no Add button, no Hub MCP tab for\n     non-admins.\n   - `'stdio' ∈ allowed_transports` → user-installed stdio MCP rows\n     get `run_in_sandbox = true` + `sandbox_flavor =\n     user_stdio_sandbox_flavor` force-applied at create/update time.\n\n Admin-only edits via PUT /api/mcp/user-policy (perm\n `McpUserPolicyEdit`); read is open to any authenticated user (the\n UI needs it to gate the Add button + Hub tab visibility).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpUserPolicy"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/mcp/system-servers": {
       "get": {
         "tags": [
@@ -10742,7 +11089,7 @@
           "Code Sandbox"
         ],
         "summary": "List selectable sandbox rootfs flavors + host command allowlist",
-        "description": "Powers the MCP server form's sandbox flavor picker. Returns the KNOWN_FLAVORS catalog (name / description / approximate size / cached) plus the host-path command allowlist a non-sandboxed stdio server must use.",
+        "description": "Powers the MCP server form's sandbox flavor picker AND the MCP user-policy admin card's flavor select. Returns the KNOWN_FLAVORS catalog (name / description / approximate size / cached) plus the host-path command allowlist a non-sandboxed stdio server must use.",
         "operationId": "CodeSandbox.listFlavors",
         "responses": {
           "403": {
@@ -13696,6 +14043,62 @@
           }
         }
       }
+    },
+    "/api/sync/subscribe": {
+      "get": {
+        "tags": [
+          "Sync"
+        ],
+        "summary": "Subscribe to realtime cross-device sync events via SSE",
+        "description": "Server-Sent Events stream of `{entity, action, id}` change notifications scoped to the authenticated user (and the permission-/group-visibility rules per entity). The client refetches the changed entity via its normal REST endpoint, so no row data crosses this channel. The first frame (`connected`) carries a connection id to echo back as `X-Sync-Connection-Id` on mutations for self-echo suppression. The stream closes when the access token expires or the account loses access.",
+        "operationId": "Sync.subscribe",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View own profile information",
+                        "name": "ProfileRead",
+                        "value": "profile::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: profile::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncSseEvent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "429": {
+            "description": "Too many open sync connections"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -14373,6 +14776,75 @@
             ]
           }
         }
+      },
+      "ChatStreamConnectedData": {
+        "description": "Handshake frame opening the stream: the server-assigned connection id, which\n the client echoes on `PUT /api/chat/stream/subscription` to scope delivery.",
+        "type": "object",
+        "properties": {
+          "connectionId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "connectionId"
+        ]
+      },
+      "ChatStreamFrame": {
+        "description": "One generation frame, tagged with the conversation it belongs to. The inner\n `event` is the unchanged per-request `SSEChatStreamEvent`; the envelope only\n adds the routing key (today's `ChatStreamChunk.conversation_id` is sent only\n on the first content chunk, which is ambiguous on a multiplexed stream).",
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "event": {
+            "$ref": "#/components/schemas/SSEChatStreamEvent"
+          }
+        },
+        "required": [
+          "conversationId",
+          "event"
+        ]
+      },
+      "ChatStreamSseEvent": {
+        "description": "A documentation-only union of everything that can cross the stream, so the\n frame + handshake shapes surface in the generated OpenAPI/TS types. The\n real wire frames are built via [`ChatStreamFrame::to_sse`] /\n [`connected_event`] (which keep the inner event name on the `event:` line).",
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "connected"
+              }
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ChatStreamConnectedData"
+              }
+            ],
+            "required": [
+              "kind"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "frame"
+              }
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ChatStreamFrame"
+              }
+            ],
+            "required": [
+              "kind"
+            ]
+          }
+        ]
       },
       "CodeSandboxResourceLimits": {
         "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
@@ -15301,6 +15773,13 @@
               "$ref": "#/components/schemas/HeaderEntry"
             }
           },
+          "hub_id": {
+            "description": "Optional Hub identifier — when set, the create handler also\n records the install in `hub_entities` so the Hub card's\n \"already installed\" badge keeps working. Set by the UI when\n the drawer was opened via \"Install\" / \"Install for the system\"\n on a hub MCP card; null for direct-add. Type matches the\n existing `CreateMcpServerFromHubRequest::hub_id` (catalog\n slug string, not a UUID).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "max_concurrent_sessions": {
             "type": [
               "integer",
@@ -15312,14 +15791,14 @@
             "type": "string"
           },
           "run_in_sandbox": {
-            "description": "Admin/system stdio servers only: launch inside the\n code_sandbox bwrap isolation. See `McpServer::run_in_sandbox`.",
+            "description": "Launch the stdio subprocess inside the code_sandbox bwrap\n isolation. The user-create handler force-sets this to `true`\n for user-owned stdio servers per the active MCP user policy\n (any client value is ignored). Admins may set it freely on\n system stdio servers via the drawer toggle.",
             "type": [
               "boolean",
               "null"
             ]
           },
           "sandbox_flavor": {
-            "description": "Rootfs flavor (KNOWN_FLAVORS) for the sandboxed launch. Defaults\n to `full` when absent. See `McpServer::sandbox_flavor`.",
+            "description": "Rootfs flavor (KNOWN_FLAVORS, e.g. \"minimal\" / \"full\") for the\n sandboxed launch. None → handler-picks default ('full' on\n fresh rows; the user-create handler force-overrides this with\n the active `mcp_user_policy.user_stdio_sandbox_flavor` for\n user-owned stdio regardless of what the client sent).",
             "type": [
               "string",
               "null"
@@ -19073,6 +19552,23 @@
             "type": "string",
             "format": "uuid"
           },
+          "last_health_check_at": {
+            "description": "Connection-health columns (migration 83). Populated by\n `connection_health::probe` at four points: boot startup\n check, create-flow probe, update-flow enable-transition\n probe, and the explicit form-based test path.\n `last_health_check_at` is NULL on rows that have never been\n probed (default status \"untested\"). UI renders an Alert\n when `last_health_check_status == \"unhealthy\"`.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_health_check_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_health_check_status": {
+            "type": "string"
+          },
           "name": {
             "type": "string"
           },
@@ -19093,7 +19589,8 @@
           "enabled",
           "built_in",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "last_health_check_status"
         ]
       },
       "LlmRepositoryListResponse": {
@@ -19123,6 +19620,81 @@
           "total",
           "page",
           "per_page"
+        ]
+      },
+      "LlmRepositoryWithHealthWarning": {
+        "description": "Wraps a created/updated `LlmRepository` with an optional connection\n warning, used by the create handler when the probe failed and the\n row was auto-downgraded to `enabled: false`. `None` on success\n (probe passed, or `enabled: false` was requested so no probe ran).",
+        "type": "object",
+        "properties": {
+          "auth_config": {
+            "$ref": "#/components/schemas/RepositoryAuthConfig"
+          },
+          "auth_type": {
+            "type": "string"
+          },
+          "built_in": {
+            "type": "boolean"
+          },
+          "connection_warning": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProbeFailure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "last_health_check_at": {
+            "description": "Connection-health columns (migration 83). Populated by\n `connection_health::probe` at four points: boot startup\n check, create-flow probe, update-flow enable-transition\n probe, and the explicit form-based test path.\n `last_health_check_at` is NULL on rows that have never been\n probed (default status \"untested\"). UI renders an Alert\n when `last_health_check_status == \"unhealthy\"`.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_health_check_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_health_check_status": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "url",
+          "auth_type",
+          "auth_config",
+          "enabled",
+          "built_in",
+          "created_at",
+          "updated_at",
+          "last_health_check_status"
         ]
       },
       "LoginRequest": {
@@ -19314,11 +19886,11 @@
             "type": "string"
           },
           "run_in_sandbox": {
-            "description": "Admin opt-in: launch the stdio subprocess inside the\n code_sandbox bwrap isolation. Only honored when\n `is_system && transport_type == Stdio` — the spawn path\n ignores it otherwise; the UI hides the toggle for user-owned\n or non-stdio servers. Defaults to false.",
+            "description": "Launch the stdio subprocess inside the code_sandbox bwrap\n isolation. Honored for any `transport_type == Stdio` row (both\n system and user-owned) — the user-create handler force-sets this\n to `true` for user-owned stdio servers per the active MCP user\n policy; admins choose freely on system servers via the drawer\n toggle. The spawn path ignores it for non-stdio servers.",
             "type": "boolean"
           },
           "sandbox_flavor": {
-            "description": "Rootfs flavor (KNOWN_FLAVORS, e.g. `minimal`/`full`) used when\n `run_in_sandbox` launches this stdio server inside the\n code_sandbox. Defaults to `full` (the flavor that ships Node +\n uv + python3 + R). Ignored when not sandboxed.",
+            "description": "Rootfs flavor (KNOWN_FLAVORS, e.g. `minimal`/`full`) used when\n `run_in_sandbox` launches this stdio server inside the\n code_sandbox. Defaults to `full` (the flavor that ships Node +\n uv + python3 + R). Ignored when not sandboxed. For user-owned\n stdio rows the user-create handler force-overwrites this with\n the active `mcp_user_policy.user_stdio_sandbox_flavor` (the\n drawer hides the picker on the user side); admins choose it on\n the system drawer.",
             "type": "string"
           },
           "supports_sampling": {
@@ -19500,22 +20072,160 @@
         "description": "Wraps a created/updated `McpServer` with an optional connection\n warning, used by the create handlers when the probe failed and\n the server was auto-downgraded to `enabled: false`. `None` on\n success (probe passed, or `enabled: false` was requested so no\n probe ran).",
         "type": "object",
         "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "args": true,
+          "command": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "connection_warning": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/ProbeFailure"
+                "$ref": "#/components/schemas/ProbeFailure2"
               },
               {
                 "type": "null"
               }
             ]
           },
-          "server": {
-            "$ref": "#/components/schemas/McpServer"
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "environment_variables": {
+            "description": "FLAT decrypted env-var map. Always populated by the repo with\n the FULLY decrypted values (plain entries merged with the\n decrypted secrets) so internal runtime callsites — stdio\n subprocess spawn, http header `${VAR}` interpolation — keep\n working unchanged. NEVER serialized — the public response\n shape is `environment_variables_entries` with secret values\n redacted to `value: None`.",
+            "writeOnly": true
+          },
+          "environment_variables_entries": {
+            "description": "Public structured view of `environment_variables` for the UI\n form editor. Per-entry secret marker; secret values redacted\n to `None`. Populated by the repo from the triple-column\n storage (`environment_variables` + `environment_variables_encrypted` +\n `environment_variables_secret_keys`).",
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/EnvVarView"
+            }
+          },
+          "headers": {
+            "description": "FLAT decrypted header map. Same write-only semantics as\n `environment_variables` — see that field's doc comment.\n `parse_header_map` runs `${VAR}` interpolation against the\n (decrypted) env map at request-build time.",
+            "writeOnly": true
+          },
+          "headers_entries": {
+            "description": "Public structured view of `headers` for the UI form editor.\n Sibling of `environment_variables_entries`.",
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/HeaderView"
+            }
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_built_in": {
+            "type": "boolean"
+          },
+          "is_system": {
+            "type": "boolean"
+          },
+          "last_health_check_at": {
+            "description": "Persisted result of the last connection probe — populated by\n `connection_health` at boot (startup health check), at\n create-time (post-create probe in `enforce_on_create`), at\n enable-transition time (probe in `enforce_on_update_transition`),\n and on every explicit \"Test Connection\" button press.\n See migration 82.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "default": null
+          },
+          "last_health_check_reason": {
+            "description": "Human reason on unhealthy. `None` on healthy / untested.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "last_health_check_status": {
+            "description": "\"untested\" | \"healthy\" | \"unhealthy\". Defaults to \"untested\"\n for freshly-created rows that have never been probed.",
+            "type": "string",
+            "default": "untested"
+          },
+          "max_concurrent_sessions": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "run_in_sandbox": {
+            "description": "Launch the stdio subprocess inside the code_sandbox bwrap\n isolation. Honored for any `transport_type == Stdio` row (both\n system and user-owned) — the user-create handler force-sets this\n to `true` for user-owned stdio servers per the active MCP user\n policy; admins choose freely on system servers via the drawer\n toggle. The spawn path ignores it for non-stdio servers.",
+            "type": "boolean"
+          },
+          "sandbox_flavor": {
+            "description": "Rootfs flavor (KNOWN_FLAVORS, e.g. `minimal`/`full`) used when\n `run_in_sandbox` launches this stdio server inside the\n code_sandbox. Defaults to `full` (the flavor that ships Node +\n uv + python3 + R). Ignored when not sandboxed. For user-owned\n stdio rows the user-create handler force-overwrites this with\n the active `mcp_user_policy.user_stdio_sandbox_flavor` (the\n drawer hides the picker on the user side); admins choose it on\n the system drawer.",
+            "type": "string"
+          },
+          "supports_sampling": {
+            "type": "boolean"
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "transport_type": {
+            "$ref": "#/components/schemas/TransportType"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "usage_mode": {
+            "$ref": "#/components/schemas/UsageMode"
+          },
+          "user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           }
         },
         "required": [
-          "server"
+          "id",
+          "name",
+          "display_name",
+          "enabled",
+          "is_system",
+          "is_built_in",
+          "transport_type",
+          "args",
+          "timeout_seconds",
+          "supports_sampling",
+          "usage_mode",
+          "run_in_sandbox",
+          "sandbox_flavor",
+          "created_at",
+          "updated_at"
         ]
       },
       "McpSettingsResponse": {
@@ -19532,6 +20242,41 @@
             ]
           }
         }
+      },
+      "McpUserPolicy": {
+        "description": "The global MCP user-policy row (singleton; id always = 1 in the DB).\n\n Drives what regular users can install:\n   - `allowed_transports == []` → no Add button, no Hub MCP tab for\n     non-admins.\n   - `'stdio' ∈ allowed_transports` → user-installed stdio MCP rows\n     get `run_in_sandbox = true` + `sandbox_flavor =\n     user_stdio_sandbox_flavor` force-applied at create/update time.\n\n Admin-only edits via PUT /api/mcp/user-policy (perm\n `McpUserPolicyEdit`); read is open to any authenticated user (the\n UI needs it to gate the Add button + Hub tab visibility).",
+        "type": "object",
+        "properties": {
+          "allowed_transports": {
+            "description": "Subset of `{\"http\", \"stdio\"}`. `sse` is admin-only (not\n exposed in the user-mode drawer dropdown).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "user_stdio_sandbox_flavor": {
+            "description": "Required iff `\"stdio\" ∈ allowed_transports`; must be in\n `code_sandbox::types::KNOWN_FLAVORS`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "allowed_transports",
+          "updated_at"
+        ]
       },
       "MeResponse": {
         "type": "object",
@@ -21027,6 +21772,19 @@
         }
       },
       "ProbeFailure": {
+        "description": "Structured probe failure carrying the underlying reason so the\n caller can surface it (in the API response, in the boot log, or\n in the UI toast).",
+        "type": "object",
+        "properties": {
+          "reason": {
+            "description": "Human-readable reason — taken verbatim from\n `test_repository_connectivity`'s `Err(String)` (timeout / 401 /\n DNS / etc.).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "ProbeFailure2": {
         "description": "Structured probe failure carrying the underlying reason so the\n caller can surface it (in the API response, in the boot log, or\n in the UI toast).",
         "type": "object",
         "properties": {
@@ -23041,6 +23799,27 @@
           "branch_id"
         ]
       },
+      "SendMessageResponse": {
+        "description": "Response to a fire-and-forget send: the persisted message ids. The assistant\n reply arrives as live frames over `GET /api/chat/stream` (tokens), and the\n finished turn lands via `sync:conversation` + refetch.",
+        "type": "object",
+        "properties": {
+          "assistant_message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "user_message_id": {
+            "description": "None if an extension suppressed the user message (e.g. tool-approval resume).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "assistant_message_id"
+        ]
+      },
       "ServerGroupsRequest": {
         "type": "object",
         "properties": {
@@ -23111,6 +23890,19 @@
           "swap",
           "status"
         ]
+      },
+      "SetSubscriptionRequest": {
+        "description": "Body of `PUT /api/chat/stream/subscription`: the conversation whose live\n tokens this connection wants (or `null` to receive nothing).",
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        }
       },
       "SetupAdminRequest": {
         "type": "object",
@@ -23249,6 +24041,15 @@
           "restarted"
         ]
       },
+      "SyncAction": {
+        "description": "What happened to the entity.",
+        "type": "string",
+        "enum": [
+          "create",
+          "update",
+          "delete"
+        ]
+      },
       "SyncCacheResponse": {
         "description": "Response after syncing cache with database",
         "type": "object",
@@ -23265,6 +24066,181 @@
         "required": [
           "synced_count",
           "message"
+        ]
+      },
+      "SyncConnectedData": {
+        "description": "Handshake payload: the server-assigned connection id. The client\n echoes it back via the `X-Sync-Connection-Id` header on mutations so\n the fan-out can skip the originating connection (self-echo suppression).",
+        "type": "object",
+        "properties": {
+          "connection_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "connection_id"
+        ]
+      },
+      "SyncEntity": {
+        "description": "The kind of entity that changed. Serialized snake_case to match the\n frontend's `sync:<entity>` event vocabulary.\n\n ADD a variant here when wiring a new domain: `audience_kind`'s match\n is exhaustive, so the build fails until the new entity is assigned an\n audience — a new syncable entity can never silently default to a\n broadcast (the dangerous default becomes a compile error, not a leak).",
+        "oneOf": [
+          {
+            "type": "string",
+            "enum": [
+              "project",
+              "memory",
+              "memory_settings"
+            ]
+          },
+          {
+            "description": "A user-created assistant (NOT a system template — that's a separate\n entity with a different audience).",
+            "type": "string",
+            "const": "assistant"
+          },
+          {
+            "description": "A user-owned MCP server (NOT a system/group-shared server).",
+            "type": "string",
+            "const": "mcp_server"
+          },
+          {
+            "description": "A user's own profile (display fields / active state). Emitted to the\n affected user — e.g. when an admin edits their account — so their\n other devices re-bootstrap `/auth/me`.",
+            "type": "string",
+            "const": "profile"
+          },
+          {
+            "description": "A user's saved LLM-provider API key (`id` is the provider id; only\n masked state is ever exposed, and only via refetch).",
+            "type": "string",
+            "const": "api_key"
+          },
+          {
+            "description": "A chat conversation owned by the user. `id` is the conversation id.\n Emitted on create/rename/delete, on each completed message turn, and on\n branch/message edits — the recipient refetches the list and (if open)\n the conversation's messages. Live assistant TOKENS do NOT ride this\n stream; they go over the dedicated `chat/stream` token channel.",
+            "type": "string",
+            "const": "conversation"
+          },
+          {
+            "description": "Admin view of an LLM provider (full admin provider table).",
+            "type": "string",
+            "const": "llm_provider"
+          },
+          {
+            "description": "Admin view of an LLM model.",
+            "type": "string",
+            "const": "llm_model"
+          },
+          {
+            "description": "A user group (admin tables; includes group permissions).",
+            "type": "string",
+            "const": "group"
+          },
+          {
+            "description": "A user account (admin users list).",
+            "type": "string",
+            "const": "user"
+          },
+          {
+            "description": "A shared assistant template (visible to any user who can read\n templates — non-secret, uniform view).",
+            "type": "string",
+            "const": "assistant_template"
+          },
+          {
+            "description": "Admin view of a system (deployment-shared) MCP server.",
+            "type": "string",
+            "const": "mcp_server_system"
+          },
+          {
+            "description": "An LLM repository (admin).",
+            "type": "string",
+            "const": "llm_repository"
+          },
+          {
+            "description": "A local-runtime engine version (admin).",
+            "type": "string",
+            "const": "runtime_version"
+          },
+          {
+            "description": "Deployment-wide local-runtime engine settings (singleton).",
+            "type": "string",
+            "const": "runtime_settings"
+          },
+          {
+            "description": "Deployment-wide memory admin settings (singleton).",
+            "type": "string",
+            "const": "memory_admin_settings"
+          },
+          {
+            "description": "Code-sandbox resource-limit settings (singleton).",
+            "type": "string",
+            "const": "code_sandbox_settings"
+          },
+          {
+            "description": "Hub catalog settings (singleton).",
+            "type": "string",
+            "const": "hub_settings"
+          },
+          {
+            "description": "A user's accessible-providers (with enabled models) view changed.",
+            "type": "string",
+            "const": "user_llm_provider"
+          },
+          {
+            "description": "A user's accessible (system) MCP-servers view changed.",
+            "type": "string",
+            "const": "user_mcp_server"
+          },
+          {
+            "description": "The user's session/permissions changed (group membership or a group's\n permissions were edited) — the client re-bootstraps `/auth/me`. `id`\n is the affected user id.",
+            "type": "string",
+            "const": "session"
+          }
+        ]
+      },
+      "SyncEvent": {
+        "description": "The change notification pushed to clients. Notify-and-refetch only.",
+        "type": "object",
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/SyncAction"
+          },
+          "entity": {
+            "$ref": "#/components/schemas/SyncEntity"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "entity",
+          "action",
+          "id"
+        ]
+      },
+      "SyncSseEvent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "connected": {
+                "$ref": "#/components/schemas/SyncConnectedData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "connected"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sync": {
+                "$ref": "#/components/schemas/SyncEvent"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "sync"
+            ]
+          }
         ]
       },
       "TaskStatus": {
@@ -24198,14 +25174,14 @@
             ]
           },
           "run_in_sandbox": {
-            "description": "Admin/system stdio servers only: launch inside the\n code_sandbox bwrap isolation. See `McpServer::run_in_sandbox`.",
+            "description": "Launch the stdio subprocess inside the code_sandbox bwrap\n isolation. Same force-set semantics as\n [`CreateMcpServerRequest::run_in_sandbox`].",
             "type": [
               "boolean",
               "null"
             ]
           },
           "sandbox_flavor": {
-            "description": "Rootfs flavor (KNOWN_FLAVORS) for the sandboxed launch. Defaults\n to `full` when absent. See `McpServer::sandbox_flavor`.",
+            "description": "Rootfs flavor (KNOWN_FLAVORS, e.g. \"minimal\" / \"full\") for the\n sandboxed launch. Same force-override semantics as\n [`CreateMcpServerRequest::sandbox_flavor`].",
             "type": [
               "string",
               "null"
@@ -24241,6 +25217,27 @@
             ]
           }
         }
+      },
+      "UpdateMcpUserPolicyRequest": {
+        "description": "PUT body. `updated_by` is taken from the auth context, not the\n request.",
+        "type": "object",
+        "properties": {
+          "allowed_transports": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "user_stdio_sandbox_flavor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "allowed_transports"
+        ]
       },
       "UpdateMemoryAdminSettingsRequest": {
         "description": "Admin settings update body.\n\n The `Option<Option<T>>` pattern on nullable columns means: outer\n `None` = leave the field unchanged, `Some(None)` = clear to NULL\n (use the compiled-in default for prompts, or \"no default\" for\n embedding/extraction models), `Some(Some(x))` = set to `x`.\n\n Serde's default `Option<T>` deserialization collapses `null` and\n \"absent\" to the same `None`, so the discriminating \"Some(None)\"\n state requires a custom deserializer — see\n `deserialize_nullable_field` below.",

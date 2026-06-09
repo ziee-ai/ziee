@@ -32,7 +32,6 @@ fn arch() -> &'static str {
 }
 
 #[test]
-#[ignore = "needs docker daemon"]
 fn runs_in_distroless_static() {
     require_docker();
     let bin: PathBuf = env!("CARGO_BIN_EXE_ziee").into();
@@ -60,7 +59,6 @@ fn runs_in_distroless_static() {
 }
 
 #[test]
-#[ignore = "needs docker daemon + privileges for bwrap/squashfuse"]
 fn runs_in_alpine_with_sandbox_prereqs() {
     require_docker();
     let bin: PathBuf = env!("CARGO_BIN_EXE_ziee").into();

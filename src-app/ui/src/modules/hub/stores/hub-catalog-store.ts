@@ -4,13 +4,16 @@ import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
 import type {
   Catalog,
-  HubCategory,
   HubCatalogVersionResponse,
+  HubCategory,
   HubReleaseInfo,
   IndexItem,
 } from '@/api-client/types'
-import { useHubModelsStore } from '@/modules/hub/modules/llm-models/stores/hub-models-store'
+import { Permissions } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
+import { Stores } from '@/core/stores'
 import { useHubAssistantsStore } from '@/modules/hub/modules/assistants/stores/hub-assistants-store'
+import { useHubModelsStore } from '@/modules/hub/modules/llm-models/stores/hub-models-store'
 import { useHubMcpServersStore } from '@/modules/hub/modules/mcp/stores/hub-mcp-servers-store'
 
 /**
@@ -22,7 +25,23 @@ import { useHubMcpServersStore } from '@/modules/hub/modules/mcp/stores/hub-mcp-
  * version. The per-category endpoints serve from the rotated `current/`
  * dir, so a reload picks up the switch.
  */
-async function reloadAllTabs(): Promise<void> {
+export async function reloadAllTabs(): Promise<void> {
+  // Self-gate: this refetch calls loadModels + loadAssistants + loadServers,
+  // none of which self-gate. `hub::models::read` is admin-only (migration 37
+  // removed it from the Users group), so a non-admin reconnect would 403 on
+  // `GET /hub/models` without this guard. (NOT `hub::catalog::read` — that's
+  // the admin catalog-settings perm, unrelated to the three tab reads here.)
+  if (
+    !hasPermissionNow({
+      allOf: [
+        Permissions.HubModelsRead,
+        Permissions.HubAssistantsRead,
+        Permissions.HubMCPServersRead,
+      ],
+    })
+  ) {
+    return
+  }
   await Promise.allSettled([
     useHubModelsStore.getState().loadModels(true),
     useHubAssistantsStore.getState().loadAssistants(true),
@@ -65,11 +84,14 @@ interface HubCatalogState {
 
   // Lazy initialization
   __init__: {
+    __store__?: () => void
     catalog: () => Promise<void>
     serverVersion: () => Promise<void>
     hubVersion: () => Promise<void>
     counts: () => Promise<void>
   }
+
+  __destroy__?: () => void
 }
 
 export const useHubCatalogStore = create<HubCatalogState>()(
@@ -169,7 +191,9 @@ export const useHubCatalogStore = create<HubCatalogState>()(
         activateVersion: async (version: string | null) => {
           set({ activating: true, error: null })
           try {
-            await ApiClient.Hub.activateVersion({ version: version ?? undefined })
+            await ApiClient.Hub.activateVersion({
+              version: version ?? undefined,
+            })
             await get().loadCatalog(true)
             await get().loadVersion()
             await get().loadReleases()
@@ -191,10 +215,45 @@ export const useHubCatalogStore = create<HubCatalogState>()(
         },
 
         __init__: {
+          __store__: () => {
+            const eventBus = Stores.EventBus
+            const GROUP = 'HubCatalogStore'
+
+            // The hub catalog version was pinned/refreshed (singleton; event
+            // id is nil). Refetch the version + releases AND reload every
+            // hub category tab so stale per-category lists pick up the new
+            // catalog. `reloadAllTabs` self-gates on the perms it needs, so
+            // a non-admin reconnect won't 403; `loadVersion` is gated on
+            // the user being able to see /api/hub/version (admins always).
+            //
+            // The mirror-action `activateVersion` in this same store already
+            // calls loadVersion/loadReleases/reloadAllTabs after a local
+            // mutation; this handler is the cross-device equivalent so it
+            // must run the same trio — otherwise device B's VersionPicker
+            // tag stays pinned at the pre-activate string even though the
+            // backend (and tab contents) have moved on.
+            const handleHubSettingsChange = () => {
+              void get().loadVersion()
+              // releases list is admin-only and lazy — only reload if it
+              // was previously populated (no point firing a 403 for a
+              // user without hub::catalog::manage who happens to be
+              // subscribed via hub::catalog::read).
+              if (get().releases.length > 0) {
+                void get().loadReleases()
+              }
+              void reloadAllTabs()
+            }
+            eventBus.on('sync:hub_settings', handleHubSettingsChange, GROUP)
+            eventBus.on('sync:reconnect', handleHubSettingsChange, GROUP)
+          },
           catalog: () => get().loadCatalog(),
           serverVersion: () => get().loadVersion(),
           hubVersion: () => get().loadVersion(),
           counts: () => get().loadVersion(),
+        },
+
+        __destroy__: () => {
+          Stores.EventBus.removeGroupListeners('HubCatalogStore')
         },
       }),
     ),
@@ -242,7 +301,10 @@ function semverCompare(a: string, b: string): number {
  * (and the install endpoint rejects them server-side). Returns `ok`
  * when the server version hasn't loaded yet so nothing flickers hidden.
  */
-export function compatOf(item: IndexItem, serverVersion: string | null): Compat {
+export function compatOf(
+  item: IndexItem,
+  serverVersion: string | null,
+): Compat {
   if (!item.min_ziee_version) return { status: 'ok' }
   if (!serverVersion) return { status: 'ok' } // not loaded yet — don't gate
   return semverCompare(serverVersion, item.min_ziee_version) >= 0

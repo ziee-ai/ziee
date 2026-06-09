@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, Dropdown, Tag, Tooltip, message } from 'antd'
+import { App, Button, Dropdown, Tag, Tooltip } from 'antd'
 import { DownOutlined, CheckOutlined } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import { Stores } from '@/core/stores'
@@ -13,6 +13,7 @@ const TRACK_LATEST_KEY = '__latest__'
  * see this — HubPage renders a read-only Tag instead.
  */
 export function VersionPicker() {
+  const { message } = App.useApp()
   const releases = Stores.HubCatalog.releases
   const activeVersion = Stores.HubCatalog.activeVersion
   const pinnedVersion = Stores.HubCatalog.pinnedVersion

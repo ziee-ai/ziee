@@ -53,6 +53,11 @@ impl StreamingService {
         user_id: Uuid,
         request: SendMessageRequest,
     ) -> Result<(
+        // The persisted ids (available synchronously, before generation runs):
+        // the user message (None if an extension suppressed it) + the assistant
+        // message the reply streams into.
+        Option<Uuid>,
+        Uuid,
         Pin<Box<dyn Stream<Item = Result<ChatStreamChunk, AppError>> + Send>>,
         tokio::sync::mpsc::UnboundedReceiver<Result<axum::response::sse::Event, std::convert::Infallible>>,
     ), AppError>
@@ -157,24 +162,12 @@ impl StreamingService {
         // Create channel for streaming output
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
-        // Create channel for extension events (SSE)
+        // Create channel for extension events (titleUpdated / MCP tool events) —
+        // raw SSE `Event`s. The detached consumer in `start_generation` forwards
+        // each onto the chat-token stream via `publish_raw_event`. The `started`
+        // frame is emitted by that consumer (it has the ids), so it is NOT sent
+        // here.
         let (ext_tx, ext_rx) = tokio::sync::mpsc::unbounded_channel();
-
-        // Emit 'started' event BEFORE loop
-        // This event communicates message IDs to client before content streaming begins
-        {
-            use crate::modules::chat::core::types::streaming::{SSEChatStreamEvent, SSEChatStreamStartedData};
-
-            let started_event = SSEChatStreamEvent::Started(SSEChatStreamStartedData {
-                user_message_id,
-                conversation_id,
-                branch_id,
-            });
-
-            if let Err(e) = ext_tx.send(Ok(started_event.into())) {
-                return Err(AppError::internal_error(format!("Failed to send started event: {:?}", e)));
-            }
-        }
 
         // Clone data for spawned task
         let pool = self.pool.clone();
@@ -252,8 +245,13 @@ impl StreamingService {
                             let mut content_data = match content.parse_content() {
                                 Ok(d) => d,
                                 Err(e) => {
+                                    // Fatal: corrupt content can't be enriched.
+                                    // Surface the error and stop the whole task — a
+                                    // bare `break` exits only this inner loop and
+                                    // would wastefully keep generating off
+                                    // partially-processed history.
                                     let _ = tx.send(Err(e));
-                                    break;
+                                    return;
                                 }
                             };
 
@@ -263,7 +261,7 @@ impl StreamingService {
                                 .await
                             {
                                 let _ = tx.send(Err(e));
-                                break;
+                                return;
                             }
 
                             // Update content in history
@@ -500,7 +498,12 @@ impl StreamingService {
                             match acc.process_chunk(ai_chunk).await {
                                 Ok(output_chunk) => {
                                     if tx.send(Ok(output_chunk)).is_err() {
-                                        // Channel closed, stop streaming
+                                        // Receiver dropped mid-stream — the consumer
+                                        // cancelled (or panicked). Persist whatever was
+                                        // accumulated so the message isn't saved empty;
+                                        // `finalize()` is idempotent via its `finalized`
+                                        // flag, so this never double-writes.
+                                        let _ = acc.finalize().await;
                                         return;
                                     }
                                 }
@@ -672,8 +675,209 @@ impl StreamingService {
             // No need for post-loop handling - this prevents duplicate complete events
         });
 
-        // Return channel receiver as stream and extension event receiver
-        Ok((Box::pin(UnboundedReceiverStream::new(rx)), ext_rx))
+        // Return the persisted ids + the channel receiver as a stream + the
+        // extension event receiver. The generation runs detached in the spawned
+        // task above; ids are known synchronously.
+        Ok((
+            user_message_id,
+            assistant_message_id,
+            Box::pin(UnboundedReceiverStream::new(rx)),
+            ext_rx,
+        ))
+    }
+
+    /// Fire-and-forget send: persist the user + assistant messages, return their
+    /// ids immediately, and drive generation in a DETACHED consumer task that
+    /// pushes live frames to the per-user chat-token stream (scoped to the
+    /// subscribers of this conversation) instead of a response stream. The
+    /// generation runs to completion even if the sender disconnects.
+    pub async fn start_generation(
+        &self,
+        branch_id: Uuid,
+        conversation_id: Uuid,
+        user_id: Uuid,
+        origin_conn: Option<Uuid>,
+        request: SendMessageRequest,
+    ) -> Result<(Option<Uuid>, Uuid), AppError> {
+        use crate::modules::chat::core::types::streaming::{
+            SSEChatStreamCompleteData, SSEChatStreamErrorData, SSEChatStreamEvent,
+            SSEChatStreamStartedData,
+        };
+        use crate::modules::chat::stream::{ChatStreamFrame, publish_frame};
+        use crate::utils::cancellation::CANCELLATION_TRACKER;
+        use futures_util::StreamExt as _;
+
+        // Serialize: at most ONE in-flight generation per conversation. The
+        // replay buffer is keyed by conversation and carries no message id to
+        // demux two concurrent turns, so a second send (rapid double-send /
+        // edit-while-generating) is rejected rather than corrupting the buffer.
+        if !crate::modules::chat::stream::begin_generation(conversation_id) {
+            return Err(AppError::new(
+                axum::http::StatusCode::CONFLICT,
+                "GENERATION_IN_PROGRESS",
+                "A reply is already being generated for this conversation",
+            ));
+        }
+
+        let (user_message_id, assistant_message_id, mut chunk_stream, mut ext_rx) =
+            match self
+                .send_message(branch_id, conversation_id, user_id, request)
+                .await
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    // Setup failed before the streaming loop — release the slot.
+                    crate::modules::chat::stream::end_generation(conversation_id);
+                    return Err(e);
+                }
+            };
+
+        // Stop-generation token, keyed by the assistant message id.
+        let cancel_token = CANCELLATION_TRACKER.create_token(assistant_message_id).await;
+        let owner_id = user_id;
+
+        tokio::spawn(async move {
+            // Backstop: if we never emit a terminal frame (panic / early exit),
+            // the guard emits an Error (dropping the replay buffer) AND removes
+            // the cancellation token, on every unwind path.
+            let mut guard = TerminalGuard {
+                owner_id,
+                conversation_id,
+                assistant_message_id,
+                done: false,
+            };
+
+            let mut ext_open = true;
+
+            // `started` frame — seeds the message on receiving devices and opens
+            // the replay buffer for mid-stream join.
+            publish_frame(
+                owner_id,
+                ChatStreamFrame::new(
+                    conversation_id,
+                    SSEChatStreamEvent::Started(SSEChatStreamStartedData {
+                        user_message_id,
+                        conversation_id,
+                        branch_id,
+                    }),
+                ),
+            );
+
+            let mut cancelled = false;
+            loop {
+                tokio::select! {
+                    maybe = chunk_stream.next() => match maybe {
+                        Some(Ok(chunk)) => {
+                            let terminal = chunk.finish_reason.is_some();
+                            let event = if terminal {
+                                SSEChatStreamEvent::Complete(SSEChatStreamCompleteData {
+                                    finish_reason: chunk.finish_reason.clone().unwrap_or_default(),
+                                    usage: chunk.usage.clone(),
+                                })
+                            } else {
+                                SSEChatStreamEvent::Content(chunk)
+                            };
+                            publish_frame(owner_id, ChatStreamFrame::new(conversation_id, event));
+                            if terminal {
+                                guard.done = true;
+                                break;
+                            }
+                        }
+                        Some(Err(e)) => {
+                            publish_frame(owner_id, ChatStreamFrame::new(
+                                conversation_id,
+                                SSEChatStreamEvent::Error(SSEChatStreamErrorData {
+                                    message: e.to_string(),
+                                    code: Some("STREAM_ERROR".into()),
+                                }),
+                            ));
+                            guard.done = true;
+                            break;
+                        }
+                        None => {
+                            // The generation task ended without a terminal chunk.
+                            // Every error path inside it sends an `Err` first (→ the
+                            // arm above), so reaching `None` means a genuinely
+                            // unexpected end (e.g. an early return / panic) — surface
+                            // it as an error rather than silently completing.
+                            publish_frame(owner_id, ChatStreamFrame::new(
+                                conversation_id,
+                                SSEChatStreamEvent::Error(SSEChatStreamErrorData {
+                                    message: "Generation ended unexpectedly".into(),
+                                    code: Some("STREAM_CLOSED".into()),
+                                }),
+                            ));
+                            guard.done = true;
+                            break;
+                        }
+                    },
+                    // Forward extension events (titleUpdated, MCP tool start/
+                    // complete/progress, approval/elicitation prompts, artifacts)
+                    // — raw SSE events — onto the same per-conversation token
+                    // stream so the human-in-the-loop tool gate + tool cards
+                    // still work. The client routes them to whichever
+                    // conversation the connection is subscribed to.
+                    maybe_ext = ext_rx.recv(), if ext_open => match maybe_ext {
+                        Some(Ok(raw)) => {
+                            crate::modules::chat::stream::publish_raw_event(
+                                owner_id,
+                                conversation_id,
+                                raw,
+                            );
+                        }
+                        _ => ext_open = false,
+                    },
+                    _ = tokio::time::sleep(std::time::Duration::from_millis(250)) => {
+                        if cancel_token.is_cancelled().await {
+                            cancelled = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if cancelled {
+                publish_frame(owner_id, ChatStreamFrame::new(
+                    conversation_id,
+                    SSEChatStreamEvent::Complete(SSEChatStreamCompleteData {
+                        finish_reason: "cancelled".into(),
+                        usage: None,
+                    }),
+                ));
+                guard.done = true;
+                // Dropping the chunk stream closes the generation's output
+                // channel, stopping the still-running generation on its next send.
+                drop(chunk_stream);
+            }
+
+            // Drain tail extension events (e.g. `titleUpdated`). These are emitted
+            // synchronously from `finalize()`'s `after_llm_call` hook, which runs
+            // BEFORE the terminal chunk is sent, so anything bound for this turn is
+            // already enqueued by the time we observe the terminal frame — a
+            // non-blocking drain suffices (no late event can still be in flight).
+            while let Ok(Ok(raw)) = ext_rx.try_recv() {
+                crate::modules::chat::stream::publish_raw_event(
+                    owner_id,
+                    conversation_id,
+                    raw,
+                );
+            }
+
+            CANCELLATION_TRACKER.remove_download(assistant_message_id).await;
+
+            // Turn complete: notify the user's OTHER surfaces (sidebar list +
+            // any device with this conversation NOT open) to refetch. `finalize`
+            // committed before the terminal chunk, so the rows are fresh.
+            crate::modules::sync::publish(
+                crate::modules::sync::SyncEntity::Conversation,
+                crate::modules::sync::SyncAction::Update,
+                conversation_id,
+                crate::modules::sync::Audience::owner(owner_id),
+                origin_conn,
+            );
+        });
+
+        Ok((user_message_id, assistant_message_id))
     }
 
     /// Convert conversation history to AI provider message format
@@ -1310,6 +1514,50 @@ pub fn group_assistant_blocks(blocks: Vec<ai_providers::ContentBlock>) -> Vec<Ch
     }
 
     messages
+}
+
+/// Panic/early-exit backstop for the detached generation consumer. If the
+/// consumer task ends WITHOUT having emitted a terminal frame (a panic, or an
+/// unexpected drop), this emits an `error` frame on drop so the conversation's
+/// replay buffer is always released. `publish_frame` is synchronous, so it is
+/// safe to call from `Drop`.
+struct TerminalGuard {
+    owner_id: Uuid,
+    conversation_id: Uuid,
+    assistant_message_id: Uuid,
+    done: bool,
+}
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        if self.done {
+            return;
+        }
+        use crate::modules::chat::core::types::streaming::{
+            SSEChatStreamErrorData, SSEChatStreamEvent,
+        };
+        // Emit a terminal Error frame — drops the conversation's replay buffer
+        // (and releases the in-flight generation slot).
+        crate::modules::chat::stream::publish_frame(
+            self.owner_id,
+            crate::modules::chat::stream::ChatStreamFrame::new(
+                self.conversation_id,
+                SSEChatStreamEvent::Error(SSEChatStreamErrorData {
+                    message: "Generation task aborted".into(),
+                    code: Some("STREAM_ABORTED".into()),
+                }),
+            ),
+        );
+        // Remove the cancellation token, which the normal path awaits at the end
+        // of the task — skipped on an unwind, so do it here (spawn since Drop is
+        // sync and removal is async). Without this the tracker map would leak.
+        let id = self.assistant_message_id;
+        tokio::spawn(async move {
+            crate::utils::cancellation::CANCELLATION_TRACKER
+                .remove_download(id)
+                .await;
+        });
+    }
 }
 
 #[cfg(test)]

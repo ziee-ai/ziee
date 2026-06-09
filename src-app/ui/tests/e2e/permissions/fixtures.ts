@@ -117,6 +117,14 @@ async function createAndLoginAs(
   }
 
   // Reset to a clean session before logging in as the new user.
+  // localStorage access only works once the page has a real origin
+  // (Playwright opens on about:blank where localStorage throws
+  // `SecurityError: Failed to read the 'localStorage' property from
+  // 'Window': Access is denied for this document`). Navigate to the
+  // SPA origin first so the storage call succeeds.
+  if (!page.url().startsWith(baseURL)) {
+    await page.goto(baseURL)
+  }
   await page.evaluate(() => {
     localStorage.clear()
     sessionStorage.clear()

@@ -2,6 +2,8 @@ use crate::common::test_helpers::{self};
 use serde_json::json;
 use uuid::Uuid;
 
+mod sync_emit_test;
+
 // ============================================================================
 // Admin User Management Tests with Permission Checks
 // ============================================================================

@@ -8,6 +8,7 @@ import type {
   UpdateMemoryRequest,
   UserMemory,
 } from '@/api-client/types'
+import { Stores } from '@/core/stores'
 import {
   emitMemoryAllCleared,
   emitMemoryCreated,
@@ -32,8 +33,11 @@ interface MemoriesStore {
   total: number
 
   __init__: {
+    __store__?: () => void
     memories: () => Promise<void>
   }
+
+  __destroy__?: () => void
 
   load: (page?: number, pageSize?: number) => Promise<void>
   create: (
@@ -113,7 +117,22 @@ export const useMemoriesStore = create<MemoriesStore>()(
       total: 0,
 
       __init__: {
+        __store__: () => {
+          const eventBus = Stores.EventBus
+          const GROUP = 'Memories'
+          // Memories is a paginated list; `load()` reloads the current
+          // page, which surfaces remote creates/edits/deletes that fall
+          // on it (a bulk-clear arrives as a Delete with a nil id and
+          // reloads the page to empty). No permission self-gate needed.
+          const reload = () => void loadMemories(set, get)
+          eventBus.on('sync:memory', reload, GROUP)
+          eventBus.on('sync:reconnect', reload, GROUP)
+        },
         memories: () => loadMemories(set, get),
+      },
+
+      __destroy__: () => {
+        Stores.EventBus.removeGroupListeners('Memories')
       },
 
       load: (page?: number, pageSize?: number) =>
@@ -140,10 +159,7 @@ export const useMemoriesStore = create<MemoriesStore>()(
           try {
             await emitMemoryCreated(row)
           } catch (eventError) {
-            console.error(
-              'Failed to emit memory created event:',
-              eventError,
-            )
+            console.error('Failed to emit memory created event:', eventError)
           }
           return row
         } catch (error) {
@@ -170,10 +186,7 @@ export const useMemoriesStore = create<MemoriesStore>()(
           try {
             await emitMemoryUpdated(row)
           } catch (eventError) {
-            console.error(
-              'Failed to emit memory updated event:',
-              eventError,
-            )
+            console.error('Failed to emit memory updated event:', eventError)
           }
           return row
         } catch (error) {
@@ -195,10 +208,7 @@ export const useMemoriesStore = create<MemoriesStore>()(
           try {
             await emitMemoryDeleted(id)
           } catch (eventError) {
-            console.error(
-              'Failed to emit memory deleted event:',
-              eventError,
-            )
+            console.error('Failed to emit memory deleted event:', eventError)
           }
         } catch (error) {
           set(s => {

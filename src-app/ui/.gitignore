@@ -28,3 +28,4 @@ playwright-report/
 test-results/
 .test-workers.json
 .test-configs/
+dist-e2e/

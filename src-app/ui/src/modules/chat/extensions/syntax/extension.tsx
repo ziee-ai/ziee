@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, message } from 'antd'
+import { App, Button } from 'antd'
 import { CopyOutlined, CheckOutlined } from '@ant-design/icons'
 import {
   createExtension,
@@ -12,6 +12,7 @@ import {
  * Code block component with copy functionality
  */
 function CodeBlock({ code, language }: { code: string; language?: string }) {
+  const { message } = App.useApp()
   const [copied, setCopied] = useState(false)
 
   const handleCopy = async () => {

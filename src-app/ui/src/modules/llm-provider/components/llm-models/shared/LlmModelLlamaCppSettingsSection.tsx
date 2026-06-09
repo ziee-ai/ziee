@@ -37,6 +37,34 @@ export function LlmModelLlamaCppSettingsSection() {
 
   return (
     <Flex vertical className="gap-4 w-full">
+      {/* Device */}
+      <Card title="Device">
+        <Flex vertical className="gap-2 w-full">
+          <ResponsiveConfigItem
+            title="Device Type"
+            description="Hardware backend to run the model on. Leave empty to auto-select; CPU forces all layers off the GPU."
+          >
+            <Form.Item
+              name={getFieldName('device_type')}
+              style={{ margin: 0, width: 120 }}
+            >
+              <Select
+                placeholder="Auto"
+                style={{ width: '100%' }}
+                allowClear
+                options={[
+                  { value: 'cpu', label: 'CPU' },
+                  { value: 'cuda', label: 'CUDA' },
+                  { value: 'metal', label: 'Metal' },
+                  { value: 'rocm', label: 'ROCm' },
+                  { value: 'vulkan', label: 'Vulkan' },
+                ]}
+              />
+            </Form.Item>
+          </ResponsiveConfigItem>
+        </Flex>
+      </Card>
+
       {/* Context & Memory Management */}
       <Card title="Context & Memory Management">
         <Flex vertical className="gap-2 w-full">

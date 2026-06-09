@@ -2,17 +2,19 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
-import type {
-  Assistant,
-  CreateAssistantRequest,
-  UpdateAssistantRequest,
+import {
+  type Assistant,
+  type CreateAssistantRequest,
+  Permissions,
+  type UpdateAssistantRequest,
 } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
+import { Stores } from '@/core/stores'
 import {
   emitAssistantTemplateCreated,
-  emitAssistantTemplateUpdated,
   emitAssistantTemplateDeleted,
+  emitAssistantTemplateUpdated,
 } from '@/modules/assistant/events'
-import { Stores } from '@/core/stores'
 
 interface TemplateAssistantsState {
   // Data
@@ -102,6 +104,12 @@ export const useTemplateAssistantsStore = create<TemplateAssistantsState>()(
               },
               GROUP,
             )
+
+            // Remote sync: refetch on a remote change or on (re)connect.
+            // The load action self-gates on AssistantsTemplateRead.
+            const reload = () => void get().loadTemplateAssistants()
+            eventBus.on('sync:assistant_template', reload, GROUP)
+            eventBus.on('sync:reconnect', reload, GROUP)
           },
           assistants: () => get().loadTemplateAssistants(),
         },
@@ -111,6 +119,9 @@ export const useTemplateAssistantsStore = create<TemplateAssistantsState>()(
           page?: number,
           pageSize?: number,
         ): Promise<void> => {
+          if (!hasPermissionNow(Permissions.AssistantsTemplateRead)) {
+            return
+          }
           try {
             const currentState = get()
             const requestPage = page || currentState.currentPage

@@ -122,6 +122,31 @@ export function LlmModelMistralRsSettingsSection() {
 
   return (
     <Flex vertical className="gap-4 w-full">
+      {/* Device */}
+      <Card title="Device">
+        <Flex vertical className="gap-2 w-full">
+          <ResponsiveConfigItem
+            title="Device Type"
+            description="Hardware backend to run the model on. Leave empty to auto-select; CPU runs inference on the CPU."
+          >
+            <Form.Item name={getFieldName('device_type')} style={{ margin: 0 }}>
+              <Select
+                placeholder="Auto"
+                style={{ width: 120 }}
+                allowClear
+                options={[
+                  { value: 'cpu', label: 'CPU' },
+                  { value: 'cuda', label: 'CUDA' },
+                  { value: 'metal', label: 'Metal' },
+                  { value: 'rocm', label: 'ROCm' },
+                  { value: 'vulkan', label: 'Vulkan' },
+                ]}
+              />
+            </Form.Item>
+          </ResponsiveConfigItem>
+        </Flex>
+      </Card>
+
       {/* Sequence & Memory Management */}
       <Card title="Sequence & Memory Management">
         <Flex vertical className="gap-2 w-full">
@@ -142,42 +167,11 @@ export function LlmModelMistralRsSettingsSection() {
           <Divider style={{ margin: 0 }} />
 
           <ResponsiveConfigItem
-            title="Max Sequence Length"
-            description="Maximum prompt sequence length to expect for this model (default: 4096)"
-          >
-            <Form.Item name={getFieldName('max_seq_len')}>
-              <InputNumber
-                min={512}
-                max={131072}
-                placeholder="4096"
-                style={{ width: '100%' }}
-              />
-            </Form.Item>
-          </ResponsiveConfigItem>
-
-          <Divider style={{ margin: 0 }} />
-
-          <ResponsiveConfigItem
             title="No KV Cache"
             description="Use no KV cache"
           >
             <Form.Item
               name={getFieldName('no_kv_cache')}
-              valuePropName="checked"
-              style={{ margin: 0 }}
-            >
-              <Switch />
-            </Form.Item>
-          </ResponsiveConfigItem>
-
-          <Divider style={{ margin: 0 }} />
-
-          <ResponsiveConfigItem
-            title="Truncate Sequence"
-            description="If a sequence is larger than the maximum model length, truncate the number of tokens such that the sequence will fit at most the maximum length"
-          >
-            <Form.Item
-              name={getFieldName('truncate_sequence')}
               valuePropName="checked"
               style={{ margin: 0 }}
             >
@@ -301,22 +295,6 @@ export function LlmModelMistralRsSettingsSection() {
               />
             </Form.Item>
           </ResponsiveConfigItem>
-
-          <Divider style={{ margin: 0 }} />
-
-          <ResponsiveConfigItem
-            title="Prompt Chunk Size"
-            description="Number of tokens to batch the prompt step into. This can help with OOM errors when in the prompt step, but reduces performance"
-          >
-            <Form.Item name={getFieldName('prompt_chunksize')}>
-              <InputNumber
-                min={1}
-                max={8192}
-                placeholder="Auto"
-                style={{ width: '100%' }}
-              />
-            </Form.Item>
-          </ResponsiveConfigItem>
         </Flex>
       </Card>
 
@@ -369,57 +347,6 @@ export function LlmModelMistralRsSettingsSection() {
                 min={0}
                 max={4294967295}
                 placeholder="Random"
-                style={{ width: '100%' }}
-              />
-            </Form.Item>
-          </ResponsiveConfigItem>
-        </Flex>
-      </Card>
-
-      {/* Vision Model Settings */}
-      <Card title="Vision Model Settings">
-        <Flex vertical className="gap-2 w-full">
-          <ResponsiveConfigItem
-            title="Max Edge Length (Vision)"
-            description="Automatically resize and pad images to this maximum edge length. Aspect ratio is preserved (vision models only)"
-          >
-            <Form.Item name={getFieldName('max_edge')}>
-              <InputNumber
-                min={224}
-                max={2048}
-                placeholder="Auto"
-                style={{ width: '100%' }}
-              />
-            </Form.Item>
-          </ResponsiveConfigItem>
-
-          <Divider style={{ margin: 0 }} />
-
-          <ResponsiveConfigItem
-            title="Max Number of Images (Vision)"
-            description="Maximum prompt number of images to expect for this model (vision models only)"
-          >
-            <Form.Item name={getFieldName('max_num_images')}>
-              <InputNumber
-                min={1}
-                max={32}
-                placeholder="Auto"
-                style={{ width: '100%' }}
-              />
-            </Form.Item>
-          </ResponsiveConfigItem>
-
-          <Divider style={{ margin: 0 }} />
-
-          <ResponsiveConfigItem
-            title="Max Image Length (Vision)"
-            description="Maximum expected image size will have this edge length on both edges (vision models only)"
-          >
-            <Form.Item name={getFieldName('max_image_length')}>
-              <InputNumber
-                min={224}
-                max={2048}
-                placeholder="Auto"
                 style={{ width: '100%' }}
               />
             </Form.Item>

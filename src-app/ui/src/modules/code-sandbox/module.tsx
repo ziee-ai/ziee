@@ -1,11 +1,12 @@
-import { createModule } from '@/core'
 import { CloudDownloadOutlined } from '@ant-design/icons'
+import { Permissions } from '@/api-client/types'
+import { createModule } from '@/core'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-import { Permissions } from '@/api-client/types'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
-import { useSandboxRootfsVersionsStore } from './stores/SandboxRootfsVersions.store'
 import { useSandboxResourceLimitsStore } from './stores/SandboxResourceLimits.store'
+import { useSandboxRootfsVersionsStore } from './stores/SandboxRootfsVersions.store'
+import { useSandboxFlavorsStore } from './stores/SandboxFlavors.store'
 import './types' // CRITICAL: enable store type declaration merging
 
 const SandboxSettingsPage = lazyWithPreload(() =>
@@ -48,6 +49,13 @@ export default createModule({
     {
       name: 'SandboxResourceLimits',
       store: useSandboxResourceLimitsStore,
+    },
+    {
+      // Shared catalog of known sandbox flavors. Consumed by the
+      // MCP user-policy card + the McpServerDrawer's system-stdio
+      // flavor Select. Lazy-loaded on first read.
+      name: 'SandboxFlavors',
+      store: useSandboxFlavorsStore,
     },
   ],
   slots: {

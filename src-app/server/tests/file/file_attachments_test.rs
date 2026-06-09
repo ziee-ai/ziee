@@ -77,7 +77,9 @@ async fn test_send_message_with_single_file() {
     let model = crate::chat::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = crate::chat::helpers::parse_uuid(&model["id"]);
 
-    // Send message with file attachment
+    // Send message with file attachment. The POST now returns ids immediately;
+    // the assistant reply streams over GET /api/chat/stream. Collect the stream
+    // and assert a real reply landed (terminal `complete` frame).
     let payload = json!({
         "model_id": model_id,
         "branch_id": branch_id,
@@ -85,18 +87,18 @@ async fn test_send_message_with_single_file() {
         "file_ids": [file_id]
     });
 
-    let response = reqwest::Client::new()
-        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&payload)
-        .send()
-        .await
-        .unwrap();
+    let events = crate::chat::helpers::send_body_and_collect_events(
+        &server,
+        &user.token,
+        conversation_id,
+        payload,
+        &[],
+    )
+    .await;
 
-    // Verify SSE response
-    assert_eq!(response.status(), StatusCode::OK);
-    let content_type = response.headers().get("content-type").unwrap();
-    assert!(content_type.to_str().unwrap().contains("text/event-stream"));
+    // A successful turn ends on exactly one `complete` event.
+    let complete = events.iter().filter(|e| e.event == "complete").count();
+    assert_eq!(complete, 1, "file-attachment turn should end on one complete event");
 }
 
 #[tokio::test]
@@ -147,7 +149,8 @@ async fn test_send_message_with_multiple_files() {
     let model = crate::chat::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = crate::chat::helpers::parse_uuid(&model["id"]);
 
-    // Send message with multiple file attachments
+    // Send message with multiple file attachments. POST returns ids; the reply
+    // streams over the chat stream. Collect it and assert the turn completed.
     let payload = json!({
         "model_id": model_id,
         "branch_id": branch_id,
@@ -155,16 +158,17 @@ async fn test_send_message_with_multiple_files() {
         "file_ids": [file1_id, file2_id]
     });
 
-    let response = reqwest::Client::new()
-        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&payload)
-        .send()
-        .await
-        .unwrap();
+    let events = crate::chat::helpers::send_body_and_collect_events(
+        &server,
+        &user.token,
+        conversation_id,
+        payload,
+        &[],
+    )
+    .await;
 
-    // Verify SSE response
-    assert_eq!(response.status(), StatusCode::OK);
+    let complete = events.iter().filter(|e| e.event == "complete").count();
+    assert_eq!(complete, 1, "multi-file turn should end on one complete event");
 }
 
 // =====================================================
@@ -225,15 +229,16 @@ async fn test_cannot_attach_other_users_file() {
     });
 
     let response = reqwest::Client::new()
-        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/messages", conversation_id)))
         .header("Authorization", format!("Bearer {}", user2.token))
         .json(&payload)
         .send()
         .await
         .unwrap();
 
-    // File ownership validation happens in extension hook before streaming starts
-    // Access denied returns HTTP 403 Forbidden
+    // File ownership validation happens in the extension hook synchronously
+    // within the POST handler (before any reply is kicked off).
+    // Access denied returns HTTP 403 Forbidden.
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
     let body_text = response.text().await.unwrap();
     // Error body should indicate access denied
@@ -278,15 +283,15 @@ async fn test_send_message_with_nonexistent_file() {
     });
 
     let response = reqwest::Client::new()
-        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/messages", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
         .await
         .unwrap();
 
-    // File validation happens in extension hook before streaming starts
-    // Invalid files return HTTP 404 (file not found)
+    // File validation happens in the extension hook synchronously within the
+    // POST handler. Invalid files return HTTP 404 (file not found).
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     let body_text = response.text().await.unwrap();
     // Error body should indicate file not found
@@ -320,7 +325,8 @@ async fn test_send_message_with_empty_file_list() {
     let model = crate::chat::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = crate::chat::helpers::parse_uuid(&model["id"]);
 
-    // Send message with empty file_ids array
+    // Send message with empty file_ids array — valid; the turn should run to
+    // completion (POST 200 is asserted inside send_body_and_collect_events).
     let payload = json!({
         "model_id": model_id,
         "branch_id": branch_id,
@@ -328,16 +334,17 @@ async fn test_send_message_with_empty_file_list() {
         "file_ids": []
     });
 
-    let response = reqwest::Client::new()
-        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&payload)
-        .send()
-        .await
-        .unwrap();
+    let events = crate::chat::helpers::send_body_and_collect_events(
+        &server,
+        &user.token,
+        conversation_id,
+        payload,
+        &[],
+    )
+    .await;
 
-    // Should succeed - empty array is valid
-    assert_eq!(response.status(), StatusCode::OK);
+    let complete = events.iter().filter(|e| e.event == "complete").count();
+    assert_eq!(complete, 1, "empty-file-list turn should end on one complete event");
 }
 
 // =====================================================
@@ -385,7 +392,10 @@ async fn test_file_extension_stores_content_as_extension() {
     let model = crate::chat::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = crate::chat::helpers::parse_uuid(&model["id"]);
 
-    // Send message with file attachment
+    // Send message with file attachment. The POST returns the persisted ids
+    // immediately; the user message (with its file content blocks) is written
+    // synchronously before the response, so we read user_message_id straight
+    // from the JSON body — no streaming needed for the storage assertions.
     let payload = json!({
         "model_id": model_id,
         "branch_id": branch_id,
@@ -394,7 +404,7 @@ async fn test_file_extension_stores_content_as_extension() {
     });
 
     let response = reqwest::Client::new()
-        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/messages", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -403,15 +413,10 @@ async fn test_file_extension_stores_content_as_extension() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    // Parse SSE stream to get user message ID
-    let events = crate::chat::helpers::parse_sse_events(response).await;
-    let user_message_id = events
-        .iter()
-        .find(|e| e.event == "started")
-        .and_then(|e| e.data.get("user_message_id"))
-        .and_then(|v| v.as_str())
-        .expect("Expected user_message_id in started event");
-
+    let body: serde_json::Value = response.json().await.unwrap();
+    let user_message_id = body["user_message_id"]
+        .as_str()
+        .expect("Expected user_message_id in send response");
     let user_message_id = crate::chat::helpers::parse_uuid(&serde_json::Value::String(user_message_id.to_string()));
 
     // Retrieve message via API to verify content blocks
@@ -477,7 +482,8 @@ async fn test_file_content_in_conversation_history() {
     let model = crate::chat::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = crate::chat::helpers::parse_uuid(&model["id"]);
 
-    // Send message with file attachment
+    // Send message with file attachment, then wait for the streamed turn to
+    // complete (collect to the terminal frame) before reading history.
     let payload = json!({
         "model_id": model_id,
         "branch_id": branch_id,
@@ -485,18 +491,19 @@ async fn test_file_content_in_conversation_history() {
         "file_ids": [file_id]
     });
 
-    let response = reqwest::Client::new()
-        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&payload)
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-
-    // Wait for stream to complete
-    let _ = response.text().await.unwrap();
+    // Drain the turn to its terminal frame so finalize() has run (mirrors the
+    // old `response.text()` drain). We do NOT assert the model SUCCEEDED — the
+    // PDF here is deliberately fake (a real provider may reject it with an
+    // `error` terminal); this test verifies the user message's file content
+    // block is PERSISTED, which happens at send time regardless of the reply.
+    let _ = crate::chat::helpers::send_body_and_collect_events(
+        &server,
+        &user.token,
+        conversation_id,
+        payload,
+        &[],
+    )
+    .await;
 
     // Retrieve conversation history (returns array of messages directly)
     let history = crate::chat::helpers::get_conversation_history(&server, &user.token, conversation_id).await;
@@ -583,7 +590,9 @@ async fn test_multiple_files_content_ordering() {
     let model = crate::chat::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = crate::chat::helpers::parse_uuid(&model["id"]);
 
-    // Send message with all three files in specific order
+    // Send message with all three files in specific order. user_message_id is
+    // read straight from the POST JSON body (user message + its file content
+    // blocks are persisted synchronously before the response returns).
     let payload = json!({
         "model_id": model_id,
         "branch_id": branch_id,
@@ -592,7 +601,7 @@ async fn test_multiple_files_content_ordering() {
     });
 
     let response = reqwest::Client::new()
-        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/messages", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -601,15 +610,10 @@ async fn test_multiple_files_content_ordering() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    // Parse SSE stream to get user message ID
-    let events = crate::chat::helpers::parse_sse_events(response).await;
-    let user_message_id = events
-        .iter()
-        .find(|e| e.event == "started")
-        .and_then(|e| e.data.get("user_message_id"))
-        .and_then(|v| v.as_str())
-        .expect("Expected user_message_id in started event");
-
+    let body: serde_json::Value = response.json().await.unwrap();
+    let user_message_id = body["user_message_id"]
+        .as_str()
+        .expect("Expected user_message_id in send response");
     let user_message_id = crate::chat::helpers::parse_uuid(&serde_json::Value::String(user_message_id.to_string()));
 
     // Retrieve message via API to verify content blocks ordering

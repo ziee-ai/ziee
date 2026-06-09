@@ -37,8 +37,12 @@ pub fn chat_router() -> ApiRouter {
             get_with(get_conversation_history, get_conversation_history_docs),
         )
         .api_route(
-            "/conversations/{id}/messages/stream",
+            "/conversations/{id}/messages",
             post_with(send_message, send_message_docs),
+        )
+        .api_route(
+            "/conversations/{conversation_id}/messages/{assistant_message_id}/stop",
+            post_with(stop_generation, stop_generation_docs),
         )
         .api_route("/messages/{id}", get_with(get_message, get_message_docs))
         .api_route(

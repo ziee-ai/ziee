@@ -2,12 +2,18 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { ApiClient } from '@/api-client'
 import type {
-  User,
   CreateUserRequest,
   UpdateUserRequest,
+  User,
 } from '@/api-client/types'
-import { emitUserCreated, emitUserUpdated, emitUserDeleted } from '@/modules/user/events'
+import { Permissions } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 import { Stores } from '@/core/stores'
+import {
+  emitUserCreated,
+  emitUserDeleted,
+  emitUserUpdated,
+} from '@/modules/user/events'
 
 interface UsersState {
   // Data
@@ -70,6 +76,9 @@ export const useUsersStore = create<UsersState>()(
 
       // Actions
       loadUsers: async (page?: number, pageSize?: number) => {
+        if (!hasPermissionNow(Permissions.UsersRead)) {
+          return
+        }
         try {
           const currentState = get()
           const requestPage = page || currentState.currentPage
@@ -383,6 +392,12 @@ export const useUsersStore = create<UsersState>()(
             },
             GROUP,
           )
+
+          // Remote sync: refetch on a remote change or on (re)connect.
+          // loadUsers self-gates on UsersRead.
+          const reload = () => void get().loadUsers()
+          eventBus.on('sync:user', reload, GROUP)
+          eventBus.on('sync:reconnect', reload, GROUP)
         },
         users: () => get().loadUsers(),
       },

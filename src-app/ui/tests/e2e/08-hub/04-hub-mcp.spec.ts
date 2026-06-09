@@ -29,8 +29,10 @@ test.describe('Hub MCP Servers', () => {
     const mcpCards = await getMcpServerCards(page)
     const firstCard = mcpCards.first()
 
-    // Should have "Install" button
-    await expect(firstCard.getByRole('button', { name: /install/i })).toBeVisible()
+    // Should have the user-scope "Install" / "Install for me" button.
+    // Admin also gets a second "Install for the system" button — pin
+    // the assertion to the testid so the count is unambiguous.
+    await expect(firstCard.getByTestId('hub-mcp-install-btn')).toBeVisible()
 
     // Card should have content (text visible)
     await expect(firstCard).toContainText(/.+/)
@@ -123,14 +125,17 @@ test.describe('Hub MCP Servers', () => {
       await waitForHubDataLoad(page)
     }
 
-    // Should have "View" button instead of "Install"
+    // Should have "View" button (the user-scope "Install for me"
+    // button collapses to View after a user install).
     const card = page.getByTestId(`hub-mcp-card-${mcpServerId}`)
-    await expect(card.getByRole('button', { name: /view/i })).toBeVisible()
+    await expect(card.getByTestId('hub-mcp-view-btn')).toBeVisible()
 
-    // Should NOT have "Install" button
-    const installButton = card.getByRole('button', { name: /install/i })
-    const installButtonVisible = await installButton.isVisible({ timeout: 1000 }).catch(() => false)
-    expect(installButtonVisible).toBe(false)
+    // The user-scope install button is gone.
+    await expect(card.getByTestId('hub-mcp-install-btn')).toHaveCount(0)
+    // Note: when run as admin (the beforeEach default), the
+    // "Install for the system" button is independent of the user
+    // install state and remains visible. The user-scope install
+    // button collapse is the assertion we care about here.
   })
 
   test('should track installation status badge', async ({ page, testInfra }) => {

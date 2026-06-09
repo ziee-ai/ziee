@@ -4,6 +4,7 @@ mod download_management_test;
 mod download_progress_test;
 pub mod download_test;
 mod storage_test;
+mod sync_emit_test;
 mod upload_test;
 
 use reqwest::StatusCode;

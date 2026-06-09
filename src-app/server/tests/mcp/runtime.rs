@@ -743,13 +743,14 @@ async fn test_runtime_user_cannot_access_other_user_server_tools() {
     let user2 = test_helpers::create_user_with_permissions(&server, "user2", &["mcp_servers::read"])
         .await;
 
-    // User1 creates a personal server
+    // User1 creates a personal server (http — user-policy
+    // force-sandboxes user stdio; this test is about cross-user
+    // access control, transport choice is incidental).
     let payload = json!({
         "name": "user1_private_server",
         "display_name": "User1 Private Server",
-        "transport_type": "stdio",
-        "command": "uvx",
-        "args": ["mcp-server-fetch"],
+        "transport_type": "http",
+        "url": "http://127.0.0.1:9/mcp",
         "timeout_seconds": 30
     });
 

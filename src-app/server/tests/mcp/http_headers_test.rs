@@ -156,6 +156,9 @@ async fn create_user_server_rejects_interior_invalid_header() {
     let user =
         test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::create"]).await;
 
+    // API takes `headers_entries: [{key, value, is_secret}]` (the
+    // flat `headers: {...}` map is the legacy shape; current
+    // CreateMcpServerRequest has no `headers` field).
     let response = reqwest::Client::new()
         .post(server.api_url("/mcp/servers"))
         .header("Authorization", format!("Bearer {}", user.token))
@@ -164,7 +167,9 @@ async fn create_user_server_rejects_interior_invalid_header() {
             "display_name": "Bad Header",
             "transport_type": "http",
             "url": "http://127.0.0.1:9/mcp",
-            "headers": { "Authorization": "Bea\nr" },
+            "headers_entries": [
+                { "key": "Authorization", "value": "Bea\nr", "is_secret": false }
+            ],
             "timeout_seconds": 10
         }))
         .send()
@@ -213,7 +218,9 @@ async fn update_user_server_rejects_interior_invalid_header() {
     let response = client
         .put(server.api_url(&format!("/mcp/servers/{id}")))
         .header("Authorization", format!("Bearer {}", user.token))
-        .json(&json!({ "headers": { "Authorization": "Bea\nr" } }))
+        .json(&json!({ "headers_entries": [
+            { "key": "Authorization", "value": "Bea\nr", "is_secret": false }
+        ] }))
         .send()
         .await
         .expect("update request failed");
@@ -240,7 +247,9 @@ async fn test_connection_rejects_interior_invalid_header() {
         .json(&json!({
             "transport_type": "http",
             "url": "http://127.0.0.1:9/mcp",
-            "headers": { "Authorization": "Bea\nr" },
+            "headers_entries": [
+                { "key": "Authorization", "value": "Bea\nr", "is_secret": false }
+            ],
             "timeout_seconds": 3
         }))
         .send()
@@ -258,6 +267,21 @@ async fn test_connection_rejects_interior_invalid_header() {
     );
 }
 
+/// Resolve a single header value from the `headers_entries` array
+/// in a server response (current API shape). Replaces the legacy
+/// `body["headers"]["X"]` flat-map access — `McpServer.headers` is
+/// `#[serde(skip_serializing)]`, the wire shape is
+/// `headers_entries: [{key, value, is_secret}]`.
+fn entry_value<'a>(body: &'a serde_json::Value, key: &str) -> &'a str {
+    body["headers_entries"]
+        .as_array()
+        .unwrap_or_else(|| panic!("headers_entries array missing in {body}"))
+        .iter()
+        .find(|e| e["key"] == key)
+        .and_then(|e| e["value"].as_str())
+        .unwrap_or_else(|| panic!("missing header {key} in {body}"))
+}
+
 #[tokio::test]
 async fn create_user_server_trims_trailing_whitespace_in_headers() {
     let server = crate::common::TestServer::start().await;
@@ -272,7 +296,10 @@ async fn create_user_server_trims_trailing_whitespace_in_headers() {
             "display_name": "Trim Header",
             "transport_type": "http",
             "url": "http://127.0.0.1:9/mcp",
-            "headers": { "Authorization": "Bearer ok\n", "X-Y": "  z  " },
+            "headers_entries": [
+                { "key": "Authorization", "value": "Bearer ok\n", "is_secret": false },
+                { "key": "X-Y", "value": "  z  ", "is_secret": false }
+            ],
             "timeout_seconds": 10
         }))
         .send()
@@ -283,8 +310,8 @@ async fn create_user_server_trims_trailing_whitespace_in_headers() {
     let body: serde_json::Value = response.json().await.expect("parse body");
     assert_eq!(status, 201, "valid (trimmable) headers must persist, got: {body}");
     // Stored headers come back trimmed — the pasted newline / padding is gone.
-    assert_eq!(body["headers"]["Authorization"], "Bearer ok", "got: {body}");
-    assert_eq!(body["headers"]["X-Y"], "z", "got: {body}");
+    assert_eq!(entry_value(&body, "Authorization"), "Bearer ok", "got: {body}");
+    assert_eq!(entry_value(&body, "X-Y"), "z", "got: {body}");
 }
 
 #[tokio::test]
@@ -305,7 +332,9 @@ async fn create_system_server_rejects_interior_invalid_header() {
             "display_name": "Bad Header System",
             "transport_type": "http",
             "url": "http://127.0.0.1:9/mcp",
-            "headers": { "Authorization": "Bea\nr" },
+            "headers_entries": [
+                { "key": "Authorization", "value": "Bea\nr", "is_secret": false }
+            ],
             "timeout_seconds": 10
         }))
         .send()
@@ -356,7 +385,10 @@ async fn update_user_server_trims_trailing_whitespace_in_headers() {
     let updated: serde_json::Value = client
         .put(server.api_url(&format!("/mcp/servers/{id}")))
         .header("Authorization", format!("Bearer {}", user.token))
-        .json(&json!({ "headers": { "Authorization": "Bearer ok\n", "X-Y": "  z  " } }))
+        .json(&json!({ "headers_entries": [
+            { "key": "Authorization", "value": "Bearer ok\n", "is_secret": false },
+            { "key": "X-Y", "value": "  z  ", "is_secret": false }
+        ] }))
         .send()
         .await
         .expect("update failed")
@@ -365,8 +397,8 @@ async fn update_user_server_trims_trailing_whitespace_in_headers() {
         .expect("parse update");
 
     // The update path normalizes too: stored values come back trimmed.
-    assert_eq!(updated["headers"]["Authorization"], "Bearer ok", "got: {updated}");
-    assert_eq!(updated["headers"]["X-Y"], "z", "got: {updated}");
+    assert_eq!(entry_value(&updated, "Authorization"), "Bearer ok", "got: {updated}");
+    assert_eq!(entry_value(&updated, "X-Y"), "z", "got: {updated}");
 }
 
 #[tokio::test]
@@ -388,7 +420,9 @@ async fn update_user_server_omitted_headers_are_preserved() {
             "display_name": "Update Preserve",
             "transport_type": "http",
             "url": "http://127.0.0.1:9/mcp",
-            "headers": { "Authorization": "Bearer keepme" },
+            "headers_entries": [
+                { "key": "Authorization", "value": "Bearer keepme", "is_secret": false }
+            ],
             "timeout_seconds": 10
         }))
         .send()
@@ -399,10 +433,10 @@ async fn update_user_server_omitted_headers_are_preserved() {
         .expect("parse create");
     let id = created["id"].as_str().expect("server id").to_string();
 
-    // Update an unrelated field while OMITTING `headers` → request.headers is
-    // None. The new normalize-on-Some match arm must NOT turn an omitted-headers
-    // update into an empty-map clobber: None must still pass through to COALESCE
-    // and preserve the stored headers (regression guard for that arm).
+    // Update an unrelated field while OMITTING `headers_entries` →
+    // request.headers_entries is None. The update path must
+    // preserve the stored headers (None passes through to COALESCE
+    // — regression guard for the entries-omitted branch).
     let updated: serde_json::Value = client
         .put(server.api_url(&format!("/mcp/servers/{id}")))
         .header("Authorization", format!("Bearer {}", user.token))
@@ -416,7 +450,8 @@ async fn update_user_server_omitted_headers_are_preserved() {
 
     assert_eq!(updated["display_name"], "Update Preserve Renamed");
     assert_eq!(
-        updated["headers"]["Authorization"], "Bearer keepme",
+        entry_value(&updated, "Authorization"),
+        "Bearer keepme",
         "omitted headers must be preserved, got: {updated}"
     );
 }
@@ -456,7 +491,10 @@ async fn update_system_server_trims_trailing_whitespace_in_headers() {
     let updated: serde_json::Value = client
         .put(server.api_url(&format!("/mcp/system-servers/{id}")))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "headers": { "Authorization": "Bearer ok\n", "X-Y": "  z  " } }))
+        .json(&json!({ "headers_entries": [
+            { "key": "Authorization", "value": "Bearer ok\n", "is_secret": false },
+            { "key": "X-Y", "value": "  z  ", "is_secret": false }
+        ] }))
         .send()
         .await
         .expect("update failed")
@@ -464,8 +502,8 @@ async fn update_system_server_trims_trailing_whitespace_in_headers() {
         .await
         .expect("parse update");
 
-    assert_eq!(updated["headers"]["Authorization"], "Bearer ok", "got: {updated}");
-    assert_eq!(updated["headers"]["X-Y"], "z", "got: {updated}");
+    assert_eq!(entry_value(&updated, "Authorization"), "Bearer ok", "got: {updated}");
+    assert_eq!(entry_value(&updated, "X-Y"), "z", "got: {updated}");
 }
 
 // ─── Pure unit coverage for the `parse_header_map` helper ────────────────────

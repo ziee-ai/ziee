@@ -13,9 +13,14 @@
 //! without restarting the server.
 
 use sqlx::PgPool;
+use std::collections::HashSet;
 use std::time::Duration;
+use uuid::Uuid;
 
 use crate::core::Repos;
+use crate::modules::sync::{
+    Audience, SyncAction, SyncEntity, publish as sync_publish,
+};
 
 const TICK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 /// Fallback grace days if the admin settings row can't be read (DB
@@ -52,7 +57,9 @@ async fn run_once(pool: &PgPool) -> Result<(), sqlx::Error> {
         }
     };
 
-    // 1. Hard-delete grace-period-expired soft-deletes.
+    // 1. Hard-delete grace-period-expired soft-deletes. These rows are
+    // ALREADY soft-deleted (gone from the owner's visible list), so purging
+    // them changes nothing a client can see — no sync emit needed.
     let hard_deleted = sqlx::query!(
         "DELETE FROM user_memories WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - ($1 * INTERVAL '1 day')",
         grace_days
@@ -66,8 +73,13 @@ async fn run_once(pool: &PgPool) -> Result<(), sqlx::Error> {
         );
     }
 
+    // Owners whose VISIBLE list changed this sweep (a live row flipped to
+    // soft-deleted in step 2 or 3). RETURNING the user_id lets us notify each
+    // affected owner's other devices to reload.
+    let mut touched_users: HashSet<Uuid> = HashSet::new();
+
     // 2. Per-user retention_days enforcement.
-    let retention_deleted = sqlx::query!(
+    let retention_rows = sqlx::query!(
         r#"
         UPDATE user_memories um
         SET deleted_at = NOW()
@@ -76,20 +88,22 @@ async fn run_once(pool: &PgPool) -> Result<(), sqlx::Error> {
           AND ums.retention_days IS NOT NULL
           AND um.deleted_at IS NULL
           AND um.updated_at < NOW() - (ums.retention_days * INTERVAL '1 day')
+        RETURNING um.user_id
         "#
     )
-    .execute(pool)
+    .fetch_all(pool)
     .await?;
-    if retention_deleted.rows_affected() > 0 {
+    if !retention_rows.is_empty() {
         tracing::info!(
             "memory.reaper: soft-deleted {} retention-aged rows",
-            retention_deleted.rows_affected()
+            retention_rows.len()
         );
     }
+    touched_users.extend(retention_rows.into_iter().map(|r| r.user_id));
 
     // 3. Per-user max_memories cap. Window function: one round-trip
     // per global sweep instead of one per user.
-    let cap_deleted = sqlx::query!(
+    let cap_rows = sqlx::query!(
         r#"
         WITH ranked AS (
             SELECT um.id,
@@ -102,14 +116,28 @@ async fn run_once(pool: &PgPool) -> Result<(), sqlx::Error> {
         UPDATE user_memories
         SET deleted_at = NOW()
         WHERE id IN (SELECT id FROM ranked WHERE rn > cap)
+        RETURNING user_id
         "#
     )
-    .execute(pool)
+    .fetch_all(pool)
     .await?;
-    if cap_deleted.rows_affected() > 0 {
+    if !cap_rows.is_empty() {
         tracing::info!(
             "memory.reaper: soft-deleted {} over-cap rows",
-            cap_deleted.rows_affected()
+            cap_rows.len()
+        );
+    }
+    touched_users.extend(cap_rows.into_iter().map(|r| r.user_id));
+
+    // Notify each affected owner once. nil id = "the list changed, reload"
+    // (same convention as delete_all_memories); background sweep → origin None.
+    for user_id in touched_users {
+        sync_publish(
+            SyncEntity::Memory,
+            SyncAction::Delete,
+            Uuid::nil(),
+            Audience::owner(user_id),
+            None,
         );
     }
 

@@ -2,10 +2,13 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { ApiClient } from '@/api-client'
 import type {
+  GpuDetectionResponse,
   RuntimeSettings,
   UpdateRuntimeSettingsRequest,
-  GpuDetectionResponse,
 } from '@/api-client/types'
+import { Permissions } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
+import { Stores } from '@/core/stores'
 
 interface RuntimeConfigState {
   // Singleton runtime settings (idle / auto-start / drain / allow_unsigned)
@@ -25,9 +28,11 @@ interface RuntimeConfigState {
   clearError: () => void
 
   __init__: {
+    __store__: () => void
     settings: () => Promise<void>
     gpu: () => Promise<void>
   }
+  __destroy__: () => void
 }
 
 export const useRuntimeConfigStore = create<RuntimeConfigState>()(
@@ -40,9 +45,11 @@ export const useRuntimeConfigStore = create<RuntimeConfigState>()(
     error: null,
 
     loadSettings: async () => {
+      if (!hasPermissionNow(Permissions.RuntimeSettingsRead)) return
       set({ loadingSettings: true, error: null })
       try {
-        const settings = await ApiClient.LocalRuntime.getRuntimeSettings(undefined)
+        const settings =
+          await ApiClient.LocalRuntime.getRuntimeSettings(undefined)
         set({ settings, loadingSettings: false })
       } catch (error) {
         set({
@@ -100,8 +107,22 @@ export const useRuntimeConfigStore = create<RuntimeConfigState>()(
     clearError: () => set({ error: null }),
 
     __init__: {
+      __store__: () => {
+        const eventBus = Stores.EventBus
+
+        // Cross-device sync: reload the deployment-wide runtime settings
+        // (singleton; sync id is nil) on a remote change, or after an SSE
+        // reconnect. loadSettings self-gates on RuntimeSettingsRead.
+        const reload = () => void get().loadSettings()
+        eventBus.on('sync:runtime_settings', reload, 'RuntimeConfigStore')
+        eventBus.on('sync:reconnect', reload, 'RuntimeConfigStore')
+      },
       settings: () => get().loadSettings(),
       gpu: () => get().loadGpu(),
+    },
+
+    __destroy__: () => {
+      Stores.EventBus.removeGroupListeners('RuntimeConfigStore')
     },
   })),
 )

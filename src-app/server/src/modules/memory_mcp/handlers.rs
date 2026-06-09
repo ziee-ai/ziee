@@ -26,6 +26,9 @@ use crate::modules::code_sandbox::types::{
 use crate::modules::memory::permissions::MemoryRead;
 use crate::modules::permissions::RequirePermissions;
 use crate::modules::permissions::checker::check_permission_union;
+use crate::modules::sync::{
+    Audience, SyncAction, SyncEntity, publish as sync_publish,
+};
 use crate::modules::user::models::{Group, User};
 
 // Shared between memory + memory_mcp handlers (see memory/models.rs).
@@ -372,6 +375,15 @@ async fn remember(
         }
     }
 
+    // Notify the caller's other devices (origin None — MCP tool call, not a
+    // tab-originated REST mutation).
+    sync_publish(
+        SyncEntity::Memory,
+        SyncAction::Create,
+        row.id,
+        Audience::owner(user_id),
+        None,
+    );
     Ok(json!({ "memory_id": row.id, "content": row.content, "scope": scope }))
 }
 
@@ -465,5 +477,12 @@ async fn forget(user_id: Uuid, args: &Value) -> Result<Value, AppError> {
     if !deleted {
         return Err(AppError::not_found("Memory"));
     }
+    sync_publish(
+        SyncEntity::Memory,
+        SyncAction::Delete,
+        args.memory_id,
+        Audience::owner(user_id),
+        None,
+    );
     Ok(json!({ "memory_id": args.memory_id, "deleted": true }))
 }

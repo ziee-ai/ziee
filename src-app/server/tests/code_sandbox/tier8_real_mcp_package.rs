@@ -92,7 +92,6 @@ async fn create_real_fetch_server(
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn real_mcp_server_fetch_via_pip_install_inside_sandbox() {
     let Some(server) = harness::enabled_test_server().await else {
         eprintln!("tier8 skipped: sandbox not bootable on this host");

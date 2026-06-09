@@ -204,23 +204,19 @@ async fn test_user_cannot_send_to_other_users_conversation() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user1.user_id).await;
+    let (_stub, model) = super::helpers::create_stub_model(&server, &user1.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
-    let payload = json!({
-        "content": "Unauthorized message",
-        "model_id": model_id.to_string(),
-        "branch_id": branch_id.to_string()
-    });
-
-    // User2 tries to send a message
-    let response = reqwest::Client::new()
-        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
-        .header("Authorization", format!("Bearer {}", user2.token))
-        .json(&payload)
-        .send()
-        .await
-        .unwrap();
+    // User2 tries to send a message to User1's conversation
+    let response = super::helpers::send_message_simple(
+        &server,
+        &user2.token,
+        conversation_id,
+        model_id,
+        branch_id,
+        "Unauthorized message",
+    )
+    .await;
 
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }

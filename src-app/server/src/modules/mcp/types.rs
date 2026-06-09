@@ -75,13 +75,28 @@ pub struct CreateMcpServerRequest {
     pub usage_mode: Option<UsageMode>,
     pub max_concurrent_sessions: Option<i32>,
 
-    /// Admin/system stdio servers only: launch inside the
-    /// code_sandbox bwrap isolation. See `McpServer::run_in_sandbox`.
+    /// Launch the stdio subprocess inside the code_sandbox bwrap
+    /// isolation. The user-create handler force-sets this to `true`
+    /// for user-owned stdio servers per the active MCP user policy
+    /// (any client value is ignored). Admins may set it freely on
+    /// system stdio servers via the drawer toggle.
     pub run_in_sandbox: Option<bool>,
 
-    /// Rootfs flavor (KNOWN_FLAVORS) for the sandboxed launch. Defaults
-    /// to `full` when absent. See `McpServer::sandbox_flavor`.
+    /// Rootfs flavor (KNOWN_FLAVORS, e.g. "minimal" / "full") for the
+    /// sandboxed launch. None → handler-picks default ('full' on
+    /// fresh rows; the user-create handler force-overrides this with
+    /// the active `mcp_user_policy.user_stdio_sandbox_flavor` for
+    /// user-owned stdio regardless of what the client sent).
     pub sandbox_flavor: Option<String>,
+
+    /// Optional Hub identifier — when set, the create handler also
+    /// records the install in `hub_entities` so the Hub card's
+    /// "already installed" badge keeps working. Set by the UI when
+    /// the drawer was opened via "Install" / "Install for the system"
+    /// on a hub MCP card; null for direct-add. Type matches the
+    /// existing `CreateMcpServerFromHubRequest::hub_id` (catalog
+    /// slug string, not a UUID).
+    pub hub_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -113,12 +128,14 @@ pub struct UpdateMcpServerRequest {
     pub usage_mode: Option<UsageMode>,
     pub max_concurrent_sessions: Option<i32>,
 
-    /// Admin/system stdio servers only: launch inside the
-    /// code_sandbox bwrap isolation. See `McpServer::run_in_sandbox`.
+    /// Launch the stdio subprocess inside the code_sandbox bwrap
+    /// isolation. Same force-set semantics as
+    /// [`CreateMcpServerRequest::run_in_sandbox`].
     pub run_in_sandbox: Option<bool>,
 
-    /// Rootfs flavor (KNOWN_FLAVORS) for the sandboxed launch. Defaults
-    /// to `full` when absent. See `McpServer::sandbox_flavor`.
+    /// Rootfs flavor (KNOWN_FLAVORS, e.g. "minimal" / "full") for the
+    /// sandboxed launch. Same force-override semantics as
+    /// [`CreateMcpServerRequest::sandbox_flavor`].
     pub sandbox_flavor: Option<String>,
 }
 

@@ -1027,16 +1027,9 @@ impl ChatExtension for McpChatExtension {
             if all_denied {
                 tracing::info!("All {} tool approvals were denied, skipping LLM call", approvals.len());
 
-                // Optionally send an SSE event to inform the client
-                if let Some(tx) = tx {
-                    let _ = tx.send(Ok(Event::default()
-                        .event("tool_denied")
-                        .json_data(serde_json::json!({
-                            "message": "Tool execution was denied by user",
-                            "denied_count": approvals.len()
-                        }))
-                        .unwrap()));
-                }
+                // (Previously emitted a best-effort `tool_denied` SSE event the
+                // client never handled; dropped with the move to the typed
+                // chat-token channel — the turn just completes.)
 
                 return Ok(BeforeLlmAction::Complete);
             }

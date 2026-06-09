@@ -1,13 +1,18 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { ApiClient } from '@/api-client'
+import type {
+  DownloadVersionRequest,
+  RuntimeVersionResponse,
+} from '@/api-client/types'
+import { Permissions } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 import { Stores } from '@/core/stores'
-import type { RuntimeVersionResponse, DownloadVersionRequest } from '@/api-client/types'
-import type { RuntimeEngine } from '../types'
 import {
-  emitRuntimeVersionDeleted,
   emitRuntimeVersionDefaultChanged,
+  emitRuntimeVersionDeleted,
 } from '../events/emitters'
+import type { RuntimeEngine } from '../types'
 
 interface RuntimeVersionState {
   // Data
@@ -58,21 +63,23 @@ export const useRuntimeVersionStore = create<RuntimeVersionState>()(
     error: null,
 
     loadVersions: async (engine?: RuntimeEngine) => {
+      if (!hasPermissionNow(Permissions.RuntimeVersionRead)) return
       set({ loading: true, error: null })
       try {
         const response = await ApiClient.RuntimeVersion.list({
-          engine
+          engine,
         })
 
         set({
           versions: response.versions || [],
           isInitialized: true,
-          loading: false
+          loading: false,
         })
       } catch (error) {
         set({
-          error: error instanceof Error ? error.message : 'Failed to load versions',
-          loading: false
+          error:
+            error instanceof Error ? error.message : 'Failed to load versions',
+          loading: false,
         })
       }
     },
@@ -89,7 +96,8 @@ export const useRuntimeVersionStore = create<RuntimeVersionState>()(
       try {
         return await Stores.RuntimeDownloadProgress.startDownload(request)
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Download failed'
+        const message =
+          error instanceof Error ? error.message : 'Download failed'
         set({ error: message })
         throw error
       }
@@ -98,12 +106,12 @@ export const useRuntimeVersionStore = create<RuntimeVersionState>()(
     setDefaultVersion: async (versionId: string) => {
       set(state => ({
         settingDefault: new Map(state.settingDefault).set(versionId, true),
-        error: null
+        error: null,
       }))
 
       try {
         await ApiClient.RuntimeVersion.setDefault({
-          version_id: versionId
+          version_id: versionId,
         })
 
         await emitRuntimeVersionDefaultChanged(versionId)
@@ -115,7 +123,10 @@ export const useRuntimeVersionStore = create<RuntimeVersionState>()(
           // Unset previous default for this engine
           const updatedVersions = state.versions.map(v => ({
             ...v,
-            is_system_default: v.engine === version.engine ? v.id === versionId : v.is_system_default
+            is_system_default:
+              v.engine === version.engine
+                ? v.id === versionId
+                : v.is_system_default,
           }))
 
           const newMap = new Map(state.settingDefault)
@@ -123,7 +134,7 @@ export const useRuntimeVersionStore = create<RuntimeVersionState>()(
 
           return {
             versions: updatedVersions,
-            settingDefault: newMap
+            settingDefault: newMap,
           }
         })
       } catch (error) {
@@ -132,7 +143,8 @@ export const useRuntimeVersionStore = create<RuntimeVersionState>()(
           newMap.delete(versionId)
           return {
             settingDefault: newMap,
-            error: error instanceof Error ? error.message : 'Failed to set default'
+            error:
+              error instanceof Error ? error.message : 'Failed to set default',
           }
         })
         throw error
@@ -142,13 +154,13 @@ export const useRuntimeVersionStore = create<RuntimeVersionState>()(
     deleteVersion: async (versionId: string, removeBinary = false) => {
       set(state => ({
         deleting: new Map(state.deleting).set(versionId, true),
-        error: null
+        error: null,
       }))
 
       try {
         await ApiClient.RuntimeVersion.delete({
           version_id: versionId,
-          remove_binary: removeBinary
+          remove_binary: removeBinary,
         })
 
         await emitRuntimeVersionDeleted(versionId)
@@ -159,7 +171,7 @@ export const useRuntimeVersionStore = create<RuntimeVersionState>()(
 
           return {
             versions: state.versions.filter(v => v.id !== versionId),
-            deleting: newMap
+            deleting: newMap,
           }
         })
       } catch (error) {
@@ -168,7 +180,10 @@ export const useRuntimeVersionStore = create<RuntimeVersionState>()(
           newMap.delete(versionId)
           return {
             deleting: newMap,
-            error: error instanceof Error ? error.message : 'Failed to delete version'
+            error:
+              error instanceof Error
+                ? error.message
+                : 'Failed to delete version',
           }
         })
         throw error
@@ -182,8 +197,9 @@ export const useRuntimeVersionStore = create<RuntimeVersionState>()(
         await get().loadVersions() // Reload after sync
       } catch (error) {
         set({
-          error: error instanceof Error ? error.message : 'Failed to sync cache',
-          loading: false
+          error:
+            error instanceof Error ? error.message : 'Failed to sync cache',
+          loading: false,
         })
       }
     },
@@ -193,7 +209,10 @@ export const useRuntimeVersionStore = create<RuntimeVersionState>()(
     },
 
     getDefaultVersion: (engine: RuntimeEngine) => {
-      return get().versions.find(v => v.engine === engine && v.is_system_default) || null
+      return (
+        get().versions.find(v => v.engine === engine && v.is_system_default) ||
+        null
+      )
     },
 
     clearError: () => set({ error: null }),
@@ -202,40 +221,64 @@ export const useRuntimeVersionStore = create<RuntimeVersionState>()(
       __store__: () => {
         const eventBus = Stores.EventBus
 
-        eventBus.on('runtime_version.created', (event) => {
-          const state = get()
-          if (!state.versions.find(v => v.id === event.data.version.id)) {
-            set({ versions: [...state.versions, event.data.version] })
-          }
-        }, 'RuntimeVersionStore')
-
-        eventBus.on('runtime_version.deleted', (event) => {
-          set(state => ({
-            versions: state.versions.filter(v => v.id !== event.data.versionId)
-          }))
-        }, 'RuntimeVersionStore')
-
-        eventBus.on('runtime_version.default_changed', (event) => {
-          set(state => {
-            const version = state.versions.find(v => v.id === event.data.versionId)
-            if (!version) return state
-
-            return {
-              versions: state.versions.map(v => ({
-                ...v,
-                is_system_default: v.engine === version.engine
-                  ? v.id === event.data.versionId
-                  : v.is_system_default
-              }))
+        eventBus.on(
+          'runtime_version.created',
+          event => {
+            const state = get()
+            if (!state.versions.find(v => v.id === event.data.version.id)) {
+              set({ versions: [...state.versions, event.data.version] })
             }
-          })
-        }, 'RuntimeVersionStore')
+          },
+          'RuntimeVersionStore',
+        )
+
+        eventBus.on(
+          'runtime_version.deleted',
+          event => {
+            set(state => ({
+              versions: state.versions.filter(
+                v => v.id !== event.data.versionId,
+              ),
+            }))
+          },
+          'RuntimeVersionStore',
+        )
+
+        eventBus.on(
+          'runtime_version.default_changed',
+          event => {
+            set(state => {
+              const version = state.versions.find(
+                v => v.id === event.data.versionId,
+              )
+              if (!version) return state
+
+              return {
+                versions: state.versions.map(v => ({
+                  ...v,
+                  is_system_default:
+                    v.engine === version.engine
+                      ? v.id === event.data.versionId
+                      : v.is_system_default,
+                })),
+              }
+            })
+          },
+          'RuntimeVersionStore',
+        )
+
+        // Cross-device sync: reload the version list on a remote
+        // download/delete/default change, or after an SSE reconnect.
+        // loadVersions self-gates on RuntimeVersionRead.
+        const reload = () => void get().loadVersions()
+        eventBus.on('sync:runtime_version', reload, 'RuntimeVersionStore')
+        eventBus.on('sync:reconnect', reload, 'RuntimeVersionStore')
       },
-      versions: () => get().loadVersions()
+      versions: () => get().loadVersions(),
     },
 
     __destroy__: () => {
       Stores.EventBus.removeGroupListeners('RuntimeVersionStore')
-    }
-  }))
+    },
+  })),
 )

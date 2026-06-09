@@ -40,6 +40,13 @@ pub struct MockItem {
     /// `required_headers:` blocks for the hub-mcp required-input
     /// tests. None for everything else (most tests).
     pub extra_yaml: Option<&'static str>,
+    /// For `mcp-server` items only: when true, the minimal manifest
+    /// emits `transport_type: http` + `url:` instead of the default
+    /// `transport_type: stdio` + `command:`. Needed for tests that
+    /// install on the user-scoped endpoint, which the MCP user
+    /// policy gates against stdio whenever `code_sandbox.enabled` is
+    /// false (test default). Ignored for non-mcp-server categories.
+    pub mcp_http: bool,
 }
 
 /// One mock release version.
@@ -73,6 +80,15 @@ fn folder(category: &str) -> &'static str {
         "mcp-server" => "mcp-servers",
         _ => "models",
     }
+}
+
+fn minimal_manifest_for(category: &str, id: &str, mcp_http: bool) -> String {
+    if category == "mcp-server" && mcp_http {
+        return format!(
+            "id: {id}\nname: {id}\ndisplay_name: {id}\ntransport_type: http\nurl: https://example.com/mcp\n"
+        );
+    }
+    minimal_manifest(category, id)
 }
 
 fn minimal_manifest(category: &str, id: &str) -> String {
@@ -125,7 +141,7 @@ fn build_tarball(v: &MockVersion, index_json: &str) -> Vec<u8> {
     // manifests
     for it in &v.items {
         let path = format!("{}/{}.yaml", folder(it.category), it.id);
-        let mut body = minimal_manifest(it.category, it.id);
+        let mut body = minimal_manifest_for(it.category, it.id, it.mcp_http);
         if let Some(extra) = it.extra_yaml {
             // Ensure the extra block starts on a fresh line.
             if !body.ends_with('\n') {

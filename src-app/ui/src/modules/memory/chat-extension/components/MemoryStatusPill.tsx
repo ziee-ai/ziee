@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Tooltip, Tag, Dropdown, message } from 'antd'
+import { App, Tooltip, Tag, Dropdown } from 'antd'
 import { BulbOutlined, BulbFilled, EyeInvisibleOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { ApiClient } from '@/api-client'
@@ -18,6 +18,7 @@ type Mode = 'inherit' | 'on' | 'off'
  * the Conversation type (chat no longer knows memory's vocabulary).
  */
 export function MemoryStatusPill() {
+  const { message } = App.useApp()
   // CRITICAL: read every Stores.X.field at the TOP, before any early
   // return. Each proxy access fires a useEffect; reading conditionally
   // after a guard triggers "Rendered more hooks than during the

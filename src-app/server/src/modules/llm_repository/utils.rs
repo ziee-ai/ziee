@@ -38,12 +38,21 @@ pub fn validate_url(url: &str) -> Result<(), AppError> {
     // F-01 + F-03. PUBLIC_HTTP_OR_HTTPS allows both http and https since
     // self-hosted upstreams may not yet have TLS, but blocks all private
     // address space.
-    crate::utils::url_validator::validate_outbound_url(
-        url,
-        &crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS,
-    )
-    .map(|_| ())
-    .map_err(|e| AppError::bad_request("INVALID_URL", e.to_string()))
+    //
+    // Debug builds (cargo test / cargo run) relax to DEV_LOCAL so
+    // integration tests can point repositories at a wiremock instance
+    // on 127.0.0.1 and so a developer can self-host an upstream on
+    // their workstation. Release builds keep the strict policy.
+    // Same pattern as auth/providers/oauth2::validate_issuer_url and
+    // llm_provider/utils.
+    let policy = if cfg!(debug_assertions) {
+        crate::utils::url_validator::OutboundUrlPolicy::DEV_LOCAL
+    } else {
+        crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS
+    };
+    crate::utils::url_validator::validate_outbound_url(url, &policy)
+        .map(|_| ())
+        .map_err(|e| AppError::bad_request("INVALID_URL", e.to_string()))
 }
 
 /// Validate auth type is one of the allowed types
@@ -72,7 +81,7 @@ const MAX_REPO_NAME_LEN: usize = 128;
 /// gating — SSRF surface on test-connection paths. Validates via
 /// the shared outbound URL allowlist (no file://, no RFC1918, etc.)
 /// when present.
-fn validate_test_endpoint(endpoint: &Option<String>) -> Result<(), AppError> {
+pub(crate) fn validate_test_endpoint(endpoint: &Option<String>) -> Result<(), AppError> {
     if let Some(url) = endpoint {
         if url.trim().is_empty() {
             return Ok(());

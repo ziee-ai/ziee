@@ -5,11 +5,12 @@ import { ApiClient } from '@/api-client'
 import {
   type LlmModel,
   type MemoryAdminSettings,
+  Permissions,
   type RebuildStatus,
   type UpdateMemoryAdminSettingsRequest,
-  Permissions,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
+import { Stores } from '@/core/stores'
 import { emitMemoryAdminSettingsUpdated } from '@/modules/memory/events'
 
 export type EmbeddingCapableModelRow = Pick<
@@ -48,10 +49,13 @@ interface MemoryAdminStore {
   error: string | null
 
   __init__: {
+    __store__?: () => void
     settings: () => Promise<void>
     availableModels: () => Promise<void>
     rebuildStatus: () => Promise<void>
   }
+
+  __destroy__?: () => void
 
   load: () => Promise<void>
   loadEmbeddingCapableModels: () => Promise<void>
@@ -76,9 +80,7 @@ const loadAdminSettings = async (
   } catch (error) {
     set(s => {
       s.error =
-        error instanceof Error
-          ? error.message
-          : 'Failed to load admin settings'
+        error instanceof Error ? error.message : 'Failed to load admin settings'
       s.loading = false
     })
   }
@@ -150,6 +152,20 @@ export const useMemoryAdminStore = create<MemoryAdminStore>()(
       // 403s on `/api/memory/admin-settings` (the explicit `load*` actions
       // below stay ungated; they're only called from the admin-gated page).
       __init__: {
+        __store__: () => {
+          const eventBus = Stores.EventBus
+          const GROUP = 'MemoryAdmin'
+          // Deployment-wide memory admin settings (singleton; event id
+          // is nil). Self-gate: only admins may read the endpoint, so
+          // skip the refetch otherwise (the explicit `load` action stays
+          // ungated; it's only called from the admin-gated page).
+          const reload = () => {
+            if (!hasPermissionNow(Permissions.MemoryAdminRead)) return
+            void loadAdminSettings(set)
+          }
+          eventBus.on('sync:memory_admin_settings', reload, GROUP)
+          eventBus.on('sync:reconnect', reload, GROUP)
+        },
         settings: () =>
           hasPermissionNow(Permissions.MemoryAdminRead)
             ? loadAdminSettings(set)
@@ -162,6 +178,10 @@ export const useMemoryAdminStore = create<MemoryAdminStore>()(
           hasPermissionNow(Permissions.MemoryAdminRead)
             ? loadRebuildStatusInternal(set)
             : Promise.resolve(),
+      },
+
+      __destroy__: () => {
+        Stores.EventBus.removeGroupListeners('MemoryAdmin')
       },
 
       load: () => loadAdminSettings(set),
@@ -180,8 +200,7 @@ export const useMemoryAdminStore = create<MemoryAdminStore>()(
           })
         } catch (error) {
           set(s => {
-            s.error =
-              error instanceof Error ? error.message : 'Trigger failed'
+            s.error = error instanceof Error ? error.message : 'Trigger failed'
             s.reembeddingTrigger = false
           })
           throw error
@@ -217,8 +236,7 @@ export const useMemoryAdminStore = create<MemoryAdminStore>()(
           return row
         } catch (error) {
           set(s => {
-            s.error =
-              error instanceof Error ? error.message : 'Update failed'
+            s.error = error instanceof Error ? error.message : 'Update failed'
             s.saving = false
           })
           throw error

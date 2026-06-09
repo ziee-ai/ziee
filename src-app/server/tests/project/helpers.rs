@@ -37,6 +37,14 @@ pub fn full_project_permissions() -> &'static [&'static str] {
 /// MCP-settings tests now that R4's `validate_mcp_server_access`
 /// validator rejects dangling server_ids. Returns the new server's
 /// JSON; callers typically just need `["id"]`.
+///
+/// Uses http transport because the MCP user policy auto-filters
+/// `stdio` out of `allowed_transports` whenever `code_sandbox.enabled`
+/// is false (test default), so a user-stdio create would 422 with
+/// `MCP_TRANSPORT_NOT_ALLOWED` here. The project tests only need a
+/// real server id; transport is irrelevant to what they assert.
+/// `enabled: false` skips the connection-health probe (which would
+/// auto-disable any real-URL probe to example.com anyway).
 pub async fn create_user_mcp_server(server: &TestServer, user: &TestUser, name: &str) -> Value {
     let resp = reqwest::Client::new()
         .post(server.api_url("/mcp/servers"))
@@ -45,10 +53,9 @@ pub async fn create_user_mcp_server(server: &TestServer, user: &TestUser, name: 
             "name": name,
             "display_name": name,
             "description": "test mcp server",
-            "enabled": true,
-            "transport_type": "stdio",
-            "command": "uvx",
-            "args": ["mcp-server-fetch"],
+            "enabled": false,
+            "transport_type": "http",
+            "url": "https://example.com/mcp",
             "timeout_seconds": 30,
         }))
         .send()

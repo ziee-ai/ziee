@@ -46,8 +46,16 @@ async fn test_single_assistant_message_with_tool_execution() {
     // Set manual approval mode
     set_mcp_settings(&server, &user.token, conversation_id, "manual_approve", vec![]).await;
 
-    // === STEP 1: Send initial message (will pause for approval) ===
-    let response = send_message_with_mcp(
+    // === STEP 1: Send initial message (pauses for approval) ===
+    // Fire-and-forget: the POST returns `{user_message_id,
+    // assistant_message_id}` (200, asserted inside the helper) and the reply
+    // streams over the per-user chat stream. When a tool needs approval the MCP
+    // extension persists a pending approval, emits `mcpApprovalRequired`, and
+    // COMPLETES the turn (`BeforeLlmAction::Complete`) — releasing the
+    // per-conversation generation slot. So we collect to the terminal frame
+    // (the `mcpApprovalRequired` event arrives before it); the resume in STEP 3
+    // is a FRESH send that would otherwise 409 if the slot were still held.
+    let events = send_message_with_mcp(
         &server,
         &user.token,
         conversation_id,
@@ -56,11 +64,8 @@ async fn test_single_assistant_message_with_tool_execution() {
         mcp_server_id,
         TOOL_USE_PROMPT,
         None,
+        &[],
     ).await;
-
-    assert_eq!(response.status(), 200, "Should send message successfully");
-
-    let events = super::helpers::parse_sse_events(response).await;
 
     // Verify started event structure
     let started_event = events.iter().find(|e| e.event == "started").expect("Should have started event");
@@ -106,7 +111,10 @@ async fn test_single_assistant_message_with_tool_execution() {
     }
 
     // === STEP 3: Resume with approval (no new user message) ===
-    let resume_response = send_message_with_mcp(
+    // The resumed turn runs to completion (the single approved tool executes,
+    // then the model finishes), so we collect until the terminal frame. The
+    // POST 200 is asserted inside the helper.
+    let resume_events = send_message_with_mcp(
         &server,
         &user.token,
         conversation_id,
@@ -118,15 +126,8 @@ async fn test_single_assistant_message_with_tool_execution() {
             "tool_use_id": tool_use_id,
             "decision": "approve"
         })]),
+        &[],
     ).await;
-
-    let status = resume_response.status();
-    if status != 200 {
-        let error_body = resume_response.text().await.unwrap_or_else(|_| "Failed to read error body".to_string());
-        panic!("Resume failed with status {}: {}", status, error_body);
-    }
-
-    let resume_events = super::helpers::parse_sse_events(resume_response).await;
 
     // Verify started event on resume
     let resume_started = resume_events.iter().find(|e| e.event == "started").expect("Should have started event on resume");
@@ -296,6 +297,14 @@ async fn get_pending_approvals(
         .clone()
 }
 
+/// Fire-and-forget send for the MCP flow: subscribe to the per-user chat
+/// stream, POST `/conversations/{id}/messages` with the MCP-enabled body, and
+/// collect the streamed frames as `SSEEvent`s (the `{event, data}` shape the
+/// old per-request SSE response produced, so the structural assertions on
+/// `started` / `content` events are unchanged). `stop_at` lists the event types
+/// at which to stop short of a terminal — pass `["mcpApprovalRequired"]` for the
+/// manual-approve pause, or `&[]` to collect until `complete`/`error`. The POST
+/// 200 is asserted inside `send_body_and_collect_events`.
 async fn send_message_with_mcp(
     server: &TestServer,
     token: &str,
@@ -305,7 +314,8 @@ async fn send_message_with_mcp(
     mcp_server_id: Uuid,
     content: &str,
     tool_approvals: Option<Vec<serde_json::Value>>,
-) -> reqwest::Response {
+    stop_at: &[&str],
+) -> Vec<super::helpers::SSEEvent> {
     let mut payload = json!({
         "content": content,
         "model_id": model_id,
@@ -325,14 +335,8 @@ async fn send_message_with_mcp(
         payload["tool_approvals"] = json!(approvals);
     }
 
-    let url = server.api_url(&format!("/conversations/{}/messages/stream", conversation_id));
-    reqwest::Client::new()
-        .post(&url)
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&payload)
-        .send()
+    super::helpers::send_body_and_collect_events(server, token, conversation_id, payload, stop_at)
         .await
-        .expect("Should send message")
 }
 
 async fn get_branch_messages_via_api(

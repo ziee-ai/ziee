@@ -155,6 +155,21 @@ export interface ChatStreamChunk {
   usage?: Usage
 }
 
+export interface ChatStreamConnectedData {
+  connectionId: string
+}
+
+export interface ChatStreamFrame {
+  conversationId: string
+  event: SSEChatStreamEvent
+}
+
+export type ChatStreamSseEvent = {
+  kind: 'connected'
+} | {
+  kind: 'frame'
+}
+
 export interface CodeSandboxResourceLimits {
   address_space_bytes: number
   cpu_max: string
@@ -343,6 +358,7 @@ export interface CreateMcpServerRequest {
   enabled?: boolean
   environment_variables_entries?: EnvVarEntry[]
   headers_entries?: HeaderEntry[]
+  hub_id?: string
   max_concurrent_sessions?: number
   name: string
   run_in_sandbox?: boolean
@@ -1162,6 +1178,9 @@ export interface LlmRepository {
   created_at: string
   enabled: boolean
   id: string
+  last_health_check_at?: string
+  last_health_check_reason?: string
+  last_health_check_status: string
   name: string
   updated_at: string
   url: string
@@ -1172,6 +1191,22 @@ export interface LlmRepositoryListResponse {
   per_page: number
   repositories: LlmRepository[]
   total: number
+}
+
+export interface LlmRepositoryWithHealthWarning {
+  auth_config: RepositoryAuthConfig
+  auth_type: string
+  built_in: boolean
+  connection_warning?: ProbeFailure
+  created_at: string
+  enabled: boolean
+  id: string
+  last_health_check_at?: string
+  last_health_check_reason?: string
+  last_health_check_status: string
+  name: string
+  updated_at: string
+  url: string
 }
 
 export interface LoginRequest {
@@ -1256,12 +1291,45 @@ export interface McpServerOAuthConfigResponse {
 }
 
 export interface McpServerWithHealthWarning {
-  connection_warning?: ProbeFailure
-  server: McpServer
+  description?: string
+  args: any
+  command?: string
+  connection_warning?: ProbeFailure2
+  created_at: string
+  display_name: string
+  enabled: boolean
+  environment_variables?: any
+  environment_variables_entries?: EnvVarView[]
+  headers?: any
+  headers_entries?: HeaderView[]
+  id: string
+  is_built_in: boolean
+  is_system: boolean
+  last_health_check_at?: string
+  last_health_check_reason?: string
+  last_health_check_status?: string
+  max_concurrent_sessions?: number
+  name: string
+  run_in_sandbox: boolean
+  sandbox_flavor: string
+  supports_sampling: boolean
+  timeout_seconds: number
+  transport_type: TransportType
+  updated_at: string
+  url?: string
+  usage_mode: UsageMode
+  user_id?: string
 }
 
 export interface McpSettingsResponse {
   settings?: ConversationMcpSettingsResponse
+}
+
+export interface McpUserPolicy {
+  allowed_transports: string[]
+  updated_at: string
+  updated_by?: string
+  user_stdio_sandbox_flavor?: string
 }
 
 export interface MeResponse {
@@ -1577,6 +1645,10 @@ export interface PreviewQuery {
 }
 
 export interface ProbeFailure {
+  reason: string
+}
+
+export interface ProbeFailure2 {
   reason: string
 }
 
@@ -2007,6 +2079,11 @@ export interface SendMessageRequest {
   tool_approvals?: ToolApprovalDecision[]
 }
 
+export interface SendMessageResponse {
+  assistant_message_id: string
+  user_message_id?: string
+}
+
 export interface ServerGroupsRequest {
   group_ids: string[]
 }
@@ -2025,6 +2102,10 @@ export interface SetPinRequest {
 export interface SetPinResponse {
   status: VersionStatus
   swap: SwapOutcome
+}
+
+export interface SetSubscriptionRequest {
+  conversation_id?: string
 }
 
 export interface SetupAdminRequest {
@@ -2064,9 +2145,29 @@ export interface SwapRuntimeVersionResponse {
   version_id: string
 }
 
+export type SyncAction = 'create' | 'update' | 'delete'
+
 export interface SyncCacheResponse {
   message: string
   synced_count: number
+}
+
+export interface SyncConnectedData {
+  connection_id: string
+}
+
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'user_llm_provider' | 'user_mcp_server' | 'session'
+
+export interface SyncEvent {
+  action: SyncAction
+  entity: SyncEntity
+  id: string
+}
+
+export type SyncSseEvent = {
+  connected: SyncConnectedData
+} | {
+  sync: SyncEvent
 }
 
 export type TaskStatus = 'running' | 'completed' | 'failed'
@@ -2272,6 +2373,11 @@ export interface UpdateMcpServerRequest {
   timeout_seconds?: number
   url?: string
   usage_mode?: UsageMode
+}
+
+export interface UpdateMcpUserPolicyRequest {
+  allowed_transports: string[]
+  user_stdio_sandbox_flavor?: string
 }
 
 export interface UpdateMemoryAdminSettingsRequest {
@@ -2539,6 +2645,7 @@ export enum Permissions {
   McpServersDelete = 'mcp_servers::delete',
   McpServersEdit = 'mcp_servers::edit',
   McpServersRead = 'mcp_servers::read',
+  McpUserPolicyEdit = 'mcp_user_policy::edit',
   MemoryAdminManage = 'memory::admin::manage',
   MemoryAdminRead = 'memory::admin::read',
   MemoryRead = 'memory::read',
@@ -2644,6 +2751,7 @@ export const PermissionDescriptions: Record<string, string> = {
   McpServersDelete: 'Delete MCP servers',
   McpServersEdit: 'Edit MCP servers',
   McpServersRead: 'View MCP servers',
+  McpUserPolicyEdit: 'Edit MCP user policy (allowed transports + sandbox flavor)',
   MemoryAdminManage: 'Update memory admin settings (embedding model, enable/disable).',
   MemoryAdminRead: 'Read memory admin settings (embedding model, defaults).',
   MemoryRead: 'List and read own memories.',
@@ -2712,6 +2820,8 @@ export const ApiEndpoints = {
   'Branch.getPendingApprovals': 'GET /api/branches/{branch_id}/pending-approvals',
   'Branch.list': 'GET /api/conversations/{id}/branches',
   'Chat.getUserLlmProviders': 'GET /api/chat/llm-providers',
+  'ChatStream.setSubscription': 'PUT /api/chat/stream/subscription',
+  'ChatStream.subscribe': 'GET /api/chat/stream',
   'CodeSandbox.deleteRootfsVersion': 'DELETE /api/code-sandbox/rootfs/versions/{id}',
   'CodeSandbox.getResourceLimits': 'GET /api/code-sandbox/resource-limits',
   'CodeSandbox.installRootfsVersion': 'POST /api/code-sandbox/rootfs/versions/install',
@@ -2805,6 +2915,7 @@ export const ApiEndpoints = {
   'LlmRepository.get': 'GET /api/llm-repositories/{repository_id}',
   'LlmRepository.list': 'GET /api/llm-repositories',
   'LlmRepository.test': 'POST /api/llm-repositories/test',
+  'LlmRepository.testById': 'POST /api/llm-repositories/{repository_id}/test',
   'LlmRepository.update': 'POST /api/llm-repositories/{repository_id}',
   'LocalLlmProxy.chatCompletions': 'POST /api/local-llm/v1/chat/completions',
   'LocalLlmProxy.embeddings': 'POST /api/local-llm/v1/embeddings',
@@ -2851,6 +2962,8 @@ export const ApiEndpoints = {
   'McpServerSystem.removeServerFromGroup': 'DELETE /api/mcp/system-servers/{id}/groups/{group_id}',
   'McpServerSystem.testConnection': 'POST /api/mcp/system-servers/test-connection',
   'McpServerSystem.update': 'PUT /api/mcp/system-servers/{id}',
+  'McpUserPolicy.get': 'GET /api/mcp/user-policy',
+  'McpUserPolicy.update': 'PUT /api/mcp/user-policy',
   'Memory.create': 'POST /api/memories',
   'Memory.delete': 'DELETE /api/memories/{id}',
   'Memory.deleteAll': 'DELETE /api/memories/all',
@@ -2872,7 +2985,8 @@ export const ApiEndpoints = {
   'Message.getAssistant': 'GET /api/messages/{id}/assistant',
   'Message.getHistory': 'GET /api/conversations/{id}/messages',
   'Message.getMcpServers': 'GET /api/messages/{id}/mcp-servers',
-  'Message.sendStream': 'POST /api/conversations/{id}/messages/stream',
+  'Message.send': 'POST /api/conversations/{id}/messages',
+  'Message.stopGeneration': 'POST /api/conversations/{conversation_id}/messages/{assistant_message_id}/stop',
   'Onboarding.complete': 'POST /api/onboarding/{guide_id}/complete',
   'Onboarding.completeStep': 'POST /api/onboarding/{guide_id}/steps/{step_id}/complete',
   'Onboarding.getProgress': 'GET /api/onboarding/progress',
@@ -2903,6 +3017,7 @@ export const ApiEndpoints = {
   'RuntimeVersion.subscribeDownloadEvents': 'GET /api/local-runtime/versions/downloads/{key}/events',
   'RuntimeVersion.syncCache': 'POST /api/local-runtime/versions/sync-cache',
   'RuntimeVersion.usage': 'GET /api/local-runtime/version-usage',
+  'Sync.subscribe': 'GET /api/sync/subscribe',
   'User.create': 'POST /api/users',
   'User.delete': 'DELETE /api/users/{user_id}',
   'User.get': 'GET /api/users/{user_id}',
@@ -2956,6 +3071,8 @@ export type ApiEndpointParameters = {
   'Branch.getPendingApprovals': { branch_id: string }
   'Branch.list': { id: string }
   'Chat.getUserLlmProviders': void
+  'ChatStream.setSubscription': SetSubscriptionRequest
+  'ChatStream.subscribe': void
   'CodeSandbox.deleteRootfsVersion': { id: string }
   'CodeSandbox.getResourceLimits': void
   'CodeSandbox.installRootfsVersion': InstallVersionRequest
@@ -3049,6 +3166,7 @@ export type ApiEndpointParameters = {
   'LlmRepository.get': { repository_id: string }
   'LlmRepository.list': PaginationQuery
   'LlmRepository.test': TestRepositoryConnectionRequest
+  'LlmRepository.testById': { repository_id: string } & UpdateLlmRepositoryRequest
   'LlmRepository.update': { repository_id: string } & UpdateLlmRepositoryRequest
   'LocalLlmProxy.chatCompletions': void
   'LocalLlmProxy.embeddings': void
@@ -3095,6 +3213,8 @@ export type ApiEndpointParameters = {
   'McpServerSystem.removeServerFromGroup': { id: string; group_id: string }
   'McpServerSystem.testConnection': TestMcpConnectionRequest
   'McpServerSystem.update': { id: string } & UpdateMcpServerRequest
+  'McpUserPolicy.get': void
+  'McpUserPolicy.update': UpdateMcpUserPolicyRequest
   'Memory.create': CreateMemoryRequest
   'Memory.delete': { id: string }
   'Memory.deleteAll': void
@@ -3116,7 +3236,8 @@ export type ApiEndpointParameters = {
   'Message.getAssistant': { id: string }
   'Message.getHistory': { id: string }
   'Message.getMcpServers': { id: string }
-  'Message.sendStream': { id: string } & SendMessageRequest
+  'Message.send': { id: string } & SendMessageRequest
+  'Message.stopGeneration': { conversation_id: string; assistant_message_id: string }
   'Onboarding.complete': { guide_id: string }
   'Onboarding.completeStep': { guide_id: string; step_id: string }
   'Onboarding.getProgress': void
@@ -3147,6 +3268,7 @@ export type ApiEndpointParameters = {
   'RuntimeVersion.subscribeDownloadEvents': { key: string }
   'RuntimeVersion.syncCache': void
   'RuntimeVersion.usage': { engine?: string }
+  'Sync.subscribe': void
   'User.create': CreateUserRequest
   'User.delete': { user_id: string }
   'User.get': { user_id: string }
@@ -3200,6 +3322,8 @@ export type ApiEndpointResponses = {
   'Branch.getPendingApprovals': PendingApprovalsResponse
   'Branch.list': Branch[]
   'Chat.getUserLlmProviders': GetUserProvidersResponse2
+  'ChatStream.setSubscription': void
+  'ChatStream.subscribe': ChatStreamSseEvent
   'CodeSandbox.deleteRootfsVersion': VersionStatus
   'CodeSandbox.getResourceLimits': CodeSandboxResourceLimits
   'CodeSandbox.installRootfsVersion': InstallTaskState
@@ -3288,11 +3412,12 @@ export type ApiEndpointResponses = {
   'LlmProvider.rotateProxyToken': RotateProxyTokenResponse
   'LlmProvider.saveUserApiKey': void
   'LlmProvider.update': LlmProvider
-  'LlmRepository.create': LlmRepository
+  'LlmRepository.create': LlmRepositoryWithHealthWarning
   'LlmRepository.delete': void
   'LlmRepository.get': LlmRepository
   'LlmRepository.list': LlmRepositoryListResponse
   'LlmRepository.test': TestRepositoryConnectionResponse
+  'LlmRepository.testById': TestRepositoryConnectionResponse
   'LlmRepository.update': LlmRepository
   'LocalLlmProxy.chatCompletions': void
   'LocalLlmProxy.embeddings': void
@@ -3339,6 +3464,8 @@ export type ApiEndpointResponses = {
   'McpServerSystem.removeServerFromGroup': void
   'McpServerSystem.testConnection': TestMcpConnectionResponse
   'McpServerSystem.update': McpServer
+  'McpUserPolicy.get': McpUserPolicy
+  'McpUserPolicy.update': McpUserPolicy
   'Memory.create': UserMemory
   'Memory.delete': void
   'Memory.deleteAll': DeleteAllResponse
@@ -3360,7 +3487,8 @@ export type ApiEndpointResponses = {
   'Message.getAssistant': MessageAssistantResponse
   'Message.getHistory': MessageWithContent[]
   'Message.getMcpServers': MessageMcpServersResponse
-  'Message.sendStream': SSEChatStreamEvent
+  'Message.send': SendMessageResponse
+  'Message.stopGeneration': void
   'Onboarding.complete': OnboardingProgress
   'Onboarding.completeStep': OnboardingProgress
   'Onboarding.getProgress': OnboardingProgress
@@ -3391,6 +3519,7 @@ export type ApiEndpointResponses = {
   'RuntimeVersion.subscribeDownloadEvents': SSEEngineDownloadEvent
   'RuntimeVersion.syncCache': SyncCacheResponse
   'RuntimeVersion.usage': VersionUsageResponse
+  'Sync.subscribe': SyncSseEvent
   'User.create': User
   'User.delete': void
   'User.get': User

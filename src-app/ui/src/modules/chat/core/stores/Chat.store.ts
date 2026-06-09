@@ -1,19 +1,24 @@
+import { type ComponentType, memo, type ReactNode } from 'react'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { ApiClient } from '@/api-client'
-import { memo, type ComponentType, type ReactNode } from 'react'
 import type {
   Branch,
   Conversation,
   MessageContent,
   MessageWithContent,
 } from '@/api-client/types'
-import { chatExtensionRegistry } from '@/modules/chat/extensions'
-import type { SSEEvent, GenericSSEEvent } from '@/modules/chat/core/extensions/types'
+import type { SSEEvent } from '@/modules/chat/core/extensions/types'
 import {
-  computeParentAnchor,
+  setActiveConversation,
+  startChatStream,
+  stopChatStream,
+} from '@/modules/chat/core/stream/ChatStreamClient'
+import {
   computeChildAnchor,
+  computeParentAnchor,
 } from '@/modules/chat/core/utils/branchAnchor.utils'
+import { chatExtensionRegistry } from '@/modules/chat/extensions'
 
 // ── Right panel types ──────────────────────────────────────────────────────
 
@@ -104,7 +109,9 @@ export function registerPanelRenderer<T extends PanelType>(
     // ComponentType; widen the precise PanelRendererMap[T] props to the
     // erased storage shape. Sound: the public <T> signature already proved
     // `component` accepts PanelRendererMap[T], a subtype of ErasedPanelData.
-    component: memo(renderer.component) as unknown as ComponentType<ErasedPanelData>,
+    component: memo(
+      renderer.component,
+    ) as unknown as ComponentType<ErasedPanelData>,
   })
 }
 
@@ -142,7 +149,23 @@ const PANEL_STORAGE_KEY = 'ziee-right-panel-tabs-v2'
  * Bounds storage growth from deleted/stale conversations whose snapshots
  * would otherwise live forever as orphans.
  */
-const PANEL_TTL_MS = 30 * 24 * 60 * 60 * 1000  // 30 days
+const PANEL_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+
+// ── Chat-token stream module state ──────────────────────────────────────────
+// These live at MODULE scope (not store state) so they survive store re-init.
+// `chatStreamWired` makes the auth-driven stream lifecycle a once-only wiring
+// (the store's `__init__.__store__` can run again after a destroy; re-running
+// the `useAuthStore.subscribe` would STACK subscribers — cf. core/sync/index).
+let chatStreamWired = false
+// Serializes `applyStreamFrame` calls: the `chat:token` EventBus handler is
+// fire-and-forget, so without this, fast successive frames' async assembly
+// would interleave and drop/duplicate tokens. The old per-request SSE reader
+// awaited each callback; this restores that ordering.
+let frameApplyTail: Promise<void> = Promise.resolve()
+// Min interval between reconnect-driven open-conversation refetches, so a
+// flapping stream can't storm `loadMessages` (mirrors SyncClient's debounce).
+const CHAT_RESYNC_MIN_INTERVAL_MS = 5_000
+let lastChatResyncAt = 0
 
 function loadAllPanelSnapshots(): Record<string, ConversationPanelSnapshot> {
   try {
@@ -154,7 +177,9 @@ function loadAllPanelSnapshots(): Record<string, ConversationPanelSnapshot> {
   }
 }
 
-function saveAllPanelSnapshots(snapshots: Record<string, ConversationPanelSnapshot>): void {
+function saveAllPanelSnapshots(
+  snapshots: Record<string, ConversationPanelSnapshot>,
+): void {
   try {
     localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(snapshots))
   } catch {
@@ -168,7 +193,9 @@ function saveAllPanelSnapshots(snapshots: Record<string, ConversationPanelSnapsh
  * Entries that pre-date the lastAccessedAt field are treated as fresh
  * (timestamp = now) on first read in loadAllPanelSnapshots' caller path.
  */
-function evictStaleSnapshots(snapshots: Record<string, ConversationPanelSnapshot>): void {
+function evictStaleSnapshots(
+  snapshots: Record<string, ConversationPanelSnapshot>,
+): void {
   const now = Date.now()
   const cutoff = now - PANEL_TTL_MS
   for (const [id, snap] of Object.entries(snapshots)) {
@@ -214,7 +241,11 @@ function savePanelSnapshotForConversation(
     const persistedActiveId =
       activeId && persistedIds.has(activeId) ? activeId : (tabs[0]?.id ?? null)
     // Tabs are already serializable (no React values), persist as-is.
-    all[conversationId] = { tabs, activeId: persistedActiveId, lastAccessedAt: Date.now() }
+    all[conversationId] = {
+      tabs,
+      activeId: persistedActiveId,
+      lastAccessedAt: Date.now(),
+    }
   }
   // Opportunistic GC: every write is a chance to evict stale entries.
   evictStaleSnapshots(all)
@@ -334,9 +365,8 @@ interface ChatState {
   loadConversation: (id: string) => Promise<void>
   loadMessages: (id: string) => Promise<void>
   sendMessage: () => Promise<void>
-  updateConversation: (updates: {
-    title?: string
-  }) => Promise<void>
+  applyStreamFrame: (conversationId: string, event: any) => Promise<void>
+  updateConversation: (updates: { title?: string }) => Promise<void>
   clearError: () => void
   reset: () => void
 
@@ -372,11 +402,19 @@ interface ChatState {
   // ── Stop streaming ────────────────────────────────────────────────────────
 
   streamingAbortController: AbortController | null
+  // The assistant message id of the in-flight generation (from the send
+  // response), used to address the stop-generation endpoint.
+  streamingMessageId: string | null
   stopStreaming: () => void
 
   // ── Right panel ───────────────────────────────────────────────────────────
 
-  rightPanel: { panelWidth: number; tabs: RightPanelTab[]; activeId: string | null; mobileDrawerOpen: boolean }
+  rightPanel: {
+    panelWidth: number
+    tabs: RightPanelTab[]
+    activeId: string | null
+    mobileDrawerOpen: boolean
+  }
   displayInRightPanel: <T extends PanelType>(entry: RightPanelTab<T>) => void
   setActiveRightPanelTab: (id: string) => void
   closeRightPanelTab: (id: string) => void
@@ -394,1235 +432,1440 @@ interface ChatState {
 
 export const useChatStore = create<ChatState>()(
   subscribeWithSelector((set, get) => ({
-      // ── Initial state ──────────────────────────────────────────────────────
+    // ── Initial state ──────────────────────────────────────────────────────
 
-      conversation: null,
-      messages: new Map<string, MessageWithContent>(),
-      loading: false,
-      loadingConversationId: null,
-      sending: false,
-      isStreaming: false,
-      error: null,
-      streamingMessage: null,
-      tempUserMessageId: null,
-      streamingAbortController: null,
+    conversation: null,
+    messages: new Map<string, MessageWithContent>(),
+    loading: false,
+    loadingConversationId: null,
+    sending: false,
+    isStreaming: false,
+    error: null,
+    streamingMessage: null,
+    tempUserMessageId: null,
+    streamingAbortController: null,
+    streamingMessageId: null,
 
-      conversationStateCache: new Map<string, ChatStateSnapshot>(),
-      cacheClearTimers: new Map<string, NodeJS.Timeout>(),
+    conversationStateCache: new Map<string, ChatStateSnapshot>(),
+    cacheClearTimers: new Map<string, NodeJS.Timeout>(),
 
-      // Branch initial state
-      branches: [],
-      branchesLoading: false,
-      pendingBranchFromMessageId: null,
-      pendingBranchForkLevel: null,
-      branchForkLevels: new Map(),
-      branchChangedDuringStream: false,
-      forkPoints: new Map(),
-      editingMessage: null,
+    // Branch initial state
+    branches: [],
+    branchesLoading: false,
+    pendingBranchFromMessageId: null,
+    pendingBranchForkLevel: null,
+    branchForkLevels: new Map(),
+    branchChangedDuringStream: false,
+    forkPoints: new Map(),
+    editingMessage: null,
 
-      // Right panel initial state
-      rightPanel: { panelWidth: 440, tabs: [], activeId: null, mobileDrawerOpen: false },
+    // Right panel initial state
+    rightPanel: {
+      panelWidth: 440,
+      tabs: [],
+      activeId: null,
+      mobileDrawerOpen: false,
+    },
 
-      // ── Conversation state management ──────────────────────────────────────
+    // ── Conversation state management ──────────────────────────────────────
 
-      saveConversationState: (conversationId: string) => {
-        const state = get()
-        const snapshot: ChatStateSnapshot = {
-          conversation: state.conversation,
-          messages: new Map(state.messages),
-          streamingMessage: state.streamingMessage,
-          tempUserMessageId: state.tempUserMessageId,
-          isStreaming: state.isStreaming,
-        }
-        set(state => {
-          const newCache = new Map(state.conversationStateCache)
-          newCache.set(conversationId, snapshot)
-          return { conversationStateCache: newCache }
-        })
+    saveConversationState: (conversationId: string) => {
+      const state = get()
+      const snapshot: ChatStateSnapshot = {
+        conversation: state.conversation,
+        messages: new Map(state.messages),
+        streamingMessage: state.streamingMessage,
+        tempUserMessageId: state.tempUserMessageId,
+        isStreaming: state.isStreaming,
+      }
+      set(state => {
+        const newCache = new Map(state.conversationStateCache)
+        newCache.set(conversationId, snapshot)
+        return { conversationStateCache: newCache }
+      })
+      console.log(
+        `[Chat.store] Saved conversation state for: ${conversationId}`,
+      )
+    },
+
+    loadConversationState: (conversationId: string): boolean => {
+      const state = get()
+      const snapshot = state.conversationStateCache.get(conversationId)
+      if (!snapshot) {
         console.log(
-          `[Chat.store] Saved conversation state for: ${conversationId}`,
+          `[Chat.store] Cache miss for conversation: ${conversationId}`,
         )
-      },
+        return false
+      }
 
-      loadConversationState: (conversationId: string): boolean => {
-        const state = get()
-        const snapshot = state.conversationStateCache.get(conversationId)
-        if (!snapshot) {
-          console.log(
-            `[Chat.store] Cache miss for conversation: ${conversationId}`,
-          )
-          return false
-        }
+      set({
+        conversation: snapshot.conversation,
+        messages: new Map(snapshot.messages),
+        streamingMessage: snapshot.streamingMessage,
+        tempUserMessageId: snapshot.tempUserMessageId,
+        isStreaming: snapshot.isStreaming,
+      })
+      console.log(
+        `[Chat.store] Cache hit - restored conversation state for: ${conversationId}`,
+      )
+      return true
+    },
 
-        set({
-          conversation: snapshot.conversation,
-          messages: new Map(snapshot.messages),
-          streamingMessage: snapshot.streamingMessage,
-          tempUserMessageId: snapshot.tempUserMessageId,
-          isStreaming: snapshot.isStreaming,
-        })
+    scheduleCacheClear: (
+      conversationId: string,
+      delayMs: number = 5 * 60 * 1000,
+    ) => {
+      get().cancelCacheClear(conversationId)
+
+      const timer = setTimeout(() => {
+        get().clearConversationCache(conversationId)
         console.log(
-          `[Chat.store] Cache hit - restored conversation state for: ${conversationId}`,
+          `[Chat.store] Auto-cleared cache for conversation: ${conversationId}`,
         )
-        return true
-      },
+      }, delayMs)
 
-      scheduleCacheClear: (
-        conversationId: string,
-        delayMs: number = 5 * 60 * 1000,
-      ) => {
-        get().cancelCacheClear(conversationId)
+      set(state => {
+        const newTimers = new Map(state.cacheClearTimers)
+        newTimers.set(conversationId, timer)
+        return { cacheClearTimers: newTimers }
+      })
+      const delayMinutes = Math.round(delayMs / 60000)
+      console.log(
+        `[Chat.store] Scheduled cache clear for ${conversationId} in ${delayMinutes} minute(s)`,
+      )
+    },
 
-        const timer = setTimeout(() => {
-          get().clearConversationCache(conversationId)
-          console.log(
-            `[Chat.store] Auto-cleared cache for conversation: ${conversationId}`,
-          )
-        }, delayMs)
-
+    cancelCacheClear: (conversationId: string) => {
+      const state = get()
+      const timer = state.cacheClearTimers.get(conversationId)
+      if (timer) {
+        clearTimeout(timer)
         set(state => {
           const newTimers = new Map(state.cacheClearTimers)
-          newTimers.set(conversationId, timer)
+          newTimers.delete(conversationId)
           return { cacheClearTimers: newTimers }
         })
-        const delayMinutes = Math.round(delayMs / 60000)
         console.log(
-          `[Chat.store] Scheduled cache clear for ${conversationId} in ${delayMinutes} minute(s)`,
+          `[Chat.store] Cancelled cache clear for conversation: ${conversationId}`,
         )
-      },
+      }
+    },
 
-      cancelCacheClear: (conversationId: string) => {
-        const state = get()
-        const timer = state.cacheClearTimers.get(conversationId)
-        if (timer) {
-          clearTimeout(timer)
-          set(state => {
-            const newTimers = new Map(state.cacheClearTimers)
-            newTimers.delete(conversationId)
-            return { cacheClearTimers: newTimers }
-          })
-          console.log(
-            `[Chat.store] Cancelled cache clear for conversation: ${conversationId}`,
-          )
-        }
-      },
+    clearConversationCache: (conversationId: string) => {
+      get().cancelCacheClear(conversationId)
+      set(state => {
+        const newCache = new Map(state.conversationStateCache)
+        newCache.delete(conversationId)
+        return { conversationStateCache: newCache }
+      })
+      console.log(
+        `[Chat.store] Cleared cache for conversation: ${conversationId}`,
+      )
+    },
 
-      clearConversationCache: (conversationId: string) => {
-        get().cancelCacheClear(conversationId)
-        set(state => {
-          const newCache = new Map(state.conversationStateCache)
-          newCache.delete(conversationId)
-          return { conversationStateCache: newCache }
+    // ── Core actions ───────────────────────────────────────────────────────
+
+    createConversation: async (
+      title?: string,
+      modelId?: string,
+      emitCreated: boolean = true,
+    ) => {
+      // Extensions can layer additional attribution onto the
+      // freshly-created conversation via the
+      // `afterCreateConversation` hook in sendMessage.
+      set({ loading: true, error: null })
+
+      try {
+        const conversation = await ApiClient.Conversation.create({
+          title: title,
+          model_id: modelId,
         })
-        console.log(
-          `[Chat.store] Cleared cache for conversation: ${conversationId}`,
-        )
-      },
+        set({ conversation, loading: false })
 
-      // ── Core actions ───────────────────────────────────────────────────────
-
-      createConversation: async (
-        title?: string,
-        modelId?: string,
-        emitCreated: boolean = true,
-      ) => {
-        // Extensions can layer additional attribution onto the
-        // freshly-created conversation via the
-        // `afterCreateConversation` hook in sendMessage.
-        set({ loading: true, error: null })
-
-        try {
-          const conversation = await ApiClient.Conversation.create({
-            title: title,
-            model_id: modelId,
-          })
-          set({ conversation, loading: false })
-
-          if (emitCreated) {
-            const { Stores } = await import('@/core/stores')
-            await Stores.EventBus.emit({
-              type: 'conversation.created',
-              data: { conversation },
-            })
-          }
-
-          return conversation
-        } catch (error: any) {
-          set({
-            error: error.message || 'Failed to create conversation',
-            loading: false,
-          })
-          throw error
-        }
-      },
-
-      loadConversation: async (id: string) => {
-        const currentConversation = get().conversation
-        const loadingId = get().loadingConversationId
-
-        if (currentConversation && currentConversation.id === id) {
-          console.log(`[Chat.store] Conversation ${id} already loaded, skipping`)
-          return
-        }
-
-        if (loadingId === id) {
-          console.log(`[Chat.store] Conversation ${id} is already loading, skipping`)
-          return
-        }
-
-        if (currentConversation && currentConversation.id !== id) {
-          console.log(
-            `[Chat.store] Switching from ${currentConversation.id} to ${id} - saving current state`,
-          )
-          get().saveConversationState(currentConversation.id)
-          get().scheduleCacheClear(currentConversation.id)
-
-          // Save outgoing conversation's panel tabs to localStorage, then clear panel
-          const { rightPanel } = get()
-          savePanelSnapshotForConversation(currentConversation.id, rightPanel.tabs, rightPanel.activeId)
-          set(state => ({ rightPanel: { ...state.rightPanel, tabs: [], activeId: null, mobileDrawerOpen: false } }))
-
-          await chatExtensionRegistry.cleanup()
-          // Clear messages on switch so consumers never momentarily see the
-          // OUTGOING conversation's messages under the new conversation id.
-          // (Outgoing state was already saved via saveConversationState above;
-          // the cache-hit/miss paths below repopulate from cache or the API.)
-          // Without this, ConversationPage's first-load scroll latches against
-          // the stale Map and the new conversation gets an animated
-          // scroll-through that defeats inline-file lazy-loading.
-          set({ isStreaming: false, sending: false, streamingMessage: null, tempUserMessageId: null, streamingAbortController: null, messages: new Map() })
-        }
-
-        get().cancelCacheClear(id)
-
-        const cacheHit = get().loadConversationState(id)
-        if (cacheHit) {
-          console.log(`[Chat.store] Cache hit for conversation: ${id}`)
-          await chatExtensionRegistry.initialize()
-
-          const { conversation } = get()
-          if (conversation) {
-            await chatExtensionRegistry.onConversationLoad(conversation)
-            await get().loadBranches(id)
-          }
-
-          // Restore panel tabs from localStorage (after initialize() so registry is populated)
-          const panelSnapshot = loadAllPanelSnapshots()[id]
-          if (panelSnapshot) {
-            const tabs = rehydrateTabs(panelSnapshot.tabs)
-            if (tabs.length > 0) {
-              set(state => ({ rightPanel: { ...state.rightPanel, tabs, activeId: panelSnapshot.activeId } }))
-            }
-            // Bump lastAccessedAt so the snapshot isn't evicted just because
-            // the user keeps revisiting without modifying the panel.
-            touchPanelSnapshot(id)
-          }
-          return
-        }
-
-        console.log(`[Chat.store] Cache miss for conversation: ${id}`)
-        set({ loading: true, loadingConversationId: id, error: null })
-        try {
-          const conversation = await ApiClient.Conversation.get({ id })
-          // Stale-result guard: if the user navigated away during the
-          // await (loadingConversationId changed), drop this response.
-          // Prevents the A→B→A race where A's slow response overwrites
-          // B's freshly-loaded conversation. (audit 04 HIGH-1 mitigation)
-          if (get().loadingConversationId !== id) {
-            console.log(`[Chat.store] Stale response for ${id}, dropping`)
-            return
-          }
-          set({ conversation, loading: false, loadingConversationId: null })
-
-          await get().loadMessages(id)
-          if (get().conversation?.id !== id) return
-          await get().loadBranches(id)
-          if (get().conversation?.id !== id) return
-
-          await chatExtensionRegistry.initialize()
-          await chatExtensionRegistry.onConversationLoad(conversation)
-
-          // Restore panel tabs from localStorage (after initialize() so registry is populated)
-          const panelSnapshot = loadAllPanelSnapshots()[id]
-          if (panelSnapshot) {
-            const tabs = rehydrateTabs(panelSnapshot.tabs)
-            if (tabs.length > 0) {
-              set(state => ({ rightPanel: { ...state.rightPanel, tabs, activeId: panelSnapshot.activeId } }))
-            }
-            touchPanelSnapshot(id)
-          }
-        } catch (error: any) {
-          // Only surface error if we're still on this conversation; an
-          // abort from navigation is not a user-facing error.
-          if (get().loadingConversationId === id) {
-            set({
-              error: error.message || 'Failed to load conversation',
-              loading: false,
-              loadingConversationId: null,
-            })
-          }
-        }
-      },
-
-      loadMessages: async (id: string) => {
-        set({ loading: true, error: null })
-        try {
-          const messagesArray = await ApiClient.Message.getHistory({ id })
-          set({
-            messages: new Map(messagesArray.map(msg => [msg.id, msg])),
-            loading: false,
-          })
-        } catch (error: any) {
-          set({
-            error: error.message || 'Failed to load messages',
-            loading: false,
-          })
-        }
-      },
-
-      // ── Branch actions ─────────────────────────────────────────────────────
-
-      loadBranches: async (conversationId: string) => {
-        set({ branchesLoading: true })
-        try {
-          const branches = await ApiClient.Branch.list({ id: conversationId })
-
-          // Seed branchForkLevels from the persisted fork_level on each branch.
-          // This ensures computeForkPoints anchors the navigator correctly after page reload,
-          // without relying on in-memory state that is lost on refresh.
-          const branchForkLevels = new Map(
-            branches.map(b => [b.id, (b.fork_level ?? 'user') as 'user' | 'assistant'])
-          )
-
-          set({ branches, branchForkLevels, branchesLoading: false })
-          await get().computeForkPoints()
-        } catch (err) {
-          console.error('[Chat.store] Failed to load branches:', err)
-          set({ branchesLoading: false })
-        }
-      },
-
-      activateBranch: async (conversationId: string, branchId: string) => {
-        await ApiClient.Branch.activate({ id: conversationId, branch_id: branchId })
-
-        set(state => ({
-          conversation: state.conversation
-            ? { ...state.conversation, active_branch_id: branchId }
-            : null,
-        }))
-
-        await get().loadMessages(conversationId)
-
-        const { branches } = get()
-        if (!branches.find(b => b.id === branchId)) {
-          await get().loadBranches(conversationId)
-        } else {
-          await get().computeForkPoints()
-        }
-      },
-
-      computeForkPoints: async () => {
-        const state = get()
-        const { branches, branchForkLevels } = state
-        const conversation = state.conversation
-
-        if (!conversation || branches.length <= 1) {
-          set({ forkPoints: new Map() })
-          return
-        }
-
-        const activeBranchId = conversation.active_branch_id
-        const messages = [...state.messages.values()].sort(
-          (a, b) =>
-            new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-        )
-        const messageIds = new Set(messages.map(m => m.id))
-
-        const forkPoints = new Map<string, string[]>()
-
-        // Group child branches by composite key: `${created_from_message_id}__${forkLevel}`.
-        // A user message can be the fork origin for two independent sets of branches —
-        // one from Regenerate ('assistant' level) and one from Edit ('user' level).
-        // Grouping by both dimensions ensures each produces its own independent navigator.
-        const forkGroups = new Map<string, string[]>()
-        for (const branch of branches) {
-          if (branch.created_from_message_id) {
-            const forkLevel = branchForkLevels.get(branch.id) ?? 'user'
-            const key = `${branch.created_from_message_id}__${forkLevel}`
-            if (!forkGroups.has(key)) {
-              forkGroups.set(key, [])
-            }
-            forkGroups.get(key)!.push(branch.id)
-          }
-        }
-
-        const currentBranch = branches.find(b => b.id === activeBranchId)
-
-        for (const [groupKey, childBranchIds] of forkGroups) {
-          const separatorIdx = groupKey.lastIndexOf('__')
-          const forkMsgId = groupKey.slice(0, separatorIdx)
-          const forkLevel = groupKey.slice(separatorIdx + 2) as 'user' | 'assistant'
-
-          const firstChild = branches.find(b => b.id === childBranchIds[0])
-          const parentBranchId = firstChild?.parent_branch_id
-
-          const groupBranchIds = parentBranchId
-            ? [parentBranchId, ...childBranchIds]
-            : childBranchIds
-
-          const groupBranches = groupBranchIds
-            .map(id => branches.find(b => b.id === id))
-            .filter(Boolean)
-            .sort(
-              (a, b) =>
-                new Date(a!.created_at).getTime() -
-                new Date(b!.created_at).getTime(),
-            )
-          const sortedGroupIds = groupBranches.map(b => b!.id)
-
-          if (sortedGroupIds.length <= 1) continue
-
-          let anchorMessageId: string | null = null
-
-          if (activeBranchId === parentBranchId) {
-            anchorMessageId = computeParentAnchor(
-              forkMsgId,
-              forkLevel,
-              messages,
-              messageIds,
-            )
-          } else if (activeBranchId && childBranchIds.includes(activeBranchId) && currentBranch) {
-            anchorMessageId = computeChildAnchor(
-              activeBranchId,
-              currentBranch.created_at,
-              messages,
-              branchForkLevels,
-            )
-          }
-
-          if (anchorMessageId) {
-            forkPoints.set(anchorMessageId, sortedGroupIds)
-          }
-        }
-
-        set({ forkPoints })
-      },
-
-      trimMessagesToForkPoint: (forkMessageId: string) => {
-        set(state => {
-          const sorted = [...state.messages.values()].sort(
-            (a, b) =>
-              new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-          )
-          const forkIndex = sorted.findIndex(m => m.id === forkMessageId)
-          if (forkIndex === -1) return {}
-          const newMessages = new Map(state.messages)
-          sorted.slice(forkIndex).forEach(m => newMessages.delete(m.id))
-          return { messages: newMessages }
-        })
-      },
-
-      captureBranchForkLevel: (branchId: string) => {
-        const level = get().pendingBranchForkLevel
-        const newLevels = new Map(get().branchForkLevels)
-        newLevels.set(branchId, level ?? 'user')
-        set({ branchForkLevels: newLevels, pendingBranchForkLevel: null })
-      },
-
-      clearPendingBranch: () => {
-        set({
-          pendingBranchFromMessageId: null,
-          pendingBranchForkLevel: null,
-          editingMessage: null,
-        })
-      },
-
-      startEditMessage: async (messageId: string) => {
-        const message = get().messages.get(messageId)
-        if (!message || message.role !== 'user') return
-
-        // Trim messages to fork point so UI shows clean branch base immediately
-        get().trimMessagesToForkPoint(messageId)
-
-        // Set editing state — extensions subscribe to editingMessage via
-        // useChatStore.subscribe() in their initialize() hooks
-        set({
-          editingMessage: message,
-          pendingBranchFromMessageId: messageId,
-          pendingBranchForkLevel: 'user',
-        })
-
-        // Pre-fill text input with message text content
-        const textContent = message.contents
-          .filter(c => c.content_type === 'text')
-          .map(c => (c.content as any).text as string)
-          .join('')
-        ;(get() as any).TextStore?.setText(textContent)
-      },
-
-      cancelEdit: async () => {
-        // Clear text input first
-        ;(get() as any).TextStore?.clearText()
-
-        // Clear editing state — extensions react via their subscribe handlers
-        set({
-          editingMessage: null,
-          pendingBranchFromMessageId: null,
-          pendingBranchForkLevel: null,
-        })
-
-        // Reload messages to restore what was trimmed by startEditMessage
-        const conversationId = get().conversation?.id
-        if (conversationId) {
-          await get().loadMessages(conversationId)
-        }
-      },
-
-      startRegenerateMessage: async (assistantMessageId: string) => {
-        const sorted = [...get().messages.values()].sort(
-          (a, b) =>
-            new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-        )
-
-        const currentIndex = sorted.findIndex(m => m.id === assistantMessageId)
-        if (currentIndex <= 0) return
-
-        let precedingUserMsg = null
-        for (let i = currentIndex - 1; i >= 0; i--) {
-          if (sorted[i].role === 'user') {
-            precedingUserMsg = sorted[i]
-            break
-          }
-        }
-
-        if (!precedingUserMsg) return
-
-        const userText = (() => {
-          for (const content of precedingUserMsg.contents) {
-            const data = content.content as any
-            if (data?.type === 'text' && typeof data.text === 'string') {
-              return data.text
-            }
-          }
-          return ''
-        })()
-
-        // Fan out content-block restoration to every extension —
-        // each filters by its own content_type and rehydrates its
-        // store accordingly (file restores `file_attachment` blocks
-        // into its selectedFiles buffer; future extensions can do the
-        // same for their content types). Chat itself stays
-        // content-type-agnostic.
-        const { chatExtensionRegistry } = await import('@/modules/chat/core/extensions')
-        await chatExtensionRegistry.onMessageEditRestore(precedingUserMsg.contents)
-
-        if (!userText) return
-
-        // Pre-fill text input with the original user message text
-        ;(get() as any).TextStore?.setText(userText)
-
-        // Mark as assistant-level fork so computeForkPoints anchors the
-        // navigator at the assistant bubble on both parent and child branches
-        set({
-          pendingBranchForkLevel: 'assistant',
-          pendingBranchFromMessageId: precedingUserMsg.id,
-        })
-
-        // Trim the user message and everything after so the UI shows a clean
-        // state during streaming
-        get().trimMessagesToForkPoint(precedingUserMsg.id)
-
-        await get().sendMessage()
-      },
-
-      // ── Send message with SSE streaming ───────────────────────────────────
-
-      sendMessage: async () => {
-        let { conversation } = get()
-
-        const beforeResult = await chatExtensionRegistry.beforeSendMessage()
-
-        if (beforeResult.cancel) {
-          console.log('[Chat.store] Message send cancelled by extension')
-          throw new Error(beforeResult.errorMessage || 'Message send was cancelled')
-        }
-
-        // Collect all request fields from extensions
-        const allRequestFields = await chatExtensionRegistry.composeRequestFields()
-
-        // Inject branching fields directly (moved from branching extension)
-        const pendingBranchFromMessageId = get().pendingBranchFromMessageId
-        if (pendingBranchFromMessageId) {
-          allRequestFields.create_branch_from_message_id = pendingBranchFromMessageId
-          allRequestFields.fork_level = get().pendingBranchForkLevel ?? 'user'
-        }
-
-        if (!conversation) {
-          // Deferred emission: extensions get to mutate the freshly
-          // created conversation BEFORE subscribers see the event.
-          // The `afterCreateConversation` hook can return a replacement
-          // shape; chat adopts it and emits the post-hook conversation.
-          conversation = await get().createConversation(
-            undefined,
-            allRequestFields.model_id as string | undefined,
-            /* emitCreated */ false,
-          )
-          const afterHook = await chatExtensionRegistry.afterCreateConversation(
-            conversation,
-          )
-          if (afterHook !== conversation) {
-            conversation = afterHook
-            set({ conversation })
-          }
+        if (emitCreated) {
           const { Stores } = await import('@/core/stores')
           await Stores.EventBus.emit({
             type: 'conversation.created',
             data: { conversation },
           })
-          await chatExtensionRegistry.initialize()
-          await chatExtensionRegistry.onConversationLoad(conversation)
         }
 
-        const streamConversationId = conversation.id
+        return conversation
+      } catch (error: any) {
+        set({
+          error: error.message || 'Failed to create conversation',
+          loading: false,
+        })
+        throw error
+      }
+    },
 
-        set({ sending: true, isStreaming: true, error: null })
+    loadConversation: async (id: string) => {
+      // Scope this device's token stream to the conversation being opened, so
+      // it receives (only) this conversation's live assistant tokens — and a
+      // catch-up replay if it is mid-generation. Deduped for a no-op repeat.
+      void setActiveConversation(id)
 
-        const userContents = await chatExtensionRegistry.provideUserContent(
-          allRequestFields.content as string || '',
-          allRequestFields,
+      const currentConversation = get().conversation
+      const loadingId = get().loadingConversationId
+
+      if (currentConversation && currentConversation.id === id) {
+        console.log(`[Chat.store] Conversation ${id} already loaded, skipping`)
+        return
+      }
+
+      if (loadingId === id) {
+        console.log(
+          `[Chat.store] Conversation ${id} is already loading, skipping`,
+        )
+        return
+      }
+
+      if (currentConversation && currentConversation.id !== id) {
+        console.log(
+          `[Chat.store] Switching from ${currentConversation.id} to ${id} - saving current state`,
+        )
+        get().saveConversationState(currentConversation.id)
+        get().scheduleCacheClear(currentConversation.id)
+
+        // Save outgoing conversation's panel tabs to localStorage, then clear panel
+        const { rightPanel } = get()
+        savePanelSnapshotForConversation(
+          currentConversation.id,
+          rightPanel.tabs,
+          rightPanel.activeId,
+        )
+        set(state => ({
+          rightPanel: {
+            ...state.rightPanel,
+            tabs: [],
+            activeId: null,
+            mobileDrawerOpen: false,
+          },
+        }))
+
+        await chatExtensionRegistry.cleanup()
+        // Clear messages on switch so consumers never momentarily see the
+        // OUTGOING conversation's messages under the new conversation id.
+        // (Outgoing state was already saved via saveConversationState above;
+        // the cache-hit/miss paths below repopulate from cache or the API.)
+        // Without this, ConversationPage's first-load scroll latches against
+        // the stale Map and the new conversation gets an animated
+        // scroll-through that defeats inline-file lazy-loading.
+        set({
+          isStreaming: false,
+          sending: false,
+          streamingMessage: null,
+          tempUserMessageId: null,
+          streamingAbortController: null,
+          streamingMessageId: null,
+          messages: new Map(),
+        })
+      }
+
+      get().cancelCacheClear(id)
+
+      const cacheHit = get().loadConversationState(id)
+      if (cacheHit) {
+        console.log(`[Chat.store] Cache hit for conversation: ${id}`)
+        await chatExtensionRegistry.initialize()
+
+        const { conversation } = get()
+        if (conversation) {
+          await chatExtensionRegistry.onConversationLoad(conversation)
+          await get().loadBranches(id)
+        }
+
+        // Restore panel tabs from localStorage (after initialize() so registry is populated)
+        const panelSnapshot = loadAllPanelSnapshots()[id]
+        if (panelSnapshot) {
+          const tabs = rehydrateTabs(panelSnapshot.tabs)
+          if (tabs.length > 0) {
+            set(state => ({
+              rightPanel: {
+                ...state.rightPanel,
+                tabs,
+                activeId: panelSnapshot.activeId,
+              },
+            }))
+          }
+          // Bump lastAccessedAt so the snapshot isn't evicted just because
+          // the user keeps revisiting without modifying the panel.
+          touchPanelSnapshot(id)
+        }
+        return
+      }
+
+      console.log(`[Chat.store] Cache miss for conversation: ${id}`)
+      set({ loading: true, loadingConversationId: id, error: null })
+      try {
+        const conversation = await ApiClient.Conversation.get({ id })
+        // Stale-result guard: if the user navigated away during the
+        // await (loadingConversationId changed), drop this response.
+        // Prevents the A→B→A race where A's slow response overwrites
+        // B's freshly-loaded conversation. (audit 04 HIGH-1 mitigation)
+        if (get().loadingConversationId !== id) {
+          console.log(`[Chat.store] Stale response for ${id}, dropping`)
+          return
+        }
+        set({ conversation, loading: false, loadingConversationId: null })
+
+        await get().loadMessages(id)
+        if (get().conversation?.id !== id) return
+        await get().loadBranches(id)
+        if (get().conversation?.id !== id) return
+
+        await chatExtensionRegistry.initialize()
+        await chatExtensionRegistry.onConversationLoad(conversation)
+
+        // Restore panel tabs from localStorage (after initialize() so registry is populated)
+        const panelSnapshot = loadAllPanelSnapshots()[id]
+        if (panelSnapshot) {
+          const tabs = rehydrateTabs(panelSnapshot.tabs)
+          if (tabs.length > 0) {
+            set(state => ({
+              rightPanel: {
+                ...state.rightPanel,
+                tabs,
+                activeId: panelSnapshot.activeId,
+              },
+            }))
+          }
+          touchPanelSnapshot(id)
+        }
+      } catch (error: any) {
+        // Only surface error if we're still on this conversation; an
+        // abort from navigation is not a user-facing error.
+        if (get().loadingConversationId === id) {
+          set({
+            error: error.message || 'Failed to load conversation',
+            loading: false,
+            loadingConversationId: null,
+          })
+        }
+      }
+    },
+
+    loadMessages: async (id: string) => {
+      set({ loading: true, error: null })
+      try {
+        const messagesArray = await ApiClient.Message.getHistory({ id })
+        set({
+          messages: new Map(messagesArray.map(msg => [msg.id, msg])),
+          loading: false,
+        })
+      } catch (error: any) {
+        set({
+          error: error.message || 'Failed to load messages',
+          loading: false,
+        })
+      }
+    },
+
+    // ── Branch actions ─────────────────────────────────────────────────────
+
+    loadBranches: async (conversationId: string) => {
+      set({ branchesLoading: true })
+      try {
+        const branches = await ApiClient.Branch.list({ id: conversationId })
+
+        // Seed branchForkLevels from the persisted fork_level on each branch.
+        // This ensures computeForkPoints anchors the navigator correctly after page reload,
+        // without relying on in-memory state that is lost on refresh.
+        const branchForkLevels = new Map(
+          branches.map(b => [
+            b.id,
+            (b.fork_level ?? 'user') as 'user' | 'assistant',
+          ]),
         )
 
-        const tempUserMessage: MessageWithContent = {
-          id: `temp-${Date.now()}`,
-          role: 'user',
-          contents: userContents,
-          originated_from_id: '',
-          edit_count: 0,
-          created_at: new Date().toISOString(),
+        set({ branches, branchForkLevels, branchesLoading: false })
+        await get().computeForkPoints()
+      } catch (err) {
+        console.error('[Chat.store] Failed to load branches:', err)
+        set({ branchesLoading: false })
+      }
+    },
+
+    activateBranch: async (conversationId: string, branchId: string) => {
+      await ApiClient.Branch.activate({
+        id: conversationId,
+        branch_id: branchId,
+      })
+
+      set(state => ({
+        conversation: state.conversation
+          ? { ...state.conversation, active_branch_id: branchId }
+          : null,
+      }))
+
+      await get().loadMessages(conversationId)
+
+      const { branches } = get()
+      if (!branches.find(b => b.id === branchId)) {
+        await get().loadBranches(conversationId)
+      } else {
+        await get().computeForkPoints()
+      }
+    },
+
+    computeForkPoints: async () => {
+      const state = get()
+      const { branches, branchForkLevels } = state
+      const conversation = state.conversation
+
+      if (!conversation || branches.length <= 1) {
+        set({ forkPoints: new Map() })
+        return
+      }
+
+      const activeBranchId = conversation.active_branch_id
+      const messages = [...state.messages.values()].sort(
+        (a, b) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      )
+      const messageIds = new Set(messages.map(m => m.id))
+
+      const forkPoints = new Map<string, string[]>()
+
+      // Group child branches by composite key: `${created_from_message_id}__${forkLevel}`.
+      // A user message can be the fork origin for two independent sets of branches —
+      // one from Regenerate ('assistant' level) and one from Edit ('user' level).
+      // Grouping by both dimensions ensures each produces its own independent navigator.
+      const forkGroups = new Map<string, string[]>()
+      for (const branch of branches) {
+        if (branch.created_from_message_id) {
+          const forkLevel = branchForkLevels.get(branch.id) ?? 'user'
+          const key = `${branch.created_from_message_id}__${forkLevel}`
+          if (!forkGroups.has(key)) {
+            forkGroups.set(key, [])
+          }
+          forkGroups.get(key)!.push(branch.id)
+        }
+      }
+
+      const currentBranch = branches.find(b => b.id === activeBranchId)
+
+      for (const [groupKey, childBranchIds] of forkGroups) {
+        const separatorIdx = groupKey.lastIndexOf('__')
+        const forkMsgId = groupKey.slice(0, separatorIdx)
+        const forkLevel = groupKey.slice(separatorIdx + 2) as
+          | 'user'
+          | 'assistant'
+
+        const firstChild = branches.find(b => b.id === childBranchIds[0])
+        const parentBranchId = firstChild?.parent_branch_id
+
+        const groupBranchIds = parentBranchId
+          ? [parentBranchId, ...childBranchIds]
+          : childBranchIds
+
+        const groupBranches = groupBranchIds
+          .map(id => branches.find(b => b.id === id))
+          .filter(Boolean)
+          .sort(
+            (a, b) =>
+              new Date(a!.created_at).getTime() -
+              new Date(b!.created_at).getTime(),
+          )
+        const sortedGroupIds = groupBranches.map(b => b!.id)
+
+        if (sortedGroupIds.length <= 1) continue
+
+        let anchorMessageId: string | null = null
+
+        if (activeBranchId === parentBranchId) {
+          anchorMessageId = computeParentAnchor(
+            forkMsgId,
+            forkLevel,
+            messages,
+            messageIds,
+          )
+        } else if (
+          activeBranchId &&
+          childBranchIds.includes(activeBranchId) &&
+          currentBranch
+        ) {
+          anchorMessageId = computeChildAnchor(
+            activeBranchId,
+            currentBranch.created_at,
+            messages,
+            branchForkLevels,
+          )
         }
 
-        set(state => {
-          const newMessages = new Map(state.messages)
-          newMessages.set(tempUserMessage.id, tempUserMessage)
-          return {
-            messages: newMessages,
-            tempUserMessageId: tempUserMessage.id,
+        if (anchorMessageId) {
+          forkPoints.set(anchorMessageId, sortedGroupIds)
+        }
+      }
+
+      set({ forkPoints })
+    },
+
+    trimMessagesToForkPoint: (forkMessageId: string) => {
+      set(state => {
+        const sorted = [...state.messages.values()].sort(
+          (a, b) =>
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+        )
+        const forkIndex = sorted.findIndex(m => m.id === forkMessageId)
+        if (forkIndex === -1) return {}
+        const newMessages = new Map(state.messages)
+        sorted.slice(forkIndex).forEach(m => newMessages.delete(m.id))
+        return { messages: newMessages }
+      })
+    },
+
+    captureBranchForkLevel: (branchId: string) => {
+      const level = get().pendingBranchForkLevel
+      const newLevels = new Map(get().branchForkLevels)
+      newLevels.set(branchId, level ?? 'user')
+      set({ branchForkLevels: newLevels, pendingBranchForkLevel: null })
+    },
+
+    clearPendingBranch: () => {
+      set({
+        pendingBranchFromMessageId: null,
+        pendingBranchForkLevel: null,
+        editingMessage: null,
+      })
+    },
+
+    startEditMessage: async (messageId: string) => {
+      const message = get().messages.get(messageId)
+      if (!message || message.role !== 'user') return
+
+      // Trim messages to fork point so UI shows clean branch base immediately
+      get().trimMessagesToForkPoint(messageId)
+
+      // Set editing state — extensions subscribe to editingMessage via
+      // useChatStore.subscribe() in their initialize() hooks
+      set({
+        editingMessage: message,
+        pendingBranchFromMessageId: messageId,
+        pendingBranchForkLevel: 'user',
+      })
+
+      // Pre-fill text input with message text content
+      const textContent = message.contents
+        .filter(c => c.content_type === 'text')
+        .map(c => (c.content as any).text as string)
+        .join('')
+      ;(get() as any).TextStore?.setText(textContent)
+    },
+
+    cancelEdit: async () => {
+      // Clear text input first
+      ;(get() as any).TextStore?.clearText()
+
+      // Clear editing state — extensions react via their subscribe handlers
+      set({
+        editingMessage: null,
+        pendingBranchFromMessageId: null,
+        pendingBranchForkLevel: null,
+      })
+
+      // Reload messages to restore what was trimmed by startEditMessage
+      const conversationId = get().conversation?.id
+      if (conversationId) {
+        await get().loadMessages(conversationId)
+      }
+    },
+
+    startRegenerateMessage: async (assistantMessageId: string) => {
+      const sorted = [...get().messages.values()].sort(
+        (a, b) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      )
+
+      const currentIndex = sorted.findIndex(m => m.id === assistantMessageId)
+      if (currentIndex <= 0) return
+
+      let precedingUserMsg = null
+      for (let i = currentIndex - 1; i >= 0; i--) {
+        if (sorted[i].role === 'user') {
+          precedingUserMsg = sorted[i]
+          break
+        }
+      }
+
+      if (!precedingUserMsg) return
+
+      const userText = (() => {
+        for (const content of precedingUserMsg.contents) {
+          const data = content.content as any
+          if (data?.type === 'text' && typeof data.text === 'string') {
+            return data.text
           }
-        })
+        }
+        return ''
+      })()
 
-        try {
-          await ApiClient.Message.sendStream(
-            {
-              id: conversation.id,
-              branch_id: conversation.active_branch_id || '',
-              ...allRequestFields,
-            } as any,
-            {
-              SSE: {
-                __init: async (data: { abortController: AbortController }) => {
-                  set({ sending: false, streamingAbortController: data.abortController })
+      // Fan out content-block restoration to every extension —
+      // each filters by its own content_type and rehydrates its
+      // store accordingly (file restores `file_attachment` blocks
+      // into its selectedFiles buffer; future extensions can do the
+      // same for their content types). Chat itself stays
+      // content-type-agnostic.
+      const { chatExtensionRegistry } = await import(
+        '@/modules/chat/core/extensions'
+      )
+      await chatExtensionRegistry.onMessageEditRestore(
+        precedingUserMsg.contents,
+      )
 
-                  await chatExtensionRegistry.onMessageSent()
+      if (!userText)
+        return // Pre-fill text input with the original user message text
+      ;(get() as any).TextStore?.setText(userText)
 
-                  // Clear pending branch state after message is sent
-                  get().clearPendingBranch()
-                },
-                started: async data => {
-                  await chatExtensionRegistry.onStreamStart()
+      // Mark as assistant-level fork so computeForkPoints anchors the
+      // navigator at the assistant bubble on both parent and child branches
+      set({
+        pendingBranchForkLevel: 'assistant',
+        pendingBranchFromMessageId: precedingUserMsg.id,
+      })
 
-                  // Detect branch change (moved from branching extension handleSSEEvent)
-                  const currentBranchId = get().conversation?.active_branch_id
-                  if (data.branch_id && data.branch_id !== currentBranchId) {
-                    set(state => ({
-                      conversation: state.conversation
-                        ? { ...state.conversation, active_branch_id: data.branch_id }
-                        : null,
-                      branchChangedDuringStream: true,
-                    }))
-                    // Capture fork level before clearPendingBranch() clears it
-                    get().captureBranchForkLevel(data.branch_id!)
+      // Trim the user message and everything after so the UI shows a clean
+      // state during streaming
+      get().trimMessagesToForkPoint(precedingUserMsg.id)
 
-                    // Reload branches for the navigator
-                    const conversation = get().conversation
-                    if (conversation) {
-                      await get().loadBranches(conversation.id)
-                    }
-                  }
+      await get().sendMessage()
+    },
 
-                  // Route through extensions
-                  const sseEvent: SSEEvent = {
-                    event_type: 'started',
-                    data,
-                  }
-                  const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent)
+    // ── Send message with SSE streaming ───────────────────────────────────
 
-                  if (!handled) {
-                    const state = get()
-                    if (data.user_message_id && state.tempUserMessageId) {
-                      const tempMessage = state.messages.get(state.tempUserMessageId)
-                      if (tempMessage) {
-                        set(state => {
-                          const newMessages = new Map(state.messages)
-                          newMessages.delete(state.tempUserMessageId!)
+    // Route ONE live generation frame (from the per-user chat-token stream,
+    // tagged with its conversation) into the open conversation's streaming
+    // state. Runs on EVERY device — whether this device sent the message or
+    // another did — so a device with the conversation open renders live tokens
+    // regardless of origin. The server already scopes frames to the open
+    // conversation; the `conversationId` guards below drop a straggler that
+    // lands just after a switch. This is the relocated started/content/
+    // complete/error assembly that used to live inline in `sendMessage`.
+    applyStreamFrame: async (conversationId: string, event: any) => {
+      const type = event?.type
 
-                          const updatedMessage = {
-                            ...tempMessage,
-                            id: data.user_message_id!,
-                            contents: tempMessage.contents.map(content => ({
-                              ...content,
-                              message_id: data.user_message_id!,
-                            })),
-                          }
+      // Mark the OPEN conversation as streaming on started/content. Critical for
+      // a RECEIVING device (one watching a generation another device started) —
+      // it never went through `sendMessage`, so without this its "generating"
+      // affordance never shows AND the reconnect/`reloadOpen` `isStreaming`
+      // guard wouldn't protect its live buffer from a refetch. Also capture the
+      // assistant message id (from content frames) so a receiver can stop too.
+      if (
+        (type === 'started' || type === 'content') &&
+        get().conversation?.id === conversationId
+      ) {
+        if (event?.message_id && !get().streamingMessageId) {
+          set({ isStreaming: true, streamingMessageId: event.message_id })
+        } else {
+          set({ isStreaming: true })
+        }
+      }
 
-                          newMessages.set(data.user_message_id!, updatedMessage)
+      if (type === 'started') {
+        // Drop a straggler that lands just after a switch: everything below
+        // MUTATES the open conversation (branch id, temp-swap, extension stream
+        // state), so applying an off-screen frame would corrupt the open view.
+        if (get().conversation?.id !== conversationId) return
 
-                          return {
-                            messages: newMessages,
-                            tempUserMessageId: null,
-                          }
-                        })
-                      }
-                    }
-                    console.log('Chat stream started:', {
-                      user_message_id: data.user_message_id,
-                      conversation_id: data.conversation_id,
-                      branch_id: data.branch_id,
-                    })
-                  }
-                },
-                content: async data => {
-                  const sseEvent: SSEEvent = {
-                    event_type: 'content',
-                    data,
-                  }
-                  const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent)
+        await chatExtensionRegistry.onStreamStart()
 
-                  if (!handled) {
-                    if (get().conversation?.id !== streamConversationId) return
+        // Detect branch change (e.g. edit/regenerate created a new branch).
+        const currentBranchId = get().conversation?.active_branch_id
+        if (event.branch_id && event.branch_id !== currentBranchId) {
+          set(state => ({
+            conversation: state.conversation
+              ? { ...state.conversation, active_branch_id: event.branch_id }
+              : null,
+            branchChangedDuringStream: true,
+          }))
+          get().captureBranchForkLevel(event.branch_id)
+          const conversation = get().conversation
+          if (conversation) await get().loadBranches(conversation.id)
+        }
 
-                    const state = get()
+        const sseEvent: SSEEvent = { event_type: 'started', data: event }
+        const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent)
+        if (handled) return
 
-                    if (data.content && Array.isArray(data.content)) {
-                      // Any content-block delta (text, thinking, tool_use)
-                      // is the LLM emitting *something* on the assistant
-                      // turn. Ensure a placeholder streaming message is in
-                      // the messages map BEFORE branching on block type, so
-                      // the DOM bubble (`[data-role="assistant"]`) renders
-                      // immediately even when the first events are
-                      // tool_use_delta (which the MCP extension turns into
-                      // a real tool_use content block via mcpToolStart only
-                      // after the tool starts executing). Without this, the
-                      // bubble appears late on tool-first flows and tests /
-                      // users see a blank wait.
-                      if (!state.streamingMessage && data.content.length > 0) {
-                        const placeholderId =
-                          data.message_id || `streaming-${Date.now()}`
-                        const placeholder: MessageWithContent = {
-                          id: placeholderId,
-                          role: 'assistant',
-                          contents: [],
-                          originated_from_id: '',
-                          edit_count: 0,
-                          created_at: new Date().toISOString(),
-                        }
-                        set(state => {
-                          const newMessages = new Map(state.messages)
-                          newMessages.set(placeholder.id, placeholder)
-                          return {
-                            streamingMessage: placeholder,
-                            messages: newMessages,
-                          }
-                        })
-                      }
-
-                      for (const block of data.content) {
-                        if (block.type === 'text_delta') {
-                          // First text_delta: hydrate the placeholder (or
-                          // create a new streaming message if none yet —
-                          // covers the original text-only path).
-                          const currentState = get()
-                          const hasTextContent =
-                            currentState.streamingMessage?.contents.some(
-                              c =>
-                                c.content_type === 'text' ||
-                                (c.content as any)?.type === 'text',
-                            ) ?? false
-
-                          if (!currentState.streamingMessage || !hasTextContent) {
-                            const messageId =
-                              currentState.streamingMessage?.id ||
-                              data.message_id ||
-                              `streaming-${Date.now()}`
-
-                            const initialContent = await chatExtensionRegistry.provideStreamingContent(
-                              'text',
-                              block.delta,
-                            )
-
-                            if (initialContent) {
-                              const baseMessage =
-                                currentState.streamingMessage ?? {
-                                  id: messageId,
-                                  role: 'assistant' as const,
-                                  contents: [],
-                                  originated_from_id: '',
-                                  edit_count: 0,
-                                  created_at: new Date().toISOString(),
-                                }
-                              const newContent = {
-                                ...initialContent,
-                                id: `${messageId}-content-${baseMessage.contents.length}`,
-                                message_id: messageId,
-                                // Override the streaming provider's hardcoded
-                                // `sequence_order: 0` with the real insertion
-                                // index — otherwise a tool-first flow (tool_use
-                                // at 0, then first text) collides at 0 and the
-                                // sequence_order sort can't order them.
-                                sequence_order: baseMessage.contents.length,
-                              }
-                              const newMessage: MessageWithContent = {
-                                ...baseMessage,
-                                id: messageId,
-                                contents: [...baseMessage.contents, newContent],
-                              }
-
-                              set(state => {
-                                const newMessages = new Map(state.messages)
-                                newMessages.set(newMessage.id, newMessage)
-                                return {
-                                  streamingMessage: newMessage,
-                                  messages: newMessages,
-                                }
-                              })
-                            }
-                          } else {
-                            const delta = block.delta || ''
-                            const incomingMessageId = data.message_id
-
-                            set(currentState => {
-                              if (!currentState.streamingMessage) {
-                                return {}
-                              }
-
-                              // Keep `streamingMessage.id` STABLE as the
-                              // original placeholder throughout the stream
-                              // (audit 04 HIGH-2 — was changing mid-stream
-                              // when the backend's real DB id arrived,
-                              // forcing React to remount the ChatMessage
-                              // component on every key change and tearing
-                              // down any local state inside it). The real
-                              // DB id is still propagated into each
-                              // content's `message_id` field below; on
-                              // stream complete, `loadMessages()` reloads
-                              // the authoritative messages keyed by the
-                              // real id, so no data is lost.
-                              const stableId = currentState.streamingMessage.id
-                              const dbId = incomingMessageId || stableId
-
-                              // Segment by the LAST block, not the first text
-                              // block. If the most recent block is text, append
-                              // to it; if a tool_use/tool_result was injected
-                              // since (e.g. a tool ran mid-response), start a
-                              // NEW text block so post-tool narration renders
-                              // AFTER the tool + its files instead of merging
-                              // back up into the opening text.
-                              const existingContents = currentState.streamingMessage.contents
-                              const lastBlock = existingContents[existingContents.length - 1]
-                              const lastIsText =
-                                !!lastBlock &&
-                                (lastBlock.content_type === 'text' ||
-                                  (lastBlock.content as any)?.type === 'text')
-
-                              let updatedContents: MessageContent[]
-
-                              if (lastIsText) {
-                                const currentText = (lastBlock.content as any)?.text || ''
-                                const updatedContent: MessageContent = {
-                                  ...lastBlock,
-                                  content: {
-                                    ...lastBlock.content,
-                                    text: currentText + delta,
-                                  } as any,
-                                }
-
-                                updatedContents = [...existingContents]
-                                updatedContents[existingContents.length - 1] = updatedContent
-                              } else {
-                                const now = new Date().toISOString()
-                                const newContent: MessageContent = {
-                                  id: `${stableId}-content-${existingContents.length}`,
-                                  message_id: dbId,
-                                  content_type: 'text',
-                                  content: { type: 'text', text: delta } as any,
-                                  sequence_order: existingContents.length,
-                                  created_at: now,
-                                  updated_at: now,
-                                }
-                                updatedContents = [...existingContents, newContent]
-                              }
-
-                              const updatedMessage: MessageWithContent = {
-                                ...currentState.streamingMessage,
-                                // id unchanged — see comment above
-                                contents: updatedContents.map(c => ({
-                                  ...c,
-                                  message_id: dbId,
-                                })),
-                              }
-
-                              const newMessages = new Map(currentState.messages)
-                              newMessages.set(stableId, updatedMessage)
-
-                              return {
-                                streamingMessage: updatedMessage,
-                                messages: newMessages,
-                              }
-                            })
-                          }
-                        }
-                      }
-                    }
-                  }
-                },
-                complete: async _data => {
-                  const sseEvent: SSEEvent = {
-                    event_type: 'complete',
-                    data: _data,
-                  }
-                  const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent)
-
-                  if (!handled) {
-                    const { streamingMessage } = get()
-                    const isOnOriginalConversation = get().conversation?.id === streamConversationId
-
-                    // Remove the streaming message from the messages map so it doesn't
-                    // briefly coexist with DB messages during the async loadMessages call
-                    set(state => {
-                      const newMessages = new Map(state.messages)
-                      if (state.streamingMessage) {
-                        newMessages.delete(state.streamingMessage.id)
-                      }
-                      return {
-                        isStreaming: false,
-                        sending: false,
-                        streamingMessage: null,
-                        streamingAbortController: null,
-                        messages: newMessages,
-                      }
-                    })
-
-                    if (isOnOriginalConversation) {
-                      if (streamingMessage) {
-                        await chatExtensionRegistry.afterStreamComplete(streamingMessage)
-                      }
-
-                      // Always reload messages after stream completes so the UI
-                      // reflects authoritative server state (including file_attachment blocks)
-                      set({ branchChangedDuringStream: false })
-                      const conversation = get().conversation
-                      if (conversation) {
-                        await get().loadMessages(conversation.id)
-
-                        // Notify ChatHistory of the updated message count
-                        const { Stores } = await import('@/core/stores')
-                        await Stores.EventBus.emit({
-                          type: 'conversation.messageCountChanged',
-                          data: {
-                            conversationId: conversation.id,
-                            messageCount: get().messages.size,
-                          },
-                        })
-                      }
-
-                      // Always recompute fork points so the navigator is up to date
-                      await get().computeForkPoints()
-                    } else {
-                      // Invalidate A's stale snapshot so messages reload fresh when user returns
-                      get().clearConversationCache(streamConversationId)
-                    }
-                  }
-                },
-                error: async data => {
-                  const streamError = new Error(data.message || 'Stream error')
-                  await chatExtensionRegistry.onStreamError(streamError)
-
-                  const sseEvent: SSEEvent = {
-                    event_type: 'error',
-                    data,
-                  }
-                  await chatExtensionRegistry.handleSSEEvent(sseEvent)
-
-                  const isOnOriginalConversation = get().conversation?.id === streamConversationId
-
-                  if (!isOnOriginalConversation) {
-                    set({ isStreaming: false, sending: false, streamingMessage: null, streamingAbortController: null })
-                    get().clearConversationCache(streamConversationId)
-                    return
-                  }
-
-                  const state = get()
-
-                  if (state.tempUserMessageId) {
-                    set(state => {
-                      const newMessages = new Map(state.messages)
-                      newMessages.delete(state.tempUserMessageId!)
-                      return {
-                        messages: newMessages,
-                        tempUserMessageId: null,
-                        error: data.message || 'Stream error',
-                        isStreaming: false,
-                        sending: false,
-                        streamingMessage: null,
-                        streamingAbortController: null,
-                      }
-                    })
-                  } else {
-                    set({
-                      error: data.message || 'Stream error',
-                      isStreaming: false,
-                      sending: false,
-                      streamingMessage: null,
-                      streamingAbortController: null,
-                    })
-                  }
-                },
-                default: async (event, data) => {
-                  const sseEvent: GenericSSEEvent = {
-                    event_type: event,
-                    data,
-                  }
-                  const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent)
-
-                  if (!handled) {
-                    console.log('Unknown chat SSE event:', event, data)
-                  }
-                },
-              },
-            },
-          )
-        } catch (error: any) {
-          const isAborted = error instanceof Error && error.name === 'AbortError'
-
-          if (!isAborted) {
-            await chatExtensionRegistry.onStreamError(
-              error instanceof Error ? error : new Error(error.message || 'Failed to send message')
-            )
-          }
-
-          const state = get()
-          const baseUpdate = {
-            error: isAborted ? null : (error.message || 'Failed to send message'),
-            sending: false,
-            isStreaming: false,
-            streamingMessage: null,
-            streamingAbortController: null,
-          }
-
-          if (state.tempUserMessageId) {
+        const state = get()
+        if (event.user_message_id && state.tempUserMessageId) {
+          // This device sent the message: reconcile the optimistic temp id.
+          // (Idempotent: the POST response may have already done this swap.)
+          const tempMessage = state.messages.get(state.tempUserMessageId)
+          if (tempMessage) {
             set(state => {
               const newMessages = new Map(state.messages)
               newMessages.delete(state.tempUserMessageId!)
-              return { messages: newMessages, tempUserMessageId: null, ...baseUpdate }
+              newMessages.set(event.user_message_id, {
+                ...tempMessage,
+                id: event.user_message_id,
+                contents: tempMessage.contents.map(content => ({
+                  ...content,
+                  message_id: event.user_message_id,
+                })),
+              })
+              return { messages: newMessages, tempUserMessageId: null }
             })
-          } else {
-            set(baseUpdate)
+          }
+        } else if (
+          event.user_message_id &&
+          conversationId === get().conversation?.id &&
+          !get().messages.has(event.user_message_id)
+        ) {
+          // Receiving device (never had a temp): another device sent this
+          // message. Fetch it so the user bubble renders before the assistant
+          // tokens fill in. Covers a catch-up replay too.
+          await get().loadMessages(conversationId)
+        }
+        return
+      }
+
+      if (type === 'content') {
+        // Drop a straggler before any side-effect (extension dispatch included),
+        // so an off-screen frame can't drive extension state for a conversation
+        // we've already switched away from.
+        if (get().conversation?.id !== conversationId) return
+
+        const data = event
+        const sseEvent: SSEEvent = { event_type: 'content', data }
+        const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent)
+        if (handled) return
+
+        const state = get()
+        if (data.content && Array.isArray(data.content)) {
+          if (!state.streamingMessage && data.content.length > 0) {
+            const placeholderId = data.message_id || `streaming-${Date.now()}`
+            const placeholder: MessageWithContent = {
+              id: placeholderId,
+              role: 'assistant',
+              contents: [],
+              originated_from_id: '',
+              edit_count: 0,
+              created_at: new Date().toISOString(),
+            }
+            set(state => {
+              const newMessages = new Map(state.messages)
+              newMessages.set(placeholder.id, placeholder)
+              return { streamingMessage: placeholder, messages: newMessages }
+            })
           }
 
-          if (isAborted) {
-            const conversation = get().conversation
-            if (conversation) {
-              await get().loadMessages(conversation.id)
+          for (const block of data.content) {
+            if (block.type === 'text_delta') {
+              const currentState = get()
+              const hasTextContent =
+                currentState.streamingMessage?.contents.some(
+                  c =>
+                    c.content_type === 'text' ||
+                    (c.content as any)?.type === 'text',
+                ) ?? false
+
+              if (!currentState.streamingMessage || !hasTextContent) {
+                const messageId =
+                  currentState.streamingMessage?.id ||
+                  data.message_id ||
+                  `streaming-${Date.now()}`
+                const initialContent =
+                  await chatExtensionRegistry.provideStreamingContent(
+                    'text',
+                    block.delta,
+                  )
+                if (initialContent) {
+                  const baseMessage = currentState.streamingMessage ?? {
+                    id: messageId,
+                    role: 'assistant' as const,
+                    contents: [],
+                    originated_from_id: '',
+                    edit_count: 0,
+                    created_at: new Date().toISOString(),
+                  }
+                  const newContent = {
+                    ...initialContent,
+                    id: `${messageId}-content-${baseMessage.contents.length}`,
+                    message_id: messageId,
+                    sequence_order: baseMessage.contents.length,
+                  }
+                  const newMessage: MessageWithContent = {
+                    ...baseMessage,
+                    id: messageId,
+                    contents: [...baseMessage.contents, newContent],
+                  }
+                  set(state => {
+                    const newMessages = new Map(state.messages)
+                    newMessages.set(newMessage.id, newMessage)
+                    return {
+                      streamingMessage: newMessage,
+                      messages: newMessages,
+                    }
+                  })
+                }
+              } else {
+                const delta = block.delta || ''
+                const incomingMessageId = data.message_id
+                set(currentState => {
+                  if (!currentState.streamingMessage) return {}
+                  const stableId = currentState.streamingMessage.id
+                  const dbId = incomingMessageId || stableId
+                  const existingContents =
+                    currentState.streamingMessage.contents
+                  const lastBlock =
+                    existingContents[existingContents.length - 1]
+                  const lastIsText =
+                    !!lastBlock &&
+                    (lastBlock.content_type === 'text' ||
+                      (lastBlock.content as any)?.type === 'text')
+
+                  let updatedContents: MessageContent[]
+                  if (lastIsText) {
+                    const currentText = (lastBlock.content as any)?.text || ''
+                    updatedContents = [...existingContents]
+                    updatedContents[existingContents.length - 1] = {
+                      ...lastBlock,
+                      content: {
+                        ...lastBlock.content,
+                        text: currentText + delta,
+                      } as any,
+                    }
+                  } else {
+                    const now = new Date().toISOString()
+                    updatedContents = [
+                      ...existingContents,
+                      {
+                        id: `${stableId}-content-${existingContents.length}`,
+                        message_id: dbId,
+                        content_type: 'text',
+                        content: { type: 'text', text: delta } as any,
+                        sequence_order: existingContents.length,
+                        created_at: now,
+                        updated_at: now,
+                      },
+                    ]
+                  }
+
+                  const updatedMessage: MessageWithContent = {
+                    ...currentState.streamingMessage,
+                    contents: updatedContents.map(c => ({
+                      ...c,
+                      message_id: dbId,
+                    })),
+                  }
+                  const newMessages = new Map(currentState.messages)
+                  newMessages.set(stableId, updatedMessage)
+                  return {
+                    streamingMessage: updatedMessage,
+                    messages: newMessages,
+                  }
+                })
+              }
             }
           }
         }
-      },
+        return
+      }
 
-      updateConversation: async (updates: {
-        title?: string
-      }) => {
-        const { conversation } = get()
-        if (!conversation) {
-          set({ error: 'No active conversation' })
-          return
-        }
+      if (type === 'complete') {
+        const sseEvent: SSEEvent = { event_type: 'complete', data: event }
+        const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent)
+        if (handled) return
 
-        try {
-          await ApiClient.Conversation.update({
-            id: conversation.id,
-            ...updates,
-          })
+        const { streamingMessage } = get()
+        const isOnOriginalConversation =
+          get().conversation?.id === conversationId
 
-          set(state => ({
-            conversation: state.conversation
-              ? { ...state.conversation, ...updates }
-              : null,
-          }))
+        set(state => {
+          const newMessages = new Map(state.messages)
+          if (state.streamingMessage) {
+            newMessages.delete(state.streamingMessage.id)
+          }
+          return {
+            isStreaming: false,
+            sending: false,
+            streamingMessage: null,
+            streamingAbortController: null,
+            streamingMessageId: null,
+            messages: newMessages,
+          }
+        })
 
-          if (updates.title !== undefined) {
+        if (isOnOriginalConversation) {
+          if (streamingMessage) {
+            await chatExtensionRegistry.afterStreamComplete(streamingMessage)
+          }
+          set({ branchChangedDuringStream: false })
+          const conversation = get().conversation
+          if (conversation) {
+            await get().loadMessages(conversation.id)
             const { Stores } = await import('@/core/stores')
             await Stores.EventBus.emit({
-              type: 'conversation.titleUpdated',
+              type: 'conversation.messageCountChanged',
               data: {
                 conversationId: conversation.id,
-                title: updates.title,
+                messageCount: get().messages.size,
               },
             })
           }
-        } catch (error: any) {
-          set({
-            error: error.message || 'Failed to update conversation',
-          })
-          throw error
+          await get().computeForkPoints()
+        } else {
+          get().clearConversationCache(conversationId)
         }
-      },
+        return
+      }
 
-      clearError: () => set({ error: null }),
+      if (type === 'error') {
+        const streamError = new Error(event.message || 'Stream error')
+        await chatExtensionRegistry.onStreamError(streamError)
+        const sseEvent: SSEEvent = { event_type: 'error', data: event }
+        await chatExtensionRegistry.handleSSEEvent(sseEvent)
 
-      stopStreaming: () => {
-        get().streamingAbortController?.abort()
-      },
+        if (get().conversation?.id !== conversationId) {
+          set({
+            isStreaming: false,
+            sending: false,
+            streamingMessage: null,
+            streamingAbortController: null,
+            streamingMessageId: null,
+          })
+          get().clearConversationCache(conversationId)
+          return
+        }
 
-      displayInRightPanel: <T extends PanelType>(entry: RightPanelTab<T>) => {
-        set(state => {
-          const exists = state.rightPanel.tabs.some(t => t.id === entry.id)
-          if (exists) {
-            return { rightPanel: { ...state.rightPanel, activeId: entry.id, mobileDrawerOpen: true } }
+        const state = get()
+        if (state.tempUserMessageId) {
+          set(state => {
+            const newMessages = new Map(state.messages)
+            newMessages.delete(state.tempUserMessageId!)
+            return {
+              messages: newMessages,
+              tempUserMessageId: null,
+              error: event.message || 'Stream error',
+              isStreaming: false,
+              sending: false,
+              streamingMessage: null,
+              streamingAbortController: null,
+              streamingMessageId: null,
+            }
+          })
+        } else {
+          set({
+            error: event.message || 'Stream error',
+            isStreaming: false,
+            sending: false,
+            streamingMessage: null,
+            streamingAbortController: null,
+            streamingMessageId: null,
+          })
+        }
+        return
+      }
+
+      // Extension events (titleUpdated, mcpToolStart/Complete/Progress,
+      // mcpApprovalRequired, mcpElicitationRequired, artifactCreated, …) —
+      // route through the extension registry exactly as the old inline
+      // `default` SSE handler did. The backend forwards these onto the
+      // chat-token stream alongside content frames.
+      const sseEvent: SSEEvent = { event_type: type, data: event }
+      await chatExtensionRegistry.handleSSEEvent(sseEvent)
+    },
+
+    sendMessage: async () => {
+      let { conversation } = get()
+
+      const beforeResult = await chatExtensionRegistry.beforeSendMessage()
+
+      if (beforeResult.cancel) {
+        console.log('[Chat.store] Message send cancelled by extension')
+        throw new Error(
+          beforeResult.errorMessage || 'Message send was cancelled',
+        )
+      }
+
+      // Collect all request fields from extensions
+      const allRequestFields =
+        await chatExtensionRegistry.composeRequestFields()
+
+      // Inject branching fields directly (moved from branching extension)
+      const pendingBranchFromMessageId = get().pendingBranchFromMessageId
+      if (pendingBranchFromMessageId) {
+        allRequestFields.create_branch_from_message_id =
+          pendingBranchFromMessageId
+        allRequestFields.fork_level = get().pendingBranchForkLevel ?? 'user'
+      }
+
+      if (!conversation) {
+        // Deferred emission: extensions get to mutate the freshly
+        // created conversation BEFORE subscribers see the event.
+        // The `afterCreateConversation` hook can return a replacement
+        // shape; chat adopts it and emits the post-hook conversation.
+        conversation = await get().createConversation(
+          undefined,
+          allRequestFields.model_id as string | undefined,
+          /* emitCreated */ false,
+        )
+        const afterHook =
+          await chatExtensionRegistry.afterCreateConversation(conversation)
+        if (afterHook !== conversation) {
+          conversation = afterHook
+          set({ conversation })
+        }
+        const { Stores } = await import('@/core/stores')
+        await Stores.EventBus.emit({
+          type: 'conversation.created',
+          data: { conversation },
+        })
+        await chatExtensionRegistry.initialize()
+        await chatExtensionRegistry.onConversationLoad(conversation)
+      }
+
+      set({ sending: true, isStreaming: true, error: null })
+
+      const userContents = await chatExtensionRegistry.provideUserContent(
+        (allRequestFields.content as string) || '',
+        allRequestFields,
+      )
+
+      const tempUserMessage: MessageWithContent = {
+        id: `temp-${Date.now()}`,
+        role: 'user',
+        contents: userContents,
+        originated_from_id: '',
+        edit_count: 0,
+        created_at: new Date().toISOString(),
+      }
+
+      set(state => {
+        const newMessages = new Map(state.messages)
+        newMessages.set(tempUserMessage.id, tempUserMessage)
+        return {
+          messages: newMessages,
+          tempUserMessageId: tempUserMessage.id,
+        }
+      })
+
+      try {
+        // Subscribe this device's token stream to the (possibly just-created)
+        // conversation BEFORE kicking off generation, so it receives all of its
+        // own tokens. Idempotent/deduped for an already-open conversation.
+        await setActiveConversation(conversation.id)
+
+        // Fire-and-forget: the assistant reply streams over the chat-token
+        // stream (applied by `applyStreamFrame` via the `chat:token` router),
+        // not this response.
+        const { user_message_id, assistant_message_id } =
+          await ApiClient.Message.send({
+            id: conversation.id,
+            branch_id: conversation.active_branch_id || '',
+            ...allRequestFields,
+          } as any)
+
+        // Remember the assistant message so the stop button can address it.
+        set({ streamingMessageId: assistant_message_id })
+
+        // Reconcile the optimistic temp user message to its real id. The
+        // `started` frame may also do this swap; both are idempotent.
+        if (user_message_id && get().tempUserMessageId) {
+          const tempId = get().tempUserMessageId!
+          const tempMessage = get().messages.get(tempId)
+          if (tempMessage) {
+            set(state => {
+              const newMessages = new Map(state.messages)
+              newMessages.delete(tempId)
+              newMessages.set(user_message_id, {
+                ...tempMessage,
+                id: user_message_id,
+                contents: tempMessage.contents.map(c => ({
+                  ...c,
+                  message_id: user_message_id,
+                })),
+              })
+              return { messages: newMessages, tempUserMessageId: null }
+            })
           }
+        }
+
+        await chatExtensionRegistry.onMessageSent()
+        get().clearPendingBranch()
+        set({ sending: false })
+      } catch (error: any) {
+        const isAborted = error instanceof Error && error.name === 'AbortError'
+
+        if (!isAborted) {
+          await chatExtensionRegistry.onStreamError(
+            error instanceof Error
+              ? error
+              : new Error(error.message || 'Failed to send message'),
+          )
+        }
+
+        const state = get()
+        const baseUpdate = {
+          error: isAborted ? null : error.message || 'Failed to send message',
+          sending: false,
+          isStreaming: false,
+          streamingMessage: null,
+          streamingAbortController: null,
+          streamingMessageId: null,
+        }
+
+        if (state.tempUserMessageId) {
+          set(state => {
+            const newMessages = new Map(state.messages)
+            newMessages.delete(state.tempUserMessageId!)
+            return {
+              messages: newMessages,
+              tempUserMessageId: null,
+              ...baseUpdate,
+            }
+          })
+        } else {
+          set(baseUpdate)
+        }
+
+        if (isAborted) {
+          const conversation = get().conversation
+          if (conversation) {
+            await get().loadMessages(conversation.id)
+          }
+        }
+      }
+    },
+
+    updateConversation: async (updates: { title?: string }) => {
+      const { conversation } = get()
+      if (!conversation) {
+        set({ error: 'No active conversation' })
+        return
+      }
+
+      try {
+        await ApiClient.Conversation.update({
+          id: conversation.id,
+          ...updates,
+        })
+
+        set(state => ({
+          conversation: state.conversation
+            ? { ...state.conversation, ...updates }
+            : null,
+        }))
+
+        if (updates.title !== undefined) {
+          const { Stores } = await import('@/core/stores')
+          await Stores.EventBus.emit({
+            type: 'conversation.titleUpdated',
+            data: {
+              conversationId: conversation.id,
+              title: updates.title,
+            },
+          })
+        }
+      } catch (error: any) {
+        set({
+          error: error.message || 'Failed to update conversation',
+        })
+        throw error
+      }
+    },
+
+    clearError: () => set({ error: null }),
+
+    stopStreaming: () => {
+      // Generation runs server-side (detached); cancel it via the stop
+      // endpoint. The detached task emits a `complete` (cancelled) frame which
+      // `applyStreamFrame` then reconciles.
+      const conversation = get().conversation
+      const messageId = get().streamingMessageId
+      if (conversation && messageId) {
+        void ApiClient.Message.stopGeneration({
+          conversation_id: conversation.id,
+          assistant_message_id: messageId,
+        })
+      }
+    },
+
+    displayInRightPanel: <T extends PanelType>(entry: RightPanelTab<T>) => {
+      set(state => {
+        const exists = state.rightPanel.tabs.some(t => t.id === entry.id)
+        if (exists) {
           return {
             rightPanel: {
               ...state.rightPanel,
-              tabs: [...state.rightPanel.tabs, entry as RightPanelTab],
               activeId: entry.id,
               mobileDrawerOpen: true,
             },
           }
-        })
-        const { rightPanel, conversation } = get()
-        if (conversation) {
-          savePanelSnapshotForConversation(conversation.id, rightPanel.tabs, rightPanel.activeId)
         }
-      },
-
-      setActiveRightPanelTab: (id: string) => {
-        set(state => {
-          if (!state.rightPanel.tabs.some(t => t.id === id)) return state
-          return { rightPanel: { ...state.rightPanel, activeId: id } }
-        })
-      },
-
-      closeRightPanelTab: (id: string) => {
-        set(state => {
-          const tabs = state.rightPanel.tabs.filter(t => t.id !== id)
-          let activeId = state.rightPanel.activeId
-          if (activeId === id) {
-            const closedIndex = state.rightPanel.tabs.findIndex(t => t.id === id)
-            const next = tabs[closedIndex] ?? tabs[closedIndex - 1] ?? null
-            activeId = next?.id ?? null
-          }
-          const mobileDrawerOpen = tabs.length > 0 ? state.rightPanel.mobileDrawerOpen : false
-          return { rightPanel: { ...state.rightPanel, tabs, activeId, mobileDrawerOpen } }
-        })
-        const { rightPanel, conversation } = get()
-        if (conversation) {
-          savePanelSnapshotForConversation(conversation.id, rightPanel.tabs, rightPanel.activeId)
+        return {
+          rightPanel: {
+            ...state.rightPanel,
+            tabs: [...state.rightPanel.tabs, entry as RightPanelTab],
+            activeId: entry.id,
+            mobileDrawerOpen: true,
+          },
         }
-      },
+      })
+      const { rightPanel, conversation } = get()
+      if (conversation) {
+        savePanelSnapshotForConversation(
+          conversation.id,
+          rightPanel.tabs,
+          rightPanel.activeId,
+        )
+      }
+    },
 
-      closeAllRightPanelTabs: () => {
-        set(state => ({ rightPanel: { ...state.rightPanel, tabs: [], activeId: null, mobileDrawerOpen: false } }))
-        const { conversation } = get()
-        if (conversation) {
-          savePanelSnapshotForConversation(conversation.id, [], null)
+    setActiveRightPanelTab: (id: string) => {
+      set(state => {
+        if (!state.rightPanel.tabs.some(t => t.id === id)) return state
+        return { rightPanel: { ...state.rightPanel, activeId: id } }
+      })
+    },
+
+    closeRightPanelTab: (id: string) => {
+      set(state => {
+        const tabs = state.rightPanel.tabs.filter(t => t.id !== id)
+        let activeId = state.rightPanel.activeId
+        if (activeId === id) {
+          const closedIndex = state.rightPanel.tabs.findIndex(t => t.id === id)
+          const next = tabs[closedIndex] ?? tabs[closedIndex - 1] ?? null
+          activeId = next?.id ?? null
         }
-      },
-
-      closeMobileDrawer: () => {
-        set(state => ({ rightPanel: { ...state.rightPanel, mobileDrawerOpen: false } }))
-      },
-
-      setRightPanelWidth: (width: number) => {
-        set(state => ({ rightPanel: { ...state.rightPanel, panelWidth: width } }))
-      },
-
-      reset: async () => {
-        const { conversation } = get()
-        if (conversation) {
-          get().saveConversationState(conversation.id)
-          get().scheduleCacheClear(conversation.id)
-
-          // Save outgoing conversation's panel tabs to localStorage before clearing
-          const { rightPanel } = get()
-          savePanelSnapshotForConversation(conversation.id, rightPanel.tabs, rightPanel.activeId)
-
-          await chatExtensionRegistry.cleanup()
+        const mobileDrawerOpen =
+          tabs.length > 0 ? state.rightPanel.mobileDrawerOpen : false
+        return {
+          rightPanel: { ...state.rightPanel, tabs, activeId, mobileDrawerOpen },
         }
+      })
+      const { rightPanel, conversation } = get()
+      if (conversation) {
+        savePanelSnapshotForConversation(
+          conversation.id,
+          rightPanel.tabs,
+          rightPanel.activeId,
+        )
+      }
+    },
 
-        set(state => ({
-          conversation: null,
-          messages: new Map<string, MessageWithContent>(),
-          loading: false,
-          loadingConversationId: null,
-          sending: false,
-          isStreaming: false,
-          error: null,
-          streamingMessage: null,
-          tempUserMessageId: null,
-          branches: [],
-          branchesLoading: false,
-          pendingBranchFromMessageId: null,
-          pendingBranchForkLevel: null,
-          branchForkLevels: new Map(),
-          branchChangedDuringStream: false,
-          forkPoints: new Map(),
-          editingMessage: null,
-          rightPanel: { ...state.rightPanel, tabs: [], activeId: null, mobileDrawerOpen: false },
-        }))
-      },
-
-      // ── Lifecycle methods ──────────────────────────────────────────────────
-
-      __init__: {
-        __store__: () => {
-          console.log('[Chat.store] Initialized')
+    closeAllRightPanelTabs: () => {
+      set(state => ({
+        rightPanel: {
+          ...state.rightPanel,
+          tabs: [],
+          activeId: null,
+          mobileDrawerOpen: false,
         },
-      },
+      }))
+      const { conversation } = get()
+      if (conversation) {
+        savePanelSnapshotForConversation(conversation.id, [], null)
+      }
+    },
 
-      __destroy__: () => {
-        console.log('[Chat.store] Destroying - cleaning up resources')
+    closeMobileDrawer: () => {
+      set(state => ({
+        rightPanel: { ...state.rightPanel, mobileDrawerOpen: false },
+      }))
+    },
 
-        const state = get()
+    setRightPanelWidth: (width: number) => {
+      set(state => ({ rightPanel: { ...state.rightPanel, panelWidth: width } }))
+    },
 
-        // Abort any in-flight streaming fetch BEFORE the rest of teardown.
-        // Without this, when the user navigates away mid-stream and the
-        // proxy refTracker schedules destruction (5s grace), the SSE
-        // fetch keeps running. On re-init a SECOND parallel fetch is
-        // spawned and the abandoned one's set() callbacks execute
-        // against a frozen state. (audit 09 B-1)
-        if (state.streamingAbortController) {
-          state.streamingAbortController.abort()
+    reset: async () => {
+      // Leaving for a new chat: stop receiving any conversation's tokens.
+      void setActiveConversation(null)
+      const { conversation } = get()
+      if (conversation) {
+        get().saveConversationState(conversation.id)
+        get().scheduleCacheClear(conversation.id)
+
+        // Save outgoing conversation's panel tabs to localStorage before clearing
+        const { rightPanel } = get()
+        savePanelSnapshotForConversation(
+          conversation.id,
+          rightPanel.tabs,
+          rightPanel.activeId,
+        )
+
+        await chatExtensionRegistry.cleanup()
+      }
+
+      set(state => ({
+        conversation: null,
+        messages: new Map<string, MessageWithContent>(),
+        loading: false,
+        loadingConversationId: null,
+        sending: false,
+        isStreaming: false,
+        error: null,
+        streamingMessage: null,
+        tempUserMessageId: null,
+        streamingMessageId: null,
+        branches: [],
+        branchesLoading: false,
+        pendingBranchFromMessageId: null,
+        pendingBranchForkLevel: null,
+        branchForkLevels: new Map(),
+        branchChangedDuringStream: false,
+        forkPoints: new Map(),
+        editingMessage: null,
+        rightPanel: {
+          ...state.rightPanel,
+          tabs: [],
+          activeId: null,
+          mobileDrawerOpen: false,
+        },
+      }))
+    },
+
+    // ── Lifecycle methods ──────────────────────────────────────────────────
+
+    __init__: {
+      __store__: async () => {
+        const { Stores } = await import('@/core/stores')
+
+        // Cross-device sync: when the currently-OPEN conversation changed on
+        // another device (a completed message turn, rename, branch switch,
+        // edit/delete), refetch its messages + branches. Skip while we're
+        // streaming locally — the live stream is authoritative and reconciles
+        // on `complete`, and a refetch mid-stream would clobber the buffer.
+        const reloadOpen = async (id: string) => {
+          const state = get()
+          if (state.conversation?.id !== id || state.isStreaming) return
+          // Refresh conversation METADATA too (title/model/branch) — a remote
+          // rename or auto-title only reaches the open view this way (the live
+          // token stream no longer carries titleUpdated to non-senders).
+          try {
+            const conv = await ApiClient.Conversation.get({ id })
+            if (get().conversation?.id === id) set({ conversation: conv })
+          } catch {
+            // fall through to message/branch reload
+          }
+          if (get().conversation?.id !== id || get().isStreaming) return
+          await get().loadMessages(id)
+          await get().loadBranches(id)
+          await get().computeForkPoints()
         }
 
-        for (const [conversationId, timer] of state.cacheClearTimers.entries()) {
-          clearTimeout(timer)
-          console.log(
-            `[Chat.store] Cleared pending timer for conversation: ${conversationId}`,
+        // Debounced reconnect resync (a flapping stream must not storm refetch).
+        // Shared by both stream reconnects (sync + chat-token): both ultimately
+        // do the same idempotent open-conversation refetch, so a suppressed
+        // duplicate within the window loses nothing.
+        const resyncOpen = () => {
+          const id = get().conversation?.id
+          if (!id) return
+          const now = Date.now()
+          if (now - lastChatResyncAt < CHAT_RESYNC_MIN_INTERVAL_MS) return
+          lastChatResyncAt = now
+          void reloadOpen(id)
+        }
+
+        Stores.EventBus.on(
+          'sync:conversation',
+          event => {
+            if (event.data.action === 'delete') {
+              // A remote device deleted this conversation. If it's the one open
+              // here, clear it — otherwise the store keeps pointing at a dead id
+              // (sends would 404 and we'd keep subscribing to it). The list store
+              // drops it from the sidebar separately.
+              if (get().conversation?.id === event.data.id) get().reset()
+              return
+            }
+            void reloadOpen(event.data.id)
+          },
+          'Chat',
+        )
+
+        Stores.EventBus.on('sync:reconnect', () => resyncOpen(), 'Chat')
+
+        // Live chat-token stream lifecycle. Owned by the chat module (this
+        // stream serves only chat); start on auth, restart on user-switch,
+        // stop on logout — mirrors core/sync's index but module-local. Wired
+        // ONCE: __init__.__store__ can run again after a store destroy, and a
+        // second `useAuthStore.subscribe` would stack subscribers.
+        if (!chatStreamWired) {
+          chatStreamWired = true
+          const { useAuthStore } = await import('@/modules/auth/Auth.store')
+          let currentUserId = useAuthStore.getState().user?.id
+          const applyAuth = (userId: string | undefined) => {
+            stopChatStream()
+            if (userId) startChatStream()
+          }
+          applyAuth(currentUserId)
+          useAuthStore.subscribe(state => {
+            const id = state.user?.id
+            if (id === currentUserId) return
+            currentUserId = id
+            applyAuth(id)
+          })
+        }
+
+        // Inbound: route each live generation frame to the open conversation.
+        // Fires on EVERY device (sender or receiver) — whichever has the
+        // conversation open renders live tokens. SERIALIZED via a tail promise:
+        // applyStreamFrame is async (awaits extension hooks / loadMessages), so
+        // concurrent invocations would interleave and corrupt streamingMessage.
+        Stores.EventBus.on(
+          'chat:token',
+          event => {
+            frameApplyTail = frameApplyTail
+              .then(() =>
+                get().applyStreamFrame(
+                  event.data.conversation_id,
+                  event.data.event,
+                ),
+              )
+              .catch(err => console.error('[chat:token] apply failed', err))
+          },
+          'Chat',
+        )
+
+        // On stream (re)connect the server replays the reply-so-far (catch-up);
+        // also reconcile the open conversation from the DB (debounced).
+        Stores.EventBus.on('chat:stream-reconnect', () => resyncOpen(), 'Chat')
+      },
+    },
+
+    __destroy__: () => {
+      console.log('[Chat.store] Destroying - cleaning up resources')
+
+      void import('@/core/stores').then(({ Stores }) =>
+        Stores.EventBus.removeGroupListeners('Chat'),
+      )
+
+      const state = get()
+
+      // Abort any in-flight streaming fetch BEFORE the rest of teardown.
+      // Without this, when the user navigates away mid-stream and the
+      // proxy refTracker schedules destruction (5s grace), the SSE
+      // fetch keeps running. On re-init a SECOND parallel fetch is
+      // spawned and the abandoned one's set() callbacks execute
+      // against a frozen state. (audit 09 B-1)
+      if (state.streamingAbortController) {
+        state.streamingAbortController.abort()
+      }
+
+      for (const [conversationId, timer] of state.cacheClearTimers.entries()) {
+        clearTimeout(timer)
+        console.log(
+          `[Chat.store] Cleared pending timer for conversation: ${conversationId}`,
+        )
+      }
+
+      if (state.conversation) {
+        get().saveConversationState(state.conversation.id)
+
+        chatExtensionRegistry
+          .cleanup()
+          .catch(error =>
+            console.error('[Chat.store] Extension cleanup failed:', error),
           )
-        }
+      }
 
-        if (state.conversation) {
-          get().saveConversationState(state.conversation.id)
+      state.conversationStateCache.clear()
+      state.cacheClearTimers.clear()
 
-          chatExtensionRegistry
-            .cleanup()
-            .catch(error =>
-              console.error('[Chat.store] Extension cleanup failed:', error),
-            )
-        }
-
-        state.conversationStateCache.clear()
-        state.cacheClearTimers.clear()
-
-        console.log('[Chat.store] Destroyed successfully')
-      },
-    })),
+      console.log('[Chat.store] Destroyed successfully')
+    },
+  })),
 )
