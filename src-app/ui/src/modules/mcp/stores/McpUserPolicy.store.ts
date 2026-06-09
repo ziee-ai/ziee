@@ -8,6 +8,7 @@ import type {
 } from '@/api-client/types'
 import type { StoreProxy } from '@/core/stores'
 import { emitMcpUserPolicyUpdated } from '@/modules/mcp/events/emitters'
+import { useAuthStore } from '@/modules/auth/Auth.store'
 
 /**
  * State shape — REACTIVITY CONTRACT:
@@ -62,6 +63,26 @@ export const useMcpUserPolicyStore = create<McpUserPolicyState>()(
 
       load: async () => {
         if (get().loading) return
+        // Permission pre-check: the endpoint is gated on
+        // `mcp_servers::read`. Users without that perm get a 403, and
+        // the test-suite's `no-403` fixture flags any unexpected 403
+        // as a missing-UI-gate failure. Short-circuit here when the
+        // current user lacks the perm — leave `policy: null`, which
+        // every consumer (HubPage tab gate, McpServerDrawer transport
+        // filter, McpUserPolicyCard) already handles as "no
+        // restrictions surfaced for this user".
+        const auth = useAuthStore.getState()
+        const hasMcpRead =
+          auth.user?.is_admin ||
+          (auth.permissions ?? []).some(
+            p => p === 'mcp_servers::read' || p === '*' || p === 'mcp_servers::*',
+          )
+        if (!hasMcpRead) {
+          set(state => {
+            state.isInitialized = true
+          })
+          return
+        }
         set(state => {
           state.loading = true
           state.error = null
@@ -74,10 +95,8 @@ export const useMcpUserPolicyStore = create<McpUserPolicyState>()(
             state.isInitialized = true
           })
         } catch (err: any) {
-          // Gracefully degrade on 403 — users without
-          // `mcp_servers::read` can't reach this endpoint AND can't
-          // do anything with MCP either, so leaving `policy: null`
-          // is correct.
+          // Defensive catch — still gracefully degrade on any
+          // unexpected error so the rest of the UI keeps working.
           const errorMessage = err?.message ?? String(err)
           set(state => {
             state.loading = false

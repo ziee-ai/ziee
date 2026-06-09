@@ -176,6 +176,18 @@ export function useHubModelDownloadGate() {
   }
 
   const runGates = async (model: HubModel): Promise<GateRunResult> => {
+    // The LlmRepository store loads via `__init__.repositories` on
+    // FIRST proxy access, but this gate hook reads via `__state` (we
+    // run from event handlers — see `feedback_stores_state_in_handlers`).
+    // `__state` doesn't trigger the lazy load, so if no other surface
+    // has touched the store yet (e.g. a fresh session that goes
+    // straight from /setup to /hub without visiting LLM Repositories),
+    // `repositories` is `[]` and every gate check 404s with "Repository
+    // Not Configured" even though the seed migration ships HuggingFace
+    // + GitHub. Call the load action explicitly here — it's idempotent
+    // via the store's `isInitialized` guard, so it's a no-op when the
+    // store is already populated.
+    await Stores.LlmRepository.loadLlmRepositories()
     // Snapshot the current repositories list via `.__state` — this
     // function is invoked from event handlers (Download click in the
     // hub card, Retry click in the download widget), NOT from a React
