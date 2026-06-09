@@ -724,6 +724,59 @@ mod tests {
         assert!(msg.contains("CONTENT_TOO_LARGE"), "msg: {msg}");
     }
 
+    // ─── ambiguous-filename attachment fallback ─────────────────────
+
+    /// Two attachments sharing a filename (both owned by the caller) and
+    /// NOT present in the workspace force `load_file_content` through the
+    /// NotFound → attachment fallback, where the >1-match guard fires.
+    /// `read_file` can resolve only by stored name, so it returns
+    /// BAD_REQUEST/`AMBIGUOUS_FILENAME` pointing the model at the suffixed
+    /// mount path via `execute_command` + `cat`.
+    #[tokio::test]
+    async fn read_file_ambiguous_attachment_errors_with_suffixed_hint() {
+        let tmp = workspace();
+        let user_id = Uuid::new_v4();
+        // Build the ctx inline so both attachments' user_id matches
+        // ctx.user_id (the fallback filters on `f.user_id == ctx.user_id`).
+        // The workspace stays empty so read_to_string hits NotFound.
+        let ctx = SandboxContext {
+            conversation_id: Uuid::new_v4(),
+            user_id,
+            workspace: tmp.path().to_path_buf(),
+            files: Arc::new(vec![
+                ConversationFile {
+                    file_id: Uuid::new_v4(),
+                    filename: "data.csv".to_string(),
+                    user_id,
+                    mime_type: Some("text/csv".to_string()),
+                    created_at: chrono::Utc::now(),
+                },
+                ConversationFile {
+                    file_id: Uuid::new_v4(),
+                    filename: "data.csv".to_string(),
+                    user_id,
+                    mime_type: Some("text/csv".to_string()),
+                    created_at: chrono::Utc::now(),
+                },
+            ]),
+        };
+
+        let err = read_file(&ctx, "data.csv", None, None)
+            .await
+            .expect_err("ambiguous filename must error, not silently pick one");
+        assert_eq!(err.status_code(), 400, "must be BAD_REQUEST; err: {err:?}");
+        assert_eq!(err.error_code(), "AMBIGUOUS_FILENAME", "err: {err:?}");
+        let msg = format!("{err:?}");
+        assert!(
+            msg.contains("data (2).csv"),
+            "must hint the suffixed mount path; err: {err:?}"
+        );
+        assert!(
+            msg.contains("execute_command") && msg.contains("cat"),
+            "must point at execute_command + cat; err: {err:?}"
+        );
+    }
+
     // ─── dangling-symlink defense (sandbox escape regression) ────────
 
     #[test]
