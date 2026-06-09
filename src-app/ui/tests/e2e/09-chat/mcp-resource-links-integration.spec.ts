@@ -8,7 +8,7 @@ import {
 import { seedAssistantWithToolResult } from './fixtures/mock-tool-result'
 import { goToNewChatPage, selectModelInDropdown } from './helpers/chat-helpers'
 import {
-  mockChatStream,
+  mockChatTokenStream,
   startedEvent,
   textDeltaEvent,
   completeEvent,
@@ -17,9 +17,10 @@ import {
 } from '../helpers/sse-mock-helpers'
 
 /**
- * Confirms the new MessageFilesView slot doesn't break existing chat
- * features (message_actions slot, BranchNavigator, MessageActions
- * core, content blocks rendered in the bubble).
+ * Confirms inline tool_result file previews (rendered by
+ * `MessageFilesView` at each tool_result block's position) don't break
+ * existing chat features (message_actions slot, BranchNavigator,
+ * MessageActions core, content blocks rendered in the bubble).
  */
 
 test.describe('Inline file previews — existing-feature integration', () => {
@@ -34,7 +35,7 @@ test.describe('Inline file previews — existing-feature integration', () => {
     await createModelViaAPI(apiURL, token, providerId, undefined, undefined, 'openai')
   })
 
-  test('message_actions slot still renders alongside message_footer slot', async ({
+  test('message_actions slot still renders alongside the inline file preview', async ({
     page,
     testInfra,
   }) => {
@@ -45,8 +46,8 @@ test.describe('Inline file previews — existing-feature integration', () => {
     })
     const bubble = page.locator('[data-testid="chat-message"][data-role="assistant"]').last()
     await expect(bubble).toBeVisible({ timeout: 10000 })
-    // Footer slot is present (has the inline file preview).
-    await expect(bubble.locator('[data-testid="message-files-view"]')).toBeVisible()
+    // The inline file preview renders at the tool_result position.
+    await expect(bubble.locator('[data-testid="inline-file-preview"]').first()).toBeVisible()
     // Actions slot is also rendered — assert one of the core action
     // components (the copy/regenerate buttons) is present in this
     // bubble, since the message_actions extension slot itself is empty
@@ -90,7 +91,7 @@ test.describe('Inline file previews — existing-feature integration', () => {
     // doesn't have any tool_results.
     const newUserMsgId = 'umsg_conv_b'
     const newAssistantMsgId = 'amsg_conv_b'
-    await mockChatStream(page, [
+    await mockChatTokenStream(page, [
       [
         startedEvent({ userMessageId: newUserMsgId }),
         textDeltaEvent({ delta: 'plain reply', messageId: newAssistantMsgId }),
@@ -132,7 +133,7 @@ test.describe('Inline file previews — existing-feature integration', () => {
       ],
     })
     const bubble = page.locator('[data-testid="chat-message"][data-role="assistant"]').last()
-    await expect(bubble.locator('[data-testid="message-files-view"]')).toBeVisible({ timeout: 10000 })
+    await expect(bubble.locator('[data-testid="inline-file-preview"]').first()).toBeVisible({ timeout: 10000 })
     // Find the copy button. The MessageActions component renders one
     // per assistant message. Use aria-label.
     const copyButton = bubble.getByRole('button', { name: /copy/i }).first()

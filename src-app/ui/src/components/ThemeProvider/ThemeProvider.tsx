@@ -6,6 +6,7 @@ import { themes } from '@/themes'
 import { AppThemeConfig } from '@/themes/light'
 import { resolveSystemTheme } from '@/components/ThemeProvider/resolveTheme'
 import { Stores } from '@/core/stores'
+import { AntdAppBridge } from '@/lib/antdAppHolder'
 
 interface ThemeProviderProps {
   children: React.ReactNode
@@ -71,6 +72,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
             top: 50,
           }}
         >
+          <AntdAppBridge />
           {children}
         </App>
       </ConfigProvider>

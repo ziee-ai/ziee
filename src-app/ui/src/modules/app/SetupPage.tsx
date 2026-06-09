@@ -10,11 +10,17 @@ export default function SetupPage() {
   const navigate = useNavigate()
   const [form] = Form.useForm()
 
-  console.log({ needsSetup })
-
-  // Redirect to homepage if setup is not needed
+  // Redirect away if setup is already done (admin exists). Two paths
+  // benefit:
+  //   1. Cross-tab: tab A still on /setup when tab B completes setup.
+  //   2. Direct nav: tests / users hitting /setup when admin already
+  //      exists (e.g. an API-only setup happened before the page load).
+  //
+  // The earlier race (this navigate firing mid-onFinish and aborting
+  // the in-flight /me from authenticateUser) is now defused upstream:
+  // Auth.store's catch keeps the token across a TypeError/Failed-to-
+  // fetch (abort) so the next mount can retry. Re-enabled here.
   React.useEffect(() => {
-    console.log('useEffect needsSetup:', needsSetup)
     if (needsSetup === false) {
       navigate('/', { replace: true })
     }

@@ -18,6 +18,15 @@ pub enum LlmRepositoryEvent {
 
     /// A repository was deleted
     Deleted { id: Uuid, name: String },
+
+    /// An enabled repository failed its connection probe and was
+    /// auto-disabled. Emitted from `connection_health`'s
+    /// `enforce_on_create` and `enforce_on_update_transition` paths
+    /// so the UI's list page reloads + the row's Alert renders in
+    /// real time. The boot-time probe does NOT emit this — the
+    /// EventBus isn't built yet at module init; mount-time refetch
+    /// catches it.
+    AutoDisabled { repo_id: Uuid, reason: String },
 }
 
 impl LlmRepositoryEvent {
@@ -34,6 +43,11 @@ impl LlmRepositoryEvent {
     /// Create a Deleted event
     pub fn deleted(id: Uuid, name: String) -> Self {
         Self::Deleted { id, name }
+    }
+
+    /// Create an AutoDisabled event
+    pub fn auto_disabled(repo_id: Uuid, reason: String) -> Self {
+        Self::AutoDisabled { repo_id, reason }
     }
 }
 

@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  App,
   Typography,
   Button,
   Dropdown,
   Empty,
-  Modal,
   Spin,
   theme,
 } from 'antd'
@@ -118,6 +118,7 @@ function RecentConversationRow({
 }) {
   const navigate = useNavigate()
   const { token } = theme.useToken()
+  const { modal } = App.useApp()
   const [hovered, setHovered] = useState(false)
   const [deleting, setDeleting] = useState(false)
   // Controlled dropdown open so we can suppress closing while an
@@ -147,7 +148,7 @@ function RecentConversationRow({
 
   const confirmDelete = () => {
     const title = conversation.title || 'Untitled Conversation'
-    Modal.confirm({
+    modal.confirm({
       title: 'Delete conversation?',
       content: `"${title}" will be permanently deleted.`,
       okText: 'Delete',

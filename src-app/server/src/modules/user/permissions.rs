@@ -139,6 +139,8 @@ impl PermissionCheck for GroupsAssignUsers {
 /// Get all user module permissions
 pub fn all_permissions() -> Vec<PermissionInfo> {
     vec![
+        ProfileRead::to_info(),
+        ProfileEdit::to_info(),
         UsersRead::to_info(),
         UsersCreate::to_info(),
         UsersEdit::to_info(),

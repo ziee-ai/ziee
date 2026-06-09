@@ -31,7 +31,6 @@ use super::real_llm_helpers as h;
 // ────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-#[ignore]
 async fn r1_embedding_dispatch_writes_real_vector() {
     if h::skip_if_no_keys("r1_embedding_dispatch") {
         return;
@@ -68,7 +67,6 @@ async fn r1_embedding_dispatch_writes_real_vector() {
 // ────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-#[ignore]
 async fn r2_retrieval_finds_semantically_similar_memory() {
     if h::skip_if_no_keys("r2_retrieval") {
         return;
@@ -115,7 +113,6 @@ async fn r2_retrieval_finds_semantically_similar_memory() {
 // ────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-#[ignore]
 async fn r3_extraction_pipeline_with_real_groq_llm() {
     if h::skip_if_no_keys("r3_extraction") {
         return;
@@ -383,7 +380,6 @@ async fn fetch_summary_row(
 }
 
 #[tokio::test]
-#[ignore]
 async fn r4_summarization_full_with_real_groq_llm() {
     if h::skip_if_no_keys("r4_summarize_full") {
         return;
@@ -425,7 +421,6 @@ async fn r4_summarization_full_with_real_groq_llm() {
 // ────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-#[ignore]
 async fn r5_summarization_incremental_with_real_groq_llm() {
     if h::skip_if_no_keys("r5_summarize_incremental") {
         return;
@@ -485,7 +480,6 @@ async fn r5_summarization_incremental_with_real_groq_llm() {
 // ────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-#[ignore]
 async fn r6_incremental_falls_back_to_full_on_anchor_loss() {
     if h::skip_if_no_keys("r6_incremental_fallback") {
         return;
@@ -546,7 +540,6 @@ async fn r6_incremental_falls_back_to_full_on_anchor_loss() {
 // ────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-#[ignore]
 async fn r7_cosine_threshold_filters_unrelated_memories() {
     if h::skip_if_no_keys("r7_cosine_threshold") {
         return;
@@ -722,7 +715,6 @@ async fn wait_for_rebuild_done(
 }
 
 #[tokio::test]
-#[ignore]
 async fn r8_same_dim_model_swap_rebuilds_all_rows() {
     if h::skip_if_no_openai("r8_same_dim_swap") {
         return;
@@ -815,7 +807,6 @@ async fn r8_same_dim_model_swap_rebuilds_all_rows() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn r9_dim_down_change_alters_column_and_reembeds() {
     if h::skip_if_no_keys("r9_dim_down") || h::skip_if_no_openai("r9_dim_down") {
         return;
@@ -914,7 +905,6 @@ async fn r9_dim_down_change_alters_column_and_reembeds() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn r10_explicit_reembed_endpoint_resumes_stale_rows() {
     if h::skip_if_no_openai("r10_explicit_reembed") {
         return;

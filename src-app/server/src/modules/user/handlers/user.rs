@@ -14,6 +14,7 @@ use crate::{
     common::{ApiResult, AppError, PaginationQuery},
     core::EventBus,
     modules::permissions::{RequirePermissions, with_permission},
+    modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
 };
 
 use crate::modules::user::{
@@ -103,8 +104,8 @@ pub fn get_user_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn create_user(
     auth: RequirePermissions<(UsersCreate,)>,
-
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Json(request): Json<CreateUserRequest>,
 ) -> ApiResult<Json<User>> {
     // Validate username and email format
@@ -192,6 +193,14 @@ pub async fn create_user(
     // Emit UserCreated event asynchronously
     event_bus.emit_async(UserEvent::created(user.clone()));
 
+    sync_publish(
+        SyncEntity::User,
+        SyncAction::Create,
+        user.id,
+        Audience::perm::<UsersRead>(),
+        origin.0,
+    );
+
     Ok((StatusCode::CREATED, Json(user)))
 }
 
@@ -212,6 +221,7 @@ pub async fn update_user(
     _auth: RequirePermissions<(UsersEdit,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(user_id): Path<Uuid>,
+    origin: SyncOrigin,
     Json(request): Json<UpdateUserRequest>,
 ) -> ApiResult<Json<User>> {
     // Check if user exists and get user data
@@ -268,6 +278,23 @@ pub async fn update_user(
     // Emit update event for other modules to react
     event_bus.emit_async(UserEvent::updated(updated_user.clone()));
 
+    sync_publish(
+        SyncEntity::User,
+        SyncAction::Update,
+        updated_user.id,
+        Audience::perm::<UsersRead>(),
+        origin.0,
+    );
+    // Also notify the EDITED user (Owner-scoped) so THEIR other devices
+    // re-bootstrap /auth/me — an admin changed their profile / active state.
+    sync_publish(
+        SyncEntity::Profile,
+        SyncAction::Update,
+        updated_user.id,
+        Audience::owner(updated_user.id),
+        origin.0,
+    );
+
     Ok((StatusCode::OK, Json(updated_user)))
 }
 
@@ -291,6 +318,7 @@ pub async fn toggle_user_active(
     _auth: RequirePermissions<(UsersToggleStatus,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(user_id): Path<Uuid>,
+    origin: SyncOrigin,
 ) -> ApiResult<Json<UserActiveStatusResponse>> {
     // Get current user
     let user = Repos
@@ -318,6 +346,24 @@ pub async fn toggle_user_active(
         .ok_or_else(|| AppError::not_found("User"))?;
 
     event_bus.emit_async(UserEvent::updated(updated_user));
+
+    // Mirror update_user: notify admins (User) AND the affected user (Profile,
+    // Owner) so their devices re-bootstrap — on deactivation that surfaces the
+    // logout immediately rather than after the ≤60s stream re-check.
+    sync_publish(
+        SyncEntity::User,
+        SyncAction::Update,
+        user_id,
+        Audience::perm::<UsersRead>(),
+        origin.0,
+    );
+    sync_publish(
+        SyncEntity::Profile,
+        SyncAction::Update,
+        user_id,
+        Audience::owner(user_id),
+        origin.0,
+    );
 
     Ok((
         StatusCode::OK,
@@ -391,6 +437,7 @@ pub async fn delete_user(
     _auth: RequirePermissions<(UsersDelete,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(user_id): Path<Uuid>,
+    origin: SyncOrigin,
 ) -> ApiResult<StatusCode> {
     // Check if user exists
     let user = Repos
@@ -415,6 +462,24 @@ pub async fn delete_user(
 
     // Emit deletion event for other modules to react
     event_bus.emit_async(UserEvent::deleted(user_id));
+
+    sync_publish(
+        SyncEntity::User,
+        SyncAction::Delete,
+        user_id,
+        Audience::perm::<UsersRead>(),
+        origin.0,
+    );
+    // Signal the deleted user's own devices (Owner) so they re-bootstrap
+    // /auth/me, get a 401, and log out immediately instead of lingering until
+    // the ≤60s stream re-check tears the connection down.
+    sync_publish(
+        SyncEntity::Session,
+        SyncAction::Update,
+        user_id,
+        Audience::owner(user_id),
+        origin.0,
+    );
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }

@@ -3,10 +3,42 @@
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use uuid::Uuid;
 
 use super::models::{McpServer, SetMcpServerOAuthConfigRequest, TransportType, UsageMode};
+
+/// Inbound shape for ONE env-var entry on create/update. Mirrors
+/// `EnvVarView` (response) but with a different `value` semantic:
+///
+/// * `value: Some(s)` — set/overwrite this entry's value to `s`.
+///   For secret entries (`is_secret: true`), the new value is
+///   encrypted into `environment_variables_encrypted`. For non-secret,
+///   it goes into the plain `environment_variables` map.
+/// * `value: None` — KEEP existing. Used by the UI when the user
+///   didn't touch a saved secret (the form shows `••••• (saved)` and
+///   we don't want to clobber it with a blank).
+/// * `value: Some("")` — explicit empty string. Stored verbatim.
+///
+/// Toggling `is_secret` across saves migrates the entry between the
+/// plain and encrypted columns; the repo does that move atomically.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct EnvVarEntry {
+    pub key: String,
+    #[serde(default)]
+    pub value: Option<String>,
+    pub is_secret: bool,
+}
+
+/// HTTP-header analog of `EnvVarEntry`. Identical shape; separate
+/// type so the OpenAPI surface (and form-state types on the FE) stay
+/// unambiguous between the two editor sections.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct HeaderEntry {
+    pub key: String,
+    #[serde(default)]
+    pub value: Option<String>,
+    pub is_secret: bool,
+}
 
 // =====================================================
 // Request Types
@@ -23,11 +55,17 @@ pub struct CreateMcpServerRequest {
     // stdio transport
     pub command: Option<String>,
     pub args: Option<Vec<String>>,
-    pub environment_variables: Option<HashMap<String, String>>,
+    /// Structured env-var entries (replaces the old flat
+    /// `HashMap<String, String>` shape). Each entry's `is_secret`
+    /// flag decides whether the value gets encrypted at rest. None /
+    /// missing → no env vars.
+    pub environment_variables_entries: Option<Vec<EnvVarEntry>>,
 
     // http/sse transport
     pub url: Option<String>,
-    pub headers: Option<HashMap<String, String>>,
+    /// Structured HTTP header entries. Same per-entry secret model
+    /// as `environment_variables_entries`.
+    pub headers_entries: Option<Vec<HeaderEntry>>,
 
     // Runtime configuration
     pub timeout_seconds: Option<i32>,
@@ -37,9 +75,28 @@ pub struct CreateMcpServerRequest {
     pub usage_mode: Option<UsageMode>,
     pub max_concurrent_sessions: Option<i32>,
 
-    /// Admin/system stdio servers only: launch inside the
-    /// code_sandbox bwrap isolation. See `McpServer::run_in_sandbox`.
+    /// Launch the stdio subprocess inside the code_sandbox bwrap
+    /// isolation. The user-create handler force-sets this to `true`
+    /// for user-owned stdio servers per the active MCP user policy
+    /// (any client value is ignored). Admins may set it freely on
+    /// system stdio servers via the drawer toggle.
     pub run_in_sandbox: Option<bool>,
+
+    /// Rootfs flavor (KNOWN_FLAVORS, e.g. "minimal" / "full") for the
+    /// sandboxed launch. None → handler-picks default ('full' on
+    /// fresh rows; the user-create handler force-overrides this with
+    /// the active `mcp_user_policy.user_stdio_sandbox_flavor` for
+    /// user-owned stdio regardless of what the client sent).
+    pub sandbox_flavor: Option<String>,
+
+    /// Optional Hub identifier — when set, the create handler also
+    /// records the install in `hub_entities` so the Hub card's
+    /// "already installed" badge keeps working. Set by the UI when
+    /// the drawer was opened via "Install" / "Install for the system"
+    /// on a hub MCP card; null for direct-add. Type matches the
+    /// existing `CreateMcpServerFromHubRequest::hub_id` (catalog
+    /// slug string, not a UUID).
+    pub hub_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -52,11 +109,16 @@ pub struct UpdateMcpServerRequest {
     // stdio transport
     pub command: Option<String>,
     pub args: Option<Vec<String>>,
-    pub environment_variables: Option<HashMap<String, String>>,
+    /// Replaces the existing env vars wholesale when present.
+    /// `None` means "don't touch" (caller didn't include this field).
+    /// `Some(empty vec)` clears all entries. Per-entry `value: None`
+    /// keeps the existing secret value (see `EnvVarEntry`).
+    pub environment_variables_entries: Option<Vec<EnvVarEntry>>,
 
     // http/sse transport
     pub url: Option<String>,
-    pub headers: Option<HashMap<String, String>>,
+    /// Same wholesale-replace semantic as `environment_variables_entries`.
+    pub headers_entries: Option<Vec<HeaderEntry>>,
 
     // Runtime configuration
     pub timeout_seconds: Option<i32>,
@@ -66,9 +128,15 @@ pub struct UpdateMcpServerRequest {
     pub usage_mode: Option<UsageMode>,
     pub max_concurrent_sessions: Option<i32>,
 
-    /// Admin/system stdio servers only: launch inside the
-    /// code_sandbox bwrap isolation. See `McpServer::run_in_sandbox`.
+    /// Launch the stdio subprocess inside the code_sandbox bwrap
+    /// isolation. Same force-set semantics as
+    /// [`CreateMcpServerRequest::run_in_sandbox`].
     pub run_in_sandbox: Option<bool>,
+
+    /// Rootfs flavor (KNOWN_FLAVORS, e.g. "minimal" / "full") for the
+    /// sandboxed launch. Same force-override semantics as
+    /// [`CreateMcpServerRequest::sandbox_flavor`].
+    pub sandbox_flavor: Option<String>,
 }
 
 /// Request to test an MCP server connection without persisting anything.
@@ -85,11 +153,15 @@ pub struct TestMcpConnectionRequest {
     // stdio transport
     pub command: Option<String>,
     pub args: Option<Vec<String>>,
-    pub environment_variables: Option<HashMap<String, String>>,
+    /// Same structured shape as create/update — for entries the user
+    /// hasn't touched (saved-secret entries with `value: None`), the
+    /// test path falls back to the decrypted stored value via `id`
+    /// (mirrors the existing OAuth-secret fallback comment below).
+    pub environment_variables_entries: Option<Vec<EnvVarEntry>>,
 
     // http transport
     pub url: Option<String>,
-    pub headers: Option<HashMap<String, String>>,
+    pub headers_entries: Option<Vec<HeaderEntry>>,
 
     // Runtime configuration
     pub timeout_seconds: Option<i32>,

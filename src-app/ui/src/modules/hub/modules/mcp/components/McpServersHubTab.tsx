@@ -1,9 +1,11 @@
 import { useState, useMemo } from 'react'
-import { Input, Select, Typography, Spin, Button } from 'antd'
+import { Input, Select, Typography, Button } from 'antd'
+import { Loading } from '@/core/components/Loading'
 import { SearchOutlined, ClearOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { McpServerHubCard } from '@/modules/hub/modules/mcp/components/McpServerHubCard'
 import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
+import { McpServerDrawer } from '@/modules/mcp/components/common/McpServerDrawer'
 
 const { Text } = Typography
 
@@ -66,10 +68,7 @@ export function McpServersHubTab() {
   // Show loading state
   if (loading && servers.length === 0) {
     return (
-      <div className="flex justify-center items-center h-full">
-        <Spin size="large" />
-        <Text className="ml-4">Loading MCP servers...</Text>
-      </div>
+      <Loading tip="Loading MCP servers..." />
     )
   }
 
@@ -189,6 +188,15 @@ export function McpServersHubTab() {
           )
         })()}
       </div>
+
+      {/* The McpServerDrawer is a global singleton — its state lives
+          in the McpServerDrawer zustand store. Mounted here so the
+          hub MCP "Install for me" / "Install for the system" buttons
+          can open it without navigating away from the Hub. The same
+          drawer is mounted on /settings/mcp-servers and
+          /settings/mcp-admin; only one is ever visible at a time
+          because the user can only be on one route. */}
+      <McpServerDrawer />
     </div>
   )
 }

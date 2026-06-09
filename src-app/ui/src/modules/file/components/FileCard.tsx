@@ -91,6 +91,13 @@ export function FileCard({
   // Reactive subscription: re-render when the thumbnail blob URL lands.
   const thumbnailUrls = Stores.File.thumbnailUrls
   const thumbnailUrl = file ? (thumbnailUrls.get(file.id) ?? null) : null
+  // Trigger the thumbnail load on first render when this file has one
+  // (idempotent — guarded by thumbnailLoadingSet in the store). loadMessageFile
+  // no longer eager-loads thumbnails, so each displaying component owns its own
+  // load — mirrors ImageBody.
+  if (file?.has_thumbnail && file.preview_page_count > 0 && !thumbnailUrl) {
+    Stores.File.getThumbnailUrl(file.id, file)
+  }
 
   // Trigger lazy load on cache miss. The action is deferred inside the
   // store (safe in render — same pattern as FileAttachmentRenderer's

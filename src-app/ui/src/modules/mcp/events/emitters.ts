@@ -41,3 +41,13 @@ export const emitGroupSystemMcpServersChanged = async (
     data: { groupId, serverIds },
   })
 }
+
+export const emitMcpUserPolicyUpdated = async (
+  allowed_transports: string[],
+  user_stdio_sandbox_flavor: string | null,
+) => {
+  await Stores.EventBus.emit({
+    type: 'mcp_user_policy.updated',
+    data: { allowed_transports, user_stdio_sandbox_flavor },
+  })
+}

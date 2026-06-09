@@ -3,7 +3,7 @@ import { loginAsAdmin } from '../../common/auth-helpers'
 import { navigateToHub, switchHubTab, waitForHubDataLoad } from './helpers/hub-navigation'
 
 // Admin catalog-version pinning. Exercises the VersionPicker dropdown in
-// the HubPage header, the Updates tab, and the Incompatible(N) footer.
+// the HubPage header, the Installed tab, and the Incompatible(N) footer.
 //
 // These flows hit the real ziee-ai/hub GitHub Releases (activate does a
 // download + cosign verify), same network dependency as the backend
@@ -85,18 +85,21 @@ test.describe('Hub version activation (admin)', () => {
     await expect(page.getByText('Linear MCP Server')).toHaveCount(0)
   })
 
-  test('admin sees the Updates tab', async ({ page, testInfra }) => {
+  test('admin sees the Installed tab', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
     await navigateToHub(page, baseURL, 'models')
     await waitForHubDataLoad(page)
 
-    // The Updates tab is admin-only (gated on hub::catalog::read). It appears in
-    // the segmented tab control.
-    await page.goto(`${baseURL}/hub/updates`)
-    await expect(page).toHaveURL(/\/hub\/updates/)
-    // With nothing installed-then-outdated, the empty state shows.
+    // The Installed tab shows every tracked install visible to the
+    // caller — admins additionally see system-wide rows. With nothing
+    // installed in this fresh test env, the three category cards
+    // render their own empty hints.
+    await page.goto(`${baseURL}/hub/installed`)
+    await expect(page).toHaveURL(/\/hub\/installed/)
     await expect(
-      page.getByText(/every installed hub item is on the current catalog|behind catalog/i),
+      page
+        .getByText(/no models installed from the hub yet|nothing installed from the hub yet/i)
+        .first(),
     ).toBeVisible({ timeout: 10000 })
   })
 })

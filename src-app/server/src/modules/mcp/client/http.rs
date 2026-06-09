@@ -69,6 +69,7 @@ pub struct HeaderParseError {
 /// empty object) yields an empty map with no errors.
 pub fn parse_header_map(
     headers: &Value,
+    env: &Value,
 ) -> (reqwest::header::HeaderMap, Vec<HeaderParseError>) {
     use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 
@@ -78,6 +79,15 @@ pub fn parse_header_map(
     let Some(obj) = headers.as_object() else {
         return (map, errors);
     };
+    // Env map for `${VAR}` substitution. Hub-installed servers
+    // declare auth tokens via `required_env` and reference them in
+    // header values like `Authorization: Bearer ${GITHUB_TOKEN}`; we
+    // expand the token at request-build time against the server's
+    // own `environment_variables`. Undefined vars leave the literal
+    // `${NAME}` in place + log a warning so the runtime failure mode
+    // is "missing token sent literally" (clear in logs) rather than
+    // "empty header" (silent auth failure).
+    let env_obj = env.as_object();
 
     for (key, value) in obj {
         let Some(val_str) = value.as_str() else {
@@ -87,10 +97,18 @@ pub fn parse_header_map(
             });
             continue;
         };
+        // Expand `${VAR}` references against `env` before further
+        // processing. Returns the original string when env is not an
+        // object (legacy malformed rows) — preserving prior behavior.
+        let expanded = if let Some(e) = env_obj {
+            expand_header_template(val_str, e, key)
+        } else {
+            val_str.to_string()
+        };
         // RFC 7230 §3.2.4: optional leading/trailing whitespace around a field
         // value is not part of the value. Trimming it is spec-compliant and
         // fixes the common pasted-token-with-newline artifact.
-        let trimmed = val_str.trim();
+        let trimmed = expanded.trim();
         let name = match HeaderName::from_bytes(key.as_bytes()) {
             Ok(n) => n,
             Err(_) => {
@@ -117,6 +135,53 @@ pub fn parse_header_map(
     }
 
     (map, errors)
+}
+
+/// Expand `${VAR}` references in a header-value template against the
+/// server's `environment_variables` map. Unknown vars are left as the
+/// literal `${NAME}` token and a warning is logged — the resulting
+/// request will carry the literal token, making the misconfiguration
+/// obvious in upstream logs rather than silently sending an empty
+/// header. `$` not followed by `{` is left untouched (no escape
+/// syntax — simple lexer matching the catalog convention).
+fn expand_header_template(
+    value: &str,
+    env: &serde_json::Map<String, Value>,
+    header_name: &str,
+) -> String {
+    let mut out = String::with_capacity(value.len());
+    let bytes = value.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'$' && i + 1 < bytes.len() && bytes[i + 1] == b'{' {
+            // Find the matching '}'. If unterminated, fall through and
+            // emit the leading `${` literally.
+            if let Some(rel_end) = value[i + 2..].find('}') {
+                let end = i + 2 + rel_end;
+                let var_name = &value[i + 2..end];
+                match env.get(var_name).and_then(|v| v.as_str()) {
+                    Some(val) => out.push_str(val),
+                    None => {
+                        tracing::warn!(
+                            "[mcp] header '{}' references env var '{}' which is unset \
+                             on this server; sending the literal `${{{}}}` token — \
+                             requests will likely fail authentication until the env \
+                             var is set in /settings/mcp-servers.",
+                            header_name,
+                            var_name,
+                            var_name,
+                        );
+                        out.push_str(&value[i..=end]);
+                    }
+                }
+                i = end + 1;
+                continue;
+            }
+        }
+        out.push(bytes[i] as char);
+        i += 1;
+    }
+    out
 }
 
 /// Parse a Server-Sent Events response body and return the JSON-RPC message
@@ -194,6 +259,10 @@ fn forward_progress_notification(
         None => return,
     };
     let event_data = serde_json::json!({
+        // The multiplexed chat-token client routes raw extension events by
+        // `data.type` (it cannot see the SSE `event:` line once frames share one
+        // stream), so this MUST carry its own `type` like every other event.
+        "type": "mcpToolProgress",
         "message_id": message_id.map(|m| m.to_string()),
         "server": server_name,
         "progress_token": params.get("progressToken").cloned(),
@@ -583,7 +652,8 @@ impl HttpMcpClient {
         // (different scheme/host/port). If a configured server URL redirects to
         // another origin, the header will not reach the final host — point the
         // URL at the final origin in that case.
-        let (headers, header_errors) = parse_header_map(&server.headers);
+        let (headers, header_errors) =
+            parse_header_map(&server.headers, &server.environment_variables);
         for e in &header_errors {
             tracing::warn!(
                 "[mcp] server '{}' has an unparseable configured header {:?} ({}); it will NOT be sent",
@@ -1434,6 +1504,10 @@ impl HttpMcpClient {
                                 // Send SSE event to browser (raw JSON — no import from chat/)
                                 if let Some(ref tx) = sse_tx {
                                     let event_data = serde_json::json!({
+                                        // Carry `type` so the multiplexed chat-token
+                                        // client routes this raw event (it keys on
+                                        // `data.type`, not the SSE `event:` line).
+                                        "type": "mcpElicitationRequired",
                                         "elicitation_id": elicitation_id.to_string(),
                                         "message_id": message_id.map(|m| m.to_string()),
                                         "message": message,
@@ -1799,6 +1873,10 @@ impl HttpMcpClient {
 
                                 if let Some(ref tx) = sse_tx {
                                     let event_data = serde_json::json!({
+                                        // Carry `type` so the multiplexed chat-token
+                                        // client routes this raw event (it keys on
+                                        // `data.type`, not the SSE `event:` line).
+                                        "type": "mcpElicitationRequired",
                                         "elicitation_id": elicitation_id.to_string(),
                                         "message_id": message_id.map(|m| m.to_string()),
                                         "message": message,

@@ -22,16 +22,22 @@ fn server_config(url: String) -> McpServer {
         command: None,
         args: serde_json::json!([]),
         environment_variables: serde_json::json!({}),
+        environment_variables_entries: vec![],
         url: Some(url),
         headers: serde_json::json!({}),
+        headers_entries: vec![],
         timeout_seconds: 10,
         supports_sampling: false,
         usage_mode: UsageMode::Auto,
         max_concurrent_sessions: None,
         is_built_in: false,
         run_in_sandbox: false,
+        sandbox_flavor: "full".to_string(),
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
+        last_health_check_at: None,
+        last_health_check_status: "untested".to_string(),
+        last_health_check_reason: None,
     }
 }
 

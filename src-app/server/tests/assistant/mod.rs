@@ -1,5 +1,7 @@
 // Integration tests for Assistant module
 
+mod sync_emit_test;
+
 use reqwest::StatusCode;
 use serde_json::json;
 use uuid::Uuid;

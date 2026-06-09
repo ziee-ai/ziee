@@ -1,5 +1,6 @@
 import { PlusOutlined, TeamOutlined } from '@ant-design/icons'
-import { App, Button, Empty, List, Popconfirm, Spin, Tag, Tooltip } from 'antd'
+import { App, Button, Empty, List, Popconfirm, Tag, Tooltip } from 'antd'
+import { Loading } from '@/core/components/Loading'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -115,9 +116,7 @@ export function UserGroupsDrawer() {
       }
     >
       {loadingUserGroups ? (
-        <div className="flex justify-center py-8">
-          <Spin size="large" description="Loading group memberships..." />
-        </div>
+        <Loading tip="Loading group memberships..." />
       ) : groups.length === 0 ? (
         <Empty description="No groups yet" />
       ) : (

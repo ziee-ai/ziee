@@ -7,10 +7,33 @@ import {
   type ComponentType,
   type ReactElement,
 } from 'react'
-import { Spin } from 'antd'
+import { Loading } from './Loading'
 
 type LazyComponent = () => Promise<{ default: ComponentType<any> }>
 type ComponentLike = ComponentType<any> | LazyComponent | ReactElement
+
+/**
+ * Global cache of `React.lazy()` wrappers keyed by the loader function.
+ *
+ * `lazy()` MUST be called once per loader for the lifetime of the app: every
+ * call returns a fresh lazy component *type*, and React unmounts the old
+ * subtree + mounts the new one whenever the type changes. Creating it inside a
+ * render (or a `useMemo` whose deps churn — e.g. a defaulted `props = {}` that
+ * is a new object each render) silently remounts the subtree on every parent
+ * re-render. For the router that meant a new `<BrowserRouter>` (new history)
+ * mid-boot, leaving `navigate()` bound to a dead history. Keying by the loader
+ * identity makes the lazy type stable across renders.
+ */
+const lazyComponentCache = new WeakMap<LazyComponent, ComponentType<any>>()
+
+function getCachedLazy(loader: LazyComponent): ComponentType<any> {
+  let Lazy = lazyComponentCache.get(loader)
+  if (!Lazy) {
+    Lazy = lazy(loader)
+    lazyComponentCache.set(loader, Lazy)
+  }
+  return Lazy
+}
 
 interface LazyComponentRendererProps {
   /**
@@ -28,7 +51,7 @@ interface LazyComponentRendererProps {
 
   /**
    * Custom fallback to show while lazy loading
-   * @default <Spin size="small" /> with padding
+   * @default <Loading size="small" />
    */
   fallback?: ReactNode
 }
@@ -49,7 +72,7 @@ interface LazyComponentRendererProps {
  * <LazyComponentRenderer component={LazyWidget} props={{ id: 1 }} />
  *
  * // Custom fallback
- * <LazyComponentRenderer component={LazyRoute} fallback={<Spin size="large" />} />
+ * <LazyComponentRenderer component={LazyRoute} fallback={<Loading />} />
  *
  * // No fallback
  * <LazyComponentRenderer component={LazyApp} fallback={null} />
@@ -58,11 +81,7 @@ interface LazyComponentRendererProps {
 export function LazyComponentRenderer({
   component,
   props = {},
-  fallback = (
-    <div className="p-3 flex justify-center">
-      <Spin size="small" />
-    </div>
-  ),
+  fallback = <Loading size="small" />,
 }: LazyComponentRendererProps) {
   // Check if it's a lazy function by checking if it's a function with 0 params
   // AND doesn't have React component characteristics (like a name or prototype properties)
@@ -78,9 +97,11 @@ export function LazyComponentRenderer({
       return component
     }
 
-    // If it looks like a lazy function, wrap with lazy
+    // If it looks like a lazy function, wrap with lazy. The lazy *type* is
+    // cached by loader identity (see `getCachedLazy`) so it stays stable across
+    // renders — recreating it would remount the whole subtree.
     if (isLikelyLazy) {
-      const LazyComponent = lazy(component as LazyComponent)
+      const LazyComponent = getCachedLazy(component as LazyComponent)
       return <LazyComponent {...props} />
     }
 

@@ -33,9 +33,16 @@ export const FILE_ASSETS = {
   pdf: path.join(TEST_DATA_DIR, 'test.pdf'),
   xlsx: path.join(TEST_DATA_DIR, 'test.xlsx'),
   html: path.join(TEST_DATA_DIR, 'test.html'),
-  // .docx is processed by the backend but has no frontend viewer registered.
-  // We use it for the "Cannot preview this file" empty-state test.
-  unknown: path.join(TEST_DATA_DIR, 'test.docx'),
+  // PPTX is accepted by the backend (a zip-family OOXML container) but
+  // intentionally NOT processed (OfficeProcessor.can_process excludes
+  // PPT / PPTX — pandoc can't read PowerPoint, and the only pure-Rust
+  // PPTX renderer is broken against quick-xml 0.38) and has NO
+  // frontend viewer registered (pdf/module.tsx deliberately skips
+  // PPTX). That makes it the canonical "uploads fine, nothing can
+  // render it" type — used for the "Cannot preview this file"
+  // empty-state test. (.docx no longer works here: it now routes to
+  // the PDF viewer.)
+  unknown: path.join(TEST_DATA_DIR, '3_slides.pptx'),
 } as const
 
 // ─── File attachment via the + dropdown ──────────────────────────────────────

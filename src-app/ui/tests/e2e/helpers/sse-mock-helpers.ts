@@ -36,6 +36,169 @@ export function serializeSseScript(events: ScriptedSseEvent[]): string {
   return body
 }
 
+/** Generation frames ride an envelope `{conversationId, event:{type,…}}`;
+ *  extension events (mcp*, titleUpdated, artifactCreated) are sent raw
+ *  `{type,…}` — matching `ChatStreamClient.handleFrame`'s two shapes. */
+const ENVELOPED_EVENTS = new Set(['started', 'content', 'complete', 'error'])
+
+function serializeChatStreamFrames(
+  events: ScriptedSseEvent[],
+  conversationId: string,
+): string {
+  let body = ''
+  for (const evt of events) {
+    const inner = { type: evt.event, ...(evt.data as Record<string, unknown>) }
+    const data = ENVELOPED_EVENTS.has(evt.event)
+      ? { conversationId, event: inner }
+      : inner
+    body += `event: ${evt.event}\n`
+    body += `data: ${JSON.stringify(data)}\n\n`
+  }
+  return body
+}
+
+export interface ChatTokenStreamMock {
+  /** Number of POST /messages calls intercepted. */
+  sendCount: () => number
+  /** Bodies of intercepted POST /messages requests, in order. */
+  capturedSends: () => Array<{ url: string; body: unknown }>
+}
+
+/**
+ * Mock the NEW fire-and-forget chat path (replaces `mockChatStream`):
+ *   - `PUT  /api/chat/stream/subscription` → 204
+ *   - `POST /api/conversations/:id/messages` → `{user_message_id,
+ *      assistant_message_id}` JSON (ids derived from the script's `started`
+ *      event), and SIGNALS the matching send.
+ *   - `GET  /api/chat/stream` → a `connected` handshake then, once the matching
+ *      send fires, the script's frames (generation frames enveloped, ext events
+ *      raw). The body then ends; the client reconnects and the next GET serves
+ *      the next script. This per-send reconnect is what lets an interactive
+ *      multi-step flow (send → approval panel → approve → resume) work without
+ *      Playwright's one-shot `route.fulfill` having to push mid-response.
+ *
+ * Pass one script per expected send. Extra sends reuse the last script; a GET
+ * past the last script just serves the handshake (idle).
+ */
+export async function mockChatTokenStream(
+  page: Page,
+  scripts: ScriptedSseEvent[][],
+  options: { failSends?: Record<number, number> } = {},
+): Promise<ChatTokenStreamMock> {
+  const captured: Array<{ url: string; body: unknown }> = []
+
+  // A producer/consumer queue coupling each POST (producer) to the next GET
+  // reconnect (consumer). The client keeps ONE chat-stream open at a time and
+  // re-opens it after each body ends, so each send's frames go out on a fresh
+  // GET. The queue decouples their timing (a send may land before its GET
+  // reconnects, or vice-versa). Works for ANY number of sends (resume reuses
+  // the last script).
+  type Payload = { conversationId: string; scriptIdx: number } | { failed: true }
+  const queue: Payload[] = []
+  const waiters: Array<(p: Payload) => void> = []
+  const enqueue = (p: Payload) => {
+    const w = waiters.shift()
+    if (w) w(p)
+    else queue.push(p)
+  }
+  const dequeue = (): Promise<Payload> =>
+    queue.length > 0
+      ? Promise.resolve(queue.shift() as Payload)
+      : new Promise<Payload>(r => waiters.push(r))
+
+  let sendNum = 0
+  let getNum = 0
+
+  await page.route(/\/api\/chat\/stream\/subscription$/, route =>
+    route.fulfill({ status: 204, contentType: 'application/json', body: '' }),
+  )
+
+  await page.route(
+    /\/api\/conversations\/[^/]+\/messages(\?|$)/,
+    async (route, request) => {
+      if (request.method() !== 'POST') {
+        return route.fallback()
+      }
+      const url = request.url()
+      const conversationId =
+        url.match(/\/conversations\/([^/]+)\/messages/)?.[1] ?? ''
+      let body: unknown = null
+      try {
+        body = JSON.parse(request.postData() || '{}')
+      } catch {
+        /* leave null */
+      }
+      captured.push({ url, body })
+
+      const n = sendNum
+      sendNum++
+
+      const failStatus = options.failSends?.[n]
+      if (failStatus) {
+        enqueue({ failed: true })
+        await route.fulfill({
+          status: failStatus,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'simulated send failure' }),
+        })
+        return
+      }
+
+      const scriptIdx = Math.min(n, scripts.length - 1)
+      const started = scripts[scriptIdx]?.find(e => e.event === 'started')
+      const userMessageId =
+        ((started?.data as Record<string, unknown> | undefined)
+          ?.user_message_id as string) ?? `umsg_${n}`
+      const assistantMessageId = `amsg_${n}_${Date.now()}`
+
+      enqueue({ conversationId, scriptIdx })
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          user_message_id: userMessageId,
+          assistant_message_id: assistantMessageId,
+        }),
+      })
+    },
+  )
+
+  await page.route(/\/api\/chat\/stream(\?|$)/, async (route, request) => {
+    if (request.method() !== 'GET') {
+      return route.fallback()
+    }
+    const cid = getNum
+    getNum++
+    const handshake = `event: connected\ndata: ${JSON.stringify({
+      connectionId: `conn_${cid}`,
+    })}\n\n`
+
+    const payload = await dequeue()
+    if ('failed' in payload) {
+      // The matching send failed — no frames; serve the handshake only.
+      return route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream',
+        body: handshake,
+      })
+    }
+    const body =
+      handshake +
+      serializeChatStreamFrames(scripts[payload.scriptIdx], payload.conversationId)
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body,
+    })
+  })
+
+  return {
+    sendCount: () => sendNum,
+    capturedSends: () => [...captured],
+  }
+}
+
 export interface ChatStreamMock {
   /** How many times /messages/stream was intercepted. */
   callCount: () => number
@@ -45,8 +208,21 @@ export interface ChatStreamMock {
 
 /**
  * Mock /api/conversations/*\/messages/stream with a queue of event scripts.
- * Each call consumes one script; once exhausted, the last script is replayed
- * (so tests for a single send call don't have to provide more than they need).
+ *
+ * ⚠️ STALE — TARGETS A REMOVED ROUTE. The fire-and-forget refactor split send
+ * into `POST /api/conversations/:id/messages` (returns `{userMessageId,
+ * assistantMessageId}` JSON) + a long-lived per-user `GET /api/chat/stream`
+ * that PUSHES enveloped frames `{conversationId, event:{type,…}}`. This regex
+ * (`…/messages/stream`) now matches NOTHING, so consumers of this helper are
+ * "false green": the real POST falls through, no tokens arrive, and the spec
+ * passes only because it asserts optimistic pre-token UI.
+ *
+ * Migrating it is non-trivial: Playwright's one-shot `route.fulfill` cannot
+ * model a stream that pushes frames AFTER a later POST. The faithful options
+ * are (a) wire a stub-engine-backed `custom` provider into global setup and use
+ * the REAL stream, or (b) a CDP-level pushable SSE mock. Tracked in
+ * `.plans/feat-realtime-sync-chat-test-coverage.md`. Until then the affected
+ * 09-chat specs need a Playwright run-loop to migrate.
  *
  * Call BEFORE the first send. Unregister via `page.unroute()` if a test needs
  * to swap behavior mid-flight (rare).
@@ -58,30 +234,33 @@ export async function mockChatStream(
   let callIndex = 0
   const captured: Array<{ url: string; body: unknown }> = []
 
-  await page.route(/\/api\/conversations\/[^/]+\/messages\/stream(\?|$)/, async (route, request) => {
-    // Defensive: only intercept POST. Some Playwright versions may route GETs
-    // here transiently during route-handler reordering; falling through avoids
-    // returning SSE bytes to a JSON-expecting GET /messages call.
-    if (request.method() !== 'POST') {
-      return route.fallback()
-    }
-    let body: unknown = null
-    try {
-      body = JSON.parse(request.postData() || '{}')
-    } catch {
-      /* leave as null */
-    }
-    captured.push({ url: request.url(), body })
+  await page.route(
+    /\/api\/conversations\/[^/]+\/messages\/stream(\?|$)/,
+    async (route, request) => {
+      // Defensive: only intercept POST. Some Playwright versions may route GETs
+      // here transiently during route-handler reordering; falling through avoids
+      // returning SSE bytes to a JSON-expecting GET /messages call.
+      if (request.method() !== 'POST') {
+        return route.fallback()
+      }
+      let body: unknown = null
+      try {
+        body = JSON.parse(request.postData() || '{}')
+      } catch {
+        /* leave as null */
+      }
+      captured.push({ url: request.url(), body })
 
-    const script = scripts[callIndex] ?? scripts[scripts.length - 1]
-    callIndex++
+      const script = scripts[callIndex] ?? scripts[scripts.length - 1]
+      callIndex++
 
-    await route.fulfill({
-      status: 200,
-      contentType: 'text/event-stream',
-      body: serializeSseScript(script),
-    })
-  })
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream',
+        body: serializeSseScript(script),
+      })
+    },
+  )
 
   return {
     callCount: () => callIndex,
@@ -106,23 +285,26 @@ export async function captureElicitationResponses(
 ): Promise<ElicitationResponseCapture> {
   const responses: Array<{ elicitationId: string; body: unknown }> = []
 
-  await page.route(/\/api\/mcp\/elicitation\/([^/]+)\/respond/, async (route, request) => {
-    const match = request.url().match(/\/elicitation\/([^/]+)\/respond/)
-    const elicitationId = match?.[1] ?? ''
-    let body: unknown = null
-    try {
-      body = JSON.parse(request.postData() || '{}')
-    } catch {
-      /* leave as null */
-    }
-    responses.push({ elicitationId, body })
+  await page.route(
+    /\/api\/mcp\/elicitation\/([^/]+)\/respond/,
+    async (route, request) => {
+      const match = request.url().match(/\/elicitation\/([^/]+)\/respond/)
+      const elicitationId = match?.[1] ?? ''
+      let body: unknown = null
+      try {
+        body = JSON.parse(request.postData() || '{}')
+      } catch {
+        /* leave as null */
+      }
+      responses.push({ elicitationId, body })
 
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ success: true }),
-    })
-  })
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true }),
+      })
+    },
+  )
 
   return {
     responses: () => [...responses],
@@ -140,11 +322,13 @@ export async function captureElicitationResponses(
  * Initial `started` event the chat store expects to clear the temp user
  * message and apply branch state. Must be first in any script.
  */
-export function startedEvent(opts: {
-  branchId?: string
-  userMessageId?: string
-  conversationId?: string
-} = {}): ScriptedSseEvent {
+export function startedEvent(
+  opts: {
+    branchId?: string
+    userMessageId?: string
+    conversationId?: string
+  } = {},
+): ScriptedSseEvent {
   return {
     event: 'started',
     data: {
@@ -231,6 +415,33 @@ export function mcpToolCompleteEvent(opts: {
 }
 
 /**
+ * Artifact-created event — a tool produced a file. The MCP extension turns
+ * this into a resource_link on the matching tool_result block (keyed by
+ * `toolUseId`), which the file extension renders inline. `fileId` makes it a
+ * backend-owned artifact (rendered via the authenticated /api/files path).
+ */
+export function artifactCreatedEvent(opts: {
+  /** Omit to simulate an older backend that doesn't send tool_use_id — the
+   *  frontend then falls back to the last tool_use block. */
+  toolUseId?: string
+  fileId: string
+  filename: string
+  mimeType?: string
+  fileSize?: number
+}): ScriptedSseEvent {
+  return {
+    event: 'artifactCreated',
+    data: {
+      ...(opts.toolUseId !== undefined ? { tool_use_id: opts.toolUseId } : {}),
+      file_id: opts.fileId,
+      filename: opts.filename,
+      mime_type: opts.mimeType,
+      file_size: opts.fileSize ?? 1024,
+    },
+  }
+}
+
+/**
  * Plain text delta — appends to the streaming message's text content block,
  * or creates one if none exists yet.
  */
@@ -248,7 +459,9 @@ export function textDeltaEvent(opts: {
 }
 
 /** Stream-end event. Every script SHOULD end with this. */
-export function completeEvent(opts: { finishReason?: string } = {}): ScriptedSseEvent {
+export function completeEvent(
+  opts: { finishReason?: string } = {},
+): ScriptedSseEvent {
   return {
     event: 'complete',
     data: {
@@ -310,16 +523,19 @@ export async function mockGetMessages(
     created_at: m.created_at ?? new Date().toISOString(),
   }))
 
-  await page.route(/\/api\/conversations\/[^/]+\/messages(\?|$)/, async (route, req) => {
-    if (req.method() !== 'GET') {
-      return route.fallback()
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(fullMessages),
-    })
-  })
+  await page.route(
+    /\/api\/conversations\/[^/]+\/messages(\?|$)/,
+    async (route, req) => {
+      if (req.method() !== 'GET') {
+        return route.fallback()
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(fullMessages),
+      })
+    },
+  )
 }
 
 /** Convenience: build a user message with one text content block. */

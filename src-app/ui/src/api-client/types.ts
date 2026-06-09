@@ -140,6 +140,11 @@ export interface Catalog {
 
 export type CatalogProvenance = 'seed' | 'github'
 
+export interface ChangePasswordRequest {
+  current_password: string
+  new_password: string
+}
+
 export interface ChatStreamChunk {
   branch_id?: string
   content?: ContentBlockDelta[]
@@ -148,6 +153,21 @@ export interface ChatStreamChunk {
   finish_reason?: string
   message_id?: string
   usage?: Usage
+}
+
+export interface ChatStreamConnectedData {
+  connectionId: string
+}
+
+export interface ChatStreamFrame {
+  conversationId: string
+  event: SSEChatStreamEvent
+}
+
+export type ChatStreamSseEvent = {
+  kind: 'connected'
+} | {
+  kind: 'frame'
 }
 
 export interface CodeSandboxResourceLimits {
@@ -241,6 +261,7 @@ export interface CreateAssistantFromHubRequest {
   is_default?: boolean
   name?: string
   parameters?: any
+  replace_existing?: boolean
 }
 
 export interface CreateAssistantRequest {
@@ -326,6 +347,7 @@ export interface CreateMcpServerFromHubRequest {
   enabled?: boolean
   hub_id: string
   name?: string
+  replace_existing?: boolean
 }
 
 export interface CreateMcpServerRequest {
@@ -334,11 +356,13 @@ export interface CreateMcpServerRequest {
   command?: string
   display_name: string
   enabled?: boolean
-  environment_variables?: any
-  headers?: any
+  environment_variables_entries?: EnvVarEntry[]
+  headers_entries?: HeaderEntry[]
+  hub_id?: string
   max_concurrent_sessions?: number
   name: string
   run_in_sandbox?: boolean
+  sandbox_flavor?: string
   supports_sampling?: boolean
   timeout_seconds?: number
   transport_type: TransportType
@@ -575,6 +599,27 @@ export type EngineDownloadStatus = 'pending' | 'downloading' | 'verifying' | 'ex
 
 export type EngineType = 'mistralrs' | 'llamacpp' | 'none'
 
+export interface EnvVarEntry {
+  is_secret: boolean
+  key: string
+  value?: string
+}
+
+export interface EnvVarView {
+  is_secret: boolean
+  key: string
+  value?: string
+}
+
+export interface EnvironmentInfo {
+  description: string
+  approximate_size_mb: number
+  cached: boolean
+  cached_size_bytes?: number
+  flavor: string
+  mounted: boolean
+}
+
 export interface File {
   checksum?: string
   created_at: string
@@ -701,6 +746,18 @@ export interface HardwareUsageUpdate {
   timestamp: string
 }
 
+export interface HeaderEntry {
+  is_secret: boolean
+  key: string
+  value?: string
+}
+
+export interface HeaderView {
+  is_secret: boolean
+  key: string
+  value?: string
+}
+
 export interface HealthCheckResponse {
   healthy: boolean
   message?: string
@@ -717,6 +774,7 @@ export interface HubAssistant {
   capabilities_required?: string[]
   category?: string
   created_ids?: string[]
+  created_template_ids?: string[]
   display_name: string
   example_prompts?: string[]
   id: string
@@ -762,6 +820,25 @@ export interface HubEntity {
   id: string
 }
 
+export interface HubInstalledResponse {
+  catalog_version: string
+  items: HubInstalledRow[]
+}
+
+export interface HubInstalledRow {
+  current_version: string
+  entity_id: string
+  entity_type: string
+  hub_category: string
+  hub_id: string
+  installed_at: string
+  installed_version?: string
+  is_system: boolean
+  is_system_mcp_install: boolean
+  is_template_install: boolean
+  name: string
+}
+
 export interface HubLocalProvider {
   id: string
   name: string
@@ -778,6 +855,7 @@ export interface HubMCPServer {
   category?: string
   command?: string
   created_ids?: string[]
+  created_system_ids?: string[]
   display_name: string
   documentation_url?: string
   download_count?: number
@@ -795,6 +873,8 @@ export interface HubMCPServer {
   popularity_score?: number
   rating?: number
   repository_url?: string
+  required_env?: HubRequiredInput[]
+  required_headers?: HubRequiredInput[]
   requires_desktop?: boolean
   supports_sampling?: boolean
   tags?: string[]
@@ -873,18 +953,12 @@ export interface HubReleasesResponse {
   releases: HubReleaseInfo[]
 }
 
-export interface HubUpdateRow {
-  current_version: string
-  entity_id: string
-  entity_type: string
-  hub_category: string
-  hub_id: string
-  installed_version?: string
-}
-
-export interface HubUpdatesResponse {
-  catalog_version: string
-  updates: HubUpdateRow[]
+export interface HubRequiredInput {
+  description?: string
+  docs_url?: string
+  is_secret?: boolean
+  name: string
+  placeholder?: string
 }
 
 export interface HubVersionResponse {
@@ -1104,6 +1178,9 @@ export interface LlmRepository {
   created_at: string
   enabled: boolean
   id: string
+  last_health_check_at?: string
+  last_health_check_reason?: string
+  last_health_check_status: string
   name: string
   updated_at: string
   url: string
@@ -1114,6 +1191,22 @@ export interface LlmRepositoryListResponse {
   per_page: number
   repositories: LlmRepository[]
   total: number
+}
+
+export interface LlmRepositoryWithHealthWarning {
+  auth_config: RepositoryAuthConfig
+  auth_type: string
+  built_in: boolean
+  connection_warning?: ProbeFailure
+  created_at: string
+  enabled: boolean
+  id: string
+  last_health_check_at?: string
+  last_health_check_reason?: string
+  last_health_check_status: string
+  name: string
+  updated_at: string
+  url: string
 }
 
 export interface LoginRequest {
@@ -1146,14 +1239,20 @@ export interface McpServer {
   created_at: string
   display_name: string
   enabled: boolean
-  environment_variables: any
-  headers: any
+  environment_variables?: any
+  environment_variables_entries?: EnvVarView[]
+  headers?: any
+  headers_entries?: HeaderView[]
   id: string
   is_built_in: boolean
   is_system: boolean
+  last_health_check_at?: string
+  last_health_check_reason?: string
+  last_health_check_status?: string
   max_concurrent_sessions?: number
   name: string
   run_in_sandbox: boolean
+  sandbox_flavor: string
   supports_sampling: boolean
   timeout_seconds: number
   transport_type: TransportType
@@ -1191,11 +1290,50 @@ export interface McpServerOAuthConfigResponse {
   updated_at: string
 }
 
+export interface McpServerWithHealthWarning {
+  description?: string
+  args: any
+  command?: string
+  connection_warning?: ProbeFailure2
+  created_at: string
+  display_name: string
+  enabled: boolean
+  environment_variables?: any
+  environment_variables_entries?: EnvVarView[]
+  headers?: any
+  headers_entries?: HeaderView[]
+  id: string
+  is_built_in: boolean
+  is_system: boolean
+  last_health_check_at?: string
+  last_health_check_reason?: string
+  last_health_check_status?: string
+  max_concurrent_sessions?: number
+  name: string
+  run_in_sandbox: boolean
+  sandbox_flavor: string
+  supports_sampling: boolean
+  timeout_seconds: number
+  transport_type: TransportType
+  updated_at: string
+  url?: string
+  usage_mode: UsageMode
+  user_id?: string
+}
+
 export interface McpSettingsResponse {
   settings?: ConversationMcpSettingsResponse
 }
 
+export interface McpUserPolicy {
+  allowed_transports: string[]
+  updated_at: string
+  updated_by?: string
+  user_stdio_sandbox_flavor?: string
+}
+
 export interface MeResponse {
+  has_password: boolean
   permissions: string[]
   user: User
 }
@@ -1505,6 +1643,14 @@ export interface PreviewQuery {
   page?: number
 }
 
+export interface ProbeFailure {
+  reason: string
+}
+
+export interface ProbeFailure2 {
+  reason: string
+}
+
 export interface Project {
   description?: string
   created_at: string
@@ -1733,6 +1879,7 @@ export interface SSEChatStreamArtifactCreatedData {
   file_size: number
   filename: string
   mime_type?: string
+  tool_use_id: string
 }
 
 export interface SSEChatStreamCompleteData {
@@ -1908,6 +2055,11 @@ export interface SSELogLineData {
   line: string
 }
 
+export interface SandboxFlavorsResponse {
+  available: EnvironmentInfo[]
+  host_allowed_commands: string[]
+}
+
 export interface SaveUserApiKeyRequest {
   api_key: string
   provider_id: string
@@ -1924,6 +2076,11 @@ export interface SendMessageRequest {
   mcp_config?: McpConfig
   model_id: string
   tool_approvals?: ToolApprovalDecision[]
+}
+
+export interface SendMessageResponse {
+  assistant_message_id: string
+  user_message_id?: string
 }
 
 export interface ServerGroupsRequest {
@@ -1944,6 +2101,10 @@ export interface SetPinRequest {
 export interface SetPinResponse {
   status: VersionStatus
   swap: SwapOutcome
+}
+
+export interface SetSubscriptionRequest {
+  conversation_id?: string
 }
 
 export interface SetupAdminRequest {
@@ -1983,9 +2144,29 @@ export interface SwapRuntimeVersionResponse {
   version_id: string
 }
 
+export type SyncAction = 'create' | 'update' | 'delete'
+
 export interface SyncCacheResponse {
   message: string
   synced_count: number
+}
+
+export interface SyncConnectedData {
+  connection_id: string
+}
+
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'user_llm_provider' | 'user_mcp_server' | 'session'
+
+export interface SyncEvent {
+  action: SyncAction
+  entity: SyncEntity
+  id: string
+}
+
+export type SyncSseEvent = {
+  connected: SyncConnectedData
+} | {
+  sync: SyncEvent
 }
 
 export type TaskStatus = 'running' | 'completed' | 'failed'
@@ -1999,8 +2180,8 @@ export interface TestExtractRequest {
 export interface TestMcpConnectionRequest {
   args?: string[]
   command?: string
-  environment_variables?: any
-  headers?: any
+  environment_variables_entries?: EnvVarEntry[]
+  headers_entries?: HeaderEntry[]
   id?: string
   oauth?: SetMcpServerOAuthConfigRequest
   timeout_seconds?: number
@@ -2181,15 +2362,21 @@ export interface UpdateMcpServerRequest {
   command?: string
   display_name?: string
   enabled?: boolean
-  environment_variables?: any
-  headers?: any
+  environment_variables_entries?: EnvVarEntry[]
+  headers_entries?: HeaderEntry[]
   max_concurrent_sessions?: number
   name?: string
   run_in_sandbox?: boolean
+  sandbox_flavor?: string
   supports_sampling?: boolean
   timeout_seconds?: number
   url?: string
   usage_mode?: UsageMode
+}
+
+export interface UpdateMcpUserPolicyRequest {
+  allowed_transports: string[]
+  user_stdio_sandbox_flavor?: string
 }
 
 export interface UpdateMemoryAdminSettingsRequest {
@@ -2211,6 +2398,11 @@ export interface UpdateMemoryRequest {
   importance?: number
   kind?: string
   metadata?: any
+}
+
+export interface UpdateProfileRequest {
+  display_name?: string
+  username?: string
 }
 
 export interface UpdateProjectRequest {
@@ -2452,6 +2644,7 @@ export enum Permissions {
   McpServersDelete = 'mcp_servers::delete',
   McpServersEdit = 'mcp_servers::edit',
   McpServersRead = 'mcp_servers::read',
+  McpUserPolicyEdit = 'mcp_user_policy::edit',
   MemoryAdminManage = 'memory::admin::manage',
   MemoryAdminRead = 'memory::admin::read',
   MemoryRead = 'memory::read',
@@ -2557,6 +2750,7 @@ export const PermissionDescriptions: Record<string, string> = {
   McpServersDelete: 'Delete MCP servers',
   McpServersEdit: 'Edit MCP servers',
   McpServersRead: 'View MCP servers',
+  McpUserPolicyEdit: 'Edit MCP user policy (allowed transports + sandbox flavor)',
   MemoryAdminManage: 'Update memory admin settings (embedding model, enable/disable).',
   MemoryAdminRead: 'Read memory admin settings (embedding model, defaults).',
   MemoryRead: 'List and read own memories.',
@@ -2605,6 +2799,7 @@ export const ApiEndpoints = {
   'AssistantTemplate.getDefault': 'GET /api/assistant-templates/default',
   'AssistantTemplate.list': 'GET /api/assistant-templates',
   'AssistantTemplate.update': 'PUT /api/assistant-templates/{id}',
+  'Auth.changePassword': 'POST /api/auth/password',
   'Auth.linkAccount': 'POST /api/auth/link-account',
   'Auth.listProviders': 'GET /api/auth/providers',
   'Auth.login': 'POST /api/auth/login',
@@ -2612,6 +2807,7 @@ export const ApiEndpoints = {
   'Auth.me': 'GET /api/auth/me',
   'Auth.refresh': 'POST /api/auth/refresh',
   'Auth.register': 'POST /api/auth/register',
+  'Auth.updateProfile': 'POST /api/auth/profile',
   'AuthProviders.create': 'POST /api/admin/auth-providers',
   'AuthProviders.delete': 'DELETE /api/admin/auth-providers/{id}',
   'AuthProviders.list': 'GET /api/admin/auth-providers',
@@ -2623,9 +2819,12 @@ export const ApiEndpoints = {
   'Branch.getPendingApprovals': 'GET /api/branches/{branch_id}/pending-approvals',
   'Branch.list': 'GET /api/conversations/{id}/branches',
   'Chat.getUserLlmProviders': 'GET /api/chat/llm-providers',
+  'ChatStream.setSubscription': 'PUT /api/chat/stream/subscription',
+  'ChatStream.subscribe': 'GET /api/chat/stream',
   'CodeSandbox.deleteRootfsVersion': 'DELETE /api/code-sandbox/rootfs/versions/{id}',
   'CodeSandbox.getResourceLimits': 'GET /api/code-sandbox/resource-limits',
   'CodeSandbox.installRootfsVersion': 'POST /api/code-sandbox/rootfs/versions/install',
+  'CodeSandbox.listFlavors': 'GET /api/code-sandbox/flavors',
   'CodeSandbox.listRootfsVersions': 'GET /api/code-sandbox/rootfs/versions',
   'CodeSandbox.setRootfsPin': 'POST /api/code-sandbox/rootfs/versions/set-pin',
   'CodeSandbox.subscribeRootfsInstallProgress': 'GET /api/code-sandbox/rootfs/versions/install/subscribe',
@@ -2661,12 +2860,15 @@ export const ApiEndpoints = {
   'Health.check': 'GET /api/health',
   'Hub.activateVersion': 'POST /api/hub/activate',
   'Hub.createAssistantFromHub': 'POST /api/hub/assistants/create',
+  'Hub.createAssistantTemplateFromHub': 'POST /api/hub/assistant-templates/create',
   'Hub.createMcpServerFromHub': 'POST /api/hub/mcp-servers/create',
   'Hub.createModelFromHub': 'POST /api/hub/models/download',
+  'Hub.createSystemMcpServerFromHub': 'POST /api/hub/mcp-servers/create-system',
   'Hub.getAssistants': 'GET /api/hub/assistants',
   'Hub.getAssistantsVersion': 'GET /api/hub/assistants/version',
   'Hub.getCatalog': 'GET /api/hub/index',
   'Hub.getCatalogVersion': 'GET /api/hub/version',
+  'Hub.getInstalled': 'GET /api/hub/installed',
   'Hub.getLocalProviders': 'GET /api/hub/models/local-providers',
   'Hub.getMCPServers': 'GET /api/hub/mcp-servers',
   'Hub.getMCPServersVersion': 'GET /api/hub/mcp-servers/version',
@@ -2674,7 +2876,6 @@ export const ApiEndpoints = {
   'Hub.getModels': 'GET /api/hub/models',
   'Hub.getModelsVersion': 'GET /api/hub/models/version',
   'Hub.getReleases': 'GET /api/hub/releases',
-  'Hub.getUpdates': 'GET /api/hub/updates',
   'Hub.refreshAssistants': 'POST /api/hub/assistants/refresh',
   'Hub.refreshCatalog': 'POST /api/hub/refresh',
   'Hub.refreshMCPServers': 'POST /api/hub/mcp-servers/refresh',
@@ -2713,6 +2914,7 @@ export const ApiEndpoints = {
   'LlmRepository.get': 'GET /api/llm-repositories/{repository_id}',
   'LlmRepository.list': 'GET /api/llm-repositories',
   'LlmRepository.test': 'POST /api/llm-repositories/test',
+  'LlmRepository.testById': 'POST /api/llm-repositories/{repository_id}/test',
   'LlmRepository.update': 'POST /api/llm-repositories/{repository_id}',
   'LocalLlmProxy.chatCompletions': 'POST /api/local-llm/v1/chat/completions',
   'LocalLlmProxy.embeddings': 'POST /api/local-llm/v1/embeddings',
@@ -2759,6 +2961,8 @@ export const ApiEndpoints = {
   'McpServerSystem.removeServerFromGroup': 'DELETE /api/mcp/system-servers/{id}/groups/{group_id}',
   'McpServerSystem.testConnection': 'POST /api/mcp/system-servers/test-connection',
   'McpServerSystem.update': 'PUT /api/mcp/system-servers/{id}',
+  'McpUserPolicy.get': 'GET /api/mcp/user-policy',
+  'McpUserPolicy.update': 'PUT /api/mcp/user-policy',
   'Memory.create': 'POST /api/memories',
   'Memory.delete': 'DELETE /api/memories/{id}',
   'Memory.deleteAll': 'DELETE /api/memories/all',
@@ -2780,7 +2984,8 @@ export const ApiEndpoints = {
   'Message.getAssistant': 'GET /api/messages/{id}/assistant',
   'Message.getHistory': 'GET /api/conversations/{id}/messages',
   'Message.getMcpServers': 'GET /api/messages/{id}/mcp-servers',
-  'Message.sendStream': 'POST /api/conversations/{id}/messages/stream',
+  'Message.send': 'POST /api/conversations/{id}/messages',
+  'Message.stopGeneration': 'POST /api/conversations/{conversation_id}/messages/{assistant_message_id}/stop',
   'Onboarding.complete': 'POST /api/onboarding/{guide_id}/complete',
   'Onboarding.completeStep': 'POST /api/onboarding/{guide_id}/steps/{step_id}/complete',
   'Onboarding.getProgress': 'GET /api/onboarding/progress',
@@ -2811,6 +3016,7 @@ export const ApiEndpoints = {
   'RuntimeVersion.subscribeDownloadEvents': 'GET /api/local-runtime/versions/downloads/{key}/events',
   'RuntimeVersion.syncCache': 'POST /api/local-runtime/versions/sync-cache',
   'RuntimeVersion.usage': 'GET /api/local-runtime/version-usage',
+  'Sync.subscribe': 'GET /api/sync/subscribe',
   'User.create': 'POST /api/users',
   'User.delete': 'DELETE /api/users/{user_id}',
   'User.get': 'GET /api/users/{user_id}',
@@ -2844,6 +3050,7 @@ export type ApiEndpointParameters = {
   'AssistantTemplate.getDefault': void
   'AssistantTemplate.list': { limit: number; page: number }
   'AssistantTemplate.update': { id: string } & UpdateAssistantRequest
+  'Auth.changePassword': ChangePasswordRequest
   'Auth.linkAccount': LinkAccountRequest
   'Auth.listProviders': void
   'Auth.login': LoginRequest
@@ -2851,6 +3058,7 @@ export type ApiEndpointParameters = {
   'Auth.me': void
   'Auth.refresh': RefreshTokenRequest
   'Auth.register': RegisterRequest
+  'Auth.updateProfile': UpdateProfileRequest
   'AuthProviders.create': CreateAuthProviderRequest
   'AuthProviders.delete': { id: string }
   'AuthProviders.list': void
@@ -2862,9 +3070,12 @@ export type ApiEndpointParameters = {
   'Branch.getPendingApprovals': { branch_id: string }
   'Branch.list': { id: string }
   'Chat.getUserLlmProviders': void
+  'ChatStream.setSubscription': SetSubscriptionRequest
+  'ChatStream.subscribe': void
   'CodeSandbox.deleteRootfsVersion': { id: string }
   'CodeSandbox.getResourceLimits': void
   'CodeSandbox.installRootfsVersion': InstallVersionRequest
+  'CodeSandbox.listFlavors': void
   'CodeSandbox.listRootfsVersions': void
   'CodeSandbox.setRootfsPin': SetPinRequest
   'CodeSandbox.subscribeRootfsInstallProgress': void
@@ -2900,12 +3111,15 @@ export type ApiEndpointParameters = {
   'Health.check': void
   'Hub.activateVersion': ActivateHubVersionRequest
   'Hub.createAssistantFromHub': CreateAssistantFromHubRequest
+  'Hub.createAssistantTemplateFromHub': CreateAssistantFromHubRequest
   'Hub.createMcpServerFromHub': CreateMcpServerFromHubRequest
   'Hub.createModelFromHub': CreateModelFromHubRequest
+  'Hub.createSystemMcpServerFromHub': CreateMcpServerFromHubRequest
   'Hub.getAssistants': { lang?: string }
   'Hub.getAssistantsVersion': void
   'Hub.getCatalog': void
   'Hub.getCatalogVersion': void
+  'Hub.getInstalled': void
   'Hub.getLocalProviders': void
   'Hub.getMCPServers': { lang?: string }
   'Hub.getMCPServersVersion': void
@@ -2913,7 +3127,6 @@ export type ApiEndpointParameters = {
   'Hub.getModels': { lang?: string }
   'Hub.getModelsVersion': void
   'Hub.getReleases': void
-  'Hub.getUpdates': void
   'Hub.refreshAssistants': void
   'Hub.refreshCatalog': void
   'Hub.refreshMCPServers': void
@@ -2952,6 +3165,7 @@ export type ApiEndpointParameters = {
   'LlmRepository.get': { repository_id: string }
   'LlmRepository.list': PaginationQuery
   'LlmRepository.test': TestRepositoryConnectionRequest
+  'LlmRepository.testById': { repository_id: string } & UpdateLlmRepositoryRequest
   'LlmRepository.update': { repository_id: string } & UpdateLlmRepositoryRequest
   'LocalLlmProxy.chatCompletions': void
   'LocalLlmProxy.embeddings': void
@@ -2998,6 +3212,8 @@ export type ApiEndpointParameters = {
   'McpServerSystem.removeServerFromGroup': { id: string; group_id: string }
   'McpServerSystem.testConnection': TestMcpConnectionRequest
   'McpServerSystem.update': { id: string } & UpdateMcpServerRequest
+  'McpUserPolicy.get': void
+  'McpUserPolicy.update': UpdateMcpUserPolicyRequest
   'Memory.create': CreateMemoryRequest
   'Memory.delete': { id: string }
   'Memory.deleteAll': void
@@ -3019,7 +3235,8 @@ export type ApiEndpointParameters = {
   'Message.getAssistant': { id: string }
   'Message.getHistory': { id: string }
   'Message.getMcpServers': { id: string }
-  'Message.sendStream': { id: string } & SendMessageRequest
+  'Message.send': { id: string } & SendMessageRequest
+  'Message.stopGeneration': { conversation_id: string; assistant_message_id: string }
   'Onboarding.complete': { guide_id: string }
   'Onboarding.completeStep': { guide_id: string; step_id: string }
   'Onboarding.getProgress': void
@@ -3050,6 +3267,7 @@ export type ApiEndpointParameters = {
   'RuntimeVersion.subscribeDownloadEvents': { key: string }
   'RuntimeVersion.syncCache': void
   'RuntimeVersion.usage': { engine?: string }
+  'Sync.subscribe': void
   'User.create': CreateUserRequest
   'User.delete': { user_id: string }
   'User.get': { user_id: string }
@@ -3083,6 +3301,7 @@ export type ApiEndpointResponses = {
   'AssistantTemplate.getDefault': Assistant
   'AssistantTemplate.list': AssistantListResponse
   'AssistantTemplate.update': Assistant
+  'Auth.changePassword': void
   'Auth.linkAccount': AuthResponse
   'Auth.listProviders': PublicProvidersResponse
   'Auth.login': AuthResponse
@@ -3090,6 +3309,7 @@ export type ApiEndpointResponses = {
   'Auth.me': MeResponse
   'Auth.refresh': TokenPair
   'Auth.register': AuthResponse
+  'Auth.updateProfile': User
   'AuthProviders.create': AuthProviderResponse
   'AuthProviders.delete': DeleteProviderResponse
   'AuthProviders.list': AuthProviderResponse[]
@@ -3101,9 +3321,12 @@ export type ApiEndpointResponses = {
   'Branch.getPendingApprovals': PendingApprovalsResponse
   'Branch.list': Branch[]
   'Chat.getUserLlmProviders': GetUserProvidersResponse2
+  'ChatStream.setSubscription': void
+  'ChatStream.subscribe': ChatStreamSseEvent
   'CodeSandbox.deleteRootfsVersion': VersionStatus
   'CodeSandbox.getResourceLimits': CodeSandboxResourceLimits
   'CodeSandbox.installRootfsVersion': InstallTaskState
+  'CodeSandbox.listFlavors': SandboxFlavorsResponse
   'CodeSandbox.listRootfsVersions': VersionStatus
   'CodeSandbox.setRootfsPin': SetPinResponse
   'CodeSandbox.subscribeRootfsInstallProgress': SSEInstallTaskEvent
@@ -3139,12 +3362,15 @@ export type ApiEndpointResponses = {
   'Health.check': HealthResponse
   'Hub.activateVersion': HubCatalogRefreshResponse
   'Hub.createAssistantFromHub': AssistantFromHubResponse
+  'Hub.createAssistantTemplateFromHub': AssistantFromHubResponse
   'Hub.createMcpServerFromHub': McpServerFromHubResponse
   'Hub.createModelFromHub': ModelFromHubResponse
+  'Hub.createSystemMcpServerFromHub': McpServerFromHubResponse
   'Hub.getAssistants': HubAssistant[]
   'Hub.getAssistantsVersion': HubVersionResponse
   'Hub.getCatalog': Catalog
   'Hub.getCatalogVersion': HubCatalogVersionResponse
+  'Hub.getInstalled': HubInstalledResponse
   'Hub.getLocalProviders': HubLocalProvidersResponse
   'Hub.getMCPServers': HubMCPServer[]
   'Hub.getMCPServersVersion': HubVersionResponse
@@ -3152,7 +3378,6 @@ export type ApiEndpointResponses = {
   'Hub.getModels': HubModel[]
   'Hub.getModelsVersion': HubVersionResponse
   'Hub.getReleases': HubReleasesResponse
-  'Hub.getUpdates': HubUpdatesResponse
   'Hub.refreshAssistants': HubRefreshResponse
   'Hub.refreshCatalog': HubCatalogRefreshResponse
   'Hub.refreshMCPServers': HubRefreshResponse
@@ -3186,11 +3411,12 @@ export type ApiEndpointResponses = {
   'LlmProvider.rotateProxyToken': RotateProxyTokenResponse
   'LlmProvider.saveUserApiKey': void
   'LlmProvider.update': LlmProvider
-  'LlmRepository.create': LlmRepository
+  'LlmRepository.create': LlmRepositoryWithHealthWarning
   'LlmRepository.delete': void
   'LlmRepository.get': LlmRepository
   'LlmRepository.list': LlmRepositoryListResponse
   'LlmRepository.test': TestRepositoryConnectionResponse
+  'LlmRepository.testById': TestRepositoryConnectionResponse
   'LlmRepository.update': LlmRepository
   'LocalLlmProxy.chatCompletions': void
   'LocalLlmProxy.embeddings': void
@@ -3211,7 +3437,7 @@ export type ApiEndpointResponses = {
   'Mcp.getDefaults': UserMcpDefaultsGetResponse
   'Mcp.respondToElicitation': RespondToElicitationResponse
   'Mcp.updateDefaults': UserMcpDefaultsResponse
-  'McpServer.create': McpServer
+  'McpServer.create': McpServerWithHealthWarning
   'McpServer.delete': void
   'McpServer.deleteOAuthConfig': void
   'McpServer.get': McpServer
@@ -3229,7 +3455,7 @@ export type ApiEndpointResponses = {
   'McpServerRuntime.ping': PingResponse
   'McpServerRuntime.readResource': ReadResourceResponse
   'McpServerSystem.assignServerToGroups': void
-  'McpServerSystem.create': McpServer
+  'McpServerSystem.create': McpServerWithHealthWarning
   'McpServerSystem.delete': void
   'McpServerSystem.get': McpServer
   'McpServerSystem.getServerGroups': string[]
@@ -3237,6 +3463,8 @@ export type ApiEndpointResponses = {
   'McpServerSystem.removeServerFromGroup': void
   'McpServerSystem.testConnection': TestMcpConnectionResponse
   'McpServerSystem.update': McpServer
+  'McpUserPolicy.get': McpUserPolicy
+  'McpUserPolicy.update': McpUserPolicy
   'Memory.create': UserMemory
   'Memory.delete': void
   'Memory.deleteAll': DeleteAllResponse
@@ -3258,7 +3486,8 @@ export type ApiEndpointResponses = {
   'Message.getAssistant': MessageAssistantResponse
   'Message.getHistory': MessageWithContent[]
   'Message.getMcpServers': MessageMcpServersResponse
-  'Message.sendStream': SSEChatStreamEvent
+  'Message.send': SendMessageResponse
+  'Message.stopGeneration': void
   'Onboarding.complete': OnboardingProgress
   'Onboarding.completeStep': OnboardingProgress
   'Onboarding.getProgress': OnboardingProgress
@@ -3289,6 +3518,7 @@ export type ApiEndpointResponses = {
   'RuntimeVersion.subscribeDownloadEvents': SSEEngineDownloadEvent
   'RuntimeVersion.syncCache': SyncCacheResponse
   'RuntimeVersion.usage': VersionUsageResponse
+  'Sync.subscribe': SyncSseEvent
   'User.create': User
   'User.delete': void
   'User.get': User

@@ -24,6 +24,9 @@ use crate::{
             permissions::{MemoryAdminManage, MemoryAdminRead, MemoryRead, MemoryWrite},
         },
         permissions::{RequirePermissions, with_permission},
+        sync::{
+            Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish,
+        },
     },
 };
 
@@ -160,6 +163,7 @@ pub fn get_memory_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn create_memory(
     auth: RequirePermissions<(MemoryWrite,)>,
+    origin: SyncOrigin,
     Json(body): Json<CreateMemoryRequest>,
 ) -> ApiResult<Json<UserMemory>> {
     let content = body.content.trim();
@@ -192,6 +196,13 @@ pub async fn create_memory(
             None,
         )
         .await?;
+    sync_publish(
+        SyncEntity::Memory,
+        SyncAction::Create,
+        row.id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
     Ok((StatusCode::CREATED, Json(row)))
 }
 
@@ -208,6 +219,7 @@ pub fn create_memory_docs(op: TransformOperation) -> TransformOperation {
 pub async fn update_memory(
     auth: RequirePermissions<(MemoryWrite,)>,
     Path(id): Path<Uuid>,
+    origin: SyncOrigin,
     Json(body): Json<UpdateMemoryRequest>,
 ) -> ApiResult<Json<UserMemory>> {
     if let Some(c) = &body.content {
@@ -248,6 +260,13 @@ pub async fn update_memory(
         )
         .await?
         .ok_or_else(|| AppError::not_found("Memory"))?;
+    sync_publish(
+        SyncEntity::Memory,
+        SyncAction::Update,
+        row.id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
     Ok((StatusCode::OK, Json(row)))
 }
 
@@ -264,11 +283,19 @@ pub fn update_memory_docs(op: TransformOperation) -> TransformOperation {
 pub async fn delete_memory(
     auth: RequirePermissions<(MemoryWrite,)>,
     Path(id): Path<Uuid>,
+    origin: SyncOrigin,
 ) -> ApiResult<StatusCode> {
     let deleted = Repos.memory.soft_delete_owned(auth.user.id, id).await?;
     if !deleted {
         return Err(AppError::not_found("Memory").into());
     }
+    sync_publish(
+        SyncEntity::Memory,
+        SyncAction::Delete,
+        id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
 
@@ -284,8 +311,18 @@ pub fn delete_memory_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn delete_all_memories(
     auth: RequirePermissions<(MemoryWrite,)>,
+    origin: SyncOrigin,
 ) -> ApiResult<Json<DeleteAllResponse>> {
     let n = Repos.memory.hard_delete_all_for_user(auth.user.id).await?;
+    // No single entity id for a bulk clear; the client's memory handler
+    // reloads the list regardless of id (nil acts as "everything changed").
+    sync_publish(
+        SyncEntity::Memory,
+        SyncAction::Delete,
+        Uuid::nil(),
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
     Ok((
         StatusCode::OK,
         Json(DeleteAllResponse { deleted: n as i64 }),
@@ -356,6 +393,7 @@ pub fn get_user_settings_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn update_user_settings(
     auth: RequirePermissions<(MemoryWrite,)>,
+    origin: SyncOrigin,
     Json(body): Json<UpdateUserMemorySettingsRequest>,
 ) -> ApiResult<Json<UserMemorySettings>> {
     if let Some(n) = body.max_memories {
@@ -387,6 +425,13 @@ pub async fn update_user_settings(
             body.extraction_model_id,
         )
         .await?;
+    sync_publish(
+        SyncEntity::MemorySettings,
+        SyncAction::Update,
+        auth.user.id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
     Ok((StatusCode::OK, Json(row)))
 }
 
@@ -419,6 +464,7 @@ pub fn get_admin_settings_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn update_admin_settings(
     _auth: RequirePermissions<(MemoryAdminManage,)>,
+    origin: SyncOrigin,
     Json(body): Json<UpdateMemoryAdminSettingsRequest>,
 ) -> ApiResult<Json<MemoryAdminSettings>> {
     if let Some(k) = body.default_top_k {
@@ -538,6 +584,14 @@ pub async fn update_admin_settings(
             }
         }
     }
+
+    sync_publish(
+        SyncEntity::MemoryAdminSettings,
+        SyncAction::Update,
+        uuid::Uuid::nil(),
+        Audience::perm::<MemoryAdminRead>(),
+        origin.0,
+    );
 
     Ok((StatusCode::OK, Json(row)))
 }

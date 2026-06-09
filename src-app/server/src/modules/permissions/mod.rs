@@ -30,4 +30,4 @@ pub mod types;
 // Re-export main types
 pub use extractors::RequirePermissions;
 pub use openapi::with_permission;
-pub use types::{PermissionCheck, PermissionInfo};
+pub use types::{PermissionCheck, PermissionInfo, PermissionList};

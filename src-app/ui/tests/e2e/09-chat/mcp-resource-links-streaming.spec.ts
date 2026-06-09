@@ -55,7 +55,7 @@ test.describe('Inline file previews — streaming + persistence', () => {
       resourceLinks: [{ uri, name: 'data.csv', mime_type: 'text/csv' }],
     })
     const preview = page.locator('[data-testid="inline-file-preview"]').first()
-    await expect(preview.locator('table:has(tbody td)')).toBeVisible({ timeout: 10000 })
+    await expect(preview.locator('.ant-table-row').first()).toBeVisible({ timeout: 10000 })
     expect(mock.callCount(uri)).toBe(1)
     // Collapse + re-expand a few times — should not trigger refetches.
     const chevron = preview.locator('[data-testid="inline-file-preview-chevron"]')
@@ -63,7 +63,7 @@ test.describe('Inline file previews — streaming + persistence', () => {
       await chevron.click()
       await chevron.click()
     }
-    await expect(preview.locator('table:has(tbody td)')).toBeVisible()
+    await expect(preview.locator('.ant-table-row').first()).toBeVisible()
     expect(mock.callCount(uri)).toBe(1)
   })
 
@@ -102,7 +102,7 @@ test.describe('Inline file previews — streaming + persistence', () => {
       .locator(`[data-testid="chat-message"][data-message-id="${assistantMessageId}"]`)
       .locator('[data-testid="inline-file-preview"]')
       .first()
-    await expect(preview.locator('table:has(tbody td)')).toBeVisible({ timeout: 10000 })
+    await expect(preview.locator('.ant-table-row').first()).toBeVisible({ timeout: 10000 })
 
     // The page reload would re-hit /messages from the backend (NOT the
     // mock above, which is per-page-context). In v1 we don't have a
@@ -122,10 +122,10 @@ test.describe('Inline file previews — streaming + persistence', () => {
       .locator(`[data-testid="chat-message"][data-message-id="${assistantMessageId}"]`)
       .locator('[data-testid="inline-file-preview"]')
       .first()
-    await expect(previewAfter.locator('table:has(tbody td)')).toBeVisible({ timeout: 10000 })
+    await expect(previewAfter.locator('.ant-table-row').first()).toBeVisible({ timeout: 10000 })
   })
 
-  test('tool_result with no resource_links does not render a footer', async ({
+  test('tool_result with no resource_links renders no inline files', async ({
     page,
     testInfra,
   }) => {
@@ -133,8 +133,10 @@ test.describe('Inline file previews — streaming + persistence', () => {
     await seedAssistantWithToolResult(page, testInfra.baseURL, {
       resourceLinks: [],
     })
-    // MessageFilesView returns null when no links → no footer DOM node.
-    await expect(page.locator('[data-testid="message-files-view"]')).toHaveCount(0)
+    // The tool_result content renderer returns null when there are no links →
+    // no inline group, no preview, and the old footer is gone entirely.
+    await expect(page.locator('[data-testid="tool-result-files"]')).toHaveCount(0)
+    await expect(page.locator('[data-testid="inline-file-preview"]')).toHaveCount(0)
   })
 
   test('multiple unique URIs each trigger exactly one fetch', async ({

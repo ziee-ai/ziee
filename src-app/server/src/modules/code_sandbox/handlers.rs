@@ -28,6 +28,7 @@ use crate::modules::code_sandbox::types::{
 };
 use crate::modules::code_sandbox::{code_sandbox_server_id, streaming, tools};
 use crate::modules::permissions::extractors::RequirePermissions;
+use crate::modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
 
 /// Per-conversation mutex map. Two parallel tool calls in the same
 /// conversation serialize; different conversations stay parallel.
@@ -495,6 +496,53 @@ pub struct EnvironmentInfo {
 #[derive(Debug, serde::Serialize, schemars::JsonSchema)]
 pub struct EnvironmentsResponse {
     pub available: Vec<EnvironmentInfo>,
+}
+
+/// REST response for the MCP-server form's sandbox flavor picker:
+/// the selectable rootfs flavors plus the host command allowlist.
+#[derive(Debug, serde::Serialize, schemars::JsonSchema)]
+pub struct SandboxFlavorsResponse {
+    pub available: Vec<EnvironmentInfo>,
+    /// Commands allowed for a NON-sandboxed (host) stdio MCP server. A
+    /// sandboxed server (run_in_sandbox) may use any command.
+    pub host_allowed_commands: Vec<String>,
+}
+
+/// GET /code-sandbox/flavors — powers the MCP server form's flavor
+/// picker AND the MCP user-policy admin card. Returns KNOWN_FLAVORS
+/// + the host command allowlist. Permission is `McpServersAdminRead`
+/// because both UI surfaces this endpoint serves are admin-only MCP
+/// management pages (cross-module dep is acceptable because the
+/// endpoint exists specifically for those MCP surfaces).
+pub async fn get_sandbox_flavors_handler(
+    _auth: RequirePermissions<(crate::modules::mcp::permissions::McpServersAdminRead,)>,
+) -> crate::common::ApiResult<Json<SandboxFlavorsResponse>> {
+    let env = build_environments_response();
+    let resp = SandboxFlavorsResponse {
+        available: env.available,
+        host_allowed_commands: crate::modules::mcp::client::stdio::HOST_ALLOWED_COMMANDS
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+    };
+    Ok((StatusCode::OK, Json(resp)))
+}
+
+pub fn get_sandbox_flavors_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
+    with_permission::<(crate::modules::mcp::permissions::McpServersAdminRead,)>(op)
+        .id("CodeSandbox.listFlavors")
+        .tag("Code Sandbox")
+        .summary("List selectable sandbox rootfs flavors + host command allowlist")
+        .description(
+            "Powers the MCP server form's sandbox flavor picker AND the MCP \
+             user-policy admin card's flavor select. Returns the KNOWN_FLAVORS \
+             catalog (name / description / approximate size / cached) plus the \
+             host-path command allowlist a non-sandboxed stdio server must use.",
+        )
+        .response::<200, Json<SandboxFlavorsResponse>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
 }
 
 
@@ -1107,7 +1155,13 @@ pub(crate) fn tool_definitions() -> Value {
                 JWT-signed download-with-token URL that can be passed directly to external MCP tools \
                 (`is_saved: true`).\n\
                 \n\
-                Use a plain filename (e.g., 'report.pdf' or 'data.csv').",
+                Use a plain filename (e.g., 'report.pdf' or 'data.csv').\n\
+                \n\
+                IMPORTANT: When passing the file to another tool, copy the returned `uri` \
+                VERBATIM into that tool's file/URL argument. Do NOT invent or guess a URL, \
+                do NOT construct a DRS/platform URL (e.g. a ga4gh/drs object URL), and do \
+                NOT substitute '127.0.0.1', 'localhost', or any other host. The returned \
+                `uri` is already reachable exactly as given.",
             "inputSchema": {
                 "type": "object",
                 "required": ["filename"],
@@ -1173,6 +1227,7 @@ pub fn get_resource_limits_docs(
 /// PUT /code-sandbox/resource-limits
 pub async fn update_resource_limits_handler(
     _auth: RequirePermissions<(CodeSandboxResourceLimitsManage,)>,
+    origin: SyncOrigin,
     Json(patch): Json<UpdateCodeSandboxResourceLimits>,
 ) -> crate::common::ApiResult<Json<CodeSandboxResourceLimits>> {
     patch.validate()?;
@@ -1183,6 +1238,7 @@ pub async fn update_resource_limits_handler(
     // module-private accessor rather than threading state through every
     // handler signature.
     crate::modules::code_sandbox::resource_limits_cache::invalidate(&row);
+    sync_publish(SyncEntity::CodeSandboxSettings, SyncAction::Update, uuid::Uuid::nil(), Audience::perm::<CodeSandboxResourceLimitsRead>(), origin.0);
     Ok((StatusCode::OK, Json(row)))
 }
 

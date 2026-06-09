@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Alert, Card, Layout, Spin, Typography } from 'antd'
+import { Alert, Card, Layout, Typography } from 'antd'
+import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'
 import { BlankLayoutComponent } from '@/modules/layouts/blank'
 import { SESSION_RETURN_TO_KEY } from './constants'
 
 const { Content } = Layout
-const { Title, Text } = Typography
+const { Title } = Typography
 
 /**
  * True when `target` is a safe same-origin path. Strict: must start
@@ -160,12 +161,7 @@ export const AuthCallbackPage: React.FC = () => {
                 <a href="/auth">Return to login</a>
               </>
             ) : (
-              <>
-                <Spin size="large" />
-                <div className="mt-4">
-                  <Text type="secondary">Completing sign-in…</Text>
-                </div>
-              </>
+              <Loading tip="Completing sign-in…" />
             )}
           </Card>
         </Content>

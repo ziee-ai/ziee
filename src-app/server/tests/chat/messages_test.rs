@@ -223,29 +223,26 @@ async fn test_send_message_empty_content_accepted_for_tool_only_calls() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
+    let (_stub, model) = super::helpers::create_stub_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
-    let payload = json!({
-        "content": "",
-        "model_id": model_id.to_string(),
-        "branch_id": branch_id.to_string()
-    });
-
-    let response = reqwest::Client::new()
-        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&payload)
-        .send()
-        .await
-        .unwrap();
+    let response = super::helpers::send_message_simple(
+        &server,
+        &user.token,
+        conversation_id,
+        model_id,
+        branch_id,
+        "",
+    )
+    .await;
 
     // Empty content is now accepted by design: tool-only calls (a
     // model that issues only `tool_use` blocks with no preceding text)
-    // are valid in modern LLM APIs. The endpoint returns 200 + an SSE
-    // stream that the model may immediately close or fill with tool
-    // calls. Previously this returned 400; the validation was
-    // removed when tool-only chats became first-class.
+    // are valid in modern LLM APIs. The fire-and-forget endpoint
+    // returns 200 + `{user_message_id, assistant_message_id}`; the reply
+    // itself streams over `GET /api/chat/stream`. Previously this
+    // returned 400; the validation was removed when tool-only chats
+    // became first-class.
     assert_eq!(response.status(), StatusCode::OK);
 }
 
@@ -270,24 +267,20 @@ async fn test_send_message_invalid_branch_id() {
     let conversation = super::helpers::create_conversation(&server, &user.token, None, None).await;
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
+    let (_stub, model) = super::helpers::create_stub_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     let fake_branch_id = uuid::Uuid::new_v4();
 
-    let payload = json!({
-        "content": "Test message",
-        "model_id": model_id.to_string(),
-        "branch_id": fake_branch_id.to_string()
-    });
-
-    let response = reqwest::Client::new()
-        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&payload)
-        .send()
-        .await
-        .unwrap();
+    let response = super::helpers::send_message_simple(
+        &server,
+        &user.token,
+        conversation_id,
+        model_id,
+        fake_branch_id,
+        "Test message",
+    )
+    .await;
 
     // Should return 404 for non-existent branch
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
@@ -313,19 +306,15 @@ async fn test_send_message_invalid_model_id() {
 
     let fake_model_id = uuid::Uuid::new_v4();
 
-    let payload = json!({
-        "content": "Test message",
-        "model_id": fake_model_id.to_string(),
-        "branch_id": branch_id.to_string()
-    });
-
-    let response = reqwest::Client::new()
-        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&payload)
-        .send()
-        .await
-        .unwrap();
+    let response = super::helpers::send_message_simple(
+        &server,
+        &user.token,
+        conversation_id,
+        fake_model_id,
+        branch_id,
+        "Test message",
+    )
+    .await;
 
     // Should return 404 for non-existent model
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
@@ -345,25 +334,21 @@ async fn test_send_message_conversation_not_found() {
     let fake_model_id = uuid::Uuid::new_v4();
     let fake_branch_id = uuid::Uuid::new_v4();
 
-    let payload = json!({
-        "content": "Test message",
-        "model_id": fake_model_id.to_string(),
-        "branch_id": fake_branch_id.to_string()
-    });
-
-    let response = reqwest::Client::new()
-        .post(server.api_url(&format!("/conversations/{}/messages/stream", fake_conversation_id)))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&payload)
-        .send()
-        .await
-        .unwrap();
+    let response = super::helpers::send_message_simple(
+        &server,
+        &user.token,
+        fake_conversation_id,
+        fake_model_id,
+        fake_branch_id,
+        "Test message",
+    )
+    .await;
 
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
-async fn test_send_message_returns_sse_stream() {
+async fn test_send_message_returns_message_ids() {
     let server = crate::common::TestServer::start().await;
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
@@ -384,7 +369,7 @@ async fn test_send_message_returns_sse_stream() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
+    let (_stub, model) = super::helpers::create_stub_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     let response = super::helpers::send_message_simple(
@@ -393,14 +378,17 @@ async fn test_send_message_returns_sse_stream() {
         conversation_id,
         model_id,
         branch_id,
-        "Hello, world!"
-    ).await;
+        "Hello, world!",
+    )
+    .await;
 
-    // Should return SSE content type
-    let content_type = response.headers().get("content-type").unwrap();
+    // Fire-and-forget: POST returns 200 + JSON `{user_message_id,
+    // assistant_message_id}` immediately (NO body stream). The reply
+    // itself streams over `GET /api/chat/stream`.
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: serde_json::Value = response.json().await.unwrap();
     assert!(
-        content_type.to_str().unwrap().contains("text/event-stream"),
-        "Expected SSE content-type, got {:?}",
-        content_type
+        !body["assistant_message_id"].is_null(),
+        "response body must carry a non-null assistant_message_id; got {body}"
     );
 }

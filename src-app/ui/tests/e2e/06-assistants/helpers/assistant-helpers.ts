@@ -7,17 +7,27 @@ import { Page, expect } from '@playwright/test'
  */
 
 export async function goToUserAssistantsPage(page: Page, baseURL: string) {
-  await page.goto(`${baseURL}/assistants`)
-  await page.waitForLoadState('networkidle')
-  // Wait for the page title (h4 heading in title bar) specifically, not the empty state heading (h3)
-  await page.getByRole('heading', { level: 4, name: /assistants/i }).first().waitFor({ timeout: 10000 })
+  // The user's own assistants now live in settings (was the sidebar full-page
+  // grid at /assistants). NOT `networkidle`: the realtime-sync SSE stream is a
+  // persistent connection that keeps the network busy, so it may never settle —
+  // wait on selectors instead.
+  await page.goto(`${baseURL}/settings/assistants`)
+  await page.waitForLoadState('load')
+  // Wait for the settings page title (h4) then the "My Assistants" card.
+  await page
+    .getByRole('heading', { level: 4, name: /assistants/i })
+    .first()
+    .waitFor({ timeout: 15000 })
+  await page
+    .locator('.ant-card-head-title:has-text("My Assistants")')
+    .waitFor({ timeout: 15000 })
 }
 
 export async function goToTemplateAssistantsSettings(page: Page, baseURL: string) {
-  await page.goto(`${baseURL}/settings/assistants`)
+  await page.goto(`${baseURL}/settings/assistant-templates`)
   await page.waitForLoadState('networkidle')
-  // Wait for the Assistants heading to be visible first
-  await page.getByRole('heading', { name: 'Assistants', level: 4 }).waitFor({ timeout: 10000 })
+  // Wait for the Assistant Templates heading to be visible first
+  await page.getByRole('heading', { name: 'Assistant Templates', level: 4 }).waitFor({ timeout: 10000 })
   // Then wait for the Template Assistants card title specifically
   await page.locator('.ant-card-head-title:has-text("Template Assistants")').waitFor({ timeout: 10000 })
 }
@@ -108,48 +118,34 @@ export async function cancelAssistantForm(page: Page) {
 }
 
 /**
- * Assistant Card helpers (User Assistants Page)
+ * User Assistant List helpers (Settings Page)
+ *
+ * The user's assistants render in the same card-list layout as the admin
+ * template page (rows keyed by `data-test-assistant-id="user-assistant-…"`
+ * with inline Edit/Delete text buttons), so these mirror the template
+ * helpers below.
  */
 
-export async function getAssistantCard(page: Page, assistantName: string) {
-  return page.locator(`[data-test-assistant-name="${assistantName}"]`)
+export async function getUserAssistantRow(page: Page, assistantName: string) {
+  return page.locator(`[data-test-assistant-id^="user-assistant-"]:has-text("${assistantName}")`)
 }
 
-export async function editAssistantFromCard(page: Page, assistantName: string) {
-  const card = await getAssistantCard(page, assistantName)
-
-  // Click the Edit icon button on the card (audit I-4: the kebab
-  // dropdown was replaced with inline Edit/Delete icon buttons).
-  await card.getByRole('button', { name: `Edit ${assistantName}` }).click()
-
-  // Wait for drawer to open
+export async function editUserAssistant(page: Page, assistantName: string) {
+  const row = await getUserAssistantRow(page, assistantName)
+  await row.getByRole('button', { name: 'Edit' }).click()
+  // Wait for the edit drawer to appear + its form to load.
   await page.locator('.ant-drawer.ant-drawer-open').waitFor({ state: 'visible' })
-
-  // Wait for form content to be loaded (same as fillAssistantForm does)
   await page.getByLabel('Name').waitFor({ state: 'visible', timeout: 10000 })
 }
 
-export async function deleteAssistantFromCard(page: Page, assistantName: string) {
-  const card = await getAssistantCard(page, assistantName)
+export async function deleteUserAssistant(page: Page, assistantName: string) {
+  const row = await getUserAssistantRow(page, assistantName)
+  await row.getByRole('button', { name: 'Delete' }).click()
 
-  // Click the Delete icon button on the card (audit I-4: the dropdown
-  // menu + Modal.confirm pattern was replaced with inline Edit/Delete
-  // icon buttons + a Popconfirm on Delete).
-  await card.getByRole('button', { name: `Delete ${assistantName}` }).click()
-
-  // Confirm deletion in popconfirm. Scope by primary-button class so
-  // okText changes don't break the helper.
+  // Confirm in popconfirm. Primary-button class is stable across okText.
   await page.locator('.ant-popconfirm').waitFor({ state: 'visible' })
   await page.locator('.ant-popconfirm .ant-btn-primary').click()
-
-  // Wait for popconfirm to close
   await page.locator('.ant-popconfirm').waitFor({ state: 'hidden' })
-}
-
-export async function clickAssistantCard(page: Page, assistantName: string) {
-  const card = await getAssistantCard(page, assistantName)
-  await card.click()
-  await page.locator('.ant-drawer.ant-drawer-open').waitFor({ state: 'visible' })
 }
 
 /**
@@ -180,41 +176,6 @@ export async function deleteTemplateAssistant(page: Page, assistantName: string)
 
   // Wait for popconfirm to close
   await page.locator('.ant-popconfirm').waitFor({ state: 'hidden' })
-}
-
-/**
- * Search and Sort helpers
- */
-
-export async function searchAssistants(page: Page, query: string) {
-  const searchInput = page.getByPlaceholder('Search assistants').or(page.locator('input[placeholder="Search assistants"]'))
-  await searchInput.fill(query)
-}
-
-export async function clearSearch(page: Page) {
-  // AntD's Input clear-icon is the canonical target; the broader
-  // /clear.*search/i regex was fragile and now collides with assistant
-  // card aria-labels containing "Clear" or "Search" (audit I-4
-  // refactored AssistantCard to surface Edit/Delete icon buttons with
-  // `aria-label="Edit ${name}"` / `Delete ${name}`, where {name}
-  // tests can include "Clear Search Test").
-  const searchWrapper = page.locator('input[placeholder="Search assistants"]').locator('..')
-  await searchWrapper.locator('.ant-input-clear-icon').click()
-}
-
-export async function sortAssistantsBy(page: Page, sortType: 'Activity' | 'Name' | 'Created') {
-  // Click sort button using aria-label
-  await page.getByRole('button', { name: /sort assistants/i }).click()
-
-  // Wait for the sort dropdown to appear (identify it by looking for one that contains "Activity")
-  const sortDropdown = page.getByRole('menu').or(page.locator('.ant-dropdown-menu:has-text("Activity")'))
-  await sortDropdown.waitFor({ state: 'visible', timeout: 10000 })
-
-  // Click the sort option within the specific dropdown
-  await sortDropdown.getByText(sortType, { exact: true }).click()
-
-  // Wait for dropdown to close
-  await page.waitForTimeout(500)
 }
 
 /**
@@ -254,12 +215,12 @@ export async function changePageSize(page: Page, size: number) {
  * Assertion helpers
  */
 
-export async function assertAssistantExists(page: Page, assistantName: string, shouldExist = true) {
-  const card = page.locator(`[data-test-assistant-name="${assistantName}"]`)
+export async function assertUserAssistantExists(page: Page, assistantName: string, shouldExist = true) {
+  const row = page.locator(`[data-test-assistant-id^="user-assistant-"]:has-text("${assistantName}")`)
   if (shouldExist) {
-    await expect(card).toBeVisible()
+    await expect(row.first()).toBeVisible()
   } else {
-    await expect(card).not.toBeVisible()
+    await expect(row).not.toBeVisible()
   }
 }
 
@@ -273,9 +234,9 @@ export async function assertTemplateAssistantExists(page: Page, assistantName: s
   }
 }
 
-export async function assertAssistantHasTag(page: Page, assistantName: string, tagText: string) {
-  const card = await getAssistantCard(page, assistantName)
-  const tag = card.getByText(tagText, { exact: true })
+export async function assertUserAssistantHasTag(page: Page, assistantName: string, tagText: string) {
+  const row = await getUserAssistantRow(page, assistantName)
+  const tag = row.getByText(tagText, { exact: true })
   await expect(tag).toBeVisible()
 }
 

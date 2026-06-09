@@ -180,6 +180,71 @@ The vendored pgvector source is a git submodule at
 
 ---
 
+## Hub Seed (build-time fetch)
+
+The embedded hub catalog at `<binary>/binaries/hub-seed/` is fetched
+fresh from the `ziee-ai/hub` GitHub release on every `cargo build`.
+`build_helper/hub_seed.rs` resolves the latest non-prerelease tag,
+downloads the 6 release artifacts (tarball + index + their sha256
+sidecars + cosign keyless bundles), verifies them with the same
+chain the runtime refresh path uses (`hub_manager.rs` verify
+functions), and stages the result into `binaries/hub-seed/` for
+`include_dir!` to bake into the binary. `SEED_HUB_VERSION` is set
+by the build helper via `include_str!(concat!(env!("OUT_DIR"),
+"/hub_seed_version.txt"))` — keeping the version + index in lockstep
+is the build's responsibility, not the maintainer's.
+
+### Failure contract — different from every other build helper
+
+`pandoc`, `typst`, `pdfium`, `uv`, `bun`, `sandbox_runtime` all
+**warn-and-continue** on setup failure. `hub_seed` **panics**: the
+seed is the source of truth at runtime for air-gapped / first-boot
+users, and shipping a binary with an empty or stale seed silently
+degrades the hub UI. See the divider comment in
+`build.rs::setup_external_binaries()` for the rationale.
+
+### Env vars (build time)
+
+- `HUB_RELEASE_TAG=v0.x.y` — pin to a specific release tag instead
+  of resolving the latest. Required for reproducible / air-gapped
+  builds: an operator without GitHub access must set this AND
+  pre-stage `binaries/hub-seed/` (the skip-if-fresh path consults
+  that cache before any network call).
+- `GITHUB_TOKEN=ghp_...` — honored if set. Lifts the unauthenticated
+  60-req/hr-per-IP GitHub API limit to 5000/hr; matters on CI matrix
+  builds that share an egress IP. Falls back to unauthenticated
+  requests if unset.
+
+### Cache (`binaries/hub-seed/`)
+
+Persists across `cargo clean` (it's manifest-relative, not in
+`target/`). The `.tag` sidecar holds the cached release tag; on each
+build the helper queries GitHub for the latest tag and skips the
+download when `.tag` matches.
+
+**Tamper detection limit**: `cargo:rerun-if-changed=<seed_dir>`
+catches add / remove / rename inside the seed dir (directory
+mtime changes), but it does NOT catch in-place file edits
+(cargo only watches the dir's own mtime, not its contents'
+mtimes). The runtime test `seed_index_version_matches_const`
+is the in-place-edit backstop: it compares the on-disk
+`index.json`'s `hub_version` field against `SEED_HUB_VERSION`
+at test time, so a manual edit that bumps content without
+bumping the version fails the test suite.
+
+Concurrent `cargo build` invocations serialize on an advisory
+`flock(2)` over `binaries/.hub-seed.lock` (kernel auto-releases
+on process exit, so SIGKILL is safe).
+
+### Forcing a fresh fetch
+
+```bash
+rm -rf src-app/server/binaries/hub-seed
+cargo check -p ziee
+```
+
+---
+
 ## Code Sandbox
 
 The `code_sandbox` module exposes a bwrap-isolated code-execution
@@ -685,6 +750,85 @@ source tests/.env.test
 cargo test --test integration_tests project:: -- --test-threads=1 \
     2>&1 | tee project-int-$(date +%Y%m%d-%H%M%S).log
 ```
+
+---
+
+## Realtime Sync
+
+Cross-device sync over a per-user **Server-Sent-Events** stream. The wire
+payload is **notify-and-refetch only** — `{entity, action, id}`, never row
+data — so a misrouted event can't leak: the client refetches via the
+existing permission-checked REST endpoint, and the SSE channel carries
+nothing sensitive.
+
+### Backend module
+
+`src-app/server/src/modules/sync/{mod,event,registry,handlers,extractor}.rs`.
+
+- **`event.rs::audience_kind`** is the single, auditable authorization table:
+  each `SyncEntity` maps to `Owner(user_id)` | `Permission(&str)` |
+  `Everyone`. The `match` is **exhaustive**, so a new entity can't compile
+  without an explicit audience (a new entity can never silently default to a
+  broadcast). The perm string MUST equal the read-perm gating the client's
+  refetch endpoint.
+- **`registry.rs`** — per-user keyed connection pool (NOT the global
+  broadcast pool used by download/hardware SSE). Caps: `512` global / `12`
+  per-user / `1024` bounded channel depth (a stalled reader is pruned →
+  the client reconnects + resyncs). Mutex is poison-recovering.
+- **`handlers.rs`** — `GET /api/sync/subscribe`, gated by `profile::read`.
+  Sends a `connected{connection_id}` handshake, keep-alive, then a
+  `tokio::select!` over {channel recv, 60s re-check, JWT `exp` deadline}. The
+  re-check re-resolves `is_active` + the baseline perm and tears the stream
+  down on loss; a transient DB error keeps the stream.
+- **`extractor.rs::SyncOrigin`** reads `X-Sync-Connection-Id` (the client
+  echoes the connection id back on mutations) so the fan-out skips the
+  originating connection (self-echo suppression).
+
+### Emitting changes
+
+Mutating handlers call `publish as sync_publish` with
+`(entity, action, id, owner, origin.0)`. Conventions:
+
+- **Owner-scoped** entities pass `Some(owner_id)`; **Permission/Everyone**
+  pass `None`.
+- **Dual-audience** mutations emit BOTH the admin entity AND the user-view
+  entity (e.g. a provider change → `LlmProvider` for admins +
+  `UserLlmProvider` for every user, each refetching its own scoped view).
+- Group-permission edits fan a `Session` signal to **all members** via
+  `publish_session_to_users` (one registry-lock batch) so their devices
+  re-bootstrap `/auth/me` immediately (the 60s re-check is the backstop).
+- Background/detached tasks (e.g. a runtime-version download completing, a
+  model finishing an upload/download) emit on **completion**, with
+  `origin = None`.
+
+### Frontend
+
+`src-app/ui/src/core/sync/` (SyncClient SSE loop + epoch-guarded reconnect,
+`registry.ts`, `connection.ts` header holder) + per-module
+`src-app/ui/src/modules/*/sync.ts` calling
+`registerSync('<entity>', { onEvent, onResync, requiredPermission })`.
+
+- The SyncClient re-emits each frame onto the existing EventBus as a
+  per-entity `sync:<entity>` event; each module's `registerSync` handler
+  refetches its store (per-surface policy lives in the handler).
+- **`ENTITY_COVERAGE`** is a `Record<SyncEntity, 'handled' | 'backend-only'>`
+  — a new generated entity is a COMPILE error until given a decision;
+  `assertSyncCoverage()` fails loudly in dev if a `'handled'` entity has no
+  handler.
+- **`requiredPermission`** gates BOTH `onEvent` and `onResync` (the latter
+  fires for all handlers on reconnect regardless of the server audience), so
+  a non-admin's reconnect never hits an admin endpoint → 403 (the `no-403`
+  E2E gate). Set it on every entity whose refetch is permission-gated (use
+  `{ allOf: [...] }` when a reload hits multiple gated endpoints, e.g. the
+  admin provider reload fetches both providers and models).
+
+### Tests
+
+| Tier | Location | Covers |
+|---|---|---|
+| unit | `modules/sync/{registry,event}.rs` `#[cfg(test)]` | audience routing isolation, self-echo skip, caps→429, snapshot refresh, lagging-conn prune, batch session delivery, the audience table + notify-only wire format |
+| integration | `server/tests/sync/subscribe_test.rs` | subscribe auth-gate (401) + SSE handshake |
+| E2E | `ui/tests/e2e/13-sync/` (`--workers=1`) | cross-device delivery without reload; cross-user isolation (A's 2nd device = positive control) |
 
 ---
 

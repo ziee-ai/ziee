@@ -1,10 +1,8 @@
-import { Layout, Spin } from 'antd'
 import { useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import { AuthPage } from '@/modules/auth/AuthPage'
-
-const { Content } = Layout
+import { Loading } from '@/core/components/Loading'
 
 interface AuthGuardProps {
   children: React.ReactNode
@@ -30,13 +28,7 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
 
   // Show loading spinner while checking auth status
   if (isInitializing || needsSetup === null) {
-    return (
-      <Layout className="min-h-screen">
-        <Content className="flex items-center justify-center">
-          <Spin size="large" />
-        </Content>
-      </Layout>
-    )
+    return <Loading fullscreen />
   }
 
   // Redirect to setup if needed

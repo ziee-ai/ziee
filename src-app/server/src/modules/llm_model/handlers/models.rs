@@ -14,7 +14,10 @@ use uuid::Uuid;
 use crate::{
     common::r#type::{ApiResult, AppError},
     core::{events::EventBus, repository::Repos},
+    modules::llm_model::permissions::LlmModelsRead,
+    modules::llm_provider::permissions::UserLlmProvidersRead,
     modules::permissions::{RequirePermissions, with_permission},
+    modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
 };
 use std::sync::Arc;
 
@@ -141,8 +144,8 @@ pub fn get_model_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn create_model(
     _auth: RequirePermissions<(LlmModelsCreate,)>,
-    
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Json(request): Json<CreateLlmModelRequest>,
 ) -> ApiResult<Json<LlmModel>> {
     // Validate request
@@ -153,6 +156,9 @@ pub async fn create_model(
 
     // Emit event
     event_bus.emit_async(LlmModelEvent::created(model.clone()).into());
+
+    sync_publish(SyncEntity::LlmModel, SyncAction::Create, model.id, Audience::perm::<LlmModelsRead>(), origin.0);
+    sync_publish(SyncEntity::UserLlmProvider, SyncAction::Update, model.id, Audience::perm::<UserLlmProvidersRead>(), origin.0);
 
     Ok((StatusCode::CREATED, Json(model)))
 }
@@ -172,8 +178,8 @@ pub fn create_model_docs(op: TransformOperation) -> TransformOperation {
 pub async fn update_model(
     _auth: RequirePermissions<(LlmModelsEdit,)>,
     Path(model_id): Path<Uuid>,
-    
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Json(request): Json<UpdateLlmModelRequest>,
 ) -> ApiResult<Json<LlmModel>> {
     // Validate request
@@ -187,6 +193,9 @@ pub async fn update_model(
 
     // Emit event
     event_bus.emit_async(LlmModelEvent::updated(model.clone()).into());
+
+    sync_publish(SyncEntity::LlmModel, SyncAction::Update, model.id, Audience::perm::<LlmModelsRead>(), origin.0);
+    sync_publish(SyncEntity::UserLlmProvider, SyncAction::Update, model.id, Audience::perm::<UserLlmProvidersRead>(), origin.0);
 
     Ok((StatusCode::OK, Json(model)))
 }
@@ -233,6 +242,7 @@ pub async fn delete_model(
     Path(model_id): Path<Uuid>,
     Query(query): Query<DeleteModelQuery>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
 ) -> ApiResult<StatusCode> {
     // Get model details before deletion (need provider_id for file path)
     let model = Repos.llm_model.get_by_id(model_id).await?;
@@ -295,6 +305,9 @@ pub async fn delete_model(
             model_id
         );
     }
+
+    sync_publish(SyncEntity::LlmModel, SyncAction::Delete, model_id, Audience::perm::<LlmModelsRead>(), origin.0);
+    sync_publish(SyncEntity::UserLlmProvider, SyncAction::Update, model_id, Audience::perm::<UserLlmProvidersRead>(), origin.0);
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
@@ -391,8 +404,8 @@ pub fn validate_model_docs(op: TransformOperation) -> TransformOperation {
 pub async fn enable_model(
     _auth: RequirePermissions<(LlmModelsEdit,)>,
     Path(model_id): Path<Uuid>,
-    
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
 ) -> ApiResult<Json<LlmModel>> {
     let request = UpdateLlmModelRequest {
         enabled: Some(true),
@@ -406,6 +419,9 @@ pub async fn enable_model(
 
     // Emit event
     event_bus.emit_async(LlmModelEvent::updated(model.clone()).into());
+
+    sync_publish(SyncEntity::LlmModel, SyncAction::Update, model.id, Audience::perm::<LlmModelsRead>(), origin.0);
+    sync_publish(SyncEntity::UserLlmProvider, SyncAction::Update, model.id, Audience::perm::<UserLlmProvidersRead>(), origin.0);
 
     Ok((StatusCode::OK, Json(model)))
 }
@@ -425,8 +441,8 @@ pub fn enable_model_docs(op: TransformOperation) -> TransformOperation {
 pub async fn disable_model(
     _auth: RequirePermissions<(LlmModelsEdit,)>,
     Path(model_id): Path<Uuid>,
-    
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
 ) -> ApiResult<Json<LlmModel>> {
     let request = UpdateLlmModelRequest {
         enabled: Some(false),
@@ -440,6 +456,9 @@ pub async fn disable_model(
 
     // Emit event
     event_bus.emit_async(LlmModelEvent::updated(model.clone()).into());
+
+    sync_publish(SyncEntity::LlmModel, SyncAction::Update, model.id, Audience::perm::<LlmModelsRead>(), origin.0);
+    sync_publish(SyncEntity::UserLlmProvider, SyncAction::Update, model.id, Audience::perm::<UserLlmProvidersRead>(), origin.0);
 
     Ok((StatusCode::OK, Json(model)))
 }

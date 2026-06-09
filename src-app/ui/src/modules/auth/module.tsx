@@ -18,7 +18,8 @@ export default createModule({
   metadata: {
     name: 'auth',
     version: '1.0.0',
-    description: 'Authentication module with login, registration, and social sign-in',
+    description:
+      'Authentication module with login, registration, and social sign-in',
   },
   dependencies: ['router'],
   routes: [

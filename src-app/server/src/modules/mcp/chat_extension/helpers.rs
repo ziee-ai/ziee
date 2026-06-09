@@ -359,6 +359,7 @@ pub async fn send_approval_required_event(
 /// Fire-and-forget: logs a warning if the channel is closed but never fails the caller.
 pub async fn send_artifact_created_event(
     tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
+    tool_use_id: &str,
     file_id: &str,
     filename: &str,
     mime_type: Option<&str>,
@@ -366,6 +367,7 @@ pub async fn send_artifact_created_event(
 ) {
     if let Some(tx) = tx {
         let event = SSEChatStreamEvent::ArtifactCreated(SSEChatStreamArtifactCreatedData {
+            tool_use_id: tool_use_id.to_string(),
             file_id: file_id.to_string(),
             filename: filename.to_string(),
             mime_type: mime_type.map(String::from),

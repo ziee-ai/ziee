@@ -247,7 +247,7 @@ test.describe('Inline file previews — per-viewer rendering', () => {
     const body = page
       .locator('[data-testid="inline-file-preview"] [data-testid="inline-file-preview-body"]')
       .first()
-    await expect(body.locator('table:has(tbody td)')).toBeVisible({ timeout: 10000 })
+    await expect(body.locator('.ant-table-row').first()).toBeVisible({ timeout: 10000 })
     // AntD Table v6 renders a measure row + dual <table> elements
     // for fixed-header scroll. Use AntD's `.ant-table-row` class
     // which only marks actual data rows.
@@ -263,7 +263,7 @@ test.describe('Inline file previews — per-viewer rendering', () => {
     const body = page
       .locator('[data-testid="inline-file-preview"] [data-testid="inline-file-preview-body"]')
       .first()
-    await expect(body.locator('table:has(tbody td)')).toBeVisible({ timeout: 10000 })
+    await expect(body.locator('.ant-table-row').first()).toBeVisible({ timeout: 10000 })
     expect(await body.locator('.ant-table-row').count()).toBe(1)
   })
 
@@ -290,8 +290,11 @@ test.describe('Inline file previews — per-viewer rendering', () => {
       .first()
     const rows = body.locator('.ant-table-row')
     await expect(rows).toHaveCount(1, { timeout: 10000 })
-    // First column of the first data row contains the quoted-comma name.
-    await expect(rows.first().locator('td').first()).toHaveText('Smith, J.')
+    // The first data row must contain the quoted-comma name as one contiguous
+    // value — if the CSV parser had split on the comma inside the quotes, the
+    // "Smith, J." substring (comma + space) would not survive in a single cell.
+    // (AntD's virtual Table renders cells as `.ant-table-cell` divs, not <td>.)
+    await expect(rows.first()).toContainText('Smith, J.')
   })
 
   test('xlsx mimetype does NOT inline render', async ({ page, testInfra }) => {
@@ -315,9 +318,9 @@ test.describe('Inline file previews — per-viewer rendering', () => {
     page,
     testInfra,
   }) => {
-    // RawCodeView splits into per-line `<div>` elements inside a
-    // `whitespace-pre` container (NOT a `<pre>` element). Assert via
-    // the container's class and on visible text content.
+    // The text viewer body renders shiki-highlighted source inside the
+    // `[data-testid="raw-code-view"]` container. Assert on visible text
+    // content plus the container's presence.
     const uri = '/api/files/txt-basic/download'
     await mockResourceLinkUrl(page, uri, 'line 1\nline 2\n', { contentType: 'text/plain' })
     await seedAssistantWithToolResult(page, testInfra.baseURL, {
@@ -328,7 +331,7 @@ test.describe('Inline file previews — per-viewer rendering', () => {
       .first()
     await expect(body).toContainText('line 1', { timeout: 10000 })
     await expect(body).toContainText('line 2')
-    await expect(body.locator('.whitespace-pre').first()).toBeVisible()
+    await expect(body.locator('[data-testid="raw-code-view"]').first()).toBeVisible()
   })
 
   test('text: code MIME (text/javascript via .js ext) renders via text viewer', async ({
@@ -349,7 +352,7 @@ test.describe('Inline file previews — per-viewer rendering', () => {
       .locator('[data-testid="inline-file-preview"] [data-testid="inline-file-preview-body"]')
       .first()
     await expect(body).toContainText('function foo', { timeout: 10000 })
-    await expect(body.locator('.whitespace-pre').first()).toBeVisible()
+    await expect(body.locator('[data-testid="raw-code-view"]').first()).toBeVisible()
   })
 
   // ── pdf / web / unknown (fallback) ────────────────────────────────────────

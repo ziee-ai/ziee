@@ -14,6 +14,7 @@ pub mod event_handlers;
 pub mod events;
 pub mod handlers;
 pub mod hub_manager;
+pub mod install_helpers;
 pub mod models;
 pub mod permissions;
 pub mod repository;

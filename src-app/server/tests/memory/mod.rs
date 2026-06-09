@@ -13,3 +13,4 @@ mod real_llm_helpers;
 mod real_llm_test;
 mod retention_test;
 mod summarization_test;
+mod sync_emit_test;

@@ -68,6 +68,14 @@ pub fn code_sandbox_router() -> ApiRouter {
                 handlers::update_resource_limits_docs,
             ),
         )
+        // ──────── Flavor catalog (MCP server form picker) ────────
+        .api_route(
+            "/code-sandbox/flavors",
+            get_with(
+                handlers::get_sandbox_flavors_handler,
+                handlers::get_sandbox_flavors_docs,
+            ),
+        )
         // ──────── Rootfs versions (Plan 5 Phase 2c) ────────
         .api_route(
             "/code-sandbox/rootfs/versions",

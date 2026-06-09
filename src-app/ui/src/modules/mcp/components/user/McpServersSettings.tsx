@@ -6,10 +6,10 @@ import {
   Input,
   Pagination,
   Select,
-  Spin,
   Typography,
 } from 'antd'
 import { PlusOutlined, SearchOutlined, ClearOutlined } from '@ant-design/icons'
+import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -33,6 +33,14 @@ export function McpServersSettings() {
   } = Stores.McpServer
   const setSearchTerm = Stores.McpServer.setSearchTerm
   const setStatusFilter = Stores.McpServer.setStatusFilter
+
+  // Subscribe to the policy state property (not the function
+  // accessor) so this component re-renders when the admin saves a
+  // new policy and the Add button + empty-state copy update without
+  // a page reload.
+  const { policy: mcpUserPolicy } = Stores.McpUserPolicy
+  const policyAllowsAdd =
+    (mcpUserPolicy?.allowed_transports?.length ?? 0) > 0
 
   useEffect(() => {
     if (error) {
@@ -71,10 +79,7 @@ export function McpServersSettings() {
         title="MCP Servers"
         subtitle="Manage Model Context Protocol servers for enhanced tool capabilities"
       >
-        <div className="flex justify-center items-center h-full">
-          <Spin size="large" />
-          <Text className="ml-4">Loading MCP servers...</Text>
-        </div>
+        <Loading tip="Loading MCP servers..." />
       </SettingsPageContainer>
     )
   }
@@ -138,13 +143,18 @@ export function McpServersSettings() {
             ]}
           />
           <Can permission={Permissions.McpServersCreate}>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={handleAddServer}
-            >
-              Add Server
-            </Button>
+            {/* Hidden when admin policy disallows ALL user transports —
+                the backend would 422 the create regardless. Surfaces
+                the right empty-state copy below instead. */}
+            {policyAllowsAdd && (
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={handleAddServer}
+              >
+                Add Server
+              </Button>
+            )}
           </Can>
         </div>
 
@@ -186,7 +196,9 @@ export function McpServersSettings() {
             <Text type="secondary">
               {searchTerm || statusFilter !== 'all'
                 ? 'No servers match your search criteria'
-                : 'No MCP servers configured'}
+                : !policyAllowsAdd
+                  ? 'Your administrator has not enabled adding MCP servers.'
+                  : 'No MCP servers configured'}
             </Text>
           </div>
         )}

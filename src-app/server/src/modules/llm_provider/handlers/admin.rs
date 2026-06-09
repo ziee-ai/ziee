@@ -12,6 +12,7 @@ use crate::{
     common::{ApiResult, AppError, PaginationQuery},
     core::{events::EventBus, repository::Repos},
     modules::permissions::{RequirePermissions, with_permission},
+    modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
 };
 
 use super::super::{
@@ -109,6 +110,7 @@ pub fn get_provider_docs(
 pub async fn create_provider(
     _auth: RequirePermissions<(LlmProvidersCreate,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Json(mut request): Json<CreateLlmProviderRequest>,
 ) -> ApiResult<Json<CreateLlmProviderResponse>> {
     // Validate request
@@ -152,6 +154,21 @@ pub async fn create_provider(
     // Emit event
     event_bus.emit_async(LlmProviderEvent::created(provider.clone()).into());
 
+    sync_publish(
+        SyncEntity::LlmProvider,
+        SyncAction::Create,
+        provider.id,
+        Audience::perm::<LlmProvidersRead>(),
+        origin.0,
+    );
+    sync_publish(
+        SyncEntity::UserLlmProvider,
+        SyncAction::Create,
+        provider.id,
+        Audience::perm::<UserLlmProvidersRead>(),
+        origin.0,
+    );
+
     Ok((
         StatusCode::CREATED,
         Json(CreateLlmProviderResponse {
@@ -187,6 +204,7 @@ pub fn create_provider_docs(
 pub async fn rotate_proxy_token(
     _auth: RequirePermissions<(LlmProvidersEdit,)>,
     Path(provider_id): Path<Uuid>,
+    origin: SyncOrigin,
 ) -> ApiResult<Json<RotateProxyTokenResponse>> {
     // Confirm the provider exists and is local.
     let existing = Repos
@@ -237,6 +255,21 @@ pub async fn rotate_proxy_token(
         }
     }
 
+    sync_publish(
+        SyncEntity::LlmProvider,
+        SyncAction::Update,
+        provider_id,
+        Audience::perm::<LlmProvidersRead>(),
+        origin.0,
+    );
+    sync_publish(
+        SyncEntity::UserLlmProvider,
+        SyncAction::Update,
+        provider_id,
+        Audience::perm::<UserLlmProvidersRead>(),
+        origin.0,
+    );
+
     Ok((
         StatusCode::OK,
         Json(RotateProxyTokenResponse {
@@ -264,6 +297,7 @@ pub async fn update_provider(
     _auth: RequirePermissions<(LlmProvidersEdit,)>,
     Path(provider_id): Path<Uuid>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Json(request): Json<UpdateLlmProviderRequest>,
 ) -> ApiResult<Json<LlmProvider>> {
     // Validate request
@@ -307,6 +341,21 @@ pub async fn update_provider(
     // Emit event
     event_bus.emit_async(LlmProviderEvent::updated(provider.clone()).into());
 
+    sync_publish(
+        SyncEntity::LlmProvider,
+        SyncAction::Update,
+        provider.id,
+        Audience::perm::<LlmProvidersRead>(),
+        origin.0,
+    );
+    sync_publish(
+        SyncEntity::UserLlmProvider,
+        SyncAction::Update,
+        provider.id,
+        Audience::perm::<UserLlmProvidersRead>(),
+        origin.0,
+    );
+
     Ok((StatusCode::OK, Json(provider)))
 }
 
@@ -329,6 +378,7 @@ pub async fn delete_provider(
     _auth: RequirePermissions<(LlmProvidersDelete,)>,
     Path(provider_id): Path<Uuid>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
 ) -> ApiResult<StatusCode> {
     // Get provider info before deleting (for event emission)
     let provider = Repos.llm_provider.get_by_id(provider_id).await.map_err(|e| {
@@ -342,6 +392,20 @@ pub async fn delete_provider(
             if let Some(p) = provider {
                 event_bus.emit_async(LlmProviderEvent::deleted(provider_id, p.name).into());
             }
+            sync_publish(
+                SyncEntity::LlmProvider,
+                SyncAction::Delete,
+                provider_id,
+                Audience::perm::<LlmProvidersRead>(),
+                origin.0,
+            );
+            sync_publish(
+                SyncEntity::UserLlmProvider,
+                SyncAction::Delete,
+                provider_id,
+                Audience::perm::<UserLlmProvidersRead>(),
+                origin.0,
+            );
             Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
         }
         Ok(Ok(false)) => Err(AppError::not_found("Provider").into()),

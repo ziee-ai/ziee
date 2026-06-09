@@ -88,6 +88,10 @@ pub struct SSEChatStreamMcpToolStartData {
 /// Event data for an artifact file created by a tool (via MCP resource_link)
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SSEChatStreamArtifactCreatedData {
+    /// Tool use id this artifact was produced by. Lets the frontend attach the
+    /// artifact's resource_link to the matching tool_result block (positioning),
+    /// and disambiguate when tools run in parallel.
+    pub tool_use_id: String,
     /// UUID of the file in the files table
     pub file_id: String,
     /// Display filename
@@ -279,4 +283,32 @@ pub enum MessageContentDataVariants {
         #[serde(skip_serializing_if = "Option::is_none")]
         response_content: Option<serde_json::Value>,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The artifactCreated event must carry `tool_use_id` so the frontend can
+    /// attach the artifact's resource_link to the matching tool_result block
+    /// (inline positioning) and disambiguate parallel tool calls.
+    #[test]
+    fn artifact_created_event_serializes_tool_use_id() {
+        let data = SSEChatStreamArtifactCreatedData {
+            tool_use_id: "toolu_42".to_string(),
+            file_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
+            filename: "plot.png".to_string(),
+            mime_type: Some("image/png".to_string()),
+            file_size: 1234,
+        };
+
+        let json = serde_json::to_value(&data).expect("serialize");
+        assert_eq!(json["tool_use_id"], "toolu_42");
+        assert_eq!(json["file_id"], "550e8400-e29b-41d4-a716-446655440000");
+
+        // Round-trips back without losing the association.
+        let back: SSEChatStreamArtifactCreatedData =
+            serde_json::from_value(json).expect("deserialize");
+        assert_eq!(back.tool_use_id, "toolu_42");
+    }
 }

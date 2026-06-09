@@ -25,6 +25,11 @@ pub fn auth_routes() -> ApiRouter {
         .api_route("/refresh", post_with(refresh, refresh_docs))
         .api_route("/logout", post_with(logout, logout_docs))
         .api_route("/me", get_with(me, me_docs))
+        // Self-service profile edit + password change for the current
+        // user. Gated on `profile::edit` (held by the default group),
+        // scoped to the caller. Siblings of /me.
+        .api_route("/profile", post_with(update_profile, update_profile_docs))
+        .api_route("/password", post_with(change_password, change_password_docs))
         // Public list of enabled providers for the login page.
         .api_route(
             "/providers",

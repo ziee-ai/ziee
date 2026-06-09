@@ -14,11 +14,11 @@ import {
   Flex,
   Pagination,
   Popconfirm,
-  Spin,
   Tag,
   Tooltip,
   Typography,
 } from 'antd'
+import { Loading } from '@/core/components/Loading'
 import { useEffect } from 'react'
 import { Stores } from '@/modules/assistant/stores'
 import { Can, usePermission } from '@/core/permissions'
@@ -115,7 +115,7 @@ export function AssistantsSettings() {
 
   return (
     <SettingsPageContainer
-      title="Assistants"
+      title="Assistant Templates"
       subtitle="Manage template assistants. Default assistants are automatically cloned for new users."
     >
       <div>
@@ -135,9 +135,7 @@ export function AssistantsSettings() {
           }
         >
           {loading ? (
-            <div className="flex justify-center py-8">
-              <Spin size="large" />
-            </div>
+            <Loading />
           ) : assistants.length === 0 ? (
             <div>
               <Empty description="No assistants yet" />

@@ -66,6 +66,22 @@ impl AppError {
         self
     }
 
+    /// The HTTP status code this error will be serialized with.
+    /// Exposed so callers can branch on common cases (e.g.
+    /// `if err.status_code() == 404` to tolerate idempotent deletes
+    /// of already-gone resources).
+    pub fn status_code(&self) -> u16 {
+        self.status_code
+    }
+
+    /// The stable machine-readable error code this error will be
+    /// serialized with (e.g. `"MCP_TRANSPORT_NOT_ALLOWED"`). Exposed
+    /// so callers + tests can assert on it without parsing the
+    /// human-readable `message`.
+    pub fn error_code(&self) -> &str {
+        &self.error_code
+    }
+
     // Common convenience constructors
     pub fn not_found(resource: &str) -> Self {
         Self::new(

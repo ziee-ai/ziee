@@ -63,8 +63,8 @@ test.describe('Hub Assistants', () => {
       page.getByText(/created.*successfully|assistant.*created/i).first(),
     ).toBeVisible({ timeout: 5000 })
 
-    // The card navigates away to /assistants on success; go back to
-    // the hub to verify the badge.
+    // The card navigates away to /settings/assistants on success; go
+    // back to the hub to verify the badge.
     await navigateToHub(page, testInfra.baseURL, 'assistants')
     await waitForHubDataLoad(page)
 
@@ -130,10 +130,10 @@ test.describe('Hub Assistants', () => {
     const card = page.getByTestId(`hub-assistant-card-${assistantId}`)
     await expect(card.getByRole('button', { name: /view/i })).toBeVisible()
 
-    // Should NOT have "Use" button
-    const useButton = card.getByRole('button', { name: /use/i })
-    const useButtonVisible = await useButton.isVisible({ timeout: 1000 }).catch(() => false)
-    expect(useButtonVisible).toBe(false)
+    // Neither install affordance should be on the card after View
+    // takes over. (Two buttons share `/use/i` — pin to testids.)
+    await expect(card.getByTestId('hub-assistant-use-btn')).toHaveCount(0)
+    await expect(card.getByTestId('hub-assistant-use-as-template-btn')).toHaveCount(0)
   })
 
   test('should track creation status badge', async ({ page, testInfra }) => {
@@ -197,8 +197,8 @@ test.describe('Hub Assistants', () => {
     const card = page.getByTestId(`hub-assistant-card-${createdAssistantId}`)
     await card.getByRole('button', { name: /view/i }).click()
 
-    // View navigates to /assistants (the user's own assistants list)
-    // per AssistantHubCard. Sanity-check by URL after navigation
+    // View navigates to /settings/assistants (the user's own assistants
+    // list) per AssistantHubCard. Sanity-check by URL after navigation
     // settles, not waitForURL (SPA navigations don't always trip
     // its event hook reliably).
     await page.waitForLoadState('networkidle').catch(() => {})

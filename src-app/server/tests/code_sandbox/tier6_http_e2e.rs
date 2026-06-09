@@ -16,7 +16,7 @@
 
 use crate::code_sandbox::harness::{
     create_test_conversation, enabled_test_server, needs_full_rootfs, post_jsonrpc,
-    test_server_jwt, tool_call,
+    test_server_jwt, tool_call, tool_call_with_timeout,
 };
 use crate::common::test_helpers;
 use serde_json::json;
@@ -178,7 +178,7 @@ async fn e2e_full_rootfs_rscript_runs_without_blas_error() {
     // and (2) a BLAS-using package actually loads (ggplot2 is installed by the
     // recipe's `provision` step and pulls in matrix routines through its deps —
     // strictly stronger evidence that BLAS is wired in correctly, not just present).
-    let body = tool_call(
+    let body = tool_call_with_timeout(
         &server,
         &jwt,
         conv_id,
@@ -190,6 +190,10 @@ async fn e2e_full_rootfs_rscript_runs_without_blas_error() {
             "command": "Rscript -e 'suppressMessages(library(ggplot2)); cat(1 + 1)'",
             "flavor": "full",
         }),
+        // The full rootfs is ~900 MB; the FIRST (cold-cache) call downloads +
+        // verifies + mounts it, which blows past the default 120 s. Give the
+        // cold fetch room — once cached, later runs are fast.
+        std::time::Duration::from_secs(900),
     )
     .await;
     let structured = body
@@ -401,6 +405,38 @@ async fn e2e_get_resource_link_for_workspace_artifact_returns_signed_url() {
     assert!(uri.contains("/api/code-sandbox/file/download"), "uri: {uri}");
     assert!(uri.contains("filename=art.txt"), "uri: {uri}");
     assert!(!link["is_saved"].as_bool().unwrap(), "workspace artifact is NOT saved");
+}
+
+/// Same flow, but with `code_sandbox.public_base_url` configured: the returned
+/// resource_link URI must be rooted at that public origin (the URL handed to a
+/// possibly-remote MCP server) and must NOT contain the loopback host. This is
+/// the deployment shape where the artifact→another-tool bug surfaced.
+#[tokio::test]
+async fn e2e_get_resource_link_uses_public_base_url_when_configured() {
+    use crate::code_sandbox::harness::github_fetch_server_options;
+    let Some(mut opts) = github_fetch_server_options(Vec::new()) else { return };
+    opts.sandbox_public_base_url = Some("https://public.example.test".to_string());
+    let server = crate::common::TestServer::start_with_options(opts).await;
+
+    let (_user_id, jwt, conv_id) = setup_user_and_conv(&server).await;
+    tool_call(&server, &jwt, conv_id, "write_file", json!({"filename":"art.txt","content":"x"})).await;
+    let body = tool_call(
+        &server,
+        &jwt,
+        conv_id,
+        "get_resource_link",
+        json!({ "filename": "art.txt" }),
+    )
+    .await;
+    let link = &body["result"]["structuredContent"];
+    assert_eq!(link["type"].as_str().unwrap(), "resource_link");
+    let uri = link["uri"].as_str().expect("uri");
+    assert!(
+        uri.starts_with("https://public.example.test/api/code-sandbox/file/download"),
+        "uri must be rooted at public_base_url: {uri}"
+    );
+    assert!(!uri.contains("127.0.0.1"), "uri must not contain loopback: {uri}");
+    assert!(uri.contains("filename=art.txt"), "uri: {uri}");
 }
 
 #[tokio::test]

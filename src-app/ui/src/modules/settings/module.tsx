@@ -1,9 +1,18 @@
 import { createModule } from '@/core'
 import { SettingOutlined } from '@ant-design/icons'
-import { AppLayoutDef } from '@/modules/layouts/app-layout'
-import { lazyWithPreload } from '@/utils/lazyWithPreload'
+import { SettingsLayoutDef } from './SettingsLayout'
 
-const SettingsLayout = lazyWithPreload(() => import('./SettingsLayout'))
+// Bare /settings renders no content of its own — SettingsPage (provided by the
+// SettingsLayout layout) redirects to the first permitted section. Routing it
+// through SettingsLayoutDef — the SAME layout every /settings/* sub-page uses —
+// keeps one settings AppLayout mounted across that redirect.
+//
+// The previous `element: SettingsLayout, layout: AppLayoutDef` rendered
+// AppLayout TWICE (once as the route layout, once inside the lazy
+// SettingsLayout) and put /settings in a different layout group than its
+// sub-pages. So opening Settings flashed the app's AppLayout (with the chat
+// sider) before swapping to the settings layout.
+const SettingsIndex = () => null
 
 export default createModule({
   metadata: {
@@ -15,9 +24,9 @@ export default createModule({
   routes: [
     {
       path: '/settings',
-      element: SettingsLayout,
+      element: <SettingsIndex />,
       requiresAuth: true,
-      layout: AppLayoutDef,
+      layout: SettingsLayoutDef,
     },
   ],
   slots: {
@@ -31,7 +40,5 @@ export default createModule({
       },
     ],
   },
-  initialize: () => {
-    console.log('Settings module initialized')
-  },
+  initialize: () => {},
 })
