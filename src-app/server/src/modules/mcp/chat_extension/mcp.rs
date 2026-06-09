@@ -1876,12 +1876,32 @@ impl ChatExtension for McpChatExtension {
         // Determine which tools need approval vs can execute immediately
         let mut tools_to_execute = Vec::new();
         let mut tools_needing_approval = Vec::new();
+        // Non-builtin tools called in a Disabled-approval conversation. We only
+        // reach the classification loop in Disabled mode when a built-in call
+        // shared the turn (the early return above handles the builtin-free case),
+        // so a third-party tool here must NOT run AND must NOT surface an approval
+        // prompt (the user turned MCP off) — it gets a synthesized denial
+        // tool_result instead, keeping the Disabled contract honest while still
+        // pairing every tool_use with a tool_result.
+        let mut tools_disabled = Vec::new();
 
         for (tool_use_id, tool_name, server_id, input) in tool_uses {
             // Privileged built-in servers bypass approval entirely.
             let is_builtin = uuid::Uuid::parse_str(&server_id)
                 .map(is_builtin_server_id)
                 .unwrap_or(false);
+
+            // Disabled mode + non-builtin → deny (no run, no prompt).
+            if !is_builtin
+                && matches!(
+                    approval_mode,
+                    crate::modules::mcp::chat_extension::ApprovalMode::Disabled
+                )
+            {
+                tools_disabled.push((tool_use_id, tool_name, server_id));
+                continue;
+            }
+
             let needs_approval = if is_builtin {
                 false
             } else {
@@ -1907,10 +1927,10 @@ impl ChatExtension for McpChatExtension {
                         );
                         !is_auto_approved
                     }
-                    // Non-builtin tools don't run in a Disabled-approval
-                    // conversation (we only reached here because a builtin call
-                    // was present in the same turn).
-                    crate::modules::mcp::chat_extension::ApprovalMode::Disabled => true,
+                    // Handled by the Disabled-deny branch above.
+                    crate::modules::mcp::chat_extension::ApprovalMode::Disabled => {
+                        unreachable!("Disabled non-builtin tools are denied above")
+                    }
                 }
             };
 
@@ -1999,6 +2019,26 @@ impl ChatExtension for McpChatExtension {
 
         // Execute each auto-approved tool and collect results
         let mut tool_results = Vec::new();
+
+        // Disabled-mode non-builtin tools (mixed builtin/third-party turn): emit a
+        // denial tool_result so the tool_use isn't orphaned, without running the
+        // tool or prompting for approval. The built-in(s) in `tools_to_execute`
+        // still execute below.
+        for (tool_use_id, tool_name, server_id_str) in &tools_disabled {
+            let denial = McpContentData::ToolResult {
+                tool_use_id: tool_use_id.clone(),
+                name: Some(tool_name.clone()),
+                server_id: Some(server_id_str.clone()),
+                content: "MCP is disabled for this conversation; tool not executed."
+                    .to_string(),
+                is_error: Some(true),
+                attachment: None,
+                resource_links: None,
+                hidden_content: None,
+            };
+            tool_results.push(denial.to_message_content());
+        }
+
         let mut final_response_text: Option<String> = None;
         // Track every tool executed this iteration so we can detect the
         // "only side-effect tools were called" case (Track B inline self-save):

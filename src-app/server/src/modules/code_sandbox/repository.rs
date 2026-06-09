@@ -105,6 +105,12 @@ impl CodeSandboxRepository {
             -- conversation belongs to (if any) — so the sandbox sees the same
             -- effective file set as the chat (Track A manifest), not just
             -- attachments. Consistency gap fix.
+            -- Ownership: no `f.user_id` predicate here (unlike the files-MCP
+            -- resolver). It isn't needed — projects are strictly per-user and a
+            -- project file is attached only by its owner (the attach handler 404s
+            -- a foreign file), so a project's files are always owned by the
+            -- conversation owner. Per the single-arg design note below, the
+            -- ownership policy lives at the handler boundary (`assert_owns_conversation`).
             project_refs AS (
                 SELECT pf.file_id
                 FROM project_conversations pc

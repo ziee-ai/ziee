@@ -170,9 +170,15 @@ async fn send_and_collect(
     resp.text().await.expect("collect sse body")
 }
 
-/// Enable deployment-wide memory (no embedding model needed for inline saves).
+/// Enable deployment-wide memory AND opt the user into extraction (no embedding
+/// model needed for inline saves). Both must travel together: admin-enable alone
+/// is insufficient — inline self-save also requires the per-user
+/// `extraction_enabled` opt-in (privacy-first default OFF, migration 56), which
+/// the memory extension's `before_llm_call` gate checks before attaching the
+/// `remember` tool.
 async fn enable_memory(server: &TestServer, user: &TestUser) {
-    let resp = reqwest::Client::new()
+    let client = reqwest::Client::new();
+    let resp = client
         .put(server.api_url("/memory/admin-settings"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&json!({ "enabled": true }))
@@ -182,6 +188,19 @@ async fn enable_memory(server: &TestServer, user: &TestUser) {
     assert!(
         resp.status().is_success(),
         "enable memory: {}",
+        resp.text().await.unwrap_or_default()
+    );
+    // Per-user opt-in (the inline-self-save gate added by B-correctness-01).
+    let resp = client
+        .put(server.api_url("/memory/settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "extraction_enabled": true }))
+        .send()
+        .await
+        .expect("opt user into extraction");
+    assert!(
+        resp.status().is_success(),
+        "enable extraction: {}",
         resp.text().await.unwrap_or_default()
     );
 }
