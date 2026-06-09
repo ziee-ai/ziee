@@ -1,55 +1,199 @@
-import { test } from '../../fixtures/test-context'
+import { test, expect } from '../../fixtures/test-context'
+import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 
 // Realtime sync for the `runtime_version` entity (admin local-engine
-// versions table) is currently E2E-DEFERRED.
+// versions table). When an admin promotes a version to system-default
+// or deletes one, the backend publishes `RuntimeVersion/Update` or
+// `/Delete` to every `runtime_versions::read` holder so other devices'
+// `useRuntimeVersionStore` refetches without a manual reload.
 //
-// Why this is empty (intentional, not forgotten):
+// Why direct SQL seeding (not POST /local-runtime/versions/download):
 //
-//   The three handlers that publish `RuntimeVersion/*`
-//   (delete_version, set_system_default, sync_cache) all need a
-//   pre-existing runtime version row to mutate, and there is no
-//   E2E-reachable way to seed one without either:
+//   The only E2E-reachable creation path is the download endpoint,
+//   which fetches binaries from GitHub Releases. That's the same
+//   constraint that originally made this test deferred. Rather than
+//   either skipping (silent gap) or wiring up a Node port of the mock
+//   release server (heavyweight one-off), we use the per-test
+//   `testInfra.sql` helper to insert rows directly into the
+//   `llm_runtime_versions` table.
 //
-//     1. A real download via POST /api/local-runtime/versions/download
-//        — fetches binaries from GitHub Releases (not test-friendly
-//        without a mock release server). The
-//        `ZIEE_E2E_ENGINE_MIRROR` env-var path the
-//        `12-local-runtime/04-engine-lifecycle.spec.ts` uses requires
-//        an operator to point at a real mirror; the test suite skips
-//        those flows when unset.
-//     2. Direct DB insert — outside the E2E test boundary.
-//     3. `sync_cache` over a pre-populated cache directory — would
-//        need a fixture that stages binary files into the backend's
-//        `llm_engines_dir` BEFORE the test, which the per-worker test
-//        infrastructure doesn't expose today.
+//   The downside of this shortcut: the rows aren't backed by real
+//   binary files in the cache dir, so any code path that tries to
+//   spawn the engine would fail. We don't go near that — both the
+//   set-default and delete handlers operate purely on the DB row +
+//   the sync emit, no binary I/O.
 //
-//   The Tier-2 integration suite already proves the sync emit on the
-//   real HTTP path:
-//     - server/tests/llm_local_runtime/sync_emit_test.rs::set_default_delivers_runtime_version_update_other_user_silent
-//     - server/tests/llm_local_runtime/sync_emit_test.rs::delete_delivers_runtime_version_delete_other_user_silent
-//   (those tests use `seed_version` to insert directly via PgPool —
-//   the same pattern that's unavailable from a browser context.)
+//   The set-default handler DOES call BinaryManager::set_system_default,
+//   which only touches the DB (flips is_system_default flags); no
+//   filesystem check. The delete handler with `remove_binary=false`
+//   only deletes the DB row.
 //
-//   The UI subscriber path
-//   (`RuntimeVersion.store.ts::eventBus.on('sync:runtime_version', ...)`)
-//   is identical in shape to the RuntimeSettings subscriber that IS
-//   browser-tested by `admin-settings-sync.spec.ts`, so the
-//   reload-on-event chain is exercised end-to-end via the sibling
-//   entity.
-//
-// What WOULD be tested if the infrastructure existed:
-//
-//   Two admin browser contexts (device A + B) on
-//   /settings/llm-runtime. A POSTs `/api/local-runtime/versions/{id}/set-default`,
-//   B's version table reflects the new system-default flag without
-//   reload. Then A DELETEs the version; B's row disappears.
-//
-// Tracking: revisit when `tests/fixtures/test-context.ts` grows a
-// pre-seed hook for engine binaries (a Node port of
-// `seed_version` + filesystem staging), OR when the engine-mirror
-// E2E suite (12-local-runtime/04-engine-lifecycle.spec.ts) lands a
-// shared seed helper that this spec can reuse.
+// Run with --workers=1.
 
-test.describe.skip('Realtime sync — runtime_version (deferred — needs engine-seed fixture)', () => {
-  test('placeholder', () => {})
+const ENGINE = 'llamacpp'
+
+async function seedRuntimeVersion(
+  sql: import('../../fixtures/test-context').TestInfrastructure['sql'],
+  version: string,
+  isDefault: boolean,
+): Promise<string> {
+  // Match the schema in migration 21. binary_path doesn't have to point
+  // at a real file — neither set_system_default nor delete (without
+  // remove_binary) reads it.
+  const result = await sql(
+    `INSERT INTO llm_runtime_versions
+       (engine, version, platform, arch, backend, binary_path, is_system_default)
+     VALUES ($1, $2, 'linux', 'x86_64', 'cpu', $3, $4)
+     RETURNING id`,
+    [
+      ENGINE,
+      version,
+      `/nonexistent/test-only/${version}/llama-server`,
+      isDefault,
+    ],
+  )
+  return result.rows[0].id as string
+}
+
+async function gotoLocalRuntime(
+  page: import('@playwright/test').Page,
+  baseURL: string,
+) {
+  await page.goto(`${baseURL}/settings/llm-runtime`)
+  await page.waitForLoadState('load')
+  // The page renders SettingsPageContainer with title="Local Runtimes",
+  // which becomes the stable mount signal. useRuntimeVersionStore
+  // subscribes to `sync:runtime_version` in its __init__, fired on
+  // first proxy access from the cards below the heading.
+  await expect(
+    page.getByRole('heading', { name: /^Local Runtimes$/ }).first(),
+  ).toBeVisible({ timeout: 30_000 })
+}
+
+test.describe('Realtime sync — runtime_version (admin engine versions)', () => {
+  test('promoting a version to system-default on device A reflects on device B without reload', async ({
+    page,
+    browser,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL, sql } = testInfra
+
+    // ── Setup: admin + two seeded versions ──────────────────────────
+    // v0.0.98 is the current system-default; v0.0.99 is not. The test
+    // promotes v0.0.99 → device B sees the (Default) flag move.
+    await loginAsAdmin(page, baseURL)
+    const adminToken = await getAdminToken(apiURL)
+
+    const defaultVersion = '0.0.98-sync-test'
+    const otherVersion = '0.0.99-sync-test'
+    await seedRuntimeVersion(sql, defaultVersion, true)
+    const otherId = await seedRuntimeVersion(sql, otherVersion, false)
+
+    await gotoLocalRuntime(page, baseURL)
+
+    const ctxB = await browser.newContext()
+    const pageB = await ctxB.newPage()
+    try {
+      await loginAsAdmin(pageB, baseURL)
+      await gotoLocalRuntime(pageB, baseURL)
+
+      // Sanity: both rows visible on device B. The card renders
+      // `Version <version-string>` as a span.
+      await expect(
+        pageB.getByText(`Version ${defaultVersion}`),
+      ).toBeVisible({ timeout: 15_000 })
+      await expect(
+        pageB.getByText(`Version ${otherVersion}`),
+      ).toBeVisible({ timeout: 15_000 })
+
+      // Device A promotes otherVersion via REST. The handler calls
+      // `BinaryManager::set_system_default` (DB-only — no binary I/O)
+      // then `sync_publish(RuntimeVersion, Update, version_id, ...)`.
+      const promoteRes = await page.request.post(
+        `${baseURL}/api/local-runtime/versions/${otherId}/set-default`,
+        { headers: { Authorization: `Bearer ${adminToken}` } },
+      )
+      expect(
+        promoteRes.ok(),
+        `set-default failed: ${promoteRes.status()} ${await promoteRes.text()}`,
+      ).toBeTruthy()
+
+      // Device B's UI must re-render the (Default) marker on the new
+      // default's row AND the "Set as Default" button on the OLD
+      // default's row. Each is unique per-version via aria-label /
+      // text scoped to the version string — sidestepping the antd
+      // card wrapper hierarchy (whose outer divs all contain BOTH
+      // version strings + would defeat a plain `hasText` filter).
+      //
+      // The card hides the Set-as-Default button when
+      // `version.is_system_default === true`, so:
+      //   - newly-promoted (otherVersion): button DISAPPEARS
+      //   - newly-demoted (defaultVersion): button APPEARS
+      const promotedSetDefaultBtn = pageB.getByRole('button', {
+        name: `Set version ${otherVersion} as default`,
+      })
+      const demotedSetDefaultBtn = pageB.getByRole('button', {
+        name: `Set version ${defaultVersion} as default`,
+      })
+
+      // After the sync arrives, the promoted row's button is gone
+      // (it's now default) and the demoted row's button appears.
+      await expect(promotedSetDefaultBtn).toHaveCount(0, { timeout: 20_000 })
+      await expect(demotedSetDefaultBtn).toBeVisible({ timeout: 10_000 })
+    } finally {
+      await ctxB.close()
+    }
+  })
+
+  test('deleting a version on device A removes it from device B without reload', async ({
+    page,
+    browser,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL, sql } = testInfra
+
+    // ── Setup: admin + a non-default seeded version (deletes are
+    //    blocked on the system-default, so we delete a non-default
+    //    row) ───────────────────────────────────────────────────
+    await loginAsAdmin(page, baseURL)
+    const adminToken = await getAdminToken(apiURL)
+
+    // Seed a default so a row exists in case of any default-required
+    // invariants, then the actual victim row.
+    await seedRuntimeVersion(sql, '0.0.50-sync-keep', true)
+    const victimVersion = '0.0.51-sync-delete'
+    const victimId = await seedRuntimeVersion(sql, victimVersion, false)
+
+    await gotoLocalRuntime(page, baseURL)
+
+    const ctxB = await browser.newContext()
+    const pageB = await ctxB.newPage()
+    try {
+      await loginAsAdmin(pageB, baseURL)
+      await gotoLocalRuntime(pageB, baseURL)
+
+      // Sanity: victim row visible on device B before delete.
+      const victimRow = pageB.getByText(`Version ${victimVersion}`)
+      await expect(victimRow).toBeVisible({ timeout: 15_000 })
+
+      // Device A deletes via REST. `remove_binary=false` (the URL
+      // query default) skips the filesystem step, so the synthetic
+      // binary_path doesn't matter.
+      const deleteRes = await page.request.delete(
+        `${baseURL}/api/local-runtime/versions/${victimId}`,
+        { headers: { Authorization: `Bearer ${adminToken}` } },
+      )
+      expect(
+        deleteRes.ok(),
+        `delete failed: ${deleteRes.status()} ${await deleteRes.text()}`,
+      ).toBeTruthy()
+
+      // Device B's UI must drop the row without a reload.
+      // Sync emits RuntimeVersion/Delete; useRuntimeVersionStore
+      // refetches the list and the missing row disappears.
+      await expect(victimRow).toHaveCount(0, { timeout: 20_000 })
+    } finally {
+      await ctxB.close()
+    }
+  })
 })

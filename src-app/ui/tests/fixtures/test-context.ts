@@ -50,7 +50,7 @@ function prettifyHTML(html: string): string {
   return formatted
 }
 
-interface TestInfrastructure {
+export interface TestInfrastructure {
   databaseName: string
   backendPort: number
   vitePort: number
@@ -59,6 +59,22 @@ interface TestInfrastructure {
   serverProcess: ChildProcess
   viteProcess: ChildProcess
   heartbeatInterval: NodeJS.Timeout
+
+  /**
+   * Run a parameterised SQL query against this test's per-database
+   * Postgres instance. Use for cases where the only way to set up a
+   * fixture is direct DB insertion — e.g. seeding tables that have no
+   * E2E-reachable creation API (runtime_versions, code_sandbox cache
+   * registry, etc.).
+   *
+   * Returns `pg.QueryResult` (rows + fields). Reuse the same connection
+   * pool across calls in one test; the pool is closed in test teardown.
+   *
+   * Prefer the real REST API path whenever it's reachable — direct
+   * inserts bypass handler validation + event emission, so the test
+   * must compensate (e.g. fire its own sync trigger).
+   */
+  sql: (text: string, params?: unknown[]) => Promise<import('pg').QueryResult>
 }
 
 interface TestFixtures {
@@ -459,6 +475,30 @@ export default defineConfig({
     )
     console.log(`💓 Heartbeat started for ports ${vitePort}/${backendPort}`)
 
+    // Lazy per-test connection pool against the test's own database.
+    // Created on first `sql()` call and closed in cleanup below. Using
+    // a single pool per test avoids the cost of one connection per
+    // query while still being scoped to a single test's lifetime.
+    //
+    // Holder box because TS would otherwise narrow a `let pool: Pool |
+    // null = null` to `never` after the if-block (closure flow
+    // analysis limitation), making `.end()` unreachable.
+    const dbPoolHolder: { pool: InstanceType<typeof Pool> | null } = {
+      pool: null,
+    }
+    const sql: TestInfrastructure['sql'] = async (text, params) => {
+      if (!dbPoolHolder.pool) {
+        dbPoolHolder.pool = new Pool({
+          host: 'localhost',
+          port: postgresPort,
+          user: 'postgres',
+          password: 'password',
+          database: databaseName,
+        })
+      }
+      return dbPoolHolder.pool.query(text, params as any)
+    }
+
     const infrastructure: TestInfrastructure = {
       databaseName,
       backendPort,
@@ -468,6 +508,7 @@ export default defineConfig({
       serverProcess,
       viteProcess,
       heartbeatInterval,
+      sql,
     }
 
     console.log(`✅ Test infrastructure ready!\n`)
@@ -477,6 +518,17 @@ export default defineConfig({
 
     // Cleanup after test
     console.log(`\n🧹 Cleaning up test infrastructure for: ${testInfo.title}`)
+
+    // Close the per-test sql() pool (only created if any test actually
+    // called sql()). Without this, the pool's open connections would
+    // prevent the DROP DATABASE below from succeeding cleanly.
+    if (dbPoolHolder.pool) {
+      try {
+        await dbPoolHolder.pool.end()
+      } catch (err) {
+        console.warn(`⚠️  test sql() pool .end() failed: ${err}`)
+      }
+    }
 
     // Stop heartbeat
     clearInterval(infrastructure.heartbeatInterval)
