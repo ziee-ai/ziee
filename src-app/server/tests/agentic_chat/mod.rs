@@ -138,9 +138,60 @@ async fn attach_conversation_to_project(
     assert!(resp.status().is_success(), "attach conv to project");
 }
 
-/// Send a chat message and return the full SSE response body as text. The
-/// streaming endpoint runs the entire tool-use loop server-side before the
-/// response completes, so the returned text spans every turn.
+/// Fire-and-forget send + collect the streamed reply (realtime-sync model: POST
+/// `/conversations/{id}/messages` returns ids; the reply streams over
+/// `GET /api/chat/stream`). The server runs the WHOLE tool-use loop before the
+/// reply terminates, so by the time this returns the stub has recorded every
+/// generation request. Returns the assembled assistant text. `file_ids` attaches
+/// a current-turn upload; `enable_mcp` overrides the send flag (default unset →
+/// the SendMessageRequest default `false`, which still auto-attaches the
+/// privileged files/memory built-ins).
+async fn send_collect(
+    server: &TestServer,
+    user: &TestUser,
+    conversation_id: &str,
+    branch_id: &str,
+    model_id: &str,
+    content: &str,
+    file_ids: &[String],
+    enable_mcp: Option<bool>,
+) -> String {
+    use crate::common::chat_stream_probe::ChatStreamProbe;
+    let conv = Uuid::parse_str(conversation_id).expect("conversation uuid");
+    let mut probe = ChatStreamProbe::open(server, &user.token).await;
+    probe.subscribe(Some(conv)).await;
+
+    let mut payload = json!({
+        "content": content,
+        "model_id": model_id,
+        "branch_id": branch_id,
+    });
+    if !file_ids.is_empty() {
+        payload["file_ids"] = json!(file_ids);
+    }
+    if let Some(em) = enable_mcp {
+        payload["enable_mcp"] = json!(em);
+    }
+    let resp = reqwest::Client::new()
+        .post(server.api_url(&format!("/conversations/{conversation_id}/messages")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("send message");
+    assert!(
+        resp.status().is_success(),
+        "send status {}: {}",
+        resp.status(),
+        resp.text().await.unwrap_or_default()
+    );
+    let frames = probe
+        .collect_until_terminal(conv, std::time::Duration::from_secs(30))
+        .await;
+    ChatStreamProbe::assemble_text(&frames)
+}
+
+/// Plain send + collect the assembled reply text.
 async fn send_and_collect(
     server: &TestServer,
     user: &TestUser,
@@ -149,25 +200,7 @@ async fn send_and_collect(
     model_id: &str,
     content: &str,
 ) -> String {
-    let resp = reqwest::Client::new()
-        .post(server.api_url(&format!(
-            "/conversations/{conversation_id}/messages/stream"
-        )))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&json!({
-            "content": content,
-            "model_id": model_id,
-            "branch_id": branch_id,
-        }))
-        .send()
-        .await
-        .expect("send message");
-    assert!(
-        resp.status().is_success(),
-        "send message status {}",
-        resp.status()
-    );
-    resp.text().await.expect("collect sse body")
+    send_collect(server, user, conversation_id, branch_id, model_id, content, &[], None).await
 }
 
 /// Enable deployment-wide memory AND opt the user into extraction (no embedding
@@ -205,8 +238,8 @@ async fn enable_memory(server: &TestServer, user: &TestUser) {
     );
 }
 
-/// Send a chat message carrying `file_ids` (a current-turn upload) and drain the
-/// SSE so the whole turn completes server-side.
+/// Send a chat message carrying `file_ids` (a current-turn upload) and wait for
+/// the whole turn to complete server-side (so the stub recorded every request).
 async fn send_with_files(
     server: &TestServer,
     user: &TestUser,
@@ -216,22 +249,17 @@ async fn send_with_files(
     content: &str,
     file_ids: &[String],
 ) {
-    let resp = reqwest::Client::new()
-        .post(server.api_url(&format!(
-            "/conversations/{conversation_id}/messages/stream"
-        )))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&json!({
-            "content": content,
-            "model_id": model_id,
-            "branch_id": branch_id,
-            "file_ids": file_ids,
-        }))
-        .send()
-        .await
-        .expect("send with files");
-    assert!(resp.status().is_success(), "send status {}", resp.status());
-    let _ = resp.text().await;
+    let _ = send_collect(
+        server,
+        user,
+        conversation_id,
+        branch_id,
+        model_id,
+        content,
+        file_ids,
+        None,
+    )
+    .await;
 }
 
 // ── Track A ─────────────────────────────────────────────────────────────────
@@ -434,27 +462,17 @@ async fn files_mcp_auto_attaches_even_when_enable_mcp_false() {
     let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
     attach_conversation_to_project(&server, &user, &project_id, &conv_id).await;
 
-    // Disable user MCP for this conversation.
-    let resp = reqwest::Client::new()
-        .put(server.api_url(&format!("/conversations/{conv_id}/mcp-settings")))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&json!({ "enable_mcp": false }))
-        .send()
-        .await
-        .expect("put mcp-settings");
-    assert!(
-        resp.status().is_success(),
-        "mcp-settings: {}",
-        resp.text().await.unwrap_or_default()
-    );
-
-    let body = send_and_collect(
+    // Send with general MCP explicitly disabled (`enable_mcp: false`). The
+    // privileged files built-in must STILL auto-attach (C-and-loop-01).
+    let body = send_collect(
         &server,
         &user,
         &conv_id,
         &branch_id,
         &model_id,
         "STUB_PLAN=read_first_file read it",
+        &[],
+        Some(false),
     )
     .await;
 
@@ -696,25 +714,19 @@ async fn register_user_http_mcp_server(server: &TestServer, user: &TestUser, url
         "create third-party mcp server: {}",
         resp.text().await.unwrap_or_default()
     );
-    // Response is `McpServerWithHealthWarning` → `{ server: {...},
-    // connection_warning? }`. Guard that the create-time probe SUCCEEDED so the
-    // row stays `enabled = true`. A downgraded (disabled) server would be
-    // excluded from the chat loop for the WRONG reason (the `s.enabled` filter,
-    // not the enable_mcp=false empty-list fix), making the exclusion assertion
-    // pass trivially. Failing loud here keeps the test honest.
+    // `/mcp/servers` returns the created `McpServer` flat. Guard that it stays
+    // `enabled = true` (the stub answers the create-time health probe, so it
+    // should be healthy): a disabled server would be excluded from the chat loop
+    // for the WRONG reason (the `s.enabled` filter, not the enable_mcp=false
+    // empty-list fix), making the exclusion assertion pass trivially.
     let v: Value = resp.json().await.unwrap();
-    assert!(
-        v["connection_warning"].is_null(),
-        "third-party stub probe failed at create — the test would pass trivially; warning={}",
-        v["connection_warning"]
-    );
     assert_eq!(
-        v["server"]["enabled"].as_bool(),
+        v["enabled"].as_bool(),
         Some(true),
-        "third-party server must be enabled (probe passed) so the only reason it's \
-         excluded from the disabled-MCP send is the empty-list fix; body={v}"
+        "third-party server must be enabled so the only reason it's excluded from \
+         the disabled-MCP send is the empty-list fix; body={v}"
     );
-    v["server"]["id"].as_str().unwrap().to_string()
+    v["id"].as_str().unwrap().to_string()
 }
 
 #[tokio::test]
@@ -740,30 +752,19 @@ async fn third_party_mcp_server_excluded_when_enable_mcp_false() {
     let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
     attach_conversation_to_project(&server, &user, &project_id, &conv_id).await;
 
-    // Turn user MCP OFF for this conversation.
-    let resp = reqwest::Client::new()
-        .put(server.api_url(&format!("/conversations/{conv_id}/mcp-settings")))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&json!({ "enable_mcp": false }))
-        .send()
-        .await
-        .expect("put mcp-settings");
-    assert!(
-        resp.status().is_success(),
-        "mcp-settings: {}",
-        resp.text().await.unwrap_or_default()
-    );
-
     // Isolate the chat-send phase from the registration probe.
     thirdparty.reset();
 
-    let _body = send_and_collect(
+    // Send with general MCP OFF (`enable_mcp: false`).
+    let _body = send_collect(
         &server,
         &user,
         &conv_id,
         &branch_id,
         &model_id,
         "STUB_PLAN=read_first_file read it",
+        &[],
+        Some(false),
     )
     .await;
 

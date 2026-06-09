@@ -232,7 +232,13 @@ async fn chat_completions(State(s): State<StubState>, body: axum::body::Bytes) -
         .find(|m| m.get("role").and_then(|r| r.as_str()) == Some("user"))
         .map(message_text)
         .unwrap_or_default();
-    let plan = parse_token(&last_user, "STUB_PLAN=").unwrap_or_else(|| "text".to_string());
+    // The plan is the FIRST token after `STUB_PLAN=` (the keyword). Tests append
+    // extra prose, and the chat pipeline appends a `[File: name]` marker for
+    // attachments, so match the keyword — not the whole line. `remember` reads
+    // its content from the rest via its own `parse_token` call.
+    let plan = parse_token(&last_user, "STUB_PLAN=")
+        .and_then(|p| p.split_whitespace().next().map(String::from))
+        .unwrap_or_else(|| "text".to_string());
 
     let all_text: String = messages.iter().map(message_text).collect::<Vec<_>>().join("\n");
     let roles: Vec<String> = messages
