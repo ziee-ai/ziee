@@ -7,6 +7,7 @@ pub mod mock_release;
 pub mod test_helpers;
 
 // Test modules
+mod engine_args_test;
 mod engine_download_test;
 mod gold_smoke;
 mod gpu_detect_test;

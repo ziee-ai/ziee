@@ -80,7 +80,12 @@ export async function seedLocalModel(
       name,
       display_name: `E2E ${name}`,
       engine_type: engine,
-      engine_settings: engine === 'llamacpp' ? { ctx_size: 512, n_gpu_layers: 0 } : {},
+      // Nested per-engine shape (`ModelEngineSettings`) — the single source
+      // of truth the spawn path reads.
+      engine_settings:
+        engine === 'llamacpp'
+          ? { llamacpp: { ctx_size: 512, n_gpu_layers: 0 } }
+          : { mistralrs: { max_seqs: 16 } },
       file_format: engine === 'llamacpp' ? 'gguf' : 'safetensors',
       enabled: true,
     }),
@@ -245,7 +250,7 @@ export async function downloadGgufModelViaApi(
       main_filename: 'tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf',
       source: { type: 'hub', id: 'TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF' },
       engine_type: 'llamacpp',
-      engine_settings: { ctx_size: 2048, n_gpu_layers: 0 },
+      engine_settings: { llamacpp: { ctx_size: 2048, n_gpu_layers: 0 } },
       enabled: true,
     }),
   })

@@ -3,7 +3,9 @@
 use super::{Deployment, DeploymentResult, InstanceStatus};
 use crate::common::AppError;
 use crate::modules::llm_local_runtime::BinaryManager;
-use crate::modules::llm_local_runtime::engine::{LlamaCppSettings, MistralRsSettings};
+use crate::modules::llm_model::models::{
+    DeviceType, LlamaCppSettings, MistralRsCommand, MistralRsSettings, ModelEngineSettings,
+};
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -139,41 +141,52 @@ impl LocalDeployment {
         cmd.stderr(Stdio::piped());
     }
 
-    /// Parse a model's `engine_settings` JSON into typed llama.cpp
-    /// settings. A malformed blob or out-of-range value falls back to
-    /// defaults (with a warning) rather than failing the spawn.
+    /// Parse a model's nested `engine_settings` (a `ModelEngineSettings`
+    /// — the single source of truth shared with the API/UI) into the
+    /// llama.cpp branch. A malformed blob or out-of-range value falls back
+    /// to defaults (with a warning) rather than failing the spawn.
+    ///
+    /// The stored shape is `{ "llamacpp": { ... } }` (per engine), NOT
+    /// flat top-level keys; `resolve_model_inputs` additionally injects a
+    /// top-level `embeddings: true` for embedder models, which is read at
+    /// the call site (the struct has no such field).
     fn parse_llamacpp_settings(config: &serde_json::Value) -> LlamaCppSettings {
-        let mut s: LlamaCppSettings = serde_json::from_value(config.clone()).unwrap_or_default();
-        if s.validate().is_err() {
-            tracing::warn!("llamacpp: invalid engine_settings {config}; using defaults");
-            s = LlamaCppSettings::default();
-        }
-        // Embedder models inject `embeddings: true` top-level (from
-        // capabilities) even when it isn't part of the stored settings.
-        if config.get("embeddings").and_then(|v| v.as_bool()).unwrap_or(false) {
-            s.embeddings = true;
+        let engine: ModelEngineSettings = serde_json::from_value(config.clone()).unwrap_or_default();
+        let s = engine.llamacpp.unwrap_or_default();
+        if let Err(e) = s.validate() {
+            tracing::warn!("llamacpp: invalid engine_settings ({e}); using defaults");
+            return LlamaCppSettings::default();
         }
         s
     }
 
     fn parse_mistralrs_settings(config: &serde_json::Value) -> MistralRsSettings {
-        let s: MistralRsSettings = serde_json::from_value(config.clone()).unwrap_or_default();
-        if s.validate().is_err() {
-            tracing::warn!("mistralrs: invalid engine_settings {config}; using defaults");
+        let engine: ModelEngineSettings = serde_json::from_value(config.clone()).unwrap_or_default();
+        let s = engine.mistralrs.unwrap_or_default();
+        if let Err(e) = s.validate() {
+            tracing::warn!("mistralrs: invalid engine_settings ({e}); using defaults");
             return MistralRsSettings::default();
         }
         s
     }
 
-    /// Build the llama-server argv (everything after the binary).
+    /// Build the llama-server argv (everything after the binary), mapping
+    /// the full `LlamaCppSettings` vocabulary onto verified flags.
     ///
-    /// `--api-key TOKEN` makes the engine require `Authorization: Bearer
-    /// TOKEN` (08-llm-local-runtime F-04). GPU offload is controlled by
-    /// `--n-gpu-layers` (0 = CPU); llama.cpp selects its backend at
-    /// compile time and its `--device` flag takes device *IDs* (e.g.
-    /// `CUDA0`) not backend names, so we don't pass it. All flags
-    /// verified against the real `llama-server --help`.
-    fn llamacpp_argv(model_path: &str, port: i32, s: &LlamaCppSettings, api_key: &str) -> Vec<String> {
+    /// `--host 127.0.0.1` + `--api-key TOKEN` are forced for the
+    /// loopback/bearer hardening (08-llm-local-runtime F-04). Every
+    /// user-supplied string flows through `validate_argv_value` (F-02).
+    /// `embeddings` is driven by the model's capabilities, not a user
+    /// setting. Flag names verified against `llama-server --help`
+    /// (ggml-org/llama.cpp): `--flash-attn` takes `on|off|auto`, and
+    /// `--device` takes device *IDs* (e.g. `CUDA0`), not backend names.
+    fn llamacpp_argv(
+        model_path: &str,
+        port: i32,
+        s: &LlamaCppSettings,
+        api_key: &str,
+        embeddings: bool,
+    ) -> AppResult<Vec<String>> {
         let mut a = vec![
             "--model".to_string(),
             model_path.to_string(),
@@ -183,82 +196,168 @@ impl LocalDeployment {
             "127.0.0.1".to_string(),
             "--api-key".to_string(),
             api_key.to_string(),
-            "--ctx-size".to_string(),
-            s.ctx_size.to_string(),
-            "--batch-size".to_string(),
-            s.batch_size.to_string(),
-            "--n-gpu-layers".to_string(),
-            s.n_gpu_layers.to_string(),
         ];
-        if let Some(t) = s.threads {
-            a.push("--threads".to_string());
-            a.push(t.to_string());
+
+        // Context / batching / memory.
+        push_opt(&mut a, "--ctx-size", s.ctx_size);
+        push_opt(&mut a, "--batch-size", s.batch_size);
+        push_opt(&mut a, "--ubatch-size", s.ubatch_size);
+        push_opt(&mut a, "--parallel", s.parallel);
+        push_opt(&mut a, "--keep", s.keep);
+        push_bool_flag(&mut a, "--mlock", s.mlock);
+        push_bool_flag(&mut a, "--no-mmap", s.no_mmap);
+
+        // Threading + attention.
+        push_opt(&mut a, "--threads", s.threads);
+        push_opt(&mut a, "--threads-batch", s.threads_batch);
+        push_bool_flag(&mut a, "--cont-batching", s.cont_batching);
+        if let Some(fa) = s.flash_attn {
+            a.push("--flash-attn".to_string());
+            a.push(if fa { "on" } else { "off" }.to_string());
         }
-        if let Some(b) = s.rope_freq_base {
-            a.push("--rope-freq-base".to_string());
-            a.push(b.to_string());
+        push_bool_flag(&mut a, "--no-kv-offload", s.no_kv_offload);
+
+        // GPU / device. device_type == Cpu forces 0 offloaded layers
+        // regardless of n_gpu_layers.
+        let cpu_only = matches!(s.device_type, Some(DeviceType::Cpu));
+        if cpu_only {
+            a.push("--n-gpu-layers".to_string());
+            a.push("0".to_string());
+        } else {
+            push_opt(&mut a, "--n-gpu-layers", s.n_gpu_layers);
         }
-        if let Some(sc) = s.rope_freq_scale {
-            a.push("--rope-freq-scale".to_string());
-            a.push(sc.to_string());
+        push_opt(&mut a, "--main-gpu", s.main_gpu);
+        push_str_arg(&mut a, "--split-mode", "split_mode", s.split_mode.as_ref())?;
+        push_str_arg(&mut a, "--tensor-split", "tensor_split", s.tensor_split.as_ref())?;
+        // Explicit device IDs → `--device CUDA0,CUDA1`. Only CUDA's
+        // `CUDA<n>` naming is emitted here (the one we can name without a
+        // live `--list-devices`); other backends rely on n_gpu_layers /
+        // main_gpu / tensor_split.
+        if !cpu_only
+            && matches!(s.device_type, Some(DeviceType::Cuda))
+            && let Some(ids) = s.device_ids.as_ref()
+            && !ids.is_empty()
+        {
+            let dev = ids
+                .iter()
+                .map(|i| format!("CUDA{i}"))
+                .collect::<Vec<_>>()
+                .join(",");
+            a.push("--device".to_string());
+            a.push(dev);
         }
-        if s.embeddings {
+
+        // RoPE / scaling.
+        push_opt(&mut a, "--rope-freq-base", s.rope_freq_base);
+        push_opt(&mut a, "--rope-freq-scale", s.rope_freq_scale);
+        push_str_arg(&mut a, "--rope-scaling", "rope_scaling", s.rope_scaling.as_ref())?;
+
+        // KV cache types + misc.
+        push_str_arg(&mut a, "--cache-type-k", "cache_type_k", s.cache_type_k.as_ref())?;
+        push_str_arg(&mut a, "--cache-type-v", "cache_type_v", s.cache_type_v.as_ref())?;
+        push_opt(&mut a, "--seed", s.seed);
+        push_str_arg(&mut a, "--numa", "numa", s.numa.as_ref())?;
+
+        if embeddings {
             a.push("--embeddings".to_string());
         }
-        a
+        Ok(a)
     }
 
     /// Build the mistralrs-server argv. mistral.rs uses a subcommand
-    /// structure: top-level flags, then `gguf` / `plain` with the model
-    /// id. The engine is loopback-bound + proxy-fronted, so (unlike
-    /// llama.cpp) there's no `--api-key` (P1.g).
+    /// structure: global flags, then `gguf` / `plain` with the model id,
+    /// then the subcommand-scoped `--dtype` / `--arch`.
     ///
-    /// NOTE: not yet verified against a real `mistralrs-server` binary —
-    /// confirm the flag/subcommand names against `--help` before relying
-    /// on it (tracked as a mistralrs gold-smoke follow-up). dtype +
-    /// model_format come from the validated `MistralRsSettings`, and the
-    /// numeric flags are typed, so nothing here is argv-injectable.
-    fn mistralrs_argv(model_path: &str, port: i32, s: &MistralRsSettings, device_cpu: bool) -> Vec<String> {
+    /// SECURITY: `--serve-ip` defaults to `0.0.0.0`; we force
+    /// `127.0.0.1` so the engine stays loopback-bound (else
+    /// `verify_loopback_bind` would kill it). The engine is
+    /// proxy-fronted, so (unlike llama.cpp) there's no `--api-key`.
+    /// Global flag names verified against the current
+    /// `mistralrs-server` clap source (EricLBuehler/mistral.rs):
+    /// PagedAttention is `--pa-*` (not `--paged-attn-*`), ISQ is `--isq`.
+    ///
+    /// Deferred until verified against a real binary (no artifact
+    /// available): `num_device_layers`, `max_seq_len`,
+    /// `truncate_sequence`, `prompt_chunksize`, `pa_cache_type`, and the
+    /// vision knobs (`max_edge` / `max_num_images` / `max_image_length`).
+    /// Excluded by hardening: `serve_ip` (forced), `token_source`,
+    /// `interactive_mode`, `log_file`, `chat_template`, `jinja_explicit`,
+    /// `tokenizer_json`, `weight_file`, `enable_search`, `search_bert_model`.
+    fn mistralrs_argv(model_path: &str, port: i32, s: &MistralRsSettings) -> AppResult<Vec<String>> {
         let mut a = vec![
+            "--serve-ip".to_string(),
+            "127.0.0.1".to_string(),
             "--port".to_string(),
             port.to_string(),
-            "--max-seqs".to_string(),
-            s.max_seqs.to_string(),
-            "--prefix-cache-n".to_string(),
-            s.prefix_cache_n.to_string(),
         ];
-        if device_cpu {
+
+        // Global flags.
+        push_opt(&mut a, "--max-seqs", s.max_seqs);
+        push_opt(&mut a, "--prefix-cache-n", s.prefix_cache_n);
+        push_opt(&mut a, "--seed", s.seed);
+        push_bool_flag(&mut a, "--no-kv-cache", s.no_kv_cache);
+        let cpu = s.cpu == Some(true) || matches!(s.device_type, Some(DeviceType::Cpu));
+        if cpu {
             a.push("--cpu".to_string());
         }
+        push_str_arg(&mut a, "--isq", "in_situ_quant", s.in_situ_quant.as_ref())?;
 
+        // PagedAttention (current `--pa-*` names).
+        push_opt(&mut a, "--pa-gpu-mem", s.paged_attn_gpu_mem);
+        push_opt(&mut a, "--pa-gpu-mem-usage", s.paged_attn_gpu_mem_usage);
+        push_opt(&mut a, "--pa-ctxt-len", s.paged_ctxt_len);
+        push_opt(&mut a, "--pa-blk-size", s.paged_attn_block_size);
+        push_bool_flag(&mut a, "--no-paged-attn", s.no_paged_attn);
+        push_bool_flag(&mut a, "--paged-attn", s.paged_attn);
+        // `--thinking` takes a bool value (clap `Option<bool>`).
+        push_opt(&mut a, "--thinking", s.enable_thinking);
+
+        // Subcommand: explicit `command` wins, else auto-detect by
+        // extension. Only gguf/plain are wired in v1.
         let path = std::path::Path::new(model_path);
-        let is_gguf =
-            s.model_format == "gguf" || (s.model_format == "auto" && model_path.ends_with(".gguf"));
-        if is_gguf {
-            // gguf subcommand: model-id = containing dir, filename = the file.
+        let use_gguf = match s.command {
+            Some(MistralRsCommand::Gguf) => true,
+            Some(MistralRsCommand::Plain) => false,
+            _ => model_path.ends_with(".gguf"),
+        };
+        if use_gguf {
             let dir = path
                 .parent()
                 .map(|p| p.to_string_lossy().to_string())
                 .filter(|d| !d.is_empty())
                 .unwrap_or_else(|| ".".to_string());
-            let file = path
-                .file_name()
-                .map(|f| f.to_string_lossy().to_string())
-                .unwrap_or_else(|| "*.gguf".to_string());
+            let file = match s.quantized_filename.as_ref() {
+                Some(f) => {
+                    Self::validate_argv_value("quantized_filename", f)?;
+                    f.clone()
+                }
+                None => path
+                    .file_name()
+                    .map(|f| f.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "*.gguf".to_string()),
+            };
             a.push("gguf".to_string());
             a.push("--quantized-model-id".to_string());
             a.push(dir);
             a.push("--quantized-filename".to_string());
             a.push(file);
         } else {
-            // plain subcommand: a directory / HF id of safetensors weights.
+            let model_id = match s.model_id_name.as_ref() {
+                Some(m) => {
+                    Self::validate_argv_value("model_id_name", m)?;
+                    m.clone()
+                }
+                None => model_path.to_string(),
+            };
             a.push("plain".to_string());
             a.push("--model-id".to_string());
-            a.push(model_path.to_string());
+            a.push(model_id);
+            push_str_arg(&mut a, "--arch", "arch", s.arch.as_ref())?;
         }
-        a.push("--dtype".to_string());
-        a.push(s.dtype.clone());
-        a
+
+        // `--dtype` is subcommand-scoped (valid after gguf/plain).
+        push_str_arg(&mut a, "--dtype", "dtype", s.dtype.as_ref())?;
+        Ok(a)
     }
 
     /// Verify after engine start that the listening socket is bound
@@ -386,6 +485,38 @@ impl LocalDeployment {
         let snapshot: Vec<String> = proc_info.logs.iter().cloned().collect();
         Ok((rx, snapshot))
     }
+}
+
+/// Push `flag VALUE` onto the argv when `v` is `Some` (numeric/float
+/// settings — `Display` renders the value).
+fn push_opt<T: ToString>(a: &mut Vec<String>, flag: &str, v: Option<T>) {
+    if let Some(v) = v {
+        a.push(flag.to_string());
+        a.push(v.to_string());
+    }
+}
+
+/// Push a valueless `flag` when the bool setting is `Some(true)`.
+fn push_bool_flag(a: &mut Vec<String>, flag: &str, on: Option<bool>) {
+    if on == Some(true) {
+        a.push(flag.to_string());
+    }
+}
+
+/// Push `flag VALUE` for a user-supplied string after argv-injection
+/// validation (08-llm-local-runtime F-02). No-op when `None`.
+fn push_str_arg(
+    a: &mut Vec<String>,
+    flag: &str,
+    label: &str,
+    v: Option<&String>,
+) -> AppResult<()> {
+    if let Some(v) = v {
+        LocalDeployment::validate_argv_value(label, v)?;
+        a.push(flag.to_string());
+        a.push(v.clone());
+    }
+    Ok(())
 }
 
 /// Push a log line with both line-size and ring-buffer caps. Closes
@@ -524,12 +655,17 @@ impl Deployment for LocalDeployment {
         let args = match normalized_engine {
             "llamacpp" => {
                 let s = Self::parse_llamacpp_settings(config);
-                Self::llamacpp_argv(model_path, port, &s, &api_key)
+                // Embedder models inject a top-level `embeddings: true`
+                // (from capabilities) into the config in resolve_model_inputs.
+                let embeddings = config
+                    .get("embeddings")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                Self::llamacpp_argv(model_path, port, &s, &api_key, embeddings)?
             }
             "mistralrs" => {
                 let s = Self::parse_mistralrs_settings(config);
-                let device_cpu = config.get("device").and_then(|v| v.as_str()) == Some("cpu");
-                Self::mistralrs_argv(model_path, port, &s, device_cpu)
+                Self::mistralrs_argv(model_path, port, &s)?
             }
             _ => unreachable!(), // Already validated above
         };
@@ -680,92 +816,220 @@ impl Deployment for LocalDeployment {
 mod tests {
     use super::*;
 
+    fn pair(a: &[String], flag: &str, val: &str) -> bool {
+        a.windows(2).any(|w| w[0] == flag && w[1] == val)
+    }
+    fn has(a: &[String], flag: &str) -> bool {
+        a.iter().any(|x| x == flag)
+    }
+
     #[test]
-    fn llamacpp_argv_core_flags_plus_optionals() {
+    fn llamacpp_argv_maps_full_vocabulary() {
         let s = LlamaCppSettings {
-            ctx_size: 4096,
-            n_gpu_layers: 33,
-            batch_size: 256,
+            ctx_size: Some(4096),
+            batch_size: Some(256),
+            ubatch_size: Some(128),
+            parallel: Some(4),
+            keep: Some(64),
+            mlock: Some(true),
+            no_mmap: Some(true),
             threads: Some(8),
-            embeddings: false,
+            threads_batch: Some(6),
+            cont_batching: Some(true),
+            no_kv_offload: Some(true),
+            n_gpu_layers: Some(33),
+            main_gpu: Some(1),
+            cache_type_k: Some("q8_0".into()),
+            cache_type_v: Some("q8_0".into()),
             rope_freq_base: Some(10000.0),
-            rope_freq_scale: None,
+            seed: Some(42),
+            numa: Some("distribute".into()),
+            ..Default::default()
         };
-        let a = LocalDeployment::llamacpp_argv("/m/x.gguf", 18080, &s, "tok");
+        let a = LocalDeployment::llamacpp_argv("/m/x.gguf", 18080, &s, "tok", false).unwrap();
+        // Forced hardening flags.
+        assert!(pair(&a, "--model", "/m/x.gguf"));
+        assert!(pair(&a, "--host", "127.0.0.1"));
+        assert!(pair(&a, "--api-key", "tok"));
+        // Newly-wired flags.
+        assert!(pair(&a, "--ctx-size", "4096"));
+        assert!(pair(&a, "--batch-size", "256"));
+        assert!(pair(&a, "--ubatch-size", "128"));
+        assert!(pair(&a, "--parallel", "4"));
+        assert!(pair(&a, "--keep", "64"));
+        assert!(has(&a, "--mlock"));
+        assert!(has(&a, "--no-mmap"));
+        assert!(pair(&a, "--threads", "8"));
+        assert!(pair(&a, "--threads-batch", "6"));
+        assert!(has(&a, "--cont-batching"));
+        assert!(has(&a, "--no-kv-offload"));
+        assert!(pair(&a, "--n-gpu-layers", "33"));
+        assert!(pair(&a, "--main-gpu", "1"));
+        assert!(pair(&a, "--cache-type-k", "q8_0"));
+        assert!(pair(&a, "--cache-type-v", "q8_0"));
+        assert!(pair(&a, "--rope-freq-base", "10000"));
+        assert!(pair(&a, "--seed", "42"));
+        assert!(pair(&a, "--numa", "distribute"));
+        // Unset optionals are absent.
         let joined = a.join(" ");
-        assert!(a.windows(2).any(|w| w[0] == "--model" && w[1] == "/m/x.gguf"));
-        assert!(a.windows(2).any(|w| w[0] == "--api-key" && w[1] == "tok"));
-        assert!(a.windows(2).any(|w| w[0] == "--ctx-size" && w[1] == "4096"));
-        assert!(a.windows(2).any(|w| w[0] == "--batch-size" && w[1] == "256"));
-        assert!(a.windows(2).any(|w| w[0] == "--n-gpu-layers" && w[1] == "33"));
-        assert!(a.windows(2).any(|w| w[0] == "--threads" && w[1] == "8"));
-        assert!(a.windows(2).any(|w| w[0] == "--rope-freq-base" && w[1] == "10000"));
-        // unset optionals + the compile-time-backend posture: absent.
         assert!(!joined.contains("--rope-freq-scale"));
         assert!(!joined.contains("--embeddings"));
-        assert!(!joined.contains("--device"));
+        assert!(!joined.contains("--flash-attn"));
     }
 
     #[test]
-    fn llamacpp_argv_embeddings_flag() {
+    fn llamacpp_argv_flash_attn_on_off_and_embeddings() {
+        let on = LlamaCppSettings { flash_attn: Some(true), ..Default::default() };
+        let a = LocalDeployment::llamacpp_argv("/m/x.gguf", 1, &on, "t", true).unwrap();
+        assert!(pair(&a, "--flash-attn", "on"));
+        assert!(has(&a, "--embeddings")); // driven by the capabilities arg
+        let off = LlamaCppSettings { flash_attn: Some(false), ..Default::default() };
+        let b = LocalDeployment::llamacpp_argv("/m/x.gguf", 1, &off, "t", false).unwrap();
+        assert!(pair(&b, "--flash-attn", "off"));
+        assert!(!b.join(" ").contains("--embeddings"));
+    }
+
+    #[test]
+    fn llamacpp_argv_cpu_device_forces_zero_gpu_layers() {
+        // device_type=Cpu must win even if n_gpu_layers is set.
         let s = LlamaCppSettings {
-            embeddings: true,
-            ..LlamaCppSettings::default()
+            device_type: Some(DeviceType::Cpu),
+            n_gpu_layers: Some(99),
+            ..Default::default()
         };
-        let a = LocalDeployment::llamacpp_argv("/m/x.gguf", 1, &s, "t");
-        assert!(a.iter().any(|x| x == "--embeddings"));
+        let a = LocalDeployment::llamacpp_argv("/m/x.gguf", 1, &s, "t", false).unwrap();
+        assert!(pair(&a, "--n-gpu-layers", "0"));
+        assert!(!pair(&a, "--n-gpu-layers", "99"));
+        assert!(!a.join(" ").contains("--device"));
     }
 
     #[test]
-    fn mistralrs_argv_uses_gguf_subcommand() {
-        let s = MistralRsSettings {
-            model_format: "auto".into(),
-            ..MistralRsSettings::default()
+    fn llamacpp_argv_cuda_device_ids() {
+        let s = LlamaCppSettings {
+            device_type: Some(DeviceType::Cuda),
+            device_ids: Some(vec![0, 1]),
+            ..Default::default()
         };
-        let a = LocalDeployment::mistralrs_argv("/models/qwen/q.gguf", 18081, &s, false);
-        let joined = a.join(" ");
-        assert!(a.windows(2).any(|w| w[0] == "--port" && w[1] == "18081"));
-        assert!(joined.contains("--max-seqs"));
-        assert!(joined.contains("--prefix-cache-n"));
-        assert!(!joined.contains("--cpu"));
-        assert!(a.iter().any(|x| x == "gguf"));
-        assert!(a.windows(2).any(|w| w[0] == "--quantized-model-id" && w[1] == "/models/qwen"));
-        assert!(a.windows(2).any(|w| w[0] == "--quantized-filename" && w[1] == "q.gguf"));
-        assert!(a.windows(2).any(|w| w[0] == "--dtype" && w[1] == "f16"));
-        // The old (broken) flat form must be gone.
-        assert!(!joined.contains("--model-path"));
-        assert!(!joined.contains("--model-type"));
+        let a = LocalDeployment::llamacpp_argv("/m/x.gguf", 1, &s, "t", false).unwrap();
+        assert!(pair(&a, "--device", "CUDA0,CUDA1"));
     }
 
     #[test]
-    fn mistralrs_argv_plain_subcommand_and_cpu() {
-        let s = MistralRsSettings {
-            model_format: "safetensors".into(),
-            dtype: "bf16".into(),
-            ..MistralRsSettings::default()
+    fn llamacpp_argv_rejects_argv_injection() {
+        let s = LlamaCppSettings {
+            cache_type_k: Some("-malicious".into()),
+            ..Default::default()
         };
-        let a = LocalDeployment::mistralrs_argv("/models/llama-dir", 1, &s, true);
+        assert!(LocalDeployment::llamacpp_argv("/m/x.gguf", 1, &s, "t", false).is_err());
+    }
+
+    #[test]
+    fn mistralrs_argv_always_loopback_and_gguf_subcommand() {
+        let s = MistralRsSettings {
+            max_seqs: Some(32),
+            prefix_cache_n: Some(16),
+            paged_attn_gpu_mem: Some(4096),
+            ..Default::default()
+        };
+        let a = LocalDeployment::mistralrs_argv("/models/qwen/q.gguf", 18081, &s).unwrap();
         let joined = a.join(" ");
-        assert!(joined.contains("--cpu"));
-        assert!(a.iter().any(|x| x == "plain"));
-        assert!(a.windows(2).any(|w| w[0] == "--model-id" && w[1] == "/models/llama-dir"));
-        assert!(a.windows(2).any(|w| w[0] == "--dtype" && w[1] == "bf16"));
+        // SECURITY: loopback always forced.
+        assert!(pair(&a, "--serve-ip", "127.0.0.1"));
+        assert!(pair(&a, "--port", "18081"));
+        assert!(pair(&a, "--max-seqs", "32"));
+        assert!(pair(&a, "--prefix-cache-n", "16"));
+        // PagedAttention uses the current `--pa-*` names, NOT `--paged-attn-*`.
+        assert!(pair(&a, "--pa-gpu-mem", "4096"));
+        assert!(!joined.contains("--paged-attn-gpu-mem"));
+        assert!(!has(&a, "--cpu"));
+        // gguf subcommand, path decomposed.
+        assert!(has(&a, "gguf"));
+        assert!(pair(&a, "--quantized-model-id", "/models/qwen"));
+        assert!(pair(&a, "--quantized-filename", "q.gguf"));
+    }
+
+    #[test]
+    fn mistralrs_argv_plain_subcommand_cpu_dtype_arch() {
+        let s = MistralRsSettings {
+            command: Some(MistralRsCommand::Plain),
+            cpu: Some(true),
+            dtype: Some("bf16".into()),
+            arch: Some("llama".into()),
+            no_kv_cache: Some(true),
+            ..Default::default()
+        };
+        let a = LocalDeployment::mistralrs_argv("/models/llama-dir", 1, &s).unwrap();
+        let joined = a.join(" ");
+        assert!(has(&a, "--cpu"));
+        assert!(has(&a, "--no-kv-cache"));
+        assert!(has(&a, "plain"));
+        assert!(pair(&a, "--model-id", "/models/llama-dir"));
+        assert!(pair(&a, "--dtype", "bf16"));
+        assert!(pair(&a, "--arch", "llama"));
         assert!(!joined.contains("gguf"));
     }
 
     #[test]
-    fn parse_llamacpp_settings_falls_back_on_out_of_range() {
-        let cfg = serde_json::json!({ "ctx_size": 999_999_999u32 });
-        let s = LocalDeployment::parse_llamacpp_settings(&cfg);
-        assert_eq!(s.ctx_size, 8192); // default after validation failure
+    fn mistralrs_argv_excludes_hardening_and_deferred_fields() {
+        let s = MistralRsSettings {
+            serve_ip: Some("0.0.0.0".into()),
+            log_file: Some("/tmp/x.log".into()),
+            token_source: Some("env".into()),
+            chat_template: Some("/t.jinja".into()),
+            interactive_mode: Some(true),
+            max_seq_len: Some(4096),
+            truncate_sequence: Some(true),
+            prompt_chunksize: Some(256),
+            num_device_layers: Some(vec!["0:16".into()]),
+            ..Default::default()
+        };
+        let a = LocalDeployment::mistralrs_argv("/m/q.gguf", 1, &s).unwrap();
+        let joined = a.join(" ");
+        // serve_ip is forced to loopback, never the user value.
+        assert!(pair(&a, "--serve-ip", "127.0.0.1"));
+        assert!(!joined.contains("0.0.0.0"));
+        // Hardening-excluded flags never appear.
+        assert!(!joined.contains("--log"));
+        assert!(!joined.contains("--token-source"));
+        assert!(!joined.contains("--chat-template"));
+        assert!(!joined.contains("--interactive-mode"));
+        // Deferred (verify-before-enabling) flags stay unmapped.
+        assert!(!joined.contains("--max-seq-len"));
+        assert!(!joined.contains("--truncate-sequence"));
+        assert!(!joined.contains("--prompt-chunksize"));
+        assert!(!joined.contains("--num-device-layers"));
     }
 
     #[test]
-    fn parse_llamacpp_settings_reads_canonical_keys_and_injected_embeddings() {
-        let cfg = serde_json::json!({ "ctx_size": 2048, "n_gpu_layers": 10, "embeddings": true });
+    fn parse_llamacpp_settings_reads_nested_shape() {
+        let cfg = serde_json::json!({ "llamacpp": { "ctx_size": 2048, "n_gpu_layers": 10 } });
         let s = LocalDeployment::parse_llamacpp_settings(&cfg);
-        assert_eq!(s.ctx_size, 2048);
-        assert_eq!(s.n_gpu_layers, 10);
-        assert!(s.embeddings);
+        assert_eq!(s.ctx_size, Some(2048));
+        assert_eq!(s.n_gpu_layers, Some(10));
+    }
+
+    #[test]
+    fn parse_llamacpp_settings_falls_back_on_out_of_range() {
+        let cfg = serde_json::json!({ "llamacpp": { "ctx_size": 999_999_999i64 } });
+        let s = LocalDeployment::parse_llamacpp_settings(&cfg);
+        // validate() fails (>131072) → defaults (all None).
+        assert_eq!(s.ctx_size, None);
+    }
+
+    #[test]
+    fn parse_mistralrs_settings_reads_nested_shape() {
+        let cfg = serde_json::json!({ "mistralrs": { "max_seqs": 128, "dtype": "bf16" } });
+        let s = LocalDeployment::parse_mistralrs_settings(&cfg);
+        assert_eq!(s.max_seqs, Some(128));
+        assert_eq!(s.dtype.as_deref(), Some("bf16"));
+    }
+
+    #[test]
+    fn parse_ignores_flat_legacy_keys() {
+        // The pre-unification flat shape no longer parses into a branch;
+        // such rows degrade to defaults (documents the shape change).
+        let cfg = serde_json::json!({ "ctx_size": 2048 });
+        let s = LocalDeployment::parse_llamacpp_settings(&cfg);
+        assert_eq!(s.ctx_size, None);
     }
 }
