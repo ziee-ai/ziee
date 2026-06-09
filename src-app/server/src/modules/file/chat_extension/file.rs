@@ -155,15 +155,21 @@ impl ChatExtension for FileExtension {
                     let mut file_blocks = Vec::new();
                     for file_id in file_ids {
                         // Images are inlined by the replay path (vision); skip
-                        // them here to avoid doubling. An id not in the resolved
-                        // set is treated as non-image and inlined.
-                        let is_image = avail
-                            .iter()
-                            .find(|f| f.id == *file_id)
-                            .map(|f| {
-                                f.file_type
-                                    == crate::modules::file::available_files::FileType::Image
-                            })
+                        // them here to avoid doubling. Classify by the file's OWN
+                        // mime — NOT `avail` membership: content-dedup can fold
+                        // this (newest) upload into an earlier same-checksum
+                        // entry, so its id may be absent from `avail` even though
+                        // it IS an image. (Ownership re-checked; a foreign/deleted
+                        // id resolves to None and is skipped.)
+                        let Some(file) =
+                            Repos.file.get_by_id_and_user(*file_id, context.user_id).await?
+                        else {
+                            continue;
+                        };
+                        let is_image = file
+                            .mime_type
+                            .as_deref()
+                            .map(|m| m.starts_with("image/"))
                             .unwrap_or(false);
                         if is_image {
                             continue;
@@ -179,10 +185,20 @@ impl ChatExtension for FileExtension {
                         file_blocks.extend(blocks);
                     }
 
+                    // Append to the current User message if present; otherwise
+                    // (e.g. an empty-text upload whose only block was the
+                    // attachment, which the replay drop removed) push a fresh User
+                    // turn so the current upload still lands exactly once. The
+                    // System manifest sits at index 0, so order stays correct.
                     if let Some(last_message) = request.messages.last_mut()
                         && last_message.role == Role::User
                     {
                         last_message.content.extend(file_blocks);
+                    } else if !file_blocks.is_empty() {
+                        request.messages.push(ChatMessage {
+                            role: Role::User,
+                            content: file_blocks,
+                        });
                     }
                 }
             }

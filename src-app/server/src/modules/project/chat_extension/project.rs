@@ -150,6 +150,12 @@ impl ChatExtension for ProjectExtension {
                 &mut context.metadata,
             )
             .await;
+        // Whether the Track A manifest actually resolved this iteration (seeded
+        // by streaming.rs). Must match the file extension's gate: if resolution
+        // failed there is no manifest AND no `files` MCP attach, so we cannot rely
+        // on read-on-demand and must fall back to inlining project knowledge.
+        let manifest_available =
+            crate::modules::file::available_files::files_manifest_available(&context.metadata);
 
         // Resolve project from conversation (user-scoped: never inject a
         // foreign user's project content).
@@ -183,12 +189,13 @@ impl ChatExtension for ProjectExtension {
         // Provider context comes from chat's StreamContext metadata; the
         // file extension's `collect_chat_knowledge` needs it to route
         // file content through the provider-specific block builders.
-        // When the model is tool-capable, project knowledge files are exposed via
-        // the Track A manifest + the built-in `files` read tools (injected by the
-        // file extension), so we do NOT inline their content here — only the
-        // project instructions below. Non-tool-capable models keep the inline
-        // path. `tool_capable` was computed + memoized at the top of this fn.
-        let project_blocks = if tool_capable {
+        // When the model is tool-capable AND the manifest resolved, project
+        // knowledge files are exposed via the Track A manifest + the built-in
+        // `files` read tools (injected by the file extension), so we do NOT inline
+        // their content here — only the project instructions below. Non-tool-
+        // capable models, OR a resolve failure (no manifest, no `files` attach),
+        // keep the inline path so project knowledge is never lost.
+        let project_blocks = if tool_capable && manifest_available {
             Vec::new()
         } else if let Some(registry) =
             crate::modules::project::core::extension::get_global_registry()
