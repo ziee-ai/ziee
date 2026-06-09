@@ -339,6 +339,140 @@ async fn remove_user_from_group_emits_session_to_the_affected_user_only() {
     uninvolved_probe.expect_silence(SILENCE_WINDOW).await;
 }
 
+/// When an admin edits a group's PERMISSIONS, the handler fans a `session`
+/// signal out to EVERY member of the group via `publish_session_to_users` —
+/// a single registry-lock acquisition that delivers Owner-scoped Session
+/// frames to each member's user_id. Each member's open devices then
+/// re-bootstrap /auth/me to pick up the new effective permissions
+/// immediately, rather than waiting up to 60s for the per-connection
+/// re-check.
+///
+/// The previously-existing `update_group_emits_group_update_to_groups_read_holders`
+/// edits a FRESHLY-CREATED EMPTY group, so its fan-out runs over zero
+/// members and proves nothing about the bulk-delivery path. This test
+/// seeds two members + one uninvolved user FIRST, subscribes them, THEN
+/// edits the group's permissions, and asserts:
+///   - both members receive `session`/`update` with their OWN user id
+///   - the uninvolved (non-member) user stays silent (Owner-scoping
+///     prevents leakage even though they share the deployment)
+#[tokio::test]
+async fn group_permission_edit_fans_session_out_to_every_member() {
+    let server = crate::common::TestServer::start().await;
+
+    // Actor needs the perm it's trying to grant — the self-escalation
+    // guard at handlers/groups.rs:172 rejects with CANNOT_GRANT_PERMISSION
+    // otherwise. `users::read` is granted to the actor explicitly so it
+    // can flow into the group without bypassing the guard.
+    let admin = test_helpers::create_user_with_permissions(&server, "perm_edit_admin", &[
+        "users::create",
+        "users::read",
+        "groups::create",
+        "groups::edit",
+        "groups::assign_users",
+    ])
+    .await;
+
+    // Two members + one uninvolved user. Members are created via the admin
+    // API so we need to log in as each to get a subscribable token.
+    let m1 = test_helpers::create_test_user(&server, &admin.token, "permmember1", "password123")
+        .await;
+    let m1_id = m1["id"].as_str().expect("m1 id").to_string();
+    let m1_token = login_token(&server, "permmember1", "password123").await;
+
+    let m2 = test_helpers::create_test_user(&server, &admin.token, "permmember2", "password123")
+        .await;
+    let m2_id = m2["id"].as_str().expect("m2 id").to_string();
+    let m2_token = login_token(&server, "permmember2", "password123").await;
+
+    let uninvolved =
+        test_helpers::create_user_with_permissions(&server, "perm_edit_uninvolved", &[]).await;
+
+    // Create the group and assign both members BEFORE subscribing — the
+    // assigns each emit `session`/`update` themselves, and we don't want
+    // to consume those frames in this test (it's about the fan-out from
+    // the subsequent permission edit, not from the assigns).
+    let group: serde_json::Value = reqwest::Client::new()
+        .post(server.api_url("/groups"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "name": format!("sync-perm-edit-group-{}", uuid::Uuid::new_v4()),
+            "description": "sync emit test — group permission edit fan-out",
+            "permissions": []
+        }))
+        .send()
+        .await
+        .expect("create group request failed")
+        .json()
+        .await
+        .expect("parse created group");
+    let group_id = group["id"].as_str().expect("created group id").to_string();
+
+    for (user_id, label) in [(&m1_id, "m1"), (&m2_id, "m2")] {
+        let assign = reqwest::Client::new()
+            .post(server.api_url("/groups/assign"))
+            .header("Authorization", format!("Bearer {}", admin.token))
+            .json(&json!({ "user_id": user_id, "group_id": group_id }))
+            .send()
+            .await
+            .unwrap_or_else(|e| panic!("assign {label} failed: {e}"));
+        assert_eq!(
+            assign.status(),
+            204,
+            "assign {label} should return 204"
+        );
+    }
+
+    // NOW subscribe — the assigns above are already settled and won't show
+    // up in any probe's frame stream.
+    let mut m1_probe = SyncProbe::open(&server, &m1_token).await;
+    let mut m2_probe = SyncProbe::open(&server, &m2_token).await;
+    let mut uninvolved_probe = SyncProbe::open(&server, &uninvolved.token).await;
+
+    // Edit the group's PERMISSIONS — this is the trigger for the
+    // publish_session_to_users fan-out at handlers/groups.rs:225. Admin
+    // holds the perms they're trying to grant (they have groups::create
+    // and groups::edit themselves) so the self-escalation guard passes
+    // for a benign add.
+    let res = reqwest::Client::new()
+        .post(server.api_url(&format!("/groups/{}", group_id)))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "permissions": ["users::read"] }))
+        .send()
+        .await
+        .expect("group permission edit request failed");
+    assert_eq!(
+        res.status(),
+        200,
+        "admin update_group with new permissions should return 200, got {}: {}",
+        res.status(),
+        res.text().await.unwrap_or_default(),
+    );
+
+    // Both members receive `session`/`update` carrying THEIR OWN user_id —
+    // the fan-out delivers a per-recipient Owner-scoped frame, not the
+    // group's id (the Session frame.id is the affected user).
+    let m1_frame = m1_probe
+        .expect_event("session", "update", EVENT_TIMEOUT)
+        .await;
+    assert_eq!(
+        m1_frame.id, m1_id,
+        "m1's session frame.id must be m1's own user id (Owner-scoped fan-out)"
+    );
+    let m2_frame = m2_probe
+        .expect_event("session", "update", EVENT_TIMEOUT)
+        .await;
+    assert_eq!(
+        m2_frame.id, m2_id,
+        "m2's session frame.id must be m2's own user id (Owner-scoped fan-out)"
+    );
+
+    // The uninvolved user (not a member) must NOT see any session frame —
+    // Owner-scoping isolates each delivery to its target user. They also
+    // lack groups::read so the sibling `group`/`update` audience misses
+    // them too.
+    uninvolved_probe.expect_silence(SILENCE_WINDOW).await;
+}
+
 // ============================================================================
 // `profile` entity — Owner(edited user)
 // ============================================================================
