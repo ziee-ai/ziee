@@ -103,8 +103,11 @@ test.describe('Memory — summarizer thresholds', () => {
 
     await card.locator('.ant-btn-primary[type="submit"]').click()
 
-    // Success toast confirms the PUT landed.
-    await expect(page.getByText(SUCCESS_TOAST)).toBeVisible({ timeout: 10000 })
+    // Success toast confirms the PUT landed. antd's message renders the text in
+    // nested nodes (notice + content + aria-live), so scope to the first match.
+    await expect(page.getByText(SUCCESS_TOAST).first()).toBeVisible({
+      timeout: 10000,
+    })
     // And no validation error is shown in this card.
     await expect(card.locator('.ant-form-item-explain-error')).toHaveCount(0)
   })

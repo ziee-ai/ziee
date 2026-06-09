@@ -49,11 +49,15 @@ test.describe('Chat - File upload suitability advisory', () => {
 
     await loginAsAdmin(page, baseURL)
     const adminToken = await getAdminToken(apiURL)
+    // A `local` provider needs no API key (main requires one for enabled REMOTE
+    // providers) — this test only uploads a file + checks the advisory, it never
+    // sends a message, so the model just has to exist to make the chat page
+    // usable. Avoids depending on OPENAI_API_KEY in the E2E env.
     const providerId = await createProviderViaAPI(
       apiURL,
       adminToken,
-      'OpenAI',
-      'openai',
+      'Local',
+      'local',
     )
     await assignProviderToAdministratorsGroup(apiURL, adminToken, providerId)
     await createModelViaAPI(
@@ -62,7 +66,7 @@ test.describe('Chat - File upload suitability advisory', () => {
       providerId,
       undefined,
       undefined,
-      'openai',
+      'local',
     )
 
     await goToNewChatPage(page, baseURL)
