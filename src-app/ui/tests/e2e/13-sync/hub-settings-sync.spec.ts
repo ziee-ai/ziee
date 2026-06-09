@@ -1,45 +1,161 @@
-import { test } from '../../fixtures/test-context'
+import { test, expect } from '../../fixtures/test-context'
+import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 
-// Realtime sync for the `hub_settings` singleton entity is currently
-// E2E-DEFERRED.
+// Realtime sync for the `hub_settings` singleton entity. When an admin
+// activates a different hub catalog version, the backend publishes
+// `HubSettings/Update` to every `hub::catalog::read` holder so other
+// devices' `useHubCatalogStore` refetches the version + reloads every
+// hub tab WITHOUT a manual reload.
 //
-// Why this is empty (intentional, not forgotten):
+// This spec hits the REAL `ziee-ai/hub` GitHub repository. The
+// activate handler always calls `HubManager::refresh()`, which:
+//   1. GETs `https://api.github.com/repos/ziee-ai/hub/releases`
+//      to list versions (unauthenticated — 60/hr per IP).
+//   2. Downloads the requested release tarball + index + cosign
+//      bundle (a few hundred KB).
+//   3. Sigstore-verifies the bundle in-process (no network at this step).
+//   4. Rotates the on-disk `current/` symlink to the new dir.
+// Then `sync_publish` fires unconditionally.
 //
-//   The two handlers that publish `HubSettings/Update`
-//   (POST /api/hub/refresh and POST /api/hub/activate) both call
-//   `HubManager::refresh()` FIRST, which fetches + cosign-verifies a
-//   catalog bundle from GitHub. In tests this can only succeed when
-//   the backend is pointed at a mock hub via
-//   `ZIEE_HUB_API_BASE_OVERRIDE` / `ZIEE_HUB_DOWNLOAD_BASE_OVERRIDE` /
-//   `ZIEE_HUB_ALLOW_UNSIGNED=1` AND a loopback HTTP server is serving
-//   a tiny tar.gz catalog (the `spawn_mock_hub` fixture used by
-//   `server/tests/hub/sync_emit_test.rs` does exactly this).
+// The bundled seed version (built into the test backend) is
+// `0.0.3-alpha` (per `binaries/hub-seed/.tag`). The repo currently has
+// three releases — `v0.0.{1,2,3}-alpha`. The test activates `0.0.2-alpha`
+// and asserts device B's VersionPicker tag updates from `v0.0.3-alpha`
+// to `v0.0.2-alpha`. If the repo ever publishes a `v0.0.3-alpha` rename
+// or removes the older releases, update the version pin below.
 //
-//   Wiring this for E2E requires:
-//     1. A Playwright fixture that spawns the mock hub HTTP server
-//        (a Node port of `mock_release_server.rs`) before the test.
-//     2. A per-test env override path in `tests/fixtures/test-context.ts`
-//        so the backend is spawned with the mock URL in its env. Today
-//        the backend env is fixed per worker.
+// Run with --workers=1.
 //
-//   That's a non-trivial infrastructure addition (probably ~half a
-//   day of plumbing) and the underlying sync emit is already proven
-//   end-to-end by `server/tests/hub/sync_emit_test.rs::activate_delivers_hub_settings_update_other_user_silent`.
-//   The UI subscriber path is identical in shape to the LlmRepository
-//   subscriber that IS browser-tested in `admin-settings-sync.spec.ts`.
-//
-// What WOULD be tested if the infrastructure existed:
-//
-//   Two admin browser contexts (device A + B) on `/hub`. A POSTs
-//   `/api/hub/activate` (pinning a different bundled mock version),
-//   B's HubPage header version label and tab counts refresh without
-//   a manual reload — proves the `sync:hub_settings` listener on
-//   `useHubCatalogStore` reloads all tabs.
-//
-// Tracking: revisit when test-context grows a per-test env-injection
-// API (e.g. `testInfra.backendEnv(record)`), or when the hub gains a
-// settings mutation that doesn't depend on `HubManager::refresh()`.
+// Network / rate-limit notes:
+//   - This test consumes one `releases` API call + one tarball download
+//     per run. Far below the 60/hr unauthenticated GitHub limit for
+//     local dev. If the test starts flaking with "API rate limit
+//     exceeded" on a shared CI IP, the runtime path would need to
+//     start honoring `GITHUB_TOKEN` (it currently doesn't — the build
+//     helper does, but `fetch_releases` in hub_manager.rs uses no auth).
+//   - Cosign verification + tarball roundtrip can take 10–20s; the
+//     assertion timeout is set generously (45s) to absorb that without
+//     becoming a Heisen-flake on a slow link.
 
-test.describe.skip('Realtime sync — hub_settings (deferred — needs mock-hub fixture)', () => {
-  test('placeholder', () => {})
+// We pin a SPECIFIC alternate version (not "any version != current") so
+// the test can't accidentally activate the same seed version (no-op
+// emit, no visible change). 0.0.2-alpha is the second-newest published
+// release and has been stable since the v0.0.3 cut.
+const TARGET_VERSION = '0.0.2-alpha'
+
+async function gotoHub(
+  page: import('@playwright/test').Page,
+  baseURL: string,
+) {
+  await page.goto(`${baseURL}/hub`)
+  await page.waitForLoadState('load')
+  // The VersionPicker tag is the stable signal that the admin Hub
+  // page (and the HubCatalog store subscribing to sync:hub_settings)
+  // has mounted.
+  await expect(
+    page.getByRole('button', { name: /select hub catalog version/i }),
+  ).toBeVisible({ timeout: 30_000 })
+}
+
+function versionTag(page: import('@playwright/test').Page) {
+  // VersionPicker renders `<Tag>v{hubVersion}</Tag>` inside the picker
+  // button. Scope to the button so the picker dropdown's own list
+  // items (which also render version tags) don't collide.
+  return page
+    .getByRole('button', { name: /select hub catalog version/i })
+    .locator('.ant-tag')
+    .first()
+}
+
+test.describe('Realtime sync — hub_settings (real GitHub)', () => {
+  test('activating a different catalog version on device A updates device B without reload', async ({
+    page,
+    browser,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+
+    await loginAsAdmin(page, baseURL)
+    const adminToken = await getAdminToken(apiURL)
+    await gotoHub(page, baseURL)
+
+    // Read the initial active version from the API rather than the
+    // tag — the API is the source of truth and avoids racing with the
+    // initial /version fetch the tag is awaiting.
+    const initialVerRes = await page.request.get(
+      `${baseURL}/api/hub/version`,
+      {
+        headers: { Authorization: `Bearer ${adminToken}` },
+      },
+    )
+    expect(initialVerRes.ok()).toBeTruthy()
+    const initialVer = (await initialVerRes.json()).hub_version as string
+    expect(
+      initialVer,
+      'sanity: TARGET_VERSION must differ from the initial seed version, ' +
+        'otherwise the activate is a no-op and the test proves nothing',
+    ).not.toBe(TARGET_VERSION)
+
+    // Device B — second context for the SAME admin user. Load fully
+    // BEFORE A activates so its HubCatalog store is mounted and
+    // subscribed to sync:hub_settings.
+    const ctxB = await browser.newContext()
+    const pageB = await ctxB.newPage()
+    try {
+      await loginAsAdmin(pageB, baseURL)
+      await gotoHub(pageB, baseURL)
+
+      // Sanity: device B's tag currently shows the initial version.
+      await expect(versionTag(pageB)).toHaveText(`v${initialVer}`, {
+        timeout: 15_000,
+      })
+
+      // Device A pins the target version via REST. The handler fetches
+      // + cosign-verifies + rotates against the real GitHub release
+      // for `v{TARGET_VERSION}`, then publishes HubSettings/Update.
+      const activateRes = await page.request.post(
+        `${baseURL}/api/hub/activate`,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${adminToken}`,
+          },
+          data: { version: TARGET_VERSION },
+          // GitHub API call + tarball download + sigstore verification.
+          // Cosign + decompression can be slow on a cold cache.
+          timeout: 60_000,
+        },
+      )
+      const activateBody = await activateRes.text()
+      expect(
+        activateRes.ok(),
+        `activate v${TARGET_VERSION} failed: ${activateRes.status()} ${activateBody}`,
+      ).toBeTruthy()
+
+      // Sanity: confirm the backend really swapped versions BEFORE we
+      // wait on the UI. If this fails, the bug is in the activate path,
+      // not in the sync delivery.
+      const afterVerRes = await page.request.get(
+        `${baseURL}/api/hub/version`,
+        { headers: { Authorization: `Bearer ${adminToken}` } },
+      )
+      const afterVer = (await afterVerRes.json()).hub_version as string
+      expect(
+        afterVer,
+        `backend did not switch to ${TARGET_VERSION} (still ${afterVer}) — activate succeeded but had no effect`,
+      ).toBe(TARGET_VERSION)
+
+      // Device B's VersionPicker tag must reflect the new active
+      // version WITHOUT a manual reload. Only true if:
+      //   1. HubSettings/Update was published to hub::catalog::read
+      //   2. SSE delivered the frame to B
+      //   3. `reloadAllTabs()` ran → `loadVersion()` refreshed hubVersion
+      //   4. VersionPicker re-rendered with the new tag text
+      await expect(versionTag(pageB)).toHaveText(`v${TARGET_VERSION}`, {
+        timeout: 45_000,
+      })
+    } finally {
+      await ctxB.close()
+    }
+  })
 })

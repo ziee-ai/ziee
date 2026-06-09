@@ -220,11 +220,31 @@ export const useHubCatalogStore = create<HubCatalogState>()(
             const GROUP = 'HubCatalogStore'
 
             // The hub catalog version was pinned/refreshed (singleton; event
-            // id is nil). Reload every hub category tab so stale per-category
-            // lists pick up the new catalog. `reloadAllTabs` self-gates on the
-            // perms it needs, so a non-admin reconnect won't 403.
-            eventBus.on('sync:hub_settings', () => void reloadAllTabs(), GROUP)
-            eventBus.on('sync:reconnect', () => void reloadAllTabs(), GROUP)
+            // id is nil). Refetch the version + releases AND reload every
+            // hub category tab so stale per-category lists pick up the new
+            // catalog. `reloadAllTabs` self-gates on the perms it needs, so
+            // a non-admin reconnect won't 403; `loadVersion` is gated on
+            // the user being able to see /api/hub/version (admins always).
+            //
+            // The mirror-action `activateVersion` in this same store already
+            // calls loadVersion/loadReleases/reloadAllTabs after a local
+            // mutation; this handler is the cross-device equivalent so it
+            // must run the same trio — otherwise device B's VersionPicker
+            // tag stays pinned at the pre-activate string even though the
+            // backend (and tab contents) have moved on.
+            const handleHubSettingsChange = () => {
+              void get().loadVersion()
+              // releases list is admin-only and lazy — only reload if it
+              // was previously populated (no point firing a 403 for a
+              // user without hub::catalog::manage who happens to be
+              // subscribed via hub::catalog::read).
+              if (get().releases.length > 0) {
+                void get().loadReleases()
+              }
+              void reloadAllTabs()
+            }
+            eventBus.on('sync:hub_settings', handleHubSettingsChange, GROUP)
+            eventBus.on('sync:reconnect', handleHubSettingsChange, GROUP)
           },
           catalog: () => get().loadCatalog(),
           serverVersion: () => get().loadVersion(),
