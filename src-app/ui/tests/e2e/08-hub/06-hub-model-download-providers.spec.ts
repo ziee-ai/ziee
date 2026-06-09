@@ -37,6 +37,54 @@ async function seedLocalProvider(
   }
 }
 
+/** Configure the seeded "Hugging Face Hub" repository with a dummy
+ *  API key so `useHubModelDownloadGate`'s `auth_required &&
+ *  !source_auth_configured` branch doesn't fire. The bundled hub seed
+ *  models all live on HF and the gate's "Authentication Required"
+ *  modal opens BEFORE the download POST. The actual download POST is
+ *  mocked by `mockDownloadStart` so the dummy key is never used. */
+async function configureHfAuth(apiURL: string, token: string): Promise<void> {
+  const listRes = await fetch(`${apiURL}/api/llm-repositories`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!listRes.ok) {
+    throw new Error(`list llm-repositories failed: ${listRes.status}`)
+  }
+  const list = await listRes.json()
+  const repos: Array<{ id: string; url: string }> =
+    list.repositories ?? list
+  const hf = repos.find(r => r.url === 'https://huggingface.co')
+  if (!hf) throw new Error('Hugging Face Hub repo not found in seeded data')
+
+  const putRes = await fetch(`${apiURL}/api/llm-repositories/${hf.id}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      auth_config: { api_key: 'test-key-for-gate-only' },
+    }),
+  })
+  if (!putRes.ok) {
+    throw new Error(`configure HF auth failed: ${putRes.status} ${await putRes.text()}`)
+  }
+}
+
+/** Mock the LLM-repository probe endpoint so the download gate's
+ *  Gate 2 ("connection probe") returns success without a real network
+ *  hit. Pairs with `configureHfAuth` — the auth key satisfies the
+ *  "auth configured" check, this satisfies the "repo reachable" check. */
+async function mockRepoConnectionProbe(page: Page): Promise<void> {
+  await page.route(/\/api\/llm-repositories\/[^/]+\/test$/, async route => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, message: 'mocked OK' }),
+    })
+  })
+}
+
 /** Mock the download-start endpoint. Returns a getter for the hit count. */
 async function mockDownloadStart(page: Page): Promise<() => number> {
   let hits = 0
@@ -98,9 +146,15 @@ async function clickDownloadOnFirstCard(page: Page) {
 test.describe('Hub Model Download — local providers', () => {
   test.beforeEach(async ({ page, testInfra }) => {
     await loginAsAdmin(page, testInfra.baseURL)
+    // Bundled hub seed models all live on HF. The download gate's
+    // "Authentication Required" modal would otherwise fire before
+    // the mocked download POST has a chance to register a hit.
+    const token = await getAdminToken(testInfra.apiURL)
+    await configureHfAuth(testInfra.apiURL, token)
   })
 
   test('no local provider → shows error, no download starts', async ({ page, testInfra }) => {
+    await mockRepoConnectionProbe(page)
     const downloadHits = await mockDownloadStart(page)
 
     // Seed nothing: a fresh DB has no *enabled* local provider (the built-in
@@ -117,6 +171,7 @@ test.describe('Hub Model Download — local providers', () => {
   test('single local provider → download starts', async ({ page, testInfra }) => {
     const token = await getAdminToken(testInfra.apiURL)
     await seedLocalProvider(testInfra.apiURL, token, 'E2E Local Solo')
+    await mockRepoConnectionProbe(page)
     const downloadHits = await mockDownloadStart(page)
 
     await navigateToHub(page, testInfra.baseURL, 'models')
@@ -133,6 +188,7 @@ test.describe('Hub Model Download — local providers', () => {
     const token = await getAdminToken(testInfra.apiURL)
     await seedLocalProvider(testInfra.apiURL, token, 'E2E Local One')
     await seedLocalProvider(testInfra.apiURL, token, 'E2E Local Two')
+    await mockRepoConnectionProbe(page)
     const downloadHits = await mockDownloadStart(page)
 
     await navigateToHub(page, testInfra.baseURL, 'models')

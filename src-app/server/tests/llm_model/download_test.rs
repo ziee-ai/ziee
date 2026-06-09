@@ -587,7 +587,7 @@ async fn first_auth_required_hf_model(
                 && m["repository_url"].as_str() == Some("https://huggingface.co")
         })
         .cloned()
-        .expect("bundled catalog should contain an auth_required Hugging Face model")
+        .expect("bundled catalog should contain an auth_required HF model not in INCOMPATIBLE_FIXTURE_IDS")
 }
 
 /// The hub download endpoint must BLOCK with a 422 + actionable guidance when the

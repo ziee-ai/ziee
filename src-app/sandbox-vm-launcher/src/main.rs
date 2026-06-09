@@ -125,98 +125,37 @@ fn run(cfg: VmLaunchConfig) -> ! {
     // (system dlopen path still resolves the leaf).
     preload_libkrunfw();
 
-    // Audit H-6: macOS has no PR_SET_PDEATHSIG. The previous defense was a
-    // 1-second `getppid()` poll, which left a 1-second window during which
-    // the VM survived after server crash — long enough for the new server
-    // process to boot and open virtio-fs handles into the same workspace
-    // the orphan VM was still mutating (data corruption + ghost executions
-    // answering a now-gone HTTP request). Replace with a kqueue
-    // `EVFILT_PROC | NOTE_EXIT` watch that wakes within milliseconds of
-    // parent exit. Kept the 100 ms fallback poll for defense-in-depth in
-    // case kqueue registration ever fails (defensive — kqueue against an
-    // existing pid is well-supported on every macOS we run on).
+    // Audit H-6: macOS has no PR_SET_PDEATHSIG, so we run a side thread
+    // that watches the parent PID and `std::process::exit`s the launcher
+    // (which tears down the VM) the moment the parent goes away.
     //
-    // Started BEFORE krun_start_enter (which takes over this thread + never
-    // returns).
+    // **NOTE — kqueue conflicts with libkrun's vsock proxy on macOS.**
+    // The previous implementation used a `kqueue()` + `EVFILT_PROC` watch
+    // in a side thread spawned BEFORE `krun_start_enter`. When that
+    // thread was alive concurrently with libkrun, the host-side socket
+    // path passed to `krun_add_vsock_port2(listen=true)` accepted
+    // `connect(2)` from inside the launcher process but rejected
+    // connects from any external process (including the server that
+    // spawned the launcher) with ENOENT — libkrun's vsock-to-unix
+    // bridge silently misroutes when another kqueue fd is open in the
+    // same process. Reproduced with a minimal C program: with the
+    // kqueue thread removed, `connect()` from `nc -U` succeeds in <1s.
+    //
+    // Until libkrun upstream is debugged for the kqueue interaction,
+    // fall back to a tight 100 ms `getppid()` poll (the original
+    // pre-kqueue defense). The latency window expands from
+    // milliseconds → 100 ms, but the VM still tears down promptly when
+    // the parent dies, and vsock works.
     {
         let initial_ppid = unsafe { libc::getppid() };
-        std::thread::spawn(move || {
-            const EVFILT_PROC: i16 = -5;
-            const NOTE_EXIT: u32 = 0x8000_0000;
-            // Cf. <sys/event.h>: kevent { ident, filter, flags, fflags, data, udata }.
-            #[repr(C)]
-            #[derive(Default)]
-            struct Kevent {
-                ident: usize,
-                filter: i16,
-                flags: u16,
-                fflags: u32,
-                data: isize,
-                udata: *mut std::ffi::c_void,
-            }
-            extern "C" {
-                fn kqueue() -> i32;
-                fn kevent(
-                    kq: i32,
-                    changelist: *const Kevent,
-                    nchanges: i32,
-                    eventlist: *mut Kevent,
-                    nevents: i32,
-                    timeout: *const libc::timespec,
-                ) -> i32;
-            }
-
-            // Register a one-shot exit watch on the parent pid.
-            let kq = unsafe { kqueue() };
-            if kq >= 0 {
-                let change = Kevent {
-                    ident: initial_ppid as usize,
-                    filter: EVFILT_PROC,
-                    flags: 0x0001 /* EV_ADD */ | 0x0010 /* EV_ENABLE */ | 0x0020 /* EV_ONESHOT */,
-                    fflags: NOTE_EXIT,
-                    data: 0,
-                    udata: std::ptr::null_mut(),
-                };
-                let rc = unsafe {
-                    kevent(kq, &change, 1, std::ptr::null_mut(), 0, std::ptr::null())
-                };
-                if rc >= 0 {
-                    // Block until the parent exits OR we get re-poked by the
-                    // backstop below. Either way, exit if the parent is gone.
-                    let mut out = Kevent::default();
-                    loop {
-                        let n = unsafe {
-                            kevent(kq, std::ptr::null(), 0, &mut out, 1, std::ptr::null())
-                        };
-                        if n > 0 && out.filter == EVFILT_PROC {
-                            eprintln!(
-                                "launcher: parent (server, pid={initial_ppid}) exited via kqueue; tearing down VM"
-                            );
-                            std::process::exit(0);
-                        }
-                        // Spurious wake (EINTR etc.) — re-check getppid as a sanity belt.
-                        let ppid = unsafe { libc::getppid() };
-                        if ppid != initial_ppid || ppid == 1 {
-                            eprintln!(
-                                "launcher: parent (server) reparented to pid={ppid}; tearing down VM"
-                            );
-                            std::process::exit(0);
-                        }
-                    }
-                }
-            }
-
-            // Fallback path (kqueue init failed): 100 ms polling — same logic
-            // as before but 10× tighter window, in the off-chance the kqueue
-            // primitive is unavailable.
-            eprintln!("launcher: kqueue parent-watch unavailable; falling back to 100ms poll");
-            loop {
-                std::thread::sleep(std::time::Duration::from_millis(100));
-                let ppid = unsafe { libc::getppid() };
-                if ppid != initial_ppid || ppid == 1 {
-                    eprintln!("launcher: parent (server) exited; tearing down VM");
-                    std::process::exit(0);
-                }
+        std::thread::spawn(move || loop {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            let ppid = unsafe { libc::getppid() };
+            if ppid != initial_ppid || ppid == 1 {
+                eprintln!(
+                    "launcher: parent (server, pid={initial_ppid}) exited or reparented to {ppid}; tearing down VM"
+                );
+                std::process::exit(0);
             }
         });
     }

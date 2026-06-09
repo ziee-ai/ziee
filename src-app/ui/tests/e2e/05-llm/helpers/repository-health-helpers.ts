@@ -42,9 +42,12 @@ export async function seedRepository(
     )
   }
   const body = await response.json()
-  // Response is `LlmRepositoryWithHealthWarning` — pull the row id off
-  // its `repository` field.
-  return body.repository.id as string
+  // Response is `LlmRepositoryWithHealthWarning` — the row fields are
+  // flattened to the top level alongside an optional `connection_warning`
+  // sibling (`#[serde(flatten)]` on the struct). The earlier
+  // `body.repository.id` assumed a wrapped shape that never existed
+  // on this endpoint.
+  return body.id as string
 }
 
 /** Locate the repository row by name on the settings page. */
