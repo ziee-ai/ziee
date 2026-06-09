@@ -75,7 +75,7 @@ test.describe('Local Runtime — engine lifecycle (needs HUGGINGFACE_API_KEY)', 
     // Fresh load so the chat model store picks up the new local model (the only
     // model → auto-selected in the picker).
     await page.goto(`${baseURL}/`)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     const textarea = page.locator('textarea[placeholder*="Type your message"]')
     await expect(textarea).toBeVisible()

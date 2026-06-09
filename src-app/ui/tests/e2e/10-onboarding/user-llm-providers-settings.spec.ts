@@ -46,7 +46,7 @@ test.describe('User LLM-provider key settings', () => {
 
   test('save and remove a personal API key', async ({ page, testInfra }) => {
     await page.goto(`${testInfra.baseURL}/settings/user-llm-providers`)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     // The seeded provider is auto-selected; its form is shown.
     await expect(page.getByRole('heading', { name: 'E2E Provider' })).toBeVisible({ timeout: 15000 })
@@ -94,7 +94,7 @@ test.describe('User LLM-provider key settings', () => {
     if (!assignRes.ok) throw new Error(`assign failed: ${assignRes.status} ${await assignRes.text()}`)
 
     await page.goto(`${baseURL}/settings/user-llm-providers`)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     // The remote provider is listed (its name renders in both the menu and the
     // detail header → use .first()); the local one is filtered out entirely.

@@ -26,7 +26,7 @@ test.describe('Authentication', () => {
     })
 
     // Navigate to auth page (this will trigger a fresh page load without auth state)
-    await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
+    await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
     await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
 
     // Check accessibility
@@ -56,7 +56,7 @@ test.describe('Authentication', () => {
     })
 
     // Navigate to auth page
-    await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
+    await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
     await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
 
     // Switch to dark mode
@@ -202,7 +202,7 @@ test.describe('Authentication', () => {
     })
 
     // Visit auth page and switch to register
-    await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
+    await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
     await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
     await page.getByRole('button', { name: /sign up/i }).click()
 
@@ -245,7 +245,7 @@ test.describe('Authentication', () => {
     })
 
     // Visit auth page and switch to register
-    await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
+    await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
     await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
     await page.getByRole('button', { name: /sign up/i }).click()
     await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
@@ -285,7 +285,7 @@ test.describe('Authentication', () => {
     })
 
     // Visit auth page and switch to register
-    await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
+    await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
     await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
     await page.getByRole('button', { name: /sign up/i }).click()
     await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
@@ -325,7 +325,7 @@ test.describe('Authentication', () => {
     })
 
     // Visit auth page and switch to register
-    await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
+    await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
     await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
     await page.getByRole('button', { name: /sign up/i }).click()
     await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
@@ -366,7 +366,7 @@ test.describe('Authentication', () => {
     })
 
     // Visit auth page and switch to register
-    await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
+    await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
     await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
     await page.getByRole('button', { name: /sign up/i }).click()
     await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
@@ -407,7 +407,7 @@ test.describe('Authentication', () => {
     })
 
     // Visit auth page and switch to register
-    await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
+    await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
     await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
     await page.getByRole('button', { name: /sign up/i }).click()
     await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
@@ -442,7 +442,7 @@ test.describe('Authentication', () => {
     })
 
     // Visit auth page and switch to register
-    await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
+    await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
     await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
     await page.getByRole('button', { name: /sign up/i }).click()
     await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
@@ -484,7 +484,7 @@ test.describe('Authentication', () => {
     })
 
     // Register a regular user
-    await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
+    await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
     await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
     await page.getByRole('button', { name: /sign up/i }).click()
     await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
@@ -505,7 +505,7 @@ test.describe('Authentication', () => {
     })
 
     // Navigate to auth page (this will trigger a fresh page load without auth state)
-    await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
+    await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
     await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
 
     // Fill login form
@@ -545,7 +545,7 @@ test.describe('Authentication', () => {
     })
 
     // Register a regular user
-    await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
+    await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
     await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
     await page.getByRole('button', { name: /sign up/i }).click()
     await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
@@ -566,7 +566,7 @@ test.describe('Authentication', () => {
     })
 
     // Now visit auth page and login with email
-    await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
+    await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
     await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
 
     // Fill login form with email
@@ -621,7 +621,7 @@ test.describe('Authentication', () => {
     })
 
     // Visit auth page and switch to register
-    await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
+    await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
     await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
     await page.getByRole('button', { name: /sign up/i }).click()
     await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()

@@ -83,7 +83,7 @@ export async function submitProviderForm(page: Page) {
   const submitButton = drawer.locator('.ant-btn-primary[type="submit"]')
   await submitButton.focus()
   await submitButton.press('Enter')
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
 }
 
 export async function updateProviderForm(page: Page) {
@@ -94,7 +94,7 @@ export async function updateProviderForm(page: Page) {
   const submitButton = drawer.locator('.ant-btn-primary[type="submit"]')
   await submitButton.focus()
   await submitButton.press('Enter')
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
 }
 
 export async function cancelProviderForm(page: Page) {
@@ -362,7 +362,7 @@ export async function fillRepositoryForm(page: Page, data: RepositoryFormData) {
 
 export async function submitRepositoryForm(page: Page) {
   await page.click('button[type="submit"]')
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
 }
 
 // =====================================================

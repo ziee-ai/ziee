@@ -204,7 +204,7 @@ test.describe('Hub MCP Servers', () => {
     // waitForURL (which expects an explicit navigation EVENT —
     // SPA navigations sometimes don't trigger that path reliably
     // under Playwright's history hooks).
-    await page.waitForLoadState('networkidle').catch(() => {})
+    await page.waitForLoadState('load').catch(() => {})
     const urlChanged = !page.url().includes('/hub/')
     const drawer = page.getByRole('dialog', { name: /mcp.*server/i })
     const drawerVisible = await drawer.isVisible({ timeout: 2000 }).catch(() => false)

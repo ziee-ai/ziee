@@ -21,7 +21,7 @@ test.describe('Auth providers — visual smoke', () => {
     await page.goto(`${baseURL}/settings/auth-providers`)
 
     // 1. List with the three pre-seeded disabled rows.
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
     await page.screenshot({
       path: 'test-results/visual-list-empty.png',
       fullPage: true,
@@ -37,7 +37,7 @@ test.describe('Auth providers — visual smoke', () => {
 
     // 3. Click Generic OIDC → drawer opens with the form.
     await page.getByText(/Generic OIDC \(Auth0/i).click()
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
     await page.screenshot({
       path: 'test-results/visual-edit-drawer-empty.png',
       fullPage: true,

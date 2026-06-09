@@ -352,7 +352,7 @@ test.describe('LLM Repositories - Edit Repository', () => {
       await combobox.press('Home')
       await combobox.press('ArrowDown')
       await combobox.press('Enter')
-      await page.waitForLoadState('networkidle')
+      await page.waitForLoadState('load')
     }
 
     // Fill API key
@@ -666,7 +666,7 @@ test.describe('LLM Repositories - Connection Testing', () => {
       await combobox.press('ArrowDown')
       await combobox.press('ArrowDown')
       await combobox.press('Enter')
-      await page.waitForLoadState('networkidle')
+      await page.waitForLoadState('load')
     }
 
     // Fill valid bearer token
@@ -711,7 +711,7 @@ test.describe('LLM Repositories - Connection Testing', () => {
       await combobox.press('ArrowDown')
       await combobox.press('ArrowDown')
       await combobox.press('Enter')
-      await page.waitForLoadState('networkidle')
+      await page.waitForLoadState('load')
     }
 
     // Fill invalid bearer token

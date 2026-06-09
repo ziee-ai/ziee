@@ -201,7 +201,7 @@ test.describe('Hub Assistants', () => {
     // list) per AssistantHubCard. Sanity-check by URL after navigation
     // settles, not waitForURL (SPA navigations don't always trip
     // its event hook reliably).
-    await page.waitForLoadState('networkidle').catch(() => {})
+    await page.waitForLoadState('load').catch(() => {})
     const urlChanged = !page.url().includes('/hub/')
     const drawer = page.getByRole('dialog', { name: /assistant/i })
     const drawerVisible = await drawer.isVisible({ timeout: 2000 }).catch(() => false)

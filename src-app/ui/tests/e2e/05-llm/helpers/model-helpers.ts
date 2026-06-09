@@ -77,7 +77,7 @@ export async function uploadModelFolder(page: Page, folderPath: string) {
 export async function uploadModelFile(page: Page, filePath: string) {
   const fileInput = page.locator('input[type="file"]')
   await fileInput.setInputFiles(filePath)
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
 }
 
 export async function uploadModel(

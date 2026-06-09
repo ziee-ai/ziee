@@ -23,13 +23,13 @@ export interface RepositoryFormData {
 
 export async function goToRepositoriesPage(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/settings/llm-repositories`)
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
 }
 
 export async function waitForRepositoriesPageLoad(page: Page) {
   // Wait for the repositories page to load
   await page.waitForSelector('text=LLM Repositories', { timeout: 30000 })
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
 }
 
 // =====================================================
@@ -62,7 +62,7 @@ export async function fillRepositoryForm(page: Page, data: RepositoryFormData) {
   }
 
   await page.click(`.ant-select-item-option:has-text("${authTypeLabels[data.authType]}")`)
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
 
   // Fill auth fields based on type
   if (data.authType === 'api_key' && data.apiKey) {
@@ -102,7 +102,7 @@ export async function submitRepositoryForm(page: Page) {
   // "Add", audit I-2). Scope by primary-button class.
   const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
   await drawer.locator('.ant-btn-primary[type="submit"]').click()
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
 }
 
 export async function createRepository(
@@ -144,7 +144,7 @@ export async function updateRepositoryForm(page: Page) {
   // "Save", audit I-2). Scope by primary-button class.
   const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
   await drawer.locator('.ant-btn-primary[type="submit"]').click()
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
 }
 
 export async function updateRepository(
@@ -186,7 +186,7 @@ export async function deleteRepository(page: Page, repositoryName: string): Prom
   await confirmDeleteRepository(page)
 
   // Wait for removal from list
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
   await expect(page.locator(`text=${repositoryName}`).first()).not.toBeVisible()
 }
 
@@ -198,7 +198,7 @@ export async function toggleRepositoryStatus(page: Page, repositoryName: string)
   const repositoryRow = page.locator('div').filter({ hasText: new RegExp(`^${repositoryName}`) }).first()
   const toggle = repositoryRow.locator('.ant-switch')
   await toggle.click()
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
 }
 
 export async function enableRepository(page: Page, repositoryName: string): Promise<void> {
@@ -208,7 +208,7 @@ export async function enableRepository(page: Page, repositoryName: string): Prom
 
   if (isEnabled === 'false') {
     await toggle.click()
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
   }
 }
 
@@ -219,7 +219,7 @@ export async function disableRepository(page: Page, repositoryName: string): Pro
 
   if (isEnabled === 'true') {
     await toggle.click()
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
   }
 }
 
@@ -336,7 +336,7 @@ export async function configureHuggingFaceAuth(page: Page, baseURL: string): Pro
   // Navigate to Settings > LLM Providers to clean up UI state
   // This ensures any open drawers are closed and we're on a clean page
   await page.goto(`${baseURL}/settings`)
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
   await page.click('text=LLM Providers')
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
 }
