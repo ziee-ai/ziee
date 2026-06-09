@@ -13,7 +13,12 @@ export async function createAssistantFromHub(
   },
 ) {
   const assistantCard = page.getByTestId(`hub-assistant-card-${assistantId}`)
-  await assistantCard.getByRole('button', { name: /use/i }).click()
+  // The hub-assistant card renders TWO buttons whose names both
+  // match `/use/i`: `hub-assistant-use-btn` (one-click "Use") and
+  // `hub-assistant-use-as-template-btn` ("Use as template" — opens
+  // the customize modal). Anchor on the primary one-click testid;
+  // the customize flow below already drives the modal explicitly.
+  await assistantCard.getByTestId('hub-assistant-use-btn').click()
 
   // Handle customization modal if it appears
   if (customize) {

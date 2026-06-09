@@ -3,6 +3,7 @@ import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { Stores } from '@/core/stores'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
+import { useMcpUserPolicyStore } from '@/modules/mcp/stores/McpUserPolicy.store'
 import { useGroupSystemMcpServersAssignmentStore } from '@/modules/mcp/components/system/GroupSystemMcpServersAssignmentDrawer.store'
 import { useSystemMcpServerGroupCardStore } from '@/modules/mcp/components/system/McpServerGroupsAssignmentCard.store'
 import { useMcpServerGroupsAssignmentStore } from '@/modules/mcp/components/system/McpServerGroupsAssignmentDrawer.store'
@@ -111,6 +112,14 @@ export default createModule({
     {
       name: 'ProjectMcpSettings',
       store: useProjectMcpSettingsStore,
+    },
+    {
+      // Global MCP user-policy (allowed transports + sandbox flavor
+      // for user-installed stdio). Loaded on first access; admin
+      // edits emit `mcp_user_policy.updated` so the drawer + Add
+      // button + Hub tab re-render without a page reload.
+      name: 'McpUserPolicy',
+      store: useMcpUserPolicyStore,
     },
   ],
   components: [

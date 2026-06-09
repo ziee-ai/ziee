@@ -316,6 +316,15 @@ jwt:
           // Short-circuit validation to a no-op (debug-only env;
           // compiled out of release builds).
           ZIEE_DISABLE_MODEL_VALIDATION: '1',
+          // E2E specs that exercise MCP chip / list flows create
+          // system MCP servers with fake URLs (e.g.
+          // `https://chip-test.example.invalid/mcp`). The
+          // connection_health probe on create + enable-transition
+          // would auto-disable them and break every downstream chip
+          // assertion. Skip the probe in tests; the real flow stays
+          // on in dev/release builds (debug-only env, compiled out
+          // via `cfg!(debug_assertions)`).
+          ZIEE_DISABLE_MCP_HEALTH_CHECK: '1',
           PATH:
             process.platform === 'win32'
               ? `${process.env.USERPROFILE}\\.cargo\\bin;${process.env.PATH}`

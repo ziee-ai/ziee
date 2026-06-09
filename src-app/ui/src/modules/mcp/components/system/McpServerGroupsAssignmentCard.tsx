@@ -61,6 +61,7 @@ export function McpServerGroupsAssignmentCard({
                   e.stopPropagation()
                   handleManageGroups()
                 }}
+                aria-label="Manage user groups"
               >
                 Assign
               </Button>

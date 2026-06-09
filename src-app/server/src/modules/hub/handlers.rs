@@ -762,9 +762,17 @@ async fn build_mcp_server_create_from_hub(
         // the option only honors admin/system servers when set
         // explicitly via the native admin form.
         run_in_sandbox: None,
-        // Defaults to `full` (the DB column default) when the admin
-        // later enables run_in_sandbox via the native form.
+        // Sandbox flavor unset on hub installs. The DB column
+        // defaults to 'full' (migration 83) for any system row the
+        // admin later flips `run_in_sandbox=true` on. User-scope
+        // hub installs route through `create_user_server` which
+        // force-applies the active policy flavor regardless.
         sandbox_flavor: None,
+        // Hub-scope tracking: the regular create handler records the
+        // install in `hub_entities` when `hub_id` is set on the
+        // request body — same bookkeeping the dedicated
+        // `/hub/mcp-servers/create*` endpoints do.
+        hub_id: Some(hub_server.id),
     };
 
     // Validation MUST run before any DB write so the `replace_existing`
@@ -824,7 +832,17 @@ pub async fn create_mcp_server_from_hub(
 
     // Plan first so a failing lookup / validation doesn't wipe the
     // prior installs with no replacement.
-    let plan = build_mcp_server_create_from_hub(&request).await?;
+    let mut plan = build_mcp_server_create_from_hub(&request).await?;
+
+    // Policy gate: same rules as the regular `POST /api/mcp/servers`
+    // handler. Done on the planned CreateMcpServerRequest BEFORE the
+    // delete loop so a rejection by policy doesn't wipe the prior
+    // install.
+    let policy = crate::modules::mcp::user_policy::load(Repos.pool()).await?;
+    crate::modules::mcp::user_policy::enforce_on_user_create(
+        &mut plan.create_request,
+        &policy,
+    )?;
 
     for existing_id in &existing_ids {
         // Tolerate "already deleted" — racy with a concurrent delete
@@ -941,6 +959,7 @@ pub async fn create_system_mcp_server_from_hub(
         if let Some(prior) = Repos.mcp.get_any_server(existing_id).await? {
             plan.create_request.enabled = Some(prior.enabled);
             plan.create_request.run_in_sandbox = Some(prior.run_in_sandbox);
+            plan.create_request.sandbox_flavor = Some(prior.sandbox_flavor.clone());
             plan.create_request.usage_mode = Some(prior.usage_mode);
             plan.create_request.max_concurrent_sessions =
                 prior.max_concurrent_sessions;
@@ -1060,6 +1079,17 @@ pub async fn create_system_mcp_server_from_hub(
             }
         }
     }
+
+    // Mirror the regular `POST /api/mcp/system-servers` handler's
+    // tiered command + flavor validation BEFORE the prior-row delete
+    // so a flavor-invalid re-install doesn't wipe the existing system
+    // server with no replacement. Same gate runs again after the
+    // delete (line ~1124) — defensive duplication so the gate fires
+    // in BOTH orderings.
+    crate::modules::mcp::handlers::validate_sandbox_fields_create(
+        true,
+        &plan.create_request,
+    )?;
 
     // Validation passed — now delete the prior system server (if any)
     // and emit `McpServerEvent::SystemServerDeleted` so the hub
@@ -1204,6 +1234,33 @@ pub async fn create_model_from_hub(
                 hub_model.repository_url
             ))
         })?;
+
+    // 2a. Block when the source repository is disabled. Mirrors the
+    // auth gate just below — without this, a download against a
+    // disabled repo would either fail later in the background (when
+    // the git/HF client tries to clone) or, worse, silently succeed
+    // because the repo's `enabled` field is purely UI state today.
+    // The UI also gates on this before clicking Download (see
+    // `ModelHubCard.tsx::handleDownload`); this is the defense-in-
+    // depth backstop for direct API calls and stale-UI snapshots.
+    if !repository.enabled {
+        return Err((
+            StatusCode::UNPROCESSABLE_ENTITY,
+            AppError::unprocessable_entity(
+                "HUB_REPOSITORY_DISABLED",
+                format!(
+                    "Downloading \"{}\" requires the \"{}\" repository to be enabled, but \
+                     it's currently disabled. Open the repository's settings and enable it.",
+                    hub_model.display_name, repository.name
+                ),
+            )
+            .with_details(serde_json::json!({
+                "repository_id": repository.id,
+                "repository_name": repository.name,
+                "settings_path": "/settings/llm-repositories",
+            })),
+        ));
+    }
 
     // 2b. Block early with clear guidance when this model needs auth but the
     // source repository has no credential configured. Without this the download

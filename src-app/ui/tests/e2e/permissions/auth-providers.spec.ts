@@ -57,34 +57,34 @@ test.describe('auth-providers — permission gating', () => {
       page.getByRole('heading', { name: /Auth providers/i }),
     ).toBeVisible({ timeout: 10_000 })
 
-    // The pre-seeded google/microsoft/apple rows from migration 47 are
-    // visible to readers (proof the GET list endpoint worked under
-    // their read permission).
-    await expect(
-      page.getByRole('row').filter({ hasText: 'google' }).first(),
-    ).toBeVisible()
-    await expect(
-      page.getByRole('row').filter({ hasText: 'microsoft' }).first(),
-    ).toBeVisible()
-    await expect(
-      page.getByRole('row').filter({ hasText: 'apple' }).first(),
-    ).toBeVisible()
+    // The pre-seeded google/microsoft/apple entries from migration 47
+    // are visible to readers (proof the GET list endpoint worked under
+    // their read permission). The list renders each provider as a
+    // <Card> with the name inside an antd `<Text>` (span.ant-typography)
+    // — not a `<tr>`. We anchor on the typography span specifically
+    // because the row ALSO renders the provider_type as an antd <Tag>
+    // (span.ant-tag), and for the Apple OIDC seed the type string is
+    // ALSO "apple" — a bare `getByText('apple', { exact: true })`
+    // hits strict-mode (2 matches: name span + tag span).
+    const providerName = (name: string) =>
+      page.locator('span.ant-typography').getByText(name, { exact: true })
+    await expect(providerName('google')).toBeVisible()
+    await expect(providerName('microsoft')).toBeVisible()
+    await expect(providerName('apple')).toBeVisible()
 
     // All mutating + test controls hidden — every <Can permission=
     // Permissions.AuthProvidersManage> wrapper should render null.
+    // Names come from the live DOM (per error-context.md):
+    //   Add button:      aria-label="Add authentication provider"
+    //   Per-row Switch:  aria-label="Toggle <name>"
+    //   Per-row Buttons: visible text "Test" / "Edit" / "Delete"
+    //                    (no aria-label suffix with the provider name)
     await expect(
-      page.getByRole('button', { name: /add provider/i }),
+      page.getByRole('button', { name: /^Add authentication provider$/i }),
     ).toHaveCount(0)
-    // Match the per-row aria-label pattern (`Edit ${name}` etc.) so
-    // the negative assertion is meaningful — the bare /^edit$/i
-    // regex never matched any rendered button anyway, so the
-    // toHaveCount(0) was vacuously passing and providing zero
-    // permission-gating coverage (round-4 finding N-1).
-    await expect(page.getByRole('button', { name: /^Edit \w+/i })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: /^Delete \w+/i })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: /^Test \w+/i })).toHaveCount(0)
-    // The per-row Switch is also inside <Can> — Antd renders it as
-    // a switch role.
+    await expect(page.getByRole('button', { name: /^Edit$/i })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /^Delete$/i })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /^Test$/i })).toHaveCount(0)
     await expect(page.getByRole('switch')).toHaveCount(0)
   })
 
@@ -102,20 +102,20 @@ test.describe('auth-providers — permission gating', () => {
 
     // Add Provider dropdown visible.
     await expect(
-      page.getByRole('button', { name: /add provider/i }),
+      page.getByRole('button', { name: /^Add authentication provider$/i }),
     ).toBeVisible()
 
     // Per-row controls — at least one of each on the pre-seeded rows.
-    // Buttons carry aria-label="<Action> <provider-name>" so we match
-    // by prefix rather than the bare action verb (round-3 N-2).
+    // Buttons are plain "Edit" / "Test" / "Delete" — no aria-label
+    // suffix with the provider name in the current DOM.
     await expect(
-      page.getByRole('button', { name: /^Edit \w+/ }).first(),
+      page.getByRole('button', { name: /^Edit$/ }).first(),
     ).toBeVisible()
     await expect(
-      page.getByRole('button', { name: /^Test \w+/ }).first(),
+      page.getByRole('button', { name: /^Test$/ }).first(),
     ).toBeVisible()
     await expect(
-      page.getByRole('button', { name: /^Delete \w+/ }).first(),
+      page.getByRole('button', { name: /^Delete$/ }).first(),
     ).toBeVisible()
     // 3 pre-seeded rows × 1 switch each = at least 3.
     expect(await page.getByRole('switch').count()).toBeGreaterThanOrEqual(3)
@@ -133,10 +133,10 @@ test.describe('auth-providers — permission gating', () => {
     ).toBeVisible({ timeout: 10_000 })
 
     await expect(
-      page.getByRole('button', { name: /add provider/i }),
+      page.getByRole('button', { name: /^Add authentication provider$/i }),
     ).toBeVisible()
     await expect(
-      page.getByRole('button', { name: /^Edit \w+/ }).first(),
+      page.getByRole('button', { name: /^Edit$/ }).first(),
     ).toBeVisible()
   })
 })

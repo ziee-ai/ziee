@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { App } from '@ziee/ui-core'
+import { Stores } from '@/core/stores'
 import { loadDesktopModules } from '@ziee/desktop/modules/desktop-loader'
 // Use the explicit `@ziee/desktop/*` alias — `@/*` resolves against
 // core UI per tsconfig `paths`, so a desktop-only file isn't reachable
@@ -35,6 +36,17 @@ installDecorumTitlebarFix()
 // Load desktop-specific modules (window, tray, file-dialog, etc.)
 console.log('Loading desktop modules...')
 loadDesktopModules()
+
+// Flip the portable multi-user flag synchronously BEFORE any React
+// render so core in-page widgets that key off it (MCP user-policy
+// card, MCP groups-assignment card, future single-admin-irrelevant
+// widgets) never render in their multi-user form on desktop. Doing
+// this in `desktop-base/module.tsx::initialize()` (async) would
+// leave a brief render-flash window before the flip; setting it
+// here happens after both core + desktop modules have registered
+// their stores (`Stores.AppMode` from `modules/app/module.tsx`) and
+// before `createRoot().render(<App/>)`.
+Stores.AppMode.setMultiUserMode(false)
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

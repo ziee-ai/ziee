@@ -1,28 +1,42 @@
-import { App, Card, Tag, Typography, Button, Flex, Select, Tooltip } from 'antd'
+import {
+  App,
+  Card,
+  Progress,
+  Tag,
+  Typography,
+  Button,
+  Flex,
+  Select,
+  Tooltip,
+} from 'antd'
 import {
   AppstoreOutlined,
   DownloadOutlined,
+  ExclamationCircleOutlined,
   EyeOutlined,
   FileTextOutlined,
   KeyOutlined,
   LockOutlined,
   MessageOutlined,
   PictureOutlined,
+  ReloadOutlined,
   SearchOutlined,
   ToolOutlined,
   UnlockOutlined,
 } from '@ant-design/icons'
+import { formatSpeed, formatTime } from '@/utils/downloadUtils'
 import {
   Permissions,
+  type DownloadInstance,
   type HubLocalProvider,
   type HubModel,
   type HubModelQuantizationOption,
 } from '@/api-client/types'
-import { useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState } from 'react'
 import { ModelDetailsDrawer } from '@/modules/hub/modules/llm-models/components/ModelDetailsDrawer'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
+import { useHubModelDownloadGate } from '@/modules/hub/modules/llm-models/hooks/useHubModelDownloadGate'
 
 const { Text } = Typography
 
@@ -34,18 +48,25 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
   const { message, modal } = App.useApp()
   const [showDetails, setShowDetails] = useState(false)
   const canDownload = usePermission(Permissions.HubModelsCreate)
-  const navigate = useNavigate()
-  // Guards against stacking duplicate auth modals on rapid Download clicks.
-  const authModalOpenRef = useRef(false)
+
+  // Shared pre-download gating (resolve repo → enabled? → probe).
+  // The hook owns the modal lifecycle + the probe-in-flight flag,
+  // so this component just wires the result into its UX.
+  const { runGates, probing } = useHubModelDownloadGate()
 
   const { localProviders } = Stores.HubModels
   const { downloads } = Stores.LlmModelDownload
 
-  // Find active download for this model
-  const activeDownload = downloads.find(
-    download =>
-      download.request_data.repository_path === model.repository_path &&
-      (download.status === 'downloading' || download.status === 'pending'),
+  // All downloads belonging to this model (matched by repository_path),
+  // partitioned by status. Precedence below: active > downloaded > failed > idle.
+  // Failed entries stay in the store array (they're filtered out only on
+  // cancelled/completed transitions per LlmModelDownload.store.ts), so we
+  // intentionally surface them on the card with a Retry affordance.
+  const downloadsForThisModel = downloads.filter(
+    d => d.request_data.repository_path === model.repository_path,
+  )
+  const activeDownload = downloadsForThisModel.find(
+    d => d.status === 'downloading' || d.status === 'pending',
   )
 
   const isModelBeingDownloaded = !!activeDownload
@@ -53,50 +74,28 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
   // Check if this hub model has been downloaded (system-wide tracking via hub)
   const isModelDownloaded = (model.created_ids?.length ?? 0) > 0
 
-  const showAuthRequiredModal = () => {
-    if (authModalOpenRef.current) return
-    authModalOpenRef.current = true
-    const m = modal.info({
-      icon: null,
-      footer: null,
-      title: 'Authentication Required',
-      closable: true,
-      // Fires on every exit path (Cancel/primary destroy, the X, mask click),
-      // reliably clearing the re-entrancy guard above.
-      afterClose: () => {
-        authModalOpenRef.current = false
-      },
-      content: (
-        <div className="flex flex-col gap-2">
-          <Text>
-            Downloading <Text strong>{model.display_name}</Text> needs a
-            credential for its source repository, which is not configured yet.
-            Add it in Settings → LLM Repositories, then try again.
-          </Text>
-          <Flex className={'gap-2 w-full justify-end'}>
-            <Button onClick={() => m.destroy()}>Cancel</Button>
-            <Button
-              type="primary"
-              onClick={() => {
-                m.destroy()
-                navigate('/settings/llm-repositories')
-              }}
-            >
-              Go to LLM Repositories
-            </Button>
-          </Flex>
-        </div>
-      ),
-    })
-  }
+  // Surface failed downloads ONLY when nothing more recent overrides them:
+  // a fresh active download supersedes (the user is retrying); a successful
+  // download (model.created_ids populated by loadModelsForProvider on the
+  // SSE completion tick) also supersedes. Without this precedence, a stale
+  // failed entry would shadow the "Downloaded" tag after a successful retry.
+  const failedDownload =
+    !activeDownload && !isModelDownloaded
+      ? downloadsForThisModel.find(d => d.status === 'failed')
+      : undefined
 
-  const handleDownload = async () => {
-    // Block early with guidance when this model needs auth but its source repo
-    // has no credential configured (the backend enforces the same with a 422).
-    if (model.auth_required && !model.source_auth_configured) {
-      showAuthRequiredModal()
+  const handleDownload = async (retryFrom?: DownloadInstance) => {
+    // ─── Pre-download gates (resolve repo → enabled? → probe) ──────
+    // The hook surfaces its own modals on gate failure (Repository
+    // Disabled / Authentication Required / Cannot Connect / Repository
+    // Not Configured), all of which route the primary button to the
+    // LlmRepositoryDrawer. We only proceed when it returns ok=true.
+    const gateResult = await runGates(model)
+    if (!gateResult.ok) {
       return
     }
+
+    // ─── Probe passed — proceed with the existing download flow ────
 
     if (localProviders.length === 0) {
       message.error(
@@ -105,11 +104,37 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
       return
     }
 
+    // Retry-from-failed shortcut: reuse the provider + quantization
+    // the user already picked on the first attempt instead of
+    // re-prompting. Without this, a Retry click silently re-opens
+    // the same Select Quantization / Select Local Provider modals
+    // the user already dismissed once — confusing UX and easy to
+    // accidentally pick a different quant on retry. Both lookups
+    // tolerate a stale ID (provider deleted / quant removed from
+    // the manifest) by falling through to the modal flow.
     let provider: HubLocalProvider = localProviders[0]
     let selectedQuantization: HubModelQuantizationOption | undefined = undefined
 
+    const retryProvider = retryFrom?.provider_id
+      ? localProviders.find(p => p.id === retryFrom.provider_id)
+      : undefined
+    const retryQuantName = retryFrom?.request_data.quantization
+    const retryQuant = retryQuantName
+      ? model.quantization_options?.find(q => q.name === retryQuantName)
+      : undefined
+
+    if (retryProvider) provider = retryProvider
+    if (retryQuant) selectedQuantization = retryQuant
+
+    const skipProviderModal = !!retryProvider
+    const skipQuantModal = !!retryQuant
+
     // Handle quantization options selection
-    if (model.quantization_options && model.quantization_options.length > 1) {
+    if (
+      !skipQuantModal &&
+      model.quantization_options &&
+      model.quantization_options.length > 1
+    ) {
       selectedQuantization = model.quantization_options[0]
 
       await new Promise<void>(resolve => {
@@ -180,13 +205,14 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
         return
       }
     } else if (
+      !skipQuantModal &&
       model.quantization_options &&
       model.quantization_options.length === 1
     ) {
       selectedQuantization = model.quantization_options[0]
     }
 
-    if (localProviders.length > 1) {
+    if (!skipProviderModal && localProviders.length > 1) {
       await new Promise<void>(resolve => {
         let m = modal.info({
           icon: null,
@@ -295,12 +321,20 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                       Private
                     </Tag>
                   )}
-                  {isModelBeingDownloaded && (
-                    <Tag color="blue">Downloading...</Tag>
-                  )}
-                  {isModelDownloaded && (
+                  {/* Top status tag — minimal, no percent (the
+                      full-width bar at the bottom carries that).
+                      Precedence: active > downloaded > failed. */}
+                  {isModelBeingDownloaded ? (
+                    <Tag color="blue" icon={<DownloadOutlined />}>
+                      Downloading
+                    </Tag>
+                  ) : isModelDownloaded ? (
                     <Tag color="geekblue-inverse">Downloaded</Tag>
-                  )}
+                  ) : failedDownload ? (
+                    <Tag color="error" icon={<ExclamationCircleOutlined />}>
+                      Download Failed
+                    </Tag>
+                  ) : null}
                   {model.auth_required && (
                     <Tooltip
                       title={
@@ -338,7 +372,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                 >
                   README
                 </Button>
-                {canDownload && (
+                {canDownload && !failedDownload && (
                   <Button
                     type="primary"
                     icon={<DownloadOutlined />}
@@ -346,10 +380,17 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                       e.stopPropagation()
                       handleDownload()
                     }}
-                    disabled={isModelBeingDownloaded}
-                    loading={isModelBeingDownloaded}
+                    // Probing = pre-download connection test in flight
+                    // (up to 10s on the upstream timeout). Disable +
+                    // spinner so the user sees something is happening
+                    // and can't double-click to fire concurrent probes.
+                    // When a failed download is present, the Retry button
+                    // under the progress bar takes over — hide the primary
+                    // Download button so there's only one path forward.
+                    disabled={isModelBeingDownloaded || probing}
+                    loading={isModelBeingDownloaded || probing}
                   >
-                    Download
+                    {probing ? 'Testing…' : 'Download'}
                   </Button>
                 )}
               </div>
@@ -487,6 +528,128 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
             </div>
           </div>
         </div>
+
+        {/* Download progress / failure bar.
+         *
+         * Spans the full width of the card body (the wrapping
+         * `<div>`s above each have padding; the Card's own
+         * `body` padding bounds this). Shows EITHER:
+         *   - an animated `status="active"` bar while a download
+         *     is in flight, with `47% · 5.2 MB/s · ETA 2m 15s`
+         *     style info on the right
+         *   - a red `status="exception"` bar on failure, with the
+         *     clipped error reason inline + a Retry button below
+         *
+         * Hidden when no download is active or failed (precedence
+         * rules above + isModelDownloaded for the success case).
+         */}
+        {activeDownload && (
+          <div
+            className="mt-3"
+            onClick={e => {
+              // Don't open the model-details drawer when the user
+              // is just trying to see the bar's progress info.
+              e.stopPropagation()
+            }}
+          >
+            <Progress
+              percent={
+                activeDownload.progress_data?.total
+                  ? Math.round(
+                      (activeDownload.progress_data.current /
+                        activeDownload.progress_data.total) *
+                        100,
+                    )
+                  : 0
+              }
+              status="active"
+              format={(percent?: number) => {
+                const speed = activeDownload.progress_data?.speed_bps
+                const eta = activeDownload.progress_data?.eta_seconds
+                const parts: string[] = [`${percent ?? 0}%`]
+                if (typeof speed === 'number' && speed > 0) {
+                  parts.push(formatSpeed(speed))
+                }
+                if (typeof eta === 'number' && eta > 0) {
+                  parts.push(`ETA ${formatTime(eta)}`)
+                }
+                return (
+                  <Text className="text-xs">{parts.join(' · ')}</Text>
+                )
+              }}
+            />
+            {/* Phase / message under the bar, only when the
+                backend supplies one — most downloads don't, so
+                this stays hidden in the common case. */}
+            {activeDownload.progress_data?.phase && (
+              <Text type="secondary" className="text-xs block mt-1">
+                {activeDownload.progress_data.phase}
+                {activeDownload.progress_data.message
+                  ? ` — ${activeDownload.progress_data.message}`
+                  : ''}
+              </Text>
+            )}
+          </div>
+        )}
+
+        {failedDownload && (
+          <div
+            className="mt-3"
+            onClick={e => {
+              e.stopPropagation()
+            }}
+          >
+            <Tooltip
+              title={failedDownload.error_message ?? 'Download failed'}
+            >
+              <Progress
+                percent={
+                  failedDownload.progress_data?.total
+                    ? Math.round(
+                        ((failedDownload.progress_data.current ?? 0) /
+                          failedDownload.progress_data.total) *
+                          100,
+                      )
+                    : 0
+                }
+                status="exception"
+                format={(percent?: number) => {
+                  const reason = failedDownload.error_message ?? 'failed'
+                  // Clip the inline reason at ~50 chars; the full
+                  // text lives in the wrapping Tooltip's title.
+                  const shortReason =
+                    reason.length > 50 ? `${reason.slice(0, 50)}…` : reason
+                  return (
+                    <Text className="text-xs">
+                      {percent ?? 0}% — {shortReason}
+                    </Text>
+                  )
+                }}
+              />
+            </Tooltip>
+            {canDownload && (
+              <div className="flex justify-end mt-1">
+                <Button
+                  size="small"
+                  icon={<ReloadOutlined />}
+                  onClick={e => {
+                    e.stopPropagation()
+                    // Reuse the existing gates-and-probe pre-flight
+                    // from handleDownload, and pass the failed
+                    // DownloadInstance so the prior provider +
+                    // quantization choices are preserved (no
+                    // re-prompting). If the original failure was a
+                    // transient repo / probe issue and the user
+                    // fixed it, the retry will self-recover.
+                    handleDownload(failedDownload)
+                  }}
+                >
+                  Retry
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
       </Card>
 
       <ModelDetailsDrawer

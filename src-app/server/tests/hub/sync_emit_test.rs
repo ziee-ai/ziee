@@ -45,6 +45,7 @@ fn one_version() -> Vec<MockVersion> {
             id: "mock-model-a",
             min_ziee_version: None,
             extra_yaml: None,
+            mcp_http: false,
         }],
     }]
 }

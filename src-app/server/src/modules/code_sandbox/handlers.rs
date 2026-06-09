@@ -509,7 +509,11 @@ pub struct SandboxFlavorsResponse {
 }
 
 /// GET /code-sandbox/flavors — powers the MCP server form's flavor
-/// picker. Returns KNOWN_FLAVORS + the host command allowlist.
+/// picker AND the MCP user-policy admin card. Returns KNOWN_FLAVORS
+/// + the host command allowlist. Permission is `McpServersAdminRead`
+/// because both UI surfaces this endpoint serves are admin-only MCP
+/// management pages (cross-module dep is acceptable because the
+/// endpoint exists specifically for those MCP surfaces).
 pub async fn get_sandbox_flavors_handler(
     _auth: RequirePermissions<(crate::modules::mcp::permissions::McpServersAdminRead,)>,
 ) -> crate::common::ApiResult<Json<SandboxFlavorsResponse>> {
@@ -532,10 +536,10 @@ pub fn get_sandbox_flavors_docs(
         .tag("Code Sandbox")
         .summary("List selectable sandbox rootfs flavors + host command allowlist")
         .description(
-            "Powers the MCP server form's sandbox flavor picker. Returns the \
-             KNOWN_FLAVORS catalog (name / description / approximate size / cached) \
-             plus the host-path command allowlist a non-sandboxed stdio server \
-             must use.",
+            "Powers the MCP server form's sandbox flavor picker AND the MCP \
+             user-policy admin card's flavor select. Returns the KNOWN_FLAVORS \
+             catalog (name / description / approximate size / cached) plus the \
+             host-path command allowlist a non-sandboxed stdio server must use.",
         )
         .response::<200, Json<SandboxFlavorsResponse>>()
         .response_with::<401, (), _>(|r| r.description("Unauthorized"))

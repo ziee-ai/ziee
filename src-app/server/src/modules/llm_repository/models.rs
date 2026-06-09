@@ -142,6 +142,16 @@ pub struct LlmRepository {
     pub built_in: bool, // true for built-in repositories like Hugging Face
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Connection-health columns (migration 83). Populated by
+    /// `connection_health::probe` at four points: boot startup
+    /// check, create-flow probe, update-flow enable-transition
+    /// probe, and the explicit form-based test path.
+    /// `last_health_check_at` is NULL on rows that have never been
+    /// probed (default status "untested"). UI renders an Alert
+    /// when `last_health_check_status == "unhealthy"`.
+    pub last_health_check_at: Option<DateTime<Utc>>,
+    pub last_health_check_status: String, // "untested" | "healthy" | "unhealthy"
+    pub last_health_check_reason: Option<String>,
 }
 
 impl LlmRepository {
@@ -171,6 +181,9 @@ mod tests {
             built_in: false,
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            last_health_check_at: None,
+            last_health_check_status: "untested".to_string(),
+            last_health_check_reason: None,
         }
     }
 

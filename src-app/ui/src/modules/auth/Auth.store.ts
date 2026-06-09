@@ -95,8 +95,10 @@ export const useAuthStore = create<AuthState>()(
             return
           }
           set({ isLoading: true, error: null })
+          let loginSucceeded = false
           try {
             const response = await ApiClient.Auth.login(credentials, undefined)
+            loginSucceeded = true
 
             // Seed the token, then COMPLETE the bootstrap by fetching /me for
             // permissions. The login/register responses don't carry
@@ -116,14 +118,36 @@ export const useAuthStore = create<AuthState>()(
               error: null,
             })
           } catch (error) {
-            set({
+            // If LOGIN itself failed (bad credentials, network, etc.),
+            // clear everything — there is no valid token.
+            //
+            // If login SUCCEEDED but the follow-up /me throws (test
+            // navigation aborts the in-flight fetch, transient backend
+            // hiccup, etc.), keep the token in place. The token is
+            // still valid; AuthGuard's initAuth will retry /me on the
+            // next mount and either succeed (→ authenticated) or get
+            // a real 401 (→ redirect to /auth). Wiping the token here
+            // turned every aborted /me into a logged-out session and
+            // was the cause of ~200 E2E failures per parallel run.
+            const isAbort =
+              error instanceof TypeError &&
+              /failed to fetch|network|aborted/i.test(error.message)
+            const baseError = {
               error: error instanceof Error ? error.message : 'Login failed',
               isLoading: false,
               isInitializing: false,
-              isAuthenticated: false,
-              token: null,
-              user: null,
-            })
+            }
+            if (!loginSucceeded || !isAbort) {
+              set({
+                ...baseError,
+                isAuthenticated: false,
+                token: null,
+                user: null,
+              })
+            } else {
+              // Login OK, /me aborted — token is still valid, leave it.
+              set(baseError)
+            }
             throw error
           }
         },
@@ -384,13 +408,30 @@ export const useAuthStore = create<AuthState>()(
             }
             throw lastError
           } catch (error) {
-            set({
+            // Same logic as `authenticateUser`: a "Failed to fetch"
+            // / aborted error doesn't prove the token is bad — it
+            // usually means the page navigated mid-/me. Preserve
+            // the token so the next mount can retry. Only wipe on
+            // a real auth failure (401 surfaces here as a non-
+            // TypeError with a status-bearing message).
+            const isAbort =
+              error instanceof TypeError &&
+              /failed to fetch|network|aborted/i.test(error.message)
+            const baseError = {
               error:
                 error instanceof Error
                   ? error.message
                   : 'Failed to fetch user information',
               isLoading: false,
               isInitializing: false,
+            }
+            if (isAbort) {
+              // Keep token; AuthGuard will retry initAuth on next mount.
+              set(baseError)
+              return
+            }
+            set({
+              ...baseError,
               isAuthenticated: false,
               token: null,
               user: null,

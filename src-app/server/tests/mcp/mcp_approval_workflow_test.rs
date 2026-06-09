@@ -1017,88 +1017,11 @@ async fn test_sse_events_order_and_timing() {
 }
 
 // ============================================================================
-// Future Enhancement Tests
-// ============================================================================
-
-/// Test approving multiple tools at once via batch approval
-/// TODO: Batch approval resume workflow needs implementation
-#[tokio::test]
-#[ignore = "Batch approval resume workflow not yet implemented"]
-async fn test_approve_multiple_tools_batch() {
-    let server = TestServer::start().await;
-    let user = test_helpers::create_user_with_permissions(&server, "user", MCP_TEST_PERMISSIONS)
-    .await;
-
-    // Create MCP server
-    let mcp_server = create_test_mcp_server(&server, &user, true).await;
-    let mcp_server_id = Uuid::parse_str(mcp_server["id"].as_str().unwrap()).unwrap();
-
-    // Create conversation
-    let conversation = crate::chat::helpers::create_conversation(&server, &user.token, None, None).await;
-    let conversation_id = crate::chat::helpers::parse_uuid(&conversation["id"]);
-    let branch_id = crate::chat::helpers::parse_uuid(&conversation["active_branch_id"]);
-
-    let model = crate::chat::helpers::get_or_create_test_model(&server, &user.user_id).await;
-    let model_id = crate::chat::helpers::parse_uuid(&model["id"]);
-
-    // Set manual-approve mode
-    set_mcp_settings(&server, &user.token, conversation_id, "manual_approve", vec![]).await;
-
-    // Send message that triggers multiple tool uses
-    let events = send_message_with_mcp(
-        &server,
-        &user.token,
-        conversation_id,
-        branch_id,
-        model_id,
-        mcp_server_id,
-        "Fetch content from https://example.com and https://example.org",
-        None,
-    )
-    .await;
-
-    // Parse SSE events to get tool_use_ids
-    let approval_events: Vec<_> = events.iter()
-        .filter(|e| e.event == "mcpApprovalRequired")
-        .collect();
-
-    // Note: The LLM might only request one tool at a time, but if we get multiple approvals,
-    // we can test batch approval. For now, verify we can handle the approval request.
-    assert!(!approval_events.is_empty(), "Should have at least one approval request");
-
-    // Get pending approvals
-    let pending = get_pending_approvals(&server, &user.token, branch_id).await;
-    assert!(!pending.is_empty(), "Should have pending approvals");
-
-    // Create batch approval decisions
-    let tool_approvals: Vec<serde_json::Value> = pending.iter().map(|approval| {
-        serde_json::json!({
-            "tool_use_id": approval["tool_use_id"],
-            "decision": "approve"
-        })
-    }).collect();
-
-    // Resume with batch approvals
-    let events = send_message_with_mcp(
-        &server,
-        &user.token,
-        conversation_id,
-        branch_id,
-        model_id,
-        mcp_server_id,
-        "",  // Empty content when resuming with approvals
-        Some(tool_approvals),
-    )
-    .await;
-
-    // Verify the response includes tool execution events
-    let tool_complete_events: Vec<_> = events.iter()
-        .filter(|e| e.event == "mcpToolComplete")
-        .collect();
-
-    // Should have at least one tool completion
-    assert!(!tool_complete_events.is_empty(), "Should have tool completion events after batch approval");
-}
+// `test_approve_multiple_tools_batch` deleted: the test asserted a
+// "batch approval resume" workflow that was never implemented in the
+// server. Single-approval coverage above already exercises the
+// approval contract that exists today. Add a fresh batch test when /
+// if the feature ships.
 
 /// Test that tool execution errors emit mcpToolComplete with is_error: true
 #[tokio::test]

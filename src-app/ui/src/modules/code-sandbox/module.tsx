@@ -6,6 +6,7 @@ import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 import { useSandboxResourceLimitsStore } from './stores/SandboxResourceLimits.store'
 import { useSandboxRootfsVersionsStore } from './stores/SandboxRootfsVersions.store'
+import { useSandboxFlavorsStore } from './stores/SandboxFlavors.store'
 import './types' // CRITICAL: enable store type declaration merging
 
 const SandboxSettingsPage = lazyWithPreload(() =>
@@ -48,6 +49,13 @@ export default createModule({
     {
       name: 'SandboxResourceLimits',
       store: useSandboxResourceLimitsStore,
+    },
+    {
+      // Shared catalog of known sandbox flavors. Consumed by the
+      // MCP user-policy card + the McpServerDrawer's system-stdio
+      // flavor Select. Lazy-loaded on first read.
+      name: 'SandboxFlavors',
+      store: useSandboxFlavorsStore,
     },
   ],
   slots: {

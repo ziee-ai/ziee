@@ -28,12 +28,14 @@ fn mcp_versions() -> Vec<MockVersion> {
                     id: "mock-mcp-a",
                     min_ziee_version: None,
                     extra_yaml: None,
+                    mcp_http: false,
                 },
                 MockItem {
                     category: "mcp-server",
                     id: "mock-mcp-future",
                     min_ziee_version: Some("99.0.0"),
                     extra_yaml: None,
+                    mcp_http: false,
                 },
             ],
         },
@@ -45,6 +47,40 @@ fn mcp_versions() -> Vec<MockVersion> {
                 id: "mock-mcp-a",
                 min_ziee_version: None,
                 extra_yaml: None,
+                mcp_http: false,
+            }],
+        },
+    ]
+}
+
+/// `mcp_versions()` mirror that ships HTTP-transport manifests
+/// instead of stdio. Use when the test installs the MCP through the
+/// user-scoped endpoint (`/hub/mcp-servers/create`), which the MCP
+/// user policy gates against stdio when `code_sandbox.enabled` is
+/// false (the test default). System/admin installs still use the
+/// stdio version since the user-policy gate doesn't apply there.
+fn mcp_versions_http() -> Vec<MockVersion> {
+    vec![
+        MockVersion {
+            version: "9.9.2-test",
+            prerelease: true,
+            items: vec![MockItem {
+                category: "mcp-server",
+                id: "mock-mcp-a",
+                min_ziee_version: None,
+                extra_yaml: None,
+                mcp_http: true,
+            }],
+        },
+        MockVersion {
+            version: "9.9.1-test",
+            prerelease: true,
+            items: vec![MockItem {
+                category: "mcp-server",
+                id: "mock-mcp-a",
+                min_ziee_version: None,
+                extra_yaml: None,
+                mcp_http: true,
             }],
         },
     ]
@@ -63,18 +99,21 @@ fn two_versions() -> Vec<MockVersion> {
                     id: "mock-model-a",
                     min_ziee_version: None,
                     extra_yaml: None,
+                    mcp_http: false,
                 },
                 MockItem {
                     category: "assistant",
                     id: "mock-asst-a",
                     min_ziee_version: None,
                     extra_yaml: None,
+                    mcp_http: false,
                 },
                 MockItem {
                     category: "assistant",
                     id: "mock-asst-future",
                     min_ziee_version: Some("99.0.0"),
                     extra_yaml: None,
+                    mcp_http: false,
                 },
             ],
         },
@@ -87,12 +126,14 @@ fn two_versions() -> Vec<MockVersion> {
                     id: "mock-model-a",
                     min_ziee_version: None,
                     extra_yaml: None,
+                    mcp_http: false,
                 },
                 MockItem {
                     category: "assistant",
                     id: "mock-asst-a",
                     min_ziee_version: None,
                     extra_yaml: None,
+                    mcp_http: false,
                 },
             ],
         },
@@ -1551,6 +1592,7 @@ async fn replace_existing_aborts_on_validation_failure_mcp() {
                 id: "mock-mcp-a",
                 min_ziee_version: Some("99.0.0"),
                 extra_yaml: None,
+                    mcp_http: false,
             }],
         },
         MockVersion {
@@ -1561,6 +1603,7 @@ async fn replace_existing_aborts_on_validation_failure_mcp() {
                 id: "mock-mcp-a",
                 min_ziee_version: None,
                 extra_yaml: None,
+                    mcp_http: false,
             }],
         },
     ])
@@ -1671,7 +1714,13 @@ async fn user_mcp_install_honors_replace_existing_flag() {
     // `replace_existing: true` to wipe the user's prior install before creating
     // the fresh one. With no prior install it simply creates (201). Mirrors
     // `user_install_honors_replace_existing_flag` for assistants.
-    let mock = spawn_mock_hub(mcp_versions()).await;
+    //
+    // Uses the http-MCP mock catalog rather than the default stdio one
+    // because the MCP user policy filters `'stdio'` out of
+    // `allowed_transports` whenever `code_sandbox.enabled` is false
+    // (test default), so a stdio user install would 422 with
+    // `MCP_TRANSPORT_NOT_ALLOWED` before reaching the replace_existing path.
+    let mock = spawn_mock_hub(mcp_versions_http()).await;
     let server = TestServer::start_with_options(crate::common::TestServerOptions {
         extra_env: mock.test_env(),
         ..Default::default()
@@ -1706,14 +1755,15 @@ async fn user_mcp_install_honors_replace_existing_flag() {
         .send()
         .await
         .expect("install");
+    let status = resp.status();
+    let body: Json = resp.json().await.unwrap();
     assert_eq!(
-        resp.status(),
+        status,
         201,
         "replace_existing is honored on the user MCP endpoint (Installed-tab \
-         Re-install path); should create, got {}",
-        resp.status(),
+         Re-install path); should create, got {} body: {}",
+        status, body,
     );
-    let body: Json = resp.json().await.unwrap();
     assert!(
         body["server"]["id"].is_string(),
         "a successful install returns the created MCP server: {body}"
@@ -1916,6 +1966,7 @@ async fn install_with_required_inputs_seeds_placeholders_mcp() {
                  \x20\x20placeholder: tenant_abc123\n\
                  \x20\x20is_secret: false\n",
             ),
+                    mcp_http: false,
         }],
     }])
     .await;
@@ -2061,6 +2112,7 @@ async fn replace_existing_preserves_env_var_overrides_mcp() {
                  \x20\x20placeholder: placeholder_value\n\
                  \x20\x20is_secret: true\n",
             ),
+                    mcp_http: false,
         }],
     }])
     .await;
@@ -2249,6 +2301,7 @@ async fn replace_existing_merges_new_catalog_keys_with_admin_values() {
                      \x20\x20placeholder: pb\n\
                      \x20\x20is_secret: true\n",
                 ),
+                    mcp_http: false,
             }],
         },
         MockVersion {
@@ -2264,6 +2317,7 @@ async fn replace_existing_merges_new_catalog_keys_with_admin_values() {
                      \x20\x20placeholder: pa\n\
                      \x20\x20is_secret: true\n",
                 ),
+                    mcp_http: false,
             }],
         },
     ])
@@ -2459,6 +2513,7 @@ async fn replace_existing_preserves_header_overrides_mcp() {
                  \x20\x20placeholder: tenant_placeholder\n\
                  \x20\x20is_secret: false\n",
             ),
+                    mcp_http: false,
         }],
     }])
     .await;

@@ -49,7 +49,11 @@ async fn create_test_mcp_server(
     response.json().await.expect("Failed to parse response")
 }
 
-/// Create a user MCP server
+/// Create a user MCP server. Uses http transport — the MCP
+/// user-policy force-sandboxes user stdio (requires
+/// code_sandbox.enabled, off in tests). Transport choice is
+/// incidental to what mcp_extension_test cares about (chat-side
+/// MCP enforcement / cross-user isolation).
 async fn create_user_mcp_server(
     server: &TestServer,
     user: &TestUser,
@@ -61,9 +65,8 @@ async fn create_user_mcp_server(
         "display_name": "User Chat MCP Server",
         "description": "User-owned MCP server",
         "enabled": enabled,
-        "transport_type": "stdio",
-        "command": "uvx",
-        "args": ["mcp-server-fetch"],
+        "transport_type": "http",
+        "url": "http://127.0.0.1:9/mcp",
         "timeout_seconds": 30
     });
 

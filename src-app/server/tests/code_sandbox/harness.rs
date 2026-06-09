@@ -92,8 +92,13 @@ pub fn rootfs_path() -> Option<PathBuf> {
 /// Override the tag with `ZIEE_SANDBOX_TEST_TAG` to test a different
 /// release. Tests fetch the real GitHub-published, cosign-signed rootfs
 /// — there is no locally-built fixture anymore.
+///
+/// `v0.0.5-alpha` is the first tag that ships both x86_64 AND aarch64
+/// assets (`v0.0.3-alpha`/`v0.0.4-alpha` were x86_64-only). Apple
+/// Silicon tier4 needed the aarch64 squashfs to run; the older tag
+/// 404'd on `aarch64-*.sha256` and made the suite red.
 pub const TEST_ROOTFS_REPO: &str = "ziee-ai/sandbox-rootfs";
-pub const TEST_ROOTFS_TAG: &str = "v0.0.3-alpha";
+pub const TEST_ROOTFS_TAG: &str = "v0.0.5-alpha";
 
 pub fn test_rootfs_tag() -> String {
     std::env::var("ZIEE_SANDBOX_TEST_TAG").unwrap_or_else(|_| TEST_ROOTFS_TAG.to_string())

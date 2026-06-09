@@ -415,7 +415,6 @@ async fn activate_rejects_unsafe_version() {
 // signed releases.
 
 #[tokio::test]
-#[ignore = "hits real ziee-ai/hub GitHub Releases; run with --ignored"]
 async fn releases_endpoint_lists_published_versions() {
     let server = TestServer::start().await;
     let admin = create_user_with_permissions(&server, "admin", &["hub::catalog::read", "hub::catalog::manage"]).await;
@@ -443,7 +442,6 @@ async fn releases_endpoint_lists_published_versions() {
 }
 
 #[tokio::test]
-#[ignore = "hits real ziee-ai/hub GitHub Releases; run with --ignored"]
 async fn activate_switches_catalog_server_wide() {
     let server = TestServer::start().await;
     let admin = create_user_with_permissions(&server, "admin", &["hub::catalog::read", "hub::catalog::manage"]).await;

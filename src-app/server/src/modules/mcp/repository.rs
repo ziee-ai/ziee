@@ -82,9 +82,16 @@ async fn split_entries_for_storage(
     let mut secret_keys: Vec<String> = Vec::new();
 
     for entry in entries {
+        // Trim leading/trailing whitespace on values at storage time
+        // — covers the common pasted-token-with-newline case (HTTP
+        // header values: RFC 7230 §3.2.4 prohibits flanking
+        // whitespace; env var values: leading/trailing whitespace is
+        // virtually always a bug). Mirrors the runtime trim in
+        // `parse_header_map`.
+        let trimmed_value = entry.value.map(|v| v.trim());
         if entry.is_secret {
             secret_keys.push(entry.key.to_string());
-            match entry.value {
+            match trimmed_value {
                 Some(v) => {
                     let bytes = match encrypt_secret(pool, v, storage_key).await? {
                         Some(b) => b,
@@ -109,7 +116,7 @@ async fn split_entries_for_storage(
         } else {
             plain_map.insert(
                 entry.key.to_string(),
-                serde_json::Value::String(entry.value.unwrap_or("").to_string()),
+                serde_json::Value::String(trimmed_value.unwrap_or("").to_string()),
             );
         }
     }
@@ -241,6 +248,7 @@ pub(crate) struct McpServerColumnsRaw {
     pub usage_mode: String,
     pub max_concurrent_sessions: Option<i32>,
     pub run_in_sandbox: bool,
+    // NOT NULL (migration 83); query! macros return String.
     pub sandbox_flavor: String,
     pub created_at: time::OffsetDateTime,
     pub updated_at: time::OffsetDateTime,
@@ -613,10 +621,10 @@ pub async fn create_user_mcp_server(
             headers, headers_encrypted, headers_secret_keys,
             timeout_seconds, enabled, is_system,
             supports_sampling, usage_mode, max_concurrent_sessions,
-            run_in_sandbox
+            run_in_sandbox, sandbox_flavor
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, false,
-                $17, $18, $19, false)
+                $17, $18, $19, $20, COALESCE($21, 'full'))
         RETURNING
             id, user_id, name, display_name, description,
             enabled, is_system, is_built_in, transport_type,
@@ -626,8 +634,7 @@ pub async fn create_user_mcp_server(
             headers, headers_encrypted, headers_secret_keys,
             timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
-            run_in_sandbox,
-            sandbox_flavor,
+            run_in_sandbox, sandbox_flavor,
             last_health_check_at, last_health_check_status, last_health_check_reason,
             created_at, updated_at
         "#,
@@ -650,6 +657,8 @@ pub async fn create_user_mcp_server(
         supports_sampling,
         usage_mode.to_string(),
         request.max_concurrent_sessions,
+        request.run_in_sandbox.unwrap_or(false),
+        request.sandbox_flavor.as_deref(),
     )
     .fetch_one(pool)
     .await
@@ -712,8 +721,7 @@ pub async fn get_user_mcp_server(
             headers, headers_encrypted, headers_secret_keys,
             timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
-            run_in_sandbox,
-            sandbox_flavor,
+            run_in_sandbox, sandbox_flavor,
             last_health_check_at, last_health_check_status, last_health_check_reason,
             created_at, updated_at
         FROM mcp_servers
@@ -751,7 +759,7 @@ pub async fn get_user_mcp_server(
                 usage_mode: r.usage_mode,
                 max_concurrent_sessions: r.max_concurrent_sessions,
                 run_in_sandbox: r.run_in_sandbox,
-        sandbox_flavor: r.sandbox_flavor,
+                sandbox_flavor: r.sandbox_flavor,
                 created_at: r.created_at,
                 updated_at: r.updated_at,
                 last_health_check_at: r.last_health_check_at,
@@ -784,8 +792,7 @@ pub async fn list_user_mcp_servers(
             headers, headers_encrypted, headers_secret_keys,
             timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
-            run_in_sandbox,
-            sandbox_flavor,
+            run_in_sandbox, sandbox_flavor,
             last_health_check_at, last_health_check_status, last_health_check_reason,
             created_at, updated_at
         FROM mcp_servers
@@ -826,7 +833,7 @@ pub async fn list_user_mcp_servers(
             usage_mode: r.usage_mode,
             max_concurrent_sessions: r.max_concurrent_sessions,
             run_in_sandbox: r.run_in_sandbox,
-        sandbox_flavor: r.sandbox_flavor,
+            sandbox_flavor: r.sandbox_flavor,
             created_at: r.created_at,
             updated_at: r.updated_at,
             last_health_check_at: r.last_health_check_at,
@@ -865,8 +872,7 @@ pub async fn list_enabled_for_health_check(pool: &PgPool) -> Result<Vec<McpServe
             headers, headers_encrypted, headers_secret_keys,
             timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
-            run_in_sandbox,
-            sandbox_flavor,
+            run_in_sandbox, sandbox_flavor,
             last_health_check_at, last_health_check_status, last_health_check_reason,
             created_at, updated_at
         FROM mcp_servers
@@ -902,7 +908,7 @@ pub async fn list_enabled_for_health_check(pool: &PgPool) -> Result<Vec<McpServe
             usage_mode: r.usage_mode,
             max_concurrent_sessions: r.max_concurrent_sessions,
             run_in_sandbox: r.run_in_sandbox,
-        sandbox_flavor: r.sandbox_flavor,
+            sandbox_flavor: r.sandbox_flavor,
             created_at: r.created_at,
             updated_at: r.updated_at,
             last_health_check_at: r.last_health_check_at,
@@ -1014,6 +1020,7 @@ pub async fn update_user_mcp_server(
             usage_mode = COALESCE($18, usage_mode),
             max_concurrent_sessions = COALESCE($19, max_concurrent_sessions),
             run_in_sandbox = COALESCE($20, run_in_sandbox),
+            sandbox_flavor = COALESCE($21, sandbox_flavor),
             updated_at = NOW()
         WHERE id = $1 AND user_id = $2 AND is_system = false
         RETURNING
@@ -1025,8 +1032,7 @@ pub async fn update_user_mcp_server(
             headers, headers_encrypted, headers_secret_keys,
             timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
-            run_in_sandbox,
-            sandbox_flavor,
+            run_in_sandbox, sandbox_flavor,
             last_health_check_at, last_health_check_status, last_health_check_reason,
             created_at, updated_at
         "#,
@@ -1050,6 +1056,7 @@ pub async fn update_user_mcp_server(
         request.usage_mode.as_ref().map(|m| m.to_string()),
         request.max_concurrent_sessions,
         request.run_in_sandbox,
+        request.sandbox_flavor.as_deref(),
     )
     .fetch_one(pool)
     .await
@@ -1161,7 +1168,7 @@ pub async fn create_system_mcp_server(
             run_in_sandbox, sandbox_flavor
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, true,
-                $16, $17, $18, $19, $20)
+                $16, $17, $18, $19, COALESCE($20, 'full'))
         RETURNING
             id, user_id, name, display_name, description,
             enabled, is_system, is_built_in, transport_type,
@@ -1171,8 +1178,7 @@ pub async fn create_system_mcp_server(
             headers, headers_encrypted, headers_secret_keys,
             timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
-            run_in_sandbox,
-            sandbox_flavor,
+            run_in_sandbox, sandbox_flavor,
             last_health_check_at, last_health_check_status, last_health_check_reason,
             created_at, updated_at
         "#,
@@ -1195,7 +1201,7 @@ pub async fn create_system_mcp_server(
         usage_mode.to_string(),
         request.max_concurrent_sessions,
         request.run_in_sandbox.unwrap_or(false),
-        request.sandbox_flavor.clone().unwrap_or_else(|| "full".to_string()),
+        request.sandbox_flavor.as_deref(),
     )
     .fetch_one(pool)
     .await
@@ -1344,8 +1350,7 @@ pub async fn get_any_mcp_server(pool: &PgPool, id: Uuid) -> Result<Option<McpSer
             headers, headers_encrypted, headers_secret_keys,
             timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
-            run_in_sandbox,
-            sandbox_flavor,
+            run_in_sandbox, sandbox_flavor,
             last_health_check_at, last_health_check_status, last_health_check_reason,
             created_at, updated_at
         FROM mcp_servers
@@ -1382,7 +1387,7 @@ pub async fn get_any_mcp_server(pool: &PgPool, id: Uuid) -> Result<Option<McpSer
                 usage_mode: r.usage_mode,
                 max_concurrent_sessions: r.max_concurrent_sessions,
                 run_in_sandbox: r.run_in_sandbox,
-        sandbox_flavor: r.sandbox_flavor,
+                sandbox_flavor: r.sandbox_flavor,
                 created_at: r.created_at,
                 updated_at: r.updated_at,
                 last_health_check_at: r.last_health_check_at,
@@ -1407,8 +1412,7 @@ pub async fn get_system_mcp_server(pool: &PgPool, id: Uuid) -> Result<Option<Mcp
             headers, headers_encrypted, headers_secret_keys,
             timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
-            run_in_sandbox,
-            sandbox_flavor,
+            run_in_sandbox, sandbox_flavor,
             last_health_check_at, last_health_check_status, last_health_check_reason,
             created_at, updated_at
         FROM mcp_servers
@@ -1445,7 +1449,7 @@ pub async fn get_system_mcp_server(pool: &PgPool, id: Uuid) -> Result<Option<Mcp
                 usage_mode: r.usage_mode,
                 max_concurrent_sessions: r.max_concurrent_sessions,
                 run_in_sandbox: r.run_in_sandbox,
-        sandbox_flavor: r.sandbox_flavor,
+                sandbox_flavor: r.sandbox_flavor,
                 created_at: r.created_at,
                 updated_at: r.updated_at,
                 last_health_check_at: r.last_health_check_at,
@@ -1479,8 +1483,7 @@ pub async fn list_system_mcp_servers(
             headers, headers_encrypted, headers_secret_keys,
             timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
-            run_in_sandbox,
-            sandbox_flavor,
+            run_in_sandbox, sandbox_flavor,
             last_health_check_at, last_health_check_status, last_health_check_reason,
             created_at, updated_at
         FROM mcp_servers
@@ -1527,7 +1530,7 @@ pub async fn list_system_mcp_servers(
             usage_mode: r.usage_mode,
             max_concurrent_sessions: r.max_concurrent_sessions,
             run_in_sandbox: r.run_in_sandbox,
-        sandbox_flavor: r.sandbox_flavor,
+            sandbox_flavor: r.sandbox_flavor,
             created_at: r.created_at,
             updated_at: r.updated_at,
             last_health_check_at: r.last_health_check_at,
@@ -1667,8 +1670,7 @@ pub async fn update_system_mcp_server(
             headers, headers_encrypted, headers_secret_keys,
             timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
-            run_in_sandbox,
-            sandbox_flavor,
+            run_in_sandbox, sandbox_flavor,
             last_health_check_at, last_health_check_status, last_health_check_reason,
             created_at, updated_at
         "#,
@@ -1691,7 +1693,7 @@ pub async fn update_system_mcp_server(
         request.usage_mode.as_ref().map(|m| m.to_string()),
         request.max_concurrent_sessions,
         request.run_in_sandbox,
-        request.sandbox_flavor.clone(),
+        request.sandbox_flavor.as_deref(),
     )
     .fetch_one(pool)
     .await
@@ -1798,8 +1800,7 @@ pub async fn get_system_servers_for_group(
                s.headers, s.headers_encrypted, s.headers_secret_keys,
                s.timeout_seconds,
                s.supports_sampling, s.usage_mode, s.max_concurrent_sessions,
-               s.run_in_sandbox,
-            s.sandbox_flavor,
+               s.run_in_sandbox, s.sandbox_flavor,
                s.last_health_check_at, s.last_health_check_status, s.last_health_check_reason,
                s.created_at, s.updated_at
         FROM mcp_servers s
@@ -1838,7 +1839,7 @@ pub async fn get_system_servers_for_group(
             usage_mode: r.usage_mode,
             max_concurrent_sessions: r.max_concurrent_sessions,
             run_in_sandbox: r.run_in_sandbox,
-        sandbox_flavor: r.sandbox_flavor,
+            sandbox_flavor: r.sandbox_flavor,
             created_at: r.created_at,
             updated_at: r.updated_at,
             last_health_check_at: r.last_health_check_at,
@@ -2042,8 +2043,7 @@ pub async fn list_accessible_mcp_servers(
             s.headers, s.headers_encrypted, s.headers_secret_keys,
             s.timeout_seconds,
             s.supports_sampling, s.usage_mode, s.max_concurrent_sessions,
-            s.run_in_sandbox,
-            s.sandbox_flavor,
+            s.run_in_sandbox, s.sandbox_flavor,
             s.last_health_check_at, s.last_health_check_status, s.last_health_check_reason,
             s.created_at, s.updated_at
         FROM mcp_servers s
@@ -2096,7 +2096,7 @@ pub async fn list_accessible_mcp_servers(
             usage_mode: r.usage_mode,
             max_concurrent_sessions: r.max_concurrent_sessions,
             run_in_sandbox: r.run_in_sandbox,
-        sandbox_flavor: r.sandbox_flavor,
+            sandbox_flavor: r.sandbox_flavor,
             created_at: r.created_at,
             updated_at: r.updated_at,
             last_health_check_at: r.last_health_check_at,

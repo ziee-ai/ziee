@@ -8,6 +8,10 @@ import {
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
 import { useLlmProviderStore } from '@/modules/llm-provider/stores/LlmProvider.store'
+import {
+  emitLlmModelDownloadCompleted,
+  emitLlmModelDownloadFailed,
+} from '@/modules/llm-provider/events/emitters'
 
 interface LlmModelDownloadState {
   // Download instances array
@@ -219,6 +223,20 @@ export const useLlmModelDownloadStore = create<LlmModelDownloadState>()(
               update: (updates: any[]) => {
                 console.log('SSE update:', updates)
 
+                // Snapshot pre-update status by id. The EventBus emits
+                // for `llm_model.download_completed` /
+                // `llm_model.download_failed` must fire EXACTLY ONCE
+                // per download — keying off "prev !== current AND
+                // current is terminal" guarantees that. A row that
+                // re-appears on a subsequent SSE tick with the same
+                // status won't re-emit; a row appearing for the first
+                // time with no prev status doesn't emit either (only
+                // explicit transitions count).
+                const prevState = get()
+                const prevStatusById = new Map<string, string>(
+                  prevState.downloads.map(d => [d.id, d.status]),
+                )
+
                 // Detect newly completed downloads and refresh their providers' models
                 const newlyCompleted = updates.filter(
                   (u: any) => u.status === 'completed',
@@ -245,6 +263,47 @@ export const useLlmModelDownloadStore = create<LlmModelDownloadState>()(
                   }
                 }
 
+                // Emit terminal-transition events for any row that
+                // FLIPPED to completed/failed THIS tick. Pulls
+                // display_name from the prior store row's
+                // `request_data.display_name` (or model_name fallback)
+                // since the SSE update payload doesn't always include
+                // request_data.
+                for (const u of updates as any[]) {
+                  if (!u.id || typeof u.status !== 'string') continue
+                  const prev = prevStatusById.get(u.id)
+                  if (prev === u.status) continue
+                  const isNewlyTerminal =
+                    (u.status === 'completed' || u.status === 'failed') &&
+                    // Only emit when we have a prior status — i.e. the
+                    // row was being tracked. A first-sighting terminal
+                    // status (rare; rows are added at 'pending') would
+                    // otherwise risk a duplicate toast on page reload
+                    // if the backend ever started replaying terminal
+                    // rows on subscribe.
+                    prev !== undefined
+                  if (!isNewlyTerminal) continue
+                  const priorRow = prevState.downloads.find(d => d.id === u.id)
+                  const displayName =
+                    priorRow?.request_data?.display_name ||
+                    priorRow?.request_data?.model_name ||
+                    'Model'
+                  if (u.status === 'completed') {
+                    void emitLlmModelDownloadCompleted(
+                      u.id,
+                      u.provider_id ?? priorRow?.provider_id ?? '',
+                      displayName,
+                    )
+                  } else {
+                    void emitLlmModelDownloadFailed(
+                      u.id,
+                      u.provider_id ?? priorRow?.provider_id ?? '',
+                      displayName,
+                      u.error_message ?? priorRow?.error_message ?? '',
+                    )
+                  }
+                }
+
                 set(state => {
                   const updatedDownloads = state.downloads.map(download => {
                     const update = updates.find(
@@ -253,7 +312,10 @@ export const useLlmModelDownloadStore = create<LlmModelDownloadState>()(
                     return update ? { ...download, ...update } : download
                   })
 
-                  // Filter out cancelled and completed downloads before updating state
+                  // Filter out cancelled and completed downloads before updating state.
+                  // Failed rows stay in the array so the hub card (and widget popover)
+                  // can render the failure state + Retry button until the user
+                  // dismisses or retries.
                   const filteredDownloads = updatedDownloads.filter(
                     download =>
                       download.status !== 'cancelled' &&

@@ -107,7 +107,6 @@ async fn create_sandboxed_echo_server(
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn sandboxed_mcp_lists_tools_and_calls_echo_through_http_api() {
     // Boot a real TestServer with sandbox enabled. On Mac this stages
     // test-minimal.squashfs into a TempDir cache and boots a libkrun VM.
@@ -182,7 +181,6 @@ async fn sandboxed_mcp_lists_tools_and_calls_echo_through_http_api() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn sandboxed_mcp_env_isolates_host_secrets() {
     // Set a host-side env var BEFORE the TestServer boots. The
     // sandboxed MCP child must NOT see it — bwrap's --clearenv +
@@ -252,7 +250,6 @@ async fn sandboxed_mcp_env_isolates_host_secrets() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn sandboxed_mcp_disconnect_then_reconnect_works() {
     // Spawn → call → disconnect → re-spawn the same server. The
     // second connect must succeed: the manager must have released the

@@ -1822,11 +1822,11 @@
             }
           },
           "201": {
-            "description": "LLM Repository database entity\n Represents a row in the llm_repositories table",
+            "description": "Wraps a created/updated `LlmRepository` with an optional connection\n warning, used by the create handler when the probe failed and the\n row was auto-downgraded to `enabled: false`. `None` on success\n (probe passed, or `enabled: false` was requested so no probe ran).",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LlmRepository"
+                  "$ref": "#/components/schemas/LlmRepositoryWithHealthWarning"
                 }
               }
             }
@@ -1899,6 +1899,72 @@
           },
           "401": {
             "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/llm-repositories/{repository_id}/test": {
+      "post": {
+        "tags": [
+          "LLM Repositories"
+        ],
+        "summary": "Test an existing repository's connection and record the outcome",
+        "description": "Probe a saved repository's connection. Form overrides in the request body merge over the persisted row; empty secret fields fall back to the saved secret. The outcome is recorded to `last_health_check_*` columns. A currently-enabled row that fails the probe is auto-disabled.",
+        "operationId": "LlmRepository.testById",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLlmRepositoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit existing LLM repository information and authentication",
+                        "name": "LlmRepositoriesEdit",
+                        "value": "llm_repositories::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_repositories::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestRepositoryConnectionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Repository not found"
           }
         },
         "security": [
@@ -5658,7 +5724,7 @@
           "LLM Models - Downloads"
         ],
         "summary": "Subscribe to download progress via SSE",
-        "description": "Real-time Server-Sent Events stream of download progress. Updates every 2 seconds. Auto-closes when no active downloads remain.",
+        "description": "Real-time Server-Sent Events stream of download progress. Updates every 1 second. Auto-closes when no active downloads remain.",
         "operationId": "LlmModel.subscribeDownloadProgress",
         "responses": {
           "403": {
@@ -10022,6 +10088,124 @@
         ]
       }
     },
+    "/api/mcp/user-policy": {
+      "get": {
+        "tags": [
+          "MCP Servers - User Policy"
+        ],
+        "summary": "Get MCP user policy",
+        "description": "Read the global MCP user policy. Gated on `mcp_servers::read` — the UI uses this to gate the Add button on /settings/mcp-servers and the visibility of the MCP tab in the Hub for users who can read MCP servers but don't have admin install rights.",
+        "operationId": "McpUserPolicy.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View MCP servers",
+                        "name": "McpServersRead",
+                        "value": "mcp_servers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "The global MCP user-policy row (singleton; id always = 1 in the DB).\n\n Drives what regular users can install:\n   - `allowed_transports == []` → no Add button, no Hub MCP tab for\n     non-admins.\n   - `'stdio' ∈ allowed_transports` → user-installed stdio MCP rows\n     get `run_in_sandbox = true` + `sandbox_flavor =\n     user_stdio_sandbox_flavor` force-applied at create/update time.\n\n Admin-only edits via PUT /api/mcp/user-policy (perm\n `McpUserPolicyEdit`); read is open to any authenticated user (the\n UI needs it to gate the Add button + Hub tab visibility).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpUserPolicy"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "MCP Servers - User Policy"
+        ],
+        "summary": "Update MCP user policy",
+        "description": "Update the global MCP user policy: which transports regular users may install (subset of {\"http\",\"stdio\"}) and, when stdio is allowed, which sandbox flavor user-installed stdio servers must run inside. 422 on validation errors (MCP_INVALID_TRANSPORT, MCP_FLAVOR_REQUIRED, MCP_UNKNOWN_FLAVOR, MCP_SANDBOX_DISABLED).",
+        "operationId": "McpUserPolicy.update",
+        "requestBody": {
+          "description": "PUT body. `updated_by` is taken from the auth context, not the\n request.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMcpUserPolicyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit MCP user policy (allowed transports + sandbox flavor)",
+                        "name": "McpUserPolicyEdit",
+                        "value": "mcp_user_policy::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_user_policy::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "The global MCP user-policy row (singleton; id always = 1 in the DB).\n\n Drives what regular users can install:\n   - `allowed_transports == []` → no Add button, no Hub MCP tab for\n     non-admins.\n   - `'stdio' ∈ allowed_transports` → user-installed stdio MCP rows\n     get `run_in_sandbox = true` + `sandbox_flavor =\n     user_stdio_sandbox_flavor` force-applied at create/update time.\n\n Admin-only edits via PUT /api/mcp/user-policy (perm\n `McpUserPolicyEdit`); read is open to any authenticated user (the\n UI needs it to gate the Add button + Hub tab visibility).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpUserPolicy"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/mcp/system-servers": {
       "get": {
         "tags": [
@@ -10905,7 +11089,7 @@
           "Code Sandbox"
         ],
         "summary": "List selectable sandbox rootfs flavors + host command allowlist",
-        "description": "Powers the MCP server form's sandbox flavor picker. Returns the KNOWN_FLAVORS catalog (name / description / approximate size / cached) plus the host-path command allowlist a non-sandboxed stdio server must use.",
+        "description": "Powers the MCP server form's sandbox flavor picker AND the MCP user-policy admin card's flavor select. Returns the KNOWN_FLAVORS catalog (name / description / approximate size / cached) plus the host-path command allowlist a non-sandboxed stdio server must use.",
         "operationId": "CodeSandbox.listFlavors",
         "responses": {
           "403": {
@@ -15589,6 +15773,13 @@
               "$ref": "#/components/schemas/HeaderEntry"
             }
           },
+          "hub_id": {
+            "description": "Optional Hub identifier — when set, the create handler also\n records the install in `hub_entities` so the Hub card's\n \"already installed\" badge keeps working. Set by the UI when\n the drawer was opened via \"Install\" / \"Install for the system\"\n on a hub MCP card; null for direct-add. Type matches the\n existing `CreateMcpServerFromHubRequest::hub_id` (catalog\n slug string, not a UUID).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "max_concurrent_sessions": {
             "type": [
               "integer",
@@ -15600,14 +15791,14 @@
             "type": "string"
           },
           "run_in_sandbox": {
-            "description": "Admin/system stdio servers only: launch inside the\n code_sandbox bwrap isolation. See `McpServer::run_in_sandbox`.",
+            "description": "Launch the stdio subprocess inside the code_sandbox bwrap\n isolation. The user-create handler force-sets this to `true`\n for user-owned stdio servers per the active MCP user policy\n (any client value is ignored). Admins may set it freely on\n system stdio servers via the drawer toggle.",
             "type": [
               "boolean",
               "null"
             ]
           },
           "sandbox_flavor": {
-            "description": "Rootfs flavor (KNOWN_FLAVORS) for the sandboxed launch. Defaults\n to `full` when absent. See `McpServer::sandbox_flavor`.",
+            "description": "Rootfs flavor (KNOWN_FLAVORS, e.g. \"minimal\" / \"full\") for the\n sandboxed launch. None → handler-picks default ('full' on\n fresh rows; the user-create handler force-overrides this with\n the active `mcp_user_policy.user_stdio_sandbox_flavor` for\n user-owned stdio regardless of what the client sent).",
             "type": [
               "string",
               "null"
@@ -19361,6 +19552,23 @@
             "type": "string",
             "format": "uuid"
           },
+          "last_health_check_at": {
+            "description": "Connection-health columns (migration 83). Populated by\n `connection_health::probe` at four points: boot startup\n check, create-flow probe, update-flow enable-transition\n probe, and the explicit form-based test path.\n `last_health_check_at` is NULL on rows that have never been\n probed (default status \"untested\"). UI renders an Alert\n when `last_health_check_status == \"unhealthy\"`.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_health_check_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_health_check_status": {
+            "type": "string"
+          },
           "name": {
             "type": "string"
           },
@@ -19381,7 +19589,8 @@
           "enabled",
           "built_in",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "last_health_check_status"
         ]
       },
       "LlmRepositoryListResponse": {
@@ -19411,6 +19620,81 @@
           "total",
           "page",
           "per_page"
+        ]
+      },
+      "LlmRepositoryWithHealthWarning": {
+        "description": "Wraps a created/updated `LlmRepository` with an optional connection\n warning, used by the create handler when the probe failed and the\n row was auto-downgraded to `enabled: false`. `None` on success\n (probe passed, or `enabled: false` was requested so no probe ran).",
+        "type": "object",
+        "properties": {
+          "auth_config": {
+            "$ref": "#/components/schemas/RepositoryAuthConfig"
+          },
+          "auth_type": {
+            "type": "string"
+          },
+          "built_in": {
+            "type": "boolean"
+          },
+          "connection_warning": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProbeFailure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "last_health_check_at": {
+            "description": "Connection-health columns (migration 83). Populated by\n `connection_health::probe` at four points: boot startup\n check, create-flow probe, update-flow enable-transition\n probe, and the explicit form-based test path.\n `last_health_check_at` is NULL on rows that have never been\n probed (default status \"untested\"). UI renders an Alert\n when `last_health_check_status == \"unhealthy\"`.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_health_check_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_health_check_status": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "url",
+          "auth_type",
+          "auth_config",
+          "enabled",
+          "built_in",
+          "created_at",
+          "updated_at",
+          "last_health_check_status"
         ]
       },
       "LoginRequest": {
@@ -19602,11 +19886,11 @@
             "type": "string"
           },
           "run_in_sandbox": {
-            "description": "Admin opt-in: launch the stdio subprocess inside the\n code_sandbox bwrap isolation. Only honored when\n `is_system && transport_type == Stdio` — the spawn path\n ignores it otherwise; the UI hides the toggle for user-owned\n or non-stdio servers. Defaults to false.",
+            "description": "Launch the stdio subprocess inside the code_sandbox bwrap\n isolation. Honored for any `transport_type == Stdio` row (both\n system and user-owned) — the user-create handler force-sets this\n to `true` for user-owned stdio servers per the active MCP user\n policy; admins choose freely on system servers via the drawer\n toggle. The spawn path ignores it for non-stdio servers.",
             "type": "boolean"
           },
           "sandbox_flavor": {
-            "description": "Rootfs flavor (KNOWN_FLAVORS, e.g. `minimal`/`full`) used when\n `run_in_sandbox` launches this stdio server inside the\n code_sandbox. Defaults to `full` (the flavor that ships Node +\n uv + python3 + R). Ignored when not sandboxed.",
+            "description": "Rootfs flavor (KNOWN_FLAVORS, e.g. `minimal`/`full`) used when\n `run_in_sandbox` launches this stdio server inside the\n code_sandbox. Defaults to `full` (the flavor that ships Node +\n uv + python3 + R). Ignored when not sandboxed. For user-owned\n stdio rows the user-create handler force-overwrites this with\n the active `mcp_user_policy.user_stdio_sandbox_flavor` (the\n drawer hides the picker on the user side); admins choose it on\n the system drawer.",
             "type": "string"
           },
           "supports_sampling": {
@@ -19788,22 +20072,160 @@
         "description": "Wraps a created/updated `McpServer` with an optional connection\n warning, used by the create handlers when the probe failed and\n the server was auto-downgraded to `enabled: false`. `None` on\n success (probe passed, or `enabled: false` was requested so no\n probe ran).",
         "type": "object",
         "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "args": true,
+          "command": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "connection_warning": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/ProbeFailure"
+                "$ref": "#/components/schemas/ProbeFailure2"
               },
               {
                 "type": "null"
               }
             ]
           },
-          "server": {
-            "$ref": "#/components/schemas/McpServer"
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "environment_variables": {
+            "description": "FLAT decrypted env-var map. Always populated by the repo with\n the FULLY decrypted values (plain entries merged with the\n decrypted secrets) so internal runtime callsites — stdio\n subprocess spawn, http header `${VAR}` interpolation — keep\n working unchanged. NEVER serialized — the public response\n shape is `environment_variables_entries` with secret values\n redacted to `value: None`.",
+            "writeOnly": true
+          },
+          "environment_variables_entries": {
+            "description": "Public structured view of `environment_variables` for the UI\n form editor. Per-entry secret marker; secret values redacted\n to `None`. Populated by the repo from the triple-column\n storage (`environment_variables` + `environment_variables_encrypted` +\n `environment_variables_secret_keys`).",
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/EnvVarView"
+            }
+          },
+          "headers": {
+            "description": "FLAT decrypted header map. Same write-only semantics as\n `environment_variables` — see that field's doc comment.\n `parse_header_map` runs `${VAR}` interpolation against the\n (decrypted) env map at request-build time.",
+            "writeOnly": true
+          },
+          "headers_entries": {
+            "description": "Public structured view of `headers` for the UI form editor.\n Sibling of `environment_variables_entries`.",
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/HeaderView"
+            }
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_built_in": {
+            "type": "boolean"
+          },
+          "is_system": {
+            "type": "boolean"
+          },
+          "last_health_check_at": {
+            "description": "Persisted result of the last connection probe — populated by\n `connection_health` at boot (startup health check), at\n create-time (post-create probe in `enforce_on_create`), at\n enable-transition time (probe in `enforce_on_update_transition`),\n and on every explicit \"Test Connection\" button press.\n See migration 82.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "default": null
+          },
+          "last_health_check_reason": {
+            "description": "Human reason on unhealthy. `None` on healthy / untested.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "last_health_check_status": {
+            "description": "\"untested\" | \"healthy\" | \"unhealthy\". Defaults to \"untested\"\n for freshly-created rows that have never been probed.",
+            "type": "string",
+            "default": "untested"
+          },
+          "max_concurrent_sessions": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "run_in_sandbox": {
+            "description": "Launch the stdio subprocess inside the code_sandbox bwrap\n isolation. Honored for any `transport_type == Stdio` row (both\n system and user-owned) — the user-create handler force-sets this\n to `true` for user-owned stdio servers per the active MCP user\n policy; admins choose freely on system servers via the drawer\n toggle. The spawn path ignores it for non-stdio servers.",
+            "type": "boolean"
+          },
+          "sandbox_flavor": {
+            "description": "Rootfs flavor (KNOWN_FLAVORS, e.g. `minimal`/`full`) used when\n `run_in_sandbox` launches this stdio server inside the\n code_sandbox. Defaults to `full` (the flavor that ships Node +\n uv + python3 + R). Ignored when not sandboxed. For user-owned\n stdio rows the user-create handler force-overwrites this with\n the active `mcp_user_policy.user_stdio_sandbox_flavor` (the\n drawer hides the picker on the user side); admins choose it on\n the system drawer.",
+            "type": "string"
+          },
+          "supports_sampling": {
+            "type": "boolean"
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "transport_type": {
+            "$ref": "#/components/schemas/TransportType"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "usage_mode": {
+            "$ref": "#/components/schemas/UsageMode"
+          },
+          "user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           }
         },
         "required": [
-          "server"
+          "id",
+          "name",
+          "display_name",
+          "enabled",
+          "is_system",
+          "is_built_in",
+          "transport_type",
+          "args",
+          "timeout_seconds",
+          "supports_sampling",
+          "usage_mode",
+          "run_in_sandbox",
+          "sandbox_flavor",
+          "created_at",
+          "updated_at"
         ]
       },
       "McpSettingsResponse": {
@@ -19820,6 +20242,41 @@
             ]
           }
         }
+      },
+      "McpUserPolicy": {
+        "description": "The global MCP user-policy row (singleton; id always = 1 in the DB).\n\n Drives what regular users can install:\n   - `allowed_transports == []` → no Add button, no Hub MCP tab for\n     non-admins.\n   - `'stdio' ∈ allowed_transports` → user-installed stdio MCP rows\n     get `run_in_sandbox = true` + `sandbox_flavor =\n     user_stdio_sandbox_flavor` force-applied at create/update time.\n\n Admin-only edits via PUT /api/mcp/user-policy (perm\n `McpUserPolicyEdit`); read is open to any authenticated user (the\n UI needs it to gate the Add button + Hub tab visibility).",
+        "type": "object",
+        "properties": {
+          "allowed_transports": {
+            "description": "Subset of `{\"http\", \"stdio\"}`. `sse` is admin-only (not\n exposed in the user-mode drawer dropdown).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "user_stdio_sandbox_flavor": {
+            "description": "Required iff `\"stdio\" ∈ allowed_transports`; must be in\n `code_sandbox::types::KNOWN_FLAVORS`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "allowed_transports",
+          "updated_at"
+        ]
       },
       "MeResponse": {
         "type": "object",
@@ -21306,6 +21763,19 @@
         }
       },
       "ProbeFailure": {
+        "description": "Structured probe failure carrying the underlying reason so the\n caller can surface it (in the API response, in the boot log, or\n in the UI toast).",
+        "type": "object",
+        "properties": {
+          "reason": {
+            "description": "Human-readable reason — taken verbatim from\n `test_repository_connectivity`'s `Err(String)` (timeout / 401 /\n DNS / etc.).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "ProbeFailure2": {
         "description": "Structured probe failure carrying the underlying reason so the\n caller can surface it (in the API response, in the boot log, or\n in the UI toast).",
         "type": "object",
         "properties": {
@@ -24695,14 +25165,14 @@
             ]
           },
           "run_in_sandbox": {
-            "description": "Admin/system stdio servers only: launch inside the\n code_sandbox bwrap isolation. See `McpServer::run_in_sandbox`.",
+            "description": "Launch the stdio subprocess inside the code_sandbox bwrap\n isolation. Same force-set semantics as\n [`CreateMcpServerRequest::run_in_sandbox`].",
             "type": [
               "boolean",
               "null"
             ]
           },
           "sandbox_flavor": {
-            "description": "Rootfs flavor (KNOWN_FLAVORS) for the sandboxed launch. Defaults\n to `full` when absent. See `McpServer::sandbox_flavor`.",
+            "description": "Rootfs flavor (KNOWN_FLAVORS, e.g. \"minimal\" / \"full\") for the\n sandboxed launch. Same force-override semantics as\n [`CreateMcpServerRequest::sandbox_flavor`].",
             "type": [
               "string",
               "null"
@@ -24738,6 +25208,27 @@
             ]
           }
         }
+      },
+      "UpdateMcpUserPolicyRequest": {
+        "description": "PUT body. `updated_by` is taken from the auth context, not the\n request.",
+        "type": "object",
+        "properties": {
+          "allowed_transports": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "user_stdio_sandbox_flavor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "allowed_transports"
+        ]
       },
       "UpdateMemoryAdminSettingsRequest": {
         "description": "Admin settings update body.\n\n The `Option<Option<T>>` pattern on nullable columns means: outer\n `None` = leave the field unchanged, `Some(None)` = clear to NULL\n (use the compiled-in default for prompts, or \"no default\" for\n embedding/extraction models), `Some(Some(x))` = set to `x`.\n\n Serde's default `Option<T>` deserialization collapses `null` and\n \"absent\" to the same `None`, so the discriminating \"Some(None)\"\n state requires a custom deserializer — see\n `deserialize_nullable_field` below.",

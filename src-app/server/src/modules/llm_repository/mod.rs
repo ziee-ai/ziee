@@ -5,6 +5,7 @@
 // This module manages external LLM model repositories (Hugging Face, GitHub, etc.)
 // with authentication support for downloading and accessing models
 
+pub mod connection_health;
 pub mod events;
 pub mod handlers;
 pub mod models;
@@ -53,6 +54,19 @@ impl AppModule for LlmRepositoryModule {
 
     fn init(&mut self, ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
         self.pool = Some(ctx.db_pool.clone());
+
+        // Boot health check — probe every enabled LLM repository and
+        // auto-disable unreachable ones. Fire-and-forget so it
+        // doesn't block boot; the next `cargo run` retries. Mirrors
+        // the MCP module's startup probe pattern at `mcp/mod.rs`.
+        // Pool is passed explicitly so the function is callable from
+        // the integration-test crate too (where the global Repos
+        // factory is not initialized).
+        let health_pool = (*ctx.db_pool).clone();
+        tokio::spawn(async move {
+            connection_health::run_startup_health_check(health_pool).await;
+        });
+
         Ok(())
     }
 

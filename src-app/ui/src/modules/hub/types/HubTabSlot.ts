@@ -17,6 +17,15 @@ export interface HubTabSlot {
     read: PermissionExpr
     refresh?: PermissionExpr
   }
+  /**
+   * Optional dynamic gate evaluated alongside `permissions.read`.
+   * Returns `true` to render the tab, `false` to hide it. Use for
+   * gates that depend on runtime configuration (e.g. an admin
+   * policy) rather than only on the user's permissions. The
+   * callback is invoked at render time, so it can read from any
+   * store proxy.
+   */
+  shouldRender?: () => boolean
   refresh: () => Promise<void> // Each tab provides its own refresh logic
 }
 

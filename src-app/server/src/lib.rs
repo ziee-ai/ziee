@@ -27,6 +27,13 @@ pub use modules::auth::refresh_tokens;
 pub use modules::user::models::User;
 pub use modules::llm_provider::events::LlmProviderEvent;
 pub use modules::llm_provider::UserKeyRepository;
+// Re-export the LLM repository connection-health entry points so the
+// integration tests can drive the boot path directly without going
+// through the module's `init` hook.
+#[doc(hidden)]
+pub mod llm_repository_health {
+    pub use crate::modules::llm_repository::connection_health::run_startup_health_check;
+}
 pub use modules::chat::core::ai_provider::resolve_api_key_for_user;
 pub use common::{ApiResult, AppError};
 // Re-export the at-rest secret helpers so out-of-crate consumers

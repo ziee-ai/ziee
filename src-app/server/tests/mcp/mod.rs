@@ -29,6 +29,10 @@ use uuid::Uuid;
 
 #[tokio::test]
 async fn test_create_user_mcp_server() {
+    // Uses http transport — the MCP user-policy force-sandboxes user
+    // stdio servers, which requires code_sandbox.enabled (off in
+    // tests by default). This test exercises the create CRUD path,
+    // not stdio specifically, so http is the right fixture.
     let server = crate::common::TestServer::start().await;
     let user =
         test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::create"]).await;
@@ -38,10 +42,8 @@ async fn test_create_user_mcp_server() {
         "display_name": "My Local Server",
         "description": "My personal MCP server",
         "enabled": true,
-        "transport_type": "stdio",
-        "command": "node",
-        "args": ["server.js"],
-        "environment_variables": {"NODE_ENV": "production"},
+        "transport_type": "http",
+        "url": "http://127.0.0.1:9/mcp",
         "timeout_seconds": 30
     });
 
@@ -66,7 +68,7 @@ async fn test_create_user_mcp_server() {
     let body: serde_json::Value = serde_json::from_str(&body_text).expect("Failed to parse JSON");
     assert_eq!(body["name"], "my_local_server");
     assert_eq!(body["display_name"], "My Local Server");
-    assert_eq!(body["transport_type"], "stdio");
+    assert_eq!(body["transport_type"], "http");
     assert_eq!(body["is_system"], false);
     assert_eq!(body["user_id"], user.user_id);
 }
@@ -109,13 +111,15 @@ async fn test_list_accessible_servers() {
     )
     .await;
 
-    // Create a personal server
+    // Create a personal server. Uses http transport — the MCP
+    // user-policy force-sandboxes user stdio (requires sandbox);
+    // this test just needs a personal server to verify the list
+    // includes it, transport choice is incidental.
     let payload = json!({
         "name": "personal_server",
         "display_name": "Personal Server",
-        "transport_type": "stdio",
-        "command": "node",
-        "args": ["server.js"]
+        "transport_type": "http",
+        "url": "http://127.0.0.1:9/mcp"
     });
 
     let create_url = server.api_url("/mcp/servers");
@@ -227,13 +231,13 @@ async fn test_update_user_server() {
     )
     .await;
 
-    // Create a server
+    // Create a server (http — user-policy force-sandboxes user
+    // stdio; this test is about update CRUD, not transport).
     let payload = json!({
         "name": "original_server",
         "display_name": "Original Server",
-        "transport_type": "stdio",
-        "command": "node",
-        "args": ["original.js"]
+        "transport_type": "http",
+        "url": "http://127.0.0.1:9/mcp"
     });
 
     let create_url = server.api_url("/mcp/servers");
@@ -253,9 +257,7 @@ async fn test_update_user_server() {
         "display_name": "Updated Server",
         "description": "Updated description",
         "enabled": false,
-        "transport_type": "stdio",
-        "command": "node",
-        "args": ["updated.js"]
+        "url": "http://127.0.0.1:9/mcp-updated"
     });
 
     let update_url = server.api_url(&format!("/mcp/servers/{}", server_id));
@@ -289,13 +291,12 @@ async fn test_delete_user_server() {
     )
     .await;
 
-    // Create a server
+    // Create a server (http — user-policy force-sandboxes stdio).
     let payload = json!({
         "name": "temp_server",
         "display_name": "Temporary Server",
-        "transport_type": "stdio",
-        "command": "node",
-        "args": ["temp.js"]
+        "transport_type": "http",
+        "url": "http://127.0.0.1:9/mcp"
     });
 
     let create_url = server.api_url("/mcp/servers");
@@ -345,13 +346,12 @@ async fn test_user_cannot_access_other_user_server() {
     let user2 =
         test_helpers::create_user_with_permissions(&server, "user2", &["mcp_servers::read"]).await;
 
-    // User1 creates a server
+    // User1 creates a server (http — user-policy force-sandboxes stdio).
     let payload = json!({
         "name": "user1_server",
         "display_name": "User1 Server",
-        "transport_type": "stdio",
-        "command": "node",
-        "args": ["server.js"]
+        "transport_type": "http",
+        "url": "http://127.0.0.1:9/mcp"
     });
 
     let create_url = server.api_url("/mcp/servers");
@@ -1113,11 +1113,20 @@ async fn create_test_system_server(
 
 #[tokio::test]
 async fn test_stdio_transport_requires_command() {
+    // Uses the SYSTEM create endpoint — user-mode stdio is gated by
+    // the MCP user-policy (force-sandboxed; rejects when sandbox is
+    // disabled in tests), which would 422 before this validation
+    // runs. The 400-on-missing-command invariant is the same for
+    // both endpoints; system path is the cleaner one to exercise.
     let server = crate::common::TestServer::start().await;
-    let user =
-        test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::create"]).await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["mcp_servers_admin::create"],
+    )
+    .await;
 
-    // Try to create stdio server without command
+    // Try to create stdio system server without command
     let payload = json!({
         "name": "invalid_stdio",
         "display_name": "Invalid Stdio",
@@ -1126,10 +1135,10 @@ async fn test_stdio_transport_requires_command() {
         // Missing command
     });
 
-    let url = server.api_url("/mcp/servers");
+    let url = server.api_url("/mcp/system-servers");
     let response = reqwest::Client::new()
         .post(&url)
-        .header("Authorization", format!("Bearer {}", user.token))
+        .header("Authorization", format!("Bearer {}", admin.token))
         .json(&payload)
         .send()
         .await
@@ -1175,12 +1184,14 @@ async fn test_duplicate_server_name_allowed() {
     let user =
         test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::create"]).await;
 
+    // Uses http transport — user-policy force-sandboxes user stdio
+    // (sandbox is off in tests). Duplicate-name semantics are the
+    // same for both transports.
     let payload = json!({
         "name": "duplicate_server",
         "display_name": "Duplicate Server",
-        "transport_type": "stdio",
-        "command": "node",
-        "args": ["server.js"]
+        "transport_type": "http",
+        "url": "http://127.0.0.1:9/mcp"
     });
 
     let url = server.api_url("/mcp/servers");

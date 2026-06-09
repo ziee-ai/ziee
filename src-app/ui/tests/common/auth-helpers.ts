@@ -104,9 +104,10 @@ export async function loginAsAdmin(
     await page.fill('#setup-form_confirm_password', password)
     await page.click('button[type="submit"]')
 
-    // Navigation may redirect to /onboarding; the token wait below is the real signal.
-
-    // CRITICAL: Wait for authentication token to be stored in localStorage
+    // Wait for the persisted token. authenticateUser's catch block
+    // preserves the token across an aborted /me (see Auth.store.ts) —
+    // navigating away while /me is in flight no longer logs the user
+    // back out — so the token-in-localStorage check is sufficient.
     await page.waitForFunction(
       () => {
         const authStorage = localStorage.getItem('auth-storage')
@@ -348,27 +349,58 @@ export async function createTestUser(
 }
 
 /**
- * Get admin token for API calls
+ * Get admin token for API calls. Idempotent — if the admin user doesn't
+ * exist yet, this creates it via `POST /api/app/setup/admin` (the same
+ * endpoint the UI setup form submits to) and then logs in.
  *
- * This makes a direct API call to get a fresh token for API operations.
- * Assumes admin user exists with default credentials.
+ * This is the API-only equivalent of `loginAsAdmin()`: it works without
+ * a `Page` and is safe to call from tests that haven't yet driven the
+ * setup UI. Used by 50+ specs that need a token before navigating in.
  */
 export async function getAdminToken(
   apiURL: string,
   credentials: AdminCredentials = DEFAULT_ADMIN_CREDENTIALS,
 ): Promise<string> {
-  const { username = 'admin', password = 'password123' } = credentials
+  const {
+    username = 'admin',
+    email = 'admin@example.com',
+    password = 'password123',
+    displayName = 'System Administrator',
+  } = credentials
 
-  const response = await fetch(`${apiURL}/api/auth/login`, {
+  let response = await fetch(`${apiURL}/api/auth/login`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      username,
-      password,
-    }),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
   })
+
+  if (response.status === 401) {
+    // Admin doesn't exist yet — create it via the setup endpoint and
+    // retry login. Same shape the UI's SetupPage form posts. The 401
+    // path is the "admin not found" branch (`INVALID_CREDENTIALS`);
+    // any other non-ok status is a real failure we want to surface.
+    const setupResp = await fetch(`${apiURL}/api/app/setup/admin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username,
+        email,
+        password,
+        display_name: displayName,
+      }),
+    })
+    if (!setupResp.ok) {
+      const text = await setupResp.text()
+      throw new Error(
+        `Failed to create admin via setup endpoint: ${setupResp.statusText} - ${text}`,
+      )
+    }
+    response = await fetch(`${apiURL}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    })
+  }
 
   if (!response.ok) {
     const text = await response.text()

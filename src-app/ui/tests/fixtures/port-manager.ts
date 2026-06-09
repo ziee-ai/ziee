@@ -111,19 +111,51 @@ function killProcessOnPort(port: number): void {
 }
 
 /**
- * Validate if a lock is still valid based on heartbeat
- * A lock is valid if the heartbeat timestamp is recent (within HEARTBEAT_STALE_MS)
+ * Validate if a lock is still valid.
+ *
+ * A lock is valid if either:
+ *   1. The heartbeat timestamp is recent (within HEARTBEAT_STALE_MS), OR
+ *   2. The recorded process PIDs are still alive (signal-0 probe).
+ *
+ * The PID liveness check (#2) is critical: under load (cargo cold-start
+ * compilation, vite optimize-deps reload, the test node event loop
+ * pegged waiting on a long fetch handler) the heartbeat interval can
+ * drift past the 10 s stale threshold even while the test is healthy
+ * mid-execution. If we treated that as stale and killed the processes,
+ * we'd take down ANOTHER worker's running backend and vite — that's
+ * exactly the symptom users saw as "ERR_CONNECTION_REFUSED" /
+ * "TypeError: Failed to fetch" cascades during parallel runs.
+ *
+ * Only treat the lock as stale when BOTH the heartbeat is gone AND
+ * the registered processes are gone.
  */
 function isLockValid(lock: PortLock): boolean {
   const now = Date.now()
 
-  // Check if heartbeat is stale (no update for >10 seconds)
-  if (now - lock.timestamp > HEARTBEAT_STALE_MS) {
-    console.log(`🧹 Lock heartbeat stale (last update: ${new Date(lock.timestamp).toISOString()}, age: ${now - lock.timestamp}ms)`)
-    return false
+  if (now - lock.timestamp <= HEARTBEAT_STALE_MS) {
+    return true
   }
 
-  return true
+  // Heartbeat is stale — but check if the registered processes are
+  // actually still running. A live process means the worker is just
+  // blocked (event loop), not crashed.
+  const mainAlive = isProcessAlive(lock.pid)
+  const viteAlive = lock.vitePid ? isProcessAlive(lock.vitePid) : false
+  const backendAlive = lock.backendPid ? isProcessAlive(lock.backendPid) : false
+
+  if (mainAlive || viteAlive || backendAlive) {
+    // Workers still alive — heartbeat just hasn't ticked yet. Treat as
+    // valid; the worker will catch up.
+    return true
+  }
+
+  console.log(
+    `🧹 Lock heartbeat stale AND all registered PIDs are dead ` +
+      `(last update: ${new Date(lock.timestamp).toISOString()}, ` +
+      `age: ${now - lock.timestamp}ms, main pid=${lock.pid}, ` +
+      `vite pid=${lock.vitePid ?? 'unset'}, backend pid=${lock.backendPid ?? 'unset'})`,
+  )
+  return false
 }
 
 /**

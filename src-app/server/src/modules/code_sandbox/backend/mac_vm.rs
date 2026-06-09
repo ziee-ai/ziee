@@ -190,8 +190,23 @@ async fn ensure_test_vm(rootfs_squashfs: &Path) -> Result<Arc<VmHandle>, AppErro
         .and_then(|s| s.to_str())
         .unwrap_or("test")
         .to_string();
-    let socket_path = dir.join(format!("test-vm-{key}.sock"));
+    // macOS AF_UNIX SUN_PATH max is 104 bytes; `/var/folders/<5>/<29>/T/
+    // ziee-sandbox-<pid>/test-vm-<full-rootfs-filename>.sock` blows past
+    // that and `connect()` fails EAI_OVERFLOW with "path too long".
+    // `stat()` still works (it doesn't go through sockaddr_un), which
+    // historically masked the bug — the harness used to poll `exists()`
+    // and time out without ever attempting connect. Hash the key into a
+    // short stable digest so the full sockaddr_un fits.
+    let key_digest = short_key_digest(&key);
+    let socket_path = dir.join(format!("vm-{key_digest}.sock"));
     let _ = std::fs::remove_file(&socket_path);
+    if socket_path.as_os_str().len() > 100 {
+        return Err(AppError::internal_error(format!(
+            "test VM socket path is {} bytes (AF_UNIX limit 104). \
+             Set TMPDIR to a shorter prefix.",
+            socket_path.as_os_str().len()
+        )));
+    }
 
     // Workspace dir for the VM's virtio-fs share. Shared across tests
     // in this pool entry — tier 4 tests don't write to /workspace.
@@ -243,11 +258,28 @@ async fn ensure_test_vm(rootfs_squashfs: &Path) -> Result<Arc<VmHandle>, AppErro
         }
     });
 
+    // libkrun's `krun_add_vsock_port2(listen=true)` bridges a host-side
+    // unix-socket pseudo-endpoint to the guest's vsock listener. On macOS
+    // 1.18.1 the endpoint is NOT a filesystem-visible socket — `stat()`
+    // returns ENOENT, but `connect(AF_UNIX, path)` succeeds and is
+    // proxied through to the guest's vsock listen. The old poll on
+    // `socket_path.exists()` therefore never resolved.
+    //
+    // Poll by attempting an `UnixStream::connect` instead: success means
+    // libkrun's bridge is wired AND the agent on the guest side is
+    // listening (the agent's vsock_listen is what backs the connect).
+    // Once that round-trips, also drain the agent's "listening on vsock
+    // port" stderr marker (may arrive before or after the first
+    // successful connect — either order is fine).
     let deadline = Instant::now() + Duration::from_secs(30);
-    while !socket_path.exists() {
+    loop {
+        if tokio::net::UnixStream::connect(&socket_path).await.is_ok() {
+            break;
+        }
         if Instant::now() > deadline {
             return Err(AppError::internal_error(
-                "test VM launcher: vsock socket did not appear within 30s",
+                "test VM launcher: vsock bridge did not accept a connection within 30s \
+                 (libkrun host-side connect proxy never came up)",
             ));
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -286,6 +318,20 @@ fn runtime_dir() -> std::io::Result<PathBuf> {
     std::fs::create_dir_all(&dir)?;
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
     Ok(dir)
+}
+
+/// 8-hex-char digest of `key` — stable across runs, ~5 collisions per
+/// billion. Used to compress long natural keys (rootfs filenames,
+/// `version-flavor` tuples) into a fragment that keeps the full
+/// socket path under macOS's 104-byte AF_UNIX SUN_PATH cap. SHA-256
+/// is overkill but already in-tree; we just take the first 8 hex
+/// chars for a 4-byte digest.
+fn short_key_digest(key: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(key.as_bytes());
+    let full = format!("{:x}", h.finalize());
+    full[..8].to_string()
 }
 
 /// True if `launcher` can find `libkrun.1.dylib` via its rpath search
@@ -409,11 +455,23 @@ impl MacVmBackend {
         }
 
         let dir = runtime_dir().map_err(|e| AppError::internal_error(format!("runtime dir: {e}")))?;
-        // Socket path includes the version so two pinned versions of
-        // the same flavor don't collide on a shared `vm-<flavor>.sock`
-        // file during a swap-drain cycle.
-        let socket_path = dir.join(format!("vm-{version}-{flavor}.sock"));
+        // Socket path must fit in macOS AF_UNIX SUN_PATH (104 bytes).
+        // Two pinned versions of the same flavor still can't collide on
+        // a shared `vm-<flavor>.sock` during a swap-drain, so hash the
+        // (version, flavor) key into a short stable digest. See
+        // `short_key_digest` for the reasoning — `connect()` fails
+        // EAI_OVERFLOW on the un-hashed path; `stat()` still works
+        // (historically masked the bug).
+        let key_digest = short_key_digest(&format!("{version}-{flavor}"));
+        let socket_path = dir.join(format!("vm-{key_digest}.sock"));
         let _ = std::fs::remove_file(&socket_path);
+        if socket_path.as_os_str().len() > 100 {
+            return Err(AppError::internal_error(format!(
+                "VM socket path is {} bytes (AF_UNIX limit 104). \
+                 Set TMPDIR to a shorter prefix.",
+                socket_path.as_os_str().len()
+            )));
+        }
 
         // Read runtime-tunable VM sizing + concurrency cap (§6). Boot-time
         // snapshot — once the VM is up, an admin's PUT applies to the NEXT
@@ -472,11 +530,20 @@ impl MacVmBackend {
         });
 
         // Wait first for the host bridge socket, then for the in-guest agent.
+        // libkrun's `krun_add_vsock_port2(listen=true)` host endpoint isn't
+        // a filesystem-visible socket on macOS 1.18.1 — `stat()` returns
+        // ENOENT, but `connect(AF_UNIX, path)` succeeds and is proxied to
+        // the guest's vsock listener. Poll by attempting a connect rather
+        // than checking file existence. (Same fix as `ensure_test_vm`.)
         let deadline = Instant::now() + Duration::from_secs(30);
-        while !socket_path.exists() {
+        loop {
+            if tokio::net::UnixStream::connect(&socket_path).await.is_ok() {
+                break;
+            }
             if Instant::now() > deadline {
                 return Err(AppError::internal_error(
-                    "VM launcher: vsock socket did not appear within 30s",
+                    "VM launcher: vsock bridge did not accept a connection within 30s \
+                     (libkrun host-side connect proxy never came up)",
                 ));
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
