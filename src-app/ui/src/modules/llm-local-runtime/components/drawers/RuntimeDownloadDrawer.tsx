@@ -1,10 +1,11 @@
 import React from 'react'
-import { Button, Form, Input, message, Select, Space } from 'antd'
+import { App, Button, Form, Input, Select, Space } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import type { DownloadVersionRequest } from '@/api-client/types'
 
 export function RuntimeDownloadDrawer() {
+  const { message } = App.useApp()
   const { open, engine, closeDrawer } = Stores.RuntimeDownloadDrawer
   const { updateChecks, checking } = Stores.RuntimeUpdate
   // Server-host platform/arch from the GPU-detection store — always available

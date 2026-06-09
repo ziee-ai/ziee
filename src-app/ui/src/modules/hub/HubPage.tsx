@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
+  App,
   Button,
   Dropdown,
   Flex,
@@ -19,11 +20,11 @@ import { Permissions } from '@/api-client/types'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
-import { message } from 'antd'
 import { DivScrollY } from '@/components/common/DivScrollY'
 import { VersionPicker } from '@/modules/hub/components/VersionPicker'
 
 export function HubPage() {
+  const { message } = App.useApp()
   const { activeTab: urlActiveTab } = useParams()
   const navigate = useNavigate()
   const { slots } = Stores.ModuleSystem
