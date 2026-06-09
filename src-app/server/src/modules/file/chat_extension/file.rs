@@ -100,10 +100,10 @@ impl ChatExtension for FileExtension {
         // Compute the tool-capability once per LLM iteration and memoize it into
         // `context.metadata` (idempotent — whichever extension's `before_llm_call`
         // runs first seeds it; the other before-call extensions read the cached
-        // boolean). NOTE: the per-history `process_content_for_llm` path does NOT
-        // see this memo — it runs on a SEPARATE `transform_context` whose metadata
-        // is an empty map, built + consumed before this `stream_context` exists,
-        // so its `model_supports_tools` call short-circuits to `false`.
+        // boolean). The per-history `process_content_for_llm` path runs on a
+        // SEPARATE `transform_context`, which streaming.rs now seeds with the
+        // same model/provider metadata, so its `model_supports_tools` call
+        // resolves correctly and the recency-drop below actually fires.
         let tool_capable =
             crate::modules::file::available_files::ensure_model_tools_capable(
                 &mut context.metadata,

@@ -441,6 +441,27 @@ pub async fn update_admin_settings(
             .into());
         }
     }
+    // Token thresholds — validate in-handler so a bad value is a 400, not a raw
+    // 500 from the DB CHECK (migration 85: trigger 500..=1_000_000, keep >= 100,
+    // keep < trigger). Mirrors the default_top_k / cosine_threshold checks above.
+    if let Some(t) = body.summarize_after_tokens {
+        if !(500..=1_000_000).contains(&t) {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                "summarize_after_tokens out of range (500..=1000000)",
+            )
+            .into());
+        }
+    }
+    if let Some(k) = body.summarizer_keep_recent_tokens {
+        if k < 100 {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                "summarizer_keep_recent_tokens must be >= 100",
+            )
+            .into());
+        }
+    }
 
     // Prompt-template validation: a non-empty override MUST contain
     // the placeholders the summarizer interpolates. Otherwise
@@ -483,6 +504,24 @@ pub async fn update_admin_settings(
     // and trigger the re-embed worker if it changed.
     let prior = Repos.memory.get_admin_settings().await?;
     let prior_model_id = prior.embedding_model_id;
+
+    // Effective keep < trigger invariant (the fields can be updated
+    // independently, so check the merged values against the migration-85 CHECK
+    // before the DB rejects it with a raw 500). E.g. lowering the trigger below
+    // the existing keep, or raising keep above the existing trigger.
+    let effective_trigger = body
+        .summarize_after_tokens
+        .unwrap_or(prior.summarize_after_tokens);
+    let effective_keep = body
+        .summarizer_keep_recent_tokens
+        .unwrap_or(prior.summarizer_keep_recent_tokens);
+    if effective_keep >= effective_trigger {
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "summarizer_keep_recent_tokens must be less than summarize_after_tokens",
+        )
+        .into());
+    }
 
     let row = Repos
         .memory

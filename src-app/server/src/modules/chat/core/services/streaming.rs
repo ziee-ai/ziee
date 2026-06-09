@@ -273,6 +273,30 @@ impl StreamingService {
                     }
                 }
 
+                // Model/provider metadata, built once and shared by BOTH the
+                // history-replay transform context and the live stream context.
+                // The transform context needs it so `process_content_for_llm`
+                // can resolve the model's tool-capability during replay — that's
+                // what drives the Track A recency-drop (old text attachments are
+                // dropped from the replay for tool-capable models, since they're
+                // listed in the injected manifest + read on demand). With an
+                // empty map the capability check short-circuits to false and the
+                // drop never fires, re-inlining every old attachment each turn.
+                let mut context_metadata = std::collections::HashMap::new();
+                context_metadata.insert(
+                    "provider_type".to_string(),
+                    serde_json::json!(provider_for_task.provider_type()),
+                );
+                context_metadata.insert("model_name".to_string(), serde_json::json!(model_name));
+                context_metadata.insert(
+                    "model_id".to_string(),
+                    serde_json::json!(model_id.to_string()),
+                );
+                context_metadata.insert(
+                    "provider_id".to_string(),
+                    serde_json::json!(provider_id.to_string()),
+                );
+
                 // Create context for content transformation
                 let transform_context = StreamContext {
                     conversation_id,
@@ -280,7 +304,7 @@ impl StreamingService {
                     message_id: None,
                     user_id,
                     pool: pool.clone(),
-                    metadata: std::collections::HashMap::new(),
+                    metadata: context_metadata.clone(),
                     iteration,
                 };
 
@@ -299,22 +323,8 @@ impl StreamingService {
                     }
                 };
 
-                // Create stream context
-                let mut context_metadata = std::collections::HashMap::new();
-                context_metadata.insert(
-                    "provider_type".to_string(),
-                    serde_json::json!(provider_for_task.provider_type()),
-                );
-                context_metadata.insert("model_name".to_string(), serde_json::json!(model_name));
-                context_metadata.insert(
-                    "model_id".to_string(),
-                    serde_json::json!(model_id.to_string()),
-                );
-                context_metadata.insert(
-                    "provider_id".to_string(),
-                    serde_json::json!(provider_id.to_string()),
-                );
-
+                // Create stream context (reuses the metadata built above; the
+                // before_llm_call hooks further seed `model_tools_capable`).
                 let mut stream_context = StreamContext {
                     conversation_id,
                     branch_id,

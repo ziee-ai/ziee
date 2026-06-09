@@ -169,7 +169,11 @@ async fn test_write_tools_denied_for_read_only_user() {
     // a read-only user is denied remember/forget but passes the read gate on
     // recall (which then hits MEMORY_DISABLED by default — NOT a denial).
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
+    // MUST use `create_user_with_only_permissions` (strips default-group
+    // membership): `create_user_with_permissions` re-adds the system "Users"
+    // group, which grants `memory::write` (migration 61) — the user would then
+    // NOT be read-only and the denial assertions would never fire.
+    let user = crate::common::test_helpers::create_user_with_only_permissions(
         &server,
         "mcp_readonly",
         &["memory::read"],
