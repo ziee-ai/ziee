@@ -87,38 +87,65 @@ async function mockRepoProbePass(page: Page): Promise<void> {
 }
 
 /** Mock the download-start POST to return an instance with mid-progress. */
-async function mockDownloadStartWithProgress(page: Page): Promise<void> {
+async function mockDownloadStartWithProgress(
+  page: Page,
+  pathByHubId: Map<string, string>,
+): Promise<void> {
+  // Once a download starts, the store reloads GET /api/llm-models/downloads
+  // (via setupDownloadTracking) and would overwrite the externally-added
+  // mocked row with the real (empty) list. Track the started download and
+  // serve it from the list endpoint too so it survives the reload.
+  let activeDownload: Record<string, unknown> | null = null
+  await page.route(/\/api\/llm-models\/downloads(\?|$)/, async route => {
+    if (!activeDownload) return route.fallback()
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        downloads: [activeDownload],
+        total: 1,
+        page: 1,
+        per_page: 100,
+      }),
+    })
+  })
+
   await page.route(/\/api\/hub\/models\/download$/, async (route, request) => {
     if (request.method() !== 'POST') return route.fallback()
+    // Resolve the requested model's repository_path so the download links
+    // to its card (the card matches by `request_data.repository_path ===
+    // model.repository_path`). The POST body carries hub_id, not the path.
+    const hubId = request.postDataJSON()?.hub_id as string | undefined
+    const reqPath = (hubId && pathByHubId.get(hubId)) || 'mock/repo'
     const now = new Date().toISOString()
+    activeDownload = {
+      id: '00000000-0000-0000-0000-0000000000d1',
+      provider_id: '00000000-0000-0000-0000-0000000000a1',
+      repository_id: '00000000-0000-0000-0000-0000000000b1',
+      status: 'downloading',
+      // Realistic progress_data so the hub card renders the bar at 50%
+      // immediately (no need to wait for the SSE stream).
+      progress_data: {
+        current: 524288000, // 500 MB
+        total: 1048576000, // 1 GB
+        speed_bps: 5242880, // 5 MB/s
+        eta_seconds: 100, // 1m 40s
+        phase: null,
+        message: null,
+      },
+      request_data: { repository_path: reqPath },
+      error_message: null,
+      model_id: null,
+      completed_at: null,
+      created_at: now,
+      started_at: now,
+      updated_at: now,
+    }
     await route.fulfill({
       status: 201,
       contentType: 'application/json',
       body: JSON.stringify({
-        download: {
-          id: '00000000-0000-0000-0000-0000000000d1',
-          provider_id: '00000000-0000-0000-0000-0000000000a1',
-          repository_id: '00000000-0000-0000-0000-0000000000b1',
-          status: 'downloading',
-          // The initial response carries progress_data with realistic
-          // values so the hub card renders the bar at 50% immediately
-          // (no need to wait for the SSE stream).
-          progress_data: {
-            current: 524288000, // 500 MB
-            total: 1048576000, // 1 GB
-            speed_bps: 5242880, // 5 MB/s
-            eta_seconds: 100, // 1m 40s
-            phase: null,
-            message: null,
-          },
-          request_data: { repository_path: 'mock/repo' },
-          error_message: null,
-          model_id: null,
-          completed_at: null,
-          created_at: now,
-          started_at: now,
-          updated_at: now,
-        },
+        download: activeDownload,
         hub_tracking: {
           id: '00000000-0000-0000-0000-0000000000e1',
           entity_type: 'llm_model',
@@ -143,7 +170,18 @@ test('hub card renders a full-width Progress bar at the bottom with percent + sp
   await configureHfWithDummyKey(baseURL, token)
 
   await mockRepoProbePass(page)
-  await mockDownloadStartWithProgress(page)
+  // The download POST carries hub_id; the card matches downloads by
+  // repository_path, so give the mock a hub_id → repository_path map.
+  const hubModels = await fetch(`${baseURL}/api/hub/models?lang=en`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }).then(r => r.json())
+  const pathByHubId = new Map<string, string>(
+    (hubModels as Array<{ id: string; repository_path: string }>).map(m => [
+      m.id,
+      m.repository_path,
+    ]),
+  )
+  await mockDownloadStartWithProgress(page, pathByHubId)
 
   await loginAsAdmin(page, baseURL)
   await navigateToHub(page, baseURL, 'models')
