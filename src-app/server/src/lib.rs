@@ -27,6 +27,7 @@ pub use modules::auth::refresh_tokens;
 pub use modules::user::models::User;
 pub use modules::llm_provider::events::LlmProviderEvent;
 pub use modules::llm_provider::UserKeyRepository;
+pub use modules::mcp::events::McpServerEvent;
 // Re-export the LLM repository connection-health entry points so the
 // integration tests can drive the boot path directly without going
 // through the module's `init` hook.

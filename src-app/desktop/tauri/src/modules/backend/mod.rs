@@ -160,6 +160,9 @@ impl DesktopModule for BackendModule {
 
 use crate::modules::auth::ensure_desktop_admin;
 use crate::modules::llm_provider::AutoAssignProviderHandler;
+use crate::modules::mcp::{
+    backfill_system_mcp_assignments, AutoAssignMcpServerHandler,
+};
 
 // =====================================================
 // Backend Server Startup
@@ -182,7 +185,13 @@ pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHan
     tracing::info!("Starting backend server with desktop routes...");
 
     // Create desktop-specific event handlers
-    let handlers: Vec<Arc<dyn ziee::EventHandler>> = vec![AutoAssignProviderHandler::new()];
+    let handlers: Vec<Arc<dyn ziee::EventHandler>> = vec![
+        AutoAssignProviderHandler::new(),
+        // Mirror the LLM provider auto-assign for system MCP servers:
+        // every new system server lands in every user group so the
+        // single admin sees it in chat without a manual assignment.
+        AutoAssignMcpServerHandler::new(),
+    ];
 
     // Clone config so the closure can build a CORS layer that
     // matches the server's own — `start_server_with_routes` takes
@@ -263,6 +272,19 @@ pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHan
                 // Ensure admin exists (create on first run)
                 if let Err(e) = ensure_desktop_admin().await {
                     tracing::error!("Failed to ensure desktop admin: {}", e);
+                }
+
+                // Idempotent backfill: every system MCP server gets a
+                // row in `user_group_mcp_servers` for every group.
+                // Runs every boot to catch built-in registrations
+                // (memory MCP) whose insert-if-absent path may not
+                // emit `SystemServerCreated`. See the function doc
+                // for the full rationale.
+                if let Err(e) = backfill_system_mcp_assignments().await {
+                    tracing::error!(
+                        error = %e,
+                        "backfill_system_mcp_assignments failed — system MCP servers may not be visible to the admin until manually assigned"
+                    );
                 }
 
                 state.set_ready(true);
