@@ -266,9 +266,12 @@ test.describe('Group Membership Management', () => {
       const spinner = drawer.locator('.ant-spin')
       // Spinner might not be visible if data loads too quickly, that's okay
 
-      // Eventually, either spinner disappears or list appears
+      // Eventually, either spinner disappears or list appears. The drawer
+      // can hold more than one `.ant-list` / `.ant-spin` (members list plus
+      // an add-members list, antd v6's Spin wrapper), so assert that at
+      // least one is visible rather than tripping strict mode.
       await expect(
-        drawer.locator('.ant-list').or(spinner)
+        drawer.locator('.ant-list').or(spinner).first()
       ).toBeVisible({ timeout: 5000 })
     }
   })
