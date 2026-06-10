@@ -112,8 +112,17 @@ test.describe('Provider API key modal (chat model selector)', () => {
 
     await goToNewChatPage(page, baseURL)
 
-    // "Keyed Provider" sorts before "Local Provider" → keyed model is default.
+    // Providers sort Local-first, so the local model is the default
+    // selection. To prove that *switching to* a local model fires onChange
+    // without prompting, first move OFF local onto the keyed model (its
+    // provider is configured with a key, so no modal), then switch back.
+    await expect(page.locator('[data-testid="model-selector"]')).toContainText('Local Model')
+    await page.click('[data-testid="model-selector"] .ant-select')
+    const keyedOption = page.getByRole('option', { name: 'Keyed Model' })
+    await keyedOption.waitFor({ state: 'visible' })
+    await keyedOption.click()
     await expect(page.locator('[data-testid="model-selector"]')).toContainText('Keyed Model')
+
     await page.click('[data-testid="model-selector"] .ant-select')
     const localOption = page.getByRole('option', { name: 'Local Model' })
     await localOption.waitFor({ state: 'visible' })

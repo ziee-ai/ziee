@@ -431,6 +431,7 @@ export const callAsync = async <U extends ApiEndpointUrl>(
     // Parse the response as JSON
     if (!response.ok) {
       let errorMessage = `HTTP error! status: ${response.status}`
+      let errorCode: string | undefined
 
       // Handle 403 Forbidden specifically
       if (response.status === 403) {
@@ -459,6 +460,9 @@ export const callAsync = async <U extends ApiEndpointUrl>(
           if (errorResponse.error) {
             errorMessage = errorResponse.error
           }
+          if (errorResponse.error_code) {
+            errorCode = errorResponse.error_code
+          }
         } catch {
           // If we can't parse the error response, use the default message
           // get the reponse text instead
@@ -468,7 +472,13 @@ export const callAsync = async <U extends ApiEndpointUrl>(
         }
       }
 
-      throw new Error(errorMessage)
+      // Surface the stable machine-readable error_code on the thrown
+      // Error so callers can branch on it without parsing the message.
+      const apiError = new Error(errorMessage)
+      if (errorCode) {
+        ;(apiError as Error & { error_code?: string }).error_code = errorCode
+      }
+      throw apiError
     }
 
     //try to parse the response based on content type

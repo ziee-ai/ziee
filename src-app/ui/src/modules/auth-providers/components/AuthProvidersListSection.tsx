@@ -116,6 +116,7 @@ export function AuthProvidersListSection() {
         <Button
           type="text"
           size="small"
+          aria-label={`Test ${row.name}`}
           loading={testingIds.has(row.id)}
           onClick={() => onTest(row)}
         >
@@ -124,6 +125,7 @@ export function AuthProvidersListSection() {
         <Button
           type="text"
           size="small"
+          aria-label={`Edit ${row.name}`}
           onClick={() => setDrawer({ mode: 'edit', existing: row })}
         >
           Edit
@@ -136,7 +138,12 @@ export function AuthProvidersListSection() {
           cancelText="Cancel"
           onConfirm={() => onDelete(row)}
         >
-          <Button type="text" size="small" danger>
+          <Button
+            type="text"
+            size="small"
+            danger
+            aria-label={`Delete ${row.name}`}
+          >
             Delete
           </Button>
         </Popconfirm>

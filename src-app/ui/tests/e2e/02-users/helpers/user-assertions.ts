@@ -80,7 +80,7 @@ export async function assertGroupStatus(
   // displays the latest group state — the UserGroups store emits
   // emitGroupUpdated after a successful PUT but the listing card's
   // badge isn't always rebound to that event.
-  await page.reload({ waitUntil: 'networkidle' })
+  await page.reload({ waitUntil: 'load' })
 
   // Locate the group's row by its unique Edit button (aria-label
   // includes the group name) and walk up to the row container, then

@@ -7,13 +7,19 @@ pub fn tool_list() -> Value {
         "tools": [
             {
                 "name": "remember",
-                "description": "Persist a durable fact about the user to long-term memory. Use for explicit 'remember that …' requests. The fact will be available in future conversations.",
+                "description": "Persist a durable, non-obvious fact about the user to long-term memory. Use for explicit 'remember that …' requests. Pick the narrowest scope that fits.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "content": {
                             "type": "string",
                             "description": "The fact to remember, one sentence, third-person about the user."
+                        },
+                        "scope": {
+                            "type": "string",
+                            "enum": ["user", "project", "conversation"],
+                            "default": "conversation",
+                            "description": "Where this fact applies: 'conversation' = only this thread; 'project' = this project's work; 'user' = always true about the person across everything."
                         },
                         "kind": {
                             "type": "string",
@@ -32,7 +38,7 @@ pub fn tool_list() -> Value {
             },
             {
                 "name": "recall",
-                "description": "Search the user's memories by semantic similarity to a query. Returns up to top_k matches.",
+                "description": "Search the user's memories by relevance to a query — hybrid semantic + full-text when an embedding model is configured, otherwise keyword/full-text only. Returns up to top_k matches; pick terms and iterate.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {

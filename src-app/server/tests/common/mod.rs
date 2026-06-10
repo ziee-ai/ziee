@@ -8,6 +8,7 @@
 pub mod apple_mock;
 pub mod chat_stream_probe;
 pub mod ldap_mock;
+pub mod oai_capture_stub;
 pub mod oauth_mock;
 pub mod stub_chat;
 pub mod stub_engine;

@@ -72,7 +72,7 @@ async function logoutThenGoToLogin(page: any, baseURL: string) {
     sessionStorage.clear()
   })
   await page.context().clearCookies()
-  await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
+  await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
 }
 
 test.describe('Social login — provider buttons + callback flow', () => {
@@ -142,7 +142,7 @@ test.describe('Social login — provider buttons + callback flow', () => {
 
     // The navigation may resolve immediately because of the fulfill,
     // but the URL we captured is the assertion that matters.
-    await page.waitForLoadState('networkidle').catch(() => undefined)
+    await page.waitForLoadState('load').catch(() => undefined)
     expect(capturedAuthorizeUrl).toContain('/api/auth/oauth/google/authorize')
 
     // sessionStorage was populated before the click navigated away —
@@ -203,7 +203,7 @@ test.describe('Social login — provider buttons + callback flow', () => {
     // skipped). Wait briefly then assert we did NOT end up back at
     // /auth, which is what AuthGuard renders for unauthenticated
     // users.
-    await page.waitForLoadState('networkidle', { timeout: 10_000 })
+    await page.waitForLoadState('load', { timeout: 10_000 })
     await expect(page).not.toHaveURL(/\/auth(\?|$)/)
   })
 

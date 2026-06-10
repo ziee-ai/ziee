@@ -59,7 +59,12 @@ test.describe('Social login — navikt end-to-end parity', () => {
             attribute_mapping: {
               user_id: 'sub',
               username: 'sub',
-              email: 'sub',
+              // Map email to the real `email` claim (asserted verified via
+              // the mock's claims field below). Our callback drops any email
+              // the IdP didn't mark verified, so mapping email→sub (which the
+              // mock never marks verified) would leave the new user with no
+              // email and the create would be rejected.
+              email: 'email',
               display_name: 'sub',
             },
             display_name: 'Sign in with NaviKt',
@@ -97,6 +102,16 @@ test.describe('Social login — navikt end-to-end parity', () => {
         timeout: 15_000,
       })
       await page.locator('input[name="username"]').fill('e2e-navikt-user')
+      // The default mock token carries `sub` but no email / email_verified.
+      // The mock's `claims` textarea merges arbitrary claims into the issued
+      // ID token, so assert a verified email — exactly what a real OIDC
+      // provider returns and what our callback requires to provision.
+      await page
+        .locator('textarea[name="claims"], #claims')
+        .first()
+        .fill(
+          '{"email":"navikt-e2e-user@example.com","email_verified":true}',
+        )
       // Navikt's submit button is labelled "Sign-in" (with hyphen).
       await page.getByRole('button', { name: /sign-?in/i }).click()
 

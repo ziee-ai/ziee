@@ -257,8 +257,18 @@ async fn project_files_appear_in_llm_response() {
     .await;
 
     eprintln!("LLM response: {response_text}");
+    // The model recalls the fact (now via the Track A manifest + read_file on a
+    // tool-capable model) but reformats it to natural language — e.g.
+    // "BERMUDA_TRIANGLE_7" → "Bermuda Triangle 7". Match on the normalized form
+    // (lowercased, non-alphanumerics stripped) so the assertion verifies recall,
+    // not the model's exact casing/punctuation.
+    let normalized: String = response_text
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect();
     assert!(
-        response_text.contains("BERMUDA_TRIANGLE_7"),
+        normalized.contains("bermudatriangle7"),
         "Response must recall the unique fact from the attached project file; \
          got: {response_text:?}"
     );

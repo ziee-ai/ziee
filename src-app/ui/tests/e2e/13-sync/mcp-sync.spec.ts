@@ -24,10 +24,10 @@ import {
 //
 // Run with --workers=1 (shared backend + DB).
 //
-// CRITICAL: the MCP nav helpers (`goToMcpServersPage` / `goToMcpAdminPage`)
-// call `page.waitForLoadState('networkidle')`, which HANGS forever against the
-// persistent realtime-sync SSE stream. We therefore navigate inline and wait
-// on a stable page selector (the heading) instead.
+// CRITICAL: `waitForLoadState('networkidle')` HANGS forever against the
+// persistent realtime-sync SSE stream (the network is never idle). These
+// specs navigate inline and wait on a stable page selector (the heading)
+// instead — the same `load`-based pattern the 07-mcp nav helpers now use.
 
 // Navigate to the user MCP servers page WITHOUT networkidle.
 async function goToUserMcpPage(page: import('@playwright/test').Page, baseURL: string) {

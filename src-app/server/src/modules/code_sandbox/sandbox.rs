@@ -604,15 +604,40 @@ pub(crate) fn build_bwrap_argv(
     // Conversation attachments are read-only-bound into the sandbox.
     // Skip filenames containing path separators or NUL — we already
     // store a basename, but defense-in-depth.
+    // Collision-safe mount names: two attachments with the SAME filename would
+    // otherwise both bind to `/home/sandboxuser/<name>` and the later one would
+    // shadow the earlier. Dedup deterministically (input is ordered by
+    // created_at) by suffixing " (2)", " (3)", … before the extension. Stored
+    // filenames are never changed — only the in-sandbox mount path.
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     let extra_ro_binds: Vec<(String, String)> = ctx
         .files
         .iter()
         .filter(|f| !f.filename.contains('/') && !f.filename.contains('\0'))
         .map(|f| {
             let host_path = workspace_attachment_path(workspace_root, f.file_id);
+            let dest_name = if seen.insert(f.filename.clone()) {
+                f.filename.clone()
+            } else {
+                let p = std::path::Path::new(&f.filename);
+                let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or(&f.filename);
+                let ext = p.extension().and_then(|s| s.to_str());
+                let mut chosen = f.filename.clone();
+                for i in 2.. {
+                    let cand = match ext {
+                        Some(e) => format!("{stem} ({i}).{e}"),
+                        None => format!("{stem} ({i})"),
+                    };
+                    if seen.insert(cand.clone()) {
+                        chosen = cand;
+                        break;
+                    }
+                }
+                chosen
+            };
             (
                 host_path.display().to_string(),
-                format!("/home/sandboxuser/{}", f.filename),
+                format!("/home/sandboxuser/{}", dest_name),
             )
         })
         .collect();
@@ -1246,6 +1271,104 @@ mod tests {
                 "must mask {dotfile} with --ro-bind /tmp/.sandbox_empty; argv: {argv:?}"
             );
         }
+    }
+
+    /// Build a `SandboxContext` whose `files` Arc holds the given list,
+    /// reusing the other field values from `fake_ctx()` (which hard-codes
+    /// an EMPTY file list, so it can't exercise the collision loop).
+    fn ctx_with_files(files: Vec<ConversationFile>) -> SandboxContext {
+        SandboxContext {
+            files: Arc::new(files),
+            ..fake_ctx()
+        }
+    }
+
+    /// One `ConversationFile` with the given filename. file_id is fresh
+    /// (the collision-suffixing keys on filename, not file_id).
+    fn cfile(filename: &str) -> ConversationFile {
+        ConversationFile {
+            file_id: Uuid::new_v4(),
+            filename: filename.to_string(),
+            user_id: Uuid::nil(),
+            mime_type: None,
+            created_at: chrono::Utc::now(),
+        }
+    }
+
+    /// Two attachments sharing a filename must NOT both bind to
+    /// `/home/sandboxuser/data.csv` (the later would shadow the earlier).
+    /// The collision loop suffixes " (2)" before the extension, so the
+    /// second binds to `/home/sandboxuser/data (2).csv`. Both binds must
+    /// be present.
+    #[test]
+    fn argv_suffixes_duplicate_attachment_filenames() {
+        let caps = fake_caps();
+        let state = fake_state();
+        let ctx = ctx_with_files(vec![cfile("data.csv"), cfile("data.csv")]);
+        let argv = build_bwrap_argv(
+            &caps,
+            &state.workspace_root,
+            &ctx,
+            std::path::Path::new(state.config.rootfs_path()),
+            "x",
+            std::path::Path::new("/tmp/.sandbox_passwd"),
+            std::path::Path::new("/tmp/.sandbox_group"),
+            std::path::Path::new("/tmp/.sandbox_empty"),
+            None,
+            &fake_limits(),
+        );
+
+        // Attachments emit `--ro-bind-try <host> /home/sandboxuser/<dest>`.
+        let dests: Vec<&str> = argv
+            .windows(3)
+            .filter(|w| w[0] == "--ro-bind-try")
+            .map(|w| w[2].as_str())
+            .collect();
+        assert!(
+            dests.contains(&"/home/sandboxuser/data.csv"),
+            "first attachment keeps its name; dests: {dests:?}"
+        );
+        assert!(
+            dests.contains(&"/home/sandboxuser/data (2).csv"),
+            "the duplicate must be suffixed BEFORE the extension; dests: {dests:?}"
+        );
+    }
+
+    /// Dotless duplicate filenames pin the no-extension branch of the
+    /// collision loop: two `Makefile`s map to `Makefile` and
+    /// `Makefile (2)` (suffix appended at the end — there is no extension
+    /// to insert it before).
+    #[test]
+    fn argv_suffixes_duplicate_dotless_filenames() {
+        let caps = fake_caps();
+        let state = fake_state();
+        let ctx = ctx_with_files(vec![cfile("Makefile"), cfile("Makefile")]);
+        let argv = build_bwrap_argv(
+            &caps,
+            &state.workspace_root,
+            &ctx,
+            std::path::Path::new(state.config.rootfs_path()),
+            "x",
+            std::path::Path::new("/tmp/.sandbox_passwd"),
+            std::path::Path::new("/tmp/.sandbox_group"),
+            std::path::Path::new("/tmp/.sandbox_empty"),
+            None,
+            &fake_limits(),
+        );
+
+        let dests: Vec<&str> = argv
+            .windows(3)
+            .filter(|w| w[0] == "--ro-bind-try")
+            .map(|w| w[2].as_str())
+            .collect();
+        assert!(
+            dests.contains(&"/home/sandboxuser/Makefile"),
+            "first dotless attachment keeps its name; dests: {dests:?}"
+        );
+        assert!(
+            dests.contains(&"/home/sandboxuser/Makefile (2)"),
+            "the dotless duplicate suffixes at the end; dests: {dests:?}"
+        );
     }
 
     /// Phase 3 regression test: every security-critical flag must

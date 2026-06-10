@@ -16,4 +16,5 @@
 #[path = "../../../server/tests/common/harness_inner.rs"]
 mod common;
 
+mod auto_assign_mcp;
 mod remote_access;

@@ -52,7 +52,9 @@ test('boot-time probe auto-disables a failing enabled row on next mount', async 
     const enableResp = await fetch(
       `${baseURL}/api/llm-repositories/${repoId}`,
       {
-        method: 'PUT',
+        // The update route is POST /llm-repositories/{id} (not PUT) — a
+        // PUT returns 405 Method Not Allowed.
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,

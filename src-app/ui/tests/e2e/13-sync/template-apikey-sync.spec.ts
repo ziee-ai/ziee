@@ -29,8 +29,7 @@ import {
 // NAV NOTE: every authenticated page holds an open `GET /api/sync/subscribe`
 // SSE stream, so `waitForLoadState('networkidle')` never settles and HANGS the
 // test. Both helpers below navigate inline and wait for a stable selector
-// instead. (This is also why we do NOT call `goToTemplateAssistantsSettings` —
-// it still does a `networkidle` wait that would hang under the sync stream.)
+// instead, keeping this cross-device spec self-contained.
 
 /**
  * Land on the admin Template Assistants settings page WITHOUT a networkidle

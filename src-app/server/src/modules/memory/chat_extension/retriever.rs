@@ -45,9 +45,9 @@ pub async fn retrieve_and_inject(
     if !admin.enabled {
         return Ok(());
     }
-    let Some(embedding_model_id) = admin.embedding_model_id else {
-        return Ok(());
-    };
+    // Embedding is now OPTIONAL: with no embedding model we fall back to
+    // FTS-only recall (so memory works embedding-free).
+    let embedding_model_id = admin.embedding_model_id;
 
     let user_settings = match Repos.memory.get_or_init_user_settings(user_id).await {
         Ok(s) => s,
@@ -106,27 +106,46 @@ pub async fn retrieve_and_inject(
         return Ok(());
     }
 
-    // ── 4. Embed the query ─────────────────────────────────────────
-    let embedding = match super::super::engine::dispatch::embed(embedding_model_id, &query).await {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::warn!("memory.retrieve: embed failed: {e}");
-            return Ok(());
-        }
+    // ── 4. Scope: derive the project from the conversation so recall unions
+    //        user + this-project + this-conversation memories ───────────────
+    let project_id = match conversation_id {
+        Some(cid) => Repos
+            .project
+            .project_id_for_conversation(cid)
+            .await
+            .ok()
+            .flatten(),
+        None => None,
     };
+    let limit = admin.default_top_k as i64;
 
-    // ── 5. Vector top-K ────────────────────────────────────────────
-    let hits = match top_k(
-        user_id,
-        HalfVector::from_f32_slice(&embedding),
-        admin.default_top_k as i64,
-        admin.cosine_threshold,
-    )
-    .await
-    {
+    // ── 5. Hybrid (vector ⊕ FTS via RRF) when an embedding model is available;
+    //        FTS-only fallback otherwise ──────────────────────────────────────
+    let search_result = match embedding_model_id {
+        Some(emb_id) => match super::super::engine::dispatch::embed(emb_id, &query).await {
+            Ok(v) => {
+                hybrid_search(
+                    user_id,
+                    project_id,
+                    conversation_id,
+                    HalfVector::from_f32_slice(&v),
+                    admin.cosine_threshold,
+                    &query,
+                    limit,
+                )
+                .await
+            }
+            Err(e) => {
+                tracing::warn!("memory.retrieve: embed failed ({e}); FTS-only fallback");
+                fts_search(user_id, project_id, conversation_id, &query, limit).await
+            }
+        },
+        None => fts_search(user_id, project_id, conversation_id, &query, limit).await,
+    };
+    let hits = match search_result {
         Ok(h) => h,
         Err(e) => {
-            tracing::warn!("memory.retrieve: top_k SQL failed: {e}");
+            tracing::warn!("memory.retrieve: search failed: {e}");
             return Ok(());
         }
     };
@@ -232,34 +251,120 @@ async fn inject_core_memory_blocks(
     Ok(())
 }
 
-/// Top-K cosine search filtered by user_id. Returns `(memory_id, content)`
-/// rows where cosine distance < `threshold`.
-async fn top_k(
+/// The scope-union WHERE shared by every recall query: a user's own
+/// (user-global) memories + this-project memories + this-conversation memories.
+/// `project_id`/`conversation_id` are nullable — when null, that scope's branch
+/// matches nothing (so e.g. an unfiled conversation gets only user-scope hits).
+const SCOPE_FILTER: &str = "user_id = $1 AND deleted_at IS NULL AND ( \
+     scope = 'user' \
+     OR (scope = 'project' AND project_id = $2) \
+     OR (scope = 'conversation' AND conversation_id = $3) )";
+
+/// Vector (cosine) arm, scope-filtered. Returns `(id, content)` ordered nearest
+/// first. No cosine threshold here — RRF fusion ranks across arms.
+pub(crate) async fn vector_search(
     user_id: Uuid,
-    embedding: HalfVector,
-    limit: i64,
+    project_id: Option<Uuid>,
+    conversation_id: Option<Uuid>,
+    embedding: &HalfVector,
     threshold: f32,
+    limit: i64,
 ) -> Result<Vec<(Uuid, String)>, AppError> {
     let pool = Repos.memory.pool_clone();
-    let rows: Vec<(Uuid, String, f32)> = sqlx::query_as(
-        r#"
-        SELECT id, content, (embedding <=> $2)::real AS distance
-        FROM user_memories
-        WHERE user_id = $1
-          AND deleted_at IS NULL
-          AND embedding IS NOT NULL
-          AND (embedding <=> $2) < $3
-        ORDER BY embedding <=> $2
-        LIMIT $4
-        "#,
-    )
-    .bind(user_id)
-    .bind(&embedding)
-    .bind(threshold)
-    .bind(limit)
-    .fetch_all(&pool)
-    .await
-    .map_err(AppError::database_error)?;
+    // Keep the admin cosine_threshold on the vector arm (plan §B4) so obviously
+    // irrelevant rows don't enter the RRF candidate pool.
+    let sql = format!(
+        "SELECT id, content FROM user_memories WHERE {SCOPE_FILTER} \
+         AND embedding IS NOT NULL AND (embedding <=> $4) < $5 \
+         ORDER BY embedding <=> $4 LIMIT $6"
+    );
+    sqlx::query_as(&sql)
+        .bind(user_id)
+        .bind(project_id)
+        .bind(conversation_id)
+        .bind(embedding)
+        .bind(threshold)
+        .bind(limit)
+        .fetch_all(&pool)
+        .await
+        .map_err(AppError::database_error)
+}
 
-    Ok(rows.into_iter().map(|(id, content, _)| (id, content)).collect())
+/// Full-text (lexical) arm, scope-filtered, ranked by `ts_rank_cd`. Works with
+/// NO embedding model. `'simple'` dictionary (language-agnostic).
+pub(crate) async fn fts_search(
+    user_id: Uuid,
+    project_id: Option<Uuid>,
+    conversation_id: Option<Uuid>,
+    query: &str,
+    limit: i64,
+) -> Result<Vec<(Uuid, String)>, AppError> {
+    let pool = Repos.memory.pool_clone();
+    let sql = format!(
+        "SELECT id, content FROM user_memories WHERE {SCOPE_FILTER} \
+         AND content_tsv @@ websearch_to_tsquery('simple', $4) \
+         ORDER BY ts_rank_cd(content_tsv, websearch_to_tsquery('simple', $4)) DESC LIMIT $5"
+    );
+    sqlx::query_as(&sql)
+        .bind(user_id)
+        .bind(project_id)
+        .bind(conversation_id)
+        .bind(query)
+        .bind(limit)
+        .fetch_all(&pool)
+        .await
+        .map_err(AppError::database_error)
+}
+
+/// Hybrid: run the vector + FTS arms over a larger candidate pool, then fuse
+/// with Reciprocal Rank Fusion (k=60) in Rust — rank-only, so the two
+/// incomparable scores never need normalizing. Returns the fused top-`limit`.
+pub(crate) async fn hybrid_search(
+    user_id: Uuid,
+    project_id: Option<Uuid>,
+    conversation_id: Option<Uuid>,
+    embedding: HalfVector,
+    threshold: f32,
+    query: &str,
+    limit: i64,
+) -> Result<Vec<(Uuid, String)>, AppError> {
+    let candidate_k = (limit * 4).max(limit);
+    let vec_hits = vector_search(
+        user_id,
+        project_id,
+        conversation_id,
+        &embedding,
+        threshold,
+        candidate_k,
+    )
+    .await?;
+    let fts_hits = fts_search(user_id, project_id, conversation_id, query, candidate_k).await?;
+
+    const RRF_K: f64 = 60.0;
+    let mut scores: std::collections::HashMap<Uuid, (f64, String)> =
+        std::collections::HashMap::new();
+    for (rank, (id, content)) in vec_hits.into_iter().enumerate() {
+        let e = scores.entry(id).or_insert((0.0, content));
+        e.0 += 1.0 / (RRF_K + (rank + 1) as f64);
+    }
+    for (rank, (id, content)) in fts_hits.into_iter().enumerate() {
+        let e = scores.entry(id).or_insert((0.0, content));
+        e.0 += 1.0 / (RRF_K + (rank + 1) as f64);
+    }
+    let mut fused: Vec<(Uuid, f64, String)> =
+        scores.into_iter().map(|(id, (s, c))| (id, s, c)).collect();
+    // Deterministic order: score DESC, then memory id ASC as a stable
+    // secondary key. The HashMap iteration order is randomized per-instance,
+    // so a score-only sort makes inclusion at the `take(limit)` cutoff vary
+    // run-to-run when fused scores tie (common with RRF).
+    fused.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.0.cmp(&b.0))
+    });
+    Ok(fused
+        .into_iter()
+        .take(limit as usize)
+        .map(|(id, _, c)| (id, c))
+        .collect())
 }

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
+import { ApiClient } from '@/api-client'
 import type { LlmRepository } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 
@@ -55,6 +56,37 @@ export const useLlmRepositoryDrawerStore = create<LlmRepositoryDrawerState>()(
 
               if (state.editingRepository?.id === repositoryId) {
                 get().closeDrawer()
+              }
+            },
+            GROUP,
+          )
+
+          // Subscribe to llm_repository.auto_disabled — an enable probe
+          // failed, so the row was disabled + marked `unhealthy`
+          // server-side. Re-fetch the canonical row so the open edit
+          // drawer reflects enabled=false / unhealthy and renders the
+          // inline Alert (the list reload alone doesn't touch the drawer's
+          // own `editingRepository` snapshot).
+          eventBus.on(
+            'llm_repository.auto_disabled',
+            async event => {
+              const { repositoryId } = event.data
+              if (get().editingRepository?.id !== repositoryId) {
+                return
+              }
+              try {
+                const fresh = await ApiClient.LlmRepository.get({
+                  repository_id: repositoryId,
+                })
+                // Guard against a close / switch during the await.
+                if (get().editingRepository?.id === repositoryId) {
+                  set({ editingRepository: fresh })
+                }
+              } catch (err) {
+                console.error(
+                  'Failed to refresh auto-disabled repository in drawer:',
+                  err,
+                )
               }
             },
             GROUP,

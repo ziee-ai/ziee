@@ -228,7 +228,7 @@ test.describe('LLM Models - Local Upload - File Selection', () => {
     await page.waitForTimeout(500)
 
     // Verify main filename dropdown is populated
-    const mainFilenameSelect = page.locator('.ant-form-item:has-text("Main Model File") .ant-select-content-value, .ant-select-selection-item')
+    const mainFilenameSelect = page.locator('.ant-form-item:has-text("Main Model File") .ant-select-content')
     await expect(mainFilenameSelect).toContainText('model.gguf')
 
     await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
@@ -296,7 +296,7 @@ test.describe('LLM Models - Local Upload - Validation', () => {
     await page.waitForTimeout(500)
 
     // Wait for Main Model File to be populated (indicates upload processing is done)
-    await expect(page.locator('.ant-form-item:has-text("Main Model File") .ant-select-content-value, .ant-select-selection-item')).toContainText('model.safetensors', { timeout: 5000 })
+    await expect(page.locator('.ant-form-item:has-text("Main Model File") .ant-select-content')).toContainText('model.safetensors', { timeout: 5000 })
 
     // Clear the display name field using fill (more reliable than clear)
     await page.fill('#llm-model-upload_display_name', '')

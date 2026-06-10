@@ -1488,6 +1488,12 @@ pub async fn list_system_mcp_servers(
             created_at, updated_at
         FROM mcp_servers
         WHERE is_system = true
+          -- Hide the zero-config built-ins (files, memory): they have no
+          -- editable surface, so they never appear on the System MCP page.
+          -- Excluding them in SQL (not client-side) also keeps the
+          -- pagination total/label honest. The other built-ins
+          -- (filesystem/fetch/browser/git/code_sandbox) remain visible.
+          AND id NOT IN ($5, $6)
           AND ($3::text IS NULL
                OR name ILIKE '%' || $3 || '%'
                OR display_name ILIKE '%' || $3 || '%'
@@ -1500,6 +1506,8 @@ pub async fn list_system_mcp_servers(
         offset,
         search,
         enabled,
+        crate::modules::files_mcp::files_mcp_server_id(),
+        crate::modules::memory_mcp::memory_mcp_server_id(),
     )
     .fetch_all(pool)
     .await?;
@@ -1545,6 +1553,9 @@ pub async fn list_system_mcp_servers(
         SELECT COUNT(*) as count
         FROM mcp_servers
         WHERE is_system = true
+          -- Match the rows query: exclude the zero-config built-ins so the
+          -- pagination total stays in sync with what the page renders.
+          AND id NOT IN ($3, $4)
           AND ($1::text IS NULL
                OR name ILIKE '%' || $1 || '%'
                OR display_name ILIKE '%' || $1 || '%'
@@ -1553,6 +1564,8 @@ pub async fn list_system_mcp_servers(
         "#,
         search,
         enabled,
+        crate::modules::files_mcp::files_mcp_server_id(),
+        crate::modules::memory_mcp::memory_mcp_server_id(),
     )
     .fetch_one(pool)
     .await?
@@ -1572,6 +1585,26 @@ pub async fn update_system_mcp_server(
     let existing = get_system_mcp_server(pool, id)
         .await?
         .ok_or_else(|| AppError::not_found("Server"))?;
+
+    // The NEW zero-config privileged built-ins (files = Track A, memory =
+    // Track B) are immutable — they expose no command/secrets/limits, so there
+    // is nothing to edit and they must stay always-on. Gate on their
+    // deterministic ids, NOT the `is_built_in` column: that column is ALSO set on
+    // the admin-CONFIGURABLE built-ins (`filesystem`/`fetch`/`browser`/`git` via
+    // migration 25, and `code_sandbox` whose row carries admin-tunable
+    // timeout_seconds / usage_mode / max_concurrent_sessions). Gating those on
+    // `is_built_in` regressed editing them (e.g. the existing "edit Web Fetch"
+    // admin flow + the code_sandbox timeout tweak the upsert deliberately
+    // preserves on conflict).
+    let is_zero_config_builtin = existing.id
+        == crate::modules::files_mcp::files_mcp_server_id()
+        || existing.id == crate::modules::memory_mcp::memory_mcp_server_id();
+    if is_zero_config_builtin {
+        return Err(AppError::bad_request(
+            "BUILT_IN_SERVER",
+            "Cannot modify a built-in system server",
+        ));
+    }
 
     // Validate transport-specific updates
     validate_transport_update(&existing.transport_type, &request)?;

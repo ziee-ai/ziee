@@ -20,14 +20,22 @@ test.describe('desktop settings filter', () => {
 
     const menu = page.getByRole('menu')
 
-    // These five labels correspond to settingsAdminPages entries with
-    // ids in HIDDEN_ADMIN_ITEMS (users, user-groups, assistants,
-    // mcp-admin, auth-providers).
+    // Multi-user RBAC surfaces that have no role on a single-admin
+    // desktop — hidden via HIDDEN_ITEMS in SettingsPage.tsx.
     await expect(menu.getByText(/^Users$/)).toHaveCount(0)
     await expect(menu.getByText(/^User Groups$/)).toHaveCount(0)
     await expect(menu.getByText(/^Auth Providers$/)).toHaveCount(0)
-    await expect(menu.getByText(/^Assistants$/)).toHaveCount(0)
-    await expect(menu.getByText(/MCP.*Admin/i)).toHaveCount(0)
+
+    // Assistant Templates: hidden because templates target a multi-
+    // user fleet (a single admin can just create personal assistants
+    // directly).
+    await expect(menu.getByText(/^Assistant Templates$/)).toHaveCount(0)
+
+    // User MCP page: hidden in favour of System MCP. The desktop's
+    // AutoAssignMcpServerHandler propagates every new system server
+    // to every group so the single admin sees it in chat without
+    // any manual assignment step.
+    await expect(menu.getByText(/^MCP Servers$/)).toHaveCount(0)
 
     // The desktop SettingsPage builds menuItems as a flat list — no
     // section group/divider entries. Antd renders groups as elements
@@ -37,6 +45,27 @@ test.describe('desktop settings filter', () => {
       .locator('.ant-menu-item-group')
       .count()
     expect(groupCount).toBe(0)
+  })
+
+  test('keeps the user assistants page + the System MCP page visible (single-admin counterparts)', async ({
+    page,
+  }) => {
+    await page.goto('/settings')
+
+    await expect(
+      page.getByRole('menuitem').first(),
+    ).toBeVisible({ timeout: 10_000 })
+
+    const menu = page.getByRole('menu')
+
+    // "Assistants" (the user-scope "My Assistants" slot) IS visible
+    // — it's the single-admin counterpart to the now-hidden
+    // "Assistant Templates" admin slot.
+    await expect(menu.getByText(/^Assistants$/)).toHaveCount(1)
+
+    // "System MCP Servers" IS visible — the single-admin counterpart
+    // to the now-hidden user-scope "MCP Servers" slot.
+    await expect(menu.getByText(/^System MCP Servers$/)).toHaveCount(1)
   })
 
   test('keeps infrastructure admin sections visible', async ({ page }) => {

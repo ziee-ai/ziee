@@ -33,28 +33,38 @@ import { Stores } from '@/core/stores'
 // whose `id` is in this set are hidden from the desktop menu.
 //
 //  - Multi-user RBAC surfaces (no role on a single-admin desktop):
-//    users, user-groups, assistants, auth-providers.
+//    users, user-groups, auth-providers.
 //  - Core's user+admin pair for Memory (both register id='memory'):
 //    hidden so the combined `memory-desktop` slot is the only one shown.
 //  - `user-llm-providers`: lets a non-admin OVERRIDE the admin-set API
 //    key with their own. On single-admin desktop there's no admin/user
 //    split — the admin sets keys directly on the admin LLM Providers
 //    page. The user-side entry is therefore redundant.
+//  - `assistant-templates`: templates exist to seed a fleet of users
+//    with starter assistants. On a single-user device there's no fleet
+//    — just create personal assistants directly. The `assistants`
+//    (user "My Assistants") page is the one we keep visible.
+//  - `mcp-servers`: the personal/user MCP page. Hidden on desktop in
+//    favour of `mcp-admin` (System MCP). A desktop-only event handler
+//    `Desktop::AutoAssignMcpServer` auto-assigns every new system MCP
+//    server to every user group so the single admin sees them in chat
+//    without any manual assignment step. The mirror of the existing
+//    `Desktop::AutoAssignProvider` pattern for LLM providers.
 //
-// Note (2026-06): `mcp-admin` was previously hidden but is now SHOWN
-// on desktop. The desktop user IS the admin, and the System MCP page
-// is where they manage installs that aren't tied to their personal
-// account. The page's per-row group-assignment widget + user-policy
-// card are individually hidden via `Stores.AppMode.multiUserMode`
+// Note (2026-06): `mcp-admin` is SHOWN on desktop. The desktop user
+// IS the admin; the System MCP page is the single source of truth for
+// MCP installs. The page's per-row group-assignment widget + user-
+// policy card are individually hidden via `Stores.AppMode.multiUserMode`
 // (set to false by the desktop UI bootstrap).
 const HIDDEN_ITEMS = new Set([
   'users',
   'user-groups',
-  'assistants',
+  'assistant-templates',
   'auth-providers',
   'memory',
   'memory-admin',
   'user-llm-providers',
+  'mcp-servers',
 ])
 
 // Re-export so the Remote Access desktop module (and any future

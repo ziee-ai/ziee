@@ -1350,8 +1350,8 @@ export interface MemoryAdminSettings {
   id: number
   incremental_summary_prompt?: string
   soft_delete_grace_days: number
-  summarize_after_n_messages: number
-  summarizer_keep_recent: number
+  summarize_after_tokens: number
+  summarizer_keep_recent_tokens: number
   updated_at: string
 }
 
@@ -1522,6 +1522,7 @@ export interface ModelCapabilities {
   audio?: boolean
   chat?: boolean
   code_interpreter?: boolean
+  context_length?: number
   image_generator?: boolean
   text_embedding?: boolean
   tools?: boolean
@@ -2392,8 +2393,8 @@ export interface UpdateMemoryAdminSettingsRequest {
   full_summary_prompt?: string
   incremental_summary_prompt?: string
   soft_delete_grace_days?: number
-  summarize_after_n_messages?: number
-  summarizer_keep_recent?: number
+  summarize_after_tokens?: number
+  summarizer_keep_recent_tokens?: number
 }
 
 export interface UpdateMemoryRequest {

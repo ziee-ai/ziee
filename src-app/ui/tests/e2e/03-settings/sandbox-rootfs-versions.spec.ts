@@ -176,7 +176,7 @@ async function gotoSandbox(page: Page, baseURL: string) {
   const heading = page.getByRole('heading', { name: 'Code Sandbox' })
   for (let attempt = 1; attempt <= 3; attempt++) {
     await page.goto(`${baseURL}/settings/sandbox`)
-    await page.waitForLoadState('networkidle').catch(() => {})
+    await page.waitForLoadState('load').catch(() => {})
     try {
       await expect(heading).toBeVisible({ timeout: 10000 })
       return

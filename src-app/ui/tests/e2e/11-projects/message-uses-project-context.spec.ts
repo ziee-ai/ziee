@@ -95,7 +95,7 @@ test.describe('Projects - message uses project context (real LLM)', () => {
     // `/chat?project_id=<uuid>` URL still redirects here for
     // backward-compat, but the canonical flow is the project page.)
     await page.goto(`${baseURL}/projects/${project.id}`)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     // Send a message via the real UI — the project chat extension's
     // afterCreateConversation hook attaches the new conversation to
@@ -179,7 +179,7 @@ test.describe('Projects - message uses project context (real LLM)', () => {
 
     // Plain /chat — no project_id query param.
     await page.goto(`${baseURL}/chat`)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     const textarea = page.locator('textarea[placeholder*="Type your message"]')
     await expect(textarea).toBeVisible({ timeout: 10000 })

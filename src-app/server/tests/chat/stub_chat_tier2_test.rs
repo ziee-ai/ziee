@@ -30,7 +30,7 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use super::helpers::{self, create_conversation, parse_uuid, send_and_collect};
-use crate::common::stub_chat::{StubChat, StubPlan};
+use crate::common::oai_capture_stub::{StubChat, StubPlan};
 use crate::common::test_helpers::create_user_with_permissions;
 use crate::common::TestServer;
 
