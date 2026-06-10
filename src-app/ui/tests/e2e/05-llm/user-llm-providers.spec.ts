@@ -121,7 +121,7 @@ test.describe('User LLM Providers settings page', () => {
     await assignProviderToDefaultGroup(apiURL, adminToken, provider.id)
 
     await page.goto(`${baseURL}/settings/user-llm-providers`)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     await selectProviderInMenu(page, providerName)
 
@@ -150,7 +150,7 @@ test.describe('User LLM Providers settings page', () => {
     await assignProviderToDefaultGroup(apiURL, adminToken, provider.id)
 
     await page.goto(`${baseURL}/settings/user-llm-providers`)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     await selectProviderInMenu(page, providerName)
 
@@ -169,7 +169,7 @@ test.describe('User LLM Providers settings page', () => {
     await assignProviderToDefaultGroup(apiURL, adminToken, provider.id)
 
     await page.goto(`${baseURL}/settings/user-llm-providers`)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     await selectProviderInMenu(page, providerName)
 
@@ -201,7 +201,7 @@ test.describe('User LLM Providers settings page', () => {
     await assignProviderToDefaultGroup(apiURL, adminToken, provider.id)
 
     await page.goto(`${baseURL}/settings/user-llm-providers`)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     await selectProviderInMenu(page, providerName)
 
@@ -227,7 +227,7 @@ test.describe('User LLM Providers settings page', () => {
     await assignProviderToDefaultGroup(apiURL, adminToken, provider.id)
 
     await page.goto(`${baseURL}/settings/user-llm-providers`)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     await selectProviderInMenu(page, providerName)
 
@@ -263,7 +263,7 @@ test.describe('User LLM Providers settings page', () => {
     await assignProviderToDefaultGroup(apiURL, adminToken, provider.id)
 
     await page.goto(`${baseURL}/settings/user-llm-providers`)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     await selectProviderInMenu(page, providerName)
 

@@ -271,6 +271,57 @@ impl StreamingService {
                     }
                 }
 
+                // Model/provider metadata, built once and shared by BOTH the
+                // history-replay transform context and the live stream context.
+                // The transform context needs it so `process_content_for_llm`
+                // can resolve the model's tool-capability during replay — that's
+                // what drives the Track A recency-drop (old text attachments are
+                // dropped from the replay for tool-capable models, since they're
+                // listed in the injected manifest + read on demand). With an
+                // empty map the capability check short-circuits to false and the
+                // drop never fires, re-inlining every old attachment each turn.
+                let mut context_metadata = std::collections::HashMap::new();
+                context_metadata.insert(
+                    "provider_type".to_string(),
+                    serde_json::json!(provider_for_task.provider_type()),
+                );
+                context_metadata.insert("model_name".to_string(), serde_json::json!(model_name));
+                context_metadata.insert(
+                    "model_id".to_string(),
+                    serde_json::json!(model_id.to_string()),
+                );
+                context_metadata.insert(
+                    "provider_id".to_string(),
+                    serde_json::json!(provider_id.to_string()),
+                );
+
+                // Memoize the model's tool-capability into the shared metadata up
+                // front (one DB+catalog lookup per iteration) so the per-block
+                // replay path (process_content_for_llm) reads the cached boolean
+                // instead of re-resolving it for every attachment block.
+                let tool_capable =
+                    crate::modules::file::available_files::ensure_model_tools_capable(
+                        &mut context_metadata,
+                    )
+                    .await;
+
+                // Resolve the conversation's available files ONCE per iteration
+                // and seed them here, so the manifest injection (file
+                // before_llm_call) and the replay recency-drop
+                // (process_content_for_llm) share a SINGLE resolution and can't
+                // disagree — a resolve failure makes both degrade to the safe
+                // inline path rather than dropping content with no manifest.
+                // Only the tool-capable path reads the seed (manifest + drop both
+                // gate on tool-capability), so skip the 3-4 DB queries otherwise.
+                if tool_capable {
+                    crate::modules::file::available_files::seed_available_files(
+                        &mut context_metadata,
+                        conversation_id,
+                        user_id,
+                    )
+                    .await;
+                }
+
                 // Create context for content transformation
                 let transform_context = StreamContext {
                     conversation_id,
@@ -278,7 +329,7 @@ impl StreamingService {
                     message_id: None,
                     user_id,
                     pool: pool.clone(),
-                    metadata: std::collections::HashMap::new(),
+                    metadata: context_metadata.clone(),
                     iteration,
                 };
 
@@ -297,22 +348,8 @@ impl StreamingService {
                     }
                 };
 
-                // Create stream context
-                let mut context_metadata = std::collections::HashMap::new();
-                context_metadata.insert(
-                    "provider_type".to_string(),
-                    serde_json::json!(provider_for_task.provider_type()),
-                );
-                context_metadata.insert("model_name".to_string(), serde_json::json!(model_name));
-                context_metadata.insert(
-                    "model_id".to_string(),
-                    serde_json::json!(model_id.to_string()),
-                );
-                context_metadata.insert(
-                    "provider_id".to_string(),
-                    serde_json::json!(provider_id.to_string()),
-                );
-
+                // Create stream context (reuses the metadata built above; the
+                // before_llm_call hooks further seed `model_tools_capable`).
                 let mut stream_context = StreamContext {
                     conversation_id,
                     branch_id,
@@ -400,6 +437,18 @@ impl StreamingService {
                         }
                     }
                 }
+
+                // Context trimming: once the assembled context grows past a
+                // token threshold, clear the CONTENT of older tool_result blocks
+                // (keeping the matching tool_use + the most recent K results) so
+                // long agentic loops don't re-send every old tool output. Only
+                // what's SENT is trimmed — stored history is untouched, and the
+                // model can re-read a file (cheap) if it needs a cleared result.
+                clear_old_tool_results(
+                    &mut chat_request.messages,
+                    CLEAR_TOOL_RESULTS_TOKEN_THRESHOLD,
+                    KEEP_LAST_TOOL_RESULTS,
+                );
 
                 // Call AI provider
                 let mut ai_stream = match provider_for_task.chat_stream(chat_request).await {
@@ -1667,5 +1716,252 @@ mod tests {
              got role={:?}",
             last.role
         );
+    }
+}
+
+// ── Context trimming ─────────────────────────────────────────────────────────
+
+/// Clear old tool_result content once the assembled context exceeds this many
+/// estimated tokens (chars/4). ~à la Anthropic's `clear_tool_uses` default.
+const CLEAR_TOOL_RESULTS_TOKEN_THRESHOLD: usize = 30_000;
+/// How many of the most-recent tool_result blocks to keep intact.
+const KEEP_LAST_TOOL_RESULTS: usize = 6;
+/// Per-result char ceiling for a KEPT tool_result. The keep-last-K window
+/// is a fixed COUNT, so a handful of oversized recent results could still
+/// blow the context budget. Truncate any kept result whose text payload
+/// exceeds this; the model can re-call the tool to see the full output.
+const MAX_KEPT_TOOL_RESULT_CHARS: usize = 8000;
+/// Marker appended to a kept-but-truncated tool_result.
+const KEPT_TRUNCATION_MARKER: &str =
+    "\n[…truncated to save context; re-call the tool to see the full result]";
+
+/// Rough char count of a content block's text payload (for token estimation).
+fn block_text_chars(b: &ai_providers::ContentBlock) -> usize {
+    use ai_providers::ContentBlock as CB;
+    match b {
+        CB::Text { text } => text.chars().count(),
+        CB::Thinking { thinking } => thinking.chars().count(),
+        CB::ToolUse { input, .. } => input.to_string().chars().count(),
+        CB::ToolResult { content, .. } => content.iter().map(block_text_chars).sum(),
+        _ => 0,
+    }
+}
+
+/// When the assembled context exceeds `threshold_tokens`, replace the *content*
+/// of older `tool_result` blocks with a short placeholder, keeping the matching
+/// `tool_use` blocks and the most recent `keep_last` results intact. Mutates only
+/// the outbound messages — stored history is untouched and the model can re-call
+/// a tool (e.g. `read_file`) if it needs a cleared result. Provider-agnostic.
+fn clear_old_tool_results(
+    messages: &mut [ChatMessage],
+    threshold_tokens: usize,
+    keep_last: usize,
+) {
+    let total_chars: usize = messages
+        .iter()
+        .flat_map(|m| m.content.iter())
+        .map(block_text_chars)
+        .sum();
+    // Shared chars→tokens heuristic (ceil/4), same as the summarizer.
+    if crate::common::tokens::tokens_from_chars(total_chars) <= threshold_tokens {
+        return;
+    }
+
+    // Positions of every tool_result block, in order.
+    let mut positions: Vec<(usize, usize)> = Vec::new();
+    for (mi, m) in messages.iter().enumerate() {
+        for (bi, b) in m.content.iter().enumerate() {
+            if matches!(b, ai_providers::ContentBlock::ToolResult { .. }) {
+                positions.push((mi, bi));
+            }
+        }
+    }
+    // Older results (everything before the keep-last window) get their CONTENT
+    // replaced with a placeholder. `saturating_sub` yields 0 when there are
+    // `<= keep_last` results, so nothing OLD is cleared in that case — but the
+    // kept-window cap below still runs (a handful of oversized recent results
+    // can blow the budget on their own).
+    let clear_until = positions.len().saturating_sub(keep_last);
+    for &(mi, bi) in &positions[..clear_until] {
+        if let ai_providers::ContentBlock::ToolResult { content, .. } =
+            &mut messages[mi].content[bi]
+        {
+            *content = vec![ai_providers::ContentBlock::Text {
+                text: "[tool result cleared to save context]".to_string(),
+            }];
+        }
+    }
+
+    // Bound the KEPT window too: keep-last is a fixed count, so even the
+    // surviving results can blow the budget if a few are oversized. Truncate
+    // any kept tool_result whose text payload exceeds the per-result ceiling.
+    // The matching tool_use is left intact, and the model can re-call the tool
+    // to recover the full output. Outbound copy only — stored history is not
+    // touched here.
+    for &(mi, bi) in &positions[clear_until..] {
+        if let ai_providers::ContentBlock::ToolResult { content, .. } =
+            &mut messages[mi].content[bi]
+        {
+            let chars: usize =
+                content.iter().map(block_text_chars).sum();
+            if chars > MAX_KEPT_TOOL_RESULT_CHARS {
+                *content = vec![ai_providers::ContentBlock::Text {
+                    text: truncate_kept_result(content),
+                }];
+            }
+        }
+    }
+}
+
+/// Flatten a kept tool_result's text payload and cut it to
+/// `MAX_KEPT_TOOL_RESULT_CHARS`, appending the re-call marker. Char-safe
+/// (truncates on a `char` boundary, not a byte index).
+fn truncate_kept_result(
+    content: &[ai_providers::ContentBlock],
+) -> String {
+    use ai_providers::ContentBlock as CB;
+    let mut flat = String::new();
+    for b in content {
+        match b {
+            CB::Text { text } => flat.push_str(text),
+            CB::Thinking { thinking } => flat.push_str(thinking),
+            CB::ToolUse { input, .. } => {
+                flat.push_str(&input.to_string())
+            }
+            _ => {}
+        }
+    }
+    let kept: String =
+        flat.chars().take(MAX_KEPT_TOOL_RESULT_CHARS).collect();
+    format!("{kept}{KEPT_TRUNCATION_MARKER}")
+}
+
+#[cfg(test)]
+mod trim_tests {
+    use super::*;
+    use ai_providers::{ChatMessage, ContentBlock, Role};
+
+    fn tool_result_msg(id: &str, text: &str) -> ChatMessage {
+        ChatMessage {
+            role: Role::User,
+            content: vec![ContentBlock::ToolResult {
+                tool_use_id: id.to_string(),
+                name: None,
+                content: vec![ContentBlock::Text {
+                    text: text.to_string(),
+                }],
+                is_error: None,
+            }],
+        }
+    }
+
+    fn is_cleared(m: &ChatMessage) -> bool {
+        matches!(&m.content[0], ContentBlock::ToolResult { content, .. }
+            if matches!(&content[0], ContentBlock::Text { text } if text.contains("cleared")))
+    }
+
+    #[test]
+    fn clears_old_keeps_recent_past_threshold() {
+        let big = "x".repeat(400); // ~100 est tokens each
+        let mut msgs: Vec<ChatMessage> = (0..10)
+            .map(|i| tool_result_msg(&format!("t{i}"), &big))
+            .collect();
+        // ~1000 tokens total, threshold 100 → trim; keep last 2.
+        clear_old_tool_results(&mut msgs, 100, 2);
+        assert!(is_cleared(&msgs[0]), "oldest cleared");
+        assert!(is_cleared(&msgs[7]), "8th-from-end cleared");
+        assert!(!is_cleared(&msgs[8]), "kept last 2");
+        assert!(!is_cleared(&msgs[9]), "kept last 2");
+    }
+
+    #[test]
+    fn noop_under_threshold() {
+        let mut msgs = vec![tool_result_msg("t", "small")];
+        clear_old_tool_results(&mut msgs, 30_000, 2);
+        assert!(!is_cleared(&msgs[0]), "nothing trimmed under threshold");
+    }
+
+    #[test]
+    fn noop_when_fewer_than_keep_last() {
+        let big = "x".repeat(4000); // way over threshold
+        let mut msgs = vec![tool_result_msg("a", &big), tool_result_msg("b", &big)];
+        clear_old_tool_results(&mut msgs, 100, 6);
+        assert!(!is_cleared(&msgs[0]));
+        assert!(!is_cleared(&msgs[1]));
+    }
+
+    fn result_text_chars(m: &ChatMessage) -> usize {
+        match &m.content[0] {
+            ContentBlock::ToolResult { content, .. } => {
+                content.iter().map(block_text_chars).sum()
+            }
+            _ => 0,
+        }
+    }
+
+    #[test]
+    fn caps_oversized_kept_results() {
+        // Several oversized results, all within the keep-last window, so the
+        // count-based clear leaves them untouched — the per-result cap must
+        // still bound them.
+        let huge = "y".repeat(50_000); // ~12.5k est tokens each
+        let mut msgs: Vec<ChatMessage> = (0..6)
+            .map(|i| tool_result_msg(&format!("k{i}"), &huge))
+            .collect();
+        // keep_last == count, so clear_until == 0: nothing is cleared, but
+        // every kept result is over MAX_KEPT_TOOL_RESULT_CHARS.
+        clear_old_tool_results(&mut msgs, 100, 6);
+
+        for (i, m) in msgs.iter().enumerate() {
+            assert!(!is_cleared(m), "result {i} should be kept, not cleared");
+            let chars = result_text_chars(m);
+            assert!(
+                chars
+                    <= MAX_KEPT_TOOL_RESULT_CHARS
+                        + KEPT_TRUNCATION_MARKER.chars().count(),
+                "kept result {i} not bounded: {chars} chars",
+            );
+        }
+
+        // The post-trim estimate must stay bounded: 6 results each at most
+        // (cap + marker) chars, /4 for the token estimate.
+        let total_chars: usize = msgs
+            .iter()
+            .flat_map(|m| m.content.iter())
+            .map(block_text_chars)
+            .sum();
+        let bound = 6
+            * (MAX_KEPT_TOOL_RESULT_CHARS
+                + KEPT_TRUNCATION_MARKER.chars().count());
+        assert!(
+            total_chars <= bound,
+            "post-trim total {total_chars} exceeds bound {bound}",
+        );
+    }
+
+    #[test]
+    fn small_kept_results_not_truncated() {
+        // Oversized older results get cleared; the kept tail is small and must
+        // NOT pick up a truncation marker.
+        let big = "z".repeat(400);
+        let mut msgs: Vec<ChatMessage> = (0..10)
+            .map(|i| tool_result_msg(&format!("s{i}"), &big))
+            .collect();
+        clear_old_tool_results(&mut msgs, 100, 2);
+        // Last two kept and well under the cap → untouched text.
+        for m in &msgs[8..] {
+            assert!(!is_cleared(m));
+            let txt = match &m.content[0] {
+                ContentBlock::ToolResult { content, .. } => match &content[0] {
+                    ContentBlock::Text { text } => text.clone(),
+                    _ => String::new(),
+                },
+                _ => String::new(),
+            };
+            assert!(
+                !txt.contains("truncated to save context"),
+                "small kept result should not be truncated",
+            );
+        }
     }
 }

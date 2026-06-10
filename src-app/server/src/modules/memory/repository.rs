@@ -158,6 +158,7 @@ impl MemoryRepository {
     /// background worker; this method writes `embedding=NULL`.
     /// Emits a memory_audit_log row in the same transaction so the
     /// audit trail is consistent with the data.
+    #[allow(clippy::too_many_arguments)]
     pub async fn insert(
         &self,
         user_id: Uuid,
@@ -167,14 +168,18 @@ impl MemoryRepository {
         kind: &str,
         metadata: &serde_json::Value,
         source_message_id: Option<Uuid>,
+        scope: &str,
+        project_id: Option<Uuid>,
+        conversation_id: Option<Uuid>,
     ) -> Result<UserMemory, AppError> {
         let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
         let row = sqlx::query_as!(
             UserMemory,
             r#"
             INSERT INTO user_memories
-                (user_id, content, source, source_message_id, importance, kind, metadata)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+                (user_id, content, source, source_message_id, importance, kind, metadata,
+                 scope, project_id, conversation_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING
                 id,
                 user_id,
@@ -197,7 +202,10 @@ impl MemoryRepository {
             source_message_id,
             importance,
             kind,
-            metadata
+            metadata,
+            scope,
+            project_id,
+            conversation_id
         )
         .fetch_one(&mut *tx)
         .await
@@ -522,8 +530,8 @@ impl MemoryRepository {
                 enabled,
                 soft_delete_grace_days,
                 daily_extraction_quota,
-                summarize_after_n_messages,
-                summarizer_keep_recent,
+                summarize_after_tokens,
+                summarizer_keep_recent_tokens,
                 full_summary_prompt,
                 incremental_summary_prompt,
                 updated_at as "updated_at: _"
@@ -547,8 +555,8 @@ impl MemoryRepository {
         enabled: Option<bool>,
         soft_delete_grace_days: Option<i32>,
         daily_extraction_quota: Option<i32>,
-        summarize_after_n_messages: Option<i32>,
-        summarizer_keep_recent: Option<i32>,
+        summarize_after_tokens: Option<i32>,
+        summarizer_keep_recent_tokens: Option<i32>,
         full_summary_prompt: Option<Option<String>>,
         incremental_summary_prompt: Option<Option<String>>,
     ) -> Result<MemoryAdminSettings, AppError> {
@@ -566,18 +574,18 @@ impl MemoryRepository {
             MemoryAdminSettings,
             r#"
             UPDATE memory_admin_settings
-            SET embedding_model_id          = CASE WHEN $1::bool THEN $2 ELSE embedding_model_id END,
-                default_extraction_model_id = CASE WHEN $3::bool THEN $4 ELSE default_extraction_model_id END,
-                default_top_k               = COALESCE($5, default_top_k),
-                cosine_threshold            = COALESCE($6, cosine_threshold),
-                enabled                     = COALESCE($7, enabled),
-                soft_delete_grace_days      = COALESCE($8, soft_delete_grace_days),
-                daily_extraction_quota      = COALESCE($9, daily_extraction_quota),
-                summarize_after_n_messages  = COALESCE($10, summarize_after_n_messages),
-                summarizer_keep_recent      = COALESCE($11, summarizer_keep_recent),
-                full_summary_prompt         = CASE WHEN $12::bool THEN $13 ELSE full_summary_prompt END,
-                incremental_summary_prompt  = CASE WHEN $14::bool THEN $15 ELSE incremental_summary_prompt END,
-                updated_at                  = NOW()
+            SET embedding_model_id            = CASE WHEN $1::bool THEN $2 ELSE embedding_model_id END,
+                default_extraction_model_id   = CASE WHEN $3::bool THEN $4 ELSE default_extraction_model_id END,
+                default_top_k                 = COALESCE($5, default_top_k),
+                cosine_threshold              = COALESCE($6, cosine_threshold),
+                enabled                       = COALESCE($7, enabled),
+                soft_delete_grace_days        = COALESCE($8, soft_delete_grace_days),
+                daily_extraction_quota        = COALESCE($9, daily_extraction_quota),
+                summarize_after_tokens        = COALESCE($10, summarize_after_tokens),
+                summarizer_keep_recent_tokens = COALESCE($11, summarizer_keep_recent_tokens),
+                full_summary_prompt           = CASE WHEN $12::bool THEN $13 ELSE full_summary_prompt END,
+                incremental_summary_prompt    = CASE WHEN $14::bool THEN $15 ELSE incremental_summary_prompt END,
+                updated_at                    = NOW()
             WHERE id = 1
             RETURNING
                 id,
@@ -589,8 +597,8 @@ impl MemoryRepository {
                 enabled,
                 soft_delete_grace_days,
                 daily_extraction_quota,
-                summarize_after_n_messages,
-                summarizer_keep_recent,
+                summarize_after_tokens,
+                summarizer_keep_recent_tokens,
                 full_summary_prompt,
                 incremental_summary_prompt,
                 updated_at as "updated_at: _"
@@ -604,8 +612,8 @@ impl MemoryRepository {
             enabled,
             soft_delete_grace_days,
             daily_extraction_quota,
-            summarize_after_n_messages,
-            summarizer_keep_recent,
+            summarize_after_tokens,
+            summarizer_keep_recent_tokens,
             full_prompt_set,
             full_prompt_val,
             inc_prompt_set,

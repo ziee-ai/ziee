@@ -11,6 +11,9 @@ repository.workspace = true
 # Local proc-macro crates
 macros = { path = "./macros" }
 
+# Lexical search for the files MCP grep tool (already in the lockfile transitively).
+regex = "1"
+
 # Inherited from workspace catalog — bumping happens in
 # `src-app/Cargo.toml::[workspace.dependencies]`.
 serde.workspace = true

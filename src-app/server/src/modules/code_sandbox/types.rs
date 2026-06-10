@@ -125,6 +125,20 @@ impl JsonRpcError {
             data: None,
         }
     }
+
+    /// Map an `AppError` onto the right JSON-RPC error class for the built-in
+    /// MCP servers (files / memory), so client-class errors surface as
+    /// method-not-found / invalid-params rather than a generic internal error.
+    /// Shared so the two built-in handlers can't drift.
+    pub fn from_app_error(e: &crate::common::AppError) -> Self {
+        match e.status_code() {
+            400 if e.error_code() == "UNKNOWN_TOOL" => {
+                Self::method_not_found(&e.to_string())
+            }
+            400 | 404 => Self::invalid_params(e.to_string()),
+            _ => Self::internal(e.to_string()),
+        }
+    }
 }
 
 /// Per-call context built by the HTTP handler before dispatching a tool.

@@ -163,12 +163,51 @@ async fn load_file_content(ctx: &SandboxContext, filename: &str) -> Result<Strin
     match tokio::fs::read_to_string(&path).await {
         Ok(s) => Ok(s),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            // Try the user-attachment fallback before giving up.
-            if let Some(att) = ctx
+            // Try the user-attachment fallback before giving up. Match by
+            // filename, but DON'T silently pick one of several same-named files
+            // — if the name is ambiguous, error with the candidates so the
+            // caller disambiguates (mirrors the files-MCP rule). `read_file`
+            // only accepts `filename`, so it cannot disambiguate by id; the
+            // working route is `execute_command` + `cat` of the suffixed mount
+            // path (see the error message below).
+            let matches: Vec<_> = ctx
                 .files
                 .iter()
-                .find(|f| f.filename == filename && f.user_id == ctx.user_id)
-            {
+                .filter(|f| f.filename == filename && f.user_id == ctx.user_id)
+                .collect();
+            if matches.len() > 1 {
+                // The bwrap mount dedups same-named attachments by suffixing
+                // " (2)", " (3)", … before the extension (see
+                // `sandbox::build_bwrap_argv`). Each copy is bind-mounted into
+                // the sandbox home at `/home/sandboxuser/<name>`. `read_file`
+                // resolves by stored filename only and so cannot reach the
+                // second/third copy — point the model at `execute_command`
+                // instead, which CAN see the suffixed mount paths.
+                let n = matches.len();
+                let p = std::path::Path::new(filename);
+                let stem =
+                    p.file_stem().and_then(|s| s.to_str()).unwrap_or(filename);
+                let ext = p.extension().and_then(|s| s.to_str());
+                let suffixed_examples: Vec<String> = (2..=n)
+                    .map(|i| match ext {
+                        Some(e) => format!("'~/{stem} ({i}).{e}'"),
+                        None => format!("'~/{stem} ({i})'"),
+                    })
+                    .collect();
+                return Err(AppError::new(
+                    StatusCode::BAD_REQUEST,
+                    "AMBIGUOUS_FILENAME",
+                    format!(
+                        "{filename} matches {n} attached files. read_file can only \
+                         read the first copy (by its stored name); the others are \
+                         mounted under suffixed paths in the sandbox home. To read \
+                         them, use execute_command, e.g. `cat {}` (paths are \
+                         relative to ~, the sandbox home).",
+                        suffixed_examples.join(" or `cat ")
+                    ),
+                ));
+            }
+            if let Some(att) = matches.into_iter().next() {
                 // Match the storage manager's "no extension → bin"
                 // convention used in handlers::stage_attachments.
                 // Naïve `rsplit('.').next()` returns the whole name for
@@ -683,6 +722,59 @@ mod tests {
             .expect_err("must reject oversized content");
         let msg = format!("{err:?}");
         assert!(msg.contains("CONTENT_TOO_LARGE"), "msg: {msg}");
+    }
+
+    // ─── ambiguous-filename attachment fallback ─────────────────────
+
+    /// Two attachments sharing a filename (both owned by the caller) and
+    /// NOT present in the workspace force `load_file_content` through the
+    /// NotFound → attachment fallback, where the >1-match guard fires.
+    /// `read_file` can resolve only by stored name, so it returns
+    /// BAD_REQUEST/`AMBIGUOUS_FILENAME` pointing the model at the suffixed
+    /// mount path via `execute_command` + `cat`.
+    #[tokio::test]
+    async fn read_file_ambiguous_attachment_errors_with_suffixed_hint() {
+        let tmp = workspace();
+        let user_id = Uuid::new_v4();
+        // Build the ctx inline so both attachments' user_id matches
+        // ctx.user_id (the fallback filters on `f.user_id == ctx.user_id`).
+        // The workspace stays empty so read_to_string hits NotFound.
+        let ctx = SandboxContext {
+            conversation_id: Uuid::new_v4(),
+            user_id,
+            workspace: tmp.path().to_path_buf(),
+            files: Arc::new(vec![
+                ConversationFile {
+                    file_id: Uuid::new_v4(),
+                    filename: "data.csv".to_string(),
+                    user_id,
+                    mime_type: Some("text/csv".to_string()),
+                    created_at: chrono::Utc::now(),
+                },
+                ConversationFile {
+                    file_id: Uuid::new_v4(),
+                    filename: "data.csv".to_string(),
+                    user_id,
+                    mime_type: Some("text/csv".to_string()),
+                    created_at: chrono::Utc::now(),
+                },
+            ]),
+        };
+
+        let err = read_file(&ctx, "data.csv", None, None)
+            .await
+            .expect_err("ambiguous filename must error, not silently pick one");
+        assert_eq!(err.status_code(), 400, "must be BAD_REQUEST; err: {err:?}");
+        assert_eq!(err.error_code(), "AMBIGUOUS_FILENAME", "err: {err:?}");
+        let msg = format!("{err:?}");
+        assert!(
+            msg.contains("data (2).csv"),
+            "must hint the suffixed mount path; err: {err:?}"
+        );
+        assert!(
+            msg.contains("execute_command") && msg.contains("cat"),
+            "must point at execute_command + cat; err: {err:?}"
+        );
     }
 
     // ─── dangling-symlink defense (sandbox escape regression) ────────

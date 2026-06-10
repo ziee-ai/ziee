@@ -25,10 +25,9 @@ import { expect, test } from '../../fixtures/test-context'
 // Run with --workers=1 (shared backend + DB).
 //
 // CRITICAL: `waitForLoadState('networkidle')` HANGS on any page where the SSE
-// sync stream is connected (the stream is never "idle"). The 05-llm nav
-// helpers (`goToProvidersPage`, `clickProviderCard`, `selectProviderType`,
-// `submit*Form`) all call networkidle, so this spec deliberately navigates
-// inline and waits on selectors instead of reusing them on the live app shell.
+// sync stream is connected (the stream is never "idle"). This spec deliberately
+// navigates inline and waits on stable selectors, keeping it self-contained on
+// the live app shell rather than coupling to the 05-llm nav helpers.
 
 const ADD_PROVIDER_DRAWER = '.ant-drawer.ant-drawer-open'
 
@@ -176,8 +175,9 @@ test.describe('Realtime sync — LLM provider / model (admin + cross-role)', () 
       await loginAsAdmin(pageB, baseURL)
       await gotoProvidersList(pageB, baseURL)
 
-      // Device A creates the provider through the real UI drawer (inline —
-      // the 05-llm helpers' networkidle waits would hang on the live shell).
+      // Device A creates the provider through the real UI drawer (inline, to
+      // keep this cross-device spec self-contained rather than reusing the
+      // 05-llm create helpers).
       const name = `Sync Provider ${Date.now()}`
       await page.click('.ant-menu-item:has-text("Add Provider")')
       await page.waitForSelector('.ant-drawer-title:has-text("Add Provider")', {

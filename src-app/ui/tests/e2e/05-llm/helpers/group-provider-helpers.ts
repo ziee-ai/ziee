@@ -317,7 +317,7 @@ export async function assertGroupInProviderCard(
   // widget is event-driven only (LLMProviderGroupWidget known issue
   // in CLAUDE.md) and its store may not have refreshed after the
   // assignment save.
-  await page.reload({ waitUntil: 'networkidle' })
+  await page.reload({ waitUntil: 'load' })
 
   // Find the card and verify group tag exists.
   const card = page.locator('.ant-card:has(.ant-card-head-title:has-text("User Groups"))').first()
@@ -332,7 +332,7 @@ export async function assertGroupNotInProviderCard(
   groupName: string
 ) {
   // Reload to force widget re-fetch (see assertGroupInProviderCard).
-  await page.reload({ waitUntil: 'networkidle' })
+  await page.reload({ waitUntil: 'load' })
 
   const card = page.locator('.ant-card:has(.ant-card-head-title:has-text("User Groups"))').first()
   await card.waitFor({ state: 'visible', timeout: 5000 })
@@ -347,7 +347,7 @@ export async function assertProviderCardShowsCount(
 ) {
   // Reload to force the provider-groups widget to re-fetch — same
   // event-only architecture issue as assertGroupInProviderCard.
-  await page.reload({ waitUntil: 'networkidle' })
+  await page.reload({ waitUntil: 'load' })
 
   // Find the card and count tags
   const card = page.locator('.ant-card:has(.ant-card-head-title:has-text("User Groups"))').first()

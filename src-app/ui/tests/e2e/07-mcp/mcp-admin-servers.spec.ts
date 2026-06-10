@@ -445,7 +445,9 @@ test.describe('MCP - Admin System Servers', () => {
         name: `test-builtin-${Date.now()}`,
         display_name: `Built-in Test ${Date.now()}`,
         transport_type: 'stdio',
-        command: 'echo',
+        // A non-sandboxed stdio system server's command must be host-allowed
+        // (npx/uvx/python/python3/node); 'echo' is rejected with 400.
+        command: 'npx',
         args: [],
         environment_variables: {},
         enabled: true,
@@ -529,9 +531,9 @@ test.describe('MCP - Admin System Servers', () => {
     await page.click('.ant-select-item-option:has-text("HTTP")')
     await expect(stdioToggle).not.toBeVisible()
 
-    // Back to stdio → re-appears.
+    // Back to stdio → re-appears. The option label is "Standard I/O".
     await page.getByLabel('Transport Type').click({ force: true })
-    await page.click('.ant-select-item-option:has-text("stdio")')
+    await page.click('.ant-select-item-option:has-text("Standard I/O")')
     await expect(stdioToggle).toBeVisible()
   })
 

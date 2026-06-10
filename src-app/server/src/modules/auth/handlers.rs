@@ -1204,25 +1204,31 @@ async fn oauth_complete_inner(
 
     // ── 3. No link, no collision → auto-provision a new user ────
     let username = ensure_unique_username(&auth_result.attributes.username).await?;
-    let email = auth_result
-        .external_email
-        .clone()
-        .filter(|e| !e.is_empty());
     let display_name = auth_result
         .attributes
         .display_name
         .clone()
         .unwrap_or_else(|| username.clone());
 
-    if email.is_none() && username.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            AppError::bad_request(
-                "OAUTH_NO_IDENTITY",
-                "Provider returned no email or username; cannot create an account.",
-            ),
-        ));
-    }
+    // A `users` row requires a non-null email. The unverified-email guard
+    // above intentionally drops an email the provider didn't assert as
+    // verified, so a provider that returns no verified email cannot
+    // auto-create an account. Reject cleanly here rather than letting a
+    // NULL reach the NOT NULL `email` column (which previously surfaced as
+    // an opaque 500 from the DB constraint).
+    let email = match auth_result.external_email.clone().filter(|e| !e.is_empty()) {
+        Some(e) => e,
+        None => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                AppError::bad_request(
+                    "OAUTH_EMAIL_REQUIRED",
+                    "The identity provider did not return a verified email address, \
+                     which is required to create an account.",
+                ),
+            ));
+        }
+    };
 
     // Atomic provision: user row + auth_link + default-group
     // assignment in a single transaction. Partial failure (e.g.
@@ -1233,7 +1239,7 @@ async fn oauth_complete_inner(
         .auth
         .provision_external_user_atomic(
             &username,
-            email.as_deref(),
+            Some(email.as_str()),
             &display_name,
             provider_id,
             &auth_result.external_id,

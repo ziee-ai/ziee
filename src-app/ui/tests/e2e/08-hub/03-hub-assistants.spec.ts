@@ -130,10 +130,13 @@ test.describe('Hub Assistants', () => {
     const card = page.getByTestId(`hub-assistant-card-${assistantId}`)
     await expect(card.getByRole('button', { name: /view/i })).toBeVisible()
 
-    // Neither install affordance should be on the card after View
-    // takes over. (Two buttons share `/use/i` — pin to testids.)
+    // "Use Assistant" is replaced by View once the assistant exists. But
+    // "Use as Template" is a separate admin affordance gated on permissions
+    // (not on the assistant), so it stays on the card.
     await expect(card.getByTestId('hub-assistant-use-btn')).toHaveCount(0)
-    await expect(card.getByTestId('hub-assistant-use-as-template-btn')).toHaveCount(0)
+    await expect(
+      card.getByTestId('hub-assistant-use-as-template-btn'),
+    ).toBeVisible()
   })
 
   test('should track creation status badge', async ({ page, testInfra }) => {
@@ -201,7 +204,7 @@ test.describe('Hub Assistants', () => {
     // list) per AssistantHubCard. Sanity-check by URL after navigation
     // settles, not waitForURL (SPA navigations don't always trip
     // its event hook reliably).
-    await page.waitForLoadState('networkidle').catch(() => {})
+    await page.waitForLoadState('load').catch(() => {})
     const urlChanged = !page.url().includes('/hub/')
     const drawer = page.getByRole('dialog', { name: /assistant/i })
     const drawerVisible = await drawer.isVisible({ timeout: 2000 }).catch(() => false)

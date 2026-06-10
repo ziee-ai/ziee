@@ -172,7 +172,9 @@ async fn r3_extraction_pipeline_with_real_groq_llm() {
         .send()
         .await
         .unwrap();
-    let rows: Vec<Value> = res.json().await.unwrap();
+    // `/memories` returns the paginated `MemoryListResponse { items, total, … }`.
+    let body: Value = res.json().await.unwrap();
+    let rows = body["items"].as_array().cloned().unwrap_or_default();
     let contents: Vec<&str> = rows.iter().filter_map(|r| r["content"].as_str()).collect();
     assert!(
         contents.iter().any(|c| c.to_lowercase().contains("vegetarian")),
@@ -228,6 +230,37 @@ async fn trigger_summarize_via_test_hook(
     assert!(
         res.status().is_success(),
         "test/summarize → {}: {}",
+        res.status(),
+        res.text().await.unwrap_or_default()
+    );
+}
+
+/// Lower the summarizer token thresholds so a handful of short seeded messages
+/// trigger summarization. B6 made the trigger TOKEN-based (default 12000, far
+/// above these test transcripts); 500 is the validation floor and the ~60 seeded
+/// messages (~1100 est-tokens) clear it. keep_recent (100) < trigger (500), per
+/// the migration-88 CHECK. Partial admin-settings update — leaves the embedding/
+/// extraction model (set by `setup_real_providers`) untouched.
+async fn set_low_summary_thresholds(server: &crate::common::TestServer) {
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        server,
+        "summ_threshold_admin",
+        &["memory::admin::manage"],
+    )
+    .await;
+    let res = reqwest::Client::new()
+        .put(server.api_url("/memory/admin-settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "summarize_after_tokens": 500,
+            "summarizer_keep_recent_tokens": 100,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        res.status().is_success(),
+        "set summary thresholds → {}: {}",
         res.status(),
         res.text().await.unwrap_or_default()
     );
@@ -389,8 +422,9 @@ async fn r4_summarization_full_with_real_groq_llm() {
     let user = h::memory_user(&server, "r4_summ").await;
     let user_id = Uuid::parse_str(&user.user_id).unwrap();
 
-    // Seed 60 messages — above the default trigger of 50, with 10
-    // keep_recent → 50 messages get summarized.
+    // Seed 60 messages (~1100 est-tokens), above the lowered token trigger (500)
+    // with 100 keep-recent tokens → the older messages get summarized.
+    set_low_summary_thresholds(&server).await;
     let (branch_id, _msg_ids) = seed_branch_with_messages(&server, &user.token, user_id, 60).await;
 
     // Invoke the summarizer directly with our real Groq model id.
@@ -411,7 +445,13 @@ async fn r4_summarization_full_with_real_groq_llm() {
         text.to_lowercase().contains("tokyo") || text.to_lowercase().contains("trip"),
         "summary should reflect seeded content (Tokyo trip), got: {text:?}"
     );
-    assert_eq!(summary["message_count"], 50);
+    // Token-based cutoff (B6): an older prefix is summarized; the exact count
+    // depends on the token math, so assert it summarized a non-trivial chunk
+    // rather than the old fixed 50.
+    assert!(
+        summary["message_count"].as_i64().unwrap_or(0) > 0,
+        "summarization should have folded an older prefix; got {summary:?}"
+    );
     assert!(summary["summarized_up_to_id"].is_string());
     assert_eq!(summary["model_used"], h::GROQ_LLM_MODEL);
 }
@@ -431,13 +471,14 @@ async fn r5_summarization_incremental_with_real_groq_llm() {
     let user_id = Uuid::parse_str(&user.user_id).unwrap();
 
     // Seed 60 messages → first refresh writes a Full summary.
+    set_low_summary_thresholds(&server).await;
     let (branch_id, _) = seed_branch_with_messages(&server, &user.token, user_id, 60).await;
     trigger_summarize_via_test_hook(&server, branch_id, ids.llm_model_id).await;
 
     let first = fetch_summary_row(&server, branch_id).await.unwrap();
     let first_anchor = first["summarized_up_to_id"].as_str().unwrap().to_string();
     let first_count = first["message_count"].as_i64().unwrap();
-    assert_eq!(first_count, 50);
+    assert!(first_count > 0, "first refresh should summarize an older prefix");
 
     // Add 20 more messages — different topic so we can prove the
     // incremental summary actually folded in the new content.
@@ -462,8 +503,13 @@ async fn r5_summarization_incremental_with_real_groq_llm() {
     let second_count = second["message_count"].as_i64().unwrap();
     let second_anchor = second["summarized_up_to_id"].as_str().unwrap().to_string();
 
-    // 80 total - 10 keep_recent = 70 summarized
-    assert_eq!(second_count, 70);
+    // The incremental refresh folds in the 20 new messages, so the summarized
+    // count advances past the first refresh (exact value is token-cutoff
+    // dependent under B6, so assert monotonic rather than the old fixed 70).
+    assert!(
+        second_count > first_count,
+        "incremental refresh should summarize more (first={first_count}, second={second_count})"
+    );
     assert_ne!(
         first_anchor, second_anchor,
         "anchor should advance after incremental refresh"
@@ -489,6 +535,7 @@ async fn r6_incremental_falls_back_to_full_on_anchor_loss() {
     let user = h::memory_user(&server, "r6_summ_fallback").await;
     let user_id = Uuid::parse_str(&user.user_id).unwrap();
 
+    set_low_summary_thresholds(&server).await;
     let (branch_id, msg_ids) = seed_branch_with_messages(&server, &user.token, user_id, 60).await;
     trigger_summarize_via_test_hook(&server, branch_id, ids.llm_model_id).await;
 
@@ -532,7 +579,10 @@ async fn r6_incremental_falls_back_to_full_on_anchor_loss() {
     // just assert the row is fresh and the anchor is non-null.
     let after = fetch_summary_row(&server, branch_id).await.unwrap();
     assert!(after["summarized_up_to_id"].is_string());
-    assert_eq!(after["message_count"], 50);
+    assert!(
+        after["message_count"].as_i64().unwrap_or(0) > 0,
+        "the Full fallback re-summarize should fold an older prefix; got {after:?}"
+    );
 }
 
 // ────────────────────────────────────────────────────────────────────

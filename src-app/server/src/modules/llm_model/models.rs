@@ -230,6 +230,12 @@ pub struct ModelCapabilities {
     /// Image generation capability - can generate images from text descriptions
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_generator: Option<bool>,
+    /// Native max context window (tokens). Parsed from GGUF / safetensors for
+    /// local models and serialized into the capabilities JSONB by the
+    /// llm_local_runtime validator; surfaced here so the UI can show the ceiling
+    /// and the summarizer can use the effective window. (B6a)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_length: Option<u32>,
 }
 
 impl ModelCapabilities {

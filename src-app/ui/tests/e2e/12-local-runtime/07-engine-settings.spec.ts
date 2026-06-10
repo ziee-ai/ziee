@@ -45,12 +45,14 @@ test.describe('Local Runtime — model engine settings form', () => {
     // A mistral.rs-only card must NOT appear for a llamacpp model.
     await expect(drawer.getByText('PagedAttention Configuration')).toHaveCount(0)
 
-    // Set ctx_size and save.
-    const ctxInput = drawer
-      .locator('.ant-flex', { hasText: 'Context Size' })
-      .getByRole('spinbutton')
-      .last()
+    // Set ctx_size and save. Target by the ctx_size InputNumber's unique
+    // placeholder ("8192") — the prior `.ant-flex(hasText 'Context Size')`
+    // selector also matched the card's OUTER flex (which contains every
+    // field), so `.last()` filled the card's last field, leaving ctx_size
+    // untouched.
+    const ctxInput = drawer.locator('input[placeholder="8192"]')
     await ctxInput.fill('8192')
+    await ctxInput.blur()
     await drawer
       .locator('.ant-btn-primary[type="submit"], .ant-btn-primary')
       .last()

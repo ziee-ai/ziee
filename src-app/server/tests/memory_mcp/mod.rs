@@ -162,6 +162,85 @@ async fn test_cross_user_forget_is_404() {
 }
 
 #[tokio::test]
+async fn test_write_tools_denied_for_read_only_user() {
+    // The JSON-RPC extractor only enforces `memory::read`; the per-tool
+    // write gate (`remember`/`forget` require `memory::write`) is a MANUAL
+    // match inside `dispatch_tool_call` (handlers.rs). This pins that gate:
+    // a read-only user is denied remember/forget but passes the read gate on
+    // recall (which then hits MEMORY_DISABLED by default — NOT a denial).
+    let server = crate::common::TestServer::start().await;
+    // MUST use `create_user_with_only_permissions` (strips default-group
+    // membership): `create_user_with_permissions` re-adds the system "Users"
+    // group, which grants `memory::write` (migration 61) — the user would then
+    // NOT be read-only and the denial assertions would never fire.
+    let user = crate::common::test_helpers::create_user_with_only_permissions(
+        &server,
+        "mcp_readonly",
+        &["memory::read"],
+    )
+    .await;
+
+    // remember -> permission-denied (-32602 at HTTP 200)
+    let res = jsonrpc_call(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({ "name": "remember", "arguments": { "content": "x" } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: Value = res.json().await.unwrap();
+    assert!(body["result"].is_null());
+    let msg = body["error"]["message"].as_str().unwrap_or("");
+    assert!(
+        msg.contains("permission denied") && msg.contains("memory::write"),
+        "remember must be denied for read-only user; got: {body}"
+    );
+
+    // forget -> same denial
+    let res = jsonrpc_call(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({
+            "name": "forget",
+            "arguments": { "memory_id": uuid::Uuid::new_v4() },
+        }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: Value = res.json().await.unwrap();
+    let msg = body["error"]["message"].as_str().unwrap_or("");
+    assert!(
+        msg.contains("permission denied") && msg.contains("memory::write"),
+        "forget must be denied for read-only user; got: {body}"
+    );
+
+    // recall passes the read gate (then MEMORY_DISABLED by default); assert
+    // it is NOT the permission-denied error.
+    let res = jsonrpc_call(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({ "name": "recall", "arguments": { "query": "anything" } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: Value = res.json().await.unwrap();
+    let msg = body["error"]["message"].as_str().unwrap_or("");
+    assert!(
+        !msg.contains("permission denied"),
+        "recall must pass the read gate for a read-only user; got: {body}"
+    );
+}
+
+#[tokio::test]
 async fn test_recall_requires_memory_enabled() {
     let server = crate::common::TestServer::start().await;
     let user = crate::common::test_helpers::create_user_with_permissions(
@@ -185,5 +264,60 @@ async fn test_recall_requires_memory_enabled() {
     assert!(
         body["error"].is_object(),
         "recall must error when memory disabled; got: {body}"
+    );
+}
+
+async fn remember_scope(
+    server: &crate::common::TestServer,
+    token: &str,
+    args: Value,
+) -> String {
+    let res = jsonrpc_call(
+        server,
+        token,
+        "tools/call",
+        json!({ "name": "remember", "arguments": args }),
+    )
+    .send()
+    .await
+    .unwrap();
+    let body: Value = res.json().await.unwrap();
+    body["result"]["structuredContent"]["scope"]
+        .as_str()
+        .unwrap_or("")
+        .to_string()
+}
+
+#[tokio::test]
+async fn test_remember_scope_derivation_fallbacks() {
+    // Without an x-conversation-id header, every scope choice falls back to
+    // user-global: explicit 'user', 'conversation' (no conversation → user), and
+    // omitted (default 'conversation' → no conversation → user).
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "mcp_scope",
+        &["memory::write"],
+    )
+    .await;
+
+    assert_eq!(
+        remember_scope(&server, &user.token, json!({ "content": "fact A", "scope": "user" })).await,
+        "user"
+    );
+    assert_eq!(
+        remember_scope(
+            &server,
+            &user.token,
+            json!({ "content": "fact B", "scope": "conversation" })
+        )
+        .await,
+        "user",
+        "conversation scope with no conversation context falls back to user"
+    );
+    assert_eq!(
+        remember_scope(&server, &user.token, json!({ "content": "fact C" })).await,
+        "user",
+        "omitted scope falls back to user when there's no conversation"
     );
 }

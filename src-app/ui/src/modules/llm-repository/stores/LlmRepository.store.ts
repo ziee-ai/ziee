@@ -236,6 +236,28 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
 
           return repository
         } catch (error) {
+          // An enable-transition probe failure (400
+          // LLM_REPOSITORY_ENABLE_FAILED_HEALTH_CHECK) leaves the row
+          // disabled + marked `unhealthy` server-side. Emit auto_disabled
+          // so the settings list reloads and the inline "unhealthy" Alert
+          // renders deterministically — without waiting on the SSE event
+          // round-trip (which the create path already does on downgrade).
+          const code = (error as { error_code?: string })?.error_code
+          if (code === 'LLM_REPOSITORY_ENABLE_FAILED_HEALTH_CHECK') {
+            try {
+              await emitLlmRepositoryAutoDisabled(
+                id,
+                error instanceof Error
+                  ? error.message
+                  : 'Connection probe failed',
+              )
+            } catch (eventError) {
+              console.error(
+                'Failed to emit llm repository auto_disabled event:',
+                eventError,
+              )
+            }
+          }
           set({
             error:
               error instanceof Error
@@ -341,6 +363,23 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
           })
 
           set({ testing: false })
+
+          // The test persisted a fresh health status (healthy/unhealthy)
+          // server-side. Re-fetch the canonical row and emit `updated` so
+          // the list + open drawer reflect it deterministically — the
+          // backend's SSE event round-trip is unreliable in tests and on
+          // flaky networks.
+          try {
+            const fresh = await ApiClient.LlmRepository.get({
+              repository_id: id,
+            })
+            await emitLlmRepositoryUpdated(fresh)
+          } catch (refreshError) {
+            console.error(
+              'Failed to refresh repository after connection test:',
+              refreshError,
+            )
+          }
 
           return result
         } catch (error) {

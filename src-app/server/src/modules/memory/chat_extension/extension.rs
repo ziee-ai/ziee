@@ -11,11 +11,18 @@ use crate::modules::chat::core::extension::{
 
 pub const METADATA: ExtensionMetadata = ExtensionMetadata {
     name: "memory",
-    // After title (80) — both fire-and-forget in after_llm_call. Order
-    // matters mostly for before_llm_call: memory injects a retrieval
-    // system block; we want it AFTER assistant (which sets the primary
-    // system prompt) but BEFORE other content extensions.
-    order: 90,
+    // MUST run BEFORE the MCP extension (order 30): `before_llm_call` sets the
+    // `attach_memory_mcp` metadata flag for inline self-save, and the MCP
+    // extension reads it (`auto_attach_builtin_ids`) when building the tool list.
+    // At the old order 90 the flag was set AFTER MCP had already built its tools,
+    // so the `remember` tool was never attached and inline self-save never fired.
+    // 25 lands it after assistant (10) / file (20) — so the retrieval + summary
+    // system blocks still sit after the primary system prompt — but before MCP
+    // (30). Retrieval/summary are order-independent w.r.t. other extensions (they
+    // act on persisted branch history, not request-assembly order); only the
+    // injected system-block position shifts slightly. `after_llm_call`
+    // (extraction + summary refresh) is order-independent.
+    order: 25,
 };
 
 /// Request fields contributed by the memory extension. Phase 5 adds a

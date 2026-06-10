@@ -12,7 +12,7 @@ export async function goToSettingsPage(
   settingsPath: SettingsPage
 ) {
   await page.goto(`${baseURL}/settings/${settingsPath}`)
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
 }
 
 export async function waitForSettingsPageLoad(page: Page, expectedText: string) {

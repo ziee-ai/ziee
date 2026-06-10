@@ -50,6 +50,10 @@ export function SystemMcpServersPage() {
   // Server-side filtering — `systemServers` already reflects
   // searchTerm + statusFilter via the store setters. Sort dropped:
   // backend's default ORDER BY display_name ASC covers it.
+  //
+  // The backend excludes only the zero-config `files`/`memory` built-ins
+  // server-side; configurable built-ins (filesystem / fetch / code_sandbox)
+  // stay visible + editable, so no client-side filtering is needed here.
   const filteredServers = systemServers
 
   return (
