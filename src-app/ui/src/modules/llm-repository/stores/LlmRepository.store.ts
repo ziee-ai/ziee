@@ -236,6 +236,28 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
 
           return repository
         } catch (error) {
+          // An enable-transition probe failure (400
+          // LLM_REPOSITORY_ENABLE_FAILED_HEALTH_CHECK) leaves the row
+          // disabled + marked `unhealthy` server-side. Emit auto_disabled
+          // so the settings list reloads and the inline "unhealthy" Alert
+          // renders deterministically — without waiting on the SSE event
+          // round-trip (which the create path already does on downgrade).
+          const code = (error as { error_code?: string })?.error_code
+          if (code === 'LLM_REPOSITORY_ENABLE_FAILED_HEALTH_CHECK') {
+            try {
+              await emitLlmRepositoryAutoDisabled(
+                id,
+                error instanceof Error
+                  ? error.message
+                  : 'Connection probe failed',
+              )
+            } catch (eventError) {
+              console.error(
+                'Failed to emit llm repository auto_disabled event:',
+                eventError,
+              )
+            }
+          }
           set({
             error:
               error instanceof Error
