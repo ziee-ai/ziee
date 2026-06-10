@@ -14,6 +14,25 @@ import {
 
 // Phase 4: configuring per-server OAuth 2.1 (client_credentials) from the MCP
 // server drawer. The client secret is write-only — never echoed back.
+
+// The OAuth fields live behind an "Enable OAuth 2.1" toggle (only shown for
+// HTTP user servers). In create mode the toggle starts OFF; in edit mode it
+// auto-enables when the row already has an OAuth config. Expand it before
+// touching the client-id/secret/scopes fields.
+async function enableOAuthSection(page: import('@playwright/test').Page) {
+  const toggle = page
+    .locator('.ant-drawer.ant-drawer-open')
+    .getByLabel('Enable OAuth 2.1')
+  await toggle.waitFor({ state: 'visible', timeout: 5000 })
+  const isOn = await toggle.evaluate(el =>
+    el.classList.contains('ant-switch-checked'),
+  )
+  if (!isOn) await toggle.click()
+  await page
+    .getByLabel('OAuth Client ID')
+    .waitFor({ state: 'visible', timeout: 5000 })
+}
+
 test.describe('MCP - OAuth config', () => {
   test.beforeEach(async ({ page, testInfra }) => {
     const { baseURL } = testInfra
@@ -41,6 +60,8 @@ test.describe('MCP - OAuth config', () => {
     await transportCombobox.press('ArrowDown')
     await transportCombobox.press('Enter')
 
+    // OAuth fields are gated behind the "Enable OAuth 2.1" toggle.
+    await enableOAuthSection(page)
     await expect(page.getByLabel('OAuth Client ID')).toBeVisible()
     await expect(page.getByLabel('OAuth Client Secret')).toBeVisible()
   })
@@ -56,6 +77,7 @@ test.describe('MCP - OAuth config', () => {
 
     await openAddServerDrawer(page)
     await fillMcpServerForm(page, serverData)
+    await enableOAuthSection(page)
     await page.getByLabel('OAuth Client ID').fill('mcp-client')
     await page.getByLabel('OAuth Client Secret').fill('super-secret')
     await page.getByLabel('OAuth Scopes').fill('mcp read')
@@ -92,6 +114,7 @@ test.describe('MCP - OAuth config', () => {
 
     await openAddServerDrawer(page)
     await fillMcpServerForm(page, serverData)
+    await enableOAuthSection(page)
     await page.getByLabel('OAuth Client ID').fill('mcp-client')
     await page.getByLabel('OAuth Client Secret').fill('super-secret')
     await submitMcpServerForm(page, 'create')
@@ -109,6 +132,9 @@ test.describe('MCP - OAuth config', () => {
     await page.waitForTimeout(800)
 
     await clickEditServerButton(page, serverData.displayName)
+    // Config was removed → the OAuth section collapses; re-expand to verify
+    // the cleared (empty) state.
+    await enableOAuthSection(page)
     await expect(page.getByLabel('OAuth Client ID')).toHaveValue('')
     await expect(page.getByLabel('OAuth Client Secret')).toHaveAttribute(
       'placeholder',
@@ -127,6 +153,7 @@ test.describe('MCP - OAuth config', () => {
 
     await openAddServerDrawer(page)
     await fillMcpServerForm(page, serverData)
+    await enableOAuthSection(page)
     // Client id but no secret, and no existing config → must be rejected.
     await page.getByLabel('OAuth Client ID').fill('mcp-client')
     // Click directly (not the submit helper, which waits for the drawer to
@@ -141,7 +168,7 @@ test.describe('MCP - OAuth config', () => {
     ).toBeVisible({ timeout: 5000 })
     // The drawer stays open (save did not complete the OAuth step).
     await expect(
-      page.locator('.ant-drawer-title:has-text("Add MCP Server")'),
+      page.locator('.ant-drawer.ant-drawer-open'),
     ).toBeVisible()
   })
 
@@ -156,6 +183,7 @@ test.describe('MCP - OAuth config', () => {
 
     await openAddServerDrawer(page)
     await fillMcpServerForm(page, serverData)
+    await enableOAuthSection(page)
     await page.getByLabel('OAuth Client ID').fill('mcp-client')
     await page.getByLabel('OAuth Client Secret').fill('super-secret')
     await submitMcpServerForm(page, 'create')
