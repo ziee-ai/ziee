@@ -27,8 +27,10 @@ test.describe('Auth providers — visual smoke', () => {
       fullPage: true,
     })
 
-    // 2. Open Add menu (template dropdown).
-    await page.getByRole('button', { name: /add provider/i }).click()
+    // 2. Open Add menu (template dropdown — a `+` icon button).
+    await page
+      .getByRole('button', { name: 'Add authentication provider' })
+      .click()
     await page.waitForTimeout(300) // let dropdown animation settle
     await page.screenshot({
       path: 'test-results/visual-add-menu.png',
@@ -36,7 +38,7 @@ test.describe('Auth providers — visual smoke', () => {
     })
 
     // 3. Click Generic OIDC → drawer opens with the form.
-    await page.getByText(/Generic OIDC \(Auth0/i).click()
+    await page.getByRole('menuitem', { name: /Generic OIDC/i }).click()
     await page.waitForLoadState('load')
     await page.screenshot({
       path: 'test-results/visual-edit-drawer-empty.png',
@@ -66,9 +68,9 @@ test.describe('Auth providers — visual smoke', () => {
     await page.waitForTimeout(300)
 
     // 7. Open delete popconfirm for the apple row (was a Modal in
-    // an earlier revision; now an inline Popconfirm).
-    const appleRow = page.getByRole('row').filter({ hasText: 'apple' }).first()
-    await appleRow.getByRole('button', { name: /^Delete apple$/i }).click()
+    // an earlier revision; now an inline Popconfirm). The per-row
+    // delete carries aria-label "Delete <name>".
+    await page.getByRole('button', { name: 'Delete apple' }).click()
     await page.waitForTimeout(300)
     await page.screenshot({
       path: 'test-results/visual-delete-popconfirm.png',

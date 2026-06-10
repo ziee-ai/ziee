@@ -4,14 +4,21 @@
  * URLs we use, but that's the POINT for this test: we're verifying
  * the UI handles the failure gracefully + persists the result.
  *
- * Each test creates a uniquely-named provider so they can run in
- * parallel without colliding on the DB-level unique-name constraint.
+ * UI shape (post settings UX overhaul): providers render as a Card of
+ * rows (NOT an AntD Table), each row carries a `Toggle <name>` switch
+ * and `Test/Edit/Delete <name>` actions (per-row aria-labels). "Add
+ * provider" is a `+` icon button (aria-label "Add authentication
+ * provider") opening a dropdown of templates; templates whose name is
+ * already taken (google/microsoft/apple seeded by migration 47) are
+ * filtered OUT of the menu.
  *
  * Out of scope: the actual OAuth dance — covered by
  * `social-login-navikt.spec.ts` (parity test against real navikt).
  */
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+
+const ADD_PROVIDER = 'Add authentication provider'
 
 test.describe('Auth providers — admin CRUD UI', () => {
   test('pre-seeded providers (google/microsoft/apple) show as disabled', async ({
@@ -22,23 +29,20 @@ test.describe('Auth providers — admin CRUD UI', () => {
     await loginAsAdmin(page, baseURL)
     await page.goto(`${baseURL}/settings/auth-providers`)
 
-    // All three pre-seeded rows from migration 47 should be there.
-    // Use locator + text match (more forgiving than strict regex on
-    // accessible name, which AntD wraps in <strong>).
+    // All three pre-seeded providers from migration 47 render as rows,
+    // each with a `Toggle <name>` switch that starts OFF (disabled).
     for (const name of ['google', 'microsoft', 'apple']) {
-      await expect(
-        page.getByRole('row').filter({ hasText: name }).first(),
-      ).toBeVisible({ timeout: 10_000 })
+      const toggle = page.getByRole('switch', { name: `Toggle ${name}` })
+      await expect(toggle).toBeVisible({ timeout: 10_000 })
+      await expect(toggle).not.toBeChecked()
     }
 
-    // Each starts disabled (admin must configure + enable).
-    // Status column renders <Badge text="Disabled"> — count visible
-    // "Disabled" text in the table.
-    const disabled = await page.getByText('Disabled', { exact: true }).count()
+    // Each disabled provider shows the "(Disabled)" marker.
+    const disabled = await page.getByText('(Disabled)').count()
     expect(disabled).toBeGreaterThanOrEqual(3)
   })
 
-  test('Add Provider menu disables templates whose name already exists', async ({
+  test('Add Provider menu omits already-added templates, offers generic ones', async ({
     page,
     testInfra,
   }) => {
@@ -46,22 +50,24 @@ test.describe('Auth providers — admin CRUD UI', () => {
     await loginAsAdmin(page, baseURL)
     await page.goto(`${baseURL}/settings/auth-providers`)
 
-    await page.getByRole('button', { name: /add provider/i }).click()
+    await page.getByRole('button', { name: ADD_PROVIDER }).click()
 
-    // Google/Microsoft/Apple should each show "(already added — edit
-    // existing)" in the dropdown because the migration-47 rows still
-    // exist. Generic templates (no name collision) stay enabled.
-    await expect(page.getByText(/Google.*already added/i)).toBeVisible({
-      timeout: 5_000,
-    })
+    // Generic templates (no name collision) are offered.
     await expect(
-      page.getByText(/Microsoft.*already added/i),
-    ).toBeVisible()
-    await expect(page.getByText(/Apple.*already added/i)).toBeVisible()
-    // Generic OIDC menu item should be clickable.
+      page.getByRole('menuitem', { name: /Generic OIDC/i }),
+    ).toBeVisible({ timeout: 5_000 })
     await expect(
-      page.getByText(/Generic OIDC \(Auth0 \/ Okta/i),
+      page.getByRole('menuitem', { name: /Generic OAuth 2/i }),
     ).toBeVisible()
+
+    // google/microsoft/apple are seeded (migration 47) → filtered OUT
+    // of the menu entirely (the admin edits the existing row instead).
+    await expect(
+      page.getByRole('menuitem', { name: 'Google', exact: true }),
+    ).toHaveCount(0)
+    await expect(
+      page.getByRole('menuitem', { name: 'Apple', exact: true }),
+    ).toHaveCount(0)
   })
 
   test('create + delete a Generic OIDC provider', async ({
@@ -75,10 +81,8 @@ test.describe('Auth providers — admin CRUD UI', () => {
     const providerName = `e2e-okta-${Date.now()}`
 
     // -------------------- CREATE --------------------
-    await page.getByRole('button', { name: /add provider/i }).click()
-    await page
-      .getByText(/Generic OIDC \(Auth0 \/ Okta/i)
-      .click()
+    await page.getByRole('button', { name: ADD_PROVIDER }).click()
+    await page.getByRole('menuitem', { name: /Generic OIDC/i }).click()
 
     await expect(
       page.getByRole('button', { name: /^Create$/ }),
@@ -93,39 +97,32 @@ test.describe('Auth providers — admin CRUD UI', () => {
 
     await page.getByRole('button', { name: /^Create$/ }).click()
 
-    // Row appears in the table. Use row-with-hasText (forgiving on
-    // the AntD <strong> wrapping inside <td>).
-    const row = page.getByRole('row').filter({ hasText: providerName })
-    await expect(row.first()).toBeVisible({ timeout: 10_000 })
+    // New provider appears as a row (its `Toggle <name>` switch).
+    await expect(
+      page.getByRole('switch', { name: `Toggle ${providerName}` }),
+    ).toBeVisible({ timeout: 10_000 })
 
     // -------------------- EDIT drawer briefly --------------------
-    // Verify drawer opens with name disabled (edit mode). Then close.
-    // Buttons use aria-label="Edit ${providerName}" — anchor the
-    // selector or it won't match (round-3 audit finding N-1).
-    await row
-      .getByRole('button', { name: new RegExp(`^Edit ${providerName}$`) })
-      .click()
+    // Open via the per-row "Edit <name>" action; name field is
+    // disabled in edit mode. Then close without saving.
+    await page.getByRole('button', { name: `Edit ${providerName}` }).click()
     await expect(page.getByLabel(/Name \(URL slug\)/i)).toBeDisabled({
       timeout: 5_000,
     })
     await page.getByRole('button', { name: /^Cancel$/ }).click()
 
     // -------------------- DELETE --------------------
-    // Round-1 audit fix swapped DeleteProviderModal for an inline
-    // AntD Popconfirm. The popover doesn't use role=dialog — scope
-    // the confirm by `.ant-popover` and click its primary danger
-    // button (the Popconfirm primary-button class is stable across
-    // okText changes per project_ui_e2e_drawer_selectors memory).
-    await row
-      .getByRole('button', { name: new RegExp(`^Delete ${providerName}$`) })
-      .click()
+    // The per-row "Delete <name>" button opens an inline AntD
+    // Popconfirm (not role=dialog) — confirm via its primary danger
+    // button (stable `.ant-btn-primary` class).
+    await page.getByRole('button', { name: `Delete ${providerName}` }).click()
     const popover = page.locator('.ant-popover:visible').last()
     await expect(popover).toBeVisible({ timeout: 5_000 })
     await popover.locator('.ant-btn-primary').click()
 
     // Row gone (generous timeout — delete includes DB write + reload).
     await expect(
-      page.getByRole('row').filter({ hasText: providerName }),
+      page.getByRole('switch', { name: `Toggle ${providerName}` }),
     ).toHaveCount(0, { timeout: 30_000 })
   })
 
@@ -138,10 +135,8 @@ test.describe('Auth providers — admin CRUD UI', () => {
     await page.goto(`${baseURL}/settings/auth-providers`)
 
     // Open the drawer via "Add provider → Generic OIDC".
-    await page.getByRole('button', { name: /add provider/i }).click()
-    await page
-      .getByText(/Generic OIDC \(Auth0 \/ Okta/i)
-      .click()
+    await page.getByRole('button', { name: ADD_PROVIDER }).click()
+    await page.getByRole('menuitem', { name: /Generic OIDC/i }).click()
 
     await page.getByLabel(/Name \(URL slug\)/i).fill(`e2e-test-config-${Date.now()}`)
     await page.getByLabel(/Client ID/i).fill('any-client')
