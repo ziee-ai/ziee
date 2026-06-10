@@ -728,12 +728,15 @@ fn create_main_window(app_handle: &tauri::AppHandle) {
     });
 
     // macOS: overlay titlebar with native traffic light position (no glitch on resize)
+    // x=20 matches the standard inset Apple uses in Notes / Finder /
+    // Mail; the earlier x=12 sat too close to the window edge and
+    // read as "tighter than other macOS apps".
     #[cfg(target_os = "macos")]
     {
         main_window_builder = main_window_builder
             .title_bar_style(tauri::TitleBarStyle::Overlay)
             .decorations(true)
-            .traffic_light_position(tauri::LogicalPosition::new(12.0, 22.0));
+            .traffic_light_position(tauri::LogicalPosition::new(20.0, 22.0));
     }
 
     main_window_builder.build().unwrap();
