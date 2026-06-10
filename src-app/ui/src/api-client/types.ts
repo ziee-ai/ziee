@@ -1443,6 +1443,7 @@ export interface MessageContentDataToolResult {
   attachment?: RichFile | null
   content: string
   hidden_content?: string | null
+  images?: RichFile[] | null
   is_error?: boolean | null
   name?: string | null
   resource_links?: ResourceLink[] | null
@@ -2223,6 +2224,8 @@ export interface TextPageQuery {
 }
 
 export interface ThinkingMetadata {
+  redacted_data?: string
+  signature?: string
   token_count?: number
 }
 
@@ -2456,8 +2459,11 @@ export interface UpsertUserMcpDefaultsRequest {
 }
 
 export interface Usage {
+  cache_creation_input_tokens?: number
+  cache_read_input_tokens?: number
   input_tokens?: number
   output_tokens?: number
+  reasoning_tokens?: number
 }
 
 export type UsageMode = 'auto' | 'always'

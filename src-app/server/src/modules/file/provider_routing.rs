@@ -64,6 +64,23 @@ pub async fn process_file_blocks(
         return process_via_provider_api(pool, file_id, provider_id, mime, user_id).await;
     }
 
+    // Genuine OpenAI uploads PDFs via the Files API. The mapped "openai" type is
+    // shared by groq/deepseek/mistral/custom/local — none of which implement it —
+    // so only a real OpenAI provider uploads; the rest fall through to the
+    // extracted-text / base64 paths below. (OpenAI images stay base64 — image
+    // file_id is Responses-API only.)
+    if provider_type == "openai" && mime == "application/pdf" {
+        let is_real_openai = Repos
+            .llm_provider
+            .get_by_id(provider_id)
+            .await?
+            .map(|p| p.provider_type == "openai")
+            .unwrap_or(false);
+        if is_real_openai {
+            return process_via_provider_api(pool, file_id, provider_id, mime, user_id).await;
+        }
+    }
+
     // Office docs (and PDFs on providers without native PDF) that have extracted
     // text → inline the extracted per-page text instead of dropping to a useless
     // `[File: x]` placeholder. Frees the old placeholder bug. text/* and JSON-ish
@@ -125,12 +142,14 @@ async fn process_via_provider_api(
         Ok(vec![ContentBlock::Image {
             source: ImageSource::File {
                 file_id: provider_file_id,
+                media_type: Some(mime_type.to_string()),
             },
         }])
     } else if mime_type == "application/pdf" {
         Ok(vec![ContentBlock::Document {
             source: DocumentSource::File {
                 file_id: provider_file_id,
+                media_type: Some(mime_type.to_string()),
             },
         }])
     } else {

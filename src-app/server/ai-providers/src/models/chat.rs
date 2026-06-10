@@ -3,7 +3,7 @@
 //! These types provide a common interface across different AI providers (OpenAI, Anthropic, Gemini).
 //! Conversion functions map between these types and provider-specific types.
 
-use super::tools::{Tool, ToolCall, ToolChoice};
+use super::tools::{Tool, ToolChoice};
 use serde::{Deserialize, Serialize};
 
 /// A chat completion request
@@ -42,6 +42,44 @@ pub struct ChatRequest {
     /// Thinking/reasoning configuration (unified across providers)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thinking: Option<ThinkingConfig>,
+
+    /// Top-k sampling. Supported by Anthropic + Gemini; ignored by OpenAI
+    /// (Chat Completions has no top_k). Anthropic drops it for models that
+    /// reject sampling params (Opus 4.7/4.8 family).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_k: Option<i32>,
+
+    /// Frequency penalty (-2.0..2.0). OpenAI + Gemini; Anthropic doesn't support it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frequency_penalty: Option<f32>,
+
+    /// Presence penalty (-2.0..2.0). OpenAI + Gemini; Anthropic doesn't support it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub presence_penalty: Option<f32>,
+
+    /// Random seed for reproducible sampling. OpenAI + Gemini; not Anthropic.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed: Option<i32>,
+
+    /// Stop sequences. OpenAI `stop`, Anthropic `stop_sequences`, Gemini `stopSequences`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stop: Option<Vec<String>>,
+
+    /// End-user identifier for provider abuse monitoring. OpenAI `user`,
+    /// Anthropic `metadata.user_id`; Gemini has no equivalent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user: Option<String>,
+
+    /// Disable Anthropic prompt-cache breakpoints for this request. Default
+    /// `false` (caching is auto-on for Anthropic). OpenAI/Gemini cache
+    /// automatically regardless of this flag.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub disable_prompt_cache: bool,
+
+    /// OpenAI `prompt_cache_key` — routes requests with a shared prefix to the
+    /// same cache. Passed through to OpenAI only; ignored elsewhere.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_cache_key: Option<String>,
 }
 
 /// A message in a chat conversation
@@ -67,6 +105,18 @@ pub enum ContentBlock {
     /// Thinking/reasoning content (Anthropic, Gemini)
     Thinking {
         thinking: String,
+        /// Anthropic extended-thinking signature. Required to replay a thinking
+        /// block on a later turn; a signature-less thinking block is NOT sent
+        /// back to Anthropic (it would be rejected). `None` for Gemini/OpenAI,
+        /// whose thinking is not replayable.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        signature: Option<String>,
+    },
+
+    /// Redacted thinking block (Anthropic) — opaque encrypted reasoning that
+    /// must be replayed verbatim on later turns.
+    RedactedThinking {
+        data: String,
     },
 
     /// Image content
@@ -120,6 +170,12 @@ pub enum ImageSource {
     /// Provider file reference (Anthropic/Gemini Files API)
     File {
         file_id: String,
+        /// Original MIME type of the uploaded image (e.g. `image/png`). Lets
+        /// providers that echo the MIME on a file reference (Gemini `FileData`)
+        /// send the real type instead of a hard-coded default. `None` when the
+        /// caller didn't carry it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        media_type: Option<String>,
     },
 }
 
@@ -139,6 +195,10 @@ pub enum DocumentSource {
     /// Provider file reference (Anthropic/Gemini Files API)
     File {
         file_id: String,
+        /// Original MIME type of the uploaded document (e.g. `application/pdf`).
+        /// `None` when the caller didn't carry it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        media_type: Option<String>,
     },
 }
 
@@ -280,30 +340,59 @@ impl ChatMessage {
 }
 
 impl ThinkingConfig {
-    /// Create a config with just effort level (for OpenAI)
-    pub fn with_effort(effort: ThinkingEffort) -> Self {
+    /// Adaptive thinking — the model decides when/how much to think. The modern
+    /// default for current Anthropic models (Opus 4.6+) and Gemini 2.5.
+    pub fn adaptive() -> Self {
         Self {
-            enabled: true,
+            mode: ThinkingMode::Adaptive,
+            budget_tokens: None,
+            effort: None,
+            include_thinking: true,
+        }
+    }
+
+    /// Adaptive thinking with an effort level (Anthropic `output_config.effort`,
+    /// OpenAI `reasoning_effort`).
+    pub fn adaptive_with_effort(effort: ThinkingEffort) -> Self {
+        Self {
+            mode: ThinkingMode::Adaptive,
             budget_tokens: None,
             effort: Some(effort),
             include_thinking: true,
         }
     }
 
-    /// Create a config with token budget (for Anthropic/Gemini)
+    /// Thinking explicitly disabled.
+    pub fn disabled() -> Self {
+        Self {
+            mode: ThinkingMode::Disabled,
+            budget_tokens: None,
+            effort: None,
+            include_thinking: false,
+        }
+    }
+
+    /// Create a config with just an effort level (drives OpenAI `reasoning_effort`
+    /// and Anthropic `output_config.effort`; treated as adaptive thinking).
+    pub fn with_effort(effort: ThinkingEffort) -> Self {
+        Self::adaptive_with_effort(effort)
+    }
+
+    /// Create a legacy fixed-budget config (`{type:"enabled", budget_tokens}`),
+    /// for older Anthropic models (Opus 4.6 and earlier) and Gemini.
     pub fn with_budget(budget_tokens: i32) -> Self {
         Self {
-            enabled: true,
+            mode: ThinkingMode::Enabled,
             budget_tokens: Some(budget_tokens),
             effort: None,
             include_thinking: true,
         }
     }
 
-    /// Create a config with both effort and budget
+    /// Legacy fixed-budget config with an effort hint.
     pub fn with_effort_and_budget(effort: ThinkingEffort, budget_tokens: i32) -> Self {
         Self {
-            enabled: true,
+            mode: ThinkingMode::Enabled,
             budget_tokens: Some(budget_tokens),
             effort: Some(effort),
             include_thinking: true,
@@ -325,55 +414,6 @@ pub enum Role {
     Tool,
 }
 
-/// A chat completion response
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChatResponse {
-    /// Unique identifier for the response
-    pub id: String,
-
-    /// The model that generated the response
-    pub model: String,
-
-    /// The generated completions
-    pub choices: Vec<Choice>,
-
-    /// Token usage statistics
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub usage: Option<Usage>,
-}
-
-/// A single completion choice
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Choice {
-    /// The generated message
-    pub message: Message,
-
-    /// The reason the model stopped generating
-    pub finish_reason: String,
-
-    /// The index of this choice
-    #[serde(default)]
-    pub index: u32,
-}
-
-/// A message in a response
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Message {
-    /// The role of the message author
-    pub role: Role,
-
-    /// The content of the message
-    pub content: String,
-
-    /// Tool calls made by the assistant
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tool_calls: Vec<ToolCall>,
-
-    /// The model's thinking/reasoning process (if available)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub thinking: Option<String>,
-}
-
 /// Token usage statistics
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Usage {
@@ -389,6 +429,17 @@ pub struct Usage {
     /// Number of tokens used for reasoning/thinking (if available)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_tokens: Option<u32>,
+
+    /// Prompt tokens served from cache this request (Anthropic
+    /// `cache_read_input_tokens`, OpenAI `prompt_tokens_details.cached_tokens`,
+    /// Gemini `cachedContentTokenCount`). The cache-hit signal.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_read_input_tokens: Option<u32>,
+
+    /// Prompt tokens written to cache this request (Anthropic
+    /// `cache_creation_input_tokens`). `None` for providers that don't report it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_creation_input_tokens: Option<u32>,
 }
 
 /// A chunk of streamed chat content
@@ -435,6 +486,21 @@ pub enum ContentBlockDelta {
         delta: String,
     },
 
+    /// Thinking-block signature (Anthropic `signature_delta`). Arrives in its
+    /// own SSE event after the thinking text; carries the signature needed to
+    /// replay the block on a later turn.
+    ThinkingSignatureDelta {
+        index: usize,
+        signature: String,
+    },
+
+    /// Redacted thinking block start (Anthropic `redacted_thinking`). Carries
+    /// the opaque `data` that must be replayed verbatim.
+    RedactedThinkingDelta {
+        index: usize,
+        data: String,
+    },
+
     /// Tool use delta (incremental JSON)
     ToolUseDelta {
         index: usize,
@@ -445,29 +511,6 @@ pub enum ContentBlockDelta {
         #[serde(skip_serializing_if = "Option::is_none")]
         input_delta: Option<String>,
     },
-}
-
-/// An incremental tool call update in a stream
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StreamToolCall {
-    /// The index of this tool call in the array
-    pub index: u32,
-
-    /// The ID of the tool call (appears in first chunk)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-
-    /// The type of tool (e.g., "function")
-    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
-    pub tool_type: Option<String>,
-
-    /// The function name (appears in first chunk)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub function_name: Option<String>,
-
-    /// Incremental JSON arguments string
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub arguments_delta: Option<String>,
 }
 
 /// Usage metadata in streaming responses
@@ -485,6 +528,17 @@ pub struct StreamUsage {
     /// Number of tokens used for reasoning/thinking (if available)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_tokens: Option<u32>,
+
+    /// Prompt tokens served from cache this request (Anthropic
+    /// `cache_read_input_tokens`, OpenAI `prompt_tokens_details.cached_tokens`,
+    /// Gemini `cachedContentTokenCount`). The cache-hit signal.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_read_input_tokens: Option<u32>,
+
+    /// Prompt tokens written to cache this request (Anthropic
+    /// `cache_creation_input_tokens`). `None` for providers that don't report it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_creation_input_tokens: Option<u32>,
 }
 
 /// Safety rating for content (Gemini)
@@ -522,23 +576,40 @@ pub struct EmbeddingsResponse {
     pub usage: Option<Usage>,
 }
 
+/// Which thinking mode to request.
+/// - `Adaptive`: model decides when/how much to think (Anthropic `{type:"adaptive"}`,
+///   the only on-mode for Opus 4.7/4.8; Gemini dynamic). Depth tuned by `effort`.
+/// - `Enabled`: legacy fixed token budget (Anthropic `{type:"enabled", budget_tokens}`,
+///   only valid on Opus 4.6 and earlier; Gemini explicit budget).
+/// - `Disabled`: thinking off.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ThinkingMode {
+    Adaptive,
+    Enabled,
+    Disabled,
+}
+
 /// Configuration for thinking/reasoning mode (unified across providers)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThinkingConfig {
-    /// Whether to enable thinking/reasoning mode
-    pub enabled: bool,
+    /// Thinking mode (adaptive / enabled / disabled).
+    pub mode: ThinkingMode,
 
-    /// Maximum tokens to allocate for thinking/reasoning
-    /// - OpenAI: Not directly used (controlled by reasoning_effort)
-    /// - Anthropic: budget_tokens (minimum 1024)
+    /// Maximum tokens to allocate for thinking/reasoning. Used by the legacy
+    /// `Enabled` mode only.
+    /// - OpenAI: Not used (controlled by reasoning_effort)
+    /// - Anthropic: `Enabled` mode `budget_tokens` (min 1024); ignored in `Adaptive`
+    ///   mode (use `effort` instead — Opus 4.7/4.8 removed fixed budgets)
     /// - Gemini: thinking_budget (-1 for dynamic, 0 to disable)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub budget_tokens: Option<i32>,
 
     /// Effort level for reasoning (provider-specific interpretation)
-    /// - OpenAI: "minimal", "low", "medium", "high"
-    /// - Anthropic: Not used (only budget_tokens matters)
-    /// - Gemini: -1 for dynamic (automatic budget adjustment)
+    /// - OpenAI: `reasoning_effort` ("minimal"/"low"/"medium"/"high")
+    /// - Anthropic: `output_config.effort` in `Adaptive` mode
+    ///   ("low"/"medium"/"high"/"xhigh"/"max")
+    /// - Gemini: maps to the thinking budget
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effort: Option<ThinkingEffort>,
 
@@ -557,7 +628,7 @@ fn default_include_thinking() -> bool {
 impl Default for ThinkingConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
+            mode: ThinkingMode::Adaptive,
             budget_tokens: None,
             effort: None,
             include_thinking: true,
@@ -565,8 +636,11 @@ impl Default for ThinkingConfig {
     }
 }
 
-/// Thinking/reasoning effort level
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+/// Thinking/reasoning effort level.
+/// Anthropic `output_config.effort`: low | medium | high | xhigh | max
+/// (Minimal→low, Dynamic→omit). OpenAI `reasoning_effort`: minimal | low | medium
+/// | high (XHigh/Max→high). Gemini: maps to thinking budget.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ThinkingEffort {
     /// Minimal thinking (OpenAI GPT-5 only)
@@ -575,8 +649,12 @@ pub enum ThinkingEffort {
     Low,
     /// Medium effort (recommended starting point)
     Medium,
-    /// High effort (maximum reasoning)
+    /// High effort
     High,
+    /// Extra-high effort (Anthropic Opus 4.7/4.8 — between high and max)
+    XHigh,
+    /// Maximum reasoning (Anthropic Opus-tier only)
+    Max,
     /// Dynamic effort (Gemini only - model decides based on complexity)
     Dynamic,
 }

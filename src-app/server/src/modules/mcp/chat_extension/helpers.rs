@@ -139,8 +139,19 @@ pub async fn execute_tool(
     match result {
         Ok(Ok(tool_result)) => {
             // Success - convert MCP ToolResult to our format, parsing rich content types
+            // Cap on inline base64 size for tool-returned files/images. Without it a
+            // malicious or buggy MCP tool could return a huge blob that blows up
+            // memory, the DB row, the request, and prompt-cache write cost. ~6 MB
+            // decoded (8M base64 chars).
+            const MAX_INLINE_TOOL_FILE_B64: usize = 8_000_000;
+            // Aggregate bounds so many sub-cap images can't add up to an unbounded
+            // request/DB row.
+            const MAX_IMAGES: usize = 8;
+            const MAX_TOTAL_IMAGE_B64: usize = 24_000_000;
             let mut text_parts: Vec<String> = Vec::new();
             let mut attachment: Option<super::content::RichFile> = None;
+            let mut images: Vec<super::content::RichFile> = Vec::new();
+            let mut total_image_b64: usize = 0;
             let mut resource_links: Vec<super::content::ResourceLink> = Vec::new();
 
             for item in &tool_result.content {
@@ -152,16 +163,27 @@ pub async fn execute_tool(
                         }
                     }
                     "file" => {
-                        if let (Some(filename), Some(mime_type), Some(data)) = (
-                            item.content.get("filename").and_then(|v| v.as_str()),
-                            item.content.get("mime_type").and_then(|v| v.as_str()),
-                            item.content.get("data").and_then(|v| v.as_str()),
-                        ) {
-                            attachment = Some(super::content::RichFile {
-                                filename: filename.to_string(),
-                                mime_type: mime_type.to_string(),
-                                data: data.to_string(),
-                            });
+                        // First file wins (single attachment slot).
+                        if attachment.is_none() {
+                            if let (Some(filename), Some(mime_type), Some(data)) = (
+                                item.content.get("filename").and_then(|v| v.as_str()),
+                                item.content.get("mime_type").and_then(|v| v.as_str()),
+                                item.content.get("data").and_then(|v| v.as_str()),
+                            ) {
+                                if data.len() <= MAX_INLINE_TOOL_FILE_B64 {
+                                    attachment = Some(super::content::RichFile {
+                                        filename: filename.to_string(),
+                                        mime_type: mime_type.to_string(),
+                                        data: data.to_string(),
+                                    });
+                                } else {
+                                    tracing::warn!(
+                                        "mcp: dropping oversized tool file '{}' ({} base64 bytes)",
+                                        filename,
+                                        data.len()
+                                    );
+                                }
+                            }
                         }
                     }
                     "resource_link" => {
@@ -182,6 +204,35 @@ pub async fn execute_tool(
                             });
                             // Provide the LLM with a readable confirmation so it doesn't retry
                             text_parts.push(format!("resource_link available — name: {}, uri: {}", name, uri));
+                        }
+                    }
+                    "image" => {
+                        // MCP ImageContent: base64 `data` + `mimeType`. Capture ALL
+                        // images (replayed to the model as image blocks by
+                        // content::to_content_block), each bounded by the size cap.
+                        if let (Some(data), Some(mime_type)) = (
+                            item.content.get("data").and_then(|v| v.as_str()),
+                            item.content.get("mimeType").and_then(|v| v.as_str()),
+                        ) {
+                            if mime_type.starts_with("image/") {
+                                if data.len() <= MAX_INLINE_TOOL_FILE_B64
+                                    && images.len() < MAX_IMAGES
+                                    && total_image_b64 + data.len() <= MAX_TOTAL_IMAGE_B64
+                                {
+                                    total_image_b64 += data.len();
+                                    let ext = mime_type.rsplit('/').next().unwrap_or("png");
+                                    images.push(super::content::RichFile {
+                                        filename: format!("tool-image.{ext}"),
+                                        mime_type: mime_type.to_string(),
+                                        data: data.to_string(),
+                                    });
+                                } else {
+                                    tracing::warn!(
+                                        "mcp: dropping oversized tool image ({} base64 bytes)",
+                                        data.len()
+                                    );
+                                }
+                            }
                         }
                     }
                     _ => {
@@ -219,6 +270,7 @@ pub async fn execute_tool(
                 content: final_content,
                 is_error: Some(tool_result.is_error),
                 attachment,
+                images: if images.is_empty() { None } else { Some(images) },
                 resource_links: if resource_links.is_empty() { None } else { Some(resource_links) },
                 hidden_content: None, // Set later if resource_links artifacts are saved
             };
@@ -246,6 +298,7 @@ pub async fn execute_tool(
                 content: format!("Tool execution failed: {}", e),
                 is_error: Some(true),
                 attachment: None,
+                images: None,
                 resource_links: None,
                 hidden_content: None,
             }, false)
@@ -262,6 +315,7 @@ pub async fn execute_tool(
                 ),
                 is_error: Some(true),
                 attachment: None,
+                images: None,
                 resource_links: None,
                 hidden_content: None,
             }, false)

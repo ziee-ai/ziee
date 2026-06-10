@@ -162,13 +162,24 @@ pub async fn retrieve_and_inject(
         .join("\n");
     let block = format!("{SYSTEM_BLOCK_HEADER}{body}{SYSTEM_BLOCK_FOOTER}");
 
-    chat_request.messages.insert(
-        0,
-        ChatMessage {
+    // Append the retrieved-memory block onto the latest user message instead of a
+    // front system message. Retrieved memories are volatile (per-request vector
+    // search); keeping them out of the system/tools prefix preserves the
+    // prompt cache (the stable prefix stays byte-identical across turns).
+    if let Some(user_msg) = chat_request
+        .messages
+        .iter_mut()
+        .rev()
+        .find(|m| matches!(m.role, Role::User))
+    {
+        user_msg.content.push(ContentBlock::Text { text: block });
+    } else {
+        // No user message to attach to (unusual) — fall back to a system block.
+        chat_request.messages.push(ChatMessage {
             role: Role::System,
             content: vec![ContentBlock::Text { text: block }],
-        },
-    );
+        });
+    }
 
     // ── 7. Update recall stats (fire-and-forget) ───────────────────
     let ids: Vec<Uuid> = hits.iter().map(|(id, _)| *id).collect();

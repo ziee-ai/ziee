@@ -247,6 +247,7 @@ impl McpChatExtension {
                     content: format!("Server '{}' not found", server_id),
                     is_error: Some(true),
                     attachment: None,
+                    images: None,
                     resource_links: None,
                     hidden_content: None,
                 };
@@ -315,6 +316,7 @@ impl McpChatExtension {
                         content: "Cannot execute sampling tool: no model available. Ensure a model is selected.".to_string(),
                         is_error: Some(true),
                             attachment: None,
+                            images: None,
                         resource_links: None,
                         hidden_content: None,
                     };
@@ -343,6 +345,7 @@ impl McpChatExtension {
                             content: format!("Failed to connect to server: {}", e),
                             is_error: Some(true),
                                     attachment: None,
+                                    images: None,
                             resource_links: None,
                             hidden_content: None,
                         };
@@ -1166,6 +1169,7 @@ impl ChatExtension for McpChatExtension {
                             content: "Tool execution was denied by the user.".to_string(),
                             is_error: Some(true),
                                     attachment: None,
+                                    images: None,
                             resource_links: None,
                             hidden_content: None,
                         };
@@ -1478,24 +1482,35 @@ impl ChatExtension for McpChatExtension {
             }
         }
 
-        // Inject always-mode context into the system message
+        // Append always-mode pre-fetched context to the latest USER turn (not the
+        // system prefix). This context is volatile — re-fetched every request — so
+        // keeping it out of the cacheable tools+system prefix preserves the prompt
+        // cache (mirrors the memory-retrieval move). Falls back to a system message
+        // only when there is no user turn to attach to.
         if !always_mode_context.is_empty() {
             let context_block = format!(
                 "\n\n--- Pre-fetched context ---\n{}\n--- End context ---",
                 always_mode_context.join("\n\n")
             );
-            // Append to existing system message or prepend a new one
-            if let Some(sys_msg) = request.messages.iter_mut().find(|m| m.role == ai_providers::Role::System) {
-                if let Some(ai_providers::ContentBlock::Text { text }) = sys_msg.content.first_mut() {
-                    text.push_str(&context_block);
-                }
+            if let Some(user_msg) = request
+                .messages
+                .iter_mut()
+                .rev()
+                .find(|m| m.role == ai_providers::Role::User)
+            {
+                user_msg
+                    .content
+                    .push(ai_providers::ContentBlock::Text { text: context_block });
             } else {
-                request.messages.insert(0, ai_providers::ChatMessage {
+                request.messages.push(ai_providers::ChatMessage {
                     role: ai_providers::Role::System,
                     content: vec![ai_providers::ContentBlock::Text { text: context_block }],
                 });
             }
-            tracing::info!("Injected {} always-mode context blocks into system message", always_mode_context.len());
+            tracing::debug!(
+                "Injected {} always-mode context blocks into the user turn",
+                always_mode_context.len()
+            );
         }
 
         tracing::info!(
@@ -1613,6 +1628,7 @@ impl ChatExtension for McpChatExtension {
                                 .to_string(),
                             is_error: Some(true),
                                     attachment: None,
+                                    images: None,
                             resource_links: None,
                             hidden_content: None,
                         };
@@ -2026,6 +2042,7 @@ impl ChatExtension for McpChatExtension {
                     .to_string(),
                 is_error: Some(true),
                 attachment: None,
+                images: None,
                 resource_links: None,
                 hidden_content: None,
             };
@@ -2098,6 +2115,7 @@ impl ChatExtension for McpChatExtension {
                     content: format!("Server '{}' not found", server_id),
                     is_error: Some(true),
                     attachment: None,
+                    images: None,
                     resource_links: None,
                     hidden_content: None,
                 };
@@ -2128,6 +2146,7 @@ impl ChatExtension for McpChatExtension {
                                 content: e.to_string(),
                                 is_error: Some(true),
                                             attachment: None,
+                                            images: None,
                                 resource_links: None,
                                 hidden_content: None,
                             }, false)
@@ -2144,6 +2163,7 @@ impl ChatExtension for McpChatExtension {
                                         content: format!("Failed to initialize sampling provider: {}", e),
                                         is_error: Some(true),
                                                             attachment: None,
+                                                            images: None,
                                         resource_links: None,
                                         hidden_content: None,
                                     }, false)
@@ -2172,6 +2192,7 @@ impl ChatExtension for McpChatExtension {
                                                 content: format!("Failed to connect to server: {}", e),
                                                 is_error: Some(true),
                                                                             attachment: None,
+                                                                            images: None,
                                                 resource_links: None,
                                                 hidden_content: None,
                                             }, false)
@@ -2193,6 +2214,7 @@ impl ChatExtension for McpChatExtension {
                         content: "Cannot execute sampling tool: no model available in context. Ensure a model is selected.".to_string(),
                         is_error: Some(true),
                             attachment: None,
+                            images: None,
                         resource_links: None,
                         hidden_content: None,
                     }, false)
@@ -2221,6 +2243,7 @@ impl ChatExtension for McpChatExtension {
                             content: format!("Failed to connect to server: {}", e),
                             is_error: Some(true),
                                     attachment: None,
+                                    images: None,
                             resource_links: None,
                             hidden_content: None,
                         }, false)

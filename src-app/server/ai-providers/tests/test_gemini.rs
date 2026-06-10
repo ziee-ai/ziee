@@ -9,11 +9,13 @@ use serde_json::json;
 // Models used in tests
 const MODEL_GEMINI_25_FLASH: &str = "models/gemini-2.5-flash";
 const MODEL_GEMINI_25_PRO: &str = "models/gemini-2.5-pro";
-const MODEL_GEMINI_20_FLASH: &str = "models/gemini-2.0-flash";
-const MODEL_GEMINI_20_PRO: &str = "models/gemini-2.0-pro-exp";
-const MODEL_GEMINI_THINKING: &str = "models/gemini-2.0-flash-thinking-exp";
-const MODEL_GEMINI_LITE: &str = "models/gemini-2.0-flash-lite";
-const EMBEDDING_MODEL: &str = "models/text-embedding-004";
+// The Gemini 2.0 family was retired (404 "no longer available"); map to 2.5.
+const MODEL_GEMINI_20_FLASH: &str = "models/gemini-2.5-flash";
+const MODEL_GEMINI_20_PRO: &str = "models/gemini-2.5-pro";
+const MODEL_GEMINI_THINKING: &str = "models/gemini-2.5-flash"; // 2.5 Flash has thinking
+const MODEL_GEMINI_LITE: &str = "models/gemini-2.5-flash-lite";
+// text-embedding-004 is no longer served for embedding on v1beta; use the GA model.
+const EMBEDDING_MODEL: &str = "models/gemini-embedding-001";
 
 fn get_api_key() -> String {
     std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY environment variable must be set")
@@ -57,7 +59,9 @@ async fn test_gemini_streaming_chat() {
                             full_content.push_str(&format!("[THINKING: {}]", delta));
                             print!("[THINKING: {}]", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {
                             // Skip tool use deltas
                         }
                     }
@@ -323,7 +327,9 @@ async fn test_gemini_thinking_mode_streaming() {
                             full_thinking.push_str(delta);
                             print!("[THINKING] {}", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {
                             // Skip tool use deltas
                         }
                     }
@@ -397,7 +403,9 @@ async fn test_gemini_streaming_long_response() {
                         ai_providers::ContentBlockDelta::ThinkingDelta { delta, .. } => {
                             chunk_chars += delta.len();
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {
                             // Skip tool use deltas
                         }
                     }
@@ -480,7 +488,9 @@ async fn test_gemini_20_pro_large_context() {
                             full_content.push_str(&format!("[THINKING: {}]", delta));
                             print!("[THINKING: {}]", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {}
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {}
                     }
                 }
                 chunk_count += 1;
@@ -537,7 +547,9 @@ async fn test_gemini_25_pro_streaming() {
                             full_content.push_str(&format!("[THINKING: {}]", delta));
                             print!("[THINKING: {}]", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {}
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {}
                     }
                 }
                 chunk_count += 1;
@@ -592,7 +604,9 @@ async fn test_gemini_20_flash_streaming() {
                             full_content.push_str(&format!("[THINKING: {}]", delta));
                             print!("[THINKING: {}]", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {}
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {}
                     }
                 }
                 chunk_count += 1;
@@ -649,7 +663,9 @@ async fn test_gemini_thinking_reasoning() {
                             full_content.push_str(&format!("[THINKING: {}]", delta));
                             print!("[THINKING: {}]", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {}
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {}
                     }
                 }
                 chunk_count += 1;
@@ -704,7 +720,9 @@ async fn test_gemini_lite_cost_optimization() {
                             full_content.push_str(&format!("[THINKING: {}]", delta));
                             print!("[THINKING: {}]", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {}
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {}
                     }
                 }
                 chunk_count += 1;

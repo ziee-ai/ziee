@@ -77,6 +77,9 @@ pub enum McpContentData {
         /// Inline file attachment returned by a tool (base64-encoded content)
         #[serde(skip_serializing_if = "Option::is_none")]
         attachment: Option<RichFile>,
+        /// Inline images returned by a tool (base64); replayed as image blocks.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        images: Option<Vec<RichFile>>,
         /// References to persisted files returned by a tool (MCP resource_link)
         #[serde(skip_serializing_if = "Option::is_none")]
         resource_links: Option<Vec<ResourceLink>>,
@@ -123,6 +126,8 @@ impl McpContentData {
                 content,
                 is_error,
                 hidden_content,
+                attachment,
+                images,
                 ..
             } => {
                 // Send text content to LLM.
@@ -131,10 +136,32 @@ impl McpContentData {
                 if let Some(hidden) = hidden_content {
                     llm_text.push_str(&format!("\n{}", hidden));
                 }
+                let mut blocks = vec![ai_providers::ContentBlock::Text { text: llm_text }];
+                // Replay inline image content so the model actually sees it (providers
+                // carry tool-result images natively or spill them). An image-typed
+                // `attachment` (the "file" content type) is replayed too.
+                let mut push_image = |f: &RichFile| {
+                    if f.mime_type.starts_with("image/") {
+                        blocks.push(ai_providers::ContentBlock::Image {
+                            source: ai_providers::ImageSource::Base64 {
+                                media_type: f.mime_type.clone(),
+                                data: f.data.clone(),
+                            },
+                        });
+                    }
+                };
+                if let Some(att) = attachment {
+                    push_image(att);
+                }
+                if let Some(imgs) = images {
+                    for img in imgs {
+                        push_image(img);
+                    }
+                }
                 Some(ai_providers::ContentBlock::ToolResult {
                     tool_use_id: tool_use_id.clone(),
                     name: name.clone(),
-                    content: vec![ai_providers::ContentBlock::Text { text: llm_text }],
+                    content: blocks,
                     is_error: *is_error,
                 })
             }
@@ -182,6 +209,7 @@ impl McpContentData {
                     content: text,
                     is_error: *is_error,
                     attachment: None,
+                    images: None,
                     resource_links: None,
                     hidden_content: None,
                 })

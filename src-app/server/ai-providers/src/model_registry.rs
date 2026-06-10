@@ -27,10 +27,17 @@ pub struct ModelCapabilities {
     #[serde(default)]
     pub supports_vision: bool,
     pub supports_tool_use: Option<bool>,
+    /// Whether the model supports thinking/reasoning. `None` = unknown.
+    pub supports_thinking: Option<bool>,
+    /// How thinking is requested: `"adaptive"` (modern Anthropic / Gemini 2.5 /
+    /// OpenAI reasoning models) or `"budget"` (legacy fixed token budget).
+    pub thinking_style: Option<String>,
+    /// Whether the model accepts sampling params (`temperature`/`top_p`/`top_k`).
+    /// `Some(false)` for Anthropic Opus 4.7/4.8 (they 400 on these). `None` =
+    /// unknown → treated as allowed.
+    pub supports_sampling_params: Option<bool>,
     #[serde(default)]
     pub deprecated: bool,
-    /// Marker so the UI can show "registry hit" vs "discovery hit".
-    pub unknown_to_registry: Option<bool>,
 }
 
 const RAW: &str = include_str!("../data/known_models.json");
@@ -76,10 +83,21 @@ fn registry() -> &'static HashMap<(String, String), ModelCapabilities> {
 }
 
 /// Look up known capabilities for a (provider, model_id) pair.
+///
+/// Tries an exact match first, then falls back to the longest catalog id that is
+/// a dash-prefixed base of `model_id` — so dated/aliased SKUs
+/// (`claude-opus-4-7-20250514`, `claude-opus-4-7-fast`) still resolve to the
+/// `claude-opus-4-7` entry. Without this, the capability gates (e.g. Anthropic's
+/// `supports_sampling_params`) would silently miss dated ids.
 pub fn lookup(provider_type: &str, model_id: &str) -> Option<ModelCapabilities> {
-    registry()
-        .get(&(provider_type.to_string(), model_id.to_string()))
-        .cloned()
+    let reg = registry();
+    if let Some(c) = reg.get(&(provider_type.to_string(), model_id.to_string())) {
+        return Some(c.clone());
+    }
+    reg.iter()
+        .filter(|((p, id), _)| p == provider_type && model_id.starts_with(&format!("{id}-")))
+        .max_by_key(|((_, id), _)| id.len())
+        .map(|(_, c)| c.clone())
 }
 
 /// All known model IDs for a provider type. The drawer dropdown
@@ -112,7 +130,7 @@ mod tests {
     #[test]
     fn anthropic_claude_opus_known() {
         let c = lookup("anthropic", "claude-opus-4-7").unwrap();
-        assert_eq!(c.context_length, Some(200000));
+        assert_eq!(c.context_length, Some(1000000));
     }
 
     #[test]
@@ -132,5 +150,45 @@ mod tests {
         let c = lookup("openai", "text-embedding-3-small").unwrap();
         assert!(c.supports_embeddings);
         assert!(!c.supports_chat);
+    }
+
+    #[test]
+    fn opus_47_thinking_adaptive_and_sampling_restricted() {
+        let c = lookup("anthropic", "claude-opus-4-7").unwrap();
+        assert_eq!(c.supports_thinking, Some(true));
+        assert_eq!(c.thinking_style.as_deref(), Some("adaptive"));
+        // must-fix gate signal: Opus 4.7 rejects sampling params.
+        assert_eq!(c.supports_sampling_params, Some(false));
+    }
+
+    #[test]
+    fn sonnet_46_thinking_adaptive_sampling_allowed() {
+        let c = lookup("anthropic", "claude-sonnet-4-6").unwrap();
+        assert_eq!(c.supports_thinking, Some(true));
+        assert_eq!(c.supports_sampling_params, Some(true));
+    }
+
+    #[test]
+    fn gemini_25_supports_thinking() {
+        let c = lookup("gemini", "gemini-2.5-flash").unwrap();
+        assert_eq!(c.supports_thinking, Some(true));
+        assert_eq!(c.thinking_style.as_deref(), Some("adaptive"));
+    }
+
+    #[test]
+    fn non_thinking_model_unset() {
+        let c = lookup("openai", "gpt-4o").unwrap();
+        assert!(c.supports_thinking.is_none());
+    }
+
+    #[test]
+    fn dated_and_aliased_ids_resolve_to_base_entry() {
+        // Dated SKU → the bare catalog entry (so the sampling gate still fires).
+        let c = lookup("anthropic", "claude-opus-4-7-20250514").expect("dated id resolves");
+        assert_eq!(c.supports_sampling_params, Some(false));
+        let c2 = lookup("anthropic", "claude-opus-4-7-fast").expect("aliased id resolves");
+        assert_eq!(c2.supports_thinking, Some(true));
+        // A non-dash continuation must NOT false-match.
+        assert!(lookup("anthropic", "claude-opus-4-70").is_none());
     }
 }

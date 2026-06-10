@@ -20790,6 +20790,16 @@
                   "null"
                 ]
               },
+              "images": {
+                "description": "Inline images returned by a tool (base64). Mirrors\n `McpContentData::ToolResult.images`; replayed to the model as image\n blocks. Same serde-roundtrip requirement as `attachment` above.",
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "$ref": "#/components/schemas/RichFile"
+                }
+              },
               "is_error": {
                 "type": [
                   "boolean",
@@ -24467,6 +24477,20 @@
         "description": "Metadata for thinking content",
         "type": "object",
         "properties": {
+          "redacted_data": {
+            "description": "Opaque data for a redacted-thinking block (Anthropic).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "signature": {
+            "description": "Anthropic extended-thinking signature — required to replay the block on a\n later turn (`None` for Gemini/OpenAI, whose thinking isn't replayable).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "token_count": {
             "type": [
               "integer",
@@ -25635,6 +25659,24 @@
         "description": "Usage metadata from AI provider",
         "type": "object",
         "properties": {
+          "cache_creation_input_tokens": {
+            "description": "Prompt tokens written to cache this request.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "cache_read_input_tokens": {
+            "description": "Prompt tokens served from cache (the prompt-cache hit signal).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
           "input_tokens": {
             "type": [
               "integer",
@@ -25644,6 +25686,15 @@
             "minimum": 0
           },
           "output_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "reasoning_tokens": {
+            "description": "Reasoning/thinking tokens (if the provider reports them).",
             "type": [
               "integer",
               "null"

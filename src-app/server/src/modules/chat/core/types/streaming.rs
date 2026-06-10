@@ -103,6 +103,15 @@ pub struct Usage {
     pub input_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_tokens: Option<u32>,
+    /// Reasoning/thinking tokens (if the provider reports them).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_tokens: Option<u32>,
+    /// Prompt tokens served from cache (the prompt-cache hit signal).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_read_input_tokens: Option<u32>,
+    /// Prompt tokens written to cache this request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_creation_input_tokens: Option<u32>,
 }
 
 impl From<ai_providers::StreamUsage> for Usage {
@@ -110,6 +119,9 @@ impl From<ai_providers::StreamUsage> for Usage {
         Self {
             input_tokens: Some(usage.prompt_tokens),
             output_tokens: Some(usage.completion_tokens),
+            reasoning_tokens: usage.reasoning_tokens,
+            cache_read_input_tokens: usage.cache_read_input_tokens,
+            cache_creation_input_tokens: usage.cache_creation_input_tokens,
         }
     }
 }
