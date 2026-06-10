@@ -213,9 +213,11 @@ export async function openEditModelDrawer(page: Page, modelName: string) {
 
   await editButton.first().click()
 
-  // Wait for edit drawer. `.first()` to dedupe across `.or()` branches.
-  await page.getByRole('dialog', { name: /edit model/i })
-    .or(page.getByText('Edit Model'))
+  // Wait for edit drawer. The title is now engine-aware ("Edit Local Model"
+  // / "Edit Remote Model"); keep matching the legacy "Edit Model" too.
+  // `.first()` to dedupe across `.or()` branches.
+  await page.getByRole('dialog', { name: /edit (local |remote )?model/i })
+    .or(page.getByText(/Edit (Local |Remote )?Model/))
     .first()
     .waitFor({ timeout: 30000 })
 }
