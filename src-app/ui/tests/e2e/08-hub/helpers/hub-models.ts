@@ -115,7 +115,14 @@ export async function handleAuthRequiredModal(page: Page) {
   const modal = page.getByRole('dialog', { name: /authentication.*required/i })
   await expect(modal).toBeVisible({ timeout: 5000 })
 
-  await modal.getByRole('button', { name: /go to llm repositories/i }).click()
+  // The primary button now opens the LlmRepositoryDrawer in place (it's
+  // mounted at the app shell) instead of navigating to
+  // /settings/llm-repositories.
+  await modal
+    .getByRole('button', { name: /open repository settings/i })
+    .click()
 
-  await expect(page).toHaveURL(/\/settings\/llm-repositories/)
+  await expect(page.locator('.ant-drawer.ant-drawer-open')).toBeVisible({
+    timeout: 5000,
+  })
 }
