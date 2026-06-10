@@ -65,7 +65,10 @@ test('Add MCP Server drawer: Enable switch tests the form WITHOUT persisting on 
     // user servers (see McpServerDrawer.tsx); just need name + URL.
     const name = `create-test-mcp-${Math.random().toString(36).slice(2, 8)}`
     await drawer.getByLabel('Display Name').fill(name)
-    await drawer.getByLabel('Name (internal)').fill(name.replace(/-/g, '_'))
+    // Name slug allows only [a-z0-9-]; `name` already uses hyphens, so don't
+    // convert to underscores (which would fail the form's pattern validator
+    // and silently block the toggle-ON connection probe).
+    await drawer.getByLabel('Name', { exact: true }).fill(name)
     // Switch to HTTP transport if not already there.
     const transportCombobox = drawer.getByLabel('Transport Type')
     await transportCombobox.click()
@@ -73,11 +76,15 @@ test('Add MCP Server drawer: Enable switch tests the form WITHOUT persisting on 
     await drawer.getByLabel('URL').fill(mock.url())
 
     // The Enable switch is on the drawer title (added in the recent
-    // health-check work). Find it via the aria-label set on the
-    // title node.
+    // health-check work). In CREATE mode it defaults to ON (mirrors the
+    // form's `enabled`) without having probed anything; toggling it ON
+    // runs an ephemeral connection-test against the form values (toggling
+    // OFF is purely local). Toggle OFF then ON to fire the probe.
     const titleSwitch = drawer.locator(
       '.ant-drawer-header button.ant-switch',
     )
+    await expect(titleSwitch).toHaveAttribute('aria-checked', 'true')
+    await titleSwitch.click() // OFF — local only, no probe
     await expect(titleSwitch).toHaveAttribute('aria-checked', 'false')
 
     // Toggle ON — probe should fire against the 401 mock.
