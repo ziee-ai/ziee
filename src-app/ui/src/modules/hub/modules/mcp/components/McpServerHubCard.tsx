@@ -34,6 +34,11 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
   const [installingSystem, setInstallingSystem] = useState(false)
   const canInstall = usePermission(Permissions.HubMcpServersCreate)
   const canInstallSystem = usePermission(Permissions.McpServersAdminCreate)
+  // On a single-admin desktop (multiUserMode === false) the user MCP
+  // page is hidden — every install must be system-scope. Suppress the
+  // user-scope "Install for me" / "View Server" affordances entirely
+  // so only the "Install for the system" button remains.
+  const { multiUserMode } = Stores.AppMode
 
   // Check if server was already created from this hub server
   const isAlreadyInstalled = server.created_ids && server.created_ids.length > 0
@@ -275,32 +280,33 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                     prefilled from the hub manifest; the user reviews
                     + fills secrets and submits via the regular create
                     endpoint with `hub_id` forwarded. */}
-                {isAlreadyInstalled ? (
-                  <Button
-                    icon={<EyeOutlined />}
-                    onClick={e => {
-                      e.stopPropagation()
-                      navigate('/settings/mcp-servers')
-                    }}
-                    data-testid="hub-mcp-view-btn"
-                  >
-                    View Server
-                  </Button>
-                ) : canInstall ? (
-                  <Button
-                    type="primary"
-                    icon={<DownloadOutlined />}
-                    onClick={e => {
-                      e.stopPropagation()
-                      handleInstall()
-                    }}
-                    disabled={installing || installingSystem}
-                    loading={installing}
-                    data-testid="hub-mcp-install-btn"
-                  >
-                    {canInstallSystem ? 'Install for me' : 'Install'}
-                  </Button>
-                ) : null}
+                {multiUserMode &&
+                  (isAlreadyInstalled ? (
+                    <Button
+                      icon={<EyeOutlined />}
+                      onClick={e => {
+                        e.stopPropagation()
+                        navigate('/settings/mcp-servers')
+                      }}
+                      data-testid="hub-mcp-view-btn"
+                    >
+                      View Server
+                    </Button>
+                  ) : canInstall ? (
+                    <Button
+                      type="primary"
+                      icon={<DownloadOutlined />}
+                      onClick={e => {
+                        e.stopPropagation()
+                        handleInstall()
+                      }}
+                      disabled={installing || installingSystem}
+                      loading={installing}
+                      data-testid="hub-mcp-install-btn"
+                    >
+                      {canInstallSystem ? 'Install for me' : 'Install'}
+                    </Button>
+                  ) : null)}
                 {canInstallSystem && (
                   <Button
                     icon={<CopyOutlined />}

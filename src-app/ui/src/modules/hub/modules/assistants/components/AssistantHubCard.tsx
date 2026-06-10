@@ -26,6 +26,10 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
   const [isCreatingTemplate, setIsCreatingTemplate] = useState(false)
   const canCreate = usePermission(Permissions.HubAssistantsCreate)
   const canCreateTemplate = usePermission(Permissions.AssistantsTemplateCreate)
+  // Templates target a multi-user fleet. On a single-admin desktop
+  // (multiUserMode === false) there's no one to template for — hide the
+  // "Use as Template" affordance entirely.
+  const { multiUserMode } = Stores.AppMode
 
   // Check if assistant was already created from this hub assistant
   const isAlreadyCreated =
@@ -192,7 +196,7 @@ for new users.`,
                     exists for this hub_id — the backend rejects
                     duplicates with 409, but disabling here gives
                     the admin clear feedback without a round-trip. */}
-                {canCreate && canCreateTemplate && (
+                {multiUserMode && canCreate && canCreateTemplate && (
                   <Button
                     icon={<CopyOutlined />}
                     onClick={e => {
