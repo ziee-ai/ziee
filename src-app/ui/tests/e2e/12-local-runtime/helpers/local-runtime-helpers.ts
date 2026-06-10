@@ -124,20 +124,44 @@ export async function downloadEngineViaApi(
     // out before health.
     body: JSON.stringify({ auto_start_timeout_secs: 600 }),
   })
-  // Use the GPU-detect endpoint's recommended backend (mirrors the
-  // Rust test_helpers::download_engine_release pattern). The fork
-  // doesn't publish a `cpu` asset for macos/aarch64 — only `metal`
-  // — so hardcoding `cpu` produces an HTTP 404 from GitHub Releases.
-  // Falling back to `cpu` for hosts the gpu-detect can't classify.
-  const backend = gpu?.recommended ?? 'cpu'
+  // Resolve the backend from the per-version PUBLISHED assets (the
+  // check-updates listing), exactly like the UI's AvailableVersionsCard
+  // (`v.recommended_backend ?? v.available_backends[0] ?? 'cpu'`). The
+  // detect-gpu `recommended` is the generic hardware capability (e.g.
+  // `cuda`), but the published asset name is version-specific (e.g.
+  // `cuda13.2`), so posting `gpu.recommended` 404s on GitHub Releases.
+  const updates = await (
+    await fetch(
+      `${baseURL}/api/local-runtime/versions/${engine}/check-updates`,
+      { headers },
+    )
+  ).json()
+  const versions = (updates.versions ?? []) as Array<{
+    version: string
+    available_backends: string[]
+    recommended_backend?: string
+    binary_ready: boolean
+  }>
+  const target =
+    version === 'latest'
+      ? (versions.find(v => v.binary_ready) ?? versions[0])
+      : versions.find(v => v.version === version)
+  if (!target) {
+    throw new Error(
+      `downloadEngineViaApi: no ${version} ${engine} version with a published binary ` +
+        `for ${updates.platform}/${updates.arch} (have: ${versions.map(v => v.version).join(', ')})`,
+    )
+  }
+  const backend =
+    target.recommended_backend ?? target.available_backends[0] ?? 'cpu'
   const dl = await fetch(`${baseURL}/api/local-runtime/versions/download`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
       engine,
-      version,
-      platform: gpu.platform,
-      arch: gpu.arch,
+      version: target.version,
+      platform: updates.platform ?? gpu.platform,
+      arch: updates.arch ?? gpu.arch,
       backend,
     }),
   })
