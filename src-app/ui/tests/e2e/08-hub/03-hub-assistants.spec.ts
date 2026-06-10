@@ -130,10 +130,13 @@ test.describe('Hub Assistants', () => {
     const card = page.getByTestId(`hub-assistant-card-${assistantId}`)
     await expect(card.getByRole('button', { name: /view/i })).toBeVisible()
 
-    // Neither install affordance should be on the card after View
-    // takes over. (Two buttons share `/use/i` — pin to testids.)
+    // "Use Assistant" is replaced by View once the assistant exists. But
+    // "Use as Template" is a separate admin affordance gated on permissions
+    // (not on the assistant), so it stays on the card.
     await expect(card.getByTestId('hub-assistant-use-btn')).toHaveCount(0)
-    await expect(card.getByTestId('hub-assistant-use-as-template-btn')).toHaveCount(0)
+    await expect(
+      card.getByTestId('hub-assistant-use-as-template-btn'),
+    ).toBeVisible()
   })
 
   test('should track creation status badge', async ({ page, testInfra }) => {
