@@ -11,7 +11,8 @@ const BASE_URL: &str = "https://api.anthropic.com/v1";
 const MODEL_OPUS_41: &str = "claude-opus-4-1-20250805";
 const MODEL_SONNET_45: &str = "claude-sonnet-4-5-20250929";
 const MODEL_HAIKU_45: &str = "claude-haiku-4-5-20251001";
-const MODEL_HAIKU_35: &str = "claude-3-5-haiku-20241022";
+// claude-3-5-haiku-20241022 was retired (404 not_found); use the current Haiku.
+const MODEL_HAIKU_35: &str = "claude-haiku-4-5";
 
 fn get_api_key() -> String {
     std::env::var("ANTHROPIC_API_KEY")

@@ -445,9 +445,13 @@ async fn test_anthropic_multiple_parallel_tool_calls() {
             Ok(chunk) => {
                 for delta in &chunk.content {
                     if let ContentBlockDelta::ToolUseDelta { id, name, input_delta, .. } = delta {
-                        if let (Some(id), Some(name), Some(input)) = (id, name, input_delta) {
+                        // Anthropic streams a tool call in two parts: id+name on the
+                        // content_block_start, then the JSON input on later deltas.
+                        // Count a call when its id+name arrive (input may be empty here).
+                        if let (Some(id), Some(name)) = (id, name) {
+                            let input = input_delta.clone().unwrap_or_default();
                             println!("  Tool call: id={}, name={}, input={}", id, name, input);
-                            tool_calls.push((id.clone(), name.clone(), input.clone()));
+                            tool_calls.push((id.clone(), name.clone(), input));
                         }
                     }
                 }

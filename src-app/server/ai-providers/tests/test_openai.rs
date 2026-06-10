@@ -13,7 +13,8 @@ const MODEL_GPT4O: &str = "gpt-4o";
 const MODEL_GPT4O_MINI: &str = "gpt-4o-mini";
 const MODEL_GPT4_TURBO: &str = "gpt-4-turbo";
 const MODEL_O1: &str = "o1";
-const MODEL_O1_MINI: &str = "o1-mini";
+// o1-mini was retired / not available to this account; o3-mini is its successor.
+const MODEL_O1_MINI: &str = "o3-mini";
 const MODEL_GPT41_MINI: &str = "gpt-4.1-mini";
 const MODEL_EMBEDDING_3_SMALL: &str = "text-embedding-3-small";
 const MODEL_EMBEDDING_3_LARGE: &str = "text-embedding-3-large";
