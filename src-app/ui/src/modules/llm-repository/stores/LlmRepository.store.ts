@@ -364,6 +364,23 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
 
           set({ testing: false })
 
+          // The test persisted a fresh health status (healthy/unhealthy)
+          // server-side. Re-fetch the canonical row and emit `updated` so
+          // the list + open drawer reflect it deterministically — the
+          // backend's SSE event round-trip is unreliable in tests and on
+          // flaky networks.
+          try {
+            const fresh = await ApiClient.LlmRepository.get({
+              repository_id: id,
+            })
+            await emitLlmRepositoryUpdated(fresh)
+          } catch (refreshError) {
+            console.error(
+              'Failed to refresh repository after connection test:',
+              refreshError,
+            )
+          }
+
           return result
         } catch (error) {
           set({
