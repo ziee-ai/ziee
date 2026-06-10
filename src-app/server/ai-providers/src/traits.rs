@@ -51,7 +51,7 @@ use std::pin::Pin;
 ///
 ///     while let Some(chunk) = stream.next().await {
 ///         let chunk = chunk?;
-///         print!("{}", chunk.content);
+///         print!("{:?}", chunk.content);
 ///     }
 ///
 ///     Ok(())

@@ -29,7 +29,7 @@
 //!     let mut stream = provider.chat_stream(request).await?;
 //!
 //!     while let Some(chunk) = stream.next().await {
-//!         print!("{}", chunk?.content);
+//!         print!("{:?}", chunk?.content);
 //!     }
 //!
 //!     Ok(())
