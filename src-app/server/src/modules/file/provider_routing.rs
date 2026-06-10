@@ -65,6 +65,24 @@ pub async fn process_file_blocks(
                 process_via_base64(file_id, &file.filename, mime, user_id).await
             }
         }
+        "openai" => {
+            // The mapped "openai" type is shared by groq/deepseek/mistral/custom/
+            // local — none of which implement the OpenAI Files API. Only a GENUINE
+            // OpenAI provider uploads PDFs; the rest fall back to base64 (so PDF
+            // attachments keep working on those providers). Images always stay
+            // base64 (OpenAI image file_id is Responses-API only).
+            let is_real_openai = Repos
+                .llm_provider
+                .get_by_id(provider_id)
+                .await?
+                .map(|p| p.provider_type == "openai")
+                .unwrap_or(false);
+            if is_real_openai && mime == "application/pdf" {
+                process_via_provider_api(pool, file_id, provider_id, mime, user_id).await
+            } else {
+                process_via_base64(file_id, &file.filename, mime, user_id).await
+            }
+        }
         _ => process_via_base64(file_id, &file.filename, mime, user_id).await,
     }
 }
@@ -108,12 +126,14 @@ async fn process_via_provider_api(
         Ok(vec![ContentBlock::Image {
             source: ImageSource::File {
                 file_id: provider_file_id,
+                media_type: Some(mime_type.to_string()),
             },
         }])
     } else if mime_type == "application/pdf" {
         Ok(vec![ContentBlock::Document {
             source: DocumentSource::File {
                 file_id: provider_file_id,
+                media_type: Some(mime_type.to_string()),
             },
         }])
     } else {

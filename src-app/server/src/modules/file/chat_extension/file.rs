@@ -202,7 +202,9 @@ impl ChatExtension for FileExtension {
                     FileImageSource::Base64 { media_type, data } => {
                         ImageSource::Base64 { media_type, data }
                     }
-                    FileImageSource::File { file_id } => ImageSource::File { file_id },
+                    FileImageSource::File { file_id } => {
+                        ImageSource::File { file_id, media_type: None }
+                    }
                 };
 
                 Ok(Some(ContentBlock::Image { source: ai_source }))

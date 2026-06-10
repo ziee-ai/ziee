@@ -56,7 +56,6 @@
 //! | `anthropic` | https://api.anthropic.com/v1 |
 //! | `gemini` | https://generativelanguage.googleapis.com/v1beta |
 
-mod conversion;
 mod error;
 pub mod model_registry;
 mod models;

@@ -20,6 +20,13 @@ where
     let mut v = value.clone();
     if let Value::Object(ref mut m) = v {
         m.remove("hidden_content");
+        // Strip server-only thinking replay artifacts (Anthropic extended-thinking
+        // `signature` + opaque `redacted_data`). They are never user-facing — only
+        // needed server-side to replay thinking blocks on later turns.
+        if let Some(Value::Object(meta)) = m.get_mut("metadata") {
+            meta.remove("signature");
+            meta.remove("redacted_data");
+        }
     }
     v.serialize(serializer)
 }

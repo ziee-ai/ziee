@@ -57,7 +57,9 @@ async fn test_gemini_streaming_chat() {
                             full_content.push_str(&format!("[THINKING: {}]", delta));
                             print!("[THINKING: {}]", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {
                             // Skip tool use deltas
                         }
                     }
@@ -323,7 +325,9 @@ async fn test_gemini_thinking_mode_streaming() {
                             full_thinking.push_str(delta);
                             print!("[THINKING] {}", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {
                             // Skip tool use deltas
                         }
                     }
@@ -397,7 +401,9 @@ async fn test_gemini_streaming_long_response() {
                         ai_providers::ContentBlockDelta::ThinkingDelta { delta, .. } => {
                             chunk_chars += delta.len();
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {
                             // Skip tool use deltas
                         }
                     }
@@ -480,7 +486,9 @@ async fn test_gemini_20_pro_large_context() {
                             full_content.push_str(&format!("[THINKING: {}]", delta));
                             print!("[THINKING: {}]", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {}
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {}
                     }
                 }
                 chunk_count += 1;
@@ -537,7 +545,9 @@ async fn test_gemini_25_pro_streaming() {
                             full_content.push_str(&format!("[THINKING: {}]", delta));
                             print!("[THINKING: {}]", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {}
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {}
                     }
                 }
                 chunk_count += 1;
@@ -592,7 +602,9 @@ async fn test_gemini_20_flash_streaming() {
                             full_content.push_str(&format!("[THINKING: {}]", delta));
                             print!("[THINKING: {}]", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {}
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {}
                     }
                 }
                 chunk_count += 1;
@@ -649,7 +661,9 @@ async fn test_gemini_thinking_reasoning() {
                             full_content.push_str(&format!("[THINKING: {}]", delta));
                             print!("[THINKING: {}]", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {}
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {}
                     }
                 }
                 chunk_count += 1;
@@ -704,7 +718,9 @@ async fn test_gemini_lite_cost_optimization() {
                             full_content.push_str(&format!("[THINKING: {}]", delta));
                             print!("[THINKING: {}]", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {}
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {}
                     }
                 }
                 chunk_count += 1;

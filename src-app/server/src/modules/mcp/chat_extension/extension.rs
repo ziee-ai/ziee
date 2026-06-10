@@ -253,6 +253,11 @@ pub enum MessageContentDataVariants {
         /// silently drops it when re-deserialising into MessageContentData.
         #[serde(skip_serializing_if = "Option::is_none")]
         attachment: Option<crate::modules::mcp::chat_extension::content::RichFile>,
+        /// Inline images returned by a tool (base64). Mirrors
+        /// `McpContentData::ToolResult.images`; replayed to the model as image
+        /// blocks. Same serde-roundtrip requirement as `attachment` above.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        images: Option<Vec<crate::modules::mcp::chat_extension::content::RichFile>>,
         /// References to persisted files returned by a tool (MCP
         /// resource_link). MUST be persisted on the assistant message —
         /// the frontend's `MessageFilesView` keys inline file-preview

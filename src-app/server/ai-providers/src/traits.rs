@@ -2,12 +2,11 @@
 
 use crate::{
     error::ProviderError,
-    models::{ChatMessage, ChatRequest, EmbeddingsRequest, EmbeddingsResponse, StreamChatChunk, FileUpload, FileUploadResponse},
+    models::{ChatRequest, EmbeddingsRequest, EmbeddingsResponse, StreamChatChunk, FileUpload, FileUploadResponse},
 };
 use async_trait::async_trait;
 use chrono::Duration;
 use futures_core::Stream;
-use reqwest::Client;
 use std::pin::Pin;
 
 /// Unified interface for AI providers
@@ -87,25 +86,6 @@ pub trait AIProvider: Send + Sync {
         base_url: &str,
         request: ChatRequest,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<StreamChatChunk, ProviderError>> + Send>>, ProviderError>;
-
-    /// Sends a non-streaming chat completion request
-    ///
-    /// Used for MCP sampling where the server requests a single LLM completion inline.
-    /// Returns a single `ChatMessage` with the assistant's response.
-    ///
-    /// Default implementation returns an error. Override in providers that support it.
-    async fn complete(
-        &self,
-        api_key: &str,
-        base_url: &str,
-        client: &Client,
-        request: ChatRequest,
-    ) -> Result<ChatMessage, ProviderError> {
-        let _ = (api_key, base_url, client, request);
-        Err(ProviderError::InvalidRequest(
-            "Non-streaming completion not supported by this provider".to_string(),
-        ))
-    }
 
     /// Generates embeddings for the given input
     ///

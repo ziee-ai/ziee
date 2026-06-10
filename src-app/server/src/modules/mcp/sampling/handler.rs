@@ -46,7 +46,7 @@ impl ChatSamplingHandler {
         // the API key (falls back to user's personal key when the system
         // key is missing — a behavior added on main after this branch
         // forked, where the call was `(pool, model_id)`).
-        let (provider, model_name, _, _) =
+        let (provider, model_name, _, _, _) =
             create_provider_from_model_id(model_id, user_id).await?;
         Ok(Self { provider, model_name })
     }

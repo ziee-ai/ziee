@@ -56,7 +56,9 @@ async fn test_anthropic_streaming_chat() {
                             full_content.push_str(&format!("[THINKING: {}]", delta));
                             print!("[THINKING: {}]", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {
                             // Skip tool use deltas
                         }
                     }
@@ -113,7 +115,9 @@ async fn test_anthropic_extended_thinking_streaming() {
                             full_thinking.push_str(delta);
                             print!("[THINKING: {}]", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {
                             // Skip tool use deltas
                         }
                     }
@@ -175,7 +179,9 @@ async fn test_anthropic_opus_41_streaming() {
                             full_content.push_str(&format!("[THINKING: {}]", delta));
                             print!("[THINKING: {}]", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {}
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {}
                     }
                 }
                 chunk_count += 1;
@@ -232,7 +238,9 @@ async fn test_anthropic_haiku_35_streaming() {
                             full_content.push_str(&format!("[THINKING: {}]", delta));
                             print!("[THINKING: {}]", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {}
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {}
                     }
                 }
                 chunk_count += 1;

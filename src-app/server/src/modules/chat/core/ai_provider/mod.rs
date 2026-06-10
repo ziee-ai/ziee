@@ -43,7 +43,16 @@ pub async fn resolve_api_key_for_user(
 pub async fn create_provider_from_model_id(
     model_id: Uuid,
     user_id: Uuid,
-) -> Result<(Arc<Provider>, String, Uuid, Uuid), AppError> {
+) -> Result<
+    (
+        Arc<Provider>,
+        String,
+        Uuid,
+        Uuid,
+        crate::modules::llm_model::models::ModelParameters,
+    ),
+    AppError,
+> {
     // Get model information
     let model = Repos.llm_model
         .get_by_id(model_id)
@@ -103,6 +112,12 @@ pub async fn create_provider_from_model_id(
             .map_err(|e| AppError::internal_error(format!("Failed to create provider: {}", e)))?,
     );
 
-    // Return provider along with model metadata
-    Ok((provider, model.name.clone(), model.id, model.provider_id))
+    // Return provider along with model metadata + generation parameters.
+    Ok((
+        provider,
+        model.name.clone(),
+        model.id,
+        model.provider_id,
+        model.parameters.clone(),
+    ))
 }

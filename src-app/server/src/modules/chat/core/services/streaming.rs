@@ -65,7 +65,7 @@ impl StreamingService {
         // Create provider from model_id
         use crate::modules::chat::core::ai_provider::create_provider_from_model_id;
 
-        let (provider, model_name, model_id, provider_id) =
+        let (provider, model_name, model_id, provider_id, model_params) =
             create_provider_from_model_id(request.model_id, user_id).await?;
 
         // Conditionally create user message (check extensions)
@@ -327,10 +327,17 @@ impl StreamingService {
                 let mut chat_request = ChatRequest {
                     model: model_name.clone(),
                     messages,
-                    temperature: Some(0.7),
-                    max_tokens: Some(8192),
                     ..Default::default()
                 };
+                // Apply model-level generation parameters (sampling), with defaults
+                // preserved when unset. The provider gates params it rejects
+                // (e.g. Anthropic Opus 4.7/4.8 drop temperature/top_p/top_k).
+                apply_model_params(&mut chat_request, &model_params);
+                // Registry-gated thinking (None for models that don't support it).
+                chat_request.thinking =
+                    thinking_config_for(provider_for_task.provider_type(), &model_name);
+                // OpenAI prompt-cache routing key (ignored by other providers).
+                chat_request.prompt_cache_key = Some(conversation_id.to_string());
 
                 // Call before_llm_call hooks
                 if let Some(registry) = &extension_registry {
@@ -428,6 +435,7 @@ impl StreamingService {
                     extension_action: None,
                     finish_reason: None,
                     usage: None,
+                    reasoning_tokens: None,
                     extension_tx: Some(ext_tx.clone()),
                     finalized: false,
                 }));
@@ -1080,12 +1088,63 @@ impl StreamingService {
     }
 }
 
+/// Build a thinking config from the model registry, or `None` when the model is
+/// unknown or doesn't support thinking. Registry-driven only (no DB/UI toggle).
+fn thinking_config_for(provider_type: &str, model_id: &str) -> Option<ai_providers::ThinkingConfig> {
+    use ai_providers::{ThinkingConfig, ThinkingEffort, ThinkingMode};
+    let caps = ai_providers::registry_lookup(provider_type, model_id)?;
+    if caps.supports_thinking != Some(true) {
+        return None;
+    }
+    let cfg = if caps.thinking_style.as_deref() == Some("budget") {
+        ThinkingConfig {
+            mode: ThinkingMode::Enabled,
+            budget_tokens: Some(4096),
+            effort: Some(ThinkingEffort::High),
+            include_thinking: true,
+        }
+    } else {
+        ThinkingConfig {
+            mode: ThinkingMode::Adaptive,
+            budget_tokens: None,
+            effort: Some(ThinkingEffort::High),
+            include_thinking: true,
+        }
+    };
+    Some(cfg)
+}
+
+/// Map model-level generation parameters onto a `ChatRequest`. Defaults preserve
+/// the historical behavior (`temperature` 0.7 / `max_tokens` 8192) when unset.
+fn apply_model_params(
+    req: &mut ai_providers::ChatRequest,
+    p: &crate::modules::llm_model::models::ModelParameters,
+) {
+    req.temperature = p.temperature.or(Some(0.7));
+    // Guard against a negative/zero i32 wrapping to a huge u32; fall back to the default.
+    req.max_tokens = p
+        .max_tokens
+        .and_then(|n| u32::try_from(n).ok())
+        .filter(|n| *n > 0)
+        .or(Some(8192));
+    req.top_p = p.top_p;
+    req.top_k = p.top_k;
+    req.presence_penalty = p.presence_penalty;
+    req.frequency_penalty = p.frequency_penalty;
+    req.seed = p.seed;
+    req.stop = p.stop.clone().filter(|s| !s.is_empty());
+}
+
 /// Accumulated content block in memory
 #[derive(Debug, Clone)]
 struct AccumulatedContent {
     content_type: String,
     accumulated_text: String,
     index: usize,
+    /// Anthropic thinking-block signature (captured from `signature_delta`).
+    signature: Option<String>,
+    /// Redacted-thinking opaque data (captured from a redacted_thinking block).
+    redacted_data: Option<String>,
 }
 
 /// Delta accumulator - Manages delta accumulation in memory
@@ -1104,6 +1163,8 @@ struct DeltaAccumulator {
     finish_reason: Option<String>,
     /// Usage data from AI provider (stored when stream completes)
     usage: Option<crate::modules::chat::core::types::Usage>,
+    /// Reasoning/thinking tokens reported by the provider (final chunk).
+    reasoning_tokens: Option<u32>,
     /// Channel for extension events (SSE)
     extension_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
     /// Flag to track if finalize() has been called (prevents double-finalization)
@@ -1121,10 +1182,8 @@ impl DeltaAccumulator {
             self.finish_reason = Some(finish_reason);
         }
         if let Some(usage) = ai_chunk.usage.as_ref() {
-            self.usage = Some(crate::modules::chat::core::types::Usage {
-                input_tokens: Some(usage.prompt_tokens),
-                output_tokens: Some(usage.completion_tokens),
-            });
+            self.reasoning_tokens = usage.reasoning_tokens;
+            self.usage = Some(usage.clone().into());
         }
 
         let mut output_chunk = ChatStreamChunk {
@@ -1139,6 +1198,26 @@ impl DeltaAccumulator {
 
         // Process each content delta - accumulate in memory
         for ai_delta in &ai_chunk.content {
+            // Thinking signature / redacted-thinking: attach to the in-memory
+            // block and do NOT stream to the client (not user-visible).
+            match ai_delta {
+                ai_providers::ContentBlockDelta::ThinkingSignatureDelta { index, signature } => {
+                    self.ensure_content_block_exists(*index, "thinking");
+                    if let Some(block) = self.content_blocks.get_mut(*index) {
+                        block.signature = Some(signature.clone());
+                    }
+                    continue;
+                }
+                ai_providers::ContentBlockDelta::RedactedThinkingDelta { index, data } => {
+                    self.ensure_content_block_exists(*index, "thinking");
+                    if let Some(block) = self.content_blocks.get_mut(*index) {
+                        block.redacted_data = Some(data.clone());
+                    }
+                    continue;
+                }
+                _ => {}
+            }
+
             // Try core conversion first
             let delta = if let Some(core_delta) = ContentBlockDelta::from_ai_providers_delta(ai_delta) {
                 Some(core_delta)
@@ -1198,6 +1277,8 @@ impl DeltaAccumulator {
                 content_type: String::new(),
                 accumulated_text: String::new(),
                 index: self.content_blocks.len(),
+                signature: None,
+                redacted_data: None,
             });
         }
 
@@ -1252,7 +1333,18 @@ impl DeltaAccumulator {
                 },
                 "thinking" => MessageContentData::Thinking {
                     thinking: accumulated.accumulated_text.clone(),
-                    metadata: None,
+                    metadata: if accumulated.signature.is_some()
+                        || accumulated.redacted_data.is_some()
+                        || self.reasoning_tokens.is_some()
+                    {
+                        Some(crate::modules::chat::extensions::text::types::ThinkingMetadata {
+                            token_count: self.reasoning_tokens,
+                            signature: accumulated.signature.clone(),
+                            redacted_data: accumulated.redacted_data.clone(),
+                        })
+                    } else {
+                        None
+                    },
                 },
                 _ => continue, // Skip unknown types (extensions handle their own)
             };
@@ -1667,5 +1759,65 @@ mod tests {
              got role={:?}",
             last.role
         );
+    }
+
+    #[test]
+    fn thinking_config_for_registry_gated() {
+        use ai_providers::ThinkingMode;
+        // Adaptive thinking model.
+        let cfg = thinking_config_for("anthropic", "claude-opus-4-7").expect("thinking enabled");
+        assert_eq!(cfg.mode, ThinkingMode::Adaptive);
+        assert!(cfg.effort.is_some());
+        // Non-thinking model.
+        assert!(thinking_config_for("openai", "gpt-4o").is_none());
+        // Unknown model.
+        assert!(thinking_config_for("anthropic", "no-such-model").is_none());
+    }
+
+    #[test]
+    fn apply_model_params_maps_and_defaults() {
+        use crate::modules::llm_model::models::ModelParameters;
+
+        // Configured params flow through.
+        let mut req = ai_providers::ChatRequest::default();
+        let params = ModelParameters {
+            temperature: Some(0.3),
+            top_k: Some(20),
+            stop: Some(vec!["END".into()]),
+            ..Default::default()
+        };
+        apply_model_params(&mut req, &params);
+        assert_eq!(req.temperature, Some(0.3));
+        assert_eq!(req.top_k, Some(20));
+        assert_eq!(req.stop, Some(vec!["END".to_string()]));
+
+        // Empty params fall back to the historical defaults.
+        let mut req2 = ai_providers::ChatRequest::default();
+        apply_model_params(&mut req2, &ModelParameters::default());
+        assert_eq!(req2.temperature, Some(0.7));
+        assert_eq!(req2.max_tokens, Some(8192));
+        assert!(req2.top_k.is_none());
+    }
+
+    #[test]
+    fn thinking_block_groups_before_tool_use() {
+        // A thinking block must precede tool_use in the assembled assistant turn.
+        let msgs = group_assistant_blocks(vec![
+            ai_providers::ContentBlock::Thinking {
+                thinking: "reasoning".into(),
+                signature: Some("sig".into()),
+            },
+            tool_use("call_1", "search"),
+        ]);
+        let assistant = msgs
+            .iter()
+            .find(|m| matches!(m.role, ai_providers::Role::Assistant))
+            .expect("assistant message");
+        let first_kinds: Vec<_> = assistant
+            .content
+            .iter()
+            .map(|b| matches!(b, ai_providers::ContentBlock::Thinking { .. }))
+            .collect();
+        assert!(first_kinds.first().copied().unwrap_or(false), "thinking must come first");
     }
 }

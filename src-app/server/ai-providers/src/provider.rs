@@ -37,26 +37,25 @@
 
 use crate::{
     error::ProviderError,
-    models::{ChatMessage, ChatRequest, EmbeddingsRequest, EmbeddingsResponse, FileUpload, FileUploadResponse, StreamChatChunk},
+    models::{ChatRequest, EmbeddingsRequest, EmbeddingsResponse, FileUpload, FileUploadResponse, StreamChatChunk},
     providers::{AnthropicProvider, GeminiProvider, OpenAIProvider},
     traits::AIProvider,
 };
 use futures_core::Stream;
-use reqwest::Client;
 use std::pin::Pin;
-use std::time::Duration;
 
 /// Unified provider that wraps different AI provider implementations
 ///
 /// This struct provides a simple, ergonomic API by storing credentials
 /// and delegating to the appropriate underlying provider implementation.
+///
+/// HTTP requests use the process-wide hardened client from
+/// [`crate::providers::http_client`] (pooled, timeouts, no redirects).
 pub struct Provider {
     inner: Box<dyn AIProvider>,
     api_key: String,
     base_url: String,
     provider_type: String,
-    /// Shared HTTP client — created once, connection pool reused across all calls
-    client: Client,
 }
 
 impl Provider {
@@ -93,6 +92,20 @@ impl Provider {
         let api_key = api_key.into();
         let base_url = base_url.into();
 
+        // Reject a base_url with a non-HTTP scheme (e.g. `file://`, `ftp://`).
+        // Empty is allowed — each provider fills in its own default. http:// is
+        // allowed for `local`/self-hosted endpoints (the key, if any, then goes
+        // in cleartext — operator's choice).
+        if !base_url.trim().is_empty() {
+            let b = base_url.trim();
+            if !(b.starts_with("http://") || b.starts_with("https://")) {
+                return Err(ProviderError::InvalidRequest(format!(
+                    "Invalid base_url '{}': must start with http:// or https://",
+                    base_url
+                )));
+            }
+        }
+
         let inner: Box<dyn AIProvider> = match provider_type.as_str() {
             "openai" | "groq" | "deepseek" | "mistral" | "huggingface" | "local" | "custom" => {
                 Box::new(OpenAIProvider)
@@ -107,27 +120,11 @@ impl Provider {
             }
         };
 
-        // Total-request timeout. Sized for the slow path: local CPU
-        // inference (no GPU, small model) can take >2 min for cold
-        // first-token, and the streaming chat case keeps the
-        // connection open for the duration of generation. The
-        // previous 120s ceiling cut chat streams off mid-response on
-        // commodity hardware. Cloud providers respond well within
-        // this anyway, so the wider budget is safe. Connect itself
-        // is bounded by `connect_timeout` (defaulted by reqwest) to
-        // keep "host unreachable" failures snappy.
-        let client = Client::builder()
-            .timeout(Duration::from_secs(600))
-            .connect_timeout(Duration::from_secs(10))
-            .build()
-            .map_err(|e| ProviderError::InvalidRequest(format!("Failed to create HTTP client: {}", e)))?;
-
         Ok(Self {
             inner,
             api_key,
             base_url,
             provider_type,
-            client,
         })
     }
 
@@ -245,11 +242,6 @@ impl Provider {
     /// # Ok(())
     /// # }
     /// ```
-    /// Sends a non-streaming chat completion request (used for MCP sampling)
-    pub async fn complete(&self, request: ChatRequest) -> Result<ChatMessage, ProviderError> {
-        self.inner.complete(&self.api_key, &self.base_url, &self.client, request).await
-    }
-
     pub async fn embeddings(
         &self,
         request: EmbeddingsRequest,
@@ -395,6 +387,18 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("Unknown provider type"));
+    }
+
+    #[test]
+    fn test_provider_rejects_non_http_base_url() {
+        // Non-HTTP schemes are refused (SSRF / scheme-confusion guard).
+        assert!(Provider::new("openai", "k", "file:///etc/passwd").is_err());
+        assert!(Provider::new("openai", "k", "ftp://example.com").is_err());
+        // Empty (provider fills its default) and http(s) are accepted; http is
+        // allowed for local/self-hosted endpoints.
+        assert!(Provider::new("openai", "k", "").is_ok());
+        assert!(Provider::new("openai", "k", "https://api.openai.com/v1").is_ok());
+        assert!(Provider::new("local", "k", "http://localhost:8000/v1").is_ok());
     }
 
     #[test]

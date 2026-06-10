@@ -47,6 +47,9 @@ async fn test_provider(
                 ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {
                     // Skip tool use deltas in this example
                 }
+                _ => {
+                    // Skip thinking-signature / redacted-thinking deltas in this example
+                }
             }
         }
         chunk_count += 1;
