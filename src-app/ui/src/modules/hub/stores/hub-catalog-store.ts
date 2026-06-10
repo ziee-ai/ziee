@@ -116,6 +116,11 @@ export const useHubCatalogStore = create<HubCatalogState>()(
           // a concurrent first-load doesn't make the post-switch reload
           // a no-op (which would leave the UI on the old catalog).
           if (get().loading && !force) return
+          // GET /hub/index requires hub::models::read. The hub shell
+          // (VersionPicker) reads this store for ANY hub user, so a
+          // hub-but-not-models user (e.g. MCP-only) would 403. Short-
+          // circuit; the catalog stays null and consumers degrade.
+          if (!hasPermissionNow(Permissions.HubModelsRead)) return
           set({ loading: true, error: null })
           try {
             const catalog = await ApiClient.Hub.getCatalog()
@@ -133,6 +138,9 @@ export const useHubCatalogStore = create<HubCatalogState>()(
         },
 
         loadVersion: async () => {
+          // GET /hub/version is also gated on hub::models::read (same as
+          // /hub/index above) — skip for non-models-readers to avoid a 403.
+          if (!hasPermissionNow(Permissions.HubModelsRead)) return
           try {
             const v = await ApiClient.Hub.getCatalogVersion()
             set({

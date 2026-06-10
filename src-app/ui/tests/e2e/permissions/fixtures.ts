@@ -199,9 +199,17 @@ export async function loginAsHubMcpOnly(
   // makes the tab body render the inline "Missing required
   // permission" error instead of the catalog. The fixture name is
   // descriptive of intent ("can see the MCP tab"), so include both.
+  //
+  // mcp_servers::read: the MCP hub tab's `shouldRender` gate hides the
+  // tab from non-admins unless the MCP *user policy* exposes a non-empty
+  // allowed_transports. That policy is only fetched by McpUserPolicy.load()
+  // when the user holds mcp_servers::read; without it the policy stays
+  // null and the tab is hidden. A real MCP-hub user holds it (to manage
+  // their installed servers), and it adds no hub Models/Assistants tab.
   return createAndLoginAs(page, baseURL, apiURL, 'hub-mcp-only-test', [
     Permissions.HubMCPServersRead,
     Permissions.HubMCPServersVersionRead,
+    Permissions.McpServersRead,
   ])
 }
 

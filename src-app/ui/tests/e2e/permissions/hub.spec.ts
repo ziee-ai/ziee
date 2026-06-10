@@ -42,10 +42,11 @@ test.describe('hub module — permission gating', () => {
     ).toBeVisible()
 
     // The Segmented control inside the Hub renders one item per
-    // visible tab. Scope assertions to the radiogroup so a sidebar
-    // entry with the same label (e.g. "Assistants") can't satisfy
-    // the count-0 checks for absent tabs.
-    const tabs = page.getByRole('radiogroup', { name: /segmented control/i })
+    // visible tab. Scope assertions to the segmented control (by its
+    // antd class — it has no accessible name) so a sidebar entry with
+    // the same label (e.g. "Assistants") can't satisfy the count-0
+    // checks for absent tabs.
+    const tabs = page.locator('.ant-segmented')
     await expect(tabs.getByText(/MCP Servers/i)).toBeVisible()
     await expect(tabs.getByText('Models', { exact: true })).toHaveCount(0)
     await expect(tabs.getByText('Assistants', { exact: true })).toHaveCount(0)
