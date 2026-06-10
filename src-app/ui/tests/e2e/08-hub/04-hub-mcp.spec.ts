@@ -10,6 +10,11 @@ import {
 import { loginWithPerms } from '../permissions/fixtures'
 import { Permissions } from '../../../src/api-client/types'
 
+// A seeded hub MCP server with HTTP transport. User-scope ("install for me")
+// stdio installs are gated by code_sandbox (disabled in the test env), so the
+// install/View/badge flows target an HTTP server whose user install works.
+const HTTP_HUB_MCP_ID = 'brave-search-mcp'
+
 test.describe('Hub MCP Servers', () => {
   test.beforeEach(async ({ page, testInfra }) => {
     const { baseURL } = testInfra
@@ -48,14 +53,11 @@ test.describe('Hub MCP Servers', () => {
     page,
     testInfra,
   }) => {
-    const mcpCards = await getMcpServerCards(page)
-    const firstCard = mcpCards.first()
-
-    // Get the MCP server ID from the test ID
-    const testId = await firstCard.getAttribute('data-testid')
-    const mcpServerId = testId?.replace('hub-mcp-card-', '') || ''
-
-    expect(mcpServerId).toBeTruthy()
+    // Most hub MCP servers are stdio; "Install for me" (user scope) of a
+    // stdio server is gated by code_sandbox (disabled in tests), so the
+    // prefilled transport is invalid and the create is blocked. Target an
+    // HTTP hub server, whose user install isn't gated.
+    const mcpServerId = HTTP_HUB_MCP_ID
 
     // Install MCP server
     await installMcpServerFromHub(page, mcpServerId)
@@ -76,18 +78,11 @@ test.describe('Hub MCP Servers', () => {
     page,
     testInfra,
   }) => {
-    const mcpCards = await getMcpServerCards(page)
+    const mcpServerId = HTTP_HUB_MCP_ID
 
-    // Get second MCP server if available
-    const count = await mcpCards.count()
-    const cardIndex = count > 1 ? 1 : 0
-    const card = mcpCards.nth(cardIndex)
-
-    const testId = await card.getAttribute('data-testid')
-    const mcpServerId = testId?.replace('hub-mcp-card-', '') || ''
-
-    // Install with custom name
-    const customName = `Custom MCP Server ${Date.now()}`
+    // Install with a custom name. This fills the "Name" slug field, which
+    // only allows [a-z0-9-] — so use a slug, not a display-name string.
+    const customName = `custom-mcp-${Date.now()}`
     await installMcpServerFromHub(page, mcpServerId, {
       name: customName,
       description: 'Custom description for testing',
@@ -110,11 +105,7 @@ test.describe('Hub MCP Servers', () => {
     testInfra,
   }) => {
     // Install first MCP server
-    const mcpCards = await getMcpServerCards(page)
-    const firstCard = mcpCards.first()
-
-    const testId = await firstCard.getAttribute('data-testid')
-    const mcpServerId = testId?.replace('hub-mcp-card-', '') || ''
+    const mcpServerId = HTTP_HUB_MCP_ID
 
     // Check if already installed
     const alreadyInstalled = await isMcpServerInstalled(page, mcpServerId)
@@ -139,11 +130,7 @@ test.describe('Hub MCP Servers', () => {
   })
 
   test('should track installation status badge', async ({ page, testInfra }) => {
-    const mcpCards = await getMcpServerCards(page)
-    const firstCard = mcpCards.first()
-
-    const testId = await firstCard.getAttribute('data-testid')
-    const mcpServerId = testId?.replace('hub-mcp-card-', '') || ''
+    const mcpServerId = HTTP_HUB_MCP_ID
 
     // Get initial status
     const initialStatus = await getMcpCardStatus(page, mcpServerId)
@@ -185,9 +172,7 @@ test.describe('Hub MCP Servers', () => {
 
     // If none installed, install one first
     if (!installedMcpId) {
-      const firstCard = mcpCards.first()
-      const testId = await firstCard.getAttribute('data-testid')
-      installedMcpId = testId?.replace('hub-mcp-card-', '') || ''
+      installedMcpId = HTTP_HUB_MCP_ID
 
       await installMcpServerFromHub(page, installedMcpId)
       await navigateToHub(page, testInfra.baseURL, 'mcp-servers')
