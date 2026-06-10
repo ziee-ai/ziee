@@ -116,6 +116,10 @@ export async function fillMcpServerForm(page: Page, data: McpServerFormData) {
       el.classList.contains('ant-switch-checked')
     )
     if (isChecked !== data.enabled) {
+      // In edit mode the pre-populated drawer is tall enough to push
+      // lower switches below the fold; scroll into view first so the
+      // click doesn't fail with "Element is outside of the viewport".
+      await enabledSwitch.scrollIntoViewIfNeeded()
       await enabledSwitch.click()
     }
   }
@@ -127,6 +131,7 @@ export async function fillMcpServerForm(page: Page, data: McpServerFormData) {
       el.classList.contains('ant-switch-checked')
     )
     if (isChecked !== data.supportsSampling) {
+      await samplingSwitch.scrollIntoViewIfNeeded()
       await samplingSwitch.click()
     }
   }
