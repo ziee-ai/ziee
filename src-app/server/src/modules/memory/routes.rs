@@ -46,6 +46,14 @@ pub fn memory_router() -> ApiRouter {
         .api_route(
             "/memory/admin-settings/reembed",
             aide::axum::routing::post_with(trigger_reembed, trigger_reembed_docs),
+        )
+        .api_route(
+            "/memory/admin/fts/rebuild",
+            aide::axum::routing::post_with(trigger_fts_rebuild, trigger_fts_rebuild_docs),
+        )
+        .api_route(
+            "/memory/admin/fts/rebuild/status",
+            get_with(get_fts_rebuild_status, get_fts_rebuild_status_docs),
         );
 
     // Test-only synchronous hooks for the extraction + summarizer

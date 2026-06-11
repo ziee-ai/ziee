@@ -2,6 +2,7 @@ import { SettingsPageContainer } from '@/modules/settings/components/SettingsPag
 import { RebuildStatusSection } from '../components/sections/RebuildStatusSection'
 import { EmbeddingEngineSection } from '../components/sections/EmbeddingEngineSection'
 import { RetrievalTuningSection } from '../components/sections/RetrievalTuningSection'
+import { FullTextSearchSection } from '../components/sections/FullTextSearchSection'
 import { RetentionLimitsSection } from '../components/sections/RetentionLimitsSection'
 import { SummarizerSection } from '../components/sections/SummarizerSection'
 
@@ -18,11 +19,12 @@ export function MemoryAdminPage() {
   return (
     <SettingsPageContainer
       title="Memory (admin)"
-      subtitle="Deployment-wide memory configuration: embedding model, retrieval tuning, retention, summarizer prompts."
+      subtitle="Deployment-wide memory configuration: embedding model, retrieval tuning, full-text search, retention, summarizer prompts."
     >
       <RebuildStatusSection />
       <EmbeddingEngineSection />
       <RetrievalTuningSection />
+      <FullTextSearchSection />
       <RetentionLimitsSection />
       <SummarizerSection />
     </SettingsPageContainer>

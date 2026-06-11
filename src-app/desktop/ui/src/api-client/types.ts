@@ -668,6 +668,16 @@ export interface FileListResponse {
   total: number
 }
 
+export interface FtsRebuildRequest {
+  dictionary: string
+}
+
+export interface FtsRebuildStatus {
+  completed_at?: string
+  in_progress: boolean
+  started_at?: string
+}
+
 export interface GPUComputeCapabilities {
   cuda_support: boolean
   cuda_version?: string
@@ -1376,6 +1386,13 @@ export interface MemoryAdminSettings {
   embedding_dimensions: number
   embedding_model_id?: string
   enabled: boolean
+  fts_candidate_multiplier: number
+  fts_dictionary: string
+  fts_enabled: boolean
+  fts_min_rank: number
+  fts_rebuild_completed_at?: string
+  fts_rebuild_started_at?: string
+  fts_rrf_k: number
   full_summary_prompt?: string
   id: number
   incremental_summary_prompt?: string
@@ -2475,6 +2492,11 @@ export interface UpdateMemoryAdminSettingsRequest {
   default_top_k?: number
   embedding_model_id?: string
   enabled?: boolean
+  fts_candidate_multiplier?: number
+  fts_dictionary?: string
+  fts_enabled?: boolean
+  fts_min_rank?: number
+  fts_rrf_k?: number
   full_summary_prompt?: string
   incremental_summary_prompt?: string
   soft_delete_grace_days?: number
@@ -3081,6 +3103,8 @@ export const ApiEndpoints = {
   'Memory.get': 'GET /api/memories/{id}',
   'Memory.list': 'GET /api/memories',
   'Memory.update': 'PATCH /api/memories/{id}',
+  'MemoryAdmin.ftsRebuild': 'POST /api/memory/admin/fts/rebuild',
+  'MemoryAdmin.ftsRebuildStatus': 'GET /api/memory/admin/fts/rebuild/status',
   'MemoryAdmin.get': 'GET /api/memory/admin-settings',
   'MemoryAdmin.rebuildStatus': 'GET /api/memory/admin-settings/rebuild-status',
   'MemoryAdmin.reembed': 'POST /api/memory/admin-settings/reembed',
@@ -3348,6 +3372,8 @@ export type ApiEndpointParameters = {
   'Memory.get': { id: string }
   'Memory.list': { kind?: string; limit?: number; offset?: number; page?: number; per_page?: number; search?: string; source?: string }
   'Memory.update': { id: string } & UpdateMemoryRequest
+  'MemoryAdmin.ftsRebuild': FtsRebuildRequest
+  'MemoryAdmin.ftsRebuildStatus': void
   'MemoryAdmin.get': void
   'MemoryAdmin.rebuildStatus': void
   'MemoryAdmin.reembed': void
@@ -3615,6 +3641,8 @@ export type ApiEndpointResponses = {
   'Memory.get': UserMemory
   'Memory.list': MemoryListResponse
   'Memory.update': UserMemory
+  'MemoryAdmin.ftsRebuild': any
+  'MemoryAdmin.ftsRebuildStatus': FtsRebuildStatus
   'MemoryAdmin.get': MemoryAdminSettings
   'MemoryAdmin.rebuildStatus': RebuildStatus
   'MemoryAdmin.reembed': any

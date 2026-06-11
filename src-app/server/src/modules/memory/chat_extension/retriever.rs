@@ -45,9 +45,8 @@ pub async fn retrieve_and_inject(
     if !admin.enabled {
         return Ok(());
     }
-    // Embedding is now OPTIONAL: with no embedding model we fall back to
-    // FTS-only recall (so memory works embedding-free).
-    let embedding_model_id = admin.embedding_model_id;
+    // Embedding is OPTIONAL — `recall_memories` picks the right arm
+    // (hybrid / vector-only / FTS-only / empty) from `admin` itself.
 
     let user_settings = match Repos.memory.get_or_init_user_settings(user_id).await {
         Ok(s) => s,
@@ -119,30 +118,16 @@ pub async fn retrieve_and_inject(
     };
     let limit = admin.default_top_k as i64;
 
-    // ── 5. Hybrid (vector ⊕ FTS via RRF) when an embedding model is available;
-    //        FTS-only fallback otherwise ──────────────────────────────────────
-    let search_result = match embedding_model_id {
-        Some(emb_id) => match super::super::engine::dispatch::embed(emb_id, &query).await {
-            Ok(v) => {
-                hybrid_search(
-                    user_id,
-                    project_id,
-                    conversation_id,
-                    HalfVector::from_f32_slice(&v),
-                    admin.cosine_threshold,
-                    &query,
-                    limit,
-                )
-                .await
-            }
-            Err(e) => {
-                tracing::warn!("memory.retrieve: embed failed ({e}); FTS-only fallback");
-                fts_search(user_id, project_id, conversation_id, &query, limit).await
-            }
-        },
-        None => fts_search(user_id, project_id, conversation_id, &query, limit).await,
-    };
-    let hits = match search_result {
+    let hits = match recall_memories(
+        user_id,
+        project_id,
+        conversation_id,
+        &query,
+        limit,
+        &admin,
+    )
+    .await
+    {
         Ok(h) => h,
         Err(e) => {
             tracing::warn!("memory.retrieve: search failed: {e}");
@@ -260,9 +245,101 @@ const SCOPE_FILTER: &str = "user_id = $1 AND deleted_at IS NULL AND ( \
      OR (scope = 'project' AND project_id = $2) \
      OR (scope = 'conversation' AND conversation_id = $3) )";
 
+/// Pick the right recall arm(s) for the current admin config and run the
+/// search. The single source of truth for the 4-way decision tree —
+/// callers (chat extension's automatic retrieval + MCP `recall` tool)
+/// invoke this so we don't drift two parallel implementations.
+///
+/// (vec_avail, fts_enabled) =>
+///  - `(true,  true)`  → hybrid (RRF); fall back to FTS-only on embed fail
+///  - `(true,  false)` → vector-only;  return empty on embed fail (no fallback)
+///  - `(false, true)`  → FTS-only
+///  - `(false, false)` → empty (no arm to search)
+pub async fn recall_memories(
+    user_id: Uuid,
+    project_id: Option<Uuid>,
+    conversation_id: Option<Uuid>,
+    query: &str,
+    limit: i64,
+    admin: &crate::modules::memory::models::MemoryAdminSettings,
+) -> Result<Vec<(Uuid, String)>, AppError> {
+    let dict = admin.fts_dictionary.as_str();
+    let min_rank = admin.fts_min_rank;
+    match (admin.embedding_model_id, admin.fts_enabled) {
+        (Some(emb_id), true) => match super::super::engine::dispatch::embed(emb_id, query).await {
+            Ok(v) => {
+                hybrid_search(
+                    user_id,
+                    project_id,
+                    conversation_id,
+                    HalfVector::from_f32_slice(&v),
+                    admin.cosine_threshold,
+                    query,
+                    limit,
+                    dict,
+                    min_rank,
+                    admin.fts_rrf_k,
+                    admin.fts_candidate_multiplier,
+                )
+                .await
+            }
+            Err(e) => {
+                tracing::warn!("memory.recall: embed failed ({e}); FTS-only fallback");
+                fts_search(
+                    user_id,
+                    project_id,
+                    conversation_id,
+                    query,
+                    limit,
+                    dict,
+                    min_rank,
+                )
+                .await
+            }
+        },
+        (Some(emb_id), false) => match super::super::engine::dispatch::embed(emb_id, query).await {
+            Ok(v) => {
+                vector_search(
+                    user_id,
+                    project_id,
+                    conversation_id,
+                    &HalfVector::from_f32_slice(&v),
+                    admin.cosine_threshold,
+                    limit,
+                )
+                .await
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "memory.recall: embed failed ({e}); fts_enabled=false → empty result (no FTS fallback)"
+                );
+                Ok(Vec::new())
+            }
+        },
+        (None, true) => {
+            fts_search(
+                user_id,
+                project_id,
+                conversation_id,
+                query,
+                limit,
+                dict,
+                min_rank,
+            )
+            .await
+        }
+        (None, false) => {
+            tracing::debug!(
+                "memory.recall: no embedding model AND fts_enabled=false → no recall arm"
+            );
+            Ok(Vec::new())
+        }
+    }
+}
+
 /// Vector (cosine) arm, scope-filtered. Returns `(id, content)` ordered nearest
 /// first. No cosine threshold here — RRF fusion ranks across arms.
-pub(crate) async fn vector_search(
+async fn vector_search(
     user_id: Uuid,
     project_id: Option<Uuid>,
     conversation_id: Option<Uuid>,
@@ -291,25 +368,39 @@ pub(crate) async fn vector_search(
 }
 
 /// Full-text (lexical) arm, scope-filtered, ranked by `ts_rank_cd`. Works with
-/// NO embedding model. `'simple'` dictionary (language-agnostic).
-pub(crate) async fn fts_search(
+/// NO embedding model. Dictionary + min-rank cutoff come from
+/// `memory_admin_settings` (migration 89).
+///
+/// The `$dict::regconfig` cast is the safe way to bind a Postgres dictionary
+/// name at query time. Note: the DDL path that bakes the dictionary into the
+/// GENERATED expression CAN'T use bind params — that path interpolates from
+/// `is_valid_fts_dictionary` allowlist. Don't confuse the two.
+async fn fts_search(
     user_id: Uuid,
     project_id: Option<Uuid>,
     conversation_id: Option<Uuid>,
     query: &str,
     limit: i64,
+    dict: &str,
+    min_rank: f32,
 ) -> Result<Vec<(Uuid, String)>, AppError> {
     let pool = Repos.memory.pool_clone();
+    // $4 = dictionary, $5 = query string, $6 = min_rank floor (or 0.0
+    // for the no-filter case — `ts_rank_cd >= 0.0` is a tautology so
+    // the optimizer drops it).
     let sql = format!(
         "SELECT id, content FROM user_memories WHERE {SCOPE_FILTER} \
-         AND content_tsv @@ websearch_to_tsquery('simple', $4) \
-         ORDER BY ts_rank_cd(content_tsv, websearch_to_tsquery('simple', $4)) DESC LIMIT $5"
+         AND content_tsv @@ websearch_to_tsquery($4::regconfig, $5) \
+         AND ts_rank_cd(content_tsv, websearch_to_tsquery($4::regconfig, $5)) >= $6 \
+         ORDER BY ts_rank_cd(content_tsv, websearch_to_tsquery($4::regconfig, $5)) DESC LIMIT $7"
     );
     sqlx::query_as(&sql)
         .bind(user_id)
         .bind(project_id)
         .bind(conversation_id)
+        .bind(dict)
         .bind(query)
+        .bind(min_rank)
         .bind(limit)
         .fetch_all(&pool)
         .await
@@ -317,9 +408,13 @@ pub(crate) async fn fts_search(
 }
 
 /// Hybrid: run the vector + FTS arms over a larger candidate pool, then fuse
-/// with Reciprocal Rank Fusion (k=60) in Rust — rank-only, so the two
+/// with Reciprocal Rank Fusion in Rust — rank-only, so the two
 /// incomparable scores never need normalizing. Returns the fused top-`limit`.
-pub(crate) async fn hybrid_search(
+///
+/// `rrf_k` and `candidate_multiplier` come from `memory_admin_settings`
+/// (migration 89). Both were hardcoded (60, 4) prior to the migration.
+#[allow(clippy::too_many_arguments)]
+async fn hybrid_search(
     user_id: Uuid,
     project_id: Option<Uuid>,
     conversation_id: Option<Uuid>,
@@ -327,8 +422,12 @@ pub(crate) async fn hybrid_search(
     threshold: f32,
     query: &str,
     limit: i64,
+    dict: &str,
+    min_rank: f32,
+    rrf_k: i32,
+    candidate_multiplier: i32,
 ) -> Result<Vec<(Uuid, String)>, AppError> {
-    let candidate_k = (limit * 4).max(limit);
+    let candidate_k = (limit * candidate_multiplier as i64).max(limit);
     let vec_hits = vector_search(
         user_id,
         project_id,
@@ -338,18 +437,27 @@ pub(crate) async fn hybrid_search(
         candidate_k,
     )
     .await?;
-    let fts_hits = fts_search(user_id, project_id, conversation_id, query, candidate_k).await?;
+    let fts_hits = fts_search(
+        user_id,
+        project_id,
+        conversation_id,
+        query,
+        candidate_k,
+        dict,
+        min_rank,
+    )
+    .await?;
 
-    const RRF_K: f64 = 60.0;
+    let rrf_k_f = rrf_k as f64;
     let mut scores: std::collections::HashMap<Uuid, (f64, String)> =
         std::collections::HashMap::new();
     for (rank, (id, content)) in vec_hits.into_iter().enumerate() {
         let e = scores.entry(id).or_insert((0.0, content));
-        e.0 += 1.0 / (RRF_K + (rank + 1) as f64);
+        e.0 += 1.0 / (rrf_k_f + (rank + 1) as f64);
     }
     for (rank, (id, content)) in fts_hits.into_iter().enumerate() {
         let e = scores.entry(id).or_insert((0.0, content));
-        e.0 += 1.0 / (RRF_K + (rank + 1) as f64);
+        e.0 += 1.0 / (rrf_k_f + (rank + 1) as f64);
     }
     let mut fused: Vec<(Uuid, f64, String)> =
         scores.into_iter().map(|(id, (s, c))| (id, s, c)).collect();
