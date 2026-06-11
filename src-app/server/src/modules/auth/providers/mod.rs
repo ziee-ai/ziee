@@ -4,6 +4,8 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 pub mod apple;
+pub mod events;
+pub mod health;
 pub mod ldap;
 pub mod local;
 pub mod models;

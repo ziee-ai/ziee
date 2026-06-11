@@ -302,6 +302,11 @@ export interface CreateAuthProviderRequest {
   provider_type: string
 }
 
+export interface CreateAuthProviderResponse {
+  connection_warning?: string
+  provider: AuthProviderResponse
+}
+
 export interface CreateBranchRequest {
   fork_level?: string
   from_message_id: string
@@ -1396,6 +1401,7 @@ export interface MemoryAdminSettings {
   full_summary_prompt?: string
   id: number
   incremental_summary_prompt?: string
+  semantic_enabled: boolean
   soft_delete_grace_days: number
   summarize_after_tokens: number
   summarizer_keep_recent_tokens: number
@@ -2252,7 +2258,7 @@ export interface SyncConnectedData {
   connection_id: string
 }
 
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'user_llm_provider' | 'user_mcp_server' | 'session'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'auth_provider' | 'user_llm_provider' | 'user_mcp_server' | 'session'
 
 export interface SyncEvent {
   action: SyncAction
@@ -2499,6 +2505,7 @@ export interface UpdateMemoryAdminSettingsRequest {
   fts_rrf_k?: number
   full_summary_prompt?: string
   incremental_summary_prompt?: string
+  semantic_enabled?: boolean
   soft_delete_grace_days?: number
   summarize_after_tokens?: number
   summarizer_keep_recent_tokens?: number
@@ -3475,7 +3482,7 @@ export type ApiEndpointResponses = {
   'Auth.refresh': TokenPair
   'Auth.register': AuthResponse
   'Auth.updateProfile': User
-  'AuthProviders.create': AuthProviderResponse
+  'AuthProviders.create': CreateAuthProviderResponse
   'AuthProviders.delete': DeleteProviderResponse
   'AuthProviders.list': AuthProviderResponse[]
   'AuthProviders.test': TestProviderResponse

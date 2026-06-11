@@ -70,6 +70,11 @@ pub enum SyncEntity {
     CodeSandboxSettings,
     /// Hub catalog settings (singleton).
     HubSettings,
+    /// Admin view of an authentication provider (Google/Microsoft/Apple/LDAP
+    /// /OIDC). Emitted on create/update/test/delete and on auto-disable. The
+    /// public `/api/auth/providers` (login page) is unaffected — it just shows
+    /// the next list state on the next page load.
+    AuthProvider,
 
     // --- Group-scoped user view (delivered to holders of the user read
     // perm; safe because we only NOTIFY — each recipient refetches its own
