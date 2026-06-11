@@ -234,8 +234,8 @@ export function FullTextSearchSection() {
           name="memory-admin-fts-form"
           form={form}
           layout="horizontal"
-          labelCol={{ flex: '280px' }}
-          wrapperCol={{ flex: 'auto' }}
+          labelCol={{ xs: { span: 24 }, md: { span: 10 } }}
+          wrapperCol={{ xs: { span: 24 }, md: { span: 14 } }}
           labelAlign="left"
           colon={false}
           onFinish={handleSubmit}
