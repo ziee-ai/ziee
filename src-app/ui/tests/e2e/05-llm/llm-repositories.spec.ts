@@ -184,9 +184,13 @@ test.describe('LLM Repositories - Create Repository', () => {
     await expect(page.locator('label:has-text("Authentication Type")')).toBeVisible()
     await expect(page.locator('#llm-repository-form_auth_type')).toBeVisible()
 
-    // Verify Enable Repository switch
+    // Verify Enable Repository switch. The form field (#..._enabled) is a
+    // HIDDEN Form.Item; the user-visible Switch is a separate local-state
+    // control with aria-label "Enable repository".
     await expect(page.locator('label:has-text("Enable Repository")')).toBeVisible()
-    await expect(page.locator('#llm-repository-form_enabled')).toBeVisible()
+    await expect(
+      page.getByRole('switch', { name: 'Enable repository' }),
+    ).toBeVisible()
 
     // Verify buttons. Drawer submit label was standardised to verb-only
     // (audit I-2): "Add Repository" → "Add". Scope by primary-button
@@ -352,7 +356,7 @@ test.describe('LLM Repositories - Edit Repository', () => {
       await combobox.press('Home')
       await combobox.press('ArrowDown')
       await combobox.press('Enter')
-      await page.waitForLoadState('networkidle')
+      await page.waitForLoadState('load')
     }
 
     // Fill API key
@@ -666,7 +670,7 @@ test.describe('LLM Repositories - Connection Testing', () => {
       await combobox.press('ArrowDown')
       await combobox.press('ArrowDown')
       await combobox.press('Enter')
-      await page.waitForLoadState('networkidle')
+      await page.waitForLoadState('load')
     }
 
     // Fill valid bearer token
@@ -711,7 +715,7 @@ test.describe('LLM Repositories - Connection Testing', () => {
       await combobox.press('ArrowDown')
       await combobox.press('ArrowDown')
       await combobox.press('Enter')
-      await page.waitForLoadState('networkidle')
+      await page.waitForLoadState('load')
     }
 
     // Fill invalid bearer token

@@ -1380,8 +1380,8 @@ export interface MemoryAdminSettings {
   id: number
   incremental_summary_prompt?: string
   soft_delete_grace_days: number
-  summarize_after_n_messages: number
-  summarizer_keep_recent: number
+  summarize_after_tokens: number
+  summarizer_keep_recent_tokens: number
   updated_at: string
 }
 
@@ -1473,6 +1473,7 @@ export interface MessageContentDataToolResult {
   attachment?: RichFile | null
   content: string
   hidden_content?: string | null
+  images?: RichFile[] | null
   is_error?: boolean | null
   name?: string | null
   resource_links?: ResourceLink[] | null
@@ -1551,6 +1552,7 @@ export interface ModelCapabilities {
   audio?: boolean
   chat?: boolean
   code_interpreter?: boolean
+  context_length?: number
   image_generator?: boolean
   text_embedding?: boolean
   tools?: boolean
@@ -2300,6 +2302,8 @@ export interface TextPageQuery {
 }
 
 export interface ThinkingMetadata {
+  redacted_data?: string
+  signature?: string
   token_count?: number
 }
 
@@ -2474,8 +2478,8 @@ export interface UpdateMemoryAdminSettingsRequest {
   full_summary_prompt?: string
   incremental_summary_prompt?: string
   soft_delete_grace_days?: number
-  summarize_after_n_messages?: number
-  summarizer_keep_recent?: number
+  summarize_after_tokens?: number
+  summarizer_keep_recent_tokens?: number
 }
 
 export interface UpdateMemoryRequest {
@@ -2547,8 +2551,11 @@ export interface UpsertUserMcpDefaultsRequest {
 }
 
 export interface Usage {
+  cache_creation_input_tokens?: number
+  cache_read_input_tokens?: number
   input_tokens?: number
   output_tokens?: number
+  reasoning_tokens?: number
 }
 
 export type UsageMode = 'auto' | 'always'

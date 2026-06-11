@@ -2,7 +2,8 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
-import type { EnvironmentInfo } from '@/api-client/types'
+import { type EnvironmentInfo, Permissions } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 import type { StoreProxy } from '@/core/stores'
 
 /**
@@ -70,6 +71,20 @@ export const useSandboxFlavorsStore = create<SandboxFlavorsState>()(
 
       load: async () => {
         if (get().loading) return
+        // GET /api/code-sandbox/flavors is admin-only
+        // (mcp_servers_admin::read) — it powers the system-MCP form picker
+        // + the MCP user-policy admin card. A non-admin that mounts a
+        // component reading this store (e.g. the McpServerDrawer on the hub
+        // MCP tab) would otherwise 403. Use the fallback labels instead; the
+        // saved value is validated server-side against KNOWN_FLAVORS anyway.
+        if (!hasPermissionNow(Permissions.McpServersAdminRead)) {
+          set(state => {
+            state.selectOptions = FALLBACK_OPTIONS
+            state.hostCommands = FALLBACK_HOST_COMMANDS
+            state.isInitialized = true
+          })
+          return
+        }
         set(state => {
           state.loading = true
           state.error = null

@@ -13,7 +13,8 @@ const MODEL_GPT4O: &str = "gpt-4o";
 const MODEL_GPT4O_MINI: &str = "gpt-4o-mini";
 const MODEL_GPT4_TURBO: &str = "gpt-4-turbo";
 const MODEL_O1: &str = "o1";
-const MODEL_O1_MINI: &str = "o1-mini";
+// o1-mini was retired / not available to this account; o3-mini is its successor.
+const MODEL_O1_MINI: &str = "o3-mini";
 const MODEL_GPT41_MINI: &str = "gpt-4.1-mini";
 const MODEL_EMBEDDING_3_SMALL: &str = "text-embedding-3-small";
 const MODEL_EMBEDDING_3_LARGE: &str = "text-embedding-3-large";
@@ -60,7 +61,9 @@ async fn test_openai_streaming_chat() {
                             full_content.push_str(&format!("[THINKING: {}]", delta));
                             print!("[THINKING: {}]", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {
                             // Skip tool use deltas
                         }
                     }
@@ -150,7 +153,9 @@ async fn test_openai_reasoning_model_streaming() {
                             full_content.push_str(&format!("[THINKING: {}]", delta));
                             print!("[THINKING: {}]", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {
                             // Skip tool use deltas
                         }
                     }
@@ -231,7 +236,9 @@ async fn test_openai_gpt5_non_streaming_workaround() {
                             full_content.push_str(&format!("[THINKING: {}]", delta));
                             println!("Thinking chunk: {}", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {
                             // Skip tool use deltas
                         }
                     }
@@ -309,7 +316,9 @@ async fn test_groq_streaming_chat() {
                             full_content.push_str(&format!("[THINKING: {}]", delta));
                             print!("[THINKING: {}]", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {
                             // Skip tool use deltas
                         }
                     }
@@ -369,7 +378,9 @@ async fn test_openai_gpt4o_streaming_chat() {
                             full_content.push_str(&format!("[THINKING: {}]", delta));
                             print!("[THINKING: {}]", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {}
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {}
                     }
                 }
                 chunk_count += 1;
@@ -425,7 +436,9 @@ async fn test_openai_gpt4o_mini_streaming_chat() {
                             full_content.push_str(&format!("[THINKING: {}]", delta));
                             print!("[THINKING: {}]", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {}
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {}
                     }
                 }
                 chunk_count += 1;
@@ -481,7 +494,9 @@ async fn test_openai_gpt4_turbo_streaming_chat() {
                             full_content.push_str(&format!("[THINKING: {}]", delta));
                             print!("[THINKING: {}]", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {}
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {}
                     }
                 }
                 chunk_count += 1;
@@ -539,7 +554,9 @@ async fn test_openai_o1_reasoning() {
                             full_content.push_str(&format!("[THINKING: {}]", delta));
                             print!("[THINKING: {}]", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {}
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {}
                     }
                 }
                 chunk_count += 1;
@@ -617,7 +634,9 @@ async fn test_openai_gpt41_mini_streaming() {
                             full_content.push_str(&format!("[THINKING: {}]", delta));
                             print!("[THINKING: {}]", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {}
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {}
                     }
                 }
                 chunk_count += 1;
@@ -674,7 +693,9 @@ async fn test_openai_o1_mini_reasoning() {
                             full_content.push_str(&format!("[THINKING: {}]", delta));
                             print!("[THINKING: {}]", delta);
                         }
-                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {}
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. }
+                        | ai_providers::ContentBlockDelta::ThinkingSignatureDelta { .. }
+                        | ai_providers::ContentBlockDelta::RedactedThinkingDelta { .. } => {}
                     }
                 }
                 chunk_count += 1;

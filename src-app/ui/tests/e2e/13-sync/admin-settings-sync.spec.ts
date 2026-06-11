@@ -21,9 +21,9 @@ import {
 // CRITICAL: this suite NEVER calls waitForLoadState('networkidle'). The
 // realtime-sync SSE stream is a persistent connection that keeps the network
 // perpetually busy, so 'networkidle' never settles and would hang the whole
-// test. We navigate inline and wait on a STABLE selector instead. (This is
-// why we cannot reuse the 05-llm repository nav/create helpers — they are
-// built on networkidle.)
+// test. We navigate inline and wait on a STABLE selector instead, keeping the
+// cross-device flow self-contained rather than reusing the 05-llm repository
+// nav/create helpers.
 //
 // Run with --workers=1 (shared backend + DB).
 
@@ -109,10 +109,9 @@ test.describe('Realtime sync — admin settings (permission-scoped)', () => {
 
       const name = `Sync Repo ${Date.now()}`
 
-      // Mutate from device A's session (its own bearer token). The repository
-      // list page deliberately uses networkidle helpers, so we create via the
-      // REST endpoint rather than the drawer UI — the sync event is emitted by
-      // the backend regardless of whether the mutation came from UI or API.
+      // Mutate from device A's session (its own bearer token). We create via
+      // the REST endpoint rather than the drawer UI — the sync event is emitted
+      // by the backend regardless of whether the mutation came from UI or API.
       const res = await page.request.post(
         `${baseURL}/api/llm-repositories`,
         {

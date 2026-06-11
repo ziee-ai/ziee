@@ -97,47 +97,18 @@ test.describe('MCP - User Servers', () => {
     await expect(page.locator('.ant-form-item-explain-error').first()).toBeVisible()
   })
 
-  test('should validate JSON format for arguments', async ({ page }) => {
-    const serverData: McpServerFormData = {
-      name: 'test-invalid-args',
-      displayName: 'Test Invalid Args',
-      transportType: 'stdio',
-      command: 'npx',
-      enabled: true,
-    }
+  // The Arguments / Environment-Variables fields only exist for STDIO
+  // transport, but user-scope stdio is gated by `code_sandbox.enabled`
+  // (disabled in the test env), so the policy filters 'stdio' out of a
+  // non-admin user's allowed transports and these fields are unreachable
+  // here (same gating that skips the user-stdio create above). The
+  // Arguments JSON-validation path is exercised against an admin/system
+  // stdio server in `mcp-admin-servers.spec.ts`; the old env-var
+  // "must be a JSON object" check no longer exists — env vars are now a
+  // structured key/value editor (KeyValueSecretEditor), not a JSON field.
+  test.skip('should validate JSON format for arguments', async () => {})
 
-    await openAddServerDrawer(page)
-    await fillMcpServerForm(page, serverData)
-
-    // Fill args with invalid JSON
-    await page.getByLabel('Arguments').fill('not valid json')
-
-    await page.locator('.ant-drawer.ant-drawer-open').last().locator('.ant-btn-primary').click()
-
-    // Verify error message
-    await expect(page.locator('.ant-message-error:has-text("Invalid JSON")')).toBeVisible({ timeout: 5000 })
-  })
-
-  test('should validate JSON object for environment variables', async ({ page }) => {
-    const serverData: McpServerFormData = {
-      name: 'test-invalid-env',
-      displayName: 'Test Invalid Env',
-      transportType: 'stdio',
-      command: 'npx',
-      enabled: true,
-    }
-
-    await openAddServerDrawer(page)
-    await fillMcpServerForm(page, serverData)
-
-    // Fill env with JSON array instead of object
-    await page.getByLabel('Environment Variables').fill('["not", "an", "object"]')
-
-    await page.locator('.ant-drawer.ant-drawer-open').last().locator('.ant-btn-primary').click()
-
-    // Verify error message
-    await expect(page.locator('.ant-message-error:has-text("must be a JSON object")')).toBeVisible({ timeout: 5000 })
-  })
+  test.skip('should validate JSON object for environment variables', async () => {})
 
   test('should edit existing server', async ({ page }) => {
     // First create a server

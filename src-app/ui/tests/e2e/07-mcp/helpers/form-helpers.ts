@@ -82,9 +82,22 @@ export async function fillMcpServerForm(page: Page, data: McpServerFormData) {
       await drawer.getByLabel('Arguments').fill(JSON.stringify(data.args))
     }
 
-    // Environment variables (JSON object)
+    // Environment variables. The field is now a KeyValueSecretEditor
+    // (a "+ Add env var" button + one key/value row per entry), not a
+    // JSON textarea. Add one row per variable and fill the key + value
+    // inputs by their placeholders ("GITHUB_TOKEN" / "value").
     if (data.env) {
-      await drawer.getByLabel('Environment Variables').fill(JSON.stringify(data.env, null, 2))
+      for (const [key, value] of Object.entries(data.env)) {
+        await drawer.getByRole('button', { name: /Add env var/i }).click()
+        await drawer
+          .locator('input[placeholder="GITHUB_TOKEN"]')
+          .last()
+          .fill(key)
+        await drawer
+          .locator('input[placeholder="value"]')
+          .last()
+          .fill(String(value))
+      }
     }
   } else {
     // Wait for URL field to be visible and ready
@@ -103,6 +116,10 @@ export async function fillMcpServerForm(page: Page, data: McpServerFormData) {
       el.classList.contains('ant-switch-checked')
     )
     if (isChecked !== data.enabled) {
+      // In edit mode the pre-populated drawer is tall enough to push
+      // lower switches below the fold; scroll into view first so the
+      // click doesn't fail with "Element is outside of the viewport".
+      await enabledSwitch.scrollIntoViewIfNeeded()
       await enabledSwitch.click()
     }
   }
@@ -114,28 +131,38 @@ export async function fillMcpServerForm(page: Page, data: McpServerFormData) {
       el.classList.contains('ant-switch-checked')
     )
     if (isChecked !== data.supportsSampling) {
+      await samplingSwitch.scrollIntoViewIfNeeded()
       await samplingSwitch.click()
     }
   }
 
   if (data.usageMode !== undefined) {
-    // Usage Mode — keyboard nav. Options: 0: Auto, 1: Always.
-    const usageCombobox = drawer
+    // Usage Mode only renders when sampling is enabled — skip if the
+    // field isn't present (e.g. when disabling sampling).
+    const usageItem = drawer
       .locator('.ant-form-item:has-text("Usage Mode")')
       .first()
-      .getByRole('combobox')
-    await usageCombobox.click({ force: true })
-    await page.waitForTimeout(300)
-    const usageIdx = data.usageMode === 'always' ? 1 : 0
-    await usageCombobox.press('Home')
-    for (let i = 0; i < usageIdx; i++) {
-      await usageCombobox.press('ArrowDown')
+    if (await usageItem.isVisible().catch(() => false)) {
+      // Keyboard nav. Options: 0: Auto, 1: Always.
+      const usageCombobox = usageItem.getByRole('combobox')
+      await usageCombobox.click({ force: true })
+      await page.waitForTimeout(300)
+      const usageIdx = data.usageMode === 'always' ? 1 : 0
+      await usageCombobox.press('Home')
+      for (let i = 0; i < usageIdx; i++) {
+        await usageCombobox.press('ArrowDown')
+      }
+      await usageCombobox.press('Enter')
     }
-    await usageCombobox.press('Enter')
   }
 
   if (data.maxConcurrentSessions !== undefined) {
-    await drawer.getByLabel('Max Concurrent Sessions').fill(String(data.maxConcurrentSessions))
+    // Max Concurrent Sessions, like Usage Mode, only renders when
+    // sampling is enabled — skip if it isn't present.
+    const maxField = drawer.getByLabel('Max Concurrent Sessions')
+    if (await maxField.isVisible().catch(() => false)) {
+      await maxField.fill(String(data.maxConcurrentSessions))
+    }
   }
 }
 

@@ -74,10 +74,12 @@ impl AppError {
         self.status_code
     }
 
-    /// The stable machine-readable error code this error will be
-    /// serialized with (e.g. `"MCP_TRANSPORT_NOT_ALLOWED"`). Exposed
-    /// so callers + tests can assert on it without parsing the
-    /// human-readable `message`.
+    /// The stable machine-readable error code this error serializes with
+    /// (e.g. `VALIDATION_ERROR`, `RESOURCE_NOT_FOUND`,
+    /// `MCP_TRANSPORT_NOT_ALLOWED`). Exposed so callers + tests can assert on
+    /// it without parsing the human-readable `message`, and so the JSON-RPC
+    /// handlers can map a specific code onto the right error class (e.g.
+    /// `UNKNOWN_TOOL` → method-not-found) instead of collapsing to internal.
     pub fn error_code(&self) -> &str {
         &self.error_code
     }

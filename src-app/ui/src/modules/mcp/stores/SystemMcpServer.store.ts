@@ -455,19 +455,16 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
 
       getServersForGroup: async (groupId: string): Promise<McpServer[]> => {
         try {
-          const allServers = get().systemServers
-          const assignedServers: McpServer[] = []
-
-          for (const server of allServers) {
-            const groupIds = await ApiClient.McpServerSystem.getServerGroups({
-              id: server.id,
-            })
-            if (groupIds.includes(groupId)) {
-              assignedServers.push(server)
-            }
-          }
-
-          return assignedServers
+          // Read the group's assigned servers directly from the canonical
+          // endpoint. The previous approach iterated the cached
+          // `systemServers` list and queried each server's groups, which
+          // dropped any server missing from the (paginated / possibly
+          // stale) cache — so re-opening the assignment drawer could fail
+          // to preload an existing assignment and silently drop it on save.
+          const response = await ApiClient.Group.getSystemServers({
+            group_id: groupId,
+          })
+          return response.servers
         } catch (error) {
           console.error('Failed to get servers for group:', error)
           throw error

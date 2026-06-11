@@ -17,7 +17,7 @@
  */
 
 import { test, expect } from '../../fixtures/test-context'
-import { loginAsAdmin } from '../../common/auth-helpers'
+import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 import { navigateToHub, waitForHubDataLoad } from './helpers/hub-navigation'
 import { getModelCards } from './helpers/hub-models'
 
@@ -30,58 +30,76 @@ test('hub card surfaces failure state with red tag, exception bar, and Retry but
   await navigateToHub(page, baseURL, 'models')
   await waitForHubDataLoad(page)
 
-  // Read the first card's `data-model-id` so we can construct a
+  // Read the first RENDERED card's model id so we can construct a
   // synthetic DownloadInstance whose `request_data.repository_path`
   // matches the model's `repository_path`. The hub card's filter
   // joins on `repository_path`, so the failed row only attaches when
-  // they match.
+  // they match. Note: the store's models[0] is NOT necessarily the
+  // first rendered card (e.g. a 70B entry with no downloadable variant
+  // is in the catalog but not rendered), so resolve the path from THIS
+  // card's id via the hub API rather than guessing the store index.
   const firstCard = (await getModelCards(page)).first()
   await firstCard.waitFor({ state: 'visible', timeout: 10_000 })
 
-  // Pull the model's repository_path out of the rendered model
-  // metadata (Stores.HubModels exposes the catalog list to window).
-  const repoPath: string = await page.evaluate(() => {
-    // Stores is the global proxy shape installed by the core module.
-    const w = window as any
-    const models = w?.Stores?.HubModels?.__state?.models ?? []
-    return models[0]?.repository_path ?? ''
-  })
+  const cardModelId =
+    (await firstCard.getAttribute('data-testid'))?.replace(
+      'hub-model-card-',
+      '',
+    ) ?? ''
+  expect(cardModelId).not.toBe('')
+
+  const token = await getAdminToken(baseURL)
+  const hubModels = (await fetch(`${baseURL}/api/hub/models?lang=en`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }).then(r => r.json())) as Array<{ id: string; repository_path: string }>
+  const repoPath = hubModels.find(m => m.id === cardModelId)?.repository_path ?? ''
   expect(repoPath).not.toBe('')
 
   // Inject a synthetic FAILED download whose `request_data.repository_path`
-  // matches the first card's model. The store's `__state` accessor bypasses
-  // the proxy's render-only guard (per the `feedback_stores_state_in_handlers`
-  // codebase convention) so we can mutate from a test driver.
-  await page.evaluate(repoPath => {
-    const w = window as any
-    const store = w?.Stores?.LlmModelDownload?.__state
-    if (!store?.downloads) return
-    const now = new Date().toISOString()
-    const fakeDownload = {
-      id: '00000000-0000-0000-0000-00000000fa11',
-      provider_id: '00000000-0000-0000-0000-0000000000a1',
-      repository_id: '00000000-0000-0000-0000-0000000000b1',
-      status: 'failed',
-      progress_data: {
-        current: 256000000,
-        total: 1048576000,
-        speed_bps: 0,
-        eta_seconds: 0,
-      },
-      request_data: { repository_path: repoPath, model_name: 'mock-model' },
-      error_message: 'HTTP request failed with status: 503',
-      model_id: null,
-      completed_at: now,
-      created_at: now,
-      started_at: now,
-      updated_at: now,
-    }
-    // Push directly into the zustand store's underlying state.
-    // useLlmModelDownloadStore.setState merges into existing state.
-    w.useLlmModelDownloadStore?.setState((s: any) => ({
-      downloads: [...s.downloads, fakeDownload],
-    }))
-  }, repoPath)
+  // matches the first card's model by serving it from the downloads list
+  // endpoint. The store's `__init__` loads `GET /api/llm-models/downloads`
+  // on mount and KEEPS rows with status pending/downloading/failed
+  // (LlmModelDownload.store.ts:70), so a mocked `failed` row populates the
+  // store through the real data path. (The store is not exposed on
+  // `window`, so a direct setState injection is a no-op.) Register the route
+  // then reload so the re-mounted store re-fetches through the mock.
+  const now = new Date().toISOString()
+  const failedDownload = {
+    id: '00000000-0000-0000-0000-00000000fa11',
+    provider_id: '00000000-0000-0000-0000-0000000000a1',
+    repository_id: '00000000-0000-0000-0000-0000000000b1',
+    status: 'failed',
+    progress_data: {
+      current: 256000000,
+      total: 1048576000,
+      speed_bps: 0,
+      eta_seconds: 0,
+      phase: null,
+      message: null,
+    },
+    request_data: { repository_path: repoPath, model_name: 'mock-model' },
+    error_message: 'HTTP request failed with status: 503',
+    model_id: null,
+    completed_at: now,
+    created_at: now,
+    started_at: now,
+    updated_at: now,
+  }
+  await page.route(/\/api\/llm-models\/downloads(\?|$)/, async route => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        downloads: [failedDownload],
+        total: 1,
+        page: 1,
+        per_page: 100,
+      }),
+    })
+  })
+
+  await page.reload()
+  await waitForHubDataLoad(page)
 
   // The card's filter picks up the failed row + renders failure state.
   await expect(

@@ -223,7 +223,7 @@ async fn test_gemini_upload_image() {
 
 #[tokio::test]
 #[ignore]
-async fn test_openai_does_not_support_file_upload() {
+async fn test_openai_supports_document_upload() {
     dotenv::from_filename("tests/.env.test").ok();
 
     let api_key = std::env::var("OPENAI_API_KEY")
@@ -231,28 +231,30 @@ async fn test_openai_does_not_support_file_upload() {
 
     let provider = OpenAIProvider;
 
-    // Check that OpenAI doesn't support file API
-    assert!(!provider.supports_file_api(), "OpenAI should not support file API for vision");
+    // OpenAI supports the Files API for documents (purpose=user_data).
+    assert!(provider.supports_file_api(), "OpenAI should support the Files API for documents");
 
-    let file_data = get_test_file(TEST_IMAGE_PATH);
+    let file_data = get_test_file(TEST_PDF_PATH);
 
     let upload = FileUpload {
-        filename: "test.jpg".to_string(),
+        filename: "test.pdf".to_string(),
         file_data,
-        mime_type: "image/jpeg".to_string(),
+        mime_type: "application/pdf".to_string(),
     };
 
-    println!("Attempting upload to OpenAI (should return None)...");
+    println!("Uploading a PDF to OpenAI (should return a file_id)...");
     let result = provider
         .upload_file(&api_key, "https://api.openai.com/v1", upload)
         .await;
 
     match result {
-        Ok(None) => {
-            println!("✅ Correctly returned None (OpenAI doesn't support file uploads for vision)");
+        Ok(Some(resp)) => {
+            assert!(!resp.provider_file_id.is_empty(), "expected a non-empty file_id");
+            assert!(resp.expires_at.is_none(), "OpenAI files don't expire");
+            println!("✅ Uploaded document, file_id={}", resp.provider_file_id);
         }
-        Ok(Some(_)) => {
-            panic!("OpenAI should not support file uploads for vision API");
+        Ok(None) => {
+            panic!("OpenAI should support document upload (returned None)");
         }
         Err(e) => {
             panic!("Unexpected error: {:?}", e);
@@ -269,7 +271,10 @@ fn test_provider_capabilities() {
     // Test supports_file_api()
     assert!(anthropic.supports_file_api(), "Anthropic should support Files API");
     assert!(gemini.supports_file_api(), "Gemini should support File API");
-    assert!(!openai.supports_file_api(), "OpenAI should not support file upload for vision");
+    // OpenAI supports the Files API for documents/PDFs (images stay base64 — the
+    // server router keeps image file_ids off OpenAI since they're Responses-API
+    // only). The provider-level capability flag is therefore true.
+    assert!(openai.supports_file_api(), "OpenAI should support the Files API for documents");
 
     // Test file_expiration()
     assert!(anthropic.file_expiration().is_none(), "Anthropic files should not expire");

@@ -4,14 +4,20 @@ import { Page } from '@playwright/test'
  * MCP-specific navigation helpers
  */
 
+// NOTE: do NOT wait for 'networkidle' here. The app opens a persistent
+// realtime-sync SSE (`/api/sync/subscribe`) on every authenticated page; an
+// open EventSource is an in-flight request that never completes, so
+// 'networkidle' never fires and the navigation times out. Wait for 'load'
+// and let the per-page `waitForMcp*PageLoad` helpers gate on the actual
+// heading + "Add Server" content (which only render after data loads).
 export async function goToMcpServersPage(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/settings/mcp-servers`)
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
 }
 
 export async function goToMcpAdminPage(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/settings/mcp-admin`)
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
 }
 
 export async function waitForMcpPageLoad(page: Page) {

@@ -170,7 +170,7 @@ pub async fn create_memory(
     if content.is_empty() {
         return Err(AppError::bad_request("VALIDATION_ERROR", "content must not be empty").into());
     }
-    if content.len() > MAX_CONTENT_LEN {
+    if content.chars().count() > MAX_CONTENT_LEN {
         return Err(AppError::bad_request(
             "VALIDATION_ERROR",
             "content exceeds 4000 char limit",
@@ -193,6 +193,10 @@ pub async fn create_memory(
             body.importance,
             &body.kind,
             &body.metadata,
+            None,
+            // Manual REST adds are user-global.
+            "user",
+            None,
             None,
         )
         .await?;
@@ -228,7 +232,7 @@ pub async fn update_memory(
                 AppError::bad_request("VALIDATION_ERROR", "content must not be empty").into(),
             );
         }
-        if c.len() > MAX_CONTENT_LEN {
+        if c.chars().count() > MAX_CONTENT_LEN {
             return Err(AppError::bad_request(
                 "VALIDATION_ERROR",
                 "content exceeds 4000 char limit",
@@ -483,6 +487,27 @@ pub async fn update_admin_settings(
             .into());
         }
     }
+    // Token thresholds — validate in-handler so a bad value is a 400, not a raw
+    // 500 from the DB CHECK (migration 88: trigger 500..=1_000_000, keep >= 100,
+    // keep < trigger). Mirrors the default_top_k / cosine_threshold checks above.
+    if let Some(t) = body.summarize_after_tokens {
+        if !(500..=1_000_000).contains(&t) {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                "summarize_after_tokens out of range (500..=1000000)",
+            )
+            .into());
+        }
+    }
+    if let Some(k) = body.summarizer_keep_recent_tokens {
+        if k < 100 {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                "summarizer_keep_recent_tokens must be >= 100",
+            )
+            .into());
+        }
+    }
 
     // Prompt-template validation: a non-empty override MUST contain
     // the placeholders the summarizer interpolates. Otherwise
@@ -526,6 +551,24 @@ pub async fn update_admin_settings(
     let prior = Repos.memory.get_admin_settings().await?;
     let prior_model_id = prior.embedding_model_id;
 
+    // Effective keep < trigger invariant (the fields can be updated
+    // independently, so check the merged values against the migration-88 CHECK
+    // before the DB rejects it with a raw 500). E.g. lowering the trigger below
+    // the existing keep, or raising keep above the existing trigger.
+    let effective_trigger = body
+        .summarize_after_tokens
+        .unwrap_or(prior.summarize_after_tokens);
+    let effective_keep = body
+        .summarizer_keep_recent_tokens
+        .unwrap_or(prior.summarizer_keep_recent_tokens);
+    if effective_keep >= effective_trigger {
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "summarizer_keep_recent_tokens must be less than summarize_after_tokens",
+        )
+        .into());
+    }
+
     let row = Repos
         .memory
         .update_admin_settings(
@@ -536,8 +579,8 @@ pub async fn update_admin_settings(
             body.enabled,
             body.soft_delete_grace_days,
             body.daily_extraction_quota,
-            body.summarize_after_n_messages,
-            body.summarizer_keep_recent,
+            body.summarize_after_tokens,
+            body.summarizer_keep_recent_tokens,
             full_summary_prompt,
             incremental_summary_prompt,
         )
@@ -794,6 +837,9 @@ pub async fn test_summarize(
     crate::modules::memory::engine::summarizer::refresh_summary(
         body.branch_id,
         body.model_id,
+        // Manual/admin-triggered refresh has no chat-model context → use the flat
+        // admin threshold (no fraction-of-window override).
+        None,
     )
     .await?;
     Ok((StatusCode::OK, Json(serde_json::json!({ "ok": true }))))

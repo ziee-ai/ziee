@@ -77,7 +77,7 @@ test.describe('Onboarding wizard', () => {
 
     // AuthGuard release: navigating to / no longer bounces to /onboarding.
     await page.goto(`${baseURL}/`)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
     expect(page.url()).not.toContain('/onboarding')
   })
 
@@ -182,7 +182,7 @@ test.describe('First-run admin setup', () => {
     try {
       await page.waitForSelector('#setup-form_username', { timeout: 8000 })
     } catch {
-      await page.reload({ waitUntil: 'networkidle' })
+      await page.reload({ waitUntil: 'load' })
       await page.waitForSelector('#setup-form_username', { timeout: 30000 })
     }
 

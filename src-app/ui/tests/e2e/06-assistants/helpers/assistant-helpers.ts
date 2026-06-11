@@ -25,7 +25,7 @@ export async function goToUserAssistantsPage(page: Page, baseURL: string) {
 
 export async function goToTemplateAssistantsSettings(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/settings/assistant-templates`)
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
   // Wait for the Assistant Templates heading to be visible first
   await page.getByRole('heading', { name: 'Assistant Templates', level: 4 }).waitFor({ timeout: 10000 })
   // Then wait for the Template Assistants card title specifically
@@ -184,7 +184,7 @@ export async function deleteTemplateAssistant(page: Page, assistantName: string)
 
 export async function goToPage(page: Page, pageNumber: number) {
   await page.getByRole('button', { name: `${pageNumber}` }).or(page.locator(`.ant-pagination-item-${pageNumber}`)).click()
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
 }
 
 export async function changePageSize(page: Page, size: number) {
@@ -208,7 +208,7 @@ export async function changePageSize(page: Page, size: number) {
     await combobox.press('ArrowDown')
   }
   await combobox.press('Enter')
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
 }
 
 /**

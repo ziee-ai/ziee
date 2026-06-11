@@ -11,7 +11,6 @@ use async_stream::stream;
 use async_trait::async_trait;
 use futures_core::Stream;
 use futures_util::StreamExt;
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 
@@ -107,7 +106,7 @@ struct GeminiSystemInstruction {
 }
 
 /// Gemini generation config
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, Default)]
 struct GeminiGenerationConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
@@ -121,6 +120,17 @@ struct GeminiGenerationConfig {
     #[serde(rename = "maxOutputTokens")]
     max_output_tokens: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "presencePenalty")]
+    presence_penalty: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "frequencyPenalty")]
+    frequency_penalty: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seed: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "stopSequences")]
+    stop_sequences: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "thinkingConfig")]
     thinking_config: Option<GeminiThinkingConfig>,
 }
@@ -130,6 +140,8 @@ struct GeminiGenerationConfig {
 struct GeminiThinkingConfig {
     #[serde(rename = "thinkingBudget")]
     thinking_budget: i32,
+    #[serde(rename = "includeThoughts")]
+    include_thoughts: bool,
 }
 
 /// Gemini tool definition
@@ -193,6 +205,8 @@ struct GeminiUsageMetadata {
     total_token_count: Option<i32>,
     #[serde(rename = "thoughtsTokenCount")]
     thoughts_token_count: Option<i32>,
+    #[serde(rename = "cachedContentTokenCount", default)]
+    cached_content_token_count: Option<i32>,
 }
 
 /// Gemini safety rating
@@ -272,12 +286,15 @@ impl GeminiProvider {
                                     thought: None,
                                 });
                             }
-                            ContentBlock::Thinking { thinking } => {
-                                // Gemini uses thought flag
+                            ContentBlock::Thinking { thinking, .. } => {
+                                // Gemini uses a thought flag (signature is Anthropic-only)
                                 parts.push(GeminiPart::Text {
                                     text: thinking.clone(),
                                     thought: Some(true),
                                 });
+                            }
+                            ContentBlock::RedactedThinking { .. } => {
+                                // No Gemini equivalent — drop.
                             }
                             ContentBlock::Image { source } => {
                                 match source {
@@ -292,12 +309,14 @@ impl GeminiProvider {
                                     ImageSource::Url { url, .. } => {
                                         // Gemini doesn't support URL images directly
                                         // Would need to fetch and encode - skip for now
-                                        eprintln!("Warning: Gemini doesn't support image URLs directly: {}", url);
+                                        tracing::warn!("Gemini: image URLs not supported directly: {}", url);
                                     }
-                                    ImageSource::File { file_id } => {
+                                    ImageSource::File { file_id, media_type } => {
                                         parts.push(GeminiPart::FileData {
                                             file_data: GeminiFileData {
-                                                mime_type: "image/jpeg".to_string(), // Default, actual type in metadata
+                                                mime_type: media_type
+                                                    .clone()
+                                                    .unwrap_or_else(|| "image/jpeg".to_string()),
                                                 file_uri: file_id.clone(),
                                             },
                                         });
@@ -310,15 +329,22 @@ impl GeminiProvider {
                                 content,
                                 is_error,
                             } => {
-                                // Convert tool result to functionResponse
-                                // Extract the response value from content
-                                let response_value = if let Some(ContentBlock::Text { text }) = content.first() {
-                                    // Try to parse as JSON, fallback to wrapping in result object
-                                    serde_json::from_str(text).unwrap_or_else(|_| {
-                                        serde_json::json!({ "result": text })
-                                    })
-                                } else {
-                                    serde_json::json!({ "result": "Empty response" })
+                                // Convert tool result to functionResponse. Use the
+                                // first text block as the response value.
+                                let text_response = content.iter().find_map(|b| match b {
+                                    ContentBlock::Text { text } => Some(text.clone()),
+                                    _ => None,
+                                });
+                                let response_value = match text_response {
+                                    // Gemini requires `functionResponse.response` to be a JSON
+                                    // object — wrap bare scalars/arrays (and non-JSON text) so a
+                                    // tool returning `"42"` / `"[1,2]"` doesn't 400 the request.
+                                    Some(text) => match serde_json::from_str::<serde_json::Value>(&text) {
+                                        Ok(v) if v.is_object() => v,
+                                        Ok(v) => serde_json::json!({ "result": v }),
+                                        Err(_) => serde_json::json!({ "result": text }),
+                                    },
+                                    None => serde_json::json!({ "result": "Empty response" }),
                                 };
 
                                 // If error, wrap in error structure
@@ -343,6 +369,23 @@ impl GeminiProvider {
                                         response: final_response,
                                     },
                                 });
+
+                                // Spill any image content into inlineData parts in the
+                                // same user content (portable across model versions;
+                                // native functionResponse media needs Gemini 3 Pro+).
+                                for sub in content {
+                                    if let ContentBlock::Image {
+                                        source: ImageSource::Base64 { media_type, data },
+                                    } = sub
+                                    {
+                                        parts.push(GeminiPart::InlineData {
+                                            inline_data: GeminiInlineData {
+                                                mime_type: media_type.clone(),
+                                                data: data.clone(),
+                                            },
+                                        });
+                                    }
+                                }
                             }
                             ContentBlock::ToolUse { .. } => {
                                 // Tool use should only appear in assistant messages
@@ -357,18 +400,20 @@ impl GeminiProvider {
                                             },
                                         });
                                     }
-                                    crate::models::DocumentSource::File { file_id } => {
+                                    crate::models::DocumentSource::File { file_id, media_type } => {
                                         // file_id is the Gemini file URI
                                         parts.push(GeminiPart::FileData {
                                             file_data: GeminiFileData {
-                                                mime_type: "application/pdf".to_string(), // Default
+                                                mime_type: media_type
+                                                    .clone()
+                                                    .unwrap_or_else(|| "application/pdf".to_string()),
                                                 file_uri: file_id.clone(),
                                             },
                                         });
                                     }
                                     crate::models::DocumentSource::Url { url } => {
                                         // Gemini doesn't support document URLs directly
-                                        eprintln!("Warning: Gemini doesn't support document URLs directly: {}", url);
+                                        tracing::warn!("Gemini: document URLs not supported directly: {}", url);
                                     }
                                 }
                             }
@@ -393,7 +438,7 @@ impl GeminiProvider {
                                     thought: None,
                                 });
                             }
-                            ContentBlock::Thinking { thinking } => {
+                            ContentBlock::Thinking { thinking, .. } => {
                                 parts.push(GeminiPart::Text {
                                     text: thinking.clone(),
                                     thought: Some(true),
@@ -469,14 +514,10 @@ impl GeminiProvider {
     /// Gemini doesn't support: exclusiveMinimum, exclusiveMaximum, and other advanced JSON Schema keywords
     fn sanitize_schema_for_gemini(schema: &mut serde_json::Value) {
         if let Some(obj) = schema.as_object_mut() {
-            // Remove unsupported keywords
-            let had_exclusive_min = obj.remove("exclusiveMinimum").is_some();
-            let had_exclusive_max = obj.remove("exclusiveMaximum").is_some();
-            let had_title = obj.remove("title").is_some();
-
-            if had_exclusive_min || had_exclusive_max || had_title {
-                eprintln!("!!!! SANITIZED: min={}, max={}, title={}", had_exclusive_min, had_exclusive_max, had_title);
-            }
+            // Remove keywords Gemini doesn't accept.
+            obj.remove("exclusiveMinimum");
+            obj.remove("exclusiveMaximum");
+            obj.remove("title");
 
             // Recursively sanitize nested objects
             for value in obj.values_mut() {
@@ -490,8 +531,6 @@ impl GeminiProvider {
     }
 
     fn convert_tools(tools: &[crate::models::Tool]) -> Vec<GeminiTool> {
-        eprintln!("!!!!! CONVERT_TOOLS CALLED WITH {} TOOLS !!!!!", tools.len());
-
         if tools.is_empty() {
             return vec![];
         }
@@ -499,14 +538,9 @@ impl GeminiProvider {
         let function_declarations: Vec<GeminiFunctionDeclaration> = tools
             .iter()
             .map(|t| {
-                // Clone and sanitize the parameters schema
+                // Clone and sanitize the parameters schema for Gemini.
                 let mut parameters = t.function.parameters.clone();
-
-                eprintln!("BEFORE: {}", serde_json::to_string(&parameters).unwrap_or_default());
-
                 Self::sanitize_schema_for_gemini(&mut parameters);
-
-                eprintln!("AFTER: {}", serde_json::to_string(&parameters).unwrap_or_default());
 
                 GeminiFunctionDeclaration {
                     name: t.function.name.clone(),
@@ -515,8 +549,6 @@ impl GeminiProvider {
                 }
             })
             .collect();
-
-        eprintln!("!!!!! CONVERT_TOOLS RETURNING {} FUNCTION DECLARATIONS !!!!!", function_declarations.len());
 
         vec![GeminiTool {
             function_declarations,
@@ -629,6 +661,54 @@ impl GeminiProvider {
             base_url
         }
     }
+
+    /// Pure request assembly (no HTTP), so the wire shape is unit-testable.
+    fn build_request_body(request: &ChatRequest) -> GeminiRequest {
+        use crate::models::ThinkingMode;
+
+        let mut generation_config = GeminiGenerationConfig {
+            temperature: request.temperature,
+            top_p: request.top_p,
+            top_k: request.top_k, // model default when None (was hard-coded to 40)
+            max_output_tokens: request
+                .max_tokens
+                .map(|t| i32::try_from(t).unwrap_or(i32::MAX)),
+            presence_penalty: request.presence_penalty,
+            frequency_penalty: request.frequency_penalty,
+            seed: request.seed,
+            stop_sequences: request.stop.clone().filter(|s| !s.is_empty()),
+            thinking_config: None,
+        };
+
+        if let Some(thinking) = &request.thinking {
+            // Disabled → budget 0; Adaptive/Enabled → explicit budget or -1 (dynamic).
+            let budget = match thinking.mode {
+                ThinkingMode::Disabled => 0,
+                ThinkingMode::Adaptive | ThinkingMode::Enabled => {
+                    thinking.budget_tokens.unwrap_or(-1)
+                }
+            };
+            generation_config.thinking_config = Some(GeminiThinkingConfig {
+                thinking_budget: budget,
+                include_thoughts: thinking.include_thinking && budget != 0,
+            });
+        }
+
+        GeminiRequest {
+            contents: Self::convert_messages(&request.messages),
+            system_instruction: Self::extract_system_instruction(&request.messages),
+            generation_config: Some(generation_config),
+            tools: if request.tools.is_empty() {
+                None
+            } else {
+                Some(Self::convert_tools(&request.tools))
+            },
+            tool_config: request
+                .tool_choice
+                .as_ref()
+                .map(Self::convert_tool_config),
+        }
+    }
 }
 
 #[async_trait]
@@ -646,89 +726,40 @@ impl AIProvider for GeminiProvider {
         Pin<Box<dyn Stream<Item = Result<StreamChatChunk, ProviderError>> + Send>>,
         ProviderError,
     > {
-        eprintln!("!!!!! GEMINI STREAM_CHAT CALLED, model={} !!!!!", request.model);
-        let client = Client::new();
+        let client = super::http_client();
         let base_url = Self::get_base_url(base_url);
         let model = Self::normalize_model(&request.model);
-        eprintln!("!!!!! GEMINI: client created, normalized model={} !!!!!", model);
 
-        // Build request body
-        let mut generation_config = GeminiGenerationConfig {
-            temperature: request.temperature,
-            top_p: request.top_p,
-            top_k: Some(40), // Default value
-            max_output_tokens: request.max_tokens.map(|t| t as i32),
-            thinking_config: None,
-        };
-
-        // Add thinking configuration if provided
-        if let Some(ref thinking) = request.thinking {
-            if thinking.enabled {
-                // Determine thinking budget
-                let budget = if let Some(ref effort) = thinking.effort {
-                    match effort {
-                        crate::models::ThinkingEffort::Dynamic => -1,
-                        _ => thinking.budget_tokens.unwrap_or(-1),
-                    }
-                } else {
-                    thinking.budget_tokens.unwrap_or(-1)
-                };
-
-                generation_config.thinking_config = Some(GeminiThinkingConfig {
-                    thinking_budget: budget,
-                });
-            }
-        }
-
-        let gemini_request = GeminiRequest {
-            contents: Self::convert_messages(&request.messages),
-            system_instruction: Self::extract_system_instruction(&request.messages),
-            generation_config: Some(generation_config),
-            tools: if request.tools.is_empty() {
-                None
-            } else {
-                Some(Self::convert_tools(&request.tools))
-            },
-            tool_config: request
-                .tool_choice
-                .as_ref()
-                .map(|tc| Self::convert_tool_config(tc)),
-        };
+        // Build the request (pure, unit-testable).
+        let gemini_request = Self::build_request_body(&request);
 
         // Log request details
         if !request.tools.is_empty() {
-            tracing::info!("Gemini: Sending {} tools to API", request.tools.len());
+            tracing::trace!("Gemini: Sending {} tools to API", request.tools.len());
             if let Some(ref tc) = request.tool_choice {
                 let mode = match tc {
                     crate::models::ToolChoice::Auto => "AUTO",
                     crate::models::ToolChoice::Required => "ANY",
                     crate::models::ToolChoice::Specific { .. } => "ANY (specific)",
                 };
-                tracing::info!("Gemini: Tool choice mode: {}", mode);
+                tracing::trace!("Gemini: Tool choice mode: {}", mode);
             } else {
-                tracing::info!("Gemini: No tool_choice set (defaults to AUTO)");
+                tracing::trace!("Gemini: No tool_choice set (defaults to AUTO)");
             }
         }
 
-        // Log the full request body for debugging
-        if let Ok(request_json) = serde_json::to_string_pretty(&gemini_request) {
-            tracing::info!("Gemini API Request Body: {}", request_json);
-        }
+        // Make streaming request. The API key goes in the `x-goog-api-key`
+        // header, NOT the URL query string — a URL-embedded key leaks into
+        // proxy/access logs and reflective error bodies.
+        let url = format!("{}/{}:streamGenerateContent?alt=sse", base_url, model);
 
-        // Make streaming request
-        let url = format!(
-            "{}/{}:streamGenerateContent?alt=sse&key={}",
-            base_url, model, api_key
-        );
-
-        eprintln!("!!!!! GEMINI: About to send HTTP POST to: {} !!!!!", url);
         let response = client
             .post(&url)
+            .header("x-goog-api-key", api_key)
             .header("Content-Type", "application/json")
             .json(&gemini_request)
             .send()
             .await?;
-        eprintln!("!!!!! GEMINI: HTTP POST completed, status={} !!!!!", response.status());
 
         // Check status
         let status = response.status();
@@ -746,23 +777,17 @@ impl AIProvider for GeminiProvider {
         // Create SSE parser stream
         let output_stream = stream! {
             let mut buffer = String::new();
+            let mut decoder = super::Utf8StreamDecoder::default();
             let mut byte_stream = Box::pin(byte_stream);
 
             while let Some(chunk_result) = byte_stream.next().await {
                 match chunk_result {
                     Ok(chunk) => {
-                        tracing::info!("Gemini: Received chunk ({} bytes)", chunk.len());
+                        tracing::trace!("Gemini: Received chunk ({} bytes)", chunk.len());
 
-                        // Convert bytes to string
-                        let chunk_str = match std::str::from_utf8(&chunk) {
-                            Ok(s) => s,
-                            Err(e) => {
-                                yield Err(ProviderError::streaming(format!("Invalid UTF-8: {}", e)));
-                                break;
-                            }
-                        };
-
-                        buffer.push_str(chunk_str);
+                        // Decode incrementally so a multi-byte UTF-8 char split
+                        // across chunk boundaries doesn't abort the stream.
+                        buffer.push_str(&decoder.decode(&chunk));
 
                         // Process complete SSE events (Gemini uses \r\n\r\n)
                         while let Some(index) = buffer.find("\r\n\r\n").or_else(|| buffer.find("\n\n")) {
@@ -771,18 +796,21 @@ impl AIProvider for GeminiProvider {
                             let drain_len = if buffer[index..].starts_with("\r\n\r\n") { index + 4 } else { index + 2 };
                             buffer.drain(..drain_len);
 
-                            tracing::info!("Gemini: Found complete SSE event ({} bytes)", event.len());
+                            tracing::trace!("Gemini: Found complete SSE event ({} bytes)", event.len());
 
                             // Parse event
                             if event.starts_with("data: ") {
                                 let data = &event[6..]; // Skip "data: "
-                                tracing::info!("Gemini: Parsing SSE data: {}", if data.len() > 200 { &data[..200] } else { data });
+                                tracing::trace!(
+                                    "Gemini: Parsing SSE data: {}",
+                                    data.char_indices().nth(200).map(|(i, _)| &data[..i]).unwrap_or(data)
+                                );
 
                                 // Try to parse as JSON
                                 match serde_json::from_str::<GeminiResponse>(data) {
                                     Ok(response) => {
                                     // Log the raw response for debugging
-                                    tracing::info!("Gemini API Response: {}", data);
+                                    tracing::trace!("Gemini API Response: {}", data);
 
                                     // Check for prompt feedback (prompt blocking)
                                     if let Some(prompt_feedback) = response.prompt_feedback {
@@ -801,10 +829,16 @@ impl AIProvider for GeminiProvider {
                                             content: Vec::new(),
                                             finish_reason: None,
                                             usage: Some(crate::models::StreamUsage {
-                                                prompt_tokens: usage.prompt_token_count.unwrap_or(0) as u32,
-                                                completion_tokens: usage.candidates_token_count.unwrap_or(0) as u32,
-                                                total_tokens: usage.total_token_count.unwrap_or(0) as u32,
-                                                reasoning_tokens: usage.thoughts_token_count.map(|t| t as u32),
+                                                // Clamp before the cast — a negative i32 would
+                                                // wrap to a huge u32 and corrupt accounting.
+                                                prompt_tokens: usage.prompt_token_count.unwrap_or(0).max(0) as u32,
+                                                completion_tokens: usage.candidates_token_count.unwrap_or(0).max(0) as u32,
+                                                total_tokens: usage.total_token_count.unwrap_or(0).max(0) as u32,
+                                                reasoning_tokens: usage.thoughts_token_count.map(|t| t.max(0) as u32),
+                                                cache_read_input_tokens: usage
+                                                    .cached_content_token_count
+                                                    .map(|t| t.max(0) as u32),
+                                                cache_creation_input_tokens: None,
                                             }),
                                             refusal: None,
                                             safety_ratings: Vec::new(),
@@ -816,20 +850,20 @@ impl AIProvider for GeminiProvider {
                                     if let Some(candidate) = response.candidates.first() {
                                         // Log candidate parts for debugging
                                         let parts = candidate.content.as_ref().map(|c| c.parts.as_slice()).unwrap_or_default();
-                                        tracing::info!("Gemini candidate has {} parts, finish_reason={:?}", parts.len(), candidate.finish_reason);
+                                        tracing::trace!("Gemini candidate has {} parts, finish_reason={:?}", parts.len(), candidate.finish_reason);
                                         for (i, part) in parts.iter().enumerate() {
                                             match part {
                                                 GeminiPart::Text { text, .. } => {
-                                                    tracing::info!("  Part {}: Text ({}chars)", i, text.len());
+                                                    tracing::trace!("  Part {}: Text ({}chars)", i, text.len());
                                                 }
                                                 GeminiPart::FunctionCall { function_call } => {
-                                                    tracing::info!("  Part {}: FunctionCall name={}", i, function_call.name);
+                                                    tracing::trace!("  Part {}: FunctionCall name={}", i, function_call.name);
                                                 }
                                                 GeminiPart::FunctionResponse { function_response } => {
-                                                    tracing::info!("  Part {}: FunctionResponse name={}", i, function_response.name);
+                                                    tracing::trace!("  Part {}: FunctionResponse name={}", i, function_response.name);
                                                 }
                                                 _ => {
-                                                    tracing::info!("  Part {}: Other", i);
+                                                    tracing::trace!("  Part {}: Other", i);
                                                 }
                                             }
                                         }
@@ -840,14 +874,23 @@ impl AIProvider for GeminiProvider {
                                     }
                                     }
                                     Err(e) => {
-                                        yield Err(ProviderError::provider(format!(
-                                            "Failed to parse Gemini response: {}",
-                                            e
-                                        )));
-                                        break;
+                                        // A single malformed / forward-incompatible event
+                                        // must not abort an otherwise-good stream — skip it
+                                        // (matches the OpenAI/Anthropic parsers, which also
+                                        // skip unparseable events instead of erroring).
+                                        tracing::debug!("Gemini: skipping unparseable SSE event: {}", e);
                                     }
                                 }
                             }
+                        }
+
+                        // Guard against an upstream that never emits an event
+                        // delimiter (would otherwise grow `buffer` until OOM).
+                        if buffer.len() > super::MAX_SSE_BUFFER_BYTES {
+                            yield Err(ProviderError::streaming(
+                                "Gemini: SSE buffer exceeded maximum size",
+                            ));
+                            break;
                         }
                     }
                     Err(e) => {
@@ -867,7 +910,7 @@ impl AIProvider for GeminiProvider {
         base_url: &str,
         request: EmbeddingsRequest,
     ) -> Result<EmbeddingsResponse, ProviderError> {
-        let client = Client::new();
+        let client = super::http_client();
         let base_url = Self::get_base_url(base_url);
         let model = Self::normalize_model(&request.model);
 
@@ -883,10 +926,11 @@ impl AIProvider for GeminiProvider {
                 },
             };
 
-            let url = format!("{}/{}:embedContent?key={}", base_url, model, api_key);
+            let url = format!("{}/{}:embedContent", base_url, model);
 
             let response = client
                 .post(&url)
+                .header("x-goog-api-key", api_key)
                 .header("Content-Type", "application/json")
                 .json(&gemini_request)
                 .send()
@@ -926,13 +970,11 @@ impl AIProvider for GeminiProvider {
 
             let gemini_request = GeminiBatchEmbeddingsRequest { requests };
 
-            let url = format!(
-                "{}/{}:batchEmbedContents?key={}",
-                base_url, model, api_key
-            );
+            let url = format!("{}/{}:batchEmbedContents", base_url, model);
 
             let response = client
                 .post(&url)
+                .header("x-goog-api-key", api_key)
                 .header("Content-Type", "application/json")
                 .json(&gemini_request)
                 .send()
@@ -967,7 +1009,7 @@ impl AIProvider for GeminiProvider {
         base_url: &str,
         upload: FileUpload,
     ) -> Result<Option<FileUploadResponse>, ProviderError> {
-        let client = Client::new();
+        let client = super::http_client();
 
         // Gemini uses resumable upload protocol (2-step process)
         // Step 1: Initiate resumable upload and get upload URL
@@ -1080,7 +1122,7 @@ impl AIProvider for GeminiProvider {
         base_url: &str,
         provider_file_id: &str,
     ) -> Result<(), ProviderError> {
-        let client = Client::new();
+        let client = super::http_client();
 
         // provider_file_id could be:
         // - Full URL: "https://generativelanguage.googleapis.com/v1beta/files/abc123"
@@ -1194,5 +1236,123 @@ mod tests {
             safety_ratings: None,
         };
         assert!(GeminiProvider::convert_stream_chunk(&candidate).is_none());
+    }
+
+    /// Tier-1 wire-shape tests for the pure `build_request`.
+    mod build_body {
+        use super::super::GeminiProvider;
+        use crate::models::{ChatMessage, ChatRequest, ContentBlock, ImageSource, Role, ThinkingConfig};
+
+        fn body(r: &ChatRequest) -> serde_json::Value {
+            serde_json::to_value(GeminiProvider::build_request_body(r)).unwrap()
+        }
+
+        fn req() -> ChatRequest {
+            ChatRequest {
+                model: "gemini-2.5-flash".to_string(),
+                messages: vec![ChatMessage::user("hi")],
+                max_tokens: Some(8192),
+                ..Default::default()
+            }
+        }
+
+        #[test]
+        fn top_k_comes_from_request_not_hardcoded_40() {
+            let mut r = req();
+            r.top_k = Some(12);
+            let b = body(&r);
+            assert_eq!(b["generationConfig"]["topK"], 12);
+
+            // when unset, topK is omitted (model default), not forced to 40.
+            let b2 = body(&req());
+            assert!(b2["generationConfig"].get("topK").is_none());
+        }
+
+        #[test]
+        fn penalties_seed_stop_map_through() {
+            let mut r = req();
+            // Use f32-exact values to avoid float-repr mismatch in the assert.
+            r.frequency_penalty = Some(0.5);
+            r.presence_penalty = Some(0.25);
+            r.seed = Some(99);
+            r.stop = Some(vec!["X".into()]);
+            let b = body(&r);
+            let g = &b["generationConfig"];
+            assert_eq!(g["frequencyPenalty"], 0.5);
+            assert_eq!(g["presencePenalty"], 0.25);
+            assert_eq!(g["seed"], 99);
+            assert_eq!(g["stopSequences"][0], "X");
+        }
+
+        #[test]
+        fn thinking_adaptive_sets_include_thoughts_and_dynamic_budget() {
+            let mut r = req();
+            r.thinking = Some(ThinkingConfig::adaptive());
+            let b = body(&r);
+            let tc = &b["generationConfig"]["thinkingConfig"];
+            assert_eq!(tc["thinkingBudget"], -1); // dynamic
+            assert_eq!(tc["includeThoughts"], true);
+        }
+
+        #[test]
+        fn thinking_disabled_sets_budget_zero() {
+            let mut r = req();
+            r.thinking = Some(ThinkingConfig::disabled());
+            let b = body(&r);
+            let tc = &b["generationConfig"]["thinkingConfig"];
+            assert_eq!(tc["thinkingBudget"], 0);
+            assert_eq!(tc["includeThoughts"], false);
+        }
+
+        #[test]
+        fn tool_result_bare_scalar_wrapped_as_object() {
+            // Gemini requires functionResponse.response to be an object; a bare
+            // JSON scalar from a tool must be wrapped, not sent as-is.
+            let mut r = req();
+            r.messages = vec![ChatMessage::with_blocks(
+                Role::Tool,
+                vec![ContentBlock::ToolResult {
+                    tool_use_id: "t1".into(),
+                    name: Some("calc".into()),
+                    content: vec![ContentBlock::Text { text: "42".into() }],
+                    is_error: None,
+                }],
+            )];
+            let b = body(&r);
+            let parts = b["contents"][0]["parts"].as_array().unwrap();
+            let fr = parts
+                .iter()
+                .find(|p| p.get("functionResponse").is_some())
+                .unwrap();
+            assert!(fr["functionResponse"]["response"].is_object());
+            assert_eq!(fr["functionResponse"]["response"]["result"], 42);
+        }
+
+        #[test]
+        fn tool_result_image_spills_as_inline_data() {
+            let mut r = req();
+            r.messages = vec![ChatMessage::with_blocks(
+                Role::Tool,
+                vec![ContentBlock::ToolResult {
+                    tool_use_id: "t1".into(),
+                    name: Some("snap".into()),
+                    content: vec![
+                        ContentBlock::Text { text: "ok".into() },
+                        ContentBlock::Image {
+                            source: ImageSource::Base64 {
+                                media_type: "image/png".into(),
+                                data: "QQ".into(),
+                            },
+                        },
+                    ],
+                    is_error: None,
+                }],
+            )];
+            let b = body(&r);
+            let parts = b["contents"][0]["parts"].as_array().unwrap();
+            // functionResponse + inlineData image part in the same user content
+            assert!(parts.iter().any(|p| p.get("functionResponse").is_some()));
+            assert!(parts.iter().any(|p| p.get("inline_data").is_some()));
+        }
     }
 }

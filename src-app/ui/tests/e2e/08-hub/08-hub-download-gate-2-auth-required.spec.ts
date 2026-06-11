@@ -54,19 +54,26 @@ async function trackDownloadStartCount(page: Page): Promise<() => number> {
   return () => hits
 }
 
-/** The HF seed repo is enabled by default + has no credential. Find
- *  the first hub model that is `auth_required` so we exercise the
- *  auth-branch of the failure modal. */
+/** The HF seed repo is enabled by default + has no credential. Find an
+ *  `auth_required` hub model whose card is actually RENDERED (some catalog
+ *  entries — e.g. very large models with no downloadable variant — aren't
+ *  shown on the hub page) so we can click its Download button. The hub
+ *  page must already be open. */
 async function firstAuthRequiredHubModel(
+  page: import('@playwright/test').Page,
   apiURL: string,
   token: string,
 ): Promise<{ id: string; display_name: string }> {
   const body = await fetch(`${apiURL}/api/hub/models?lang=en`, {
     headers: { Authorization: `Bearer ${token}` },
   }).then(r => r.json())
-  const model = (body as any[]).find(m => m.auth_required === true)
-  if (!model) throw new Error('no auth_required hub model in catalog')
-  return { id: model.id, display_name: model.display_name }
+  for (const m of (body as any[]).filter(m => m.auth_required === true)) {
+    const card = page.locator(`[data-testid="hub-model-card-${m.id}"]`)
+    if (await card.isVisible().catch(() => false)) {
+      return { id: m.id, display_name: m.display_name }
+    }
+  }
+  throw new Error('no rendered auth_required hub model in catalog')
 }
 
 test('Download on an auth-required model with no credential shows the auth-required modal + opens the drawer', async ({
@@ -80,11 +87,13 @@ test('Download on an auth-required model with no credential shows the auth-requi
 
   const probeHits = await mockRepoTestById(page, 'fail')
   const dlHits = await trackDownloadStartCount(page)
-  const targetModel = await firstAuthRequiredHubModel(baseURL, token)
 
   await loginAsAdmin(page, baseURL)
   await navigateToHub(page, baseURL, 'models')
   await waitForHubDataLoad(page)
+
+  // Pick an auth-required model whose card is rendered on the hub page.
+  const targetModel = await firstAuthRequiredHubModel(page, baseURL, token)
 
   // Find that specific model's card. The card uses
   // data-testid="hub-model-card-<id>" (per ModelHubCard.tsx) so we can

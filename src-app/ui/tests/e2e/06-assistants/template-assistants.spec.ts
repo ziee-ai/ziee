@@ -191,7 +191,7 @@ test.describe('Template Assistants - Settings Page', () => {
     }
 
     // Wait for final list reload to complete with all 13 templates (12 + Default Assistant)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     // Wait for the last created assistant to appear in the list (confirms list reloaded)
     await assertTemplateAssistantExists(page, 'Pagination Template 12')
@@ -230,7 +230,7 @@ test.describe('Template Assistants - Settings Page', () => {
     }
 
     // Wait for final list reload to complete
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     // Wait for the last created assistant to appear in the list (confirms list reloaded)
     await assertTemplateAssistantExists(page, 'PageSize Template 15')
@@ -260,7 +260,7 @@ test.describe('Template Assistants - Settings Page', () => {
 
     // Wait for success message
     await assertSuccessMessage(page, 'Assistant created successfully')
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     let row1 = await getTemplateAssistantRow(page, 'Template 1')
     await expect(row1.locator('.ant-tag:has-text("Default")')).toBeVisible()
@@ -273,7 +273,7 @@ test.describe('Template Assistants - Settings Page', () => {
 
     // Wait for success message
     await assertSuccessMessage(page, 'Assistant created successfully')
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     // Set second template as default
     await editTemplateAssistant(page, 'Template 2')
@@ -286,7 +286,7 @@ test.describe('Template Assistants - Settings Page', () => {
 
     // Wait for success message
     await assertSuccessMessage(page, 'Assistant updated successfully')
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     // Verify Template 2 is now default
     const row2 = await getTemplateAssistantRow(page, 'Template 2')

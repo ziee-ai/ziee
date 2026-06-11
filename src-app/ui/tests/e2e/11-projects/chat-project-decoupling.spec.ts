@@ -87,7 +87,7 @@ test.describe('Chat ↔ project decoupling — namespaced URL + back button', ()
     await page.goto(
       `${baseURL}/projects/${projectId}/chat/${conversationId}`,
     )
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     // The back button is rendered inside TitleEditor (the small
     // left-arrow icon next to the conversation title).
@@ -120,7 +120,7 @@ test.describe('Chat ↔ project decoupling — namespaced URL + back button', ()
     // a project-bound conversation; the extension hook makes the
     // back button still route to the parent project.
     await page.goto(`${baseURL}/chat/${conversationId}`)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     // The chat back button lives in TitleEditor (left of the title);
     // selecting via aria-label avoids matching sidebar svg-buttons.
@@ -160,7 +160,7 @@ test.describe('Chat ↔ project decoupling — list endpoint contract', () => {
 
     // Visit any logged-in page so the auth context is established.
     await page.goto(`${baseURL}/chats`)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     // Chat is project-blind after the decoupling: GET /conversations
     // returns the caller's full set, irrespective of project

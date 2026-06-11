@@ -191,8 +191,20 @@ impl ChatExtension for TextExtension {
         // Convert to ContentBlock
         match text_content {
             TextContent::Text { text } => Ok(Some(ContentBlock::Text { text })),
-            TextContent::Thinking { thinking, .. } => {
-                Ok(Some(ContentBlock::Thinking { thinking }))
+            TextContent::Thinking { thinking, metadata } => {
+                let signature = metadata.as_ref().and_then(|m| m.signature.clone());
+                let redacted = metadata.as_ref().and_then(|m| m.redacted_data.clone());
+                if let Some(data) = redacted {
+                    // Redacted thinking replays as its own block.
+                    Ok(Some(ContentBlock::RedactedThinking { data }))
+                } else if signature.is_some() {
+                    // Real thinking block with signature — the provider forwards it.
+                    Ok(Some(ContentBlock::Thinking { thinking, signature }))
+                } else {
+                    // No signature → omit (the crate would otherwise drop it, and a
+                    // signature-less thinking block is rejected by Anthropic).
+                    Ok(None)
+                }
             }
         }
     }
@@ -211,10 +223,25 @@ impl ChatExtension for TextExtension {
                 let content = TextContent::Text { text: text.clone() };
                 Some(content.to_message_content())
             }
-            ContentBlock::Thinking { thinking } => {
+            ContentBlock::Thinking { thinking, signature } => {
                 let content = TextContent::Thinking {
                     thinking: thinking.clone(),
-                    metadata: None,
+                    metadata: signature.as_ref().map(|sig| super::types::ThinkingMetadata {
+                        token_count: None,
+                        signature: Some(sig.clone()),
+                        redacted_data: None,
+                    }),
+                };
+                Some(content.to_message_content())
+            }
+            ContentBlock::RedactedThinking { data } => {
+                let content = TextContent::Thinking {
+                    thinking: String::new(),
+                    metadata: Some(super::types::ThinkingMetadata {
+                        token_count: None,
+                        signature: None,
+                        redacted_data: Some(data.clone()),
+                    }),
                 };
                 Some(content.to_message_content())
             }

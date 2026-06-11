@@ -258,6 +258,13 @@ server:
   port: ${backendPort}
   api_prefix: "/api"
 
+  # Trust the vite-preview proxy's X-Forwarded-Host (it sets xfwd:true) so the
+  # OAuth callback redirect_uri is built on the frontend origin (vite, 9000),
+  # not the backend port — otherwise social-login lands on the API port where
+  # the SPA isn't served. Mirrors config/dev.yaml. Safe here: the backend is
+  # only reachable behind the test proxy.
+  trust_forwarded_headers: true
+
   # Disable rate limiting for E2E tests — a single test peer-IP can
   # legitimately make many requests in quick succession (page reloads,
   # data refresh after mutations) and would otherwise trip the default

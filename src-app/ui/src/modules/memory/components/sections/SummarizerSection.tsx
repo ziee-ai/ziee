@@ -18,8 +18,8 @@ const READ_PERM = Permissions.MemoryAdminRead
 const MANAGE_PERM = Permissions.MemoryAdminManage
 
 interface FormValues {
-  summarize_after_n_messages: number
-  summarizer_keep_recent: number
+  summarize_after_tokens: number
+  summarizer_keep_recent_tokens: number
   full_summary_prompt?: string
   incremental_summary_prompt?: string
 }
@@ -38,8 +38,8 @@ export function SummarizerSection() {
   useEffect(() => {
     if (settings) {
       form.setFieldsValue({
-        summarize_after_n_messages: settings.summarize_after_n_messages,
-        summarizer_keep_recent: settings.summarizer_keep_recent,
+        summarize_after_tokens: settings.summarize_after_tokens,
+        summarizer_keep_recent_tokens: settings.summarizer_keep_recent_tokens,
         full_summary_prompt: settings.full_summary_prompt ?? '',
         incremental_summary_prompt: settings.incremental_summary_prompt ?? '',
       })
@@ -62,8 +62,8 @@ export function SummarizerSection() {
   const handleSubmit = async (values: FormValues) => {
     try {
       await Stores.MemoryAdmin.update({
-        summarize_after_n_messages: values.summarize_after_n_messages,
-        summarizer_keep_recent: values.summarizer_keep_recent,
+        summarize_after_tokens: values.summarize_after_tokens,
+        summarizer_keep_recent_tokens: values.summarizer_keep_recent_tokens,
         full_summary_prompt: values.full_summary_prompt?.trim()
           ? values.full_summary_prompt
           : null,
@@ -95,21 +95,26 @@ export function SummarizerSection() {
         disabled={!canManage}
       >
         <Form.Item
-          name="summarize_after_n_messages"
-          label="Summarize after N messages"
-          extra="When a conversation branch exceeds this many user/assistant messages, the summarizer condenses the earliest ones into a single system block. Lower = sooner summarization (smaller prompts, more LLM cost); higher = longer verbatim history."
+          name="summarize_after_tokens"
+          label="Summarize after N tokens"
+          extra="When a conversation branch's estimated tokens (chars/4) exceed this, the summarizer condenses the earliest messages into a single system block. Token-aware (a 5-token message and a 50K-token one are not equal). Lower = sooner summarization (smaller prompts, more LLM cost); higher = longer verbatim history."
         >
-          <InputNumber min={10} max={1000} style={{ width: 160 }} />
+          <InputNumber
+            min={500}
+            max={1000000}
+            step={1000}
+            style={{ width: 160 }}
+          />
         </Form.Item>
         <Form.Item
-          name="summarizer_keep_recent"
-          label="Keep recent messages verbatim"
-          extra="How many of the most-recent messages stay unsummarized alongside the summary block. Must stay below the trigger above (DB-enforced)."
-          dependencies={['summarize_after_n_messages']}
+          name="summarizer_keep_recent_tokens"
+          label="Keep recent tokens verbatim"
+          extra="Estimated tokens of the most-recent messages kept unsummarized alongside the summary block. The cutoff snaps to a message boundary. Must stay below the trigger above (DB-enforced)."
+          dependencies={['summarize_after_tokens']}
           rules={[
             ({ getFieldValue }) => ({
               validator(_, value) {
-                const trigger = getFieldValue('summarize_after_n_messages')
+                const trigger = getFieldValue('summarize_after_tokens')
                 if (value == null || trigger == null || value < trigger) {
                   return Promise.resolve()
                 }
@@ -122,7 +127,12 @@ export function SummarizerSection() {
             }),
           ]}
         >
-          <InputNumber min={2} max={999} style={{ width: 160 }} />
+          <InputNumber
+            min={100}
+            max={999999}
+            step={500}
+            style={{ width: 160 }}
+          />
         </Form.Item>
 
         <Form.Item

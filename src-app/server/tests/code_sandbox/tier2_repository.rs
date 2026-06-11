@@ -318,3 +318,399 @@ async fn get_conversation_files_filters_malformed_uuid_in_jsonb() {
         "malformed file_id entries must be silently filtered, got: {files:?}"
     );
 }
+
+// ─── project_refs UNION path ─────────────────────────────────────────
+//
+// `get_conversation_files` was extended (commit 09b81114, the
+// `project_refs` CTE + `UNION`) so that the sandbox sees the same
+// effective file set as the chat: a conversation's PROJECT knowledge
+// files now surface alongside its message attachments. These tests pin
+// that path — the positive surface, the DISTINCT/ORDER BY behavior, and
+// the deliberate absence of a `user_id` predicate.
+
+/// A project knowledge file (attached via `project_files`, linked to a
+/// conversation via `project_conversations`) surfaces in the sandbox
+/// file set even though it is NOT a chat-message attachment.
+#[tokio::test]
+async fn get_conversation_files_surfaces_project_knowledge_file() {
+    let server = TestServer::start().await;
+    let repo = repo(&server).await;
+    let pool = repo.pool();
+
+    let user_id = Uuid::new_v4();
+    let project_id = Uuid::new_v4();
+    let conv_id = Uuid::new_v4();
+    let file_id = Uuid::new_v4();
+
+    sqlx::query(
+        r#"INSERT INTO users (id, username, email, password_hash, is_active)
+           VALUES ($1, $2, $3, 'x', true)"#,
+    )
+    .bind(user_id)
+    .bind(format!("u_{}", &user_id.to_string()[..8]))
+    .bind(format!("u_{}@example.com", &user_id.to_string()[..8]))
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"INSERT INTO projects (id, user_id, name)
+           VALUES ($1, $2, 'P')"#,
+    )
+    .bind(project_id)
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .unwrap();
+    // The conversation does NOT need an active_branch_id: project files
+    // surface via project_conversations, independent of branch walking.
+    sqlx::query(
+        r#"INSERT INTO conversations (id, user_id, title, active_branch_id, created_at, updated_at)
+           VALUES ($1, $2, 't', NULL, NOW(), NOW())"#,
+    )
+    .bind(conv_id)
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"INSERT INTO files (id, user_id, filename, file_size, mime_type)
+           VALUES ($1, $2, 'knowledge.csv', 20, 'text/csv')"#,
+    )
+    .bind(file_id)
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"INSERT INTO project_files (project_id, file_id)
+           VALUES ($1, $2)"#,
+    )
+    .bind(project_id)
+    .bind(file_id)
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"INSERT INTO project_conversations (conversation_id, project_id)
+           VALUES ($1, $2)"#,
+    )
+    .bind(conv_id)
+    .bind(project_id)
+    .execute(pool)
+    .await
+    .unwrap();
+
+    let files = repo
+        .get_conversation_files(conv_id)
+        .await
+        .expect("query ok");
+    assert_eq!(files.len(), 1, "exactly the one project file, got: {files:?}");
+    assert_eq!(files[0].file_id, file_id);
+    assert_eq!(files[0].filename, "knowledge.csv");
+}
+
+/// The same file attached as BOTH a project knowledge file AND a chat
+/// attachment must appear exactly ONCE — pins the `SELECT DISTINCT`
+/// across the attachment_refs ∪ project_refs union.
+#[tokio::test]
+async fn get_conversation_files_dedups_project_and_attachment_overlap() {
+    let server = TestServer::start().await;
+    let repo = repo(&server).await;
+    let pool = repo.pool();
+
+    let user_id = Uuid::new_v4();
+    let project_id = Uuid::new_v4();
+    let conv_id = Uuid::new_v4();
+    let branch_id = Uuid::new_v4();
+    let msg_id = Uuid::new_v4();
+    let file_id = Uuid::new_v4();
+
+    sqlx::query(
+        r#"INSERT INTO users (id, username, email, password_hash, is_active)
+           VALUES ($1, $2, $3, 'x', true)"#,
+    )
+    .bind(user_id)
+    .bind(format!("u_{}", &user_id.to_string()[..8]))
+    .bind(format!("u_{}@example.com", &user_id.to_string()[..8]))
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO projects (id, user_id, name) VALUES ($1, $2, 'P')")
+        .bind(project_id)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .unwrap();
+    // FK ordering: conversation (active_branch_id NULL) → branch →
+    // UPDATE conversation to point active_branch_id at the branch.
+    sqlx::query(
+        r#"INSERT INTO conversations (id, user_id, title, active_branch_id, created_at, updated_at)
+           VALUES ($1, $2, 't', NULL, NOW(), NOW())"#,
+    )
+    .bind(conv_id)
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"INSERT INTO branches (id, conversation_id, parent_branch_id, created_from_message_id, created_at)
+           VALUES ($1, $2, NULL, NULL, NOW())"#,
+    )
+    .bind(branch_id)
+    .bind(conv_id)
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE conversations SET active_branch_id = $1 WHERE id = $2")
+        .bind(branch_id)
+        .bind(conv_id)
+        .execute(pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        r#"INSERT INTO files (id, user_id, filename, file_size, mime_type)
+           VALUES ($1, $2, 'shared.txt', 10, 'text/plain')"#,
+    )
+    .bind(file_id)
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .unwrap();
+    // Path 1: project knowledge file.
+    sqlx::query("INSERT INTO project_files (project_id, file_id) VALUES ($1, $2)")
+        .bind(project_id)
+        .bind(file_id)
+        .execute(pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO project_conversations (conversation_id, project_id) VALUES ($1, $2)",
+    )
+    .bind(conv_id)
+    .bind(project_id)
+    .execute(pool)
+    .await
+    .unwrap();
+    // Path 2: the SAME file, also a chat-message attachment.
+    sqlx::query(
+        r#"INSERT INTO messages (id, role, originated_from_id, created_at)
+           VALUES ($1, 'user', $1, NOW())"#,
+    )
+    .bind(msg_id)
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"INSERT INTO branch_messages (branch_id, message_id, created_at)
+           VALUES ($1, $2, NOW())"#,
+    )
+    .bind(branch_id)
+    .bind(msg_id)
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"INSERT INTO message_contents (id, message_id, content_type, content, sequence_order, created_at, updated_at)
+           VALUES (gen_random_uuid(), $1, 'file_attachment',
+                   jsonb_build_object('file_id', $2::text),
+                   0, NOW(), NOW())"#,
+    )
+    .bind(msg_id)
+    .bind(file_id)
+    .execute(pool)
+    .await
+    .unwrap();
+
+    let files = repo
+        .get_conversation_files(conv_id)
+        .await
+        .expect("query ok");
+    assert_eq!(
+        files.len(),
+        1,
+        "a file in BOTH the project and an attachment must dedup to one, got: {files:?}"
+    );
+    assert_eq!(files[0].file_id, file_id);
+}
+
+/// Two project files that share an identical `created_at` must come back
+/// in a stable order — `ORDER BY f.created_at, f.id` breaks the tie on
+/// `f.id`. This keeps the downstream collision-suffixing in
+/// `build_bwrap_argv` deterministic across calls (bulk project uploads
+/// frequently share a created_at).
+#[tokio::test]
+async fn get_conversation_files_orders_ties_by_file_id() {
+    let server = TestServer::start().await;
+    let repo = repo(&server).await;
+    let pool = repo.pool();
+
+    let user_id = Uuid::new_v4();
+    let project_id = Uuid::new_v4();
+    let conv_id = Uuid::new_v4();
+    // Two file ids with a deterministic ordering relationship: the
+    // all-zeros / all-`a` ids sort unambiguously by uuid bytes.
+    let lo = Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap();
+    let hi = Uuid::parse_str("ffffffff-ffff-ffff-ffff-ffffffffffff").unwrap();
+
+    sqlx::query(
+        r#"INSERT INTO users (id, username, email, password_hash, is_active)
+           VALUES ($1, $2, $3, 'x', true)"#,
+    )
+    .bind(user_id)
+    .bind(format!("u_{}", &user_id.to_string()[..8]))
+    .bind(format!("u_{}@example.com", &user_id.to_string()[..8]))
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO projects (id, user_id, name) VALUES ($1, $2, 'P')")
+        .bind(project_id)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        r#"INSERT INTO conversations (id, user_id, title, active_branch_id, created_at, updated_at)
+           VALUES ($1, $2, 't', NULL, NOW(), NOW())"#,
+    )
+    .bind(conv_id)
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .unwrap();
+    // BOTH files pinned to the EXACT same created_at so only the
+    // `f.id` tiebreaker decides order.
+    sqlx::query(
+        r#"INSERT INTO files (id, user_id, filename, file_size, mime_type, created_at)
+           VALUES ($1, $3, 'lo.txt', 10, 'text/plain', TIMESTAMPTZ '2020-01-01 00:00:00+00'),
+                  ($2, $3, 'hi.txt', 10, 'text/plain', TIMESTAMPTZ '2020-01-01 00:00:00+00')"#,
+    )
+    .bind(lo)
+    .bind(hi)
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"INSERT INTO project_files (project_id, file_id)
+           VALUES ($1, $2), ($1, $3)"#,
+    )
+    .bind(project_id)
+    .bind(lo)
+    .bind(hi)
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO project_conversations (conversation_id, project_id) VALUES ($1, $2)",
+    )
+    .bind(conv_id)
+    .bind(project_id)
+    .execute(pool)
+    .await
+    .unwrap();
+
+    let files = repo
+        .get_conversation_files(conv_id)
+        .await
+        .expect("query ok");
+    let ids: Vec<Uuid> = files.iter().map(|f| f.file_id).collect();
+    assert_eq!(
+        ids,
+        vec![lo, hi],
+        "shared created_at must sort by f.id ascending, got: {ids:?}"
+    );
+}
+
+/// Regression-pinning of the DOCUMENTED design: the `project_refs` CTE
+/// has NO `f.user_id` predicate. If a future bug ever lets a foreign
+/// file into `project_files` (the attach handler — NOT this query — is
+/// the tenant guard, 404ing foreign files before insert), this query
+/// STILL returns it. We assert that on purpose so any change to the
+/// invariant trips a test: the protection lives at the handler
+/// boundary, and a defense-in-depth `user_id` filter here would be a
+/// deliberate design change, not a silent one.
+#[tokio::test]
+async fn get_conversation_files_project_path_has_no_user_id_predicate() {
+    let server = TestServer::start().await;
+    let repo = repo(&server).await;
+    let pool = repo.pool();
+
+    let user_a = Uuid::new_v4(); // project + conversation owner
+    let user_b = Uuid::new_v4(); // foreign file owner
+    let project_id = Uuid::new_v4();
+    let conv_id = Uuid::new_v4();
+    let foreign_file = Uuid::new_v4();
+
+    sqlx::query(
+        r#"INSERT INTO users (id, username, email, password_hash, is_active)
+           VALUES ($1, $2, $3, 'x', true),
+                  ($4, $5, $6, 'x', true)"#,
+    )
+    .bind(user_a)
+    .bind(format!("a-{}", user_a))
+    .bind(format!("a-{}@x.test", user_a))
+    .bind(user_b)
+    .bind(format!("b-{}", user_b))
+    .bind(format!("b-{}@x.test", user_b))
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO projects (id, user_id, name) VALUES ($1, $2, 'P')")
+        .bind(project_id)
+        .bind(user_a)
+        .execute(pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        r#"INSERT INTO conversations (id, user_id, title, active_branch_id, created_at, updated_at)
+           VALUES ($1, $2, 't', NULL, NOW(), NOW())"#,
+    )
+    .bind(conv_id)
+    .bind(user_a)
+    .execute(pool)
+    .await
+    .unwrap();
+    // A file owned by user B, inserted directly via SQL — bypassing the
+    // attach-handler 404 guard that would normally reject a foreign file.
+    sqlx::query(
+        r#"INSERT INTO files (id, user_id, filename, file_size, mime_type)
+           VALUES ($1, $2, 'foreign.txt', 10, 'text/plain')"#,
+    )
+    .bind(foreign_file)
+    .bind(user_b)
+    .execute(pool)
+    .await
+    .unwrap();
+    // Simulate a future bug breaking the handler invariant: B's file is
+    // in A's project_files.
+    sqlx::query("INSERT INTO project_files (project_id, file_id) VALUES ($1, $2)")
+        .bind(project_id)
+        .bind(foreign_file)
+        .execute(pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO project_conversations (conversation_id, project_id) VALUES ($1, $2)",
+    )
+    .bind(conv_id)
+    .bind(project_id)
+    .execute(pool)
+    .await
+    .unwrap();
+
+    // INTENTIONAL: the SQL has no user_id filter, so B's file STILL
+    // surfaces. This documents that the cross-tenant guard lives at the
+    // attach-handler boundary, not in this query. If this assertion ever
+    // flips, someone added defense-in-depth here on purpose — update the
+    // test to match the new (intended) contract.
+    let files = repo
+        .get_conversation_files(conv_id)
+        .await
+        .expect("query ok");
+    assert_eq!(files.len(), 1, "got: {files:?}");
+    assert_eq!(
+        files[0].file_id, foreign_file,
+        "project_refs has no user_id predicate; the foreign file surfaces \
+         (handler boundary is the tenant guard, not this query)"
+    );
+}

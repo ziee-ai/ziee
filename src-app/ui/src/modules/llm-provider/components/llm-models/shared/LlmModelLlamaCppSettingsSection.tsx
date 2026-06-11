@@ -70,7 +70,7 @@ export function LlmModelLlamaCppSettingsSection() {
         <Flex vertical className="gap-2 w-full">
           <ResponsiveConfigItem
             title="Context Size"
-            description="Size of the prompt context (--ctx-size, default: 4096)"
+            description="Size of the prompt context (--ctx-size, default: 8192)"
           >
             <Form.Item
               name={getFieldName('ctx_size')}
@@ -79,7 +79,7 @@ export function LlmModelLlamaCppSettingsSection() {
               <InputNumber
                 min={512}
                 max={131072}
-                placeholder="4096"
+                placeholder="8192"
                 style={{ width: '100%' }}
               />
             </Form.Item>

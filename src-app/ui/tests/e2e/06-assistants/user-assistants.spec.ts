@@ -180,7 +180,7 @@ test.describe('User Assistants - Settings Page', () => {
     })
     await submitAssistantForm(page)
     await assertSuccessMessage(page, 'Assistant created successfully')
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     await assertUserAssistantHasTag(page, 'Assistant 1', 'Default')
 
@@ -190,7 +190,7 @@ test.describe('User Assistants - Settings Page', () => {
     })
     await submitAssistantForm(page)
     await assertSuccessMessage(page, 'Assistant created successfully')
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     // Set second assistant as default
     await editUserAssistant(page, 'Assistant 2')
@@ -201,12 +201,12 @@ test.describe('User Assistants - Settings Page', () => {
 
     await submitAssistantForm(page)
     await assertSuccessMessage(page, 'Assistant updated successfully')
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     // Reload to force the list to re-fetch — the store emits an event
     // after the PUT but the card binding doesn't always observe it on
     // the same tick.
-    await page.reload({ waitUntil: 'networkidle' })
+    await page.reload({ waitUntil: 'load' })
 
     // Verify Assistant 2 is now default and Assistant 1 is not
     await assertUserAssistantHasTag(page, 'Assistant 2', 'Default')
