@@ -541,6 +541,7 @@ impl MemoryRepository {
                 fts_min_rank,
                 fts_rebuild_started_at as "fts_rebuild_started_at: _",
                 fts_rebuild_completed_at as "fts_rebuild_completed_at: _",
+                semantic_enabled,
                 updated_at as "updated_at: _"
             FROM memory_admin_settings
             WHERE id = 1
@@ -637,6 +638,8 @@ impl MemoryRepository {
         fts_rrf_k: Option<i32>,
         fts_candidate_multiplier: Option<i32>,
         fts_min_rank: Option<f32>,
+        // Semantic-arm kill switch (migration 90). Mirrors fts_enabled.
+        semantic_enabled: Option<bool>,
     ) -> Result<MemoryAdminSettings, AppError> {
         // Same Option<Option<T>> split as update_user_settings.
         let embedding_set = embedding_model_id.is_some();
@@ -667,6 +670,7 @@ impl MemoryRepository {
                 fts_rrf_k                     = COALESCE($17, fts_rrf_k),
                 fts_candidate_multiplier      = COALESCE($18, fts_candidate_multiplier),
                 fts_min_rank                  = COALESCE($19, fts_min_rank),
+                semantic_enabled              = COALESCE($20, semantic_enabled),
                 updated_at                    = NOW()
             WHERE id = 1
             RETURNING
@@ -690,6 +694,7 @@ impl MemoryRepository {
                 fts_min_rank,
                 fts_rebuild_started_at as "fts_rebuild_started_at: _",
                 fts_rebuild_completed_at as "fts_rebuild_completed_at: _",
+                semantic_enabled,
                 updated_at as "updated_at: _"
             "#,
             embedding_set,
@@ -710,7 +715,8 @@ impl MemoryRepository {
             fts_enabled,
             fts_rrf_k,
             fts_candidate_multiplier,
-            fts_min_rank
+            fts_min_rank,
+            semantic_enabled
         )
         .fetch_one(&self.pool)
         .await

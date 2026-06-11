@@ -250,6 +250,10 @@ const SCOPE_FILTER: &str = "user_id = $1 AND deleted_at IS NULL AND ( \
 /// callers (chat extension's automatic retrieval + MCP `recall` tool)
 /// invoke this so we don't drift two parallel implementations.
 ///
+/// The vector arm is effectively available iff
+/// `semantic_enabled AND embedding_model_id IS NOT NULL` — the admin can
+/// kill semantic recall without clearing the embedding model picker.
+///
 /// (vec_avail, fts_enabled) =>
 ///  - `(true,  true)`  → hybrid (RRF); fall back to FTS-only on embed fail
 ///  - `(true,  false)` → vector-only;  return empty on embed fail (no fallback)
@@ -265,7 +269,15 @@ pub async fn recall_memories(
 ) -> Result<Vec<(Uuid, String)>, AppError> {
     let dict = admin.fts_dictionary.as_str();
     let min_rank = admin.fts_min_rank;
-    match (admin.embedding_model_id, admin.fts_enabled) {
+    // Collapse "semantic disabled" into "no embedding model" so the four
+    // arms below handle both reasons for vector-arm unavailability
+    // identically (no kill switch handling sprinkled through each branch).
+    let vector_emb_id = if admin.semantic_enabled {
+        admin.embedding_model_id
+    } else {
+        None
+    };
+    match (vector_emb_id, admin.fts_enabled) {
         (Some(emb_id), true) => match super::super::engine::dispatch::embed(emb_id, query).await {
             Ok(v) => {
                 hybrid_search(
@@ -330,7 +342,9 @@ pub async fn recall_memories(
         }
         (None, false) => {
             tracing::debug!(
-                "memory.recall: no embedding model AND fts_enabled=false → no recall arm"
+                "memory.recall: no vector arm (semantic_enabled={}, embedding_model_id={:?}) AND fts_enabled=false → no recall arm",
+                admin.semantic_enabled,
+                admin.embedding_model_id
             );
             Ok(Vec::new())
         }

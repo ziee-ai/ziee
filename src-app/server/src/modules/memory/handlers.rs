@@ -643,6 +643,7 @@ pub async fn update_admin_settings(
             body.fts_rrf_k,
             body.fts_candidate_multiplier,
             body.fts_min_rank,
+            body.semantic_enabled,
         )
         .await?;
 

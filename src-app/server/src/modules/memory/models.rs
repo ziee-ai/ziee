@@ -103,6 +103,11 @@ pub struct MemoryAdminSettings {
     /// FTS arm kill switch. When `false`, the retriever skips FTS even
     /// in the no-embedding-model path (then it bails entirely).
     pub fts_enabled: bool,
+    /// Semantic (vector) arm kill switch. When `false`, the retriever
+    /// skips the vector arm regardless of whether an embedding model is
+    /// configured. Effective vector recall requires
+    /// `semantic_enabled AND embedding_model_id IS NOT NULL`.
+    pub semantic_enabled: bool,
     /// Reciprocal Rank Fusion constant for hybrid (vector ⊕ FTS) recall.
     /// Higher k = more egalitarian; lower = lopsided toward each arm's
     /// top-ranked. Default 60 matches the RRF paper.
@@ -218,6 +223,9 @@ pub struct UpdateMemoryAdminSettingsRequest {
     pub fts_rrf_k: Option<i32>,
     pub fts_candidate_multiplier: Option<i32>,
     pub fts_min_rank: Option<f32>,
+
+    // ─── Semantic (vector) arm kill switch (migration 90) ────────────
+    pub semantic_enabled: Option<bool>,
 }
 
 /// Request body for `POST /api/memory/admin/fts/rebuild`. Drops + re-creates
