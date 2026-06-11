@@ -77,6 +77,15 @@ const HIDDEN_ITEMS = new Set([
 // tests without depending on the page component.
 export { HIDDEN_ITEMS as DESKTOP_HIDDEN_SETTING_IDS }
 
+// Label remap applied to the desktop settings menu only. On desktop
+// the user MCP page is hidden, so the System MCP page is THE MCP
+// page — the "System" qualifier is redundant and confusing. Other
+// admin labels that imply a user/admin split can be remapped the
+// same way here in the future.
+const LABEL_OVERRIDES: Record<string, string> = {
+  'mcp-admin': 'MCP Servers',
+}
+
 export default function SettingsPage() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -108,12 +117,12 @@ export default function SettingsPage() {
     ...userSettingsItems.map(item => ({
       key: item.path,
       icon: item.icon,
-      label: item.label,
+      label: LABEL_OVERRIDES[item.id] ?? item.label,
     })),
     ...adminSettingsItems.map(item => ({
       key: item.path,
       icon: item.icon,
-      label: item.label,
+      label: LABEL_OVERRIDES[item.id] ?? item.label,
     })),
   ]
 

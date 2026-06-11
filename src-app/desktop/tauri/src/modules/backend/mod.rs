@@ -112,8 +112,34 @@ impl DesktopModule for BackendModule {
                 "Content-Type".to_string(),
                 "Accept".to_string(),
                 "Origin".to_string(),
+                // Self-echo suppression for realtime sync: every
+                // mutation from the SPA carries the SyncClient's
+                // connection id, which the server echoes back so the
+                // originating tab is skipped in fan-out. Without
+                // this entry the browser preflight rejects every
+                // mutating request as soon as the SyncClient is
+                // connected — every form Save / Delete / Toggle in
+                // the desktop UI fails with a CORS error before
+                // ever reaching the handler.
+                "X-Sync-Connection-Id".to_string(),
             ],
         });
+
+        // Desktop flips every opt-in feature ON by default. The
+        // single-admin device should NOT have to dig through admin
+        // settings to turn things on that have a clear "use me"
+        // value (Memory, Code Sandbox). On the server, these stay
+        // opt-in for the operator to weigh deployment trade-offs.
+        //
+        // Code Sandbox: force the config flag to `true`. The module
+        // boot probes host deps (bwrap on Linux, libkrun.dylib on
+        // macOS, WSL2 on Windows) and gracefully no-ops the runtime
+        // path on probe failure — so a Mac user without libkrun
+        // installed isn't broken; the sandbox just stays
+        // un-registered. Memory (DB-level) is flipped on inside
+        // the post-migration hook below.
+        let sandbox_cfg = config.code_sandbox.get_or_insert_with(Default::default);
+        sandbox_cfg.enabled = true;
 
         tracing::info!("Backend will use port {}", port);
 
@@ -287,6 +313,18 @@ pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHan
                     );
                 }
 
+                // Flip the singleton `memory_admin_settings.enabled`
+                // to TRUE on every boot. Defaults to FALSE in the
+                // migration (server's opt-in posture) — desktop
+                // single-admins shouldn't have to discover an admin
+                // toggle to start using Memory. Idempotent.
+                if let Err(e) = enable_memory_admin_default().await {
+                    tracing::error!(
+                        error = %e,
+                        "enable_memory_admin_default failed — Memory will appear disabled until the admin flips it"
+                    );
+                }
+
                 state.set_ready(true);
 
                 // Create window now that server is ready
@@ -297,6 +335,32 @@ pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHan
             }
         }
     });
+}
+
+/// Desktop's "single-admin device" posture: flip
+/// `memory_admin_settings.enabled` to TRUE on every boot.
+///
+/// The migration default is FALSE because the server treats every
+/// opt-in capability as a deployment decision the operator must
+/// make. On desktop there's only one operator (the auto-provisioned
+/// admin) and there's no good reason to make them discover an admin
+/// toggle before using Memory.
+///
+/// Idempotent — re-running flips an already-TRUE value to TRUE.
+/// If the row was already TRUE (operator already enabled it via
+/// the admin UI), this is a no-op. If they explicitly DISABLED it
+/// and then restarted the app, this WILL re-enable on the next boot
+/// — that's intentional for the default-on posture; if a user
+/// genuinely wants Memory off forever on their desktop, they can
+/// override via a config flag in the future.
+async fn enable_memory_admin_default() -> Result<()> {
+    let pool = ziee::Repos.pool();
+    sqlx::query("UPDATE memory_admin_settings SET enabled = TRUE WHERE id = 1")
+        .execute(pool)
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to enable memory: {}", e))?;
+    tracing::info!("Memory admin settings enabled (desktop default)");
+    Ok(())
 }
 
 /// Run desktop-specific database migrations

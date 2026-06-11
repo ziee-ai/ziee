@@ -54,8 +54,17 @@ export function SystemMcpServersPage() {
 
   return (
     <SettingsPageContainer
-      title="System MCP Servers"
-      subtitle="Manage Model Context Protocol servers across the system"
+      // On single-admin desktop (`!multiUserMode`) the user MCP page
+      // is hidden, so the qualifier "System" is redundant — this IS
+      // the MCP page. Drop the subtitle for the same reason: it
+      // mentions "across the system", which echoes the user/system
+      // split that doesn't exist there.
+      title={multiUserMode ? 'System MCP Servers' : 'MCP Servers'}
+      subtitle={
+        multiUserMode
+          ? 'Manage Model Context Protocol servers across the system'
+          : undefined
+      }
     >
       <div className="flex flex-col gap-3 h-full">
         {/* Admin-only user policy card. Hidden on single-admin desktop

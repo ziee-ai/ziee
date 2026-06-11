@@ -28,6 +28,12 @@ export const HeaderBarContainer = ({
       style={{
         paddingLeft: isSidebarCollapsed ? 48 : 12,
         paddingRight: 12,
+        // Lift above the page-content sibling so the gradient
+        // overlay (absolutely positioned at top: 100%, extending
+        // INTO the content area's space) actually paints over it.
+        // Without this z-index, the later-in-DOM content area
+        // takes precedence and the gradient disappears under it.
+        zIndex: 2,
         ...style,
       }}
     >

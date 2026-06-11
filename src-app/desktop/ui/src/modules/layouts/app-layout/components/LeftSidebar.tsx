@@ -29,21 +29,23 @@
 
 import { theme } from 'antd'
 import tinycolor from 'tinycolor2'
-import { useEffect } from 'react'
 import { LeftSidebar as CoreLeftSidebar } from '@ziee/ui-core/modules/layouts/app-layout/components/LeftSidebar'
 import { useWindowMinSize } from '@ziee/ui-core/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { Stores } from '@/core/stores'
 import { isMacOS, isTauriView } from '@ziee/desktop/core/platform'
 
 /**
+ * Module-load constant. The platform checks are static for the
+ * lifetime of the page, so we resolve glassActive ONCE here instead
+ * of inside the component — and key the side-effects below off it.
+ */
+const GLASS_ACTIVE = isTauriView && isMacOS
+
+/**
  * Inject a `<style>` element that strips core's own chrome from the
  * `#app-sidebar` wrapper and frosts the `[data-sidebar-mask]` overlay
  * — both via `!important` so they win against React's per-render
- * inline-style writes. (An earlier version mutated `element.style.*`
- * in `useEffect`, but core re-renders the wrapper on every viewport
- * change and re-asserts its inline `borderRight` / `borderRadius` /
- * `boxShadow`, undoing our writes — visible as the right border
- * reappearing after dragging the window across the xs threshold.)
+ * inline-style writes.
  *
  * Specifically:
  *   - Wrapper `overflow: visible` so the floating-box drop shadow
@@ -52,77 +54,57 @@ import { isMacOS, isTauriView } from '@ziee/desktop/core/platform'
  *     none of core's outer chrome stacks on top of the floating
  *     box's own chrome (would otherwise show a visible double
  *     border or double drop shadow on every viewport).
- *   - Mask `backdrop-filter: blur(30px) saturate(180%)` so the
- *     mobile-overlay dim reads as frosted glass instead of a flat
- *     semi-opaque scrim — matches the floating sidebar's own
- *     material. Gated on the `data-sidebar-mask-active` attribute
- *     (only present while the overlay is open) — without that
- *     gate, the mask's permanently-mounted DOM node would frost the
- *     entire screen at all times.
+ *   - Wrapper `backdrop-filter: none` — core sets `blur(8px)` on
+ *     `xs`; with our box owning a stronger blur, the intensity step
+ *     in the 8px gap reads as a halo at the box edge.
+ *   - AppLayout's resize handle: hidden via `pointer-events: none`
+ *     and `cursor: default` so the user doesn't see two col-resize
+ *     cursors (ours sits 8px to the left of it). Synthetic mousedown
+ *     forwarding from our handle still triggers React's listener
+ *     because `dispatchEvent` ignores `pointer-events`.
+ *   - Mask `backdrop-filter: blur(10px)` — gated on
+ *     `[data-sidebar-mask-active]` so the permanently-mounted mask
+ *     doesn't frost the whole screen when inactive.
  *
- * Gated on `enabled` so non-Mac / non-Tauri builds get nothing.
+ * Injected at module-load (NOT inside `useEffect`) so the rules are
+ * already in the stylesheet by the time React's first paint runs.
+ * An earlier `useEffect` version caused a visible flicker: first
+ * paint showed core's wrapper chrome (right border, drop shadow,
+ * blur), then the effect's appendChild stripped them on the next
+ * frame.
+ *
+ * Gated on `GLASS_ACTIVE`. On non-Mac / non-Tauri builds the
+ * import side-effect is a no-op append-and-immediately-discard.
  */
-function useGlassWrapperOverrides(enabled: boolean) {
-  useEffect(() => {
-    if (!enabled) return
-    const style = document.createElement('style')
-    style.setAttribute('data-source', 'desktop-mac-glass-sidebar')
-    style.textContent = `
+if (GLASS_ACTIVE && typeof document !== 'undefined') {
+  const style = document.createElement('style')
+  style.setAttribute('data-source', 'desktop-mac-glass-sidebar')
+  style.textContent = `
 #app-sidebar {
   overflow: visible !important;
   border-right: none !important;
   border-radius: 0 !important;
   box-shadow: none !important;
-  /* Core sets backdrop-filter: blur(8px) on the wrapper in xs mode.
-     The 8px gap between the viewport's left edge and our box's left
-     edge would then carry an 8px blur while the box itself carries
-     30px — the intensity step reads as a soft halo / shadow at the
-     box edge. Kill the wrapper's blur so the gap reveals the bare
-     content underneath; the box owns the only blur. */
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+}
+[data-sidebar-resize-handle] {
+  cursor: default !important;
+  pointer-events: none !important;
 }
 [data-sidebar-mask][data-sidebar-mask-active] {
   backdrop-filter: blur(10px) saturate(180%) !important;
   -webkit-backdrop-filter: blur(10px) saturate(180%) !important;
 }
 `
-    document.head.appendChild(style)
-    return () => {
-      style.remove()
-    }
-  }, [enabled])
+  document.head.appendChild(style)
 }
 
-/**
- * AppLayout always renders its own resize handle at the content
- * area's left edge (4px wide, `cursor: col-resize`). When the glass
- * sidebar's own resize handle sits 8px to the left of that, the user
- * sees TWO col-resize cursors in the right-of-sidebar zone.
- *
- * Suppress the AppLayout one visually + interactively (cursor +
- * pointer-events) when glass is active. The forwarding handle inside
- * the box dispatches a synthetic mousedown on it programmatically,
- * which still triggers React's listener regardless of
- * `pointer-events`.
- */
-function useHideAppLayoutResizeHandle(enabled: boolean) {
-  useEffect(() => {
-    if (!enabled) return
-    const handle = document.querySelector<HTMLElement>(
-      '[data-sidebar-resize-handle]',
-    )
-    if (!handle) return
-    const prevCursor = handle.style.cursor
-    const prevPointerEvents = handle.style.pointerEvents
-    handle.style.cursor = 'default'
-    handle.style.pointerEvents = 'none'
-    return () => {
-      handle.style.cursor = prevCursor
-      handle.style.pointerEvents = prevPointerEvents
-    }
-  }, [enabled])
-}
+// (Legacy `useGlassWrapperOverrides` + `useHideAppLayoutResizeHandle`
+// hooks were merged into the module-load `<style>` injection above.
+// Module-load is paint-before-first-frame; running this in
+// `useEffect` produced a visible flicker on boot — core's wrapper
+// chrome painted, then the effect's appendChild stripped it.)
 
 export function LeftSidebar() {
   const { token } = theme.useToken()
@@ -133,14 +115,13 @@ export function LeftSidebar() {
   // when the user resizes the window into the `xs` mobile-overlay
   // range. The floating-card look is the native macOS convention
   // regardless of window size; mobile-overlay was a web concern.
-  const glassActive = isTauriView && isMacOS
+  // Resolved at module-load via `GLASS_ACTIVE`.
+  const glassActive = GLASS_ACTIVE
   // On `xs`, the wrapper switches to mobile-overlay mode (position
   // fixed, slide in/out over content). Resize-by-drag is meaningless
   // in that mode — the wrapper width is locked at 250 by core — so
   // hide our forwarding handle there.
   const showResizeHandle = !windowMinSize.xs
-  useGlassWrapperOverrides(glassActive)
-  useHideAppLayoutResizeHandle(glassActive)
 
   // Glass treatment is gated on BOTH `isTauriView` and `isMacOS`:
   //   - `isTauriView` is required because the desktop UI is also
