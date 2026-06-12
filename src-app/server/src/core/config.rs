@@ -21,6 +21,32 @@ pub struct Config {
     /// `git_cache_dir` stays on the SSD).
     #[serde(default)]
     pub caches: CachesConfig,
+    /// Daily check against the GitHub Releases API for a newer `ziee`.
+    /// NOTIFICATION ONLY — never downloads or installs. Defaults to enabled;
+    /// air-gapped operators set `update_check: { enabled: false }` to suppress
+    /// all outbound calls + the admin update banner. Forced off in the embedded
+    /// desktop server (the desktop app has its own auto-updater).
+    #[serde(default)]
+    pub update_check: UpdateCheckConfig,
+}
+
+/// Server self-update notification config. See `Config::update_check`.
+#[derive(Debug, Deserialize, Clone)]
+pub struct UpdateCheckConfig {
+    #[serde(default = "default_update_check_enabled")]
+    pub enabled: bool,
+}
+
+impl Default for UpdateCheckConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_update_check_enabled(),
+        }
+    }
+}
+
+fn default_update_check_enabled() -> bool {
+    true
 }
 
 /// Overridable paths for runtime caches. Every field defaults to a
@@ -649,5 +675,30 @@ mod public_file_origin_tests {
         let origin = c.public_file_origin("http://127.0.0.1:9000");
         assert!(origin.starts_with("http://127.0.0.1"), "origin: {origin}");
         assert!(!origin.contains("0.0.0.0"), "origin: {origin}");
+    }
+}
+
+#[cfg(test)]
+mod packaging_config_tests {
+    use super::Config;
+
+    /// The default config shipped in the .deb/.rpm/.apk packages
+    /// (`packaging/config.default.yaml`) is what systemd boots from on a clean
+    /// install — it MUST parse as a full `Config` (e.g. embedded Postgres needs
+    /// its non-optional `logging` sub-block, or the service crash-loops).
+    #[test]
+    fn packaged_default_config_parses() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../packaging/config.default.yaml"
+        );
+        let content = std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("read {path}: {e}"));
+        serde_yaml::from_str::<Config>(&content).unwrap_or_else(|e| {
+            panic!(
+                "packaging/config.default.yaml must parse as Config (a clean \
+                 package install boots from it): {e}"
+            )
+        });
     }
 }

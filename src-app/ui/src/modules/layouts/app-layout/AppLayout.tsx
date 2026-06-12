@@ -6,6 +6,7 @@ import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMi
 import tinycolor from 'tinycolor2'
 import 'overlayscrollbars/overlayscrollbars.css'
 import { Stores } from '@/core/stores'
+import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 
 /**
  * AppLayout - Main application layout with sidebar
@@ -20,6 +21,10 @@ import { Stores } from '@/core/stores'
  */
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { isSidebarCollapsed } = Stores.AppLayout
+  const { slots } = Stores.ModuleSystem
+  const appBanners = [...(slots.get('appBanners') || [])].sort(
+    (a, b) => (a.order ?? 0) - (b.order ?? 0),
+  )
   const { token } = theme.useToken()
   const windowMinSize = useWindowMinSize()
 
@@ -430,6 +435,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           backgroundColor: token.colorBgContainer,
         }}
       >
+        {/* App-wide banners (e.g. the admin "update available" notice).
+            Contributed via the `appBanners` slot, so bundles that don't load a
+            contributor (e.g. desktop drops server-update) render nothing. */}
+        {appBanners.map((b) => (
+          <LazyComponentRenderer key={b.id} component={b.component} />
+        ))}
         {/* Content */}
         <div className="flex-1 overflow-hidden relative">
           <div

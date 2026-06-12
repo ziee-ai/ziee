@@ -30,13 +30,31 @@ import { useModuleSystemStore } from '@/core'
  * `module.metadata.name` (not by path) so it survives directory
  * renames. Each entry needs a short reason.
  */
-const CORE_MODULE_BLOCKLIST = new Set<string>([
+export const CORE_MODULE_BLOCKLIST = new Set<string>([
   // No multi-user concept on desktop — auto_login + single admin.
   // Showing a profile chip in the sidebar implies account-switching
   // that doesn't exist. Dropping the module also drops its
   // sidebarFooter slot entry, so the footer divider stays invisible.
   'user-profile',
+  // The desktop has its own auto-updater (tauri-plugin-updater) + its own
+  // /settings/about page. The web server-update module (banner + admin
+  // /settings/about) would collide with that and surface a second update
+  // notice for the embedded server, whose update_check is forced off anyway.
+  'server-update',
 ])
+
+/** True when a core module is blocked from the desktop bundle (by name). */
+export function isBlocklisted(name: string): boolean {
+  return CORE_MODULE_BLOCKLIST.has(name)
+}
+
+/** Drop blocklisted core modules from a list (the loader applies this same
+ *  predicate to the glob-discovered core modules). Pure → unit-testable. */
+export function applyBlocklist<T extends { metadata: { name: string } }>(
+  modules: T[],
+): T[] {
+  return modules.filter((m) => !isBlocklisted(m.metadata.name))
+}
 
 function resolveDependencies(modules: AppModule[]): AppModule[] {
   const graph = new Map<string, string[]>()
@@ -103,7 +121,7 @@ export function loadModules(): void {
 
   for (const [path, moduleExports] of Object.entries(moduleFiles)) {
     const module = moduleExports.default
-    if (module && !CORE_MODULE_BLOCKLIST.has(module.metadata.name)) {
+    if (module && !isBlocklisted(module.metadata.name)) {
       allModules.push(module)
     } else if (module) {
       console.log(`📦 Desktop: skipping blocklisted core module "${module.metadata.name}" (${path})`)
@@ -112,7 +130,7 @@ export function loadModules(): void {
 
   for (const [path, moduleExports] of Object.entries(coreModuleFiles)) {
     const module = moduleExports.default
-    if (module && !CORE_MODULE_BLOCKLIST.has(module.metadata.name)) {
+    if (module && !isBlocklisted(module.metadata.name)) {
       allModules.push(module)
     } else if (module) {
       console.log(`📦 Desktop: skipping blocklisted core module "${module.metadata.name}" (${path})`)

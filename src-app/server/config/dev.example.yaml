@@ -140,3 +140,9 @@ code_sandbox:
 #   llm_engines_dir: "<app.data_dir>/llm-engines"  # llama.cpp / mistralrs binaries
 #   git_cache_dir: "<app.data_dir>/cache/git"      # Hub repository clones
 #   lfs_cache_dir: "<app.data_dir>/cache/lfs"      # Git LFS objects
+
+# Daily check against the GitHub Releases API for a newer ziee.
+# NOTIFICATION ONLY — never downloads or installs. Set enabled: false for
+# air-gapped deployments (no outbound calls, no admin banner).
+update_check:
+  enabled: true

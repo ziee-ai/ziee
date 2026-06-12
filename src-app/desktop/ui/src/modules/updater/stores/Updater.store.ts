@@ -51,8 +51,11 @@ interface UpdaterState {
   /** Daily background re-check timer (active while the app is open). */
   dailyTimer: ReturnType<typeof setInterval> | null
 
+  // Key MUST be a state property the surfaces read — the store proxy only fires
+  // `__init__[prop]` on first access of `prop`. The About page and the sidebar
+  // card both read `available`, so it hydrates for either.
   __init__: {
-    status: () => Promise<void>
+    available: () => Promise<void>
   }
   __destroy__: () => void
 
@@ -102,7 +105,7 @@ export const useUpdaterStore = create<UpdaterState>()(
       dailyTimer: null,
 
       __init__: {
-        status: async () => {
+        available: async () => {
           // Record the running version, then silently check for an update so
           // the sidebar card can surface one without any OS notification.
           try {

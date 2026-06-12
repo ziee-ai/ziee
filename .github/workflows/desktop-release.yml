@@ -125,7 +125,11 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'Ziee ${{ github.ref_name }}'
           releaseDraft: false
-          prerelease: false
+          # Mark RC tags (v*-rc.*) as prerelease so GitHub's `releases/latest`
+          # (used by the server install.sh + the update checker) never resolves
+          # to an RC. Must match server-release.yml's prerelease logic since
+          # both workflows race to create the same release.
+          prerelease: ${{ contains(github.ref_name, '-') }}
           includeUpdaterJson: true
 
   publish-manifest:

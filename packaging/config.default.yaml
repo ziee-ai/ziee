@@ -1,0 +1,51 @@
+# Default Ziee server config installed by the .deb/.rpm/.apk package.
+# REVIEW before exposing publicly. The package's postinstall script replaces
+# `jwt.secret` with a random value on first install. Embedded PostgreSQL is the
+# default (single-host friendly); switch to an external DB for multi-host.
+
+app:
+  data_dir: /var/lib/ziee/data
+
+postgresql:
+  use_embedded: true
+  embedded:
+    version: "18.3.0"
+    port: 0            # 0 = auto-select a free local port
+    bind_address: "127.0.0.1"
+    username: "postgres"
+    password: "REPLACE_ME_PG_PASSWORD_AT_INSTALL"
+    database: "postgres"
+    installation_dir: /var/lib/ziee/data/postgres
+    data_dir: /var/lib/ziee/data/postgres-data
+    timezone: UTC
+    log_timezone: UTC
+    logging:
+      collector: true
+      directory: "log"
+      filename: "postgresql-%Y-%m-%d_%H%M%S.log"
+      statement: "ddl"
+
+server:
+  # Localhost-only by default — a freshly auto-installed server should NOT be
+  # exposed on all interfaces before you've set up TLS / a reverse proxy.
+  # Change to "0.0.0.0" (behind a proxy) to serve externally. See the runbook.
+  host: "127.0.0.1"
+  port: 9000
+  api_prefix: /api
+  rate_limit:
+    enabled: true
+
+logging:
+  level: info
+  format: json
+
+jwt:
+  secret: "REPLACE_ME_GENERATED_AT_INSTALL"
+  issuer: ziee
+  audience: ziee-api
+  access_token_expiry_hours: 24
+  refresh_token_expiry_days: 30
+
+# Daily GitHub version check (notification only). Set false for air-gapped.
+update_check:
+  enabled: true

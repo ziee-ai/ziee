@@ -1,0 +1,50 @@
+# nfpm config for building ziee .deb / .rpm / .apk.
+# nfpm env-expands scalar fields (arch/version) but NOT contents.src globs, so
+# the binary is staged at a fixed path (dist/ziee) per arch before each run:
+#   cp dist/ziee-amd64 dist/ziee
+#   PKG_ARCH=amd64 PKG_VERSION=0.2.0 \
+#     nfpm pkg --config packaging/nfpm.yaml --packager deb --target dist/
+# (also --packager rpm / apk). See https://nfpm.goreleaser.com
+name: "ziee"
+arch: "${PKG_ARCH}"
+platform: "linux"
+version: "${PKG_VERSION}"
+section: "default"
+priority: "optional"
+maintainer: "Ziee <noreply@ziee.local>"
+description: |
+  Ziee server — self-hosted AI chat backend.
+vendor: "Ziee"
+homepage: "https://github.com/phibya/ziee-chat-new"
+license: "Apache-2.0"
+
+# Sandbox host deps are soft (the sandbox is opt-in / disabled by default), so
+# the server installs fine without them — recommend, don't require.
+recommends:
+  - bubblewrap
+  - squashfuse
+  - fuse3
+
+contents:
+  # Packages install to /usr/bin (distro policy); the standalone install.sh
+  # path uses /usr/local/bin (local-admin owned).
+  - src: ./dist/ziee
+    dst: /usr/bin/ziee
+    file_info:
+      mode: 0755
+  - src: ./packaging/ziee.service
+    dst: /lib/systemd/system/ziee.service
+  - src: ./packaging/config.default.yaml
+    dst: /etc/ziee/config.yaml
+    type: config|noreplace
+    file_info:
+      # Holds the generated jwt.secret — not world-readable. Owned root, the
+      # service's `ziee` group reads it (postinstall sets group + dir perms).
+      mode: 0640
+      owner: root
+      group: ziee
+
+scripts:
+  preinstall: ./packaging/preinstall.sh
+  postinstall: ./packaging/postinstall.sh
+  preremove: ./packaging/preremove.sh

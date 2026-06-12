@@ -50,3 +50,6 @@ src-app/server/vendor/pgvector/pg_config_wrapper/
 # Per-session Claude Code state (lock file used by the scheduled-task
 # bookkeeping). Never committed.
 .claude/scheduled_tasks.lock
+
+# Transient server build/packaging staging (server-release.yml + nfpm smoke).
+/dist/

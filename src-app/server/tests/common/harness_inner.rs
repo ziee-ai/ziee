@@ -179,6 +179,10 @@ pub struct TestServerOptions {
     /// `code_sandbox:` section). Lets a test assert that file/resource links
     /// are rooted at a reachable public origin instead of the loopback.
     pub sandbox_public_base_url: Option<String>,
+    /// Server self-update check. Defaults to OFF (`None` → `enabled: false`) so
+    /// no test-server boot makes a live api.github.com call. The mock-GitHub
+    /// test sets `Some(true)` + a `SERVER_UPDATE_API_MIRROR` in `extra_env`.
+    pub update_check_enabled: Option<bool>,
 }
 
 impl TestServer {
@@ -401,6 +405,13 @@ secrets:
         // exist on Windows, so use `std::env::temp_dir()` which resolves
         // to `%TEMP%` on Windows and `/tmp` on Unix).
         let temp_config_path = std::env::temp_dir().join(format!("ziee-test-{test_id}.yaml"));
+        // Server self-update check — OFF by default so no test boot calls
+        // api.github.com (the mock test opts in via update_check_enabled).
+        let update_check_enabled = opts.update_check_enabled.unwrap_or(false);
+        config.push_str(&format!(
+            "\nupdate_check:\n  enabled: {update_check_enabled}\n"
+        ));
+
         fs::write(&temp_config_path, config).expect("Failed to write temporary config");
 
         // Create the test database

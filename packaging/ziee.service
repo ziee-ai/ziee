@@ -1,0 +1,24 @@
+[Unit]
+Description=Ziee server
+Documentation=https://github.com/phibya/ziee-chat-new
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ziee
+Group=ziee
+ExecStart=/usr/bin/ziee --config-file /etc/ziee/config.yaml
+Restart=on-failure
+RestartSec=5
+# systemd creates/owns /var/lib/ziee (the default data_dir).
+StateDirectory=ziee
+WorkingDirectory=/var/lib/ziee
+# Basic hardening (loosen if the code sandbox needs more — bwrap needs
+# user namespaces, which NoNewPrivileges + a restrictive profile can block).
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
