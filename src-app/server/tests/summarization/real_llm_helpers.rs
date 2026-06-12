@@ -101,8 +101,11 @@ pub async fn configure_builtin_provider(
     key_var: &str,
 ) -> Value {
     let key = std::env::var(key_var).expect("API key env present");
-    let list: Value = reqwest::Client::new()
-        .get(server.api_url("/llm-providers"))
+    // `/llm-providers` is paginated — the response is a wrapper
+    // (`{providers: [...], total, page, perPage}`) and you have to
+    // bump `per_page` to find the built-in Groq row reliably.
+    let body: Value = reqwest::Client::new()
+        .get(server.api_url("/llm-providers?per_page=100"))
         .header("Authorization", format!("Bearer {token}"))
         .send()
         .await
@@ -110,22 +113,29 @@ pub async fn configure_builtin_provider(
         .json()
         .await
         .unwrap();
-    let provider = list
+    let providers = body["providers"]
         .as_array()
-        .unwrap()
+        .expect("providers array in paginated response");
+    let provider = providers
         .iter()
-        .find(|p| p["name"] == name)
+        .find(|p| p["name"].as_str() == Some(name))
         .unwrap_or_else(|| panic!("provider {name} not preinstalled"))
         .clone();
     let provider_id = provider["id"].as_str().unwrap();
+    // Provider-update is POST (see `llm_provider/routes.rs`), not PUT.
     let res = reqwest::Client::new()
-        .put(server.api_url(&format!("/llm-providers/{provider_id}")))
+        .post(server.api_url(&format!("/llm-providers/{provider_id}")))
         .header("Authorization", format!("Bearer {token}"))
         .json(&json!({ "api_key": key, "enabled": true }))
         .send()
         .await
         .unwrap();
-    assert!(res.status().is_success(), "enable {name} provider");
+    let status = res.status();
+    let body_text = res.text().await.unwrap_or_default();
+    assert!(
+        status.is_success(),
+        "enable {name} provider failed: {status}: {body_text}"
+    );
     provider
 }
 
@@ -137,23 +147,34 @@ pub async fn create_model(
     display_name: &str,
     capabilities: Value,
 ) -> Value {
+    // The model-create handler requires `engine_type` + `file_format`
+    // (it 422s without them). `none`/`gguf` are the inert pair for
+    // remote-provider models — see memory's `real_llm_helpers`.
+    let payload = json!({
+        "provider_id": provider_id,
+        "name": name,
+        "display_name": display_name,
+        "description": format!("Summarization Tier-5 test model: {name}"),
+        "capabilities": capabilities,
+        "enabled": true,
+        "engine_type": "none",
+        "file_format": "gguf",
+    });
     let res = reqwest::Client::new()
         .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {token}"))
-        .json(&json!({
-            "provider_id": provider_id,
-            "name": name,
-            "display_name": display_name,
-            "capabilities": capabilities,
-            "enabled": true,
-        }))
+        .json(&payload)
         .send()
         .await
         .unwrap();
     let status = res.status();
-    let body: Value = res.json().await.unwrap_or_else(|_| json!({}));
-    assert!(status.is_success(), "create_model({name}) → {status}: {body}");
-    body
+    let body_text = res.text().await.unwrap_or_default();
+    assert!(
+        status.is_success(),
+        "create_model({name}) → {status}: {body_text}"
+    );
+    serde_json::from_str(&body_text)
+        .unwrap_or_else(|_| panic!("create_model({name}) returned non-JSON body: {body_text}"))
 }
 
 /// Create a baseline user with `conversations::*` + the debug
