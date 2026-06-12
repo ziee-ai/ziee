@@ -1,9 +1,9 @@
 //! Conversation summarizer — when a branch exceeds N messages the
 //! summarizer condenses the oldest messages into a single text block
 //! stored in `conversation_summaries`. `apply_summary_to_history`
-//! (called from `MemoryExtension::before_llm_call`) replaces those
-//! summarized messages in the LLM request with the summary block,
-//! freeing real prompt-side budget.
+//! (called from `SummarizationExtension::before_llm_call`) replaces
+//! those summarized messages in the LLM request with the summary
+//! block, freeing real prompt-side budget.
 //!
 //! Refresh strategy:
 //!   - First call for a branch: FULL re-summarize of all messages
@@ -20,9 +20,20 @@
 //!     • `keep_recent` was raised between refreshes so the prior
 //!       summary covers messages we now want to keep verbatim.
 //!
-//! Trigger lives in `MemoryExtension::after_llm_call` (fire-and-forget
-//! spawn). Threshold + keep-recent come from `memory_admin_settings`
-//! (admin-tunable, no restart needed).
+//! Trigger lives in `SummarizationExtension::after_llm_call`
+//! (fire-and-forget spawn). Threshold + keep-recent come from
+//! `summarization_admin_settings` (admin-tunable, no restart needed).
+//!
+//! Concurrent-refresh race: two simultaneous turns on the same branch
+//! could each spawn their own `refresh_summary`. Last-write-wins is
+//! INTENTIONAL — this is an approximate rolling summary; the
+//! authoritative content is always the message history itself.
+//! A `>=message_count` UPSERT guard would block a legitimate
+//! `keep_recent`-raise shrink, so we accept the cosmetic race.
+//!
+//! Unit tests (`#[cfg(test)] mod tests` at the bottom) cover the
+//! pure decision logic + transcript assembly + summary-block apply.
+//! Count: 19 tests (decide × 13, build/apply × 6).
 
 use ai_providers::{ChatMessage, ChatRequest, ContentBlock, Provider, Role};
 use chrono::{DateTime, Utc};
@@ -36,15 +47,15 @@ use crate::core::Repos;
 
 /// Fallback summarizer thresholds — used only if the admin settings
 /// row can't be read on a given call (transient DB blip). Match the
-/// column DEFAULTs in migration 52. The runtime values come from
-/// `memory_admin_settings.summarize_after_tokens` /
+/// column DEFAULTs in migration 91. The runtime values come from
+/// `summarization_admin_settings.summarize_after_tokens` /
 /// `.summarizer_keep_recent_tokens` and can be tuned per-deployment from the
 /// admin UI without a redeploy.
 const FALLBACK_SUMMARIZE_AFTER_TOKENS: usize = 12000;
 const FALLBACK_KEEP_RECENT_TOKENS: usize = 3000;
 
 /// Default prompt for the FULL-summarize path. Used when
-/// `memory_admin_settings.full_summary_prompt` is NULL. Exposed as
+/// `summarization_admin_settings.full_summary_prompt` is NULL. Exposed as
 /// `pub` so the admin UI can render it as the placeholder.
 pub const DEFAULT_FULL_SUMMARY_PROMPT: &str = r#"Summarize the following conversation into a concise narrative (3-6 sentences) capturing the essential context: who the user is, what they're trying to accomplish, key facts established, and any unresolved threads. Output only the summary text; no preamble.
 
@@ -52,7 +63,7 @@ Conversation:
 {transcript}"#;
 
 /// Default prompt for the INCREMENTAL-refresh path. Used when
-/// `memory_admin_settings.incremental_summary_prompt` is NULL.
+/// `summarization_admin_settings.incremental_summary_prompt` is NULL.
 pub const DEFAULT_INCREMENTAL_SUMMARY_PROMPT: &str = r#"You are maintaining a running summary of an ongoing conversation between a user and an assistant.
 
 An EXISTING summary is below. Additional conversation turns have happened since. Produce an UPDATED summary (3-6 sentences) that:
@@ -69,7 +80,7 @@ Existing summary:
 New conversation turns since the existing summary:
 {new_transcript}"#;
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, schemars::JsonSchema)]
 pub struct ConversationSummary {
     pub branch_id: Uuid,
     pub summary_text: String,
@@ -198,7 +209,7 @@ pub fn decide_summarize_action(
                 // or a `summarized_up_to_id` from a different branch.
                 // Fall through to Full path.
                 tracing::info!(
-                    "memory.summarizer: previous anchor {prev_anchor_id} not in branch history; falling back to full re-summarize"
+                    "summarization: previous anchor {prev_anchor_id} not in branch history; falling back to full re-summarize"
                 );
             } else {
                 // Previous summary covered MORE messages than we now
@@ -206,7 +217,7 @@ pub fn decide_summarize_action(
                 // summary's content is "ahead" of the new cutoff —
                 // safest path is a full re-summarize from scratch.
                 tracing::info!(
-                    "memory.summarizer: prev.message_count={prev_count} > current to_summarize.len()={}; falling back to full re-summarize",
+                    "summarization: prev.message_count={prev_count} > current to_summarize.len()={}; falling back to full re-summarize",
                     to_summarize.len()
                 );
             }
@@ -240,6 +251,45 @@ pub fn build_transcript(msgs: &[SummarizableMessage]) -> String {
         }
     }
     s
+}
+
+/// Single-pass substitution of the incremental-summary prompt's two
+/// placeholders. Sequential `String::replace` calls are unsafe here:
+/// if a previously-LLM-generated `previous_summary` ever contained the
+/// literal text `{new_transcript}` (an admin's persona prompt could
+/// coax this out of a malicious user's branch), the second call would
+/// re-substitute and leak transcript content into the "earlier context"
+/// slot. Single-pass scanning never revisits substituted text, so
+/// neither placeholder can match content the other inserted.
+fn render_incremental_prompt(
+    template: &str,
+    previous_summary: &str,
+    new_transcript: &str,
+) -> String {
+    const PREV: &str = "{previous_summary}";
+    const NEW: &str = "{new_transcript}";
+    let mut out = String::with_capacity(
+        template.len() + previous_summary.len() + new_transcript.len(),
+    );
+    let mut rest = template;
+    while !rest.is_empty() {
+        let next_prev = rest.find(PREV);
+        let next_new = rest.find(NEW);
+        let (cut, replacement, placeholder_len) = match (next_prev, next_new) {
+            (None, None) => {
+                out.push_str(rest);
+                break;
+            }
+            (Some(p), None) => (p, previous_summary, PREV.len()),
+            (None, Some(n)) => (n, new_transcript, NEW.len()),
+            (Some(p), Some(n)) if p <= n => (p, previous_summary, PREV.len()),
+            (Some(_), Some(n)) => (n, new_transcript, NEW.len()),
+        };
+        out.push_str(&rest[..cut]);
+        out.push_str(replacement);
+        rest = &rest[cut + placeholder_len..];
+    }
+    out
 }
 
 /// Fetch the persisted summary (if any) for this branch.
@@ -276,7 +326,7 @@ pub async fn apply_summary_to_history(
     branch_id: Uuid,
     chat_request: &mut ChatRequest,
 ) -> Result<(), AppError> {
-    let pool = Repos.memory.pool_clone();
+    let pool = Repos.summarization.pool_clone();
     let summary = match fetch_summary(&pool, branch_id).await? {
         Some(s) => s,
         None => return Ok(()),
@@ -293,8 +343,10 @@ pub async fn apply_summary_to_history(
 ///   `[System*, User|Assistant*]`
 /// where the leading System block is the assistant's instructions
 /// (and any other extension-injected system context that has ALREADY
-/// run before us — the retriever's memory-block comes AFTER summary
-/// per the call order in `MemoryExtension::before_llm_call`).
+/// run before us). Extensions execute in ascending-order order, so
+/// summarization (order 24) runs before memory (order 25); memory's
+/// later prepend therefore lands ABOVE summarization's block in the
+/// final array.
 ///
 /// We:
 ///   1. Count the leading System prefix length → `system_prefix_len`.
@@ -358,7 +410,7 @@ pub async fn refresh_summary(
     // back to the compiled-in constants when the row is NULL or read
     // fails.
     let (trigger, keep_recent, full_prompt, incremental_prompt) =
-        match Repos.memory.get_admin_settings().await {
+        match Repos.summarization.get_admin_settings().await {
             Ok(s) => (
                 s.summarize_after_tokens as usize,
                 s.summarizer_keep_recent_tokens as usize,
@@ -369,7 +421,7 @@ pub async fn refresh_summary(
             ),
             Err(e) => {
                 tracing::warn!(
-                    "memory.summarizer: get_admin_settings failed ({e}); using compiled-in defaults"
+                    "summarization: get_admin_settings failed ({e}); using compiled-in defaults"
                 );
                 (
                     FALLBACK_SUMMARIZE_AFTER_TOKENS,
@@ -393,7 +445,7 @@ pub async fn refresh_summary(
     // cutoff walks to 0 → Noop). Re-clamp so summarization still fires.
     let keep_recent = keep_recent.min(trigger.saturating_sub(1));
 
-    let pool = Repos.memory.pool_clone();
+    let pool = Repos.summarization.pool_clone();
     let existing = fetch_summary(&pool, branch_id).await?;
 
     let action = decide_summarize_action(&msgs, trigger, keep_recent, existing.as_ref());
@@ -416,9 +468,11 @@ pub async fn refresh_summary(
             summarized_up_to_id,
             message_count,
         } => (
-            incremental_prompt
-                .replace("{previous_summary}", &previous_summary)
-                .replace("{new_transcript}", &new_transcript),
+            render_incremental_prompt(
+                &incremental_prompt,
+                &previous_summary,
+                &new_transcript,
+            ),
             summarized_up_to_id,
             message_count,
             "incremental",
@@ -434,7 +488,7 @@ pub async fn refresh_summary(
     let summary_text = call_summarization_llm(&model, prompt).await?;
     if summary_text.is_empty() {
         tracing::warn!(
-            "memory.summarizer: empty {mode} summary returned for branch {branch_id} — skipping write"
+            "summarization: empty {mode} summary returned for branch {branch_id} — skipping write"
         );
         return Ok(());
     }
@@ -450,7 +504,7 @@ pub async fn refresh_summary(
     .await?;
 
     tracing::info!(
-        "memory.summarizer: {mode} refresh for branch {branch_id} ({message_count} total summarized, model={})",
+        "summarization: {mode} refresh for branch {branch_id} ({message_count} total summarized, model={})",
         model.name
     );
     Ok(())
@@ -476,6 +530,21 @@ fn message_to_summarizable(
     }
 }
 
+/// Call the configured LLM to generate a summary.
+///
+/// **Known limitation — system-key only.** This path reads
+/// `provider.api_key` directly and does NOT route through
+/// `chat::core::ai_provider::resolve_api_key_for_user`. Chat-time
+/// requests honour a user's personal `user_llm_provider_api_keys`
+/// override; summarization does not. On a deployment where the
+/// `default_summarization_model_id` lives on a provider whose system
+/// `api_key` is NULL (per-user-keys-only deployments), summarization
+/// will silently 401 against the provider and the user will see no
+/// summary marker ever appear. The fail-soft `tracing::warn` in
+/// `after_llm_call` is the only signal. Plumbing `user_id` into
+/// `refresh_summary` so it can call `resolve_api_key_for_user` is the
+/// follow-up; tracked alongside memory's `embedding_worker` which has
+/// the same constraint.
 async fn call_summarization_llm(
     model: &crate::modules::llm_model::models::LlmModel,
     prompt: String,
@@ -965,6 +1034,58 @@ mod tests {
         assert_eq!(req.messages.len(), 1);
         assert!(matches!(req.messages[0].role, Role::System));
         assert!(request_text(&req, 0).contains("condensed"));
+    }
+
+    #[test]
+    fn render_incremental_prompt_substitutes_once() {
+        // Sanity: both placeholders interpolate exactly once each.
+        let out = render_incremental_prompt(
+            "PREV={previous_summary} NEW={new_transcript} END",
+            "S1",
+            "T1",
+        );
+        assert_eq!(out, "PREV=S1 NEW=T1 END");
+    }
+
+    #[test]
+    fn render_incremental_prompt_does_not_re_substitute_inserted_content() {
+        // The prompt-injection guard: a previous_summary that contains
+        // the literal {new_transcript} placeholder must NOT cause the
+        // new transcript to leak into the previous slot. Sequential
+        // .replace() would fail this; the single-pass implementation
+        // passes.
+        let prev = "summary ends with {new_transcript} literal";
+        let new_tx = "SECRET-NEW-TURNS";
+        let out = render_incremental_prompt(
+            "P={previous_summary}|N={new_transcript}",
+            prev,
+            new_tx,
+        );
+        // previous_summary slot keeps the literal `{new_transcript}`
+        // text verbatim; only the explicit `{new_transcript}` outside
+        // the previous slot gets substituted.
+        assert_eq!(
+            out,
+            "P=summary ends with {new_transcript} literal|N=SECRET-NEW-TURNS"
+        );
+        // Belt-and-suspenders: the new transcript appears exactly once
+        // in the rendered prompt.
+        assert_eq!(out.matches(new_tx).count(), 1);
+    }
+
+    #[test]
+    fn render_incremental_prompt_handles_no_placeholders() {
+        // Template with neither placeholder is returned unchanged.
+        let out = render_incremental_prompt("nothing to substitute", "S", "T");
+        assert_eq!(out, "nothing to substitute");
+    }
+
+    #[test]
+    fn render_incremental_prompt_handles_only_one_placeholder() {
+        let out = render_incremental_prompt("only {previous_summary}", "S", "T");
+        assert_eq!(out, "only S");
+        let out = render_incremental_prompt("only {new_transcript}", "S", "T");
+        assert_eq!(out, "only T");
     }
 
     #[test]

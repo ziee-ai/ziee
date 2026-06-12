@@ -404,11 +404,11 @@
             }
           },
           "201": {
-            "description": "Admin-view summary of an auth provider. The `config` JSONB is\n returned with `client_secret` and any sensitive key contents\n MASKED — see handlers.rs::mask_provider_config.",
+            "description": "Response body for `POST /admin/auth-providers`. Wraps the persisted\n row in an envelope so we can attach a `connection_warning` when a\n create-time probe failed and the row was auto-downgraded to\n `enabled=false`. Mirrors `llm_repository`'s create-response shape.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AuthProviderResponse"
+                  "$ref": "#/components/schemas/CreateAuthProviderResponse"
                 }
               }
             }
@@ -7592,6 +7592,241 @@
         ]
       }
     },
+    "/api/conversations/{id}/summarization-mode": {
+      "get": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Get the per-conversation summarization mode",
+        "description": "Returns the conversation's `summarization_mode` override (`inherit` / `on` / `off`). Defaults to `inherit` when the conversation has no explicit override. Returns 404 if the conversation doesn't exist or the caller doesn't own it.",
+        "operationId": "Conversation.getSummarizationMode",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View chat conversations",
+                        "name": "ConversationsRead",
+                        "value": "conversations::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response for `GET /api/conversations/{id}/summarization-mode`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationSummarizationModeResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Conversation not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Set the per-conversation summarization mode",
+        "description": "Updates the conversation's `summarization_mode` override (`inherit` / `on` / `off`). Setting `inherit` removes any stored override. Returns 400 on invalid value, 404 if the conversation doesn't exist or the caller doesn't own it.",
+        "operationId": "Conversation.setSummarizationMode",
+        "requestBody": {
+          "description": "Request body for `PUT /api/conversations/{id}/summarization-mode`.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateConversationSummarizationModeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit conversation titles and metadata",
+                        "name": "ConversationsEdit",
+                        "value": "conversations::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response for `GET /api/conversations/{id}/summarization-mode`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationSummarizationModeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid summarization_mode"
+          },
+          "404": {
+            "description": "Conversation not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations/{id}/memory-mode": {
+      "get": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Get the per-conversation memory mode",
+        "description": "Returns the conversation's `memory_mode` override (`inherit` / `on` / `off`). Defaults to `inherit` when the conversation has no explicit override. Returns 404 if the conversation doesn't exist or the caller doesn't own it.",
+        "operationId": "Conversation.getMemoryMode",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View chat conversations",
+                        "name": "ConversationsRead",
+                        "value": "conversations::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationMemoryModeResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Conversation not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Set the per-conversation memory mode",
+        "description": "Updates the conversation's `memory_mode` override (`inherit` / `on` / `off`). Setting `inherit` removes any stored override. Returns 400 on invalid value, 404 if the conversation doesn't exist or the caller doesn't own it.",
+        "operationId": "Conversation.setMemoryMode",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateConversationMemoryModeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit conversation titles and metadata",
+                        "name": "ConversationsEdit",
+                        "value": "conversations::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationMemoryModeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid memory_mode"
+          },
+          "404": {
+            "description": "Conversation not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/conversations/{id}/mcp-settings": {
       "get": {
         "tags": [
@@ -7919,123 +8154,6 @@
           },
           "404": {
             "description": "Message not found"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/conversations/{id}/memory-mode": {
-      "get": {
-        "tags": [
-          "Memory"
-        ],
-        "summary": "Get the per-conversation memory mode",
-        "description": "Returns the conversation's `memory_mode` override (`inherit` / `on` / `off`). Defaults to `inherit` when the conversation has no explicit override. Returns 404 if the conversation doesn't exist or the caller doesn't own it.",
-        "operationId": "Conversation.getMemoryMode",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "View chat conversations",
-                        "name": "ConversationsRead",
-                        "value": "conversations::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: conversations::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConversationMemoryModeResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Conversation not found"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "Memory"
-        ],
-        "summary": "Set the per-conversation memory mode",
-        "description": "Updates the conversation's `memory_mode` override (`inherit` / `on` / `off`). Setting `inherit` removes any stored override. Returns 400 on invalid value, 404 if the conversation doesn't exist or the caller doesn't own it.",
-        "operationId": "Conversation.setMemoryMode",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateConversationMemoryModeRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Edit conversation titles and metadata",
-                        "name": "ConversationsEdit",
-                        "value": "conversations::edit"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: conversations::edit",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConversationMemoryModeResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid memory_mode"
-          },
-          "404": {
-            "description": "Conversation not found"
           }
         },
         "security": [
@@ -12893,6 +13011,233 @@
         }
       }
     },
+    "/api/summarization/settings": {
+      "get": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Read deployment-wide summarization settings",
+        "description": "\n\n**Required Permission:** `summarization::settings::read`\n\nRead deployment-wide summarization settings (model + thresholds + prompt overrides).",
+        "operationId": "SummarizationAdmin.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read deployment-wide summarization settings (model + thresholds + prompt overrides).",
+                        "name": "SummarizationSettingsRead",
+                        "value": "summarization::settings::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummarizationAdminSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Update deployment-wide summarization settings",
+        "description": "Tri-state partial update — every field is optional. Missing field = no change; explicit JSON null = clear back to compiled default. Returns 400 on range / placeholder / keep<trigger / unknown-llm-model violations before any DB write.",
+        "operationId": "SummarizationAdmin.update",
+        "requestBody": {
+          "description": "Partial-update request for the singleton admin settings row.\n\n The four nullable fields (model id + the two prompts) use the\n `Option<Option<T>>` tri-state:\n   missing  → `None`        → leave the column alone\n   `null`   → `Some(None)`  → clear the column\n   value    → `Some(Some(v))` → set the column",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSummarizationAdminSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
+                        "name": "SummarizationSettingsManage",
+                        "value": "summarization::settings::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummarizationAdminSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed (out-of-range token threshold, missing prompt placeholder, keep>=trigger, or unknown default_summarization_model_id)."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations/{id}/summary": {
+      "get": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Get the active-branch summary for a conversation (null if none)",
+        "description": "\n\n**Required Permission:** `conversations::read`\n\nView chat conversations",
+        "operationId": "Summarization.getConversationSummary",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View chat conversations",
+                        "name": "ConversationsRead",
+                        "value": "conversations::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConversationSummary"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/_test/summarization/refresh": {
+      "post": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Test-only: trigger summary refresh synchronously (debug builds)",
+        "description": "\n\n**Required Permission:** `summarization::settings::manage`\n\nUpdate deployment-wide summarization settings (enable, model, thresholds, prompts).",
+        "operationId": "SummarizationTest.refresh",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestRefreshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
+                        "name": "SummarizationSettingsManage",
+                        "value": "summarization::settings::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/memories": {
       "get": {
         "tags": [
@@ -13693,19 +14038,20 @@
         ]
       }
     },
-    "/api/_test/memory/extract": {
+    "/api/memory/admin/fts/rebuild": {
       "post": {
         "tags": [
           "Memory"
         ],
-        "summary": "Test-only: trigger extraction synchronously (debug builds)",
-        "description": "\n\n**Required Permission:** `memory::admin::manage`\n\nUpdate memory admin settings (embedding model, enable/disable).",
-        "operationId": "MemoryTest.extract",
+        "summary": "Rebuild user_memories.content_tsv with a new dictionary",
+        "description": "Long-running; client should poll GET /memory/admin/fts/rebuild/status until completed_at is set.",
+        "operationId": "MemoryAdmin.ftsRebuild",
         "requestBody": {
+          "description": "Request body for `POST /api/memory/admin/fts/rebuild`. Drops + re-creates\n `user_memories.content_tsv` with the new dictionary baked into the\n GENERATED ALWAYS expression. Long-running; the caller polls\n `GET /api/memory/admin/fts/rebuild/status` to see when it finishes.",
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/TestExtractRequest"
+                "$ref": "#/components/schemas/FtsRebuildRequest"
               }
             }
           },
@@ -13735,7 +14081,7 @@
               }
             }
           },
-          "200": {
+          "202": {
             "description": "",
             "content": {
               "application/json": {
@@ -13751,19 +14097,69 @@
         ]
       }
     },
-    "/api/_test/memory/summarize": {
+    "/api/memory/admin/fts/rebuild/status": {
+      "get": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Read FTS rebuild status",
+        "description": "\n\n**Required Permission:** `memory::admin::read`\n\nRead memory admin settings (embedding model, defaults).",
+        "operationId": "MemoryAdmin.ftsRebuildStatus",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read memory admin settings (embedding model, defaults).",
+                        "name": "MemoryAdminRead",
+                        "value": "memory::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response body for `GET /api/memory/admin/fts/rebuild/status`. All\n three fields are derived from `memory_admin_settings.fts_rebuild_*`.\n `in_progress` is `started_at IS NOT NULL AND completed_at IS NULL`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FtsRebuildStatus"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/_test/memory/extract": {
       "post": {
         "tags": [
           "Memory"
         ],
-        "summary": "Test-only: trigger summary refresh synchronously (debug builds)",
+        "summary": "Test-only: trigger extraction synchronously (debug builds)",
         "description": "\n\n**Required Permission:** `memory::admin::manage`\n\nUpdate memory admin settings (embedding model, enable/disable).",
-        "operationId": "MemoryTest.summarize",
+        "operationId": "MemoryTest.extract",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/TestSummarizeRequest"
+                "$ref": "#/components/schemas/TestExtractRequest"
               }
             }
           },
@@ -15891,6 +16287,62 @@
           "message_count"
         ]
       },
+      "ConversationSummarizationModeResponse": {
+        "description": "Response for `GET /api/conversations/{id}/summarization-mode`.",
+        "type": "object",
+        "properties": {
+          "summarization_mode": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "summarization_mode"
+        ]
+      },
+      "ConversationSummary": {
+        "type": "object",
+        "properties": {
+          "branch_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "message_count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "model_used": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "summarized_up_to_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "summary_text": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "branch_id",
+          "summary_text",
+          "message_count",
+          "created_at",
+          "updated_at"
+        ]
+      },
       "CoreMemoryBlock": {
         "type": "object",
         "properties": {
@@ -16069,6 +16521,25 @@
           "name",
           "provider_type",
           "config"
+        ]
+      },
+      "CreateAuthProviderResponse": {
+        "description": "Response body for `POST /admin/auth-providers`. Wraps the persisted\n row in an envelope so we can attach a `connection_warning` when a\n create-time probe failed and the row was auto-downgraded to\n `enabled=false`. Mirrors `llm_repository`'s create-response shape.",
+        "type": "object",
+        "properties": {
+          "connection_warning": {
+            "description": "Populated when the provider was created with `enabled=true` but\n the connection probe failed; the row is persisted with\n `enabled=false` and this carries the failure reason so the UI\n can render an inline warning. `null` on the happy path.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider": {
+            "$ref": "#/components/schemas/AuthProviderResponse"
+          }
+        },
+        "required": [
+          "provider"
         ]
       },
       "CreateBranchRequest": {
@@ -17778,6 +18249,44 @@
           "total",
           "page",
           "per_page"
+        ]
+      },
+      "FtsRebuildRequest": {
+        "description": "Request body for `POST /api/memory/admin/fts/rebuild`. Drops + re-creates\n `user_memories.content_tsv` with the new dictionary baked into the\n GENERATED ALWAYS expression. Long-running; the caller polls\n `GET /api/memory/admin/fts/rebuild/status` to see when it finishes.",
+        "type": "object",
+        "properties": {
+          "dictionary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "dictionary"
+        ]
+      },
+      "FtsRebuildStatus": {
+        "description": "Response body for `GET /api/memory/admin/fts/rebuild/status`. All\n three fields are derived from `memory_admin_settings.fts_rebuild_*`.\n `in_progress` is `started_at IS NOT NULL AND completed_at IS NULL`.",
+        "type": "object",
+        "properties": {
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "in_progress": {
+            "type": "boolean"
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "in_progress"
         ]
       },
       "GPUComputeCapabilities": {
@@ -21045,12 +21554,44 @@
           "enabled": {
             "type": "boolean"
           },
-          "full_summary_prompt": {
-            "description": "Override for the full-resummarize LLM prompt. NULL = use the\n compiled-in default. Must contain `{transcript}` if set.",
+          "fts_candidate_multiplier": {
+            "description": "Hybrid retrieval pulls top-K × this many candidates from each arm\n before RRF fusion. Higher = more recall, more DB load.",
+            "type": "integer",
+            "format": "int32"
+          },
+          "fts_dictionary": {
+            "description": "Postgres dictionary used by `websearch_to_tsquery` at retrieval\n time AND in the GENERATED expression on `user_memories.content_tsv`.\n `simple` = no stemming, language-agnostic. `english`/`spanish`/etc.\n = Porter stemmer for that language only. Changing this requires\n the explicit rebuild flow (`POST /memory/admin/fts/rebuild`); the\n PUT settings handler returns 409 on a dictionary change.",
+            "type": "string"
+          },
+          "fts_enabled": {
+            "description": "FTS arm kill switch. When `false`, the retriever skips FTS even\n in the no-embedding-model path (then it bails entirely).",
+            "type": "boolean"
+          },
+          "fts_min_rank": {
+            "description": "`ts_rank_cd` cutoff. 0.0 = no filter (default). Increase to drop\n weak lexical matches at query time.",
+            "type": "number",
+            "format": "float"
+          },
+          "fts_rebuild_completed_at": {
+            "description": "Set when the most recent FTS rebuild finished successfully.",
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "format": "date-time"
+          },
+          "fts_rebuild_started_at": {
+            "description": "Set when an FTS rebuild starts; cleared when it completes (or\n stays NULL if no rebuild has ever run on this deployment).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "fts_rrf_k": {
+            "description": "Reciprocal Rank Fusion constant for hybrid (vector ⊕ FTS) recall.\n Higher k = more egalitarian; lower = lopsided toward each arm's\n top-ranked. Default 60 matches the RRF paper.",
+            "type": "integer",
+            "format": "int32"
           },
           "id": {
             "type": "integer",
@@ -21058,25 +21599,12 @@
             "maximum": 32767,
             "minimum": -32768
           },
-          "incremental_summary_prompt": {
-            "description": "Override for the incremental-refresh LLM prompt. NULL = use the\n compiled-in default. Must contain `{previous_summary}` and\n `{new_transcript}` if set.",
-            "type": [
-              "string",
-              "null"
-            ]
+          "semantic_enabled": {
+            "description": "Semantic (vector) arm kill switch. When `false`, the retriever\n skips the vector arm regardless of whether an embedding model is\n configured. Effective vector recall requires\n `semantic_enabled AND embedding_model_id IS NOT NULL`.",
+            "type": "boolean"
           },
           "soft_delete_grace_days": {
             "description": "Reaper hard-delete grace period for soft-deleted memories (days).",
-            "type": "integer",
-            "format": "int32"
-          },
-          "summarize_after_n_messages": {
-            "description": "Summarizer trigger threshold (branch message count).",
-            "type": "integer",
-            "format": "int32"
-          },
-          "summarizer_keep_recent": {
-            "description": "Summarizer messages kept verbatim alongside the summary.",
             "type": "integer",
             "format": "int32"
           },
@@ -21093,8 +21621,12 @@
           "enabled",
           "soft_delete_grace_days",
           "daily_extraction_quota",
-          "summarize_after_n_messages",
-          "summarizer_keep_recent",
+          "fts_dictionary",
+          "fts_enabled",
+          "semantic_enabled",
+          "fts_rrf_k",
+          "fts_candidate_multiplier",
+          "fts_min_rank",
           "updated_at"
         ]
       },
@@ -21492,6 +22024,16 @@
                   "string",
                   "null"
                 ]
+              },
+              "images": {
+                "description": "Inline images returned by a tool (base64). Mirrors\n `McpContentData::ToolResult.images`; replayed to the model as image\n blocks. Same serde-roundtrip requirement as `attachment` above.",
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "$ref": "#/components/schemas/RichFile"
+                }
               },
               "is_error": {
                 "type": [
@@ -21955,6 +22497,15 @@
               "boolean",
               "null"
             ]
+          },
+          "context_length": {
+            "description": "Native max context window (tokens). Parsed from GGUF / safetensors for\n local models and serialized into the capabilities JSONB by the\n llm_local_runtime validator; surfaced here so the UI can show the ceiling\n and the summarizer can use the effective window. (B6a)",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
           },
           "image_generator": {
             "description": "Image generation capability - can generate images from text descriptions",
@@ -24827,6 +25378,61 @@
           "message"
         ]
       },
+      "SummarizationAdminSettings": {
+        "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
+        "type": "object",
+        "properties": {
+          "default_summarization_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "full_summary_prompt": {
+            "description": "Custom prompt for the full-resume path. NULL → use the compiled-in\n default. Must contain `{transcript}` placeholder when set.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "format": "int16",
+            "maximum": 32767,
+            "minimum": -32768
+          },
+          "incremental_summary_prompt": {
+            "description": "Custom prompt for the incremental-fold path. NULL → use the\n compiled-in default. Must contain `{previous_summary}` AND\n `{new_transcript}` placeholders when set.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "summarize_after_tokens": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "summarizer_keep_recent_tokens": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "enabled",
+          "summarize_after_tokens",
+          "summarizer_keep_recent_tokens",
+          "updated_at"
+        ]
+      },
       "SwapOutcome": {
         "description": "Result of a pin change. Surfaced via the `set-pin` HTTP handler so\n the admin UI can render a \"n session(s) draining\" indicator.",
         "type": "object",
@@ -25043,6 +25649,16 @@
             "const": "hub_settings"
           },
           {
+            "description": "Admin view of an authentication provider (Google/Microsoft/Apple/LDAP\n /OIDC). Emitted on create/update/test/delete and on auto-disable. The\n public `/api/auth/providers` (login page) is unaffected — it just shows\n the next list state on the next page load.",
+            "type": "string",
+            "const": "auth_provider"
+          },
+          {
+            "description": "Deployment-wide summarization settings (singleton). Notify-only;\n the frontend refetches via the existing REST endpoint.",
+            "type": "string",
+            "const": "summarization_admin_settings"
+          },
+          {
             "description": "A user's accessible-providers (with enabled models) view changed.",
             "type": "string",
             "const": "user_llm_provider"
@@ -25253,6 +25869,23 @@
           "message"
         ]
       },
+      "TestRefreshRequest": {
+        "type": "object",
+        "properties": {
+          "branch_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "model_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "branch_id",
+          "model_id"
+        ]
+      },
       "TestRepositoryConnectionRequest": {
         "type": "object",
         "properties": {
@@ -25297,23 +25930,6 @@
           "message"
         ]
       },
-      "TestSummarizeRequest": {
-        "type": "object",
-        "properties": {
-          "branch_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "model_id": {
-            "type": "string",
-            "format": "uuid"
-          }
-        },
-        "required": [
-          "branch_id",
-          "model_id"
-        ]
-      },
       "TextPageQuery": {
         "description": "Text page query params",
         "type": "object",
@@ -25332,6 +25948,20 @@
         "description": "Metadata for thinking content",
         "type": "object",
         "properties": {
+          "redacted_data": {
+            "description": "Opaque data for a redacted-thinking block (Anthropic).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "signature": {
+            "description": "Anthropic extended-thinking signature — required to replay the block on a\n later turn (`None` for Gemini/OpenAI, whose thinking isn't replayable).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "token_count": {
             "type": [
               "integer",
@@ -25767,6 +26397,18 @@
           }
         }
       },
+      "UpdateConversationSummarizationModeRequest": {
+        "description": "Request body for `PUT /api/conversations/{id}/summarization-mode`.",
+        "type": "object",
+        "properties": {
+          "summarization_mode": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "summarization_mode"
+        ]
+      },
       "UpdateGroupProvidersRequest": {
         "type": "object",
         "properties": {
@@ -26179,35 +26821,46 @@
               "null"
             ]
           },
-          "full_summary_prompt": {
+          "fts_candidate_multiplier": {
             "type": [
-              "string",
+              "integer",
               "null"
             ],
-            "default": null
+            "format": "int32"
           },
-          "incremental_summary_prompt": {
+          "fts_dictionary": {
             "type": [
               "string",
               "null"
+            ]
+          },
+          "fts_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "fts_min_rank": {
+            "type": [
+              "number",
+              "null"
             ],
-            "default": null
+            "format": "float"
+          },
+          "fts_rrf_k": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "semantic_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "soft_delete_grace_days": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32"
-          },
-          "summarize_after_n_messages": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32"
-          },
-          "summarizer_keep_recent": {
             "type": [
               "integer",
               "null"
@@ -26358,6 +27011,54 @@
             "format": "int32"
           },
           "idle_unload_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "UpdateSummarizationAdminSettingsRequest": {
+        "description": "Partial-update request for the singleton admin settings row.\n\n The four nullable fields (model id + the two prompts) use the\n `Option<Option<T>>` tri-state:\n   missing  → `None`        → leave the column alone\n   `null`   → `Some(None)`  → clear the column\n   value    → `Some(Some(v))` → set the column",
+        "type": "object",
+        "properties": {
+          "default_summarization_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "default": null
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "full_summary_prompt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "incremental_summary_prompt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "summarize_after_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "summarizer_keep_recent_tokens": {
             "type": [
               "integer",
               "null"
@@ -26559,6 +27260,24 @@
         "description": "Usage metadata from AI provider",
         "type": "object",
         "properties": {
+          "cache_creation_input_tokens": {
+            "description": "Prompt tokens written to cache this request.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "cache_read_input_tokens": {
+            "description": "Prompt tokens served from cache (the prompt-cache hit signal).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
           "input_tokens": {
             "type": [
               "integer",
@@ -26568,6 +27287,15 @@
             "minimum": 0
           },
           "output_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "reasoning_tokens": {
+            "description": "Reasoning/thinking tokens (if the provider reports them).",
             "type": [
               "integer",
               "null"

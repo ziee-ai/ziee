@@ -3,6 +3,7 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
 import {
+  type FtsRebuildStatus,
   type LlmModel,
   type MemoryAdminSettings,
   Permissions,
@@ -27,25 +28,22 @@ export type EmbeddingCapableModelRow = Pick<
 // Widen at the boundary so callers can pass `null` to clear.
 export type MemoryAdminUpdatePatch = Omit<
   UpdateMemoryAdminSettingsRequest,
-  | 'embedding_model_id'
-  | 'default_extraction_model_id'
-  | 'full_summary_prompt'
-  | 'incremental_summary_prompt'
+  'embedding_model_id' | 'default_extraction_model_id'
 > & {
   embedding_model_id?: string | null
   default_extraction_model_id?: string | null
-  full_summary_prompt?: string | null
-  incremental_summary_prompt?: string | null
 }
 
 interface MemoryAdminStore {
   settings: MemoryAdminSettings | null
   availableModels: EmbeddingCapableModelRow[]
   rebuildStatus: RebuildStatus | null
+  ftsRebuildStatus: FtsRebuildStatus | null
   loading: boolean
   saving: boolean
   loadingModels: boolean
-  reembeddingTrigger: boolean
+  triggeringReembed: boolean
+  triggeringFtsRebuild: boolean
   error: string | null
 
   __init__: {
@@ -53,6 +51,7 @@ interface MemoryAdminStore {
     settings: () => Promise<void>
     availableModels: () => Promise<void>
     rebuildStatus: () => Promise<void>
+    ftsRebuildStatus: () => Promise<void>
   }
 
   __destroy__?: () => void
@@ -60,7 +59,9 @@ interface MemoryAdminStore {
   load: () => Promise<void>
   loadEmbeddingCapableModels: () => Promise<void>
   loadRebuildStatus: () => Promise<void>
+  loadFtsRebuildStatus: () => Promise<void>
   triggerReembed: () => Promise<void>
+  triggerFtsRebuild: (dictionary: string) => Promise<void>
   update: (patch: MemoryAdminUpdatePatch) => Promise<MemoryAdminSettings>
 }
 
@@ -133,16 +134,31 @@ const loadRebuildStatusInternal = async (
   }
 }
 
+const loadFtsRebuildStatusInternal = async (
+  set: (fn: (s: MemoryAdminStore) => void) => void,
+) => {
+  try {
+    const status = await ApiClient.MemoryAdmin.ftsRebuildStatus()
+    set(s => {
+      s.ftsRebuildStatus = status
+    })
+  } catch {
+    // See loadRebuildStatusInternal — same rationale.
+  }
+}
+
 export const useMemoryAdminStore = create<MemoryAdminStore>()(
   subscribeWithSelector(
     immer((set, _get) => ({
       settings: null,
       availableModels: [],
       rebuildStatus: null,
+      ftsRebuildStatus: null,
       loading: false,
       saving: false,
       loadingModels: false,
-      reembeddingTrigger: false,
+      triggeringReembed: false,
+      triggeringFtsRebuild: false,
       error: null,
 
       // Property-init loads hit `memory::admin::read`-gated endpoints.
@@ -178,6 +194,10 @@ export const useMemoryAdminStore = create<MemoryAdminStore>()(
           hasPermissionNow(Permissions.MemoryAdminRead)
             ? loadRebuildStatusInternal(set)
             : Promise.resolve(),
+        ftsRebuildStatus: () =>
+          hasPermissionNow(Permissions.MemoryAdminRead)
+            ? loadFtsRebuildStatusInternal(set)
+            : Promise.resolve(),
       },
 
       __destroy__: () => {
@@ -187,21 +207,41 @@ export const useMemoryAdminStore = create<MemoryAdminStore>()(
       load: () => loadAdminSettings(set),
       loadEmbeddingCapableModels: () => loadEmbeddingModels(set),
       loadRebuildStatus: () => loadRebuildStatusInternal(set),
+      loadFtsRebuildStatus: () => loadFtsRebuildStatusInternal(set),
 
       triggerReembed: async (): Promise<void> => {
         set(s => {
-          s.reembeddingTrigger = true
+          s.triggeringReembed = true
           s.error = null
         })
         try {
           await ApiClient.MemoryAdmin.reembed()
           set(s => {
-            s.reembeddingTrigger = false
+            s.triggeringReembed = false
           })
         } catch (error) {
           set(s => {
             s.error = error instanceof Error ? error.message : 'Trigger failed'
-            s.reembeddingTrigger = false
+            s.triggeringReembed = false
+          })
+          throw error
+        }
+      },
+
+      triggerFtsRebuild: async (dictionary: string): Promise<void> => {
+        set(s => {
+          s.triggeringFtsRebuild = true
+          s.error = null
+        })
+        try {
+          await ApiClient.MemoryAdmin.ftsRebuild({ dictionary })
+          set(s => {
+            s.triggeringFtsRebuild = false
+          })
+        } catch (error) {
+          set(s => {
+            s.error = error instanceof Error ? error.message : 'Trigger failed'
+            s.triggeringFtsRebuild = false
           })
           throw error
         }

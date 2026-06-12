@@ -162,7 +162,7 @@ export async function loginAsAdmin(
   const token = await readAuthToken(page)
   await completeOnboarding(baseURL, token)
   // Land on the authenticated app shell, signalled by the sidebar "New Chat"
-  // link (present on every authenticated route, regardless of provider config).
+  // menuitem (antd Menu sidebar; present on every authenticated route).
   // Navigate ONCE and wait generously — do NOT re-navigate on a short timeout:
   // each goto('/') throws away the in-progress cold-load and fires a fresh
   // ~25-request burst, and the heavy admin pages (many stores) take ~15-25s
@@ -171,7 +171,7 @@ export async function loginAsAdmin(
   // Onboarding is API-marked complete above and admins are never redirected by
   // OnboardingRedirect, so a single fresh goto won't bounce. NOT `networkidle`:
   // the realtime-sync SSE stream keeps the network busy so it never settles.
-  const appShell = page.getByRole('link', { name: 'New Chat' })
+  const appShell = page.getByRole('menuitem', { name: /New Chat/ })
   await page.goto(`${baseURL}/`)
   await page.waitForLoadState('load')
   await appShell.waitFor({ state: 'visible', timeout: 45000 })

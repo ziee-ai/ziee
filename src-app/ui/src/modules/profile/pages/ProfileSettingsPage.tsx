@@ -87,12 +87,13 @@ export function ProfileSettingsPage() {
   }
 
   return (
-    <SettingsPageContainer
-      title="Profile"
-      subtitle="Your account details. Changes apply only to your own profile."
-    >
+    <SettingsPageContainer title="Profile">
       <Card title="Account">
-        <Flex align="center" gap={16} className="mb-4">
+        {/* Wrap the body in a flex column with explicit gap. Per-child
+            mb-* wasn't taking effect — antd v6's Card body layout
+            collapses sibling margins; flex gap is the reliable lever. */}
+        <Flex vertical gap={24}>
+        <Flex align="center" gap={16}>
           <Avatar
             size={64}
             src={user.avatar_url || undefined}
@@ -112,7 +113,6 @@ export function ProfileSettingsPage() {
           size="small"
           column={{ xs: 1, sm: 2 }}
           colon={false}
-          className="mb-4"
         >
           <Descriptions.Item label="Email">{user.email}</Descriptions.Item>
           <Descriptions.Item label="Member since">
@@ -169,6 +169,7 @@ export function ProfileSettingsPage() {
             </>
           )}
         </Form>
+        </Flex>
       </Card>
 
       {canEdit && (

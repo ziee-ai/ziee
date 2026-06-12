@@ -432,28 +432,18 @@ async fn recall(
         None => None,
     };
 
-    use crate::modules::memory::chat_extension::retriever;
-    // Hybrid (vector ⊕ FTS via RRF) when an embedding model is configured;
-    // FTS-only fallback otherwise — so recall works embedding-free instead of
-    // hard-erroring.
-    let hits = match admin.embedding_model_id {
-        Some(emb_id) => match crate::modules::memory::engine::dispatch::embed(emb_id, q).await {
-            Ok(v) => {
-                retriever::hybrid_search(
-                    user_id,
-                    project_id,
-                    conversation_id,
-                    HalfVector::from_f32_slice(&v),
-                    admin.cosine_threshold,
-                    q,
-                    limit,
-                )
-                .await?
-            }
-            Err(_) => retriever::fts_search(user_id, project_id, conversation_id, q, limit).await?,
-        },
-        None => retriever::fts_search(user_id, project_id, conversation_id, q, limit).await?,
-    };
+    // Same decision tree as the automatic retriever (`fts_enabled` kill
+    // switch + per-admin tuning). Shared at the source via
+    // `retriever::recall_memories` so we can't drift two implementations.
+    let hits = crate::modules::memory::chat_extension::retriever::recall_memories(
+        user_id,
+        project_id,
+        conversation_id,
+        q,
+        limit,
+        &admin,
+    )
+    .await?;
 
     Ok(json!({
         "memories": hits.into_iter().map(|(id, content)| {

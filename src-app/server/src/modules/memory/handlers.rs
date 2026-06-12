@@ -487,86 +487,69 @@ pub async fn update_admin_settings(
             .into());
         }
     }
-    // Token thresholds — validate in-handler so a bad value is a 400, not a raw
-    // 500 from the DB CHECK (migration 88: trigger 500..=1_000_000, keep >= 100,
-    // keep < trigger). Mirrors the default_top_k / cosine_threshold checks above.
-    if let Some(t) = body.summarize_after_tokens {
-        if !(500..=1_000_000).contains(&t) {
-            return Err(AppError::bad_request(
-                "VALIDATION_ERROR",
-                "summarize_after_tokens out of range (500..=1000000)",
-            )
-            .into());
-        }
-    }
-    if let Some(k) = body.summarizer_keep_recent_tokens {
-        if k < 100 {
-            return Err(AppError::bad_request(
-                "VALIDATION_ERROR",
-                "summarizer_keep_recent_tokens must be >= 100",
-            )
-            .into());
-        }
-    }
+    // Summarizer-field validation lived here pre-migration-91; the
+    // four fields moved to the `summarization` module along with the
+    // engine + per-conversation toggle.
 
-    // Prompt-template validation: a non-empty override MUST contain
-    // the placeholders the summarizer interpolates. Otherwise
-    // summarization would silently produce broken prompts.
-    // `Some(None)` (clear back to default) and `Some(Some(""))`
-    // (clear-via-empty) both skip validation — those reset to the
-    // compiled-in default, which is always valid.
-    if let Some(Some(s)) = body.full_summary_prompt.as_ref() {
-        if !s.is_empty() && !s.contains("{transcript}") {
+    // FTS validation (migration 89). Range bounds mirror the CHECK
+    // constraints — handler returns 400 with a clean reason instead of
+    // a raw 500 from the DB.
+    if let Some(k) = body.fts_rrf_k {
+        if !(1..=1000).contains(&k) {
             return Err(AppError::bad_request(
                 "VALIDATION_ERROR",
-                "full_summary_prompt must contain the {transcript} placeholder",
+                "fts_rrf_k out of range (1..=1000)",
             )
             .into());
         }
     }
-    if let Some(Some(s)) = body.incremental_summary_prompt.as_ref() {
-        if !s.is_empty()
-            && (!s.contains("{previous_summary}") || !s.contains("{new_transcript}"))
-        {
+    if let Some(m) = body.fts_candidate_multiplier {
+        if !(1..=20).contains(&m) {
             return Err(AppError::bad_request(
                 "VALIDATION_ERROR",
-                "incremental_summary_prompt must contain both {previous_summary} and {new_transcript} placeholders",
+                "fts_candidate_multiplier out of range (1..=20)",
             )
             .into());
         }
     }
-    // Normalize: treat Some(Some("")) as Some(None) (clear). Otherwise
-    // the empty string would be written verbatim and the summarizer
-    // would short-circuit to "empty prompt" without falling back to
-    // the default.
-    let full_summary_prompt = body.full_summary_prompt.map(|outer| {
-        outer.and_then(|s| if s.is_empty() { None } else { Some(s) })
-    });
-    let incremental_summary_prompt = body.incremental_summary_prompt.map(|outer| {
-        outer.and_then(|s| if s.is_empty() { None } else { Some(s) })
-    });
+    if let Some(r) = body.fts_min_rank {
+        if !(0.0..=1.0).contains(&r) {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                "fts_min_rank out of range (0.0..=1.0)",
+            )
+            .into());
+        }
+    }
+    if let Some(ref d) = body.fts_dictionary {
+        if !super::models::is_valid_fts_dictionary(d) {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                "fts_dictionary not in allowlist",
+            )
+            .into());
+        }
+    }
 
     // Snapshot the current embedding model id so we can detect a swap
     // and trigger the re-embed worker if it changed.
     let prior = Repos.memory.get_admin_settings().await?;
     let prior_model_id = prior.embedding_model_id;
 
-    // Effective keep < trigger invariant (the fields can be updated
-    // independently, so check the merged values against the migration-88 CHECK
-    // before the DB rejects it with a raw 500). E.g. lowering the trigger below
-    // the existing keep, or raising keep above the existing trigger.
-    let effective_trigger = body
-        .summarize_after_tokens
-        .unwrap_or(prior.summarize_after_tokens);
-    let effective_keep = body
-        .summarizer_keep_recent_tokens
-        .unwrap_or(prior.summarizer_keep_recent_tokens);
-    if effective_keep >= effective_trigger {
-        return Err(AppError::bad_request(
-            "VALIDATION_ERROR",
-            "summarizer_keep_recent_tokens must be less than summarize_after_tokens",
-        )
-        .into());
+    // Dictionary changes can't go through the regular PUT path — the
+    // GENERATED expression on `user_memories.content_tsv` bakes the
+    // dictionary in at column-creation time and can't be ALTERed in
+    // place. Force the caller to hit POST /memory/admin/fts/rebuild
+    // (which atomically swaps the dictionary + rebuilds the column).
+    if let Some(ref d) = body.fts_dictionary {
+        if d != &prior.fts_dictionary {
+            return Err(AppError::new(
+                axum::http::StatusCode::CONFLICT,
+                "FTS_REBUILD_REQUIRED",
+                "fts_dictionary changes must go through POST /api/memory/admin/fts/rebuild",
+            )
+            .into());
+        }
     }
 
     let row = Repos
@@ -579,10 +562,11 @@ pub async fn update_admin_settings(
             body.enabled,
             body.soft_delete_grace_days,
             body.daily_extraction_quota,
-            body.summarize_after_tokens,
-            body.summarizer_keep_recent_tokens,
-            full_summary_prompt,
-            incremental_summary_prompt,
+            body.fts_enabled,
+            body.fts_rrf_k,
+            body.fts_candidate_multiplier,
+            body.fts_min_rank,
+            body.semantic_enabled,
         )
         .await?;
 
@@ -778,11 +762,240 @@ pub fn trigger_reembed_docs(op: TransformOperation) -> TransformOperation {
 }
 
 // ============================================================================
+// FTS rebuild — dictionary swap path. Because `user_memories.content_tsv` is
+// a GENERATED ALWAYS STORED column with the dictionary baked into the
+// expression, swapping dictionaries means dropping + re-adding the column.
+// We do that inside one transaction guarded by a process-global advisory
+// lock so two rebuilds can't race; the table is never left in a partial
+// state. Long-running on large stores — caller polls /status until the
+// `fts_rebuild_completed_at` timestamp is set.
+// ============================================================================
+
+#[debug_handler]
+pub async fn trigger_fts_rebuild(
+    _auth: RequirePermissions<(MemoryAdminManage,)>,
+    origin: SyncOrigin,
+    Json(body): Json<super::models::FtsRebuildRequest>,
+) -> ApiResult<Json<serde_json::Value>> {
+    // Allowlist gate BEFORE we touch the DB. Defense in depth against
+    // the eventual fingers-on-keyboard typo; the DDL below interpolates
+    // the dictionary name directly (sqlx bind params don't work in
+    // `GENERATED AS to_tsvector($1, content)`) so this allowlist + the
+    // CHECK constraint are the two layers protecting us from injection.
+    if !super::models::is_valid_fts_dictionary(&body.dictionary) {
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "fts_dictionary not in allowlist",
+        )
+        .into());
+    }
+
+    // Short-circuit same-dictionary rebuild — the GENERATED expression
+    // would produce identical content and the DROP/ADD/CREATE INDEX is
+    // a wasted full-table rewrite. Admins occasionally want this to
+    // recover from a corrupt index; let them use a separate "reindex"
+    // affordance for that, not this endpoint.
+    let prior = Repos.memory.get_admin_settings().await?;
+    if body.dictionary == prior.fts_dictionary {
+        return Ok((
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "ok": true,
+                "started": false,
+                "reason": "dictionary unchanged",
+            })),
+        ));
+    }
+
+    // Claim the rebuild slot via a single CAS UPDATE. If another rebuild
+    // is already running we get false and return 409 — no DDL spawned,
+    // no leaked timestamps.
+    let claimed = Repos.memory.try_claim_fts_rebuild().await?;
+    if !claimed {
+        return Err(AppError::new(
+            axum::http::StatusCode::CONFLICT,
+            "FTS_REBUILD_IN_PROGRESS",
+            "an FTS rebuild is already running; wait for it to complete",
+        )
+        .into());
+    }
+
+    // Defense in depth: between the CAS claim and the spawn there are
+    // only infallible CPU ops, but a runtime drop / OOM / panic in that
+    // window would leak the slot. Take ownership of a guard that fires
+    // `clear_fts_rebuild_marker` on Drop unless explicitly disarmed —
+    // we disarm after `tokio::spawn` succeeds, transferring slot
+    // ownership to the worker.
+    struct ClaimGuard {
+        armed: bool,
+    }
+    impl Drop for ClaimGuard {
+        fn drop(&mut self) {
+            if !self.armed {
+                return;
+            }
+            // Only spawn the cleanup if a tokio runtime is reachable.
+            // During graceful shutdown the runtime may already be gone
+            // (test teardown, SIGTERM); spawning then panics-in-drop
+            // which aborts the process. Best-effort: if there's no
+            // runtime, the marker stays set and the operator handles
+            // it manually.
+            if tokio::runtime::Handle::try_current().is_ok() {
+                tokio::spawn(async {
+                    let _ = Repos.memory.clear_fts_rebuild_marker().await;
+                });
+            }
+        }
+    }
+    let mut guard = ClaimGuard { armed: true };
+
+    // Drive the UI's in_progress=true flip without waiting for a poll
+    // cycle — the CAS-claim above already wrote started_at, so the
+    // refetch will see it.
+    sync_publish(
+        SyncEntity::MemoryAdminSettings,
+        SyncAction::Update,
+        uuid::Uuid::nil(),
+        Audience::perm::<MemoryAdminRead>(),
+        origin.0,
+    );
+
+    let pool = Repos.memory.pool_clone();
+    let dict = body.dictionary.clone();
+
+    tokio::spawn(async move {
+        let result: Result<(), sqlx::Error> = async {
+            let mut tx = pool.begin().await?;
+
+            // DROP + ADD GENERATED column. The dictionary name is
+            // interpolated from the allowlist gate above — never from
+            // the request directly. The ALTER takes an
+            // AccessExclusiveLock on user_memories for the duration of
+            // the rewrite, which is the correct serialization primitive
+            // here — concurrent rebuilds are already rejected by the
+            // CAS claim above.
+            sqlx::query("ALTER TABLE user_memories DROP COLUMN content_tsv")
+                .execute(&mut *tx)
+                .await?;
+            let add_col = format!(
+                "ALTER TABLE user_memories ADD COLUMN content_tsv tsvector \
+                 GENERATED ALWAYS AS (to_tsvector('{}', content)) STORED",
+                dict
+            );
+            sqlx::query(&add_col).execute(&mut *tx).await?;
+            sqlx::query(
+                "CREATE INDEX idx_user_memories_tsv ON user_memories USING GIN (content_tsv)",
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            // Persist the swap + completed-at marker in the same
+            // transaction. The CAS-claimed `started_at` is also
+            // visible to other connections only after this commit, so
+            // status readers see a clean transition: started_at set →
+            // completed_at set (no torn-write window).
+            if let Err(e) = Repos.memory.complete_fts_rebuild(&mut tx, &dict).await {
+                tracing::error!(
+                    "memory.fts_rebuild: complete_fts_rebuild failed: {}",
+                    e
+                );
+                return Err(sqlx::Error::Configuration(e.to_string().into()));
+            }
+            tx.commit().await?;
+            Ok(())
+        }
+        .await;
+
+        match result {
+            Ok(()) => tracing::info!(
+                "memory.fts_rebuild: rebuilt content_tsv with dictionary '{}'",
+                dict
+            ),
+            Err(e) => {
+                tracing::error!(
+                    "memory.fts_rebuild: rebuild for dictionary '{}' failed: {}",
+                    dict,
+                    e
+                );
+                // Release the claim so the next attempt can run. Best-
+                // effort — a DB outage at this point means the row
+                // stays claimed until the operator inspects, which is
+                // the correct fail-loud behavior for total DB loss.
+                if let Err(cleanup_err) =
+                    Repos.memory.clear_fts_rebuild_marker().await
+                {
+                    tracing::error!(
+                        "memory.fts_rebuild: failed to clear marker after error: {}",
+                        cleanup_err
+                    );
+                }
+            }
+        }
+        // Drive a UI refetch on both success (so dict / completed_at
+        // land) and failure (so started_at clearing lands). origin=None
+        // because the worker is detached from the originating request.
+        sync_publish(
+            SyncEntity::MemoryAdminSettings,
+            SyncAction::Update,
+            uuid::Uuid::nil(),
+            Audience::perm::<MemoryAdminRead>(),
+            None,
+        );
+    });
+
+    // Worker owns the slot now — disarm the guard so it doesn't
+    // clear the marker out from under the in-flight rebuild.
+    guard.armed = false;
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({ "ok": true, "started": true })),
+    ))
+}
+
+pub fn trigger_fts_rebuild_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(MemoryAdminManage,)>(op)
+        .id("MemoryAdmin.ftsRebuild")
+        .tag("Memory")
+        .summary("Rebuild user_memories.content_tsv with a new dictionary")
+        .description(
+            "Long-running; client should poll GET /memory/admin/fts/rebuild/status until \
+             completed_at is set.",
+        )
+        .response::<202, Json<serde_json::Value>>()
+}
+
+#[debug_handler]
+pub async fn get_fts_rebuild_status(
+    _auth: RequirePermissions<(MemoryAdminRead,)>,
+) -> ApiResult<Json<super::models::FtsRebuildStatus>> {
+    let admin = Repos.memory.get_admin_settings().await?;
+    let in_progress = admin.fts_rebuild_started_at.is_some()
+        && admin.fts_rebuild_completed_at.is_none();
+    Ok((
+        StatusCode::OK,
+        Json(super::models::FtsRebuildStatus {
+            in_progress,
+            started_at: admin.fts_rebuild_started_at,
+            completed_at: admin.fts_rebuild_completed_at,
+        }),
+    ))
+}
+
+pub fn get_fts_rebuild_status_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(MemoryAdminRead,)>(op)
+        .id("MemoryAdmin.ftsRebuildStatus")
+        .tag("Memory")
+        .summary("Read FTS rebuild status")
+        .response::<200, Json<super::models::FtsRebuildStatus>>()
+}
+
+// ============================================================================
 // Test-only hooks (Tier-5 real-LLM integration tests).
 //
 // Gated behind `#[cfg(debug_assertions)]` so release builds physically
-// don't ship these routes. They expose the extractor/summarizer
-// pipelines that normally fire from `after_llm_call` so a test can
+// don't ship these routes. They expose the extractor pipeline that
+// normally fires from `after_llm_call` so a test can
 // trigger them synchronously via HTTP without needing to drive a
 // full chat conversation. Admin-perm-gated for paranoia in case a
 // debug binary ever runs in a quasi-production setting.
@@ -821,35 +1034,5 @@ pub fn test_extract_docs(op: TransformOperation) -> TransformOperation {
         .response::<200, Json<serde_json::Value>>()
 }
 
-#[cfg(debug_assertions)]
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct TestSummarizeRequest {
-    pub branch_id: Uuid,
-    pub model_id: Uuid,
-}
-
-#[cfg(debug_assertions)]
-#[debug_handler]
-pub async fn test_summarize(
-    _auth: RequirePermissions<(MemoryAdminManage,)>,
-    Json(body): Json<TestSummarizeRequest>,
-) -> ApiResult<Json<serde_json::Value>> {
-    crate::modules::memory::engine::summarizer::refresh_summary(
-        body.branch_id,
-        body.model_id,
-        // Manual/admin-triggered refresh has no chat-model context → use the flat
-        // admin threshold (no fraction-of-window override).
-        None,
-    )
-    .await?;
-    Ok((StatusCode::OK, Json(serde_json::json!({ "ok": true }))))
-}
-
-#[cfg(debug_assertions)]
-pub fn test_summarize_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(MemoryAdminManage,)>(op)
-        .id("MemoryTest.summarize")
-        .tag("Memory")
-        .summary("Test-only: trigger summary refresh synchronously (debug builds)")
-        .response::<200, Json<serde_json::Value>>()
-}
+// `test_summarize` debug handler moved to the `summarization` module
+// (migration 91 — `POST /api/_test/summarization/refresh`).

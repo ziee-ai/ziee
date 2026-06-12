@@ -67,16 +67,10 @@ impl ChatExtension for MemoryExtension {
             .and_then(|v| v.as_str())
             .and_then(|s| uuid::Uuid::parse_str(s).ok());
 
-        // Summarizer: drop the summarized prefix of chat_request.messages
-        // and replace it with the persisted summary block. Net effect on
-        // the LLM call: [System*, SummaryBlock, RecentTurns] instead of
-        // [System*, AllOldTurns, RecentTurns]. Real prompt-side budget
-        // freed proportionally to summary.message_count. Plan §6 Phase 6.
-        if let Err(e) =
-            super::super::engine::summarizer::apply_summary_to_history(context.branch_id, request).await
-        {
-            tracing::warn!("memory.before_llm_call: summary apply failed: {e}");
-        }
+        // Summarizer moved to the `summarization` chat-extension
+        // (order 24 — runs BEFORE this extension at order 25, so the
+        // summary block lands first and this retriever block is appended
+        // on top of compacted history).
 
         if let Err(e) = super::retriever::retrieve_and_inject(
             context.user_id,
@@ -178,52 +172,8 @@ impl ChatExtension for MemoryExtension {
             });
         }
 
-        // Auto-refresh the summarizer when the branch crosses the
-        // threshold. Fire-and-forget (separate spawn so it can run
-        // concurrently with extraction). Plan §6 Phase 6.
-        let branch_id = context.branch_id;
-        let message_count = history.len();
-        // Fraction-of-window: clamp the flat summary trigger by 0.75× the CHAT
-        // model's context window (local: native context_length; cloud: registry)
-        // so a small-context local model summarizes before it overflows. None
-        // when the window is unknown → the flat admin threshold stands.
-        let trigger_override: Option<usize> =
-            crate::modules::file::available_files::model_context_window(&context.metadata)
-                .await
-                .map(|w| (w as f64 * 0.75) as usize);
-        tokio::spawn(async move {
-            // Load admin once — we need both the trigger threshold and
-            // the model id from the same row.
-            let admin = match crate::core::Repos.memory.get_admin_settings().await {
-                Ok(a) => a,
-                Err(_) => return,
-            };
-            // Token-aware trigger: the authority is the (token-based)
-            // `decide_summarize_action` inside `refresh_summary`. Keep only a
-            // cheap guard that skips brand-new branches (avoids a needless
-            // history reload before there's anything worth summarizing).
-            if message_count < 4 {
-                return;
-            }
-            if !admin.enabled {
-                return;
-            }
-            // Use the admin's configured default_extraction_model_id as
-            // the summarization model (separate column would be nicer
-            // but the plan's schema only ships one).
-            let Some(model_id) = admin.default_extraction_model_id else {
-                return;
-            };
-            if let Err(e) = super::super::engine::summarizer::refresh_summary(
-                branch_id,
-                model_id,
-                trigger_override,
-            )
-            .await
-            {
-                tracing::warn!("memory.summarizer: refresh failed for branch {branch_id}: {e}");
-            }
-        });
+        // Summarizer refresh moved to the `summarization` chat-extension
+        // (its after_llm_call hook spawns the refresh independently).
 
         Ok(ExtensionAction::Complete)
     }

@@ -6,6 +6,7 @@ import {
   Divider,
   Flex,
   Form,
+  InputNumber,
   Modal,
   Select,
   Switch,
@@ -23,17 +24,20 @@ const READ_PERM = Permissions.MemoryAdminRead
 const MANAGE_PERM = Permissions.MemoryAdminManage
 
 interface FormValues {
+  semantic_enabled: boolean
   embedding_model_id?: string | null
-  default_extraction_model_id?: string | null
-  enabled: boolean
+  cosine_threshold: number
 }
 
 /**
- * Embedding engine + extraction model + global enable toggle, plus the
- * explicit "Re-embed now" button. Owns its own form so saves here don't
- * re-PUT unrelated fields from other admin sections.
+ * Semantic (vector) search admin card. Owns the `semantic_enabled`
+ * kill switch (migration 90), the embedding-model picker, the
+ * cosine-distance cutoff, and the explicit "Re-embed now" affordance.
+ *
+ * Effective vector recall requires
+ * `semantic_enabled AND embedding_model_id IS NOT NULL`.
  */
-export function EmbeddingEngineSection() {
+export function SemanticSearchSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
   const { settings, availableModels, saving, loadingModels } =
@@ -45,16 +49,16 @@ export function EmbeddingEngineSection() {
   useEffect(() => {
     if (settings) {
       form.setFieldsValue({
+        semantic_enabled: settings.semantic_enabled,
         embedding_model_id: settings.embedding_model_id,
-        default_extraction_model_id: settings.default_extraction_model_id,
-        enabled: settings.enabled,
+        cosine_threshold: settings.cosine_threshold,
       })
     }
   }, [settings, form])
 
   if (!canRead) {
     return (
-      <Card title="Engine">
+      <Card title="Semantic search">
         <Alert
           type="warning"
           showIcon
@@ -63,7 +67,6 @@ export function EmbeddingEngineSection() {
       </Card>
     )
   }
-
   if (!settings) return null
 
   const noModelsAvailable = availableModels.length === 0
@@ -71,24 +74,23 @@ export function EmbeddingEngineSection() {
   const persist = async (values: FormValues, modelChanged: boolean) => {
     try {
       await Stores.MemoryAdmin.update({
+        semantic_enabled: values.semantic_enabled,
         embedding_model_id: values.embedding_model_id ?? null,
-        default_extraction_model_id:
-          values.default_extraction_model_id ?? null,
-        enabled: values.enabled,
+        cosine_threshold: values.cosine_threshold,
       })
       if (modelChanged) {
         message.success(
-          'Engine saved. Embedding model changed — re-embed running in background.',
+          'Semantic search saved. Embedding model changed — re-embed running in background.',
         )
         Stores.MemoryAdmin.loadRebuildStatus()
       } else {
-        message.success('Engine saved.')
+        message.success('Semantic search saved.')
       }
     } catch (error) {
       message.error(
         error instanceof Error
           ? error.message
-          : 'Failed to save engine settings.',
+          : 'Failed to save semantic search settings.',
       )
     }
   }
@@ -98,11 +100,7 @@ export function EmbeddingEngineSection() {
     const newEmbeddingId = values.embedding_model_id ?? null
     const modelChanged = newEmbeddingId !== priorEmbeddingId
 
-    if (
-      modelChanged &&
-      newEmbeddingId !== null &&
-      priorEmbeddingId !== null
-    ) {
+    if (modelChanged && newEmbeddingId !== null && priorEmbeddingId !== null) {
       setPendingSwap(values)
       return
     }
@@ -128,48 +126,58 @@ export function EmbeddingEngineSection() {
   }
 
   const swapTargetLabel = pendingSwap
-    ? availableModels.find((m) => m.id === pendingSwap.embedding_model_id)
+    ? (availableModels.find((m) => m.id === pendingSwap.embedding_model_id)
         ?.display_name ??
       availableModels.find((m) => m.id === pendingSwap.embedding_model_id)
         ?.name ??
-      pendingSwap.embedding_model_id
+      pendingSwap.embedding_model_id)
     : ''
 
   return (
     <>
-      {noModelsAvailable && (
-        <Alert
-          type="info"
-          showIcon
-          title="No embedding-capable models found."
-          description={
-            <span>
-              Add one from the LLM Providers page — either upload a
-              GGUF (e.g. <code>nomic-embed-text-v1.5</code>), download
-              from HuggingFace, or register a remote API model like{' '}
-              <code>text-embedding-3-small</code>. Tick the{' '}
-              <strong>text_embedding</strong> capability on the model
-              form. Then return here and select it below.
-            </span>
-          }
-        />
-      )}
-      <Card title="Engine">
+      <Card title="Semantic search">
+        {noModelsAvailable && (
+          <Alert
+            type="info"
+            showIcon
+            className="!mb-4"
+            title="No embedding-capable models found."
+            description={
+              <span>
+                Add one from the LLM Providers page — either upload a
+                GGUF (e.g. <code>nomic-embed-text-v1.5</code>), download
+                from HuggingFace, or register a remote API model like{' '}
+                <code>text-embedding-3-small</code>. Tick the{' '}
+                <strong>text_embedding</strong> capability on the model
+                form. Then return here and select it below.
+              </span>
+            }
+          />
+        )}
         <Form
-          name="memory-admin-engine-form"
+          name="memory-admin-semantic-form"
           form={form}
           layout="horizontal"
-          labelCol={{ flex: '280px' }}
-          wrapperCol={{ flex: 'auto' }}
+          labelCol={{ xs: { span: 24 }, md: { span: 10 } }}
+          wrapperCol={{ xs: { span: 24 }, md: { span: 14 } }}
           labelAlign="left"
           colon={false}
           onFinish={handleSubmit}
           disabled={!canManage}
         >
           <Form.Item
+            name="semantic_enabled"
+            label="Enable semantic search"
+            extra="When off, retrieval skips the vector arm regardless of whether an embedding model is configured. An effective vector recall additionally requires a model to be picked below."
+            valuePropName="checked"
+          >
+            <Switch aria-label="Enable semantic search retrieval" />
+          </Form.Item>
+
+          <Form.Item
             name="embedding_model_id"
             label="Embedding model"
-            extra={`The model used to compute vectors for both retrieval and extraction. Switching dimension triggers a re-embed of all stored memories. Current vector dimension: ${settings.embedding_dimensions}`}
+            extra={`The model used to compute vectors for retrieval and extraction. Switching dimension triggers a re-embed of all stored memories. Current vector dimension: ${settings.embedding_dimensions}`}
           >
             <Select
               placeholder={
@@ -190,29 +198,11 @@ export function EmbeddingEngineSection() {
           </Form.Item>
 
           <Form.Item
-            name="default_extraction_model_id"
-            label="Default extraction model"
-            extra="LLM used by the silent extraction pipeline. Users can override per-account. Cheap models (Haiku-class, Gemini Flash) are ideal here."
+            name="cosine_threshold"
+            label="Cosine distance threshold"
+            extra="Memories with distance ≥ this value are filtered out of the vector arm. Lower = stricter (fewer false-positives, more misses)."
           >
-            <Select
-              placeholder="Select an extraction model (optional)"
-              options={availableModels.map((m) => ({
-                value: m.id,
-                label: m.display_name || m.name,
-              }))}
-              showSearch={{ optionFilterProp: 'label' }}
-              allowClear
-              style={{ maxWidth: 480 }}
-            />
-          </Form.Item>
-
-          <Form.Item
-            name="enabled"
-            label="Enable memory deployment-wide"
-            extra="When off, all memory hooks no-op silently. Per-user toggles are unaffected but have no effect until this is on."
-            valuePropName="checked"
-          >
-            <Switch />
+            <InputNumber min={0} max={2} step={0.05} style={{ width: 160 }} />
           </Form.Item>
 
           <Form.Item

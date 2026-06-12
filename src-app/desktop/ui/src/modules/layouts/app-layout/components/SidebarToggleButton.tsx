@@ -33,10 +33,14 @@ export function SidebarToggleButton() {
   const dimension = '28px'
   const iconFontSize = '20px'
 
-  // macOS Tauri window has traffic-light controls in the top-left ~70px;
-  // clear them by shifting the toggle button right. Vanish in fullscreen.
+  // macOS Tauri traffic lights now start at x=20 (per
+  // `backend/mod.rs`'s `traffic_light_position`), cluster width ~52px,
+  // so they end around x=72. Shift the toggle right to x=84 — 12px
+  // gap matches the spacing other macOS apps leave between the
+  // traffic lights and the first toolbar control. Vanish in
+  // fullscreen (no traffic lights).
   const macTrafficLightOffset =
-    isTauriView && isMacOS && !isFullscreen ? 76 : 12
+    isTauriView && isMacOS && !isFullscreen ? 84 : 12
 
   // Full-width top-strip drag overlay (z:1) so pages WITHOUT a
   // HeaderBarContainer (NewChatPage etc.) and the sidebar's top

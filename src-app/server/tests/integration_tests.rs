@@ -21,6 +21,7 @@ mod memory;
 mod memory_mcp;
 mod onboarding;
 mod project;
+mod summarization;
 mod sync;
 // `remote_access` integration tests live in the desktop crate now —
 // they exercise endpoints served only by the ziee-desktop binary

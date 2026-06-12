@@ -8,7 +8,7 @@
 //! `conversation_memory_settings` table. `memory_mode_routes.rs`
 //! exposes `GET`/`PUT /api/conversations/{id}/memory-mode`.
 //!
-//! The dual-use engine code (`extractor`, `summarizer`, `dispatch`,
+//! The dual-use engine code (`extractor`, `dispatch`,
 //! `prompts`) lives in `super::engine::*` — it's reached by the hooks
 //! here AND by `memory/handlers.rs` / `embedding_worker.rs` /
 //! `memory_mcp/handlers.rs` directly, so it doesn't belong inside
