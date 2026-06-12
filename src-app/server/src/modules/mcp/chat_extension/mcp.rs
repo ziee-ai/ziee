@@ -109,6 +109,52 @@ struct AccumulatedToolUse {
 }
 
 /// MCP chat extension
+/// Deterministic ids of the privileged built-in MCP servers to auto-attach this
+/// request, based on flags set by the file (`attach_files_mcp`) and memory
+/// (`attach_memory_mcp`) chat extensions. These are fetched by id OUTSIDE the
+/// group-gated accessibility path — always-on for tool-capable models, no grant.
+fn auto_attach_builtin_ids(
+    metadata: &std::collections::HashMap<String, serde_json::Value>,
+) -> Vec<Uuid> {
+    let flag = |k: &str| {
+        metadata
+            .get(k)
+            .and_then(|v| v.as_str())
+            .map(|s| s == "true")
+            .unwrap_or(false)
+    };
+    let mut ids = Vec::new();
+    if flag("attach_files_mcp") {
+        ids.push(crate::modules::files_mcp::files_mcp_server_id());
+    }
+    if flag("attach_memory_mcp") {
+        ids.push(crate::modules::memory_mcp::memory_mcp_server_id());
+    }
+    ids
+}
+
+/// Side-effect tools don't produce a result the model needs to reason about, so
+/// when ONLY these were called in an iteration the tool-use loop finalizes
+/// without a no-op continuation round-trip (Track B inline self-save).
+///
+/// Scoped to the memory built-in server id — a third-party MCP server that
+/// happens to expose a tool NAMED `remember`/`forget` is NOT side-effect (its
+/// result may well be something the model needs to reason about, so the loop
+/// must continue as usual). Only the privileged built-in memory tools qualify.
+fn is_side_effect_tool(server_id: Uuid, tool_name: &str) -> bool {
+    server_id == crate::modules::memory_mcp::memory_mcp_server_id()
+        && matches!(tool_name, "remember" | "forget")
+}
+
+/// Privileged built-in servers (files, memory). Their tools bypass the MCP
+/// approval flow — they're read-only / save-only and auto-attached, so a
+/// `read_file`/`remember` call must execute immediately rather than stall behind
+/// a manual-approval prompt the user never opted into.
+fn is_builtin_server_id(id: Uuid) -> bool {
+    id == crate::modules::files_mcp::files_mcp_server_id()
+        || id == crate::modules::memory_mcp::memory_mcp_server_id()
+}
+
 ///
 /// Provides Model Context Protocol (MCP) tool calling functionality for chat.
 pub struct McpChatExtension {
@@ -201,6 +247,7 @@ impl McpChatExtension {
                     content: format!("Server '{}' not found", server_id),
                     is_error: Some(true),
                     attachment: None,
+                    images: None,
                     resource_links: None,
                     hidden_content: None,
                 };
@@ -269,6 +316,7 @@ impl McpChatExtension {
                         content: "Cannot execute sampling tool: no model available. Ensure a model is selected.".to_string(),
                         is_error: Some(true),
                             attachment: None,
+                            images: None,
                         resource_links: None,
                         hidden_content: None,
                     };
@@ -297,6 +345,7 @@ impl McpChatExtension {
                             content: format!("Failed to connect to server: {}", e),
                             is_error: Some(true),
                                     attachment: None,
+                                    images: None,
                             resource_links: None,
                             hidden_content: None,
                         };
@@ -981,16 +1030,9 @@ impl ChatExtension for McpChatExtension {
             if all_denied {
                 tracing::info!("All {} tool approvals were denied, skipping LLM call", approvals.len());
 
-                // Optionally send an SSE event to inform the client
-                if let Some(tx) = tx {
-                    let _ = tx.send(Ok(Event::default()
-                        .event("tool_denied")
-                        .json_data(serde_json::json!({
-                            "message": "Tool execution was denied by user",
-                            "denied_count": approvals.len()
-                        }))
-                        .unwrap()));
-                }
+                // (Previously emitted a best-effort `tool_denied` SSE event the
+                // client never handled; dropped with the move to the typed
+                // chat-token channel — the turn just completes.)
 
                 return Ok(BeforeLlmAction::Complete);
             }
@@ -1127,6 +1169,7 @@ impl ChatExtension for McpChatExtension {
                             content: "Tool execution was denied by the user.".to_string(),
                             is_error: Some(true),
                                     attachment: None,
+                                    images: None,
                             resource_links: None,
                             hidden_content: None,
                         };
@@ -1204,15 +1247,32 @@ impl ChatExtension for McpChatExtension {
         }
 
         // === STEP 2: Check if MCP is enabled ===
-        if !send_request.enable_mcp {
+        // Built-in servers (files = Track A, memory = Track B inline self-save)
+        // auto-attach whenever the file/memory extensions flagged them — even
+        // when general MCP is off, so a user with MCP disabled still gets agentic
+        // file reading + memory saving.
+        let builtin_ids = auto_attach_builtin_ids(&context.metadata);
+        if !send_request.enable_mcp && builtin_ids.is_empty() {
             tracing::debug!("MCP not enabled for this request");
             return Ok(BeforeLlmAction::Continue);
         }
 
-        // Get mcp_servers from config
-        let mcp_servers = send_request.mcp_config
-            .as_ref()
-            .map(|config| config.mcp_servers.clone());
+        // Get mcp_servers from config (only when general MCP is enabled — when
+        // ONLY built-in servers are auto-attaching, we attach just those).
+        // NOTE: the disabled path requests an explicit EMPTY list, NOT None.
+        // `validate_and_build_config(.., None)` means "no specific servers
+        // requested → use ALL accessible servers", which would inject (and
+        // pre-execute, for Always-mode servers) every third-party MCP server
+        // the user can access despite MCP being turned off. `Some(vec![])`
+        // produces an empty config so only the appended built-ins survive.
+        let mcp_servers = if send_request.enable_mcp {
+            send_request
+                .mcp_config
+                .as_ref()
+                .map(|config| config.mcp_servers.clone())
+        } else {
+            Some(Vec::new())
+        };
 
         tracing::info!(
             "MCP extension: enabled for user {}, servers requested: {}",
@@ -1221,8 +1281,29 @@ impl ChatExtension for McpChatExtension {
         );
 
         // Validate and build server configuration
-        let (server_configs, accessible_ids) =
+        let (mut server_configs, accessible_ids) =
             helpers::validate_and_build_config(&self.pool, context.user_id, mcp_servers).await?;
+
+        // Fetch the auto-attached built-ins by deterministic id, OUTSIDE the
+        // group-gated accessibility path (they have no user_group grant). Empty
+        // tool list = all of their tools.
+        let mut builtin_servers: Vec<crate::modules::mcp::models::McpServer> = Vec::new();
+        for id in &builtin_ids {
+            // `get_any_server` ignores `enabled`; guard it here so a built-in an
+            // operator/health-check disabled is not auto-attached (and approval-
+            // bypassed). No shipping path disables a built-in today, so this is
+            // defense-in-depth.
+            if let Some(s) = crate::core::Repos.mcp.get_any_server(*id).await? {
+                if s.enabled {
+                    builtin_servers.push(s);
+                }
+            }
+        }
+        for s in &builtin_servers {
+            if !server_configs.iter().any(|(id, _)| id == &s.id) {
+                server_configs.push((s.id, Vec::new()));
+            }
+        }
 
         if server_configs.is_empty() {
             tracing::debug!(
@@ -1233,9 +1314,15 @@ impl ChatExtension for McpChatExtension {
             return Ok(BeforeLlmAction::Continue);
         }
 
-        // Get all accessible servers with details
-        let accessible_servers =
+        // Get all accessible servers with details (+ the auto-attached built-ins
+        // so the tool-listing loop can resolve their details).
+        let mut accessible_servers =
             helpers::get_all_accessible_config(&self.pool, context.user_id).await?;
+        for s in builtin_servers {
+            if !accessible_servers.iter().any(|x| x.id == s.id) {
+                accessible_servers.push(s);
+            }
+        }
 
         // Extract user's raw message text (used for "always"-mode preprocessing)
         let user_message_text: Option<String> = request.messages.iter().rev()
@@ -1395,24 +1482,35 @@ impl ChatExtension for McpChatExtension {
             }
         }
 
-        // Inject always-mode context into the system message
+        // Append always-mode pre-fetched context to the latest USER turn (not the
+        // system prefix). This context is volatile — re-fetched every request — so
+        // keeping it out of the cacheable tools+system prefix preserves the prompt
+        // cache (mirrors the memory-retrieval move). Falls back to a system message
+        // only when there is no user turn to attach to.
         if !always_mode_context.is_empty() {
             let context_block = format!(
                 "\n\n--- Pre-fetched context ---\n{}\n--- End context ---",
                 always_mode_context.join("\n\n")
             );
-            // Append to existing system message or prepend a new one
-            if let Some(sys_msg) = request.messages.iter_mut().find(|m| m.role == ai_providers::Role::System) {
-                if let Some(ai_providers::ContentBlock::Text { text }) = sys_msg.content.first_mut() {
-                    text.push_str(&context_block);
-                }
+            if let Some(user_msg) = request
+                .messages
+                .iter_mut()
+                .rev()
+                .find(|m| m.role == ai_providers::Role::User)
+            {
+                user_msg
+                    .content
+                    .push(ai_providers::ContentBlock::Text { text: context_block });
             } else {
-                request.messages.insert(0, ai_providers::ChatMessage {
+                request.messages.push(ai_providers::ChatMessage {
                     role: ai_providers::Role::System,
                     content: vec![ai_providers::ContentBlock::Text { text: context_block }],
                 });
             }
-            tracing::info!("Injected {} always-mode context blocks into system message", always_mode_context.len());
+            tracing::debug!(
+                "Injected {} always-mode context blocks into the user turn",
+                always_mode_context.len()
+            );
         }
 
         tracing::info!(
@@ -1530,6 +1628,7 @@ impl ChatExtension for McpChatExtension {
                                 .to_string(),
                             is_error: Some(true),
                                     attachment: None,
+                                    images: None,
                             resource_links: None,
                             hidden_content: None,
                         };
@@ -1610,6 +1709,24 @@ impl ChatExtension for McpChatExtension {
             final_message.id,
             message_with_content.contents.len()
         );
+
+        // Did the assistant produce answer text this iteration? (Used by the
+        // side-effect 3-way decision: a side-effect-only turn WITH text finalizes;
+        // WITHOUT text we must loop once so the model produces an answer.) Mirror
+        // collect_text's macro-safe "serialize and read type==text" pattern.
+        let assistant_has_text = message_with_content.contents.iter().any(|c| {
+            c.parse_content()
+                .ok()
+                .and_then(|d| serde_json::to_value(&d).ok())
+                .map(|v| {
+                    v.get("type").and_then(|t| t.as_str()) == Some("text")
+                        && v.get("text")
+                            .and_then(|t| t.as_str())
+                            .map(|s| !s.trim().is_empty())
+                            .unwrap_or(false)
+                })
+                .unwrap_or(false)
+        });
 
         // Find ToolUse and ToolResult content blocks
         let mut tool_uses = Vec::new();
@@ -1731,45 +1848,98 @@ impl ChatExtension for McpChatExtension {
             auto_approved_servers.len()
         );
 
+        // Built-in privileged servers (files/memory) always execute, even when
+        // the conversation has MCP approval Disabled — so a user with MCP off
+        // still gets file reading + memory saving.
+        let has_builtin_call = tool_uses.iter().any(|(_, _, sid, _)| {
+            uuid::Uuid::parse_str(sid)
+                .map(is_builtin_server_id)
+                .unwrap_or(false)
+        });
+
         // Check approval mode
-        if matches!(approval_mode, crate::modules::mcp::chat_extension::ApprovalMode::Disabled) {
+        if matches!(approval_mode, crate::modules::mcp::chat_extension::ApprovalMode::Disabled)
+            && !has_builtin_call
+        {
             tracing::info!("MCP disabled for conversation {}", context.conversation_id);
             return Ok(ExtensionAction::Complete);
         }
 
-        // Get accessible servers for lookups
-        let accessible_servers =
+        // Get accessible servers for lookups (+ the auto-attached built-in
+        // servers, by deterministic id, so their tool calls dispatch + execute).
+        let mut accessible_servers =
             helpers::get_all_accessible_config(&self.pool, context.user_id).await?;
+        for id in auto_attach_builtin_ids(&context.metadata) {
+            if !accessible_servers.iter().any(|s| s.id == id) {
+                if let Some(bs) = crate::core::Repos.mcp.get_any_server(id).await? {
+                    // Mirror the before_llm_call guard: never resolve a disabled
+                    // built-in (get_any_server ignores `enabled`). With both
+                    // sites guarded a disabled built-in hits "Server not found".
+                    if bs.enabled {
+                        accessible_servers.push(bs);
+                    }
+                }
+            }
+        }
 
         // Determine which tools need approval vs can execute immediately
         let mut tools_to_execute = Vec::new();
         let mut tools_needing_approval = Vec::new();
+        // Non-builtin tools called in a Disabled-approval conversation. We only
+        // reach the classification loop in Disabled mode when a built-in call
+        // shared the turn (the early return above handles the builtin-free case),
+        // so a third-party tool here must NOT run AND must NOT surface an approval
+        // prompt (the user turned MCP off) — it gets a synthesized denial
+        // tool_result instead, keeping the Disabled contract honest while still
+        // pairing every tool_use with a tool_result.
+        let mut tools_disabled = Vec::new();
 
         for (tool_use_id, tool_name, server_id, input) in tool_uses {
-            let needs_approval = match approval_mode {
-                crate::modules::mcp::chat_extension::ApprovalMode::AutoApprove => false,
-                crate::modules::mcp::chat_extension::ApprovalMode::ManualApprove => {
-                    // Check if this tool is auto-approved using server_id directly
-                    let is_auto_approved = if let Ok(sid) = uuid::Uuid::parse_str(&server_id) {
-                        auto_approved_servers
-                            .iter()
-                            .any(|s| s.server_id == sid && s.contains_tool(&tool_name))
-                        || user_auto_approved
-                            .iter()
-                            .any(|s| s.server_id == sid && s.contains_tool(&tool_name))
-                    } else {
-                        false
-                    };
-                    tracing::info!(
-                        "Tool '{}' (server={}) auto-approved check: is_auto_approved={}",
-                        tool_name,
-                        server_id,
-                        is_auto_approved
-                    );
-                    !is_auto_approved
-                }
-                crate::modules::mcp::chat_extension::ApprovalMode::Disabled => {
-                    unreachable!("Already handled above")
+            // Privileged built-in servers bypass approval entirely.
+            let is_builtin = uuid::Uuid::parse_str(&server_id)
+                .map(is_builtin_server_id)
+                .unwrap_or(false);
+
+            // Disabled mode + non-builtin → deny (no run, no prompt).
+            if !is_builtin
+                && matches!(
+                    approval_mode,
+                    crate::modules::mcp::chat_extension::ApprovalMode::Disabled
+                )
+            {
+                tools_disabled.push((tool_use_id, tool_name, server_id));
+                continue;
+            }
+
+            let needs_approval = if is_builtin {
+                false
+            } else {
+                match approval_mode {
+                    crate::modules::mcp::chat_extension::ApprovalMode::AutoApprove => false,
+                    crate::modules::mcp::chat_extension::ApprovalMode::ManualApprove => {
+                        // Check if this tool is auto-approved using server_id directly
+                        let is_auto_approved = if let Ok(sid) = uuid::Uuid::parse_str(&server_id) {
+                            auto_approved_servers
+                                .iter()
+                                .any(|s| s.server_id == sid && s.contains_tool(&tool_name))
+                                || user_auto_approved
+                                    .iter()
+                                    .any(|s| s.server_id == sid && s.contains_tool(&tool_name))
+                        } else {
+                            false
+                        };
+                        tracing::info!(
+                            "Tool '{}' (server={}) auto-approved check: is_auto_approved={}",
+                            tool_name,
+                            server_id,
+                            is_auto_approved
+                        );
+                        !is_auto_approved
+                    }
+                    // Handled by the Disabled-deny branch above.
+                    crate::modules::mcp::chat_extension::ApprovalMode::Disabled => {
+                        unreachable!("Disabled non-builtin tools are denied above")
+                    }
                 }
             };
 
@@ -1839,9 +2009,17 @@ impl ChatExtension for McpChatExtension {
                 helpers::send_approval_required_event(tx, tool_use_id, tool_name, &server_name, server_id_str, input).await?;
             }
 
-            // Return Complete to pause conversation - user must approve via API or tool_approvals field
-            tracing::info!("Conversation paused, waiting for {} tool approvals", tools_needing_approval.len());
-            return Ok(ExtensionAction::Complete);
+            // Do NOT pause here. A built-in tool (files/memory) can share the
+            // turn with a third-party tool awaiting approval; its `tool_use` was
+            // already finalized to the DB and bypasses approval by design. We
+            // must execute it + persist its `tool_result` FIRST (the execution
+            // loop below) so the next provider request doesn't fail with
+            // "tool_use ids found without tool_result blocks". The pause happens
+            // AFTER the loop (search: "Pause for pending approvals").
+            tracing::info!(
+                "{} tool(s) await approval; executing approval-exempt tools first, then pausing",
+                tools_needing_approval.len()
+            );
         }
 
         tracing::info!("MCP extension: executing {} auto-approved tools", tools_to_execute.len());
@@ -1850,7 +2028,36 @@ impl ChatExtension for McpChatExtension {
 
         // Execute each auto-approved tool and collect results
         let mut tool_results = Vec::new();
+
+        // Disabled-mode non-builtin tools (mixed builtin/third-party turn): emit a
+        // denial tool_result so the tool_use isn't orphaned, without running the
+        // tool or prompting for approval. The built-in(s) in `tools_to_execute`
+        // still execute below.
+        for (tool_use_id, tool_name, server_id_str) in &tools_disabled {
+            let denial = McpContentData::ToolResult {
+                tool_use_id: tool_use_id.clone(),
+                name: Some(tool_name.clone()),
+                server_id: Some(server_id_str.clone()),
+                content: "MCP is disabled for this conversation; tool not executed."
+                    .to_string(),
+                is_error: Some(true),
+                attachment: None,
+                images: None,
+                resource_links: None,
+                hidden_content: None,
+            };
+            tool_results.push(denial.to_message_content());
+        }
+
         let mut final_response_text: Option<String> = None;
+        // Track every tool executed this iteration so we can detect the
+        // "only side-effect tools were called" case (Track B inline self-save):
+        // `remember`/`forget` don't need the model to see their result, so when
+        // ONLY those ran we finalize without a no-op continuation round-trip.
+        // (server_id, tool_name) of every tool actually dispatched this turn —
+        // the server id is needed to scope the side-effect check to the memory
+        // built-in (a third-party `remember` must not finalize the loop).
+        let mut executed_tools: Vec<(Uuid, String)> = Vec::new();
 
         // Channel for elicitation DB persistence (http.rs → mcp.rs via Repos)
         let (elicit_notify_tx, mut elicit_notify_rx) =
@@ -1891,6 +2098,7 @@ impl ChatExtension for McpChatExtension {
                     continue;
                 }
             };
+            executed_tools.push((server_id, tool_name.clone()));
 
             // Find server by ID
             let server = accessible_servers
@@ -1907,6 +2115,7 @@ impl ChatExtension for McpChatExtension {
                     content: format!("Server '{}' not found", server_id),
                     is_error: Some(true),
                     attachment: None,
+                    images: None,
                     resource_links: None,
                     hidden_content: None,
                 };
@@ -1937,6 +2146,7 @@ impl ChatExtension for McpChatExtension {
                                 content: e.to_string(),
                                 is_error: Some(true),
                                             attachment: None,
+                                            images: None,
                                 resource_links: None,
                                 hidden_content: None,
                             }, false)
@@ -1953,6 +2163,7 @@ impl ChatExtension for McpChatExtension {
                                         content: format!("Failed to initialize sampling provider: {}", e),
                                         is_error: Some(true),
                                                             attachment: None,
+                                                            images: None,
                                         resource_links: None,
                                         hidden_content: None,
                                     }, false)
@@ -1981,6 +2192,7 @@ impl ChatExtension for McpChatExtension {
                                                 content: format!("Failed to connect to server: {}", e),
                                                 is_error: Some(true),
                                                                             attachment: None,
+                                                                            images: None,
                                                 resource_links: None,
                                                 hidden_content: None,
                                             }, false)
@@ -2002,6 +2214,7 @@ impl ChatExtension for McpChatExtension {
                         content: "Cannot execute sampling tool: no model available in context. Ensure a model is selected.".to_string(),
                         is_error: Some(true),
                             attachment: None,
+                            images: None,
                         resource_links: None,
                         hidden_content: None,
                     }, false)
@@ -2030,6 +2243,7 @@ impl ChatExtension for McpChatExtension {
                             content: format!("Failed to connect to server: {}", e),
                             is_error: Some(true),
                                     attachment: None,
+                                    images: None,
                             resource_links: None,
                             hidden_content: None,
                         }, false)
@@ -2457,6 +2671,30 @@ impl ChatExtension for McpChatExtension {
             }
         }
 
+        // Pause for pending approvals (AFTER the execution loop). Built-in
+        // approval-exempt tools have now executed and their results sit in
+        // `tool_results`. Persist them so the built-in `tool_use` blocks are not
+        // orphaned, then pause for the third-party tools awaiting approval. When
+        // the user approves, the resume path executes those; the built-in result
+        // is already on disk so the next request is protocol-valid.
+        if !tools_needing_approval.is_empty() {
+            if let Some(message_id) = context.message_id {
+                for tr in tool_results.iter() {
+                    let _ = Repos
+                        .chat
+                        .core
+                        .append_content(message_id, &tr.content_type(), tr.clone())
+                        .await;
+                }
+            }
+            tracing::info!(
+                "Conversation paused after executing {} approval-exempt tool result(s); waiting for {} approval(s)",
+                tool_results.len(),
+                tools_needing_approval.len()
+            );
+            return Ok(ExtensionAction::Complete);
+        }
+
         // If any tool emitted audience=["user"] content, process references and bypass the LLM.
         // We must persist tool_results to DB BEFORE returning CompleteWithContent so that the
         // tool_use already stored by finalize() has a matching tool_result. Without this, the
@@ -2477,6 +2715,38 @@ impl ChatExtension for McpChatExtension {
                 let _ = Repos.chat.core.cancel_pending_elicitations(message_id).await;
             }
             return Ok(ExtensionAction::CompleteWithContent { text });
+        }
+
+        // Side-effect-only iteration (Track B inline self-save): if EVERY tool
+        // executed this turn was a side-effect tool (remember/forget), persist
+        // their tool_results (so the tool_use blocks aren't orphaned) and
+        // finalize WITHOUT a continuation round-trip — the model already produced
+        // its answer this iteration. A mixed call (e.g. remember + read_file) is
+        // NOT side-effect-only, so it falls through to Continue and the read_file
+        // result reaches the model as normal.
+        if !executed_tools.is_empty()
+            && executed_tools
+                .iter()
+                .all(|(sid, n)| is_side_effect_tool(*sid, n))
+        {
+            if assistant_has_text {
+                // Side-effect tools + the model already gave its answer this turn:
+                // persist the canned results and finalize without re-invoking.
+                if let Some(message_id) = context.message_id {
+                    for tr in tool_results.iter() {
+                        let _ = Repos
+                            .chat
+                            .core
+                            .append_content(message_id, &tr.content_type(), tr.clone())
+                            .await;
+                    }
+                    let _ = Repos.chat.core.cancel_pending_elicitations(message_id).await;
+                }
+                return Ok(ExtensionAction::Complete);
+            }
+            // Side-effect-only but NO answer text → fall through to Continue so the
+            // loop runs once more and the model produces an answer (the one case
+            // that must continue). The tool_results ride along in that Continue.
         }
 
         // Cancel any elicitations that are still pending after all tools have been executed.
@@ -2799,5 +3069,54 @@ mod tests {
         let url = build_artifact_download_url(&origin, "/api", Uuid::nil(), "tok");
         assert!(url.starts_with("http://127.0.0.1:8080/api/files/"), "{url}");
         assert!(!url.contains("0.0.0.0"), "{url}");
+    }
+}
+
+#[cfg(test)]
+mod builtin_tests {
+    use super::*;
+    use serde_json::json;
+    use std::collections::HashMap;
+
+    #[test]
+    fn side_effect_classification() {
+        let memory = crate::modules::memory_mcp::memory_mcp_server_id();
+        // Memory built-in remember/forget are the only side-effect tools.
+        assert!(is_side_effect_tool(memory, "remember"));
+        assert!(is_side_effect_tool(memory, "forget"));
+        assert!(!is_side_effect_tool(memory, "recall"));
+        assert!(!is_side_effect_tool(memory, "anything_else"));
+        // Read tools on the files built-in are NOT side-effect.
+        let files = crate::modules::files_mcp::files_mcp_server_id();
+        assert!(!is_side_effect_tool(files, "read_file"));
+        // A third-party server's "remember" tool must NOT be treated as
+        // side-effect — its result may be something the model needs.
+        assert!(!is_side_effect_tool(Uuid::new_v4(), "remember"));
+        assert!(!is_side_effect_tool(Uuid::new_v4(), "forget"));
+    }
+
+    #[test]
+    fn auto_attach_ids_from_flags() {
+        let mut m: HashMap<String, serde_json::Value> = HashMap::new();
+        assert!(auto_attach_builtin_ids(&m).is_empty());
+        m.insert("attach_files_mcp".into(), json!("true"));
+        assert_eq!(auto_attach_builtin_ids(&m).len(), 1);
+        m.insert("attach_memory_mcp".into(), json!("true"));
+        assert_eq!(auto_attach_builtin_ids(&m).len(), 2);
+        // a non-"true" value is ignored
+        let mut m2: HashMap<String, serde_json::Value> = HashMap::new();
+        m2.insert("attach_files_mcp".into(), json!("false"));
+        assert!(auto_attach_builtin_ids(&m2).is_empty());
+    }
+
+    #[test]
+    fn builtin_server_id_recognizes_files_and_memory_only() {
+        assert!(is_builtin_server_id(
+            crate::modules::files_mcp::files_mcp_server_id()
+        ));
+        assert!(is_builtin_server_id(
+            crate::modules::memory_mcp::memory_mcp_server_id()
+        ));
+        assert!(!is_builtin_server_id(Uuid::new_v4()));
     }
 }

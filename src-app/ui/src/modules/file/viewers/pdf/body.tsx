@@ -28,7 +28,8 @@ export function PdfBody(props: FileViewerSlotProps) {
   // banner). `processing_metadata` is typed as `any` in the OpenAPI
   // surface, hence the cast + the explicit null/undefined check.
   const meta = (file.processing_metadata ?? {}) as { page_count?: number }
-  const totalPages = typeof meta.page_count === 'number' ? meta.page_count : undefined
+  const totalPages =
+    typeof meta.page_count === 'number' ? meta.page_count : undefined
   const truncated =
     typeof totalPages === 'number' && totalPages > file.preview_page_count
 
@@ -47,7 +48,7 @@ export function PdfBody(props: FileViewerSlotProps) {
         <Alert
           type="info"
           showIcon
-          message={
+          title={
             `Showing first ${file.preview_page_count} of ${totalPages} pages. ` +
             `Download the file to view all pages.`
           }
@@ -75,10 +76,18 @@ export function PdfBody(props: FileViewerSlotProps) {
           <Text type="secondary" className="!text-xs">
             Page {i + 1} of {totalPages ?? file.preview_page_count}
           </Text>
-          {url
-            ? <img src={url} alt={`Page ${i + 1}`} className="w-full object-contain rounded shadow" loading="lazy" />
-            : <div className="w-full flex items-center justify-center py-16"><Spin /></div>
-          }
+          {url ? (
+            <img
+              src={url}
+              alt={`Page ${i + 1}`}
+              className="w-full object-contain rounded shadow"
+              loading="lazy"
+            />
+          ) : (
+            <div className="w-full flex items-center justify-center py-16">
+              <Spin />
+            </div>
+          )}
         </div>
       ))}
     </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { App, Button, Popconfirm, Spin, Tag, Tooltip, message } from 'antd'
+import { App, Button, Popconfirm, Spin, Tag, Tooltip } from 'antd'
 import type { MenuProps } from 'antd'
+import { getAppApi } from '@/lib/antdAppHolder'
 import {
   CloseOutlined,
   FolderOpenOutlined,
@@ -211,7 +212,7 @@ const projectExtension: ChatExtension = createExtension({
         '[project extension] attach failed; conversation stays unfiled.',
         err,
       )
-      message.error('Failed to file this conversation into the project — saved as unfiled.')
+      getAppApi().message.error('Failed to file this conversation into the project — saved as unfiled.')
       setCached(conversation.id, null)
       return
     }

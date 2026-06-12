@@ -131,6 +131,39 @@ impl UsageMode {
 // Database Models
 // =====================================================
 
+/// A single env var or HTTP header entry on a MCP server, as
+/// exposed in API RESPONSES. The wire shape replaces the old
+/// flat `{KEY: "value"}` map so the UI knows per-entry which
+/// keys are secrets without seeing their values.
+///
+/// `value` is `None` when the entry is a secret (write-only — see
+/// `crate::common::secret` for the pattern) or when the entry is
+/// genuinely empty. Non-secret entries always include the plain
+/// value. The UI renders `Some` as a text input pre-filled with the
+/// value; `None` + `is_secret: true` as an `Input.Password` with
+/// `••••• (saved)` placeholder.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct EnvVarView {
+    pub key: String,
+    pub value: Option<String>,
+    pub is_secret: bool,
+}
+
+/// HTTP-header analog of `EnvVarView`. Same shape; separate type so
+/// the OpenAPI surface is unambiguous (env vs header inputs render
+/// in different drawer sections, with different default
+/// `is_secret` defaults at the UI layer). `Deserialize` is implemented
+/// only because `McpServer` carries this in a `Vec<HeaderView>` and
+/// `McpServer` derives `Deserialize` for sqlx + test plumbing — no
+/// inbound API path takes `HeaderView` (use `HeaderEntry` in
+/// `types.rs` for that).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct HeaderView {
+    pub key: String,
+    pub value: Option<String>,
+    pub is_secret: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct McpServer {
     pub id: Uuid,
@@ -146,11 +179,37 @@ pub struct McpServer {
     // stdio transport
     pub command: Option<String>,
     pub args: serde_json::Value,
+    /// FLAT decrypted env-var map. Always populated by the repo with
+    /// the FULLY decrypted values (plain entries merged with the
+    /// decrypted secrets) so internal runtime callsites — stdio
+    /// subprocess spawn, http header `${VAR}` interpolation — keep
+    /// working unchanged. NEVER serialized — the public response
+    /// shape is `environment_variables_entries` with secret values
+    /// redacted to `value: None`.
+    #[serde(default, skip_serializing)]
     pub environment_variables: serde_json::Value,
 
     // http/sse transport
     pub url: Option<String>,
+    /// FLAT decrypted header map. Same write-only semantics as
+    /// `environment_variables` — see that field's doc comment.
+    /// `parse_header_map` runs `${VAR}` interpolation against the
+    /// (decrypted) env map at request-build time.
+    #[serde(default, skip_serializing)]
     pub headers: serde_json::Value,
+
+    /// Public structured view of `environment_variables` for the UI
+    /// form editor. Per-entry secret marker; secret values redacted
+    /// to `None`. Populated by the repo from the triple-column
+    /// storage (`environment_variables` + `environment_variables_encrypted` +
+    /// `environment_variables_secret_keys`).
+    #[serde(default)]
+    pub environment_variables_entries: Vec<EnvVarView>,
+
+    /// Public structured view of `headers` for the UI form editor.
+    /// Sibling of `environment_variables_entries`.
+    #[serde(default)]
+    pub headers_entries: Vec<HeaderView>,
 
     // Runtime configuration
     pub timeout_seconds: i32,
@@ -160,16 +219,47 @@ pub struct McpServer {
     pub usage_mode: UsageMode,
     pub max_concurrent_sessions: Option<i32>,
 
-    /// Admin opt-in: launch the stdio subprocess inside the
-    /// code_sandbox bwrap isolation. Only honored when
-    /// `is_system && transport_type == Stdio` — the spawn path
-    /// ignores it otherwise; the UI hides the toggle for user-owned
-    /// or non-stdio servers. Defaults to false.
+    /// Launch the stdio subprocess inside the code_sandbox bwrap
+    /// isolation. Honored for any `transport_type == Stdio` row (both
+    /// system and user-owned) — the user-create handler force-sets this
+    /// to `true` for user-owned stdio servers per the active MCP user
+    /// policy; admins choose freely on system servers via the drawer
+    /// toggle. The spawn path ignores it for non-stdio servers.
     pub run_in_sandbox: bool,
+
+    /// Rootfs flavor (KNOWN_FLAVORS, e.g. `minimal`/`full`) used when
+    /// `run_in_sandbox` launches this stdio server inside the
+    /// code_sandbox. Defaults to `full` (the flavor that ships Node +
+    /// uv + python3 + R). Ignored when not sandboxed. For user-owned
+    /// stdio rows the user-create handler force-overwrites this with
+    /// the active `mcp_user_policy.user_stdio_sandbox_flavor` (the
+    /// drawer hides the picker on the user side); admins choose it on
+    /// the system drawer.
+    pub sandbox_flavor: String,
+
+    /// Persisted result of the last connection probe — populated by
+    /// `connection_health` at boot (startup health check), at
+    /// create-time (post-create probe in `enforce_on_create`), at
+    /// enable-transition time (probe in `enforce_on_update_transition`),
+    /// and on every explicit "Test Connection" button press.
+    /// See migration 82.
+    #[serde(default)]
+    pub last_health_check_at: Option<DateTime<Utc>>,
+    /// "untested" | "healthy" | "unhealthy". Defaults to "untested"
+    /// for freshly-created rows that have never been probed.
+    #[serde(default = "default_health_status")]
+    pub last_health_check_status: String,
+    /// Human reason on unhealthy. `None` on healthy / untested.
+    #[serde(default)]
+    pub last_health_check_reason: Option<String>,
 
     // Metadata
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+fn default_health_status() -> String {
+    "untested".to_string()
 }
 
 /// Stored OAuth 2.1 `client_credentials` configuration for an external HTTP MCP

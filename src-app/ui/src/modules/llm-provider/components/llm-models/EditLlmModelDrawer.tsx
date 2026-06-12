@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { Stores } from '@/modules/llm-provider/stores'
 import { LlmModelCapabilitiesSection } from '@/modules/llm-provider/components/llm-models/shared/LlmModelCapabilitiesSection'
 import { LlmModelParametersSection } from '@/modules/llm-provider/components/llm-models/shared/LlmModelParametersSection'
+import { LlmModelLlamaCppSettingsSection } from '@/modules/llm-provider/components/llm-models/shared/LlmModelLlamaCppSettingsSection'
+import { LlmModelMistralRsSettingsSection } from '@/modules/llm-provider/components/llm-models/shared/LlmModelMistralRsSettingsSection'
 import {
   BASIC_MODEL_FIELDS,
   MODEL_PARAMETERS,
@@ -29,6 +31,7 @@ export function EditLlmModelDrawer() {
   )
 
   const isLocalModel = currentProvider?.provider_type === 'local'
+  const engineType = currentModel?.engine_type
 
   useEffect(() => {
     if (currentModel && open) {
@@ -38,6 +41,7 @@ export function EditLlmModelDrawer() {
         description: currentModel.description,
         capabilities: currentModel.capabilities || {},
         parameters: currentModel.parameters || {},
+        engine_settings: currentModel.engine_settings || {},
       })
     }
   }, [currentModel, open, form])
@@ -57,6 +61,8 @@ export function EditLlmModelDrawer() {
         description: values.description,
         capabilities: values.capabilities,
         parameters: values.parameters,
+        // Engine settings only apply to local models.
+        ...(isLocalModel ? { engine_settings: values.engine_settings } : {}),
       })
 
       Stores.EditLlmModelDrawer.closeEditLlmModelDrawer()
@@ -101,15 +107,14 @@ export function EditLlmModelDrawer() {
         <Flex className={`flex-col gap-3`}>
           <LlmModelCapabilitiesSection />
 
-          {/* TODO: Add engine/device settings for local models once backend supports it */}
-          {/* {isLocalModel && (
-            <>
-              <LlmModelEngineSelectionSection />
-              <LlmModelDeviceSelectionSection />
-              <LlmModelMistralRsSettingsSection />
-              <LlmModelLlamaCppSettingsSection />
-            </>
-          )} */}
+          {/* Local-model engine settings — render the section matching
+              the model's engine so its `engine_settings` reach the spawn. */}
+          {isLocalModel && engineType === 'llamacpp' && (
+            <LlmModelLlamaCppSettingsSection />
+          )}
+          {isLocalModel && engineType === 'mistralrs' && (
+            <LlmModelMistralRsSettingsSection />
+          )}
 
           <Card title="Parameters">
             <LlmModelParametersSection parameters={MODEL_PARAMETERS} />

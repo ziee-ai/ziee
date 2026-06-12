@@ -17,9 +17,11 @@ use crate::{
     common::{ApiResult, AppError},
     core::EventBus,
     modules::permissions::{RequirePermissions, with_permission},
+    modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
 };
 
 use super::super::{
+    connection_health::{enforce_on_create, enforce_on_update_transition, McpServerWithHealthWarning},
     events::McpServerEvent,
     models::McpServer,
     permissions::*,
@@ -98,14 +100,37 @@ pub fn list_system_servers_docs(op: TransformOperation) -> TransformOperation {
 pub async fn create_system_server(
     _auth: RequirePermissions<(McpServersAdminCreate,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Json(request): Json<CreateMcpServerRequest>,
-) -> ApiResult<Json<McpServer>> {
+) -> ApiResult<Json<McpServerWithHealthWarning>> {
+    super::validate_sandbox_fields_create(true, &request)?;
+    let hub_id = request.hub_id.clone();
     let server = Repos.mcp.create_system_server(request).await?;
+    let server_id = server.id;
 
-    // Emit creation event for other modules to react
+    // Hub install tracking from the drawer-prefilled flow (Install
+    // for the system).
+    if let Some(hub_id) = hub_id {
+        crate::modules::hub::install_helpers::track_system_mcp_install(
+            server_id,
+            &hub_id,
+        )
+        .await?;
+    }
+
     event_bus.emit_async(McpServerEvent::system_server_created(server.id));
 
-    Ok((StatusCode::CREATED, Json(server)))
+    let server_id = server.id;
+    // Same downgrade-on-probe-failure semantic as user creates —
+    // built-in servers are skipped inside the helper.
+    let wrapped = enforce_on_create(Repos.mcp.pool(), server, &event_bus).await?;
+
+    // Cross-device sync: notify AFTER enforcement so peers refetch the final
+    // (possibly probe-downgraded) state.
+    sync_publish(SyncEntity::McpServerSystem, SyncAction::Create, server_id, Audience::perm::<McpServersAdminRead>(), origin.0);
+    sync_publish(SyncEntity::UserMcpServer, SyncAction::Create, server_id, Audience::perm::<McpServersRead>(), origin.0);
+
+    Ok((StatusCode::CREATED, Json(wrapped)))
 }
 
 pub fn create_system_server_docs(op: TransformOperation) -> TransformOperation {
@@ -113,8 +138,14 @@ pub fn create_system_server_docs(op: TransformOperation) -> TransformOperation {
         .id("McpServerSystem.create")
         .tag("MCP Servers - System")
         .summary("Create system MCP server")
-        .description("Create a new system MCP server configuration")
-        .response::<201, Json<McpServer>>()
+        .description(
+            "Create a new system MCP server configuration. Same \
+             health-check-on-create semantic as the user create \
+             endpoint — see `McpServer.create` for the contract on \
+             `connection_warning` and the auto-downgrade-to-disabled \
+             behavior.",
+        )
+        .response::<201, Json<McpServerWithHealthWarning>>()
         .response_with::<400, (), _>(|res| res.description("Bad request - validation failed"))
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<409, (), _>(|res| res.description("Server name already exists"))
@@ -152,12 +183,30 @@ pub async fn update_system_server(
     _auth: RequirePermissions<(McpServersAdminEdit,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
+    origin: SyncOrigin,
     Json(request): Json<UpdateMcpServerRequest>,
 ) -> ApiResult<Json<McpServer>> {
-    let server = Repos.mcp.update_system_server(id, request).await?;
+    let existing = Repos
+        .mcp
+        .get_system_server(id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Server"))?;
+    let prior_enabled = existing.enabled;
+    super::validate_sandbox_fields_update(&existing, &request)?;
 
-    // Emit update event for other modules to react
-    event_bus.emit_async(McpServerEvent::system_server_updated(server.id));
+    let persisted = Repos.mcp.update_system_server(id, request).await?;
+    event_bus.emit_async(McpServerEvent::system_server_updated(persisted.id));
+
+    let server = enforce_on_update_transition(
+        Repos.mcp.pool(),
+        persisted,
+        prior_enabled,
+        &event_bus,
+    )
+    .await?;
+
+    sync_publish(SyncEntity::McpServerSystem, SyncAction::Update, server.id, Audience::perm::<McpServersAdminRead>(), origin.0);
+    sync_publish(SyncEntity::UserMcpServer, SyncAction::Update, server.id, Audience::perm::<McpServersRead>(), origin.0);
 
     Ok((StatusCode::OK, Json(server)))
 }
@@ -167,9 +216,14 @@ pub fn update_system_server_docs(op: TransformOperation) -> TransformOperation {
         .id("McpServerSystem.update")
         .tag("MCP Servers - System")
         .summary("Update system MCP server")
-        .description("Update a system MCP server configuration")
+        .description(
+            "Update a system MCP server configuration. Same \
+             enable-time health-check semantic as `McpServer.update` \
+             — see that endpoint for the partial-save + \
+             `MCP_ENABLE_FAILED_HEALTH_CHECK` contract.",
+        )
         .response::<200, Json<McpServer>>()
-        .response_with::<400, (), _>(|res| res.description("Bad request - validation failed"))
+        .response_with::<400, (), _>(|res| res.description("Bad request - validation failed (incl. enable-time health check failure with error_code `MCP_ENABLE_FAILED_HEALTH_CHECK`)"))
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("Server not found"))
         .response_with::<409, (), _>(|res| res.description("Server name already exists"))
@@ -181,11 +235,15 @@ pub async fn delete_system_server(
     _auth: RequirePermissions<(McpServersAdminDelete,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
+    origin: SyncOrigin,
 ) -> ApiResult<StatusCode> {
     Repos.mcp.delete_system_server(id).await?;
 
     // Emit deletion event for other modules to react (synchronous so cleanup completes before response)
     event_bus.emit(McpServerEvent::system_server_deleted(id)).await;
+
+    sync_publish(SyncEntity::McpServerSystem, SyncAction::Delete, id, Audience::perm::<McpServersAdminRead>(), origin.0);
+    sync_publish(SyncEntity::UserMcpServer, SyncAction::Delete, id, Audience::perm::<McpServersRead>(), origin.0);
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }

@@ -27,7 +27,15 @@ impl CancellationToken {
                     *receiver_guard = Some(receiver);
                     false
                 }
-                Err(oneshot::error::TryRecvError::Closed) => true,
+                Err(oneshot::error::TryRecvError::Closed) => {
+                    // Sender dropped WITHOUT sending — the token was removed
+                    // (e.g. generation finished and `remove_download` cleaned it
+                    // up), which is NOT a cancellation. Put the receiver back so
+                    // repeat polls stay consistently `false` instead of latching
+                    // a spurious "cancelled".
+                    *receiver_guard = Some(receiver);
+                    false
+                }
             }
         } else {
             // Receiver was already consumed, meaning cancellation was requested

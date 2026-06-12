@@ -1,20 +1,23 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { ApiClient } from '@/api-client'
-import type {
-  McpServer,
-  CreateMcpServerRequest,
-  UpdateMcpServerRequest,
-  TestMcpConnectionRequest,
-  TestMcpConnectionResponse,
+import {
+  type CreateMcpServerRequest,
+  type McpServer,
+  type McpServerWithHealthWarning,
+  Permissions,
+  type TestMcpConnectionRequest,
+  type TestMcpConnectionResponse,
+  type UpdateMcpServerRequest,
 } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
+import { Stores } from '@/core/stores'
 import {
   emitGroupSystemMcpServersChanged,
   emitMcpServerCreated,
-  emitMcpServerUpdated,
   emitMcpServerDeleted,
+  emitMcpServerUpdated,
 } from '@/modules/mcp/events'
-import { Stores } from '@/core/stores'
 
 /** Debounce timer for system MCP search-term reloads (250ms). */
 let sysMcpSearchDebounce: ReturnType<typeof setTimeout> | null = null
@@ -63,7 +66,9 @@ interface SystemMcpServersState {
   loadSystemServers: (page?: number, pageSize?: number) => Promise<void>
   setSearchTerm: (q: string) => void
   setStatusFilter: (status: string) => void
-  createSystemServer: (data: CreateMcpServerRequest) => Promise<McpServer>
+  createSystemServer: (
+    data: CreateMcpServerRequest,
+  ) => Promise<McpServerWithHealthWarning>
   updateSystemServer: (
     id: string,
     data: UpdateMcpServerRequest,
@@ -161,6 +166,16 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
             }),
           )
 
+          // Cross-device sync for the admin system (deployment-shared)
+          // MCP servers table. Self-gate on mcp_servers_admin::read —
+          // loadSystemServers does NOT gate internally, so guard here.
+          const reload = () => {
+            if (!hasPermissionNow(Permissions.McpServersAdminRead)) return
+            void get().loadSystemServers()
+          }
+          unsubscribers.push(eventBus.on('sync:mcp_server_system', reload))
+          unsubscribers.push(eventBus.on('sync:reconnect', reload))
+
           // Store unsubscribers for cleanup
           set({ _eventUnsubscribers: unsubscribers })
 
@@ -240,14 +255,19 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
 
       createSystemServer: async (
         data: CreateMcpServerRequest,
-      ): Promise<McpServer> => {
+      ): Promise<McpServerWithHealthWarning> => {
         try {
           set({
             creating: true,
             systemServersError: null,
           })
 
-          const newServer = await ApiClient.McpServerSystem.create(data)
+          // See createMcpServer (user store) for the
+          // health-check-on-create wrapper rationale. The response is
+          // flattened: McpServer fields at top level + optional
+          // `connection_warning` sibling.
+          const wrapped = await ApiClient.McpServerSystem.create(data)
+          const { connection_warning: _w, ...newServer } = wrapped
 
           // Emit event after successful API call
           try {
@@ -265,7 +285,7 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
             creating: false,
           }))
 
-          return newServer
+          return wrapped
         } catch (error) {
           console.error('Failed to create system server:', error)
           set({
@@ -435,19 +455,16 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
 
       getServersForGroup: async (groupId: string): Promise<McpServer[]> => {
         try {
-          const allServers = get().systemServers
-          const assignedServers: McpServer[] = []
-
-          for (const server of allServers) {
-            const groupIds = await ApiClient.McpServerSystem.getServerGroups({
-              id: server.id,
-            })
-            if (groupIds.includes(groupId)) {
-              assignedServers.push(server)
-            }
-          }
-
-          return assignedServers
+          // Read the group's assigned servers directly from the canonical
+          // endpoint. The previous approach iterated the cached
+          // `systemServers` list and queried each server's groups, which
+          // dropped any server missing from the (paginated / possibly
+          // stale) cache — so re-opening the assignment drawer could fail
+          // to preload an existing assignment and silently drop it on save.
+          const response = await ApiClient.Group.getSystemServers({
+            group_id: groupId,
+          })
+          return response.servers
         } catch (error) {
           console.error('Failed to get servers for group:', error)
           throw error

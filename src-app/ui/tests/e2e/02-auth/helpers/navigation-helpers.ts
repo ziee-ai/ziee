@@ -8,7 +8,7 @@ import { clearAuthState } from '../../../common/auth-helpers'
  */
 
 export async function goToAuthPage(page: Page, baseURL: string) {
-  await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
+  await page.goto(`${baseURL}/auth`, { waitUntil: 'load' })
   await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
 }
 

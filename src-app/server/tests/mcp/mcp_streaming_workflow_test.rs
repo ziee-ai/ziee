@@ -189,7 +189,14 @@ async fn set_mcp_settings(
     response.json().await.expect("Failed to parse response")
 }
 
-/// Send message with MCP enabled
+/// Send message with MCP enabled (fire-and-forget model): subscribe to the
+/// chat stream, POST `/messages`, and collect the streamed extension events.
+///
+/// Collects to a terminal (`complete`/`error`) frame. A tool needing approval
+/// does NOT block the turn — the MCP extension emits `mcpApprovalRequired` and
+/// COMPLETES (`BeforeLlmAction::Complete`), releasing the per-conversation slot;
+/// the resume is a FRESH send. So even the manual-approve first send reaches a
+/// terminal (the approval event precedes it). Asserts the POST returned 200.
 async fn send_message_with_mcp(
     server: &TestServer,
     token: &str,
@@ -199,8 +206,8 @@ async fn send_message_with_mcp(
     mcp_server_id: Uuid,
     content: &str,
     tool_approvals: Option<Vec<serde_json::Value>>,
-) -> reqwest::Response {
-    let mut payload = json!({
+) -> Vec<crate::chat::helpers::SSEEvent> {
+    let mut body = json!({
         "content": content,
         "model_id": model_id,
         "branch_id": branch_id,
@@ -216,17 +223,17 @@ async fn send_message_with_mcp(
     });
 
     if let Some(approvals) = tool_approvals {
-        payload["tool_approvals"] = json!(approvals);
+        body["tool_approvals"] = json!(approvals);
     }
 
-    let url = server.api_url(&format!("/conversations/{}/messages/stream", conversation_id));
-    reqwest::Client::new()
-        .post(&url)
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&payload)
-        .send()
-        .await
-        .expect("Failed to send message")
+    crate::chat::helpers::send_body_and_collect_events(
+        server,
+        token,
+        conversation_id,
+        body,
+        &[],
+    )
+    .await
 }
 
 /// Get pending approvals for a branch
@@ -282,7 +289,7 @@ async fn test_auto_approve_single_complete_event() {
     set_mcp_settings(&server, &user.token, conversation_id, "auto_approve", vec![]).await;
 
     // Send message that triggers tool use
-    let response = send_message_with_mcp(
+    let events = send_message_with_mcp(
         &server,
         &user.token,
         conversation_id,
@@ -293,11 +300,6 @@ async fn test_auto_approve_single_complete_event() {
         None,
     )
     .await;
-
-    assert_eq!(response.status(), 200, "Should send message successfully");
-
-    // Parse SSE events
-    let events = crate::chat::helpers::parse_sse_events(response).await;
 
     // DEBUG: Print all events to help diagnose issues
     eprintln!("\n=== Test: test_auto_approve_single_complete_event ===");
@@ -365,7 +367,7 @@ async fn test_auto_approve_full_flow_tool_then_response() {
     set_mcp_settings(&server, &user.token, conversation_id, "auto_approve", vec![]).await;
 
     // Send message that triggers tool use
-    let response = send_message_with_mcp(
+    let events = send_message_with_mcp(
         &server,
         &user.token,
         conversation_id,
@@ -376,11 +378,6 @@ async fn test_auto_approve_full_flow_tool_then_response() {
         None,
     )
     .await;
-
-    assert_eq!(response.status(), 200, "Should send message successfully");
-
-    // Parse SSE events
-    let events = crate::chat::helpers::parse_sse_events(response).await;
 
     // DEBUG: Print all events
     eprintln!("\n=== Test: test_auto_approve_full_flow_tool_then_response ===");
@@ -456,7 +453,7 @@ async fn test_manual_approve_full_workflow() {
     // =========================================
     eprintln!("\n=== Session 1: Initial message with tool use ===");
 
-    let response1 = send_message_with_mcp(
+    let events1 = send_message_with_mcp(
         &server,
         &user.token,
         conversation_id,
@@ -468,9 +465,6 @@ async fn test_manual_approve_full_workflow() {
     )
     .await;
 
-    assert_eq!(response1.status(), 200, "Session 1 should succeed");
-
-    let events1 = crate::chat::helpers::parse_sse_events(response1).await;
     eprintln!("Session 1 events: {}", events1.len());
     for (i, event) in events1.iter().enumerate() {
         eprintln!("  Event {}: type='{}'", i, event.event);
@@ -482,7 +476,11 @@ async fn test_manual_approve_full_workflow() {
         .collect();
     assert!(!approval_events.is_empty(), "Session 1 should emit mcpApprovalRequired");
 
-    // Session 1 should have exactly 1 complete event
+    // A tool needing approval does NOT block the turn: the MCP extension
+    // persists the pending approval, emits mcpApprovalRequired, and COMPLETES
+    // the turn (BeforeLlmAction::Complete), releasing the per-conversation slot.
+    // So Session 1 ends on exactly one terminal `complete`; the resume in
+    // Session 2 is a fresh send (it would 409 if the slot were still held).
     assert_single_complete(&events1);
 
     // Session 1 should NOT have tool execution
@@ -506,7 +504,7 @@ async fn test_manual_approve_full_workflow() {
         "decision": "approved"
     })];
 
-    let response2 = send_message_with_mcp(
+    let events2 = send_message_with_mcp(
         &server,
         &user.token,
         conversation_id,
@@ -518,9 +516,6 @@ async fn test_manual_approve_full_workflow() {
     )
     .await;
 
-    assert_eq!(response2.status(), 200, "Session 2 should succeed");
-
-    let events2 = crate::chat::helpers::parse_sse_events(response2).await;
     eprintln!("Session 2 events: {}", events2.len());
     for (i, event) in events2.iter().enumerate() {
         eprintln!("  Event {}: type='{}'", i, event.event);
@@ -584,7 +579,7 @@ async fn test_auto_approve_no_infinite_loop() {
     set_mcp_settings(&server, &user.token, conversation_id, "auto_approve", vec![]).await;
 
     // Send message
-    let response = send_message_with_mcp(
+    let events = send_message_with_mcp(
         &server,
         &user.token,
         conversation_id,
@@ -595,10 +590,6 @@ async fn test_auto_approve_no_infinite_loop() {
         None,
     )
     .await;
-
-    assert_eq!(response.status(), 200, "Should send message successfully");
-
-    let events = crate::chat::helpers::parse_sse_events(response).await;
 
     eprintln!("\n=== Test: test_auto_approve_no_infinite_loop ===");
     eprintln!("Total events received: {}", events.len());
@@ -655,7 +646,7 @@ async fn test_tool_results_persist_in_history() {
     set_mcp_settings(&server, &user.token, conversation_id, "auto_approve", vec![]).await;
 
     // Send message that triggers tool use
-    let response = send_message_with_mcp(
+    let events = send_message_with_mcp(
         &server,
         &user.token,
         conversation_id,
@@ -667,10 +658,7 @@ async fn test_tool_results_persist_in_history() {
     )
     .await;
 
-    assert_eq!(response.status(), 200, "Should send message successfully");
-
     // Wait for stream to complete
-    let events = crate::chat::helpers::parse_sse_events(response).await;
 
     // Verify tool was executed
     let tool_complete_count = count_events_by_type(&events, "mcpToolComplete");
@@ -730,7 +718,7 @@ async fn test_tool_results_in_api_history() {
     set_mcp_settings(&server, &user.token, conversation_id, "auto_approve", vec![]).await;
 
     // Send message that triggers tool use
-    let response = send_message_with_mcp(
+    let _events = send_message_with_mcp(
         &server,
         &user.token,
         conversation_id,
@@ -742,10 +730,7 @@ async fn test_tool_results_in_api_history() {
     )
     .await;
 
-    assert_eq!(response.status(), 200, "Should send message successfully");
-
     // Wait for stream to complete
-    let _events = crate::chat::helpers::parse_sse_events(response).await;
 
     // Fetch conversation via API
     let url = server.api_url(&format!("/conversations/{}/messages", conversation_id));

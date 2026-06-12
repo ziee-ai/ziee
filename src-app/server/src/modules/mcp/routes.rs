@@ -7,6 +7,7 @@ use aide::axum::{
 };
 
 use super::handlers::*;
+use super::user_policy::handlers as user_policy_handlers;
 
 // =====================================================
 // User Routes
@@ -90,6 +91,15 @@ pub fn user_routes() -> ApiRouter {
                 test_connection::test_user_connection_docs,
             ),
         )
+        // User-policy read (any user with mcp_servers::read; needed by
+        // the UI to gate the Add button + Hub MCP tab visibility).
+        .api_route(
+            "/mcp/user-policy",
+            get_with(
+                user_policy_handlers::get_user_policy,
+                user_policy_handlers::get_user_policy_docs,
+            ),
+        )
 }
 
 // =====================================================
@@ -148,6 +158,14 @@ pub fn admin_routes() -> ApiRouter {
             put_with(
                 update_group_system_servers,
                 update_group_system_servers_docs,
+            ),
+        )
+        // User-policy write (admin only — perm McpUserPolicyEdit).
+        .api_route(
+            "/mcp/user-policy",
+            put_with(
+                user_policy_handlers::update_user_policy,
+                user_policy_handlers::update_user_policy_docs,
             ),
         )
 }

@@ -3,13 +3,15 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
 import {
+  type FtsRebuildStatus,
   type LlmModel,
   type MemoryAdminSettings,
+  Permissions,
   type RebuildStatus,
   type UpdateMemoryAdminSettingsRequest,
-  Permissions,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
+import { Stores } from '@/core/stores'
 import { emitMemoryAdminSettingsUpdated } from '@/modules/memory/events'
 
 // Candidate model row for the admin form's two model pickers. Carries
@@ -29,15 +31,10 @@ export type CandidateModelRow = Pick<
 // Widen at the boundary so callers can pass `null` to clear.
 export type MemoryAdminUpdatePatch = Omit<
   UpdateMemoryAdminSettingsRequest,
-  | 'embedding_model_id'
-  | 'default_extraction_model_id'
-  | 'full_summary_prompt'
-  | 'incremental_summary_prompt'
+  'embedding_model_id' | 'default_extraction_model_id'
 > & {
   embedding_model_id?: string | null
   default_extraction_model_id?: string | null
-  full_summary_prompt?: string | null
-  incremental_summary_prompt?: string | null
 }
 
 interface MemoryAdminStore {
@@ -50,22 +47,30 @@ interface MemoryAdminStore {
   // the same `loadCandidateModels` call as `availableModels`.
   embeddingModels: CandidateModelRow[]
   rebuildStatus: RebuildStatus | null
+  ftsRebuildStatus: FtsRebuildStatus | null
   loading: boolean
   saving: boolean
   loadingModels: boolean
-  reembeddingTrigger: boolean
+  triggeringReembed: boolean
+  triggeringFtsRebuild: boolean
   error: string | null
 
   __init__: {
+    __store__?: () => void
     settings: () => Promise<void>
     availableModels: () => Promise<void>
     rebuildStatus: () => Promise<void>
+    ftsRebuildStatus: () => Promise<void>
   }
+
+  __destroy__?: () => void
 
   load: () => Promise<void>
   loadCandidateModels: () => Promise<void>
   loadRebuildStatus: () => Promise<void>
+  loadFtsRebuildStatus: () => Promise<void>
   triggerReembed: () => Promise<void>
+  triggerFtsRebuild: (dictionary: string) => Promise<void>
   update: (patch: MemoryAdminUpdatePatch) => Promise<MemoryAdminSettings>
 }
 
@@ -85,9 +90,7 @@ const loadAdminSettings = async (
   } catch (error) {
     set(s => {
       s.error =
-        error instanceof Error
-          ? error.message
-          : 'Failed to load admin settings'
+        error instanceof Error ? error.message : 'Failed to load admin settings'
       s.loading = false
     })
   }
@@ -152,6 +155,19 @@ const loadRebuildStatusInternal = async (
   }
 }
 
+const loadFtsRebuildStatusInternal = async (
+  set: (fn: (s: MemoryAdminStore) => void) => void,
+) => {
+  try {
+    const status = await ApiClient.MemoryAdmin.ftsRebuildStatus()
+    set(s => {
+      s.ftsRebuildStatus = status
+    })
+  } catch {
+    // See loadRebuildStatusInternal — same rationale.
+  }
+}
+
 export const useMemoryAdminStore = create<MemoryAdminStore>()(
   subscribeWithSelector(
     immer((set, _get) => ({
@@ -159,10 +175,12 @@ export const useMemoryAdminStore = create<MemoryAdminStore>()(
       availableModels: [],
       embeddingModels: [],
       rebuildStatus: null,
+      ftsRebuildStatus: null,
       loading: false,
       saving: false,
       loadingModels: false,
-      reembeddingTrigger: false,
+      triggeringReembed: false,
+      triggeringFtsRebuild: false,
       error: null,
 
       // Property-init loads hit `memory::admin::read`-gated endpoints.
@@ -172,6 +190,20 @@ export const useMemoryAdminStore = create<MemoryAdminStore>()(
       // 403s on `/api/memory/admin-settings` (the explicit `load*` actions
       // below stay ungated; they're only called from the admin-gated page).
       __init__: {
+        __store__: () => {
+          const eventBus = Stores.EventBus
+          const GROUP = 'MemoryAdmin'
+          // Deployment-wide memory admin settings (singleton; event id
+          // is nil). Self-gate: only admins may read the endpoint, so
+          // skip the refetch otherwise (the explicit `load` action stays
+          // ungated; it's only called from the admin-gated page).
+          const reload = () => {
+            if (!hasPermissionNow(Permissions.MemoryAdminRead)) return
+            void loadAdminSettings(set)
+          }
+          eventBus.on('sync:memory_admin_settings', reload, GROUP)
+          eventBus.on('sync:reconnect', reload, GROUP)
+        },
         settings: () =>
           hasPermissionNow(Permissions.MemoryAdminRead)
             ? loadAdminSettings(set)
@@ -184,27 +216,54 @@ export const useMemoryAdminStore = create<MemoryAdminStore>()(
           hasPermissionNow(Permissions.MemoryAdminRead)
             ? loadRebuildStatusInternal(set)
             : Promise.resolve(),
+        ftsRebuildStatus: () =>
+          hasPermissionNow(Permissions.MemoryAdminRead)
+            ? loadFtsRebuildStatusInternal(set)
+            : Promise.resolve(),
+      },
+
+      __destroy__: () => {
+        Stores.EventBus.removeGroupListeners('MemoryAdmin')
       },
 
       load: () => loadAdminSettings(set),
       loadCandidateModels: () => loadCandidateModels(set),
       loadRebuildStatus: () => loadRebuildStatusInternal(set),
+      loadFtsRebuildStatus: () => loadFtsRebuildStatusInternal(set),
 
       triggerReembed: async (): Promise<void> => {
         set(s => {
-          s.reembeddingTrigger = true
+          s.triggeringReembed = true
           s.error = null
         })
         try {
           await ApiClient.MemoryAdmin.reembed()
           set(s => {
-            s.reembeddingTrigger = false
+            s.triggeringReembed = false
           })
         } catch (error) {
           set(s => {
-            s.error =
-              error instanceof Error ? error.message : 'Trigger failed'
-            s.reembeddingTrigger = false
+            s.error = error instanceof Error ? error.message : 'Trigger failed'
+            s.triggeringReembed = false
+          })
+          throw error
+        }
+      },
+
+      triggerFtsRebuild: async (dictionary: string): Promise<void> => {
+        set(s => {
+          s.triggeringFtsRebuild = true
+          s.error = null
+        })
+        try {
+          await ApiClient.MemoryAdmin.ftsRebuild({ dictionary })
+          set(s => {
+            s.triggeringFtsRebuild = false
+          })
+        } catch (error) {
+          set(s => {
+            s.error = error instanceof Error ? error.message : 'Trigger failed'
+            s.triggeringFtsRebuild = false
           })
           throw error
         }
@@ -239,8 +298,7 @@ export const useMemoryAdminStore = create<MemoryAdminStore>()(
           return row
         } catch (error) {
           set(s => {
-            s.error =
-              error instanceof Error ? error.message : 'Update failed'
+            s.error = error instanceof Error ? error.message : 'Update failed'
             s.saving = false
           })
           throw error

@@ -82,5 +82,21 @@ impl PermissionCheck for McpServersAdminDelete {
 }
 
 // =====================================================
+// User-Policy Permissions (Admin)
+// =====================================================
+
+/// Permission to edit the global user MCP policy (allowed transports +
+/// the sandbox flavor force-applied to user-installed stdio servers).
+/// Read is open to any authenticated user — the UI needs the policy to
+/// gate the Add button + Hub MCP tab visibility.
+pub struct McpUserPolicyEdit;
+impl PermissionCheck for McpUserPolicyEdit {
+    const NAME: &'static str = "McpUserPolicyEdit";
+    const PERMISSION: &'static str = "mcp_user_policy::edit";
+    const DESCRIPTION: &'static str = "Edit MCP user policy (allowed transports + sandbox flavor)";
+    const MODULE: &'static str = "mcp";
+}
+
+// =====================================================
 // Helper Function to Collect All Permissions
 // =====================================================

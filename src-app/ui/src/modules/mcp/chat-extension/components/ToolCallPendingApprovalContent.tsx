@@ -44,9 +44,10 @@ export function ToolCallPendingApprovalContent({
         note: 'User approved tool execution (once)',
       })
       await Stores.Chat.sendMessage()
-      // sendMessage swallows stream errors and surfaces them via
-      // Chat.store.error. Poll once after the call returns so a failed
-      // resume reverts the optimistic update (panel reappears).
+      // A failed POST sets Chat.store.error synchronously before sendMessage
+      // resolves, so poll once to revert the optimistic update on that failure.
+      // (A generation error after a successful POST arrives later on the chat
+      // stream and surfaces in the conversation, not by reverting this panel.)
       const chatError = Stores.Chat.__state.error
       if (chatError) {
         throw new Error(chatError)
@@ -55,7 +56,9 @@ export function ToolCallPendingApprovalContent({
     } catch (error) {
       console.error('[MCP Approval] Failed to approve tool:', error)
       // Revert optimistic update so the approval panel reappears on failure
-      mcpStore.updateToolCall(toolCall.tool_use_id, { status: 'pending_approval' })
+      mcpStore.updateToolCall(toolCall.tool_use_id, {
+        status: 'pending_approval',
+      })
       setIsSubmitting(false)
     }
   }
@@ -71,7 +74,11 @@ export function ToolCallPendingApprovalContent({
 
       // 1. Add tool to auto_approved_tools for this conversation
       if (toolCall.server_id) {
-        mcpStore.toggleAutoApprovedTool(conversationId, toolCall.server_id, toolCall.tool_name)
+        mcpStore.toggleAutoApprovedTool(
+          conversationId,
+          toolCall.server_id,
+          toolCall.tool_name,
+        )
 
         // 2. Persist to backend if conversation exists
         if (conversationId) {
@@ -79,7 +86,12 @@ export function ToolCallPendingApprovalContent({
           const availableServerIds = (mcpServerState?.servers || [])
             .filter((s: { enabled: boolean }) => s.enabled)
             .map((s: { id: string }) => s.id)
-          await mcpStore.saveConversationConfig(conversationId, availableServerIds, undefined, true)
+          await mcpStore.saveConversationConfig(
+            conversationId,
+            availableServerIds,
+            undefined,
+            true,
+          )
         }
       }
 
@@ -95,10 +107,15 @@ export function ToolCallPendingApprovalContent({
       if (chatError) {
         throw new Error(chatError)
       }
-      console.log('[MCP Approval] Tool approved for conversation:', toolCall.tool_name)
+      console.log(
+        '[MCP Approval] Tool approved for conversation:',
+        toolCall.tool_name,
+      )
     } catch (error) {
       console.error('[MCP Approval] Failed to approve tool:', error)
-      mcpStore.updateToolCall(toolCall.tool_use_id, { status: 'pending_approval' })
+      mcpStore.updateToolCall(toolCall.tool_use_id, {
+        status: 'pending_approval',
+      })
       setIsSubmitting(false)
     }
   }
@@ -121,7 +138,9 @@ export function ToolCallPendingApprovalContent({
       console.log('[MCP Approval] Tool denied:', toolCall.tool_name)
     } catch (error) {
       console.error('[MCP Approval] Failed to deny tool:', error)
-      mcpStore.updateToolCall(toolCall.tool_use_id, { status: 'pending_approval' })
+      mcpStore.updateToolCall(toolCall.tool_use_id, {
+        status: 'pending_approval',
+      })
       setIsSubmitting(false)
     }
   }

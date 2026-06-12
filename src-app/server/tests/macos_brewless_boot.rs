@@ -40,8 +40,8 @@ fn encode_exec(payload: &[u8]) -> Vec<u8> {
     frame
 }
 
+#[cfg(target_os = "macos")]
 #[test]
-#[ignore = "boots a libkrun VM; requires the embedded bundle"]
 fn embedded_bundle_boots_under_no_brew() {
     assert!(
         embedded::is_supported(),

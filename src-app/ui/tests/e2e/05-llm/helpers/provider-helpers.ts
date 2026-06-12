@@ -55,7 +55,7 @@ export async function selectProviderType(page: Page, type: 'local' | 'openai' | 
   }
   await combobox.press('Enter')
 
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
 }
 
 export async function createProvider(
@@ -160,7 +160,7 @@ export async function deleteProvider(page: Page, providerName: string): Promise<
   await confirmDeleteProvider(page)
 
   // Wait for navigation back to list page
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
 
   // Verify provider no longer in list
   await expect(page.locator(`text=${providerName}`).first()).not.toBeVisible()
@@ -177,11 +177,11 @@ export async function toggleProviderStatus(page: Page, providerName: string): Pr
   // Find the toggle switch by aria-label that contains the provider name
   const toggle = page.locator(`.ant-switch[aria-label*="${providerName}"]`)
   await toggle.click()
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
 
   // Navigate back to list page
   await page.goBack()
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
 }
 
 export async function enableProvider(page: Page, providerName: string): Promise<void> {
@@ -193,12 +193,12 @@ export async function enableProvider(page: Page, providerName: string): Promise<
 
   if (isEnabled === 'false') {
     await toggle.click()
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
   }
 
   // Navigate back to list page
   await page.goBack()
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
 }
 
 export async function disableProvider(page: Page, providerName: string): Promise<void> {
@@ -210,12 +210,12 @@ export async function disableProvider(page: Page, providerName: string): Promise
 
   if (isEnabled === 'true') {
     await toggle.click()
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
   }
 
   // Navigate back to list page
   await page.goBack()
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
 }
 
 // =====================================================
@@ -239,7 +239,7 @@ export async function assertProviderEnabled(page: Page, providerName: string): P
 
   // Navigate back to list page
   await page.goBack()
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
 }
 
 export async function assertProviderDisabled(page: Page, providerName: string): Promise<void> {
@@ -251,5 +251,5 @@ export async function assertProviderDisabled(page: Page, providerName: string): 
 
   // Navigate back to list page
   await page.goBack()
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
 }

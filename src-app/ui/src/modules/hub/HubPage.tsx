@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
+  App,
   Button,
   Dropdown,
   Flex,
@@ -8,7 +9,6 @@ import {
   Segmented,
   Tag,
   Tooltip,
-  theme,
   Typography,
 } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
@@ -19,17 +19,21 @@ import { Permissions } from '@/api-client/types'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
-import { message } from 'antd'
 import { DivScrollY } from '@/components/common/DivScrollY'
 import { VersionPicker } from '@/modules/hub/components/VersionPicker'
 
 export function HubPage() {
+  const { message } = App.useApp()
   const { activeTab: urlActiveTab } = useParams()
   const navigate = useNavigate()
   const { slots } = Stores.ModuleSystem
   const { user, permissions } = Stores.Auth
+  // Subscribe to the MCP policy so the MCP tab's shouldRender gate
+  // re-evaluates the moment an admin saves a new policy. The
+  // `mcpPolicy` value itself isn't used here — its presence in the
+  // visibleTabs useMemo deps below is the load-bearing piece.
+  const { policy: mcpPolicy } = Stores.McpUserPolicy
   const windowMinSize = useWindowMinSize()
-  const { token } = theme.useToken()
   const [refreshing, setRefreshing] = useState(false)
 
   // Get hub tabs from slot system, sorted
@@ -37,13 +41,21 @@ export function HubPage() {
     return (slots.get('hubTabs') || []).sort((a, b) => a.order - b.order)
   }, [slots])
 
-  // Filter to tabs the current user has read permission on
+  // Filter to tabs the current user has read permission on AND
+  // whose optional `shouldRender` gate (admin policy / runtime
+  // config) returns true. `shouldRender` is omitted on most tabs;
+  // when present, evaluated alongside the permission check.
+  // `mcpPolicy` in deps is what makes the MCP tab re-evaluate when
+  // the admin policy changes (its shouldRender calls into the
+  // policy store).
   const visibleTabs = useMemo(
     () =>
-      hubTabs.filter(t =>
-        evaluatePermission(user, permissions, t.permissions.read),
+      hubTabs.filter(
+        t =>
+          evaluatePermission(user, permissions, t.permissions.read) &&
+          (t.shouldRender ? t.shouldRender() : true),
       ),
-    [hubTabs, user, permissions],
+    [hubTabs, user, permissions, mcpPolicy],
   )
 
   // Default to first tab if none selected
@@ -156,9 +168,6 @@ export function HubPage() {
                   navigate(`/hub/${value}`)
                 }}
                 className="[&_.ant-segmented-item-label]:!px-4 [&_.ant-segmented-item-label]:!py-1"
-                style={{
-                  backgroundColor: token.colorBgMask,
-                }}
                 shape="round"
                 options={segmentedOptions}
               />

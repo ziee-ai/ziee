@@ -36,7 +36,7 @@ pub const KNOWN_FLAVORS: &[FlavorMetadata] = &[
     },
     FlavorMetadata {
         flavor: "full",
-        description: "minimal + numpy + pandas + torch + R 4.4 + tidyverse + Node 22 + ts-node.",
+        description: "minimal + numpy + pandas + torch + R 4.4 + tidyverse + Node 24 (npx) + uv (uvx) + ts-node.",
         approximate_size_mb: 853,
     },
 ];
@@ -123,6 +123,20 @@ impl JsonRpcError {
             code: Self::INTERNAL,
             message: detail.into(),
             data: None,
+        }
+    }
+
+    /// Map an `AppError` onto the right JSON-RPC error class for the built-in
+    /// MCP servers (files / memory), so client-class errors surface as
+    /// method-not-found / invalid-params rather than a generic internal error.
+    /// Shared so the two built-in handlers can't drift.
+    pub fn from_app_error(e: &crate::common::AppError) -> Self {
+        match e.status_code() {
+            400 if e.error_code() == "UNKNOWN_TOOL" => {
+                Self::method_not_found(&e.to_string())
+            }
+            400 | 404 => Self::invalid_params(e.to_string()),
+            _ => Self::internal(e.to_string()),
         }
     }
 }

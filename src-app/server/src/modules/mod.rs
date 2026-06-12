@@ -5,6 +5,7 @@ pub mod assistant_core_memory;
 pub mod auth;
 pub mod chat;
 pub mod file;
+pub mod files_mcp;
 pub mod code_sandbox;
 pub mod hardware;
 pub mod health;
@@ -20,6 +21,8 @@ pub mod memory_mcp;
 pub mod onboarding;
 pub mod permissions;
 pub mod project;
+pub mod summarization;
+pub mod sync;
 pub mod user;
 
 // Re-export modules

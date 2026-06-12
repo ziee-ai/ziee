@@ -27,6 +27,14 @@ pub use modules::auth::refresh_tokens;
 pub use modules::user::models::User;
 pub use modules::llm_provider::events::LlmProviderEvent;
 pub use modules::llm_provider::UserKeyRepository;
+pub use modules::mcp::events::McpServerEvent;
+// Re-export the LLM repository connection-health entry points so the
+// integration tests can drive the boot path directly without going
+// through the module's `init` hook.
+#[doc(hidden)]
+pub mod llm_repository_health {
+    pub use crate::modules::llm_repository::connection_health::run_startup_health_check;
+}
 pub use modules::chat::core::ai_provider::resolve_api_key_for_user;
 pub use common::{ApiResult, AppError};
 // Re-export the at-rest secret helpers so out-of-crate consumers
@@ -96,13 +104,16 @@ pub use modules::code_sandbox::backend::{active as sandbox_backend, RawExecResul
 #[doc(hidden)]
 pub use modules::mcp::chat_extension::content::{McpContentData, ResourceLink, RichFile};
 
-// Re-export memory chat-extension functions for integration tests
-// (tier 5 real-LLM tests need to invoke the extraction + summarizer
-// pipelines directly).
+// Re-export memory + summarization engines for integration tests
+// (tier 5 real-LLM tests need to invoke the pipelines directly).
 #[doc(hidden)]
 pub mod memory_extensions {
     pub use crate::modules::memory::engine::extractor;
-    pub use crate::modules::memory::engine::summarizer;
+}
+
+#[doc(hidden)]
+pub mod summarization_engine {
+    pub use crate::modules::summarization::engine::summarizer;
 }
 
 // Re-export code_sandbox surface for integration tests (tier 2 + 3).

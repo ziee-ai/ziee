@@ -1,26 +1,28 @@
+import { enableMapSet } from 'immer'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import { enableMapSet } from 'immer'
 import { ApiClient } from '@/api-client'
 import {
-  Permissions,
-  type McpServer,
+  type McpServerWithHealthWarning,
   type CreateMcpServerRequest,
-  type UpdateMcpServerRequest,
+  type McpServer,
   type McpServerOAuthConfigResponse,
+  Permissions,
   type SetMcpServerOAuthConfigRequest,
   type TestMcpConnectionRequest,
   type TestMcpConnectionResponse,
+  type UpdateMcpServerRequest,
+  type SandboxFlavorsResponse,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { useSystemMcpServersStore } from '@/modules/mcp/stores/SystemMcpServer.store'
+import { Stores } from '@/core/stores'
 import {
   emitMcpServerCreated,
-  emitMcpServerUpdated,
   emitMcpServerDeleted,
+  emitMcpServerUpdated,
 } from '@/modules/mcp/events'
-import { Stores } from '@/core/stores'
+import { useSystemMcpServersStore } from '@/modules/mcp/stores/SystemMcpServer.store'
 
 // Enable Map and Set support in Immer
 enableMapSet()
@@ -69,7 +71,9 @@ interface McpState {
   loadMcpServers: (page?: number, pageSize?: number) => Promise<void>
   setSearchTerm: (q: string) => void
   setStatusFilter: (status: string) => void
-  createMcpServer: (data: CreateMcpServerRequest) => Promise<McpServer>
+  createMcpServer: (
+    data: CreateMcpServerRequest,
+  ) => Promise<McpServerWithHealthWarning>
   updateMcpServer: (
     serverId: string,
     data: UpdateMcpServerRequest,
@@ -79,6 +83,10 @@ interface McpState {
   getMcpServerOAuthConfig: (
     serverId: string,
   ) => Promise<McpServerOAuthConfigResponse | null>
+  // Lazily fetched by the system-server form to populate the sandbox
+  // flavor picker + mirror the host command allowlist. Admin-gated
+  // endpoint; only called from create-system/edit-system mode.
+  getSandboxFlavors: () => Promise<SandboxFlavorsResponse>
   setMcpServerOAuthConfig: (
     serverId: string,
     config: SetMcpServerOAuthConfigRequest,
@@ -211,12 +219,26 @@ export const useMcpStore = create<McpState>()(
               },
               GROUP,
             )
+
+            // Cross-device sync. `loadMcpServers` is permission-gated
+            // internally (skips when the user lacks mcp_servers::read),
+            // so no extra self-gate is needed here.
+            const reload = () => void get().loadMcpServers()
+            // Personal (user-owned) MCP servers changed remotely.
+            eventBus.on('sync:mcp_server', reload, GROUP)
+            // A system server's group-visibility changed → a user's
+            // ACCESSIBLE set may differ; listAccessible reloads it.
+            eventBus.on('sync:user_mcp_server', reload, GROUP)
+            eventBus.on('sync:reconnect', reload, GROUP)
           },
           servers: () => get().loadMcpServers(),
         },
 
         // Actions
-        loadMcpServers: async (page?: number, pageSize?: number): Promise<void> => {
+        loadMcpServers: async (
+          page?: number,
+          pageSize?: number,
+        ): Promise<void> => {
           // Permission-gate the shell-eager-load fetch (audit
           // follow-up): AppLayout triggers this store's __init__ on
           // every render regardless of route, and for users without
@@ -295,17 +317,24 @@ export const useMcpStore = create<McpState>()(
 
         createMcpServer: async (
           data: CreateMcpServerRequest,
-        ): Promise<McpServer> => {
+        ): Promise<McpServerWithHealthWarning> => {
           try {
             set(draft => {
               draft.creating = true
               draft.error = null
             })
 
-            const newServer = await ApiClient.McpServer.create(data)
+            // Response is flattened: the McpServer fields are at the
+            // top level, with an optional `connection_warning` sibling
+            // that appears only when the post-create probe failed and
+            // the row was auto-downgraded. Caller (the drawer)
+            // surfaces the warning toast — here we just emit downstream
+            // off the canonical row.
+            const wrapped = await ApiClient.McpServer.create(data)
 
-            // Emit event after successful API call
-            // Event handler will update state (no manual state update here)
+            // Emit event after successful API call. Strip the warning
+            // first so listeners receive a plain McpServer shape.
+            const { connection_warning: _w, ...newServer } = wrapped
             try {
               await emitMcpServerCreated(newServer)
             } catch (eventError) {
@@ -317,7 +346,9 @@ export const useMcpStore = create<McpState>()(
 
             set({ creating: false })
 
-            return newServer
+            // Surface the wrapper so the drawer can toast the
+            // `connection_warning` if present.
+            return wrapped
           } catch (error) {
             console.error('MCP server creation failed:', error)
             set(draft => {
@@ -475,6 +506,10 @@ export const useMcpStore = create<McpState>()(
 
         getMcpServerOAuthConfig: async (serverId: string) => {
           return await ApiClient.McpServer.getOAuthConfig({ id: serverId })
+        },
+
+        getSandboxFlavors: async () => {
+          return await ApiClient.CodeSandbox.listFlavors()
         },
 
         setMcpServerOAuthConfig: async (

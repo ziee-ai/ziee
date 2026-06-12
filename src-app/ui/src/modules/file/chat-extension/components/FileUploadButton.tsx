@@ -1,4 +1,4 @@
-import { Button, Tooltip, Upload, message } from 'antd'
+import { App, Button, Tooltip, Upload } from 'antd'
 import { PaperClipOutlined } from '@ant-design/icons'
 import type { UploadProps } from 'antd'
 import { Stores } from '@/core/stores'
@@ -13,6 +13,7 @@ const MAX_FILE_SIZE = 100 * 1024 * 1024
  * Toolbar button that triggers file picker for uploading files
  */
 export function FileUploadButton() {
+  const { message } = App.useApp()
   // Access file extension store directly via Stores.Chat (reactive via store proxy)
   const { uploadFiles } = Stores.File
   const canUpload = usePermission(Permissions.FilesUpload)

@@ -96,7 +96,7 @@ test.describe('Sidebar conversation menu — project contributions', () => {
     // doesn't render conversation cards — avoids strict-mode
     // collisions on shared text.
     await page.goto(`${baseURL}/settings`)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     await openSidebarMenuForRow(page, 'Conv to open project from')
 
@@ -139,7 +139,7 @@ test.describe('Sidebar conversation menu — project contributions', () => {
     })
 
     await page.goto(`${baseURL}/settings`)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     await openSidebarMenuForRow(page, 'Sidebar add-to-project conv')
     await page.getByRole('menuitem', { name: /add to project/i }).click()
@@ -208,7 +208,7 @@ test.describe('Sidebar conversation menu — project contributions', () => {
     })
 
     await page.goto(`${baseURL}/settings`)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     await openSidebarMenuForRow(page, 'Sidebar remove conv')
     await page.getByRole('menuitem', { name: /remove from project/i }).click()

@@ -104,7 +104,7 @@ test.describe('ConversationCard trailing badge — add-to-project', () => {
     })
 
     await page.goto(`${baseURL}/chats`)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     // Hover the card to materialize the trailing area (it's mounted
     // lazily on first hover — see ConversationCard's `hoveredOnce`
@@ -178,7 +178,7 @@ test.describe('ConversationCard trailing badge — remove-from-project', () => {
     })
 
     await page.goto(`${baseURL}/chats`)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
 
     const card = chatsPageCard(page, 'Badge remove conv')
     await expect(card).toBeVisible({ timeout: 10000 })

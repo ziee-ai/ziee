@@ -92,8 +92,13 @@ pub fn rootfs_path() -> Option<PathBuf> {
 /// Override the tag with `ZIEE_SANDBOX_TEST_TAG` to test a different
 /// release. Tests fetch the real GitHub-published, cosign-signed rootfs
 /// — there is no locally-built fixture anymore.
+///
+/// `v0.0.5-alpha` is the first tag that ships both x86_64 AND aarch64
+/// assets (`v0.0.3-alpha`/`v0.0.4-alpha` were x86_64-only). Apple
+/// Silicon tier4 needed the aarch64 squashfs to run; the older tag
+/// 404'd on `aarch64-*.sha256` and made the suite red.
 pub const TEST_ROOTFS_REPO: &str = "ziee-ai/sandbox-rootfs";
-pub const TEST_ROOTFS_TAG: &str = "v0.0.3-alpha";
+pub const TEST_ROOTFS_TAG: &str = "v0.0.5-alpha";
 
 pub fn test_rootfs_tag() -> String {
     std::env::var("ZIEE_SANDBOX_TEST_TAG").unwrap_or_else(|_| TEST_ROOTFS_TAG.to_string())
@@ -660,12 +665,37 @@ pub async fn tool_call(
     tool: &str,
     arguments: serde_json::Value,
 ) -> serde_json::Value {
-    let resp = post_jsonrpc(
+    tool_call_with_timeout(
+        server,
+        jwt,
+        conv_id,
+        tool,
+        arguments,
+        std::time::Duration::from_secs(120),
+    )
+    .await
+}
+
+/// Like [`tool_call`] but with an explicit per-request timeout. Needed for
+/// `execute_command` calls that trigger a COLD rootfs fetch: the full-flavor
+/// rootfs is ~900 MB, so its FIRST download + sha256/cosign verify + squashfuse
+/// mount cannot finish inside the default 120 s. Once cached under
+/// `.ziee-cache/.../e2e`, subsequent calls reuse it and the default suffices.
+pub async fn tool_call_with_timeout(
+    server: &TestServer,
+    jwt: &str,
+    conv_id: Uuid,
+    tool: &str,
+    arguments: serde_json::Value,
+    timeout: std::time::Duration,
+) -> serde_json::Value {
+    let resp = post_jsonrpc_with_timeout(
         server,
         jwt,
         Some(conv_id),
         "tools/call",
         serde_json::json!({ "name": tool, "arguments": arguments }),
+        timeout,
     )
     .await;
     let status = resp.status();

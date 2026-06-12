@@ -1,10 +1,10 @@
-import { createModule } from '@/core'
 import { ApiOutlined } from '@ant-design/icons'
+import { createModule } from '@/core'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
-import { useUserLlmProvidersStore } from './UserLlmProviders.store'
 import { useModelPickerStore } from './ModelPicker.store'
+import { useUserLlmProvidersStore } from './UserLlmProviders.store'
 import { useUserProviderKeysStore } from './UserProviderKeys.store'
 import './types'
 

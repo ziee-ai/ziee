@@ -1,6 +1,18 @@
-import { Button, Form, Input, InputNumber, Select, Switch, App, Divider } from 'antd'
+import {
+  Alert,
+  Button,
+  Form,
+  Input,
+  InputNumber,
+  Select,
+  Switch,
+  App,
+  Divider,
+  Flex,
+  Tooltip,
+} from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { useMcpServerDrawerStore } from '@/modules/mcp/stores'
@@ -14,9 +26,24 @@ import {
   type UpdateMcpServerRequest,
   type TestMcpConnectionRequest,
   type McpServer,
+  type EnvVarEntry,
+  type HeaderEntry,
 } from '@/api-client/types'
+import { KeyValueSecretEditor } from '@/modules/mcp/components/common/KeyValueSecretEditor'
 
 const { TextArea } = Input
+
+/// Form-state row shape for env vars and HTTP headers in this drawer.
+/// `_was_saved_secret` is a hidden field set by the form initializer
+/// when the entry came back from the server as a write-only secret
+/// (is_secret=true, value=null) — controls the password-input
+/// placeholder. Stripped from API payloads at submit time.
+type EditorRow = {
+  key: string
+  value?: string
+  is_secret: boolean
+  _was_saved_secret?: boolean
+}
 
 const TRANSPORT_TYPES = [
   {
@@ -37,12 +64,42 @@ const TRANSPORT_TYPES = [
   },
 ]
 
+// The fallback values for flavor options + host commands now live
+// in the shared SandboxFlavors store (code-sandbox/stores/) — see
+// the `FALLBACK_OPTIONS` + `FALLBACK_HOST_COMMANDS` constants there.
+
 export function McpServerDrawer() {
   const [form] = Form.useForm()
   const { message } = App.useApp()
 
-  const { open, loading, mode, editingServer } = useMcpServerDrawerStore()
-
+  const { open, loading, mode, editingServer, prefillData } =
+    useMcpServerDrawerStore()
+  // Read the policy state property (not the function accessors) so
+  // the React proxy installs a useStore subscription — without this
+  // the drawer's transport dropdown + user-mode sandbox info Alert
+  // would NOT re-render when the admin saves a new policy
+  // (function-typed proxy properties don't subscribe; see
+  // core/stores.ts:250-280).
+  const { policy: userPolicy } = Stores.McpUserPolicy
+  // Memoize so the derived array is reference-stable across renders
+  // when `userPolicy` hasn't actually changed. Without this, the
+  // useEffect below that depends on the array's stringified contents
+  // would re-fire on every render while policy is null (each render
+  // produces a fresh `[]`).
+  const policyAllowedTransports = useMemo(
+    () => userPolicy?.allowed_transports ?? [],
+    [userPolicy],
+  )
+  const policyUserStdioSandboxFlavor =
+    userPolicy?.user_stdio_sandbox_flavor ?? null
+  // Set to true when a Hub-prefill carried a transport_type the
+  // active policy disallows AND we auto-substituted the first
+  // allowed transport. The form area uses this to surface an
+  // inline Alert explaining the swap so the user isn't surprised
+  // their stdio install opened as http.
+  const [prefillTransportSwapped, setPrefillTransportSwapped] = useState<
+    null | { from: string; to: string }
+  >(null)
   // Whether the server being edited already has a stored OAuth config — used to
   // decide between keep/replace/remove on save and to label the secret field.
   const [hasExistingOAuth, setHasExistingOAuth] = useState(false)
@@ -50,9 +107,18 @@ export function McpServerDrawer() {
   // Local loading for the "Save & Test Connection" action (save, then probe).
   const [testing, setTesting] = useState(false)
 
+  // Sandbox flavor catalog + host command allowlist — shared via the
+  // SandboxFlavors store (lazy-loaded on first access, cached for
+  // the session). McpUserPolicyCard reads the same store. The
+  // FALLBACK_* constants the store ships with cover the offline /
+  // pre-load case so the form is usable before the fetch resolves.
+  const { selectOptions: flavorOptions, hostCommands } =
+    Stores.SandboxFlavors
+
   // OAuth is configurable only for user-owned HTTP servers (the endpoints are
   // owner-scoped). Built-in/system servers authenticate differently.
   const isUserMode = mode === 'create' || mode === 'edit'
+  const isSystemMode = mode === 'create-system' || mode === 'edit-system'
 
   // Mirror the user/ + assistants/ pattern (audit I-3): gate the form
   // by mode-specific manage permissions so the drawer becomes read-
@@ -90,6 +156,7 @@ export function McpServerDrawer() {
           if (cancelled) return
           setHasExistingOAuth(!!cfg)
           form.setFieldsValue({
+            oauth_enabled: !!cfg,
             oauth_client_id: cfg?.client_id ?? '',
             oauth_client_secret: '',
             oauth_scopes: cfg?.scopes ?? '',
@@ -106,6 +173,11 @@ export function McpServerDrawer() {
     }
   }, [editingServer, open, mode, form])
 
+  // Sandbox flavors + host command allowlist are loaded by the
+  // shared SandboxFlavors store (declared above) on first access.
+  // No per-drawer fetch needed; both the system-mode flavor Select
+  // and the host-tier command validator read from the store.
+
   // Populate form when editing server changes
   useEffect(() => {
     if (editingServer && open && (mode === 'edit' || mode === 'edit-system')) {
@@ -120,88 +192,177 @@ export function McpServerDrawer() {
           editingServer.args && editingServer.args.length > 0
             ? JSON.stringify(editingServer.args, null, 2)
             : '',
-        env: editingServer.environment_variables
-          ? JSON.stringify(editingServer.environment_variables, null, 2)
-          : '',
-        headers:
-          editingServer.headers &&
-          Object.keys(editingServer.headers).length > 0
-            ? JSON.stringify(editingServer.headers, null, 2)
-            : '',
+        // Structured entries from the server (write-only-secret
+        // semantics — secret values come back as `value: null`). The
+        // hidden `_was_saved_secret` field tells the password input
+        // to render the `••••• (saved)` placeholder. On submit, rows
+        // with `_was_saved_secret && value` empty get translated to
+        // `value: null` in the API payload so the server preserves
+        // the encrypted value.
+        environment_variables_entries: (
+          editingServer.environment_variables_entries ?? []
+        ).map((entry): EditorRow => ({
+          key: entry.key,
+          value: entry.value ?? '',
+          is_secret: entry.is_secret,
+          _was_saved_secret: entry.is_secret && entry.value == null,
+        })),
+        headers_entries: (
+          editingServer.headers_entries ?? []
+        ).map((entry): EditorRow => ({
+          key: entry.key,
+          value: entry.value ?? '',
+          is_secret: entry.is_secret,
+          _was_saved_secret: entry.is_secret && entry.value == null,
+        })),
         enabled: editingServer.enabled,
         supports_sampling: editingServer.supports_sampling ?? false,
         usage_mode: editingServer.usage_mode ?? 'auto',
         max_concurrent_sessions: editingServer.max_concurrent_sessions ?? undefined,
         run_in_sandbox: editingServer.run_in_sandbox ?? false,
+        sandbox_flavor: editingServer.sandbox_flavor ?? 'full',
         timeout_seconds: editingServer.timeout_seconds ?? 30,
       }
       form.setFieldsValue(formValues)
     } else if (open && (mode === 'create' || mode === 'create-system')) {
       form.resetFields()
+      // Base defaults — overridden below by prefillData (Hub-install flow).
+      // Note: in user mode with `policy.allowed_transports = ['http']` only,
+      // `'stdio'` would be rejected at submit. The transport Select is
+      // filtered against the policy (see `visibleTransports`), so the
+      // initial 'stdio' value disappears from the dropdown and the user is
+      // forced to pick a permitted option.
       form.setFieldsValue({
         transport_type: 'stdio',
         enabled: true,
         supports_sampling: false,
         usage_mode: 'auto',
+        sandbox_flavor: 'full',
       })
-    }
-  }, [editingServer, open, mode, form])
+      if (prefillData?.fields) {
+        // Hub-install flow: manifest values flow straight into the form
+        // so the user reviews + fills in secrets before saving. Translate
+        // server-shape fields back into the form's editor-row shape.
+        const f = prefillData.fields
 
-  // Parse the JSON-string transport fields (args / env / headers) shared by
-  // save + test. Returns null (after surfacing a message) on malformed input.
-  type ParsedTransport = {
-    args: string[]
-    environmentVariables: Record<string, string>
-    headers: Record<string, string>
-  }
+        // Policy-mismatch swap: in user mode (`create`), if the hub
+        // manifest's transport isn't in the policy's allow-list, fall
+        // back to the first allowed transport. Without this the user
+        // would land in the drawer with a transport_type that's not
+        // selectable (filtered out of the dropdown) and submit would
+        // 422 — they'd have no obvious way to fix it. We surface the
+        // swap with an inline Alert so they know we changed it.
+        let effectiveTransport = f.transport_type
+        if (
+          mode === 'create' &&
+          effectiveTransport &&
+          policyAllowedTransports.length > 0 &&
+          !policyAllowedTransports.includes(effectiveTransport)
+        ) {
+          const replacement = policyAllowedTransports[0]
+          setPrefillTransportSwapped({
+            from: String(effectiveTransport),
+            to: replacement,
+          })
+          effectiveTransport = replacement as typeof effectiveTransport
+        } else {
+          setPrefillTransportSwapped(null)
+        }
+
+        form.setFieldsValue({
+          name: f.name,
+          display_name: f.display_name,
+          description: f.description,
+          transport_type: effectiveTransport,
+          url: f.url,
+          command: f.command,
+          args:
+            f.args && Array.isArray(f.args) && f.args.length > 0
+              ? JSON.stringify(f.args, null, 2)
+              : '',
+          environment_variables_entries: (
+            f.environment_variables_entries ?? []
+          ).map((entry): EditorRow => ({
+            key: entry.key,
+            value: entry.value ?? '',
+            is_secret: entry.is_secret,
+          })),
+          headers_entries: (f.headers_entries ?? []).map(
+            (entry): EditorRow => ({
+              key: entry.key,
+              value: entry.value ?? '',
+              is_secret: entry.is_secret,
+            }),
+          ),
+          enabled: f.enabled ?? true,
+          supports_sampling: f.supports_sampling ?? false,
+          usage_mode: f.usage_mode ?? 'auto',
+          timeout_seconds: f.timeout_seconds ?? 30,
+        })
+      } else {
+        setPrefillTransportSwapped(null)
+      }
+    }
+  }, [
+    editingServer,
+    open,
+    mode,
+    form,
+    prefillData,
+    // Re-run on policy change too — if the admin tightens the policy
+    // while the drawer is mid-prefill (rare; mostly defensive).
+    policyAllowedTransports.join(','),
+  ])
+
+  // Sandbox flavors are now loaded by the shared SandboxFlavors
+  // store (declared up at line 102). The store's __init__.flavors
+  // hook fires on first store access (which happened when this
+  // component read `Stores.SandboxFlavors` above), so we don't need
+  // a per-drawer fetch effect here.
+
+  // Parse the JSON-string `args` field (still a TextArea — it's a
+  // flat array, no per-entry secret concept). Env vars + headers
+  // come from Form.List as structured `EditorRow[]` and don't need
+  // any JSON parsing here.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const parseTransportFields = (values: any): ParsedTransport | null => {
-    let args: string[] = []
-    if (values.args && values.args.trim()) {
-      try {
-        const parsed = JSON.parse(values.args)
-        if (!Array.isArray(parsed)) {
-          message.error('Arguments must be a JSON array')
-          return null
-        }
-        args = parsed
-      } catch (_error) {
-        message.error('Invalid JSON in arguments')
+  const parseArgsField = (values: any): string[] | null => {
+    if (!values.args || !values.args.trim()) return []
+    try {
+      const parsed = JSON.parse(values.args)
+      if (!Array.isArray(parsed)) {
+        message.error('Arguments must be a JSON array')
         return null
       }
+      return parsed
+    } catch (_error) {
+      message.error('Invalid JSON in arguments')
+      return null
     }
+  }
 
-    let environmentVariables: Record<string, string> = {}
-    if (values.env && values.env.trim()) {
-      try {
-        const parsed = JSON.parse(values.env)
-        if (typeof parsed !== 'object' || Array.isArray(parsed)) {
-          message.error('Environment variables must be a JSON object')
-          return null
-        }
-        environmentVariables = parsed
-      } catch (_error) {
-        message.error('Invalid JSON in environment variables')
-        return null
-      }
-    }
-
-    let headers: Record<string, string> = {}
-    if (values.headers && values.headers.trim()) {
-      try {
-        const parsed = JSON.parse(values.headers)
-        if (typeof parsed !== 'object' || Array.isArray(parsed)) {
-          message.error('HTTP Headers must be a JSON object')
-          return null
-        }
-        headers = parsed
-      } catch (_error) {
-        message.error('Invalid JSON in HTTP Headers')
-        return null
-      }
-    }
-
-    return { args, environmentVariables, headers }
+  /// Convert an `EditorRow[]` from the form to the API's
+  /// `EnvVarEntry[]` / `HeaderEntry[]` shape. Strips the hidden
+  /// `_was_saved_secret` field. For rows where the user left a
+  /// saved-secret blank (didn't re-type the value), send
+  /// `value: null` so the server keeps the existing encrypted
+  /// value — without this the server would treat blank as an
+  /// explicit empty-string and clobber the stored secret.
+  const editorRowsToEntries = <T extends EnvVarEntry | HeaderEntry>(
+    rows: EditorRow[] | undefined,
+  ): T[] => {
+    return (rows ?? [])
+      .filter(row => row && row.key)
+      .map(row => {
+        const keepExistingSecret =
+          row._was_saved_secret &&
+          row.is_secret &&
+          (row.value == null || row.value === '')
+        return {
+          key: row.key,
+          value: keepExistingSecret ? null : (row.value ?? ''),
+          is_secret: !!row.is_secret,
+        } as unknown as T
+      })
   }
 
   // Validate + persist the form (create or update) and return the saved server
@@ -218,9 +379,14 @@ export function McpServerDrawer() {
       return null
     }
 
-    const parsed = parseTransportFields(values)
-    if (!parsed) return null
-    const { args, environmentVariables, headers } = parsed
+    const args = parseArgsField(values)
+    if (args === null) return null
+    const environment_variables_entries = editorRowsToEntries<EnvVarEntry>(
+      values.environment_variables_entries,
+    )
+    const headers_entries = editorRowsToEntries<HeaderEntry>(
+      values.headers_entries,
+    )
 
     const serverData = {
       name: values.name,
@@ -230,17 +396,24 @@ export function McpServerDrawer() {
       url: values.url,
       command: values.command,
       args: args,
-      environment_variables: environmentVariables,
-      headers: headers,
+      environment_variables_entries,
+      headers_entries,
       enabled: values.enabled ?? true,
       supports_sampling: values.supports_sampling ?? false,
       usage_mode: values.usage_mode ?? 'auto',
       max_concurrent_sessions: values.max_concurrent_sessions ?? null,
-      // Backend ignores `run_in_sandbox` for user-mode + non-stdio servers; we
-      // still send it so the field round-trips through create + edit unchanged
-      // when the toggle is visible.
+      // For user-mode stdio the backend force-overwrites both fields
+      // from the active policy; the values we send here are ignored.
+      // For system mode the admin's choices are honored verbatim.
       run_in_sandbox: values.run_in_sandbox ?? false,
+      sandbox_flavor: values.sandbox_flavor ?? 'full',
       timeout_seconds: values.timeout_seconds ?? 30,
+      // Hub-tracking pass-through: when the drawer was opened from a
+      // Hub MCP card, `prefillData.hub_id` is set and we forward it
+      // so the backend records the install in `hub_entities`
+      // (matches the dedicated /hub/mcp-servers/create endpoint's
+      // bookkeeping). Only on create; edit ignores hub_id.
+      hub_id: prefillData?.hub_id ?? null,
     }
 
     const updateData: UpdateMcpServerRequest = {
@@ -249,33 +422,58 @@ export function McpServerDrawer() {
       url: values.url,
       command: values.command,
       args: args,
-      environment_variables: environmentVariables,
-      headers: headers,
+      environment_variables_entries,
+      headers_entries,
       enabled: values.enabled ?? true,
       supports_sampling: values.supports_sampling ?? false,
       usage_mode: values.usage_mode ?? 'auto',
       max_concurrent_sessions: values.max_concurrent_sessions ?? null,
-      // Backend ignores `run_in_sandbox` for user-mode + non-stdio servers; we
-      // still send it so the field round-trips through create + edit unchanged
-      // when the toggle is visible.
+      // Same force-override semantics on update for user-mode stdio
+      // (the policy re-applies on every save). System mode honors
+      // the admin's choices.
       run_in_sandbox: values.run_in_sandbox ?? false,
+      sandbox_flavor: values.sandbox_flavor ?? 'full',
       timeout_seconds: values.timeout_seconds ?? 30,
     }
 
     let saved: McpServer
     if (mode === 'create') {
-      saved = await Stores.McpServer.createMcpServer(
+      const wrapped = await Stores.McpServer.createMcpServer(
         serverData as CreateMcpServerRequest,
       )
-      message.success('MCP server created successfully')
+      // Wrapper is flattened: McpServer fields at top level +
+      // optional `connection_warning` sibling. Strip the warning to
+      // get a plain McpServer for downstream consumers.
+      const { connection_warning, ...row } = wrapped
+      saved = row as McpServer
+      if (connection_warning) {
+        // Backend auto-downgraded enabled to false because the
+        // connection probe failed. Surface the reason + 8s duration
+        // so the user has time to read.
+        message.warning({
+          content: `MCP server saved but auto-disabled — ${connection_warning.reason}`,
+          duration: 8,
+        })
+      } else {
+        message.success('MCP server created successfully')
+      }
     } else if (mode === 'edit' && editingServer) {
       saved = await Stores.McpServer.updateMcpServer(editingServer.id, updateData)
       message.success('MCP server updated successfully')
     } else if (mode === 'create-system') {
-      saved = await Stores.SystemMcpServer.createSystemServer(
+      const wrapped = await Stores.SystemMcpServer.createSystemServer(
         serverData as CreateMcpServerRequest,
       )
-      message.success('System MCP server created successfully')
+      const { connection_warning, ...row } = wrapped
+      saved = row as McpServer
+      if (connection_warning) {
+        message.warning({
+          content: `System MCP server saved but auto-disabled — ${connection_warning.reason}`,
+          duration: 8,
+        })
+      } else {
+        message.success('System MCP server created successfully')
+      }
     } else if (mode === 'edit-system' && editingServer) {
       saved = await Stores.SystemMcpServer.updateSystemServer(
         editingServer.id,
@@ -304,11 +502,18 @@ export function McpServerDrawer() {
 
     // Persist OAuth config for user-owned HTTP servers.
     if (isUserMode && values.transport_type === 'http') {
+      const oauthEnabled = !!values.oauth_enabled
       const clientId = (values.oauth_client_id ?? '').trim()
       const clientSecret = values.oauth_client_secret ?? ''
       const scopes = (values.oauth_scopes ?? '').trim() || null
       try {
-        if (clientId && clientSecret) {
+        if (!oauthEnabled) {
+          // Section toggled off — clear any existing config. No-op if
+          // there was nothing stored to begin with.
+          if (hasExistingOAuth) {
+            await Stores.McpServer.deleteMcpServerOAuthConfig(saved.id)
+          }
+        } else if (clientId && clientSecret) {
           await Stores.McpServer.setMcpServerOAuthConfig(saved.id, {
             client_id: clientId,
             client_secret: clientSecret,
@@ -319,10 +524,12 @@ export function McpServerDrawer() {
           flipToEditIfFreshCreate()
           return null
         } else if (!clientId && hasExistingOAuth) {
-          // Cleared the client id → remove the stored config.
+          // Cleared the client id (with section still enabled) →
+          // remove the stored config.
           await Stores.McpServer.deleteMcpServerOAuthConfig(saved.id)
         }
-        // (clientId set, secret blank, config exists → keep the current secret)
+        // (oauthEnabled + clientId set + secret blank + config exists
+        //  → keep the current secret)
       } catch (error) {
         // The server was already created/updated; rebind a fresh create to edit
         // before the error propagates so a retry can't create a duplicate.
@@ -352,13 +559,19 @@ export function McpServerDrawer() {
         )
       }
 
+      // After persist, the SAVED server's entries are authoritative
+      // (env_vars_entries has redacted secret values where applicable
+      // — that's fine, the test handler falls back to the stored
+      // decrypted value via `id`). For non-secret entries, send the
+      // plaintext value directly.
       const payload: TestMcpConnectionRequest = {
         transport_type: saved.transport_type,
         command: saved.command ?? undefined,
         args: Array.isArray(saved.args) ? saved.args : [],
-        environment_variables: saved.environment_variables ?? {},
+        environment_variables_entries:
+          saved.environment_variables_entries ?? [],
         url: saved.url ?? undefined,
-        headers: saved.headers ?? {},
+        headers_entries: saved.headers_entries ?? [],
         timeout_seconds: saved.timeout_seconds,
         id: saved.id,
       }
@@ -382,7 +595,53 @@ export function McpServerDrawer() {
       form.resetFields()
     } catch (error) {
       console.error('Failed to save MCP server:', error)
-      message.error('Failed to save MCP server')
+      // Surface the backend's actual message (e.g. the
+      // `MCP_ENABLE_FAILED_HEALTH_CHECK` probe failure reason)
+      // instead of a generic toast. Use 8s duration so the user has
+      // time to read what went wrong with their enable attempt.
+      const reason =
+        error instanceof Error && error.message
+          ? error.message
+          : 'Unknown error'
+      message.error({
+        content: `Failed to save MCP server: ${reason}`,
+        duration: 8,
+      })
+      // If the failure is the enable-time health check, the backend
+      // already persisted the OTHER fields and reverted enabled to
+      // false. Re-fetch the server so the drawer's Enabled toggle
+      // reflects the actual persisted state (not the user's
+      // optimistic ON). Also reload the parent list so the row's
+      // disabled badge updates.
+      if (
+        error instanceof Error &&
+        error.message &&
+        error.message.includes('MCP_ENABLE_FAILED_HEALTH_CHECK')
+      ) {
+        if (mode === 'edit' && editingServer) {
+          try {
+            const fresh = await Stores.McpServer.getMcpServer(editingServer.id)
+            form.setFieldsValue({ enabled: fresh.enabled })
+            setEnabledValue(!!fresh.enabled)
+            Stores.McpServerDrawer.openMcpServerDrawer(fresh, 'edit')
+          } catch (e) {
+            console.warn('Failed to refresh server after health check:', e)
+          }
+        } else if (mode === 'edit-system' && editingServer) {
+          try {
+            const fresh = await Stores.SystemMcpServer.getSystemServerById(
+              editingServer.id,
+            )
+            if (fresh) {
+              form.setFieldsValue({ enabled: fresh.enabled })
+            setEnabledValue(!!fresh.enabled)
+              Stores.McpServerDrawer.openMcpServerDrawer(fresh, 'edit-system')
+            }
+          } catch (e) {
+            console.warn('Failed to refresh system server after health check:', e)
+          }
+        }
+      }
     } finally {
       Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
     }
@@ -422,10 +681,330 @@ export function McpServerDrawer() {
   }
 
   const transportType = Form.useWatch('transport_type', form)
+  const runInSandbox = Form.useWatch('run_in_sandbox', form)
+
+  // A stdio server runs sandboxed (any command allowed) when:
+  //   - system mode + admin toggled run_in_sandbox on, OR
+  //   - user mode + stdio (user policy force-sandboxes user stdio;
+  //     the backend overrides `run_in_sandbox=true` regardless of
+  //     what the FE sends, so we treat user stdio as sandboxed for
+  //     the form's command-tier validator).
+  // Otherwise the command must be in the host allowlist.
+  const isSandboxed =
+    transportType === 'stdio' && (!isSystemMode || runInSandbox === true)
+
+  // Clear the prefill-swap Alert once the user has intentionally
+  // moved away from the auto-substituted transport — otherwise the
+  // banner shows stale "changed from X to Y" text after the user
+  // has already chosen a third option. Runs after every form
+  // transport change.
+  useEffect(() => {
+    if (
+      prefillTransportSwapped &&
+      transportType &&
+      transportType !== prefillTransportSwapped.to
+    ) {
+      setPrefillTransportSwapped(null)
+    }
+  }, [transportType, prefillTransportSwapped])
+  // Local mirror for the title's Enabled Switch + a "currently
+  // toggling" flag that disables the Switch (with a loading
+  // spinner) while a save+probe round-trip is in flight.
+  // Form.useWatch from OUTSIDE the <Form> provider tree was flaky;
+  // local state + sync-from-form on open is the robust shape.
+  const [enabledValue, setEnabledValue] = useState(false)
+  const [togglingEnable, setTogglingEnable] = useState(false)
+
+  // Sync the local mirror with the form's `enabled` field whenever
+  // the drawer opens / switches mode / loads a new server. The form
+  // is the source of truth at save time; this just keeps the title
+  // Switch's checked prop in lockstep.
+  useEffect(() => {
+    if (!open) return
+    if (mode === 'edit' || mode === 'edit-system') {
+      setEnabledValue(!!editingServer?.enabled)
+    } else {
+      // Create mode — default to enabled=true (matches the form
+      // initializer at line ~172).
+      setEnabledValue(true)
+    }
+  }, [open, mode, editingServer])
+
+  // Timeout is rendered at the END of each transport-specific block
+  // (after env vars for stdio, after headers for http/sse — before
+  // OAuth). Same Form.Item name so form state binds regardless of
+  // which branch renders. Only one branch is mounted at a time
+  // (gated on transportType), so the duplication is purely JSX
+  // shape, not state.
+  const timeoutField = (
+    <Form.Item
+      label="Timeout (seconds)"
+      name="timeout_seconds"
+      help="Maximum time to wait for a tool call response. Increase for servers that use sampling (multiple LLM calls)."
+    >
+      <InputNumber
+        min={1}
+        max={600}
+        placeholder="30"
+        style={{ width: '100%' }}
+      />
+    </Form.Item>
+  )
+
+  // Click handler for the title's Enabled Switch — drives the
+  // server's enable lifecycle directly from the title (the bottom
+  // Save button still works for editing other fields without
+  // touching enable).
+  //
+  // Behaviors per direction:
+  //   ON  — save the full current form state (so any in-flight env
+  //         var / header / URL edits land) + force enabled=true;
+  //         backend probes the persisted state. Probe success →
+  //         server stays enabled. Probe failure → 400 with the
+  //         reason, server reverts to enabled=false, Switch reverts.
+  //   OFF — minimal PUT with just `enabled: false`. Does NOT save
+  //         any other in-flight form edits (user explicit choice
+  //         per the design discussion). No probe runs.
+  //
+  // Create mode: the Switch now runs the existing connection-test
+  // endpoint against the form values WITHOUT persisting a row. For
+  // stdio servers the backend spawns the subprocess, runs the
+  // initialize handshake, disconnects + kills the child — exactly
+  // "test the server, try connection, then immediately stop the
+  // server". For HTTP it connects + initializes + disconnects with
+  // no persistent session. The user still has to click the bottom
+  // Create button to actually persist the row; this only previews
+  // whether their config would reach upstream.
+  //
+  // OFF in create mode stays purely local — there's nothing to
+  // disable since nothing was persisted.
+  const handleEnabledToggle = async (v: boolean) => {
+    if (mode === 'create' || mode === 'create-system') {
+      if (v === false) {
+        setEnabledValue(false)
+        form.setFieldsValue({ enabled: false })
+        return
+      }
+
+      // Validate the form before probing so the user sees a
+      // meaningful "fill in X first" toast instead of a probe error
+      // about an empty command or URL.
+      try {
+        await form.validateFields()
+      } catch {
+        setEnabledValue(false)
+        form.setFieldsValue({ enabled: false })
+        return
+      }
+      const values = form.getFieldsValue()
+
+      setTogglingEnable(true)
+      try {
+        // Build a no-id TestMcpConnectionRequest from form values.
+        // No `id` field → backend treats it as a one-shot ephemeral
+        // probe (spawn for stdio / connect for http / no
+        // persistence / no health-column writes). OAuth client
+        // secret threading matches the form's oauth_* fields.
+        const oauth = values.oauth_enabled
+          ? {
+              client_id: (values.oauth_client_id ?? '').trim(),
+              client_secret: values.oauth_client_secret ?? '',
+              scopes: (values.oauth_scopes ?? '').trim() || null,
+            }
+          : undefined
+        const payload: TestMcpConnectionRequest = {
+          transport_type: values.transport_type,
+          command: values.command || undefined,
+          args: Array.isArray(values.args) ? values.args : [],
+          environment_variables_entries:
+            values.environment_variables_entries ?? [],
+          url: values.url || undefined,
+          headers_entries: values.headers_entries ?? [],
+          timeout_seconds: values.timeout_seconds ?? 30,
+          oauth,
+        }
+        const result =
+          mode === 'create-system'
+            ? await Stores.SystemMcpServer.testSystemServerConnection(payload)
+            : await Stores.McpServer.testMcpServerConnection(payload)
+        if (result.success) {
+          setEnabledValue(true)
+          form.setFieldsValue({ enabled: true })
+          message.success(
+            result.message || 'Connection test passed — enabled in form',
+          )
+        } else {
+          setEnabledValue(false)
+          form.setFieldsValue({ enabled: false })
+          message.error({
+            content:
+              result.message ||
+              'Connection test failed; server will be created disabled',
+            duration: 8,
+          })
+        }
+      } catch (error) {
+        setEnabledValue(false)
+        form.setFieldsValue({ enabled: false })
+        const reason =
+          error instanceof Error && error.message
+            ? error.message
+            : 'Connection test failed'
+        message.error({ content: reason, duration: 8 })
+      } finally {
+        setTogglingEnable(false)
+      }
+      return
+    }
+    if (!editingServer) return
+
+    setTogglingEnable(true)
+    try {
+      if (v === false) {
+        // Minimal PUT — only the enabled flag, leave everything
+        // else alone. Other in-flight form edits stay in the form
+        // and are picked up by the next bottom-Save action.
+        const payload: UpdateMcpServerRequest = { enabled: false }
+        const updated =
+          mode === 'edit'
+            ? await Stores.McpServer.updateMcpServer(editingServer.id, payload)
+            : await Stores.SystemMcpServer.updateSystemServer(
+                editingServer.id,
+                payload,
+              )
+        setEnabledValue(false)
+        form.setFieldsValue({ enabled: false })
+        Stores.McpServerDrawer.openMcpServerDrawer(updated, mode)
+        message.success('Server disabled')
+        return
+      }
+
+      // ON path — save the full current form (including the new
+      // enabled=true) so the backend probes against the user's
+      // intended config, not the stale persisted state.
+      form.setFieldsValue({ enabled: true })
+      setEnabledValue(true)
+      try {
+        const saved = await persistServer()
+        if (!saved) {
+          // Form validation failed — antd surfaced the field errors.
+          // Revert the optimistic switch since nothing was persisted.
+          setEnabledValue(false)
+          form.setFieldsValue({ enabled: false })
+          return
+        }
+        Stores.McpServerDrawer.openMcpServerDrawer(saved, mode)
+        message.success('Server enabled — connection test passed')
+      } catch (error) {
+        // Most likely cause: MCP_ENABLE_FAILED_HEALTH_CHECK from
+        // the probe (other fields persisted; enabled reverted to
+        // false on the server). Surface the reason verbatim, then
+        // refresh from the backend so the local mirror reflects
+        // the persisted state.
+        const reason =
+          error instanceof Error && error.message
+            ? error.message
+            : 'Unknown error'
+        message.error({
+          content: `Failed to enable: ${reason}`,
+          duration: 8,
+        })
+        try {
+          const fresh =
+            mode === 'edit'
+              ? await Stores.McpServer.getMcpServer(editingServer.id)
+              : Stores.SystemMcpServer.getSystemServerById(editingServer.id)
+          if (fresh) {
+            setEnabledValue(!!fresh.enabled)
+            form.setFieldsValue({ enabled: fresh.enabled })
+            Stores.McpServerDrawer.openMcpServerDrawer(fresh, mode)
+          } else {
+            setEnabledValue(false)
+            form.setFieldsValue({ enabled: false })
+          }
+        } catch {
+          setEnabledValue(false)
+          form.setFieldsValue({ enabled: false })
+        }
+      }
+    } finally {
+      setTogglingEnable(false)
+    }
+  }
+
+  // Title with the server-Enabled toggle on the right — keeps the
+  // on/off control visible no matter how far the user scrolls.
+  // Disabled in read-only mode (no edit permission). The Tooltip
+  // also surfaces the persisted last-health-check info so the user
+  // knows WHY the server is in its current state without having to
+  // click Test Connection again.
+  const healthAt = editingServer?.last_health_check_at
+  const healthStatus = editingServer?.last_health_check_status
+  const healthReason = editingServer?.last_health_check_reason
+  const formatHealthTooltip = () => {
+    const baseline = enabledValue
+      ? 'Enabled — the server is reachable and queried by the LLM. Click to disable.'
+      : 'Disabled — the server is not started or queried. Click to enable (a connection test will run first).'
+    if (!healthAt || healthStatus === 'untested') {
+      return baseline
+    }
+    const when = new Date(healthAt).toLocaleString()
+    if (healthStatus === 'healthy') {
+      return `${baseline}\n\nLast connection test: passed at ${when}`
+    }
+    return `${baseline}\n\nLast connection test failed at ${when}: ${
+      healthReason ?? 'unknown reason'
+    }`
+  }
+  const titleNode = (
+    <Flex justify="space-between" align="center" className="w-full pr-6">
+      <span>{getTitle()}</span>
+      {!!editingServer || mode === 'create' || mode === 'create-system' ? (
+        <Tooltip
+          title={
+            <span style={{ whiteSpace: 'pre-line' }}>
+              {formatHealthTooltip()}
+            </span>
+          }
+        >
+          <Switch
+            checked={enabledValue}
+            loading={togglingEnable}
+            disabled={!canManage || togglingEnable}
+            onChange={handleEnabledToggle}
+            checkedChildren="Enabled"
+            unCheckedChildren="Disabled"
+          />
+        </Tooltip>
+      ) : null}
+    </Flex>
+  )
 
   return (
-    <Drawer open={open} onClose={handleClose} title={getTitle()} size={600}>
+    <Drawer open={open} onClose={handleClose} title={titleNode} size={600}>
       <div className="flex flex-col gap-4">
+        {/* Surface the last probe's failure reason at the top of
+            the body as an Alert so it can't be missed. Previously
+            tucked into the title-Switch tooltip; that hid the
+            reason behind a hover the user might never trigger.
+            Renders only on unhealthy + only in edit mode (create
+            mode has no probe history yet). */}
+        {(mode === 'edit' || mode === 'edit-system') &&
+          editingServer?.last_health_check_status === 'unhealthy' && (
+            <Alert
+              type="error"
+              showIcon
+              message={
+                editingServer.last_health_check_at
+                  ? `Connection test failed at ${new Date(editingServer.last_health_check_at).toLocaleString()}`
+                  : 'Connection test failed'
+              }
+              description={
+                editingServer.last_health_check_reason ??
+                'No reason recorded.'
+              }
+            />
+          )}
         <Form
           name="mcp-server-form"
           form={form}
@@ -467,7 +1046,26 @@ export function McpServerDrawer() {
             />
           </Form.Item>
 
-          {/* Transport Type */}
+          {/* Surface a Hub-prefill / policy mismatch swap. Hit when
+              the hub manifest specifies a transport the active user
+              policy disallows — we substitute the first allowed
+              transport at prefill time (see the useEffect at
+              lines ~214) so the user isn't stuck with a non-
+              selectable option, and explain the swap here. */}
+          {prefillTransportSwapped && (
+            <Alert
+              type="info"
+              showIcon
+              message={`Transport changed from "${prefillTransportSwapped.from}" to "${prefillTransportSwapped.to}"`}
+              description="Administrator policy doesn't allow the original transport for user-installed MCP servers. The drawer pre-filled the first permitted transport so you can review and save."
+              className="mb-3"
+            />
+          )}
+
+          {/* Transport Type. In user mode (create / edit) the options
+              are filtered by the MCP user policy's allowed_transports
+              so a user can't pick a transport the admin disabled.
+              System mode shows all transports. */}
           <Form.Item
             label="Transport Type"
             name="transport_type"
@@ -477,7 +1075,11 @@ export function McpServerDrawer() {
           >
             <Select
               disabled={mode === 'edit' || mode === 'edit-system'}
-              options={TRANSPORT_TYPES.map(type => ({
+              options={TRANSPORT_TYPES.filter(type =>
+                isUserMode
+                  ? policyAllowedTransports.includes(type.value)
+                  : true,
+              ).map(type => ({
                 ...type,
                 disabled:
                   (mode === 'edit' || mode === 'edit-system') && editingServer
@@ -493,7 +1095,36 @@ export function McpServerDrawer() {
               <Form.Item
                 label="Command"
                 name="command"
-                rules={[{ required: true, message: 'Please enter a command' }]}
+                dependencies={['run_in_sandbox', 'transport_type']}
+                extra={
+                  isSandboxed
+                    ? 'Runs in the sandbox — any command is allowed.'
+                    : `Allowed on host: ${hostCommands.join(', ')}. Enable “Run in sandbox” to use any command.`
+                }
+                rules={[
+                  { required: true, message: 'Please enter a command' },
+                  () => ({
+                    validator(_, value) {
+                      // Read run_in_sandbox from the form (not a captured
+                      // closure) so re-validation triggered by toggling the
+                      // switch sees the just-updated value synchronously.
+                      const sandboxed =
+                        isSystemMode &&
+                        form.getFieldValue('transport_type') === 'stdio' &&
+                        form.getFieldValue('run_in_sandbox') === true
+                      if (sandboxed || !value) return Promise.resolve()
+                      const base = String(value).trim().split(/\s+/)[0]
+                      if (hostCommands.includes(base)) return Promise.resolve()
+                      return Promise.reject(
+                        new Error(
+                          `Command '${base}' is not allowed on the host. Allowed: ${hostCommands.join(
+                            ', ',
+                          )}. Enable “Run in sandbox” to use any command.`,
+                        ),
+                      )
+                    },
+                  }),
+                ]}
               >
                 <Input placeholder="e.g., npx, uvx, node" />
               </Form.Item>
@@ -512,15 +1143,18 @@ export function McpServerDrawer() {
 
               <Form.Item
                 label="Environment Variables"
-                name="env"
-                help="JSON object format, e.g., {&quot;KEY&quot;: &quot;value&quot;}"
+                help="One row per variable. Toggle 🔒 to encrypt at rest; secret values are never returned to the client after save (leave blank to keep)."
               >
-                <TextArea
-                  placeholder='{"KEY": "value"}'
-                  rows={4}
-                  className="font-mono text-xs"
+                <KeyValueSecretEditor
+                  name="environment_variables_entries"
+                  defaultIsSecret={true}
+                  keyPlaceholder="GITHUB_TOKEN"
+                  valuePlaceholder="value"
+                  labelSingular="env var"
                 />
               </Form.Item>
+
+              {timeoutField}
             </>
           )}
 
@@ -539,69 +1173,90 @@ export function McpServerDrawer() {
 
               <Form.Item
                 label="HTTP Headers"
-                name="headers"
-                help={'JSON object format, e.g., {"Authorization": "Bearer token"}'}
+                help="One row per header. Toggle 🔒 to encrypt at rest (recommended for tokens / API keys). `${VAR}` interpolation against env vars is supported in header values."
               >
-                <TextArea
-                  placeholder={'{"Authorization": "Bearer token"}'}
-                  rows={4}
-                  className="font-mono text-xs"
+                <KeyValueSecretEditor
+                  name="headers_entries"
+                  defaultIsSecret={false}
+                  keyPlaceholder="Authorization"
+                  valuePlaceholder="Bearer …"
+                  labelSingular="header"
                 />
               </Form.Item>
 
+              {timeoutField}
+
               {transportType === 'http' && isUserMode && (
                 <>
-                  <Divider className="text-sm text-gray-400">
+                  <Divider className="text-sm text-gray-400 !mt-8">
                     OAuth 2.1
                   </Divider>
+                  {/* Section-level enable toggle at the TOP of the
+                      OAuth block. When off, the client id / secret /
+                      scopes fields disappear entirely — keeps the
+                      drawer compact for the common case (no OAuth)
+                      and makes "turn off OAuth on this server"
+                      explicit (saving with this off clears the
+                      stored OAuth config). */}
                   <Form.Item
-                    label="OAuth Client ID"
-                    name="oauth_client_id"
-                    help="For servers requiring OAuth 2.1 (client_credentials). Leave blank for none; clear to remove."
+                    label="Enable OAuth 2.1"
+                    name="oauth_enabled"
+                    valuePropName="checked"
+                    help="For servers requiring OAuth client_credentials. Turning this off on save clears any stored OAuth config."
                   >
-                    <Input placeholder="client id" autoComplete="off" />
+                    <Switch />
                   </Form.Item>
                   <Form.Item
-                    label="OAuth Client Secret"
-                    name="oauth_client_secret"
-                    help={
-                      hasExistingOAuth
-                        ? 'A secret is stored. Leave blank to keep it; enter a value to replace it.'
-                        : 'Stored securely and never shown again.'
+                    noStyle
+                    shouldUpdate={(prev, curr) =>
+                      prev.oauth_enabled !== curr.oauth_enabled
                     }
                   >
-                    <Input.Password
-                      placeholder={hasExistingOAuth ? '•••••••• (unchanged)' : 'client secret'}
-                      autoComplete="new-password"
-                    />
-                  </Form.Item>
-                  <Form.Item
-                    label="OAuth Scopes"
-                    name="oauth_scopes"
-                    help="Optional, space-separated (e.g. 'mcp read')."
-                  >
-                    <Input placeholder="mcp" autoComplete="off" />
+                    {({ getFieldValue }) =>
+                      getFieldValue('oauth_enabled') ? (
+                        <>
+                          <Form.Item
+                            label="OAuth Client ID"
+                            name="oauth_client_id"
+                            help="Client ID issued by the upstream OAuth server."
+                          >
+                            <Input placeholder="client id" autoComplete="off" />
+                          </Form.Item>
+                          <Form.Item
+                            label="OAuth Client Secret"
+                            name="oauth_client_secret"
+                            help={
+                              hasExistingOAuth
+                                ? 'A secret is stored. Leave blank to keep it; enter a value to replace it.'
+                                : 'Stored securely and never shown again.'
+                            }
+                          >
+                            <Input.Password
+                              placeholder={hasExistingOAuth ? '•••••••• (unchanged)' : 'client secret'}
+                              autoComplete="new-password"
+                            />
+                          </Form.Item>
+                          <Form.Item
+                            label="OAuth Scopes"
+                            name="oauth_scopes"
+                            help="Optional, space-separated (e.g. 'mcp read')."
+                          >
+                            <Input placeholder="mcp" autoComplete="off" />
+                          </Form.Item>
+                        </>
+                      ) : null
+                    }
                   </Form.Item>
                 </>
               )}
             </>
           )}
 
-          {/* Enabled */}
-          <Form.Item label="Enabled" name="enabled" valuePropName="checked">
-            <Switch />
-          </Form.Item>
-
-          {/* Timeout */}
-          <Form.Item
-            label="Timeout (seconds)"
-            name="timeout_seconds"
-            help="Maximum time to wait for a tool call response. Increase for servers that use sampling (multiple LLM calls)."
-          >
-            <InputNumber min={1} max={600} placeholder="30" style={{ width: '100%' }} />
-          </Form.Item>
-
-          <Divider className="text-sm text-gray-400">Sampling</Divider>
+          {/* `Enabled` lives in the drawer title now (always visible
+              regardless of scroll). `Timeout` lives at the end of
+              each transport-specific block. Sampling stays here as
+              its own section because it's transport-agnostic. */}
+          <Divider className="text-sm text-gray-400 !mt-8">Sampling</Divider>
 
           {/* Supports Sampling */}
           <Form.Item
@@ -613,50 +1268,112 @@ export function McpServerDrawer() {
             <Switch />
           </Form.Item>
 
-          {/* Usage Mode */}
+          {/* Sampling sub-fields — only meaningful when sampling is
+              enabled; hide entirely otherwise to reduce noise. */}
           <Form.Item
-            label="Usage Mode"
-            name="usage_mode"
-            help="Auto: LLM decides when to call this server. Always: server is called before every LLM request to enrich context."
+            noStyle
+            shouldUpdate={(prev, curr) =>
+              prev.supports_sampling !== curr.supports_sampling
+            }
           >
-            <Select
-              options={[
-                { label: 'Auto (LLM decides)', value: 'auto' },
-                { label: 'Always (pre-process every prompt)', value: 'always' },
-              ]}
-            />
+            {({ getFieldValue }) =>
+              getFieldValue('supports_sampling') ? (
+                <>
+                  <Form.Item
+                    label="Usage Mode"
+                    name="usage_mode"
+                    help="Auto: LLM decides when to call this server. Always: server is called before every LLM request to enrich context."
+                  >
+                    <Select
+                      options={[
+                        { label: 'Auto (LLM decides)', value: 'auto' },
+                        { label: 'Always (pre-process every prompt)', value: 'always' },
+                      ]}
+                    />
+                  </Form.Item>
+
+                  <Form.Item
+                    label="Max Concurrent Sessions"
+                    name="max_concurrent_sessions"
+                    help="Limit simultaneous sampling sessions. Leave blank for unlimited. Users over the limit receive a friendly error."
+                  >
+                    <InputNumber min={1} placeholder="Unlimited" style={{ width: '100%' }} />
+                  </Form.Item>
+                </>
+              ) : null
+            }
           </Form.Item>
 
-          {/* Max Concurrent Sessions */}
-          <Form.Item
-            label="Max Concurrent Sessions"
-            name="max_concurrent_sessions"
-            help="Limit simultaneous sampling sessions. Leave blank for unlimited. Users over the limit receive a friendly error."
-          >
-            <InputNumber min={1} placeholder="Unlimited" style={{ width: '100%' }} />
-          </Form.Item>
-
-          {/* Run in sandbox (system + stdio only) */}
+          {/* Run in sandbox + flavor (system + stdio). Admin toggles
+              run_in_sandbox; when on, the flavor Select shows. Toggle
+              re-validates the command field because turning sandbox on
+              lifts the host command allowlist (any command is OK
+              inside bwrap). */}
           {transportType === 'stdio' &&
             (mode === 'create-system' || mode === 'edit-system') && (
-              <Form.Item
-                label="Run in sandbox"
-                name="run_in_sandbox"
-                valuePropName="checked"
-                help={
-                  <>
-                    Launch this stdio MCP server inside the code_sandbox
-                    bwrap isolation. On Linux runs natively; on macOS /
-                    Windows it routes through a microVM. The server only
-                    sees an isolated workspace — filesystem-oriented MCP
-                    servers will not see your real files. First use may
-                    download a small sandbox image (~57 MB).
-                  </>
-                }
-              >
-                <Switch />
-              </Form.Item>
+              <>
+                <Form.Item
+                  label="Run in sandbox"
+                  name="run_in_sandbox"
+                  valuePropName="checked"
+                  help={
+                    <>
+                      Launch this stdio MCP server inside the code_sandbox
+                      bwrap isolation. On Linux runs natively; on macOS /
+                      Windows it routes through a microVM. The server only
+                      sees an isolated workspace — filesystem-oriented MCP
+                      servers will not see your real files. First use
+                      downloads the selected sandbox image.
+                    </>
+                  }
+                >
+                  <Switch
+                    onChange={() => {
+                      // Re-validate the command field: turning the toggle
+                      // on lifts the host allowlist; turning it off
+                      // re-imposes it.
+                      form.validateFields(['command']).catch(() => {})
+                    }}
+                  />
+                </Form.Item>
+
+                {runInSandbox && (
+                  <Form.Item
+                    label="Sandbox flavor"
+                    name="sandbox_flavor"
+                    help="Rootfs image the sandboxed server runs in. 'full' ships Node (npx), uv (uvx), python3 and R; 'minimal' is python3-only."
+                  >
+                    <Select options={flavorOptions} />
+                  </Form.Item>
+                )}
+              </>
             )}
+
+          {/* User-mode + stdio: surface the policy-imposed sandbox
+              decision so the user understands they cannot opt out.
+              Replaces the run_in_sandbox Switch entirely on the user
+              side (the field is force-set server-side by the
+              create/update handlers). */}
+          {isUserMode && transportType === 'stdio' && (
+            <Alert
+              type="info"
+              showIcon
+              message="Stdio MCP servers run inside the sandbox"
+              description={
+                <>
+                  Per administrator policy, stdio MCP servers you add
+                  are launched inside the{' '}
+                  <strong>
+                    {policyUserStdioSandboxFlavor ?? 'minimal'}
+                  </strong>{' '}
+                  code_sandbox flavor. The server only sees an isolated
+                  workspace — filesystem-oriented MCP servers will not
+                  see your real files.
+                </>
+              }
+              className="mb-3"
+            />
+          )}
         </Form>
 
         <div className="flex gap-2 justify-end">

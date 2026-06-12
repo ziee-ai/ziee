@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Upload, message, theme } from 'antd'
+import { App, Upload, theme } from 'antd'
 import type { UploadProps } from 'antd'
 import { Stores } from '@/core/stores'
 
@@ -18,6 +18,7 @@ export interface FileUploadAreaProps {
  * Wraps the chat input area to accept dropped files
  */
 export function FileUploadArea({ children }: FileUploadAreaProps) {
+  const { message } = App.useApp()
   const { token } = theme.useToken()
 
   // Inject styles using theme tokens

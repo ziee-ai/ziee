@@ -7,7 +7,7 @@ import {
 } from '../../common/provider-helpers'
 import { goToNewChatPage, selectModelInDropdown } from './helpers/chat-helpers'
 import {
-  mockChatStream,
+  mockChatTokenStream,
   startedEvent,
   mcpElicitationRequiredEvent,
   completeEvent,
@@ -167,7 +167,7 @@ async function injectElicitation(
   const assistantMessageId = `amsg_${elicitationId}`
   const requestedSchema = { type: 'object', ...schemaPartial }
 
-  await mockChatStream(page, [
+  await mockChatTokenStream(page, [
     [
       startedEvent({ userMessageId }),
       mcpElicitationRequiredEvent({

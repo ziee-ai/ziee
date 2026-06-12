@@ -10,7 +10,10 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::common::r#type::{ApiResult, AppError};
+use crate::modules::llm_model::permissions::LlmModelsRead;
+use crate::modules::llm_provider::permissions::UserLlmProvidersRead;
 use crate::modules::permissions::RequirePermissions;
+use crate::modules::sync::{Audience, SyncAction, SyncEntity, publish as sync_publish};
 use crate::utils::git::{GitError, GitPhase, GitProgress, GitService};
 
 use super::super::{
@@ -368,6 +371,26 @@ async fn create_model_with_files(
         "Model created successfully: {} files, {} total size",
         file_count,
         total_size
+    );
+
+    // Realtime sync: a model was created (upload-commit or background
+    // repository download). Notify admins (LlmModel) + every user's
+    // accessible-providers view (UserLlmProvider). This is a shared helper
+    // with no request context, so origin is None (the upload path's
+    // originating tab already has the model from its response).
+    sync_publish(
+        SyncEntity::LlmModel,
+        SyncAction::Create,
+        model.id,
+        Audience::perm::<LlmModelsRead>(),
+        None,
+    );
+    sync_publish(
+        SyncEntity::UserLlmProvider,
+        SyncAction::Update,
+        model.id,
+        Audience::perm::<UserLlmProvidersRead>(),
+        None,
     );
 
     Ok(model)

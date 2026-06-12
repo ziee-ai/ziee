@@ -32,14 +32,18 @@ async function createAndLoginAs(
   username: string,
   permissions: string[],
 ) {
-  // Always include profile::edit. Removing the user from the default
-  // group (below) strips this away, and login()'s
-  // completeOnboarding() POST requires it — without it the wizard
-  // POST 403s and login() throws before the test ever runs. Adding
-  // it back as a direct perm doesn't affect any test premise (the
-  // tests gate hub/admin surfaces, not profile editing).
-  if (!permissions.includes(Permissions.ProfileEdit)) {
-    permissions = [...permissions, Permissions.ProfileEdit]
+  // Always include profile::edit + profile::read. Removing the user from
+  // the default group (below) strips these away, but every real user holds
+  // them via that group, so granting them back as direct perms doesn't
+  // affect any test premise (the tests gate hub/admin surfaces, not the
+  // user's own profile). profile::edit: login()'s completeOnboarding()
+  // POST requires it. profile::read: the app-shell realtime-sync SSE
+  // (`GET /api/sync/subscribe`) and the chat token stream
+  // (`GET /api/chat/stream`) both require it — without it they 403 on every
+  // authenticated page and the `no-403` fixture fails the test on that
+  // cross-cutting noise rather than a real missing gate.
+  for (const p of [Permissions.ProfileEdit, Permissions.ProfileRead]) {
+    if (!permissions.includes(p)) permissions = [...permissions, p]
   }
   // Get an admin token. Try the direct API call first (works when the
   // spec's beforeEach already set the admin up); fall back to the
@@ -117,6 +121,14 @@ async function createAndLoginAs(
   }
 
   // Reset to a clean session before logging in as the new user.
+  // localStorage access only works once the page has a real origin
+  // (Playwright opens on about:blank where localStorage throws
+  // `SecurityError: Failed to read the 'localStorage' property from
+  // 'Window': Access is denied for this document`). Navigate to the
+  // SPA origin first so the storage call succeeds.
+  if (!page.url().startsWith(baseURL)) {
+    await page.goto(baseURL)
+  }
   await page.evaluate(() => {
     localStorage.clear()
     sessionStorage.clear()
@@ -187,9 +199,17 @@ export async function loginAsHubMcpOnly(
   // makes the tab body render the inline "Missing required
   // permission" error instead of the catalog. The fixture name is
   // descriptive of intent ("can see the MCP tab"), so include both.
+  //
+  // mcp_servers::read: the MCP hub tab's `shouldRender` gate hides the
+  // tab from non-admins unless the MCP *user policy* exposes a non-empty
+  // allowed_transports. That policy is only fetched by McpUserPolicy.load()
+  // when the user holds mcp_servers::read; without it the policy stays
+  // null and the tab is hidden. A real MCP-hub user holds it (to manage
+  // their installed servers), and it adds no hub Models/Assistants tab.
   return createAndLoginAs(page, baseURL, apiURL, 'hub-mcp-only-test', [
     Permissions.HubMCPServersRead,
     Permissions.HubMCPServersVersionRead,
+    Permissions.McpServersRead,
   ])
 }
 

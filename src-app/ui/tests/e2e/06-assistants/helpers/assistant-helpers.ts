@@ -7,18 +7,25 @@ import { Page, expect } from '@playwright/test'
  */
 
 export async function goToUserAssistantsPage(page: Page, baseURL: string) {
-  // The user's own assistants now live in settings (was the sidebar
-  // full-page grid at /assistants).
+  // The user's own assistants now live in settings (was the sidebar full-page
+  // grid at /assistants). NOT `networkidle`: the realtime-sync SSE stream is a
+  // persistent connection that keeps the network busy, so it may never settle —
+  // wait on selectors instead.
   await page.goto(`${baseURL}/settings/assistants`)
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
   // Wait for the settings page title (h4) then the "My Assistants" card.
-  await page.getByRole('heading', { level: 4, name: /assistants/i }).first().waitFor({ timeout: 10000 })
-  await page.locator('.ant-card-head-title:has-text("My Assistants")').waitFor({ timeout: 10000 })
+  await page
+    .getByRole('heading', { level: 4, name: /assistants/i })
+    .first()
+    .waitFor({ timeout: 15000 })
+  await page
+    .locator('.ant-card-head-title:has-text("My Assistants")')
+    .waitFor({ timeout: 15000 })
 }
 
 export async function goToTemplateAssistantsSettings(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/settings/assistant-templates`)
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
   // Wait for the Assistant Templates heading to be visible first
   await page.getByRole('heading', { name: 'Assistant Templates', level: 4 }).waitFor({ timeout: 10000 })
   // Then wait for the Template Assistants card title specifically
@@ -177,7 +184,7 @@ export async function deleteTemplateAssistant(page: Page, assistantName: string)
 
 export async function goToPage(page: Page, pageNumber: number) {
   await page.getByRole('button', { name: `${pageNumber}` }).or(page.locator(`.ant-pagination-item-${pageNumber}`)).click()
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
 }
 
 export async function changePageSize(page: Page, size: number) {
@@ -201,7 +208,7 @@ export async function changePageSize(page: Page, size: number) {
     await combobox.press('ArrowDown')
   }
   await combobox.press('Enter')
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
 }
 
 /**

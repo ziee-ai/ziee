@@ -1,11 +1,12 @@
+import { getBaseUrl } from '@/api-client/getBaseURL'
+import type { SSECallback } from '@/api-client/sse-types'
+import { createSSEHandler } from '@/api-client/sse-types'
 import {
   ApiEndpointUrl,
   ParameterByUrl,
   ResponseByUrl,
 } from '@/api-client/types'
-import type { SSECallback } from '@/api-client/sse-types'
-import { createSSEHandler } from '@/api-client/sse-types'
-import { getBaseUrl } from '@/api-client/getBaseURL'
+import { getSyncConnectionId } from '@/core/sync/connection'
 
 export const getAuthToken = () => {
   // eslint-disable-next-line no-undef
@@ -83,6 +84,17 @@ export const callAsync = async <U extends ApiEndpointUrl>(
       | 'PUT'
       | 'DELETE'
       | 'PATCH'
+
+    // Stamp the originating realtime-sync connection id on mutating
+    // requests so the server skips echoing the resulting change back to
+    // this tab (self-echo suppression). Harmless when absent / on GETs.
+    if (method !== 'GET') {
+      const syncConnId = getSyncConnectionId()
+      if (syncConnId) {
+        headers['X-Sync-Connection-Id'] = syncConnId
+      }
+    }
+
     let endpointPath = endpointUrl.replace(/^[A-Z]+\s+/, '').trim()
     //get {capture} from endpointPath
     const captureMatches = (endpointPath.match(/{([^}]+)}/g) || []).map(match =>
@@ -311,13 +323,35 @@ export const callAsync = async <U extends ApiEndpointUrl>(
       // Create AbortController for SSE stream management if SSE callbacks are provided
       abortController = sseFunction ? new AbortController() : undefined
 
-      // Use fetch for non-FormData requests or when no progress tracking is needed
-      response = await fetch(`${bUrl}${endpointPath}`, {
-        method,
-        headers,
-        body,
-        signal: abortController?.signal,
-      })
+      // Use fetch for non-FormData requests or when no progress tracking is needed.
+      //
+      // Transient network failures (connection refused/reset, DNS blip) reject
+      // fetch() with a TypeError — no HTTP response was ever received, so the
+      // server never processed the request. For idempotent GETs that aren't SSE
+      // streams, retry a few times with backoff rather than surfacing the error:
+      // a momentary blip (server briefly busy, many tabs/devices cold-loading at
+      // once) must not break a data load or, for /auth/me-style calls, brick the
+      // app. Never retried: non-GET (could double-submit), SSE streams (their own
+      // reconnect logic), AbortError (intentional cancel), or an HTTP error
+      // RESPONSE (the server did respond — handled by the status logic below).
+      // The cold-load GETs all fire in parallel and each retries independently,
+      // so the budget below is wall-clock ~6s for the whole burst, not per call.
+      const retryableGet = method === 'GET' && !sseFunction
+      for (let attempt = 0; ; attempt++) {
+        try {
+          response = await fetch(`${bUrl}${endpointPath}`, {
+            method,
+            headers,
+            body,
+            signal: abortController?.signal,
+          })
+          break
+        } catch (err) {
+          if (err instanceof Error && err.name === 'AbortError') throw err
+          if (!retryableGet || attempt >= 5) throw err
+          await new Promise(r => setTimeout(r, 200 * 2 ** attempt))
+        }
+      }
 
       // Send initial __init event with abortController for SSE streams
       if (abortController && sseFunction) {
@@ -399,6 +433,7 @@ export const callAsync = async <U extends ApiEndpointUrl>(
     // Parse the response as JSON
     if (!response.ok) {
       let errorMessage = `HTTP error! status: ${response.status}`
+      let errorCode: string | undefined
 
       // Handle 403 Forbidden specifically
       if (response.status === 403) {
@@ -427,6 +462,9 @@ export const callAsync = async <U extends ApiEndpointUrl>(
           if (errorResponse.error) {
             errorMessage = errorResponse.error
           }
+          if (errorResponse.error_code) {
+            errorCode = errorResponse.error_code
+          }
         } catch {
           // If we can't parse the error response, use the default message
           // get the reponse text instead
@@ -436,11 +474,19 @@ export const callAsync = async <U extends ApiEndpointUrl>(
         }
       }
 
-      // Attach the HTTP status so a caller's `catch` can branch on it (e.g.
-      // 404 → the resource is gone). A plain `Error` has no `status` field, so
-      // a `'status' in e` check would silently never match without this.
-      const error = new Error(errorMessage) as Error & { status: number }
+      // Attach both the HTTP status AND the stable machine-readable
+      // error_code so a caller's `catch` can branch on either without
+      // parsing the message. A plain `Error` has neither field so a
+      // `'status' in e` / `'error_code' in e` check would silently
+      // never match without this.
+      const error = new Error(errorMessage) as Error & {
+        status: number
+        error_code?: string
+      }
       error.status = response.status
+      if (errorCode) {
+        error.error_code = errorCode
+      }
       throw error
     }
 

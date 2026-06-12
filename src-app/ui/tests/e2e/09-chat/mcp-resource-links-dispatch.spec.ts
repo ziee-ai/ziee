@@ -124,7 +124,7 @@ test.describe('Inline file previews — modular dispatch contract', () => {
     })
     const preview = page.locator('[data-testid="inline-file-preview"]').first()
     await expect(preview).toBeVisible({ timeout: 10000 })
-    await expect(preview.locator('[data-testid="inline-file-preview-body"] table:has(tbody td)')).toBeVisible({ timeout: 10000 })
+    await expect(preview.locator('[data-testid="inline-file-preview-body"] .ant-table-row').first()).toBeVisible({ timeout: 10000 })
   })
 
   test('viewer matched by mime wildcard (image/heic) renders inline', async ({

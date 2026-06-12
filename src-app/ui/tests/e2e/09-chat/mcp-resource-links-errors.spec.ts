@@ -114,8 +114,14 @@ test.describe('Inline file previews — error + security paths', () => {
     const body = page
       .locator('[data-testid="inline-file-preview"] [data-testid="inline-file-preview-body"]')
       .first()
-    // RawCodeView uses `.whitespace-pre` divs, not a `<pre>` element.
-    await expect(body.locator('.whitespace-pre').first()).toBeVisible({ timeout: 10000 })
+    // RawCodeView (the text viewer body) renders shiki-highlighted
+    // source in the `[data-testid="raw-code-view"]` container — shiki
+    // injects `<pre class="shiki ...">` inside. The old
+    // `.whitespace-pre` selector was from a pre-shiki layout. Binary-
+    // looking bytes still render without crashing — the point of this
+    // test. `.first()` defends against future panels that might mount
+    // a second body.
+    await expect(body.locator('[data-testid="raw-code-view"]').first()).toBeVisible({ timeout: 10000 })
     expect(pageErrors).toEqual([])
   })
 

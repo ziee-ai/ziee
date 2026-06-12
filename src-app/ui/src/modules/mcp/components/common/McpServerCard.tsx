@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { App, Button, Card, Popconfirm, Tag, Typography, Tooltip, Switch, Flex } from 'antd'
+import { Alert, App, Button, Card, Popconfirm, Tag, Typography, Tooltip, Switch, Flex } from 'antd'
 import {
   EditOutlined,
   ToolOutlined,
@@ -80,13 +80,18 @@ export function McpServerCard({
     try {
       // Probe the persisted config. The OAuth secret is write-only, so we send
       // the server `id` and let the backend reuse the stored secret (URL matches).
+      // Probe the persisted config. Secret values are write-only in
+      // the response (env_vars_entries / headers_entries carry
+      // is_secret + value=null) — the test handler falls back to the
+      // stored decrypted value via `id`.
       const payload: TestMcpConnectionRequest = {
         transport_type: server.transport_type,
         command: server.command ?? undefined,
         args: Array.isArray(server.args) ? server.args : [],
-        environment_variables: server.environment_variables ?? {},
+        environment_variables_entries:
+          server.environment_variables_entries ?? [],
         url: server.url ?? undefined,
-        headers: server.headers ?? {},
+        headers_entries: server.headers_entries ?? [],
         timeout_seconds: server.timeout_seconds,
         id: server.id,
       }
@@ -94,6 +99,20 @@ export function McpServerCard({
         ? await Stores.SystemMcpServer.testSystemServerConnection(payload)
         : await Stores.McpServer.testMcpServerConnection(payload)
       showConnectionTestResult(message, result)
+      // Backend recorded the probe outcome into the row's
+      // `last_health_check_*` columns. Refresh the parent list so
+      // this card's `server` prop re-renders with the updated
+      // health tag (Healthy/Unhealthy) without requiring the user
+      // to reload the page.
+      try {
+        if (server.is_system) {
+          await Stores.SystemMcpServer.loadSystemServers()
+        } else {
+          await Stores.McpServer.loadMcpServers()
+        }
+      } catch (e) {
+        console.warn('Failed to refresh after Test Connection:', e)
+      }
     } catch (error) {
       showConnectionTestError(message, error)
     } finally {
@@ -165,6 +184,59 @@ export function McpServerCard({
                 {server.usage_mode === 'always' && (
                   <Tag color="orange" data-testid="mcp-always-badge">Always</Tag>
                 )}
+                {/* Health status from the last probe — surfaces
+                    boot-time auto-disable reasons + Test Connection
+                    results + enable-time probe failures. Always
+                    renders SOMETHING (incl. "Untested") so the
+                    user can confirm at a glance whether the server
+                    has been probed and what the outcome was. */}
+                {(() => {
+                  const status =
+                    server.last_health_check_status ?? 'untested'
+                  if (status === 'unhealthy') {
+                    return (
+                      <Tooltip
+                        title={
+                          <span style={{ whiteSpace: 'pre-line' }}>
+                            {`Last connection test failed${
+                              server.last_health_check_at
+                                ? ` at ${new Date(server.last_health_check_at).toLocaleString()}`
+                                : ''
+                            }${
+                              server.last_health_check_reason
+                                ? `:\n${server.last_health_check_reason}`
+                                : ''
+                            }`}
+                          </span>
+                        }
+                      >
+                        <Tag color="error" data-testid="mcp-health-unhealthy">
+                          Unhealthy
+                        </Tag>
+                      </Tooltip>
+                    )
+                  }
+                  if (status === 'healthy') {
+                    return (
+                      <Tooltip
+                        title={`Last connection test passed${
+                          server.last_health_check_at
+                            ? ` at ${new Date(server.last_health_check_at).toLocaleString()}`
+                            : ''
+                        }`}
+                      >
+                        <Tag color="success" data-testid="mcp-health-healthy">
+                          Healthy
+                        </Tag>
+                      </Tooltip>
+                    )
+                  }
+                  return (
+                    <Tooltip title="Connection has not been tested yet. Click Test Connection or toggle Enabled to run a probe.">
+                      <Tag data-testid="mcp-health-untested">Untested</Tag>
+                    </Tooltip>
+                  )
+                })()}
               </Flex>
             </div>
             <div className="flex gap-2 items-center justify-end">
@@ -242,6 +314,27 @@ export function McpServerCard({
               )}
             </div>
           </div>
+
+          {/* Surface the last probe's failure reason inline as an
+              Alert so it can't be missed (previously hidden in a
+              Tooltip on the tag). Renders only for the unhealthy
+              case; the Healthy / Untested tags carry their own
+              tooltip with sufficient detail. */}
+          {server.last_health_check_status === 'unhealthy' && (
+            <Alert
+              type="error"
+              showIcon
+              className="!mb-2"
+              message={
+                server.last_health_check_at
+                  ? `Connection test failed at ${new Date(server.last_health_check_at).toLocaleString()}`
+                  : 'Connection test failed'
+              }
+              description={
+                server.last_health_check_reason ?? 'No reason recorded.'
+              }
+            />
+          )}
 
           <div>
             <Text type="secondary" className="text-sm mb-2 block">

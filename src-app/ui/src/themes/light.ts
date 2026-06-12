@@ -1,42 +1,67 @@
 import { ThemeConfig } from 'antd'
-import tinycolor from 'tinycolor2'
 import {
   ComponentOverrides,
   LightAlgorithm,
   TokenOverrides,
 } from '@/themes/override.ts'
 
-const BaseBackgroundColor = tinycolor('#f0f2f5').lighten(2.5).toString() // Light background color for the light theme
+// Two surface fills only: the main content pane is pure white,
+// and the sidebar is a fractionally off-white so it reads as a
+// slightly recessed surface without becoming a heavy gray panel.
+// Hairline border between them.
+const SIDEBAR_BG = '#F9F9F9'        // sidebar fill
+const CONTENT_BG = '#FFFFFF'        // content / card fill
+const BORDER = '#E0E0E0'            // visible 1px separator
+const BORDER_FAINT = '#ECECEC'      // hairline between rows
+const SELECTION_BG = '#E3E3E3'      // neutral selection pill
+const HOVER_BG = 'rgba(0,0,0,0.04)' // row hover
 
 const baseTheme = {
   algorithm: LightAlgorithm,
   token: {
     ...TokenOverrides,
-    colorBgLayout: BaseBackgroundColor,
-    colorBgContainer: '#ffffff', // Light background for layout
-    colorBgBase: BaseBackgroundColor, // Base background color for components
-    colorBorder: tinycolor(BaseBackgroundColor).darken(15).toString(),
-    colorBorderSecondary: tinycolor(BaseBackgroundColor).darken(7).toString(),
-    colorHighlight: tinycolor(BaseBackgroundColor).darken(20).toString(),
-    colorBgMask: tinycolor('#f0f2f5').darken(10).setAlpha(0.6).toString(),
-    // Fix description text color contrast (WCAG AA requires 4.5:1)
-    // Changed from rgba(0,0,0,0.45) [#737373] to #666666 for better contrast
-    colorTextDescription: '#666666', // Improves contrast from 3.36 to 5.74
-    // Fix secondary text color (used by Descriptions labels and other secondary text)
-    // Default: rgba(0,0,0,0.45) #8c8c8c = 3.36:1 (FAIL)
-    colorTextSecondary: 'rgba(0,0,0,0.65)', // Improves contrast to 4.59:1
-    // Fix link colors for better contrast
-    colorLink: '#0958d9', // Primary link color
-    colorLinkHover: '#69b1ff', // Keep default hover
-    colorLinkActive: '#0958d9', // Keep darker active
-    // Fix global success/error colors for WCAG compliance
-    // These affect Tag color="success" and color="error"
-    colorSuccess: '#237804', // Dark green for better contrast (5.74:1 on light bg)
-    colorError: '#d4380d', // Dark red for better contrast (4.54:1 on light bg)
-    // Fix Select / Input placeholder contrast (WCAG AA requires 4.5:1)
-    // Default: #bfbfbf on #ffffff = 1.83:1 (FAIL)
-    // Fix: Use darker gray for better contrast
-    colorTextPlaceholder: '#737373', // Improves contrast to ~4.62:1
+    borderRadius: 6,
+    borderRadiusLG: 8,
+    borderRadiusSM: 4,
+
+    // Two surfaces: `colorBgLayout` is the sidebar fill (#F9F9F9 —
+    // a fractionally recessed off-white); `colorBgContainer` is the
+    // content / card fill (#FFFFFF). LeftSidebar reads
+    // `colorBgLayout` so the split lands automatically.
+    colorBgLayout: SIDEBAR_BG,
+    colorBgContainer: CONTENT_BG,
+    colorBgElevated: CONTENT_BG,
+    colorBgBase: CONTENT_BG,
+
+    // Borders
+    colorBorder: BORDER,
+    colorBorderSecondary: BORDER_FAINT,
+    colorHighlight: SELECTION_BG,
+    colorBgMask: 'rgba(0,0,0,0.40)',
+
+    // Near-black body text + a four-step label ramp (primary →
+    // secondary → tertiary → placeholder). Hits WCAG AA on the
+    // white surface across the whole ramp.
+    colorText: '#1D1D1F',
+    colorTextBase: '#1D1D1F',
+    colorTextSecondary: '#6E6E73',
+    colorTextTertiary: '#86868B',
+    colorTextDescription: '#6E6E73',
+    colorTextPlaceholder: '#86868B',
+
+    // Brand / link blue. Slightly darker than the standard
+    // system-blue so it carries on the off-white sidebar without
+    // dropping below AA.
+    colorLink: '#0066CC',
+    colorLinkHover: '#0070F3',
+    colorLinkActive: '#0066CC',
+    colorPrimary: '#0066CC',
+    colorPrimaryHover: '#0070F3',
+
+    // Status colors — keep WCAG-compliant darker greens/reds (the
+    // original light theme had careful contrast work; preserve it).
+    colorSuccess: '#237804',
+    colorError: '#d4380d',
   },
   components: {
     ...ComponentOverrides,
@@ -72,23 +97,31 @@ const baseTheme = {
       labelColor: 'rgba(0,0,0,0.65)', // Darker gray improves contrast to 4.59:1
     },
     Card: {
-      bodyPadding: 12,
-      headerPadding: 12,
+      // Roomier than antd's default 12px so content doesn't feel
+      // cramped against card edges.
+      bodyPadding: 16,
+      headerPadding: 16,
+      colorBorderSecondary: BORDER_FAINT,
     },
     Menu: {
-      // Fix color contrast for selected menu items (WCAG AA requires 4.5:1)
-      // Default: foreground #1677ff on background #e6f4ff gives 3.66:1
-      // Fix: Use darker blue #0958d9 for better contrast
-      colorPrimary: '#0958d9', // Darker blue for selected item text
-      colorPrimaryBg: '#e6f4ff', // Keep light background
-      // Fix color contrast for menu item text (applies to Dropdown too since it uses Menu)
-      // Default uses rgba(0,0,0,0.65) which gives insufficient contrast
-      itemColor: 'rgba(0,0,0,0.88)', // Ensures 4.5:1+ contrast ratio
-      itemHoverColor: 'rgba(0,0,0,0.88)', // Hover state text
-      itemSelectedColor: 'rgba(0,0,0,0.88)', // Selected state text
-      // Since Dropdown uses Menu internally, we need to ensure Menu items have proper contrast
-      // The .ant-dropdown-menu-title-content elements specifically need this
-      colorText: 'rgba(0,0,0,0.88)', // Primary text color for menu items
+      // Selected row renders as a NEUTRAL gray pill, not a
+      // tinted-blue band. Selected text stays the regular label
+      // color so the sidebar reads as quiet/neutral rather than
+      // "antd blue accent".
+      colorPrimary: '#1D1D1F',          // selected text = body text
+      colorPrimaryBg: SELECTION_BG,     // selected row pill
+      itemBg: 'transparent',            // pulls the parent surface
+      itemColor: '#1D1D1F',
+      itemHoverBg: HOVER_BG,
+      itemHoverColor: '#1D1D1F',
+      itemSelectedBg: SELECTION_BG,
+      itemSelectedColor: '#1D1D1F',
+      // Group titles ("Navigation" / "Tools" / "Recent chats").
+      // Secondary label color, slightly smaller than body text.
+      groupTitleColor: '#6E6E73',
+      groupTitleFontSize: 11,
+      // Inherits for Dropdown / sub-menus.
+      colorText: '#1D1D1F',
     },
     Select: {
       // Fix Select placeholder contrast — token override doesn't always
@@ -133,7 +166,7 @@ const baseTheme = {
     },
   },
   app: {
-    chatBackground: '#f0f2f5',
+    chatBackground: CONTENT_BG,
   },
 } as const
 

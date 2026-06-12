@@ -390,7 +390,7 @@ pub fn subscribe_download_progress_docs(op: TransformOperation) -> TransformOper
         .id("LlmModel.subscribeDownloadProgress")
         .tag("LLM Models - Downloads")
         .summary("Subscribe to download progress via SSE")
-        .description("Real-time Server-Sent Events stream of download progress. Updates every 2 seconds. Auto-closes when no active downloads remain.")
+        .description("Real-time Server-Sent Events stream of download progress. Updates every 1 second. Auto-closes when no active downloads remain.")
         .response::<200, Json<SSEDownloadProgressEvent>>()
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
 }
@@ -411,7 +411,16 @@ async fn start_download_monitoring() {
     tracing::info!("Starting download monitoring service");
 
     tokio::spawn(async move {
-        let mut interval = interval(Duration::from_secs(2)); // Update every 2 seconds
+        // 1s update cadence. tokio's `interval` fires the first tick
+        // immediately (`MissedTickBehavior::Burst` default), so this
+        // also gives the user feedback within a tick of the
+        // monitoring task spawning. Halved from the original 2s to
+        // tighten perceived responsiveness on the first few hundred
+        // MB of a fast download. Zero wire traffic when no downloads
+        // are active — the loop self-terminates at line ~447 when
+        // `get_all_active` returns empty, so the only cost of the
+        // tighter cadence is during active downloads.
+        let mut interval = interval(Duration::from_secs(1));
         let mut last_downloads_state: Option<String> = None;
 
         loop {

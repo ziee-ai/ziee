@@ -7,14 +7,11 @@ import {
   Form,
   InputNumber,
   Spin,
-  Typography,
   message,
 } from 'antd'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
-
-const { Text } = Typography
 
 /**
  * Runtime config card: the singleton llm_runtime_settings row —
@@ -78,7 +75,7 @@ export function RuntimeConfigCard() {
         labelAlign="left"
       >
         <Form.Item
-          label={<Text strong>Idle unload timeout (seconds)</Text>}
+          label="Idle unload timeout (seconds)"
           name="idle_unload_secs"
           help="Engines idle longer than this are automatically unloaded to free memory. 0 disables idle eviction."
           rules={[{ required: true, type: 'number', min: 0, max: 86400 }]}
@@ -87,7 +84,7 @@ export function RuntimeConfigCard() {
         </Form.Item>
 
         <Form.Item
-          label={<Text strong>Auto-start timeout (seconds)</Text>}
+          label="Auto-start timeout (seconds)"
           name="auto_start_timeout_secs"
           help="How long the proxy waits for a freshly-spawned engine to become healthy before giving up."
           rules={[{ required: true, type: 'number', min: 1, max: 600 }]}
@@ -96,7 +93,7 @@ export function RuntimeConfigCard() {
         </Form.Item>
 
         <Form.Item
-          label={<Text strong>Drain timeout (seconds)</Text>}
+          label="Drain timeout (seconds)"
           name="drain_timeout_secs"
           help="When unloading an idle engine, how long to wait for in-flight requests to finish before forcing the stop."
           rules={[{ required: true, type: 'number', min: 1, max: 600 }]}

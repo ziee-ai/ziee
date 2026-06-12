@@ -139,7 +139,16 @@ pub async fn run_headless(config_file: Option<String>) -> Result<()> {
     // in the background. So we await it inline (don't spawn), then
     // block on Ctrl+C forever so the parent test process keeps the
     // server alive until it's done driving requests at us.
-    let handlers: Vec<std::sync::Arc<dyn EventHandler>> = vec![];
+    //
+    // PARITY: keep this handler list in lockstep with the GUI path
+    // (`modules::backend::start_backend_server`). Integration tests
+    // (`TestServer::start_desktop()`) spawn THIS function — if a
+    // handler is only registered in the GUI path, every test that
+    // depends on it silently sees zero side-effects.
+    let handlers: Vec<std::sync::Arc<dyn EventHandler>> = vec![
+        crate::modules::llm_provider::AutoAssignProviderHandler::new(),
+        crate::modules::mcp::AutoAssignMcpServerHandler::new(),
+    ];
 
     // Build a CORS layer identical to the one the server applies to
     // its own routes. Required because we re-layer the desktop sub-
@@ -178,6 +187,18 @@ pub async fn run_headless(config_file: Option<String>) -> Result<()> {
     // the auto-start ngrok forwarder targets the right upstream
     // (not the fallback 8080).
     crate::modules::remote_access::set_local_server_port(addr.port());
+
+    // PARITY with the GUI path: idempotent backfill of system MCP →
+    // group assignments. The per-event handler above catches NEW
+    // creates; this catches built-in registrations whose insert-if-
+    // absent path may not emit `SystemServerCreated` and pre-existing
+    // rows on a re-run against an existing DB.
+    if let Err(e) = crate::modules::mcp::backfill_system_mcp_assignments().await {
+        tracing::error!(
+            error = %e,
+            "headless: backfill_system_mcp_assignments failed"
+        );
+    }
 
     tracing::info!("Headless server live at {}; waiting for shutdown signal", addr);
 

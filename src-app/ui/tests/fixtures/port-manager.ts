@@ -3,7 +3,13 @@ import { resolve } from 'path'
 import { tmpdir } from 'os'
 import { execSync } from 'child_process'
 
-const LOCK_DIR = resolve(tmpdir(), 'ziee-test-locks')
+// Lock dir is env-overridable so concurrent git worktrees can isolate
+// their E2E runs from each other. Without this, every worktree shares
+// `/tmp/ziee-test-locks` + the same 9000/9100 port base, and one run's
+// stale-lock cleanup kills a sibling worktree's just-starting backend
+// (observed as a graceful "Shutdown signal received" ~20s into startup).
+// Pair with ZIEE_E2E_BASE_VITE_PORT / ZIEE_E2E_BASE_BACKEND_PORT.
+const LOCK_DIR = process.env.ZIEE_E2E_LOCK_DIR || resolve(tmpdir(), 'ziee-test-locks')
 const LOCK_TIMEOUT_MS = 180000 // 3 minutes - max test duration
 // @ts-ignore - Reserved for future use
 const _HEARTBEAT_INTERVAL_MS = 5000 // 5 seconds - heartbeat update frequency (reserved for future use)
@@ -105,19 +111,51 @@ function killProcessOnPort(port: number): void {
 }
 
 /**
- * Validate if a lock is still valid based on heartbeat
- * A lock is valid if the heartbeat timestamp is recent (within HEARTBEAT_STALE_MS)
+ * Validate if a lock is still valid.
+ *
+ * A lock is valid if either:
+ *   1. The heartbeat timestamp is recent (within HEARTBEAT_STALE_MS), OR
+ *   2. The recorded process PIDs are still alive (signal-0 probe).
+ *
+ * The PID liveness check (#2) is critical: under load (cargo cold-start
+ * compilation, vite optimize-deps reload, the test node event loop
+ * pegged waiting on a long fetch handler) the heartbeat interval can
+ * drift past the 10 s stale threshold even while the test is healthy
+ * mid-execution. If we treated that as stale and killed the processes,
+ * we'd take down ANOTHER worker's running backend and vite — that's
+ * exactly the symptom users saw as "ERR_CONNECTION_REFUSED" /
+ * "TypeError: Failed to fetch" cascades during parallel runs.
+ *
+ * Only treat the lock as stale when BOTH the heartbeat is gone AND
+ * the registered processes are gone.
  */
 function isLockValid(lock: PortLock): boolean {
   const now = Date.now()
 
-  // Check if heartbeat is stale (no update for >10 seconds)
-  if (now - lock.timestamp > HEARTBEAT_STALE_MS) {
-    console.log(`🧹 Lock heartbeat stale (last update: ${new Date(lock.timestamp).toISOString()}, age: ${now - lock.timestamp}ms)`)
-    return false
+  if (now - lock.timestamp <= HEARTBEAT_STALE_MS) {
+    return true
   }
 
-  return true
+  // Heartbeat is stale — but check if the registered processes are
+  // actually still running. A live process means the worker is just
+  // blocked (event loop), not crashed.
+  const mainAlive = isProcessAlive(lock.pid)
+  const viteAlive = lock.vitePid ? isProcessAlive(lock.vitePid) : false
+  const backendAlive = lock.backendPid ? isProcessAlive(lock.backendPid) : false
+
+  if (mainAlive || viteAlive || backendAlive) {
+    // Workers still alive — heartbeat just hasn't ticked yet. Treat as
+    // valid; the worker will catch up.
+    return true
+  }
+
+  console.log(
+    `🧹 Lock heartbeat stale AND all registered PIDs are dead ` +
+      `(last update: ${new Date(lock.timestamp).toISOString()}, ` +
+      `age: ${now - lock.timestamp}ms, main pid=${lock.pid}, ` +
+      `vite pid=${lock.vitePid ?? 'unset'}, backend pid=${lock.backendPid ?? 'unset'})`,
+  )
+  return false
 }
 
 /**
@@ -240,8 +278,9 @@ export async function findAvailablePorts(
 ): Promise<{ vite: number; backend: number }> {
   // Try up to 100 port pairs
   const MAX_ATTEMPTS = 100
-  const BASE_VITE_PORT = 9000
-  const BASE_BACKEND_PORT = 9100
+  // Env-overridable port base for cross-worktree isolation (see LOCK_DIR).
+  const BASE_VITE_PORT = parseInt(process.env.ZIEE_E2E_BASE_VITE_PORT || '9000', 10)
+  const BASE_BACKEND_PORT = parseInt(process.env.ZIEE_E2E_BASE_BACKEND_PORT || '9100', 10)
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     // Spread workers across port range to reduce collisions

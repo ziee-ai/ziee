@@ -1,5 +1,6 @@
 import { createModule, Stores } from '@/core'
 import { useAppStore } from '@/modules/app/App.store'
+import { useAppModeStore } from '@/modules/app/AppMode.store'
 import { BlankLayout } from '@/modules/layouts/blank'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 
@@ -23,6 +24,13 @@ export default createModule({
     {
       name: 'App',
       store: useAppStore,
+    },
+    {
+      // Portable multi-user / single-admin flag. Default `true` (web
+      // build); the desktop bootstrap flips it to `false`. See
+      // AppMode.store.ts.
+      name: 'AppMode',
+      store: useAppModeStore,
     },
   ],
   initialize: async () => {

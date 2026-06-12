@@ -6,7 +6,7 @@ import {
   assignProviderToAdministratorsGroup,
 } from '../../common/provider-helpers'
 import {
-  mockChatStream,
+  mockChatTokenStream,
   startedEvent,
   mcpToolStartEvent,
   mcpToolCompleteEvent,
@@ -62,7 +62,7 @@ test.describe('Inline file — streaming/persistence consistency (no FileCard fl
     })
     // No `complete` event → the stream ends without triggering loadMessages,
     // so the assertions observe the live streaming-injected state.
-    await mockChatStream(page, [
+    await mockChatTokenStream(page, [
       [
         startedEvent({ userMessageId: 'umsg_art' }),
         mcpToolStartEvent({ toolUseId, toolName: 'make_plot', server: 'test-server' }),
@@ -94,7 +94,7 @@ test.describe('Inline file — streaming/persistence consistency (no FileCard fl
     const fileId = 'file-persist-art'
     // Distinct resolved name proves entity resolution after the reload.
     await mockBackendFile(page, { fileId, filename: 'resolved-plot.png', mimeType: 'image/png' })
-    await mockChatStream(page, [
+    await mockChatTokenStream(page, [
       [
         startedEvent({ userMessageId: 'umsg_persist' }),
         mcpToolStartEvent({ toolUseId, toolName: 'make_plot', server: 'test-server' }),
@@ -153,7 +153,7 @@ test.describe('Inline file — streaming/persistence consistency (no FileCard fl
     const toolUseId = 'tu_multi_art'
     await mockBackendFile(page, { fileId: 'mf1', filename: 'one.png', mimeType: 'image/png' })
     await mockBackendFile(page, { fileId: 'mf2', filename: 'two.png', mimeType: 'image/png' })
-    await mockChatStream(page, [
+    await mockChatTokenStream(page, [
       [
         startedEvent({ userMessageId: 'umsg_multi' }),
         mcpToolStartEvent({ toolUseId, toolName: 'make_plots', server: 'test-server' }),
@@ -180,7 +180,7 @@ test.describe('Inline file — streaming/persistence consistency (no FileCard fl
     // there, so the file still renders inline.
     const toolUseId = 'tu_fallback'
     await mockBackendFile(page, { fileId: 'fb1', filename: 'fallback.png', mimeType: 'image/png' })
-    await mockChatStream(page, [
+    await mockChatTokenStream(page, [
       [
         startedEvent({ userMessageId: 'umsg_fb' }),
         mcpToolStartEvent({ toolUseId, toolName: 'make_plot', server: 'test-server' }),
@@ -208,7 +208,7 @@ test.describe('Inline file — streaming/persistence consistency (no FileCard fl
     // No completeEvent → observe the live streamed order (no /messages reload).
     const toolUseId = 'tu_seg'
     await mockBackendFile(page, { fileId: 'seg1', filename: 'seg.png', mimeType: 'image/png' })
-    await mockChatStream(page, [
+    await mockChatTokenStream(page, [
       [
         startedEvent({ userMessageId: 'umsg_seg' }),
         textDeltaEvent({ delta: 'Let me make a plot.', messageId: 'amsg_seg' }),

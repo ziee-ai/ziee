@@ -63,6 +63,10 @@ export function AuthProviderEditDrawer({
   const { saving, error } = Stores.AuthProvidersAdmin
   const canManage = usePermission(Permissions.AuthProvidersManage)
   const [testing, setTesting] = useState(false)
+  // Distinct from `testing` (the manual "Test config" button's
+  // spinner) so the Switch's spinner doesn't light up while the user
+  // is using the diagnostic button, and vice versa.
+  const [togglingEnable, setTogglingEnable] = useState(false)
   const [testResult, setTestResult] = useState<TestProviderResponse | null>(
     null,
   )
@@ -119,19 +123,119 @@ export function AuthProviderEditDrawer({
     }
   }
 
+  // Intercept the enable Switch. Mirrors `LlmRepositoryDrawer.tsx`:
+  //  - OFF in either mode → flip the form value, no probe.
+  //  - ON in CREATE mode → run stateless `testConfig`; snap back on
+  //    failure so the admin can't ship a broken row to the backend.
+  //  - ON in EDIT mode → save the full form (forcing enabled=true) so
+  //    the backend's `enforce_on_update_transition` probes the
+  //    persisted config; on 400 the store's auto_disabled emit + the
+  //    catch here snap the Switch back.
+  const handleEnabledToggle = async (next: boolean) => {
+    // Guard against rapid toggling while a probe is in flight.
+    if (togglingEnable) return
+
+    if (!next) {
+      form.setFieldValue('enabled', false)
+      return
+    }
+
+    if (template) {
+      // CREATE mode: stateless probe.
+      setTogglingEnable(true)
+      try {
+        const values = await form.validateFields()
+        const normalized = normalizeConfig(values.config, providerType)
+        const res = await Stores.AuthProvidersAdmin.testConfig({
+          name: values.name.trim(),
+          provider_type: providerType,
+          enabled: false,
+          config: normalized,
+        })
+        if (!res.ok) {
+          form.setFieldValue('enabled', false)
+          // Clear any stale success Alert from a prior "Test config"
+          // run so the operator sees the fresh failure, not a stale
+          // green success.
+          setTestResult(res)
+          message.error({
+            content: `Cannot enable: ${res.message}`,
+            duration: 8,
+          })
+          return
+        }
+        form.setFieldValue('enabled', true)
+        setTestResult(res)
+      } catch {
+        // Form validation failed; AntD has surfaced inline. Snap back.
+        form.setFieldValue('enabled', false)
+      } finally {
+        setTogglingEnable(false)
+      }
+      return
+    }
+
+    // EDIT mode: persist the full form with enabled=true and let the
+    // backend's enforce_on_update_transition do the probe.
+    if (!existing) return
+    setTogglingEnable(true)
+    try {
+      const values = await form.validateFields()
+      const normalized = normalizeConfig(values.config, providerType)
+      form.setFieldValue('enabled', true)
+      try {
+        await Stores.AuthProvidersAdmin.updateProvider(existing.id, {
+          name: values.name.trim(),
+          enabled: true,
+          config: normalized,
+        })
+        message.success('Provider enabled — connection test passed.')
+      } catch (e: any) {
+        // The store emits auto_disabled on the 400 enable-failed code,
+        // which triggers a list reload + the canonical row state
+        // (enabled=false). Snap the local form value back so the
+        // Switch reflects reality.
+        form.setFieldValue('enabled', false)
+        const reason =
+          typeof e?.message === 'string'
+            ? e.message
+            : 'Connection probe failed; provider remains disabled.'
+        message.error({
+          content: `Failed to enable: ${reason}`,
+          duration: 8,
+        })
+      }
+    } catch {
+      // validateFields rejected — AntD surfaced inline; just snap back.
+      form.setFieldValue('enabled', false)
+    } finally {
+      setTogglingEnable(false)
+    }
+  }
+
   const onSubmit = async () => {
     try {
       const values = await form.validateFields()
       // Normalize: scopes can be entered as comma-separated string.
       const normalized = normalizeConfig(values.config, providerType)
       if (template) {
-        await Stores.AuthProvidersAdmin.createProvider({
+        const provider = await Stores.AuthProvidersAdmin.createProvider({
           name: values.name.trim(),
           provider_type: providerType,
           enabled: values.enabled,
           config: normalized,
         })
-        message.success(`Created ${values.name.trim()}`)
+        // The store surfaces a connection_warning via the
+        // auto_disabled event already; we just tell the admin if the
+        // row landed disabled vs enabled.
+        if (values.enabled && !provider.enabled) {
+          message.error({
+            content: `Created ${values.name.trim()} but disabled — connection probe failed. Fix the config and re-enable.`,
+            duration: 8,
+          })
+        } else {
+          message.success(`Created ${values.name.trim()}`)
+        }
       } else if (existing) {
         await Stores.AuthProvidersAdmin.updateProvider(existing.id, {
           name: values.name.trim(),
@@ -141,8 +245,18 @@ export function AuthProviderEditDrawer({
         message.success(`Saved ${existing.name}`)
       }
       onClose()
-    } catch {
-      // store sets `error`; form's own validateFields surfaces inline.
+    } catch (e: any) {
+      // 400 AUTH_PROVIDER_ENABLE_FAILED_HEALTH_CHECK lands here. The
+      // store's auto_disabled emit already triggered a reload + Switch
+      // snap-back; surface the reason here for the admin to read.
+      const reason = e?.message
+      if (typeof reason === 'string' && reason.length > 0) {
+        message.error({ content: reason, duration: 8 })
+        // Snap the drawer's form value back to disabled so the visual
+        // state matches the canonical row state.
+        form.setFieldValue('enabled', false)
+      }
+      // Otherwise: validateFields rejected; AntD has surfaced inline.
     }
   }
 
@@ -233,8 +347,13 @@ export function AuthProviderEditDrawer({
           name="enabled"
           label="Enabled"
           valuePropName="checked"
+          extra={
+            template
+              ? 'Toggling on runs a quick connection probe; if it fails the Switch reverts. Save with this on to create the provider enabled.'
+              : 'Toggling on commits the form and runs a connection probe server-side; the Switch reverts if the probe fails.'
+          }
         >
-          <Switch />
+          <Switch loading={togglingEnable} onChange={handleEnabledToggle} />
         </Form.Item>
 
         <Title level={5} className="mt-2">

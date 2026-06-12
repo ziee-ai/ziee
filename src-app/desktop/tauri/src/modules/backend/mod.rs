@@ -112,8 +112,34 @@ impl DesktopModule for BackendModule {
                 "Content-Type".to_string(),
                 "Accept".to_string(),
                 "Origin".to_string(),
+                // Self-echo suppression for realtime sync: every
+                // mutation from the SPA carries the SyncClient's
+                // connection id, which the server echoes back so the
+                // originating tab is skipped in fan-out. Without
+                // this entry the browser preflight rejects every
+                // mutating request as soon as the SyncClient is
+                // connected — every form Save / Delete / Toggle in
+                // the desktop UI fails with a CORS error before
+                // ever reaching the handler.
+                "X-Sync-Connection-Id".to_string(),
             ],
         });
+
+        // Desktop flips every opt-in feature ON by default. The
+        // single-admin device should NOT have to dig through admin
+        // settings to turn things on that have a clear "use me"
+        // value (Memory, Code Sandbox). On the server, these stay
+        // opt-in for the operator to weigh deployment trade-offs.
+        //
+        // Code Sandbox: force the config flag to `true`. The module
+        // boot probes host deps (bwrap on Linux, libkrun.dylib on
+        // macOS, WSL2 on Windows) and gracefully no-ops the runtime
+        // path on probe failure — so a Mac user without libkrun
+        // installed isn't broken; the sandbox just stays
+        // un-registered. Memory (DB-level) is flipped on inside
+        // the post-migration hook below.
+        let sandbox_cfg = config.code_sandbox.get_or_insert_with(Default::default);
+        sandbox_cfg.enabled = true;
 
         tracing::info!("Backend will use port {}", port);
 
@@ -160,6 +186,9 @@ impl DesktopModule for BackendModule {
 
 use crate::modules::auth::ensure_desktop_admin;
 use crate::modules::llm_provider::AutoAssignProviderHandler;
+use crate::modules::mcp::{
+    backfill_system_mcp_assignments, AutoAssignMcpServerHandler,
+};
 
 // =====================================================
 // Backend Server Startup
@@ -182,7 +211,13 @@ pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHan
     tracing::info!("Starting backend server with desktop routes...");
 
     // Create desktop-specific event handlers
-    let handlers: Vec<Arc<dyn ziee::EventHandler>> = vec![AutoAssignProviderHandler::new()];
+    let handlers: Vec<Arc<dyn ziee::EventHandler>> = vec![
+        AutoAssignProviderHandler::new(),
+        // Mirror the LLM provider auto-assign for system MCP servers:
+        // every new system server lands in every user group so the
+        // single admin sees it in chat without a manual assignment.
+        AutoAssignMcpServerHandler::new(),
+    ];
 
     // Clone config so the closure can build a CORS layer that
     // matches the server's own — `start_server_with_routes` takes
@@ -265,6 +300,31 @@ pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHan
                     tracing::error!("Failed to ensure desktop admin: {}", e);
                 }
 
+                // Idempotent backfill: every system MCP server gets a
+                // row in `user_group_mcp_servers` for every group.
+                // Runs every boot to catch built-in registrations
+                // (memory MCP) whose insert-if-absent path may not
+                // emit `SystemServerCreated`. See the function doc
+                // for the full rationale.
+                if let Err(e) = backfill_system_mcp_assignments().await {
+                    tracing::error!(
+                        error = %e,
+                        "backfill_system_mcp_assignments failed — system MCP servers may not be visible to the admin until manually assigned"
+                    );
+                }
+
+                // Flip the singleton `memory_admin_settings.enabled`
+                // to TRUE on every boot. Defaults to FALSE in the
+                // migration (server's opt-in posture) — desktop
+                // single-admins shouldn't have to discover an admin
+                // toggle to start using Memory. Idempotent.
+                if let Err(e) = enable_memory_admin_default().await {
+                    tracing::error!(
+                        error = %e,
+                        "enable_memory_admin_default failed — Memory will appear disabled until the admin flips it"
+                    );
+                }
+
                 state.set_ready(true);
 
                 // Create window now that server is ready
@@ -275,6 +335,32 @@ pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHan
             }
         }
     });
+}
+
+/// Desktop's "single-admin device" posture: flip
+/// `memory_admin_settings.enabled` to TRUE on every boot.
+///
+/// The migration default is FALSE because the server treats every
+/// opt-in capability as a deployment decision the operator must
+/// make. On desktop there's only one operator (the auto-provisioned
+/// admin) and there's no good reason to make them discover an admin
+/// toggle before using Memory.
+///
+/// Idempotent — re-running flips an already-TRUE value to TRUE.
+/// If the row was already TRUE (operator already enabled it via
+/// the admin UI), this is a no-op. If they explicitly DISABLED it
+/// and then restarted the app, this WILL re-enable on the next boot
+/// — that's intentional for the default-on posture; if a user
+/// genuinely wants Memory off forever on their desktop, they can
+/// override via a config flag in the future.
+async fn enable_memory_admin_default() -> Result<()> {
+    let pool = ziee::Repos.pool();
+    sqlx::query("UPDATE memory_admin_settings SET enabled = TRUE WHERE id = 1")
+        .execute(pool)
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to enable memory: {}", e))?;
+    tracing::info!("Memory admin settings enabled (desktop default)");
+    Ok(())
 }
 
 /// Run desktop-specific database migrations
@@ -706,12 +792,15 @@ fn create_main_window(app_handle: &tauri::AppHandle) {
     });
 
     // macOS: overlay titlebar with native traffic light position (no glitch on resize)
+    // x=20 matches the standard inset Apple uses in Notes / Finder /
+    // Mail; the earlier x=12 sat too close to the window edge and
+    // read as "tighter than other macOS apps".
     #[cfg(target_os = "macos")]
     {
         main_window_builder = main_window_builder
             .title_bar_style(tauri::TitleBarStyle::Overlay)
             .decorations(true)
-            .traffic_light_position(tauri::LogicalPosition::new(12.0, 22.0));
+            .traffic_light_position(tauri::LogicalPosition::new(20.0, 22.0));
     }
 
     main_window_builder.build().unwrap();

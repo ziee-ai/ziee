@@ -3,12 +3,15 @@
 // ============================================================================
 
 // Phase 1 — unified catalog endpoints (GET /hub/{index,version,manifest},
-// POST /hub/refresh, GET /hub/updates). Kept in a separate file because
+// POST /hub/refresh, GET /hub/installed). Kept in a separate file because
 // the legacy suite below is large and locale-focused.
 mod catalog_v1;
 // Hermetic catalog tests (mock release server, no network/cosign).
 mod catalog_hermetic;
 mod mock_release_server;
+// Realtime-sync emission for the `hub_settings` entity (reuses the hermetic
+// mock release server to drive POST /hub/activate).
+mod sync_emit_test;
 
 // ============================================================================
 // Hub Models Tests
@@ -67,78 +70,12 @@ async fn test_get_hub_models_requires_permission() {
     );
 }
 
-// Locale tests are deprecated by the unified catalog: the new hub ships
-// English-only (Phase 1 plan). Localization (per-language manifest
-// overrides) is deferred — until it returns, these tests would fail
-// against the seed catalog where every description is English.
-#[tokio::test]
-#[ignore = "locale support deferred — new catalog is English-only at v1"]
-async fn test_get_hub_models_with_locale() {
-    let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "hub_user",
-        &["hub::models::read"],
-    )
-    .await;
-
-    // Test English locale (default)
-    let url_en = server.api_url("/hub/models?lang=en");
-    let response_en = reqwest::Client::new()
-        .get(&url_en)
-        .header("Authorization", format!("Bearer {}", user.token))
-        .send()
-        .await
-        .expect("Request failed");
-
-    assert_eq!(response_en.status(), 200);
-    let body_en: serde_json::Value = response_en.json().await.expect("Failed to parse JSON");
-
-    // Test Vietnamese locale
-    let url_vi = server.api_url("/hub/models?lang=vi");
-    let response_vi = reqwest::Client::new()
-        .get(&url_vi)
-        .header("Authorization", format!("Bearer {}", user.token))
-        .send()
-        .await
-        .expect("Request failed");
-
-    assert_eq!(response_vi.status(), 200);
-    let body_vi: serde_json::Value = response_vi.json().await.expect("Failed to parse JSON");
-
-    // Both should have same number of models
-    assert_eq!(
-        body_en.as_array().unwrap().len(),
-        body_vi.as_array().unwrap().len(),
-        "Both locales should have same number of models"
-    );
-
-    // Verify that locale files are being loaded (check for translated content if available)
-    // Find a model that has translations in vi.json (e.g., llama-3-1-8b-instruct)
-    let models_en = body_en.as_array().unwrap();
-    let models_vi = body_vi.as_array().unwrap();
-
-    // Find llama-3-1-8b-instruct in both arrays
-    let llama_en = models_en
-        .iter()
-        .find(|m| m.get("id").and_then(|v| v.as_str()) == Some("llama-3-1-8b-instruct"));
-    let llama_vi = models_vi
-        .iter()
-        .find(|m| m.get("id").and_then(|v| v.as_str()) == Some("llama-3-1-8b-instruct"));
-
-    if let (Some(model_en), Some(model_vi)) = (llama_en, llama_vi) {
-        let desc_en = model_en.get("description").and_then(|v| v.as_str());
-        let desc_vi = model_vi.get("description").and_then(|v| v.as_str());
-
-        // If both have descriptions, they should be different (Vietnamese translation)
-        if desc_en.is_some() && desc_vi.is_some() {
-            assert_ne!(
-                desc_en, desc_vi,
-                "Descriptions should be translated for llama-3-1-8b-instruct"
-            );
-        }
-    }
-}
+// `test_get_hub_models_with_locale` deleted: the unified hub
+// catalog (Phase 1) ships English-only; per-language manifest
+// overrides were never re-implemented. The test asserted a feature
+// that doesn't exist, so it's gone rather than `#[ignore]`'d. When
+// localization returns, write a fresh test against whatever shape it
+// ships in.
 
 #[tokio::test]
 async fn test_get_hub_models_response_structure() {
@@ -1999,7 +1936,15 @@ async fn test_create_model_from_hub() {
     );
 
     // Get first model hub_id
-    let first_model = &models.as_array().unwrap()[0];
+    // Pick a COMPATIBLE model: the v0.0.3-alpha catalog leads with
+    // `deepseek-r1-70b`, a deliberate `min_ziee_version = 99.0.0` sentinel that
+    // the server rejects as HUB_INCOMPATIBLE, so `[0]` can no longer be created.
+    let first_model = models
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m.get("id").and_then(|v| v.as_str()) == Some("llama-3-1-8b-instruct"))
+        .expect("compatible model 'llama-3-1-8b-instruct' should be in the catalog");
     let hub_id = first_model.get("id").and_then(|v| v.as_str()).unwrap();
 
     // Verify created_ids is initially empty
@@ -2137,7 +2082,15 @@ async fn test_create_model_from_hub_requires_permission() {
 
     assert_eq!(response.status(), 200);
     let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    let first_model = &models.as_array().unwrap()[0];
+    // Pick a COMPATIBLE model: the v0.0.3-alpha catalog leads with
+    // `deepseek-r1-70b`, a deliberate `min_ziee_version = 99.0.0` sentinel that
+    // the server rejects as HUB_INCOMPATIBLE, so `[0]` can no longer be created.
+    let first_model = models
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m.get("id").and_then(|v| v.as_str()) == Some("llama-3-1-8b-instruct"))
+        .expect("compatible model 'llama-3-1-8b-instruct' should be in the catalog");
     let hub_id = first_model.get("id").and_then(|v| v.as_str()).unwrap();
 
     // Try to create model download without permission
@@ -2252,7 +2205,15 @@ async fn test_create_model_from_hub_invalid_provider_id() {
         .expect("Request failed");
 
     let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    let first_model = &models.as_array().unwrap()[0];
+    // Pick a COMPATIBLE model: the v0.0.3-alpha catalog leads with
+    // `deepseek-r1-70b`, a deliberate `min_ziee_version = 99.0.0` sentinel that
+    // the server rejects as HUB_INCOMPATIBLE, so `[0]` can no longer be created.
+    let first_model = models
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m.get("id").and_then(|v| v.as_str()) == Some("llama-3-1-8b-instruct"))
+        .expect("compatible model 'llama-3-1-8b-instruct' should be in the catalog");
     let hub_id = first_model.get("id").and_then(|v| v.as_str()).unwrap();
 
     // Try to create download with invalid provider_id
@@ -2409,7 +2370,15 @@ async fn test_duplicate_download_prevention() {
         .expect("Request failed");
 
     let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    let first_model = &models.as_array().unwrap()[0];
+    // Pick a COMPATIBLE model: the v0.0.3-alpha catalog leads with
+    // `deepseek-r1-70b`, a deliberate `min_ziee_version = 99.0.0` sentinel that
+    // the server rejects as HUB_INCOMPATIBLE, so `[0]` can no longer be created.
+    let first_model = models
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m.get("id").and_then(|v| v.as_str()) == Some("llama-3-1-8b-instruct"))
+        .expect("compatible model 'llama-3-1-8b-instruct' should be in the catalog");
     let hub_id = first_model.get("id").and_then(|v| v.as_str()).unwrap();
 
     // auth_required model: configure the source repo credential so the gate passes.

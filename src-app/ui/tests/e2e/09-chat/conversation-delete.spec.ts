@@ -38,7 +38,13 @@ function cardByTitle(page: Page, title: string) {
 
 async function gotoChats(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/chats`)
-  await page.waitForLoadState('networkidle')
+  // NOTE: do NOT wait for 'networkidle' here. The chat realtime-sync feature
+  // opens two always-on SSE streams (chat tokens + sync) the moment a chat page
+  // mounts; those long-lived requests never "finish", so Playwright's
+  // networkidle never fires and the helper hangs until the test times out.
+  // Wait for a concrete render signal instead — the seeded cards are asserted
+  // visible by each caller right after.
+  await page.waitForLoadState('domcontentloaded')
 }
 
 test.describe('Conversation deletion', () => {

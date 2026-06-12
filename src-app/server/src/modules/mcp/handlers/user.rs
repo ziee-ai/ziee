@@ -17,13 +17,16 @@ use crate::{
     common::{ApiResult, AppError},
     core::EventBus,
     modules::permissions::{RequirePermissions, with_permission},
+    modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
 };
 
 use super::super::{
+    connection_health::{enforce_on_create, enforce_on_update_transition, McpServerWithHealthWarning},
     events::McpServerEvent,
     models::{McpServer, McpServerOAuthConfigResponse, SetMcpServerOAuthConfigRequest},
     permissions::*,
     types::{CreateMcpServerRequest, McpServerListResponse, UpdateMcpServerRequest},
+    user_policy,
 };
 
 // =====================================================
@@ -106,14 +109,61 @@ pub fn list_accessible_servers_docs(op: TransformOperation) -> TransformOperatio
 pub async fn create_user_server(
     auth: RequirePermissions<(McpServersCreate,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
-    Json(request): Json<CreateMcpServerRequest>,
-) -> ApiResult<Json<McpServer>> {
+    origin: SyncOrigin,
+    Json(mut request): Json<CreateMcpServerRequest>,
+) -> ApiResult<Json<McpServerWithHealthWarning>> {
+    // Policy gate FIRST: load the active MCP user policy and force-
+    // set run_in_sandbox + sandbox_flavor on stdio per policy. Must
+    // run BEFORE validate_sandbox_fields_create so that gate sees
+    // the post-policy request (the policy's force-set turns the
+    // request into the sandboxed tier, which relaxes the command
+    // allowlist for stdio). Also called from the hub user-install
+    // handler so the hub path is gated identically.
+    let policy = user_policy::load(Repos.pool()).await?;
+    user_policy::enforce_on_user_create(&mut request, &policy)?;
+    super::validate_sandbox_fields_create(false, &request)?;
+
+    let hub_id = request.hub_id.clone();
     let server = Repos.mcp.create_user_server(auth.user.id, request).await?;
+    let server_id = server.id;
 
-    // Emit creation event for other modules to react
-    event_bus.emit_async(McpServerEvent::user_server_created(server.id, auth.user.id));
+    // Hub install tracking: when the create came from a hub card
+    // (drawer-opens-prefilled flow), stamp the catalog version into
+    // `hub_entities` so the "already installed" badge keeps working.
+    if let Some(hub_id) = hub_id {
+        crate::modules::hub::install_helpers::track_user_mcp_install(
+            server_id,
+            &hub_id,
+            auth.user.id,
+        )
+        .await?;
+    }
 
-    Ok((StatusCode::CREATED, Json(server)))
+    // Emit creation event for other modules to react.
+    event_bus.emit_async(McpServerEvent::user_server_created(server_id, auth.user.id));
+
+    // If created with enabled=true, probe the connection. On
+    // failure: downgrade to enabled=false (no data loss — the user's
+    // config is preserved so they can fix + retry) and surface the
+    // failure reason in the response so the UI can toast it.
+    let wrapped = enforce_on_create(
+        Repos.mcp.pool(),
+        server,
+        &event_bus,
+    )
+    .await?;
+
+    // Cross-device sync: notify AFTER enforcement so peers refetch the final
+    // (possibly probe-downgraded) state.
+    sync_publish(
+        SyncEntity::McpServer,
+        SyncAction::Create,
+        server_id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
+
+    Ok((StatusCode::CREATED, Json(wrapped)))
 }
 
 pub fn create_user_server_docs(op: TransformOperation) -> TransformOperation {
@@ -121,8 +171,14 @@ pub fn create_user_server_docs(op: TransformOperation) -> TransformOperation {
         .id("McpServer.create")
         .tag("MCP Servers")
         .summary("Create user MCP server")
-        .description("Create a new personal MCP server configuration")
-        .response::<201, Json<McpServer>>()
+        .description(
+            "Create a new personal MCP server configuration. When the \
+             request asks for `enabled: true`, the server is probed \
+             after creation; on probe failure the row is persisted with \
+             `enabled: false` and `connection_warning` carries the \
+             failure detail so the UI can surface it.",
+        )
+        .response::<201, Json<McpServerWithHealthWarning>>()
         .response_with::<400, (), _>(|res| res.description("Bad request - validation failed"))
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<409, (), _>(|res| res.description("Server name already exists"))
@@ -160,15 +216,61 @@ pub async fn update_user_server(
     auth: RequirePermissions<(McpServersEdit,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
-    Json(request): Json<UpdateMcpServerRequest>,
+    origin: SyncOrigin,
+    Json(mut request): Json<UpdateMcpServerRequest>,
 ) -> ApiResult<Json<McpServer>> {
-    let server = Repos
+    // Capture the prior server BEFORE the persist so we can both
+    // detect a false→true enable transition AND know the persisted
+    // transport for policy enforcement (transport is immutable from
+    // the drawer; we use the persisted value, never the client one).
+    let existing = Repos
+        .mcp
+        .get_user_server(id, auth.user.id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Server"))?;
+    let prior_enabled = existing.enabled;
+
+    // Policy gate FIRST: re-apply current policy's sandbox flag +
+    // flavor on every update so a flavor change in the policy
+    // propagates the next time the user touches the server. Must
+    // run BEFORE validate_sandbox_fields_update so that gate sees
+    // the post-policy request.
+    let policy = user_policy::load(Repos.pool()).await?;
+    user_policy::enforce_on_user_transport_change(
+        &mut request,
+        &existing.transport_type,
+        &policy,
+    )?;
+    super::validate_sandbox_fields_update(&existing, &request)?;
+
+    let persisted = Repos
         .mcp
         .update_user_server(id, auth.user.id, request)
         .await?;
 
-    // Emit update event for other modules to react
-    event_bus.emit_async(McpServerEvent::user_server_updated(server.id, auth.user.id));
+    // Emit update event for other modules to react. Done BEFORE the
+    // health check so listeners see the persisted state regardless
+    // of whether the probe forces the row back to enabled=false.
+    event_bus.emit_async(McpServerEvent::user_server_updated(
+        persisted.id,
+        auth.user.id,
+    ));
+
+    let server = enforce_on_update_transition(
+        Repos.mcp.pool(),
+        persisted,
+        prior_enabled,
+        &event_bus,
+    )
+    .await?;
+
+    sync_publish(
+        SyncEntity::McpServer,
+        SyncAction::Update,
+        server.id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
 
     Ok((StatusCode::OK, Json(server)))
 }
@@ -178,9 +280,17 @@ pub fn update_user_server_docs(op: TransformOperation) -> TransformOperation {
         .id("McpServer.update")
         .tag("MCP Servers")
         .summary("Update user MCP server")
-        .description("Update a user MCP server configuration")
+        .description(
+            "Update a user MCP server configuration. When the update \
+             flips `enabled: false → true`, the persisted state is \
+             probed; on probe failure the server is reverted to \
+             `enabled: false` and the response is 400 \
+             `MCP_ENABLE_FAILED_HEALTH_CHECK`. Other fields in the \
+             same request DO persist regardless — the partial save is \
+             intentional so concurrent edits aren't lost.",
+        )
         .response::<200, Json<McpServer>>()
-        .response_with::<400, (), _>(|res| res.description("Bad request - validation failed"))
+        .response_with::<400, (), _>(|res| res.description("Bad request - validation failed (incl. enable-time health check failure with error_code `MCP_ENABLE_FAILED_HEALTH_CHECK`)"))
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("Server not found"))
         .response_with::<409, (), _>(|res| res.description("Server name already exists"))
@@ -192,11 +302,20 @@ pub async fn delete_user_server(
     auth: RequirePermissions<(McpServersDelete,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
+    origin: SyncOrigin,
 ) -> ApiResult<StatusCode> {
     Repos.mcp.delete_user_server(id, auth.user.id).await?;
 
     // Emit deletion event for other modules to react (synchronous so cleanup completes before response)
     event_bus.emit(McpServerEvent::user_server_deleted(id, auth.user.id)).await;
+
+    sync_publish(
+        SyncEntity::McpServer,
+        SyncAction::Delete,
+        id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
@@ -255,6 +374,7 @@ pub fn get_server_oauth_config_docs(op: TransformOperation) -> TransformOperatio
 pub async fn set_server_oauth_config(
     auth: RequirePermissions<(McpServersEdit,)>,
     Path(id): Path<Uuid>,
+    origin: SyncOrigin,
     Json(request): Json<SetMcpServerOAuthConfigRequest>,
 ) -> ApiResult<Json<McpServerOAuthConfigResponse>> {
     owned_server(id, auth.user.id).await?;
@@ -266,6 +386,13 @@ pub async fn set_server_oauth_config(
         .into());
     }
     let cfg = Repos.mcp.set_oauth_config(id, request).await?;
+    sync_publish(
+        SyncEntity::McpServer,
+        SyncAction::Update,
+        id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
     Ok((StatusCode::OK, Json(cfg.to_response())))
 }
 
@@ -286,9 +413,17 @@ pub fn set_server_oauth_config_docs(op: TransformOperation) -> TransformOperatio
 pub async fn delete_server_oauth_config(
     auth: RequirePermissions<(McpServersEdit,)>,
     Path(id): Path<Uuid>,
+    origin: SyncOrigin,
 ) -> ApiResult<StatusCode> {
     owned_server(id, auth.user.id).await?;
     Repos.mcp.delete_oauth_config(id).await?;
+    sync_publish(
+        SyncEntity::McpServer,
+        SyncAction::Update,
+        id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
 

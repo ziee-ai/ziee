@@ -26,6 +26,13 @@ mod conversations_test;
 mod messages_test;
 mod branches_test;
 mod streaming_test;
+// Tier-2 ai-providers consumer-wiring tests on the request-capturing,
+// scriptable in-process OpenAI stub (`common::stub_chat`).
+mod stub_chat_tier2_test;
+// New fire-and-forget send + per-user chat-token stream (stub-backed,
+// deterministic) and the `sync:conversation` emit coverage.
+mod chat_stream_test;
+mod sync_emit_test;
 mod ownership_test;
 mod sandbox_real_llm_test;
 mod test_single_assistant_message_architecture;

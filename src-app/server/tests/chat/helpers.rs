@@ -4,6 +4,9 @@ use reqwest::StatusCode;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
+use crate::common::chat_stream_probe::{ChatFrame, ChatStreamProbe};
+use crate::common::stub_engine::StubEngine;
+
 /// Get or create a test LLM model for chat tests
 /// Returns a model with chat capability that can be used in conversations
 /// Uses real AI providers (Anthropic, OpenAI, etc.) with API keys from environment
@@ -682,9 +685,10 @@ pub async fn activate_branch(
     response.json().await.unwrap()
 }
 
-/// Send a message and get the streaming response
-/// Note: This is a simplified version that doesn't fully parse SSE
-/// For full SSE testing, use dedicated streaming tests
+/// Fire-and-forget send: POST `/conversations/{id}/messages`. Returns the raw
+/// response — the body is `{userMessageId, assistantMessageId}` JSON (the reply
+/// itself now streams over `GET /api/chat/stream`, NOT this response). Use
+/// `send_and_collect` when you need the streamed reply.
 pub async fn send_message_simple(
     server: &crate::common::TestServer,
     token: &str,
@@ -701,7 +705,7 @@ pub async fn send_message_simple(
 
     reqwest::Client::new()
         .post(server.api_url(&format!(
-            "/conversations/{}/messages/stream",
+            "/conversations/{}/messages",
             conversation_id
         )))
         .header("Authorization", format!("Bearer {}", token))
@@ -711,8 +715,11 @@ pub async fn send_message_simple(
         .unwrap()
 }
 
-/// Send a message and return a message object with the ID
-/// This is a convenience wrapper that sends a message and extracts the message ID from the stream
+/// Send a message and return a synthetic message object carrying the assistant
+/// message id (mirrors the old return shape so id-only callers don't change).
+/// The `id` field is the assistant message id; `user_message_id` is also
+/// included. Callers that need the assistant reply TEXT must use
+/// `send_and_collect` (the reply streams asynchronously over the chat stream).
 pub async fn send_message(
     server: &crate::common::TestServer,
     token: &str,
@@ -731,23 +738,194 @@ pub async fn send_message(
     )
     .await;
 
-    let chunks = parse_sse_stream(response).await;
+    let status = response.status();
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "send_message (POST /messages) failed: {body}"
+    );
 
-    // Find the first chunk with a message_id
-    for chunk in &chunks {
-        if let Some(message_id) = chunk.get("message_id")
-            && !message_id.is_null() {
-                // Return a synthetic message object with the ID
-                return json!({
-                    "id": message_id,
-                    "content": content,
-                    "conversation_id": conversation_id.to_string(),
-                    "branch_id": branch_id.to_string(),
-                });
-            }
+    json!({
+        "id": body["assistant_message_id"],
+        "user_message_id": body["user_message_id"],
+        "assistant_message_id": body["assistant_message_id"],
+        "content": content,
+        "conversation_id": conversation_id.to_string(),
+        "branch_id": branch_id.to_string(),
+    })
+}
+
+/// A fully-collected assistant turn: the persisted ids plus the reply assembled
+/// from the live chat-token stream.
+pub struct CollectedTurn {
+    pub user_message_id: Option<Uuid>,
+    pub assistant_message_id: Uuid,
+    pub text: String,
+    pub frames: Vec<ChatFrame>,
+}
+
+/// The faithful replacement for "send a message and read the streamed reply" in
+/// the fire-and-forget model: open a chat-stream probe, subscribe to the
+/// conversation BEFORE sending (so no frame is missed), POST the message, and
+/// collect frames until the reply terminates. Returns the ids + assembled text.
+pub async fn send_and_collect(
+    server: &crate::common::TestServer,
+    token: &str,
+    conversation_id: Uuid,
+    branch_id: Uuid,
+    model_id: Uuid,
+    content: &str,
+) -> CollectedTurn {
+    let mut probe = ChatStreamProbe::open(server, token).await;
+    probe.subscribe(Some(conversation_id)).await;
+
+    let response =
+        send_message_simple(server, token, conversation_id, model_id, branch_id, content).await;
+    let status = response.status();
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(status, StatusCode::OK, "send failed: {body}");
+
+    let assistant_message_id = parse_uuid(&body["assistant_message_id"]);
+    let user_message_id = body["user_message_id"]
+        .as_str()
+        .and_then(|s| Uuid::parse_str(s).ok());
+
+    let frames = probe
+        .collect_until_terminal(conversation_id, std::time::Duration::from_secs(30))
+        .await;
+    let text = ChatStreamProbe::assemble_text(&frames);
+
+    CollectedTurn {
+        user_message_id,
+        assistant_message_id,
+        text,
+        frames,
     }
+}
 
-    panic!("No message_id found in stream response. Chunks: {:?}", chunks);
+/// Subscribe → POST an arbitrary `body` to `/messages` → collect the streamed
+/// frames as `SSEEvent`s (the `{event, data}` shape the pre-migration
+/// `parse_sse_events` returned), so existing event-name assertions
+/// (`events.iter().find(|e| e.event == "mcpToolStart")`) keep working with
+/// minimal call-site change. Stops at a terminal (complete/error) frame OR any
+/// `stop_at` event type — pass e.g. `&["mcpApprovalRequired",
+/// "mcpElicitationRequired"]` for flows that pause mid-stream awaiting a
+/// separate respond/approve call. Asserts the POST returned 200.
+pub async fn send_body_and_collect_events(
+    server: &crate::common::TestServer,
+    token: &str,
+    conversation_id: Uuid,
+    body: Value,
+    stop_at: &[&str],
+) -> Vec<SSEEvent> {
+    let mut probe = ChatStreamProbe::open(server, token).await;
+    probe.subscribe(Some(conversation_id)).await;
+
+    let resp = reqwest::Client::new()
+        .post(server.api_url(&format!("/conversations/{}/messages", conversation_id)))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status();
+    let resp_body: Value = resp.json().await.unwrap_or(Value::Null);
+    assert_eq!(status, StatusCode::OK, "send body failed: {resp_body}");
+
+    let frames = probe
+        .collect_until(conversation_id, stop_at, std::time::Duration::from_secs(60))
+        .await;
+    frames
+        .into_iter()
+        .map(|f| SSEEvent {
+            event: f.event_type,
+            data: f.data,
+        })
+        .collect()
+}
+
+/// Spawn a stub-engine + create a `custom` provider pointing at it + a chat
+/// model, and grant `user_id` access. KEEP the returned `StubEngine` alive for
+/// the test (dropping it kills the process). Deterministic: the model replies
+/// `"Hello from stub"`.
+pub async fn create_stub_model(
+    server: &crate::common::TestServer,
+    user_id: &str,
+) -> (StubEngine, Value) {
+    create_stub_model_with_delay(server, user_id, 0).await
+}
+
+/// Like `create_stub_model`, but the stub paces its deltas by `chunk_delay_ms`
+/// so a turn is slow enough to be observed / cancelled mid-flight.
+pub async fn create_stub_model_with_delay(
+    server: &crate::common::TestServer,
+    user_id: &str,
+    chunk_delay_ms: u64,
+) -> (StubEngine, Value) {
+    let stub = StubEngine::start_with_chunk_delay(chunk_delay_ms).await;
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        server,
+        "stub_model_admin",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::edit",
+        ],
+    )
+    .await;
+
+    // A fresh `custom` (OpenAI-compatible) provider pointing at the stub. No
+    // api_key is required for `custom`; loopback http passes URL validation.
+    let provider_resp = reqwest::Client::new()
+        .post(server.api_url("/llm-providers"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "name": format!("Stub {}", &Uuid::new_v4().to_string()[..8]),
+            "provider_type": "custom",
+            "enabled": true,
+            "api_key": "test",
+            "base_url": stub.base_url(),
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        provider_resp.status(),
+        StatusCode::CREATED,
+        "stub provider create failed"
+    );
+    let provider: Value = provider_resp.json().await.unwrap();
+
+    let model_resp = reqwest::Client::new()
+        .post(server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "provider_id": provider["id"],
+            "name": "stub-model",
+            "display_name": "Stub Model",
+            "description": "Deterministic stub model for chat tests",
+            "enabled": true,
+            "engine_type": "none",
+            "file_format": "gguf",
+            "capabilities": { "chat": true, "completion": true, "embedding": false }
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        model_resp.status(),
+        StatusCode::CREATED,
+        "stub model create failed"
+    );
+    let model: Value = model_resp.json().await.unwrap();
+
+    ensure_user_has_model_access(server, user_id, &model).await;
+
+    (stub, model)
 }
 
 /// Parse SSE stream into individual chunks

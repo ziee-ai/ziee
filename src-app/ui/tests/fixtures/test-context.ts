@@ -1,11 +1,15 @@
 import { test as base } from '@playwright/test'
-import { spawn, ChildProcess } from 'child_process'
-import { writeFileSync, mkdirSync, existsSync, rmSync, readFileSync } from 'fs'
-import { resolve, dirname } from 'path'
-import { fileURLToPath } from 'url'
-import pg from 'pg'
+import { ChildProcess, spawn } from 'child_process'
 import crypto from 'crypto'
-import { findAvailablePorts, releasePortLock, updatePortLockHeartbeat } from './port-manager'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { dirname, resolve } from 'path'
+import pg from 'pg'
+import { fileURLToPath } from 'url'
+import {
+  findAvailablePorts,
+  releasePortLock,
+  updatePortLockHeartbeat,
+} from './port-manager'
 
 const { Pool } = pg
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -29,7 +33,12 @@ function prettifyHTML(html: string): string {
       formatted += indentStr.repeat(indent) + token + '\n'
 
       // Increase indent for non-self-closing tags
-      if (!token.endsWith('/>') && !token.match(/<(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)/i)) {
+      if (
+        !token.endsWith('/>') &&
+        !token.match(
+          /<(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)/i,
+        )
+      ) {
         indent++
       }
     } else if (token.trim()) {
@@ -41,7 +50,7 @@ function prettifyHTML(html: string): string {
   return formatted
 }
 
-interface TestInfrastructure {
+export interface TestInfrastructure {
   databaseName: string
   backendPort: number
   vitePort: number
@@ -50,6 +59,22 @@ interface TestInfrastructure {
   serverProcess: ChildProcess
   viteProcess: ChildProcess
   heartbeatInterval: NodeJS.Timeout
+
+  /**
+   * Run a parameterised SQL query against this test's per-database
+   * Postgres instance. Use for cases where the only way to set up a
+   * fixture is direct DB insertion — e.g. seeding tables that have no
+   * E2E-reachable creation API (runtime_versions, code_sandbox cache
+   * registry, etc.).
+   *
+   * Returns `pg.QueryResult` (rows + fields). Reuse the same connection
+   * pool across calls in one test; the pool is closed in test teardown.
+   *
+   * Prefer the real REST API path whenever it's reachable — direct
+   * inserts bypass handler validation + event emission, so the test
+   * must compensate (e.g. fire its own sync trigger).
+   */
+  sql: (text: string, params?: unknown[]) => Promise<import('pg').QueryResult>
 }
 
 interface TestFixtures {
@@ -90,7 +115,9 @@ export const test = base.extend<TestFixtures>({
         try {
           const body = await response.text()
           if (body) {
-            networkRequests.push(`  Response Body: ${body.substring(0, 500)}${body.length > 500 ? '...' : ''}`)
+            networkRequests.push(
+              `  Response Body: ${body.substring(0, 500)}${body.length > 500 ? '...' : ''}`,
+            )
           }
         } catch (e) {
           // Body not available or already consumed
@@ -153,7 +180,10 @@ export const test = base.extend<TestFixtures>({
     if (!runId) {
       throw new Error('TEST_RUN_ID not set - global-setup may have failed')
     }
-    const postgresConfigPath = resolve(__dirname, `../.test-configs/postgres-${runId}.json`)
+    const postgresConfigPath = resolve(
+      __dirname,
+      `../.test-configs/postgres-${runId}.json`,
+    )
     const postgresConfig = JSON.parse(readFileSync(postgresConfigPath, 'utf-8'))
     const postgresPort = postgresConfig.port
 
@@ -228,6 +258,13 @@ server:
   port: ${backendPort}
   api_prefix: "/api"
 
+  # Trust the vite-preview proxy's X-Forwarded-Host (it sets xfwd:true) so the
+  # OAuth callback redirect_uri is built on the frontend origin (vite, 9000),
+  # not the backend port — otherwise social-login lands on the API port where
+  # the SPA isn't served. Mirrors config/dev.yaml. Safe here: the backend is
+  # only reachable behind the test proxy.
+  trust_forwarded_headers: true
+
   # Disable rate limiting for E2E tests — a single test peer-IP can
   # legitimately make many requests in quick succession (page reloads,
   # data refresh after mutations) and would otherwise trip the default
@@ -239,6 +276,7 @@ server:
 
   cors:
     allow_origins:
+      - "http://127.0.0.1:${vitePort}"
       - "http://localhost:${vitePort}"
     allow_methods:
       - "GET"
@@ -271,9 +309,10 @@ jwt:
     // Using shell: true creates a shell parent that orphans child processes when killed
     console.log(`Using cargo from PATH (cross-platform)`)
 
-    const cargoPath = process.platform === 'win32'
-      ? `${process.env.USERPROFILE}\\.cargo\\bin\\cargo`
-      : `${process.env.HOME}/.cargo/bin/cargo`
+    const cargoPath =
+      process.platform === 'win32'
+        ? `${process.env.USERPROFILE}\\.cargo\\bin\\cargo`
+        : `${process.env.HOME}/.cargo/bin/cargo`
 
     // Isolate the hub catalog dir per test. The hub catalog
     // (`current/`) is durable global state; a refresh/activate in one
@@ -300,36 +339,50 @@ jwt:
           // Short-circuit validation to a no-op (debug-only env;
           // compiled out of release builds).
           ZIEE_DISABLE_MODEL_VALIDATION: '1',
-          PATH: process.platform === 'win32'
-            ? `${process.env.USERPROFILE}\\.cargo\\bin;${process.env.PATH}`
-            : `${process.env.HOME}/.cargo/bin:${process.env.PATH}`,
+          // E2E specs that exercise MCP chip / list flows create
+          // system MCP servers with fake URLs (e.g.
+          // `https://chip-test.example.invalid/mcp`). The
+          // connection_health probe on create + enable-transition
+          // would auto-disable them and break every downstream chip
+          // assertion. Skip the probe in tests; the real flow stays
+          // on in dev/release builds (debug-only env, compiled out
+          // via `cfg!(debug_assertions)`).
+          ZIEE_DISABLE_MCP_HEALTH_CHECK: '1',
+          PATH:
+            process.platform === 'win32'
+              ? `${process.env.USERPROFILE}\\.cargo\\bin;${process.env.PATH}`
+              : `${process.env.HOME}/.cargo/bin:${process.env.PATH}`,
         },
-      }
+      },
     )
 
-    serverProcess.on('error', (error) => {
+    serverProcess.on('error', error => {
       console.error(`❌ Backend server error:`, error)
     })
 
     // Log backend stdout
-    serverProcess.stdout?.on('data', (data) => {
+    serverProcess.stdout?.on('data', data => {
       const message = data.toString()
       console.log(`[Backend stdout] ${message}`)
     })
 
     // Log backend stderr to help debug issues
-    serverProcess.stderr?.on('data', (data) => {
+    serverProcess.stderr?.on('data', data => {
       const message = data.toString()
       // Log errors, warnings, and info messages (but not debug)
-      if (message.includes('"level":"error"') || message.includes('"level":"warn"') || message.includes('"level":"info"')) {
+      if (
+        message.includes('"level":"error"') ||
+        message.includes('"level":"warn"') ||
+        message.includes('"level":"info"')
+      ) {
         console.error(`[Backend stderr] ${message}`)
       }
     })
 
     // Wait for backend to be ready (120 seconds for cargo compilation on first run)
     const backendReady = await waitForServer(
-      `http://localhost:${backendPort}/api/health`,
-      120
+      `http://127.0.0.1:${backendPort}/api/health`,
+      120,
     )
     if (!backendReady) {
       serverProcess.kill('SIGKILL')
@@ -341,50 +394,36 @@ jwt:
     const viteConfigPath = resolve(configDir, `vite-${testId}.ts`)
     const projectRoot = resolve(__dirname, '../..')
     const srcRoot = resolve(projectRoot, 'src')
+    // Serve the static build produced once in global-setup via `vite preview`.
+    // A static server handles multiple concurrent browser contexts; the HMR dev
+    // server refuses a 2nd context, which broke the multi-context sync specs.
+    // `/api` proxies to THIS test's backend.
+    const distDir = resolve(projectRoot, 'dist-e2e')
     const viteConfigContent = `import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import tailwindcss from '@tailwindcss/vite'
-import path from 'node:path'
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
-  root: '${srcRoot}',
-  // Per-test cache dir so parallel workers don't race over the shared
-  // node_modules/.vite — that race caused intermittent 504 "Outdated
-  // Optimize Dep" errors when worker A re-bundled mid-test and worker
-  // B was still loading the previous hash.
-  cacheDir: '${resolve(projectRoot, 'node_modules/.vite-test', testId)}',
-  resolve: {
-    alias: {
-      '@': path.resolve('${projectRoot}', './src'),
-    },
-  },
-  // Pre-bundle streamdown including its internal hashed chunks
-  // (highlighted-body-XXX.js for Shiki, mermaid-XXX.js, etc.) so
-  // the first chat code-block render doesn't trigger an on-the-fly
-  // optimizer 504 that crashes the React tree. Vite 8 supports glob
-  // patterns in optimizeDeps.include for exactly this case.
-  optimizeDeps: {
-    include: ['streamdown', 'streamdown/dist/*.js'],
-  },
-  server: {
+  root: ${JSON.stringify(srcRoot)},
+  build: { outDir: ${JSON.stringify(distDir)} },
+  preview: {
     port: ${vitePort},
     strictPort: true,
     host: '127.0.0.1',
-    hmr: false,
-    watch: {
-      ignored: ['**/*'],
-    },
     proxy: {
       '/api/': {
-        target: 'http://localhost:${backendPort}',
+        // 127.0.0.1, NOT localhost: the backend binds IPv4-only (host
+        // 127.0.0.1 above). On node 17+ \`localhost\` resolves \`::1\` first and
+        // the Happy-Eyeballs fallback to IPv4 is flaky under the cold-load +
+        // long-lived-SSE connection churn, so some proxied /api calls hit ::1
+        // and ECONNREFUSED non-deterministically.
+        target: 'http://127.0.0.1:${backendPort}',
         changeOrigin: true,
-        // xfwd: forward X-Forwarded-* headers so the backend's
-        // OAuth handler can build redirect_uris that point back
-        // through this Vite proxy (which serves the SPA), not the
-        // backend port directly. Required for the social-login E2E
-        // parity test against navikt.
+        // X-Forwarded-* for the backend OAuth redirect_uri (social-login E2E).
         xfwd: true,
+        // Never time out the long-lived SSE stream (/api/sync/subscribe); a
+        // proxy timeout would cut it mid-stream (ERR_INCOMPLETE_CHUNKED_ENCODING)
+        // and trigger a reconnect-resync burst.
+        timeout: 0,
+        proxyTimeout: 0,
       },
     },
   },
@@ -393,24 +432,29 @@ export default defineConfig({
 
     writeFileSync(viteConfigPath, viteConfigContent)
 
-    // 6. Start Vite server
-    console.log(`🎨 Starting Vite server on port ${vitePort}...`)
+    // 6. Start Vite preview (static) server. Spawn vite DIRECTLY (node + the
+    //    vite.js bin), NOT via `npx`: npx orphans its vite child, so killing
+    //    the npx process on teardown leaks a live preview per test that drains
+    //    the host. Spawning node directly makes viteProcess the server itself,
+    //    so SIGKILL actually kills it.
+    console.log(`🎨 Starting Vite preview on port ${vitePort}...`)
+    const viteBin = resolve(projectRoot, '../../node_modules/vite/bin/vite.js')
     const viteProcess = spawn(
-      'npx',
-      ['vite', '--config', viteConfigPath, '--clearScreen', 'false', '--force'],
+      process.execPath,
+      [viteBin, 'preview', '--config', viteConfigPath],
       {
         cwd: projectRoot,
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: false,
-      }
+      },
     )
 
-    viteProcess.on('error', (error) => {
+    viteProcess.on('error', error => {
       console.error(`❌ Vite server error:`, error)
     })
 
     // Wait for Vite to be ready
-    const viteReady = await waitForServer(`http://localhost:${vitePort}`, 60)
+    const viteReady = await waitForServer(`http://127.0.0.1:${vitePort}`, 60)
     if (!viteReady) {
       viteProcess.kill('SIGKILL')
       serverProcess.kill('SIGKILL')
@@ -421,22 +465,57 @@ export default defineConfig({
     // Start heartbeat to keep lock alive
     // Update lock every 5 seconds with process PIDs and timestamp
     const heartbeatInterval = setInterval(() => {
-      updatePortLockHeartbeat(vitePort, backendPort, viteProcess.pid, serverProcess.pid)
+      updatePortLockHeartbeat(
+        vitePort,
+        backendPort,
+        viteProcess.pid,
+        serverProcess.pid,
+      )
     }, 5000) // HEARTBEAT_INTERVAL_MS
 
     // Initial heartbeat with PIDs
-    updatePortLockHeartbeat(vitePort, backendPort, viteProcess.pid, serverProcess.pid)
+    updatePortLockHeartbeat(
+      vitePort,
+      backendPort,
+      viteProcess.pid,
+      serverProcess.pid,
+    )
     console.log(`💓 Heartbeat started for ports ${vitePort}/${backendPort}`)
+
+    // Lazy per-test connection pool against the test's own database.
+    // Created on first `sql()` call and closed in cleanup below. Using
+    // a single pool per test avoids the cost of one connection per
+    // query while still being scoped to a single test's lifetime.
+    //
+    // Holder box because TS would otherwise narrow a `let pool: Pool |
+    // null = null` to `never` after the if-block (closure flow
+    // analysis limitation), making `.end()` unreachable.
+    const dbPoolHolder: { pool: InstanceType<typeof Pool> | null } = {
+      pool: null,
+    }
+    const sql: TestInfrastructure['sql'] = async (text, params) => {
+      if (!dbPoolHolder.pool) {
+        dbPoolHolder.pool = new Pool({
+          host: 'localhost',
+          port: postgresPort,
+          user: 'postgres',
+          password: 'password',
+          database: databaseName,
+        })
+      }
+      return dbPoolHolder.pool.query(text, params as any)
+    }
 
     const infrastructure: TestInfrastructure = {
       databaseName,
       backendPort,
       vitePort,
-      baseURL: `http://localhost:${vitePort}`,
-      apiURL: `http://localhost:${backendPort}`,
+      baseURL: `http://127.0.0.1:${vitePort}`,
+      apiURL: `http://127.0.0.1:${backendPort}`,
       serverProcess,
       viteProcess,
       heartbeatInterval,
+      sql,
     }
 
     console.log(`✅ Test infrastructure ready!\n`)
@@ -446,6 +525,17 @@ export default defineConfig({
 
     // Cleanup after test
     console.log(`\n🧹 Cleaning up test infrastructure for: ${testInfo.title}`)
+
+    // Close the per-test sql() pool (only created if any test actually
+    // called sql()). Without this, the pool's open connections would
+    // prevent the DROP DATABASE below from succeeding cleanly.
+    if (dbPoolHolder.pool) {
+      try {
+        await dbPoolHolder.pool.end()
+      } catch (err) {
+        console.warn(`⚠️  test sql() pool .end() failed: ${err}`)
+      }
+    }
 
     // Stop heartbeat
     clearInterval(infrastructure.heartbeatInterval)
@@ -477,7 +567,9 @@ export default defineConfig({
     await new Promise(resolve => setTimeout(resolve, 500))
 
     // Kill any remaining processes on our ports (handles orphaned processes)
-    console.log(`🔪 Ensuring all processes on ports ${vitePort} and ${backendPort} are killed...`)
+    console.log(
+      `🔪 Ensuring all processes on ports ${vitePort} and ${backendPort} are killed...`,
+    )
     await killProcessOnPort(vitePort)
     await killProcessOnPort(backendPort)
 
@@ -531,7 +623,10 @@ export default defineConfig({
 
 export { expect } from '@playwright/test'
 
-async function waitForServer(url: string, maxAttempts: number): Promise<boolean> {
+async function waitForServer(
+  url: string,
+  maxAttempts: number,
+): Promise<boolean> {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       const response = await fetch(url)
@@ -550,9 +645,10 @@ async function killProcessOnPort(port: number): Promise<void> {
   try {
     const { execSync } = await import('child_process')
     // Find process using the port
-    const cmd = process.platform === 'win32'
-      ? `netstat -ano | findstr :${port}`
-      : `lsof -ti :${port}`
+    const cmd =
+      process.platform === 'win32'
+        ? `netstat -ano | findstr :${port}`
+        : `lsof -ti :${port}`
 
     const output = execSync(cmd, { encoding: 'utf8', stdio: 'pipe' }).trim()
 

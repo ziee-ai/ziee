@@ -33,28 +33,58 @@ import { Stores } from '@/core/stores'
 // whose `id` is in this set are hidden from the desktop menu.
 //
 //  - Multi-user RBAC surfaces (no role on a single-admin desktop):
-//    users, user-groups, assistants, mcp-admin, auth-providers.
+//    users, user-groups, auth-providers.
 //  - Core's user+admin pair for Memory (both register id='memory'):
 //    hidden so the combined `memory-desktop` slot is the only one shown.
 //  - `user-llm-providers`: lets a non-admin OVERRIDE the admin-set API
 //    key with their own. On single-admin desktop there's no admin/user
 //    split — the admin sets keys directly on the admin LLM Providers
 //    page. The user-side entry is therefore redundant.
+//  - `assistant-templates`: templates exist to seed a fleet of users
+//    with starter assistants. On a single-user device there's no fleet
+//    — just create personal assistants directly. The `assistants`
+//    (user "My Assistants") page is the one we keep visible.
+//  - `mcp-servers`: the personal/user MCP page. Hidden on desktop in
+//    favour of `mcp-admin` (System MCP). A desktop-only event handler
+//    `Desktop::AutoAssignMcpServer` auto-assigns every new system MCP
+//    server to every user group so the single admin sees them in chat
+//    without any manual assignment step. The mirror of the existing
+//    `Desktop::AutoAssignProvider` pattern for LLM providers.
+//  - `profile`: account display name + password page. The single
+//    desktop admin is auto-provisioned with a fixed username
+//    ("admin") and uses Tauri's auto-login; there is no profile to
+//    present or edit at the application layer.
+//
+// Note (2026-06): `mcp-admin` is SHOWN on desktop. The desktop user
+// IS the admin; the System MCP page is the single source of truth for
+// MCP installs. The page's per-row group-assignment widget + user-
+// policy card are individually hidden via `Stores.AppMode.multiUserMode`
+// (set to false by the desktop UI bootstrap).
 const HIDDEN_ITEMS = new Set([
   'users',
   'user-groups',
-  'assistants',
-  'mcp-admin',
+  'assistant-templates',
   'auth-providers',
   'memory',
   'memory-admin',
   'user-llm-providers',
+  'mcp-servers',
+  'profile',
 ])
 
 // Re-export so the Remote Access desktop module (and any future
 // desktop-only module) can verify against the filter set during
 // tests without depending on the page component.
 export { HIDDEN_ITEMS as DESKTOP_HIDDEN_SETTING_IDS }
+
+// Label remap applied to the desktop settings menu only. On desktop
+// the user MCP page is hidden, so the System MCP page is THE MCP
+// page — the "System" qualifier is redundant and confusing. Other
+// admin labels that imply a user/admin split can be remapped the
+// same way here in the future.
+const LABEL_OVERRIDES: Record<string, string> = {
+  'mcp-admin': 'MCP Servers',
+}
 
 export default function SettingsPage() {
   const navigate = useNavigate()
@@ -87,12 +117,12 @@ export default function SettingsPage() {
     ...userSettingsItems.map(item => ({
       key: item.path,
       icon: item.icon,
-      label: item.label,
+      label: LABEL_OVERRIDES[item.id] ?? item.label,
     })),
     ...adminSettingsItems.map(item => ({
       key: item.path,
       icon: item.icon,
-      label: item.label,
+      label: LABEL_OVERRIDES[item.id] ?? item.label,
     })),
   ]
 
@@ -142,6 +172,7 @@ export default function SettingsPage() {
       w-fit
       h-full
       !p-1
+      !border-r-0
       [&_.ant-menu]:!px-2
       [&_.ant-menu-item]:!h-8
       [&_.ant-menu-item]:!leading-[32px]
@@ -229,9 +260,13 @@ export default function SettingsPage() {
 
       {/* Page Content */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Desktop Sidebar */}
+        {/* Desktop Sidebar — top padding gives the menu a 16px gap
+            from the HeaderBarContainer above. Without it the menu's
+            first item sits flush against the bottom of the header,
+            which fights the soft fade overlay that HeaderBarContainer
+            paints below itself. */}
         {!useMobileLayout && (
-          <div className="w-fit">
+          <div className="w-fit pt-1">
             <SettingsMenu />
           </div>
         )}

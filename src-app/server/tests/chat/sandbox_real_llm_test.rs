@@ -56,9 +56,18 @@ async fn set_conversation_mcp_settings(
 }
 
 /// Send a chat message with the code_sandbox MCP server explicitly
-/// enabled for the conversation. The chat module hides ALL MCP tools
-/// from the LLM unless the request includes `enable_mcp: true` + a
+/// enabled for the conversation, then collect the reply frames off the
+/// per-user chat stream. The chat module hides ALL MCP tools from the LLM
+/// unless the request includes `enable_mcp: true` + a
 /// `mcp_config.mcp_servers` list naming the desired server IDs.
+///
+/// Fire-and-forget: the POST to `/messages` returns `{user_message_id,
+/// assistant_message_id}` (200, asserted inside the helper); the reply itself
+/// streams over `GET /api/chat/stream`. `stop_at` lists event types at which
+/// to stop short of a terminal — pass `["mcpApprovalRequired"]` for a flow
+/// that pauses awaiting approval, or `&[]` to collect until `complete`/`error`.
+/// Returns the collected frames as `SSEEvent`s (the `{event, data}` shape the
+/// old per-request SSE response produced).
 async fn send_with_sandbox_enabled(
     server: &TestServer,
     token: &str,
@@ -67,7 +76,8 @@ async fn send_with_sandbox_enabled(
     model_id: Uuid,
     sandbox_id: Uuid,
     content: &str,
-) -> reqwest::Response {
+    stop_at: &[&str],
+) -> Vec<helpers::SSEEvent> {
     let payload = json!({
         "content": content,
         "model_id": model_id,
@@ -79,14 +89,7 @@ async fn send_with_sandbox_enabled(
             ]
         }
     });
-    let url = server.api_url(&format!("/conversations/{}/messages/stream", conv_id));
-    reqwest::Client::new()
-        .post(&url)
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&payload)
-        .send()
-        .await
-        .expect("send message")
+    helpers::send_body_and_collect_events(server, token, conv_id, payload, stop_at).await
 }
 
 /// Skip if API key + bwrap aren't available. The rootfs is fetched from
@@ -214,7 +217,7 @@ async fn list_files_via_llm_is_auto_approved() {
     )
     .await;
 
-    let response = send_with_sandbox_enabled(
+    let events = send_with_sandbox_enabled(
         &server,
         &token,
         conv_id,
@@ -224,9 +227,9 @@ async fn list_files_via_llm_is_auto_approved() {
         "Call the `list_files` tool now to show me what's in the workspace. \
          Do not reply with text — call the tool. The workspace is empty \
          and that's fine; I just need to see the tool execute.",
+        &[],
     )
     .await;
-    let events = helpers::parse_sse_events(response).await;
     let event_names: Vec<&str> = events.iter().map(|e| e.event.as_str()).collect();
 
     // KEY assertion 1: the tool ACTUALLY ran (not just "no approval
@@ -273,7 +276,7 @@ async fn read_file_via_llm_is_auto_approved() {
     )
     .await;
 
-    let response = send_with_sandbox_enabled(
+    let events = send_with_sandbox_enabled(
         &server,
         &token,
         conv_id,
@@ -286,9 +289,9 @@ async fn read_file_via_llm_is_auto_approved() {
         "Call the `read_file` tool now with filename 'README.txt'. \
          Do not reply with text — call the tool. If the file doesn't exist \
          that's expected; I just need to confirm the tool ran.",
+        &[],
     )
     .await;
-    let events = helpers::parse_sse_events(response).await;
     let event_names: Vec<&str> = events.iter().map(|e| e.event.as_str()).collect();
 
     let tool_starts: Vec<&helpers::SSEEvent> = events
@@ -325,7 +328,7 @@ async fn execute_command_emits_approval_required_sse_event() {
     let (token, _user, conv_id, branch_id, model_id, sandbox_id) =
         setup_chat_with_anthropic(&server).await;
 
-    let response = send_with_sandbox_enabled(
+    let events = send_with_sandbox_enabled(
         &server,
         &token,
         conv_id,
@@ -340,9 +343,12 @@ async fn execute_command_emits_approval_required_sse_event() {
          with command=\"echo hello-from-llm\". This is a test that needs \
          the tool to fire — do not respond with text, just invoke the \
          tool. The system will prompt me for approval; that's expected.",
+        // execute_command is NOT auto-approved → the turn pauses at the
+        // approval gate (no terminal frame) until a separate respond call,
+        // which this test does not make. Stop collecting at the pause.
+        &["mcpApprovalRequired"],
     )
     .await;
-    let events = helpers::parse_sse_events(response).await;
     let event_names: Vec<&str> = events.iter().map(|e| e.event.as_str()).collect();
     // The KEY assertion: execute_command is NOT auto-approved, so an
     // mcpApprovalRequired event MUST fire. The test does NOT respond
@@ -511,7 +517,7 @@ async fn llm_drives_a_tool_on_a_sandboxed_mcp_server() {
     set_conversation_mcp_settings(&server, &user.token, conv_id, echo_id, &["echo"]).await;
 
     let sentinel = "SANDBOXED-ECHO-7F3A";
-    let response = send_with_sandbox_enabled(
+    let events = send_with_sandbox_enabled(
         &server,
         &user.token,
         conv_id,
@@ -522,9 +528,9 @@ async fn llm_drives_a_tool_on_a_sandboxed_mcp_server() {
             "Call the `echo` tool RIGHT NOW with msg=\"{sentinel}\". \
              Do not reply with text — just invoke the tool."
         ),
+        &[],
     )
     .await;
-    let events = helpers::parse_sse_events(response).await;
     let event_names: Vec<&str> = events.iter().map(|e| e.event.as_str()).collect();
 
     // 1. The LLM discovered + invoked the sandboxed server's `echo` tool.

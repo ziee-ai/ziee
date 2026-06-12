@@ -1,6 +1,7 @@
-import { Button, Dropdown, message } from 'antd'
+import { App, Button, Dropdown } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
+import type { MessageInstance } from 'antd/es/message/interface'
 import {
   createExtension,
   type ChatExtension,
@@ -28,7 +29,7 @@ function extractMessageText(message: MessageWithContent): string {
 /**
  * Export conversation as JSON
  */
-function exportAsJSON(): void {
+function exportAsJSON(message: MessageInstance): void {
   // Access raw state outside React context
   const { conversation, messages } = Stores.Chat.__state
   if (!conversation) return
@@ -63,7 +64,7 @@ function exportAsJSON(): void {
 /**
  * Export conversation as plain text
  */
-function exportAsText(): void {
+function exportAsText(message: MessageInstance): void {
   // Access raw state outside React context
   const { conversation, messages } = Stores.Chat.__state
   if (!conversation) return
@@ -92,7 +93,7 @@ function exportAsText(): void {
 /**
  * Export conversation as Markdown
  */
-function exportAsMarkdown(): void {
+function exportAsMarkdown(message: MessageInstance): void {
   // Access raw state outside React context
   const { conversation, messages } = Stores.Chat.__state
   if (!conversation) return
@@ -121,22 +122,22 @@ function exportAsMarkdown(): void {
 /**
  * Export menu items
  */
-function getExportMenuItems(): MenuProps['items'] {
+function getExportMenuItems(message: MessageInstance): MenuProps['items'] {
   return [
     {
       key: 'json',
       label: 'Export as JSON',
-      onClick: () => exportAsJSON(),
+      onClick: () => exportAsJSON(message),
     },
     {
       key: 'txt',
       label: 'Export as Text',
-      onClick: () => exportAsText(),
+      onClick: () => exportAsText(message),
     },
     {
       key: 'md',
       label: 'Export as Markdown',
-      onClick: () => exportAsMarkdown(),
+      onClick: () => exportAsMarkdown(message),
     },
   ]
 }
@@ -145,6 +146,7 @@ function getExportMenuItems(): MenuProps['items'] {
  * Export button component
  */
 function ExportButton() {
+  const { message } = App.useApp()
   const messages = Array.from(Stores.Chat.messages.values())
 
   // Don't show export button if no messages
@@ -153,7 +155,7 @@ function ExportButton() {
   }
 
   return (
-    <Dropdown menu={{ items: getExportMenuItems() }} placement="bottomRight">
+    <Dropdown menu={{ items: getExportMenuItems(message) }} placement="bottomRight">
       <Button icon={<DownloadOutlined />}>
         Export
       </Button>

@@ -164,9 +164,48 @@ export default async function globalSetup(_config: FullConfig) {
   await pool.end()
 
   console.log('✅ PostgreSQL ready for tests!\n')
+
+  // 8. Build the UI ONCE for static `vite preview` serving. The HMR dev server
+  //    refuses a SECOND concurrent browser context (multi-context sync specs
+  //    open 2-3 contexts), so tests serve a static build instead — which has no
+  //    such limit. Built with react+tailwind only (NOT the prod
+  //    `removeDataTestPlugin`) so the `data-test-*` selectors the E2E suite
+  //    relies on survive. Set E2E_SKIP_BUILD=1 to reuse an existing build.
+  const uiRoot = resolve(__dirname, '..')
+  const distDir = resolve(uiRoot, 'dist-e2e')
+  if (process.env.E2E_SKIP_BUILD === '1' && existsSync(resolve(distDir, 'index.html'))) {
+    console.log('🏗️  E2E_SKIP_BUILD=1 — reusing existing dist-e2e build\n')
+  } else {
+    console.log('🏗️  Building UI for static preview (once per run)...')
+    const srcRoot = resolve(uiRoot, 'src')
+    const buildCfg = resolve(configDir, 'vite-e2e-build.ts')
+    writeFileSync(
+      buildCfg,
+      `import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+import path from 'node:path'
+
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  root: ${JSON.stringify(srcRoot)},
+  cacheDir: ${JSON.stringify(resolve(uiRoot, 'node_modules/.vite-e2e-build'))},
+  resolve: { alias: { '@': path.resolve(${JSON.stringify(uiRoot)}, './src') } },
+  optimizeDeps: { include: ['streamdown', 'streamdown/dist/*.js'] },
+  build: { outDir: ${JSON.stringify(distDir)}, emptyOutDir: true },
+})
+`,
+    )
+    execSync(`npx vite build --config "${buildCfg}"`, {
+      cwd: uiRoot,
+      stdio: 'inherit',
+    })
+    console.log('✅ UI build ready for preview\n')
+  }
+
   console.log('   Test infrastructure:')
   console.log(`   - PostgreSQL: port ${postgresPort} (container: ziee-test-postgres-${runId})`)
-  console.log('   - Each worker: 2 dynamic ports (vite + backend)')
+  console.log('   - Each worker: 2 dynamic ports (vite preview + backend)')
   console.log('   - Each test: unique database + backend restart')
   console.log('   - Worker 0: 9000+9100, Worker 1: 9001+9101, etc.\n')
 }

@@ -134,7 +134,16 @@ export const Drawer: React.FC<DrawerProps> = props => {
           borderRadius: windowMinSize.xs ? 0 : 8,
           maxWidth: `calc(100vw - ${windowMinSize.xs ? 0 : 24}px)`,
           boxShadow: 'none',
-          margin: windowMinSize.xs ? 0 : 12,
+          // 8px inset on top/right/bottom matches the LeftSidebar
+          // box's inset from the window frame, so the drawer
+          // visually belongs to the same "floating card" tier as
+          // the sidebar. Left margin (between drawer and the
+          // underlying content) keeps the larger 12px gap. Full-
+          // bleed on `xs` regardless.
+          marginTop: windowMinSize.xs ? 0 : 8,
+          marginRight: windowMinSize.xs ? 0 : 8,
+          marginBottom: windowMinSize.xs ? 0 : 8,
+          marginLeft: windowMinSize.xs ? 0 : 12,
           ...(resolvedPropsStyles?.wrapper || {}),
         },
         body: {

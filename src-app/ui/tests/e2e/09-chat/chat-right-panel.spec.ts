@@ -288,7 +288,7 @@ test.describe('Chat - Right Panel + File Viewers', () => {
       // in RawCodeView (the `#` and `**` would have been swallowed by the
       // compiled view, so seeing them here proves the toggle worked).
       await rawBtn.click()
-      await expect(panelBody.locator('.font-mono')).toBeVisible({ timeout: 5000 })
+      await expect(panelBody.locator('[data-testid="raw-code-view"]')).toBeVisible({ timeout: 5000 })
       await expect(panelBody.getByText('# Test Markdown', { exact: false })).toBeVisible()
 
       // Copy button writes the raw source to clipboard. We seed the
@@ -345,7 +345,7 @@ test.describe('Chat - Right Panel + File Viewers', () => {
     // Switching to raw replaces the table with RawCodeView showing the
     // original comma-delimited source.
     await panelButton(page, 'Raw view').click()
-    await expect(panelBody.locator('.font-mono')).toBeVisible({ timeout: 5000 })
+    await expect(panelBody.locator('[data-testid="raw-code-view"]')).toBeVisible({ timeout: 5000 })
     await expect(panelBody.getByText('name,age,city', { exact: false })).toBeVisible()
   })
 
@@ -365,7 +365,7 @@ test.describe('Chat - Right Panel + File Viewers', () => {
       // from test.txt so the test catches a regression where the viewer
       // renders blank or shows wrong content.
       const panelBody = page.locator('[data-testid="chat-right-panel"]')
-      await expect(panelBody.locator('.font-mono')).toBeVisible({ timeout: 10000 })
+      await expect(panelBody.locator('[data-testid="raw-code-view"]')).toBeVisible({ timeout: 10000 })
       await expect(
         panelBody.getByText('This is a test text file.', { exact: false }),
       ).toBeVisible()
@@ -516,7 +516,7 @@ test.describe('Chat - Right Panel + File Viewers', () => {
 
     // Toggle to raw — iframe goes away, RawCodeView with HTML source appears.
     await panelButton(page, 'Raw view').click()
-    await expect(panelBody.locator('.font-mono')).toBeVisible({ timeout: 5000 })
+    await expect(panelBody.locator('[data-testid="raw-code-view"]')).toBeVisible({ timeout: 5000 })
     await expect(panelBody.locator('iframe')).toHaveCount(0)
     await expect(panelBody.getByText('<!DOCTYPE html>', { exact: false })).toBeVisible()
   })
@@ -531,10 +531,11 @@ test.describe('Chat - Right Panel + File Viewers', () => {
   }) => {
     const { baseURL, apiURL } = testInfra
     await setupChatAtNewConversation(page, baseURL, apiURL)
-    // .docx is processed by the backend (so the upload succeeds) but has
-    // no frontend viewer registered → FilePanel renders the empty state.
+    // PPTX uploads fine (zip-family container) but the backend can't process
+    // it and no frontend viewer is registered → FilePanel renders the empty
+    // state. (.docx now routes to the PDF viewer, so it's no longer "unknown".)
     await attachAndSend(page, FILE_ASSETS.unknown, 'unknown viewer')
-    await openFileInPanel(page, 'test.docx')
+    await openFileInPanel(page, '3_slides.pptx')
 
     await expect(page.locator('[data-testid="cannot-preview"]')).toBeVisible({
       timeout: 10000,

@@ -80,7 +80,12 @@ export async function seedLocalModel(
       name,
       display_name: `E2E ${name}`,
       engine_type: engine,
-      engine_settings: engine === 'llamacpp' ? { ctx_size: 512, n_gpu_layers: 0 } : {},
+      // Nested per-engine shape (`ModelEngineSettings`) — the single source
+      // of truth the spawn path reads.
+      engine_settings:
+        engine === 'llamacpp'
+          ? { llamacpp: { ctx_size: 512, n_gpu_layers: 0 } }
+          : { mistralrs: { max_seqs: 16 } },
       file_format: engine === 'llamacpp' ? 'gguf' : 'safetensors',
       enabled: true,
     }),
@@ -119,20 +124,44 @@ export async function downloadEngineViaApi(
     // out before health.
     body: JSON.stringify({ auto_start_timeout_secs: 600 }),
   })
-  // Use the GPU-detect endpoint's recommended backend (mirrors the
-  // Rust test_helpers::download_engine_release pattern). The fork
-  // doesn't publish a `cpu` asset for macos/aarch64 — only `metal`
-  // — so hardcoding `cpu` produces an HTTP 404 from GitHub Releases.
-  // Falling back to `cpu` for hosts the gpu-detect can't classify.
-  const backend = gpu?.recommended ?? 'cpu'
+  // Resolve the backend from the per-version PUBLISHED assets (the
+  // check-updates listing), exactly like the UI's AvailableVersionsCard
+  // (`v.recommended_backend ?? v.available_backends[0] ?? 'cpu'`). The
+  // detect-gpu `recommended` is the generic hardware capability (e.g.
+  // `cuda`), but the published asset name is version-specific (e.g.
+  // `cuda13.2`), so posting `gpu.recommended` 404s on GitHub Releases.
+  const updates = await (
+    await fetch(
+      `${baseURL}/api/local-runtime/versions/${engine}/check-updates`,
+      { headers },
+    )
+  ).json()
+  const versions = (updates.versions ?? []) as Array<{
+    version: string
+    available_backends: string[]
+    recommended_backend?: string
+    binary_ready: boolean
+  }>
+  const target =
+    version === 'latest'
+      ? (versions.find(v => v.binary_ready) ?? versions[0])
+      : versions.find(v => v.version === version)
+  if (!target) {
+    throw new Error(
+      `downloadEngineViaApi: no ${version} ${engine} version with a published binary ` +
+        `for ${updates.platform}/${updates.arch} (have: ${versions.map(v => v.version).join(', ')})`,
+    )
+  }
+  const backend =
+    target.recommended_backend ?? target.available_backends[0] ?? 'cpu'
   const dl = await fetch(`${baseURL}/api/local-runtime/versions/download`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
       engine,
-      version,
-      platform: gpu.platform,
-      arch: gpu.arch,
+      version: target.version,
+      platform: updates.platform ?? gpu.platform,
+      arch: updates.arch ?? gpu.arch,
       backend,
     }),
   })
@@ -245,7 +274,7 @@ export async function downloadGgufModelViaApi(
       main_filename: 'tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf',
       source: { type: 'hub', id: 'TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF' },
       engine_type: 'llamacpp',
-      engine_settings: { ctx_size: 2048, n_gpu_layers: 0 },
+      engine_settings: { llamacpp: { ctx_size: 2048, n_gpu_layers: 0 } },
       enabled: true,
     }),
   })

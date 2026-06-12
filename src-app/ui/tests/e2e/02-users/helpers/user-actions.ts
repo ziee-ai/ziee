@@ -1,4 +1,5 @@
 import { Page, expect } from '@playwright/test'
+import { enableAdvancedPermissions } from './group-actions'
 
 export interface CreateUserData {
   username: string
@@ -35,6 +36,7 @@ export async function createUser(page: Page, userData: CreateUserData) {
   }
 
   if (userData.permissions && userData.permissions.length > 0) {
+    await enableAdvancedPermissions(drawer)
     const permissionsField = drawer.getByLabel(/permissions.*json/i)
     await permissionsField.fill(JSON.stringify(userData.permissions))
   }

@@ -10,6 +10,15 @@ interface AppLayoutState {
 
   // Sidebar state
   isSidebarCollapsed: boolean
+  /**
+   * Sidebar width in px. Persisted in the store (NOT a per-mount ref)
+   * because each route's `*Layout` component mounts its own
+   * `<AppLayout>` instance — a `useRef` would reset to its initial
+   * value every time the user navigates between Chat / Settings /
+   * etc., wiping the user's resized width. Read at AppLayout mount
+   * time, written on drag end.
+   */
+  sidebarWidth: number
   mainContentWidth: number
 
   // Actions
@@ -18,6 +27,7 @@ interface AppLayoutState {
   closeMobileOverlay: () => void
   setSidebarCollapsed: (collapsed: boolean) => void
   toggleSidebar: () => void
+  setSidebarWidth: (width: number) => void
   setMainContentWidth: (width: number) => void
   setIsFullscreen: (isFullscreen: boolean) => void
 }
@@ -31,6 +41,7 @@ export const useAppLayoutStore = create<AppLayoutState>()(
         isFullscreen: false,
         mobileOverlayOpen: false,
         isSidebarCollapsed: false,
+        sidebarWidth: 240,
         mainContentWidth: 1000,
 
         // Actions
@@ -53,6 +64,10 @@ export const useAppLayoutStore = create<AppLayoutState>()(
         toggleSidebar: () => {
           const currentState = get()
           set({ isSidebarCollapsed: !currentState.isSidebarCollapsed })
+        },
+
+        setSidebarWidth: (width: number) => {
+          set({ sidebarWidth: width })
         },
 
         setMainContentWidth: (width: number) => {

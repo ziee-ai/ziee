@@ -13,6 +13,7 @@ use crate::modules::llm_local_runtime::permissions::{
     RuntimeSettingsManage, RuntimeSettingsRead,
 };
 use crate::modules::permissions::{RequirePermissions, with_permission};
+use crate::modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
 
 /// GET /api/local-runtime/settings
 pub async fn get_runtime_settings(
@@ -33,9 +34,18 @@ pub fn get_runtime_settings_docs(op: TransformOperation) -> TransformOperation {
 /// PUT /api/local-runtime/settings
 pub async fn update_runtime_settings(
     _auth: RequirePermissions<(RuntimeSettingsManage,)>,
+    origin: SyncOrigin,
     Json(req): Json<UpdateRuntimeSettingsRequest>,
 ) -> ApiResult<Json<RuntimeSettings>> {
     let row = Repos.local_runtime.update_runtime_settings(req).await?;
+    // Singleton settings (event id is nil); notify admin devices.
+    sync_publish(
+        SyncEntity::RuntimeSettings,
+        SyncAction::Update,
+        uuid::Uuid::nil(),
+        Audience::perm::<RuntimeSettingsRead>(),
+        origin.0,
+    );
     Ok((StatusCode::OK, Json(row)))
 }
 

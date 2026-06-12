@@ -10,6 +10,10 @@
 // TYPE DEFINITIONS
 // =============================================================================
 
+export interface ActivateHubVersionRequest {
+  version?: string
+}
+
 export interface AllSettingsResponse {
   settings: SettingItem[]
 }
@@ -86,8 +90,22 @@ export interface AutoApprovedServer {
 }
 
 export interface AvailableUpdatesResponse {
-  available_versions: string[]
+  arch: string
   engine: string
+  platform: string
+  versions: AvailableVersion[]
+}
+
+export interface AvailableVersion {
+  available_backends: string[]
+  binary_ready: boolean
+  installed: boolean
+  installed_backends: string[]
+  prerelease: boolean
+  published_at?: string
+  recommended_backend?: string
+  size_bytes?: number
+  version: string
 }
 
 export interface BackendStatusResponse {
@@ -129,7 +147,21 @@ export interface CallToolResponse {
   is_error: boolean
 }
 
+export interface Catalog {
+  generated_at?: string
+  hub_version: string
+  items: IndexItem[]
+  schema_version: number
+}
+
+export type CatalogProvenance = 'seed' | 'github'
+
 export interface ChangePasswordRequest {
+  current_password: string
+  new_password: string
+}
+
+export interface ChangePasswordRequest2 {
   current_password: string
   new_password: string
 }
@@ -142,6 +174,21 @@ export interface ChatStreamChunk {
   finish_reason?: string
   message_id?: string
   usage?: Usage
+}
+
+export interface ChatStreamConnectedData {
+  connectionId: string
+}
+
+export interface ChatStreamFrame {
+  conversationId: string
+  event: SSEChatStreamEvent
+}
+
+export type ChatStreamSseEvent = {
+  kind: 'connected'
+} | {
+  kind: 'frame'
 }
 
 export interface CodeSandboxResourceLimits {
@@ -184,9 +231,7 @@ export interface Conversation {
   active_branch_id?: string
   created_at: string
   id: string
-  memory_mode: string
   model_id?: string
-  project_id?: string
   updated_at: string
   user_id: string
 }
@@ -203,17 +248,33 @@ export interface ConversationMcpSettingsResponse {
   user_id: string
 }
 
+export interface ConversationMemoryModeResponse {
+  memory_mode: string
+}
+
 export interface ConversationResponse {
   title?: string
   active_branch_id?: string
   created_at: string
   id: string
-  memory_mode: string
   message_count: number
   model_id?: string
-  project_id?: string
   updated_at: string
   user_id: string
+}
+
+export interface ConversationSummarizationModeResponse {
+  summarization_mode: string
+}
+
+export interface ConversationSummary {
+  branch_id: string
+  created_at: string
+  message_count: number
+  model_used?: string
+  summarized_up_to_id?: string
+  summary_text: string
+  updated_at: string
 }
 
 export interface CoreMemoryBlock {
@@ -235,6 +296,7 @@ export interface CreateAssistantFromHubRequest {
   is_default?: boolean
   name?: string
   parameters?: any
+  replace_existing?: boolean
 }
 
 export interface CreateAssistantRequest {
@@ -254,6 +316,11 @@ export interface CreateAuthProviderRequest {
   provider_type: string
 }
 
+export interface CreateAuthProviderResponse {
+  connection_warning?: string
+  provider: AuthProviderResponse
+}
+
 export interface CreateBranchRequest {
   fork_level?: string
   from_message_id: string
@@ -262,7 +329,6 @@ export interface CreateBranchRequest {
 export interface CreateConversationRequest {
   title?: string
   model_id?: string
-  project_id?: string
 }
 
 export interface CreateGroupRequest {
@@ -293,6 +359,21 @@ export interface CreateLlmProviderRequest {
   proxy_settings?: ProxySettings
 }
 
+export interface CreateLlmProviderResponse {
+  api_key?: string
+  base_url?: string
+  built_in: boolean
+  created_at: string
+  default_runtime_version_id?: string
+  enabled: boolean
+  id: string
+  name: string
+  plaintext_api_key?: string
+  provider_type: string
+  proxy_settings: ProxySettings
+  updated_at: string
+}
+
 export interface CreateLlmRepositoryRequest {
   auth_config?: RepositoryAuthConfig
   auth_type: string
@@ -306,6 +387,7 @@ export interface CreateMcpServerFromHubRequest {
   enabled?: boolean
   hub_id: string
   name?: string
+  replace_existing?: boolean
 }
 
 export interface CreateMcpServerRequest {
@@ -314,10 +396,13 @@ export interface CreateMcpServerRequest {
   command?: string
   display_name: string
   enabled?: boolean
-  environment_variables?: any
-  headers?: any
+  environment_variables_entries?: EnvVarEntry[]
+  headers_entries?: HeaderEntry[]
+  hub_id?: string
   max_concurrent_sessions?: number
   name: string
+  run_in_sandbox?: boolean
+  sandbox_flavor?: string
   supports_sampling?: boolean
   timeout_seconds?: number
   transport_type: TransportType
@@ -345,9 +430,6 @@ export interface CreateProjectRequest {
   default_assistant_id?: string
   default_model_id?: string
   instructions?: string
-  mcp_approval_mode?: string
-  mcp_auto_approved_tools?: McpServerToolEntry[]
-  mcp_disabled_servers?: McpServerToolEntry[]
   name?: string
 }
 
@@ -361,6 +443,11 @@ export interface CreateUserRequest {
 
 export interface DeleteAllResponse {
   deleted: number
+}
+
+export interface DeleteModelQuery {
+  delete_file?: boolean
+  force?: boolean
 }
 
 export interface DeleteProviderResponse {
@@ -377,6 +464,25 @@ export type DeviceType = 'cpu' | 'cuda' | 'metal' | 'rocm' | 'vulkan' | 'opencl'
 export interface DisabledServer {
   server_id: string
   tools: string[]
+}
+
+export interface DiscoverModelsResponse {
+  models: DiscoveredModel[]
+  notes: string[]
+  provider_type: string
+}
+
+export interface DiscoveredModel {
+  context_length?: number
+  deprecated: boolean
+  display_name?: string
+  id: string
+  max_output_tokens?: number
+  source: string
+  supports_chat: boolean
+  supports_embeddings: boolean
+  supports_tool_use?: boolean
+  supports_vision: boolean
 }
 
 export interface DownloadFromRepositoryRequest {
@@ -415,6 +521,10 @@ export interface DownloadInstanceListResponse {
   page: number
   per_page: number
   total: number
+}
+
+export interface DownloadListResponse {
+  downloads: DownloadSnapshot[]
 }
 
 export interface DownloadPaginationQuery {
@@ -464,6 +574,20 @@ export interface DownloadRequestData {
   revision?: string
 }
 
+export interface DownloadSnapshot {
+  backend: string
+  bytes_received: number
+  engine: string
+  error?: string
+  key: string
+  percent?: number
+  result_version_id?: string
+  status: string
+  task_id: string
+  total_bytes?: number
+  version: string
+}
+
 export type DownloadStatus = 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled'
 
 export interface DownloadTokenQuery {
@@ -483,10 +607,23 @@ export interface DownloadVersionRequest {
   version: string
 }
 
-export interface DownloadVersionResponse {
-  downloaded: boolean
-  message: string
-  version: RuntimeVersionResponse
+export interface DownloadVersionStartedResponse {
+  backend: string
+  engine: string
+  events_url: string
+  key: string
+  status: string
+  task_id: string
+  version: string
+}
+
+export interface DrainEntry {
+  arch: string
+  artifact_id: string
+  flavor: string
+  inflight_exec: number
+  inflight_mcp: number
+  version: string
 }
 
 export interface EditMessageRequest {
@@ -498,7 +635,21 @@ export interface EditMessageResponse {
   message: Message
 }
 
+export type EngineDownloadStatus = 'pending' | 'downloading' | 'verifying' | 'extracting' | 'registering' | 'completed' | 'failed'
+
 export type EngineType = 'mistralrs' | 'llamacpp' | 'none'
+
+export interface EnvVarEntry {
+  is_secret: boolean
+  key: string
+  value?: string
+}
+
+export interface EnvVarView {
+  is_secret: boolean
+  key: string
+  value?: string
+}
 
 export interface EnvironmentInfo {
   description: string
@@ -508,12 +659,6 @@ export interface EnvironmentInfo {
   flavor: string
   mounted: boolean
 }
-
-export interface EnvironmentsResponse {
-  available: EnvironmentInfo[]
-}
-
-export type FetchPhase = 'resolving' | 'downloading' | 'verifying_sha256' | 'verifying_cosign' | 'installing'
 
 export interface File {
   checksum?: string
@@ -540,6 +685,16 @@ export interface FileListResponse {
   page: number
   per_page: number
   total: number
+}
+
+export interface FtsRebuildRequest {
+  dictionary: string
+}
+
+export interface FtsRebuildStatus {
+  completed_at?: string
+  in_progress: boolean
+  started_at?: string
 }
 
 export interface GPUComputeCapabilities {
@@ -588,6 +743,13 @@ export interface GetUserProvidersResponse2 {
   providers: ProviderWithModels2[]
 }
 
+export interface GpuDetectionResponse {
+  arch: string
+  available: string[]
+  platform: string
+  recommended: string
+}
+
 export interface Group {
   description?: string
   created_at: string
@@ -634,6 +796,18 @@ export interface HardwareUsageUpdate {
   timestamp: string
 }
 
+export interface HeaderEntry {
+  is_secret: boolean
+  key: string
+  value?: string
+}
+
+export interface HeaderView {
+  is_secret: boolean
+  key: string
+  value?: string
+}
+
 export interface HealthCheckResponse {
   healthy: boolean
   message?: string
@@ -650,6 +824,7 @@ export interface HubAssistant {
   capabilities_required?: string[]
   category?: string
   created_ids?: string[]
+  created_template_ids?: string[]
   display_name: string
   example_prompts?: string[]
   id: string
@@ -662,6 +837,29 @@ export interface HubAssistant {
   use_cases?: string[]
 }
 
+export interface HubCatalogCounts {
+  assistants: number
+  mcp_servers: number
+  models: number
+}
+
+export interface HubCatalogRefreshResponse {
+  cosign_verified: boolean
+  new_version: string
+  previous_version?: string
+  updated: boolean
+}
+
+export interface HubCatalogVersionResponse {
+  counts: HubCatalogCounts
+  hub_version: string
+  last_refreshed?: string
+  server_version: string
+  source: CatalogProvenance
+}
+
+export type HubCategory = 'assistant' | 'mcp-server' | 'model'
+
 export interface HubEntity {
   created_at: string
   created_by?: string
@@ -670,6 +868,25 @@ export interface HubEntity {
   hub_category: string
   hub_id: string
   id: string
+}
+
+export interface HubInstalledResponse {
+  catalog_version: string
+  items: HubInstalledRow[]
+}
+
+export interface HubInstalledRow {
+  current_version: string
+  entity_id: string
+  entity_type: string
+  hub_category: string
+  hub_id: string
+  installed_at: string
+  installed_version?: string
+  is_system: boolean
+  is_system_mcp_install: boolean
+  is_template_install: boolean
+  name: string
 }
 
 export interface HubLocalProvider {
@@ -688,6 +905,7 @@ export interface HubMCPServer {
   category?: string
   command?: string
   created_ids?: string[]
+  created_system_ids?: string[]
   display_name: string
   documentation_url?: string
   download_count?: number
@@ -705,6 +923,8 @@ export interface HubMCPServer {
   popularity_score?: number
   rating?: number
   repository_url?: string
+  required_env?: HubRequiredInput[]
+  required_headers?: HubRequiredInput[]
   requires_desktop?: boolean
   supports_sampling?: boolean
   tags?: string[]
@@ -714,6 +934,17 @@ export interface HubMCPServer {
   url?: string
   use_cases?: string[]
   version?: string
+}
+
+export interface HubManifest {
+  assistant?: HubAssistant
+  category: HubCategory
+  mcp_server?: HubMCPServer
+  model?: HubModel
+}
+
+export interface HubManifestQuery {
+  category: HubCategory
 }
 
 export interface HubModel {
@@ -740,6 +971,7 @@ export interface HubModel {
   repository_path: string
   repository_url: string
   size_gb: number
+  source_auth_configured?: boolean
   tags?: string[]
 }
 
@@ -758,6 +990,27 @@ export interface HubRefreshResponse {
   version: string
 }
 
+export interface HubReleaseInfo {
+  prerelease: boolean
+  published_at?: string
+  tag: string
+  version: string
+}
+
+export interface HubReleasesResponse {
+  active_version?: string
+  pinned_version?: string
+  releases: HubReleaseInfo[]
+}
+
+export interface HubRequiredInput {
+  description?: string
+  docs_url?: string
+  is_secret?: boolean
+  name: string
+  placeholder?: string
+}
+
 export interface HubVersionResponse {
   last_updated?: string
   version: string
@@ -773,6 +1026,42 @@ export type ImageSource = {
 } | {
   type: 'file'
   file_id: string
+}
+
+export interface IndexItem {
+  added_at?: string
+  category: HubCategory
+  id: string
+  manifest_path: string
+  min_ziee_version?: string
+  name: string
+  summary: string
+  tags?: string[]
+  verified?: boolean
+}
+
+export interface InstallTaskState {
+  arch: string
+  artifact_id?: string
+  bytes_downloaded?: number
+  completed_at?: string
+  duration_ms?: number
+  error?: string
+  flavor: string
+  message?: string
+  package: string
+  phase?: string
+  started_at: string
+  status: TaskStatus
+  task_id: string
+  version: string
+}
+
+export interface InstallVersionRequest {
+  arch: string
+  flavor: string
+  package: string
+  version: string
 }
 
 export interface InstanceResponse {
@@ -827,10 +1116,6 @@ export interface ListModelsQuery {
   page?: number
   perPage?: number
   providerId?: string
-}
-
-export interface ListPrefetchTasksResponse {
-  tasks: PrefetchTaskSummary[]
 }
 
 export interface ListPromptsResponse {
@@ -943,6 +1228,9 @@ export interface LlmRepository {
   created_at: string
   enabled: boolean
   id: string
+  last_health_check_at?: string
+  last_health_check_reason?: string
+  last_health_check_status: string
   name: string
   updated_at: string
   url: string
@@ -953,6 +1241,22 @@ export interface LlmRepositoryListResponse {
   per_page: number
   repositories: LlmRepository[]
   total: number
+}
+
+export interface LlmRepositoryWithHealthWarning {
+  auth_config: RepositoryAuthConfig
+  auth_type: string
+  built_in: boolean
+  connection_warning?: ProbeFailure
+  created_at: string
+  enabled: boolean
+  id: string
+  last_health_check_at?: string
+  last_health_check_reason?: string
+  last_health_check_status: string
+  name: string
+  updated_at: string
+  url: string
 }
 
 export interface LoginRequest {
@@ -994,13 +1298,20 @@ export interface McpServer {
   created_at: string
   display_name: string
   enabled: boolean
-  environment_variables: any
-  headers: any
+  environment_variables?: any
+  environment_variables_entries?: EnvVarView[]
+  headers?: any
+  headers_entries?: HeaderView[]
   id: string
   is_built_in: boolean
   is_system: boolean
+  last_health_check_at?: string
+  last_health_check_reason?: string
+  last_health_check_status?: string
   max_concurrent_sessions?: number
   name: string
+  run_in_sandbox: boolean
+  sandbox_flavor: string
   supports_sampling: boolean
   timeout_seconds: number
   transport_type: TransportType
@@ -1038,16 +1349,50 @@ export interface McpServerOAuthConfigResponse {
   updated_at: string
 }
 
-export interface McpServerToolEntry {
-  server_id: string
-  tools?: string[]
+export interface McpServerWithHealthWarning {
+  description?: string
+  args: any
+  command?: string
+  connection_warning?: ProbeFailure2
+  created_at: string
+  display_name: string
+  enabled: boolean
+  environment_variables?: any
+  environment_variables_entries?: EnvVarView[]
+  headers?: any
+  headers_entries?: HeaderView[]
+  id: string
+  is_built_in: boolean
+  is_system: boolean
+  last_health_check_at?: string
+  last_health_check_reason?: string
+  last_health_check_status?: string
+  max_concurrent_sessions?: number
+  name: string
+  run_in_sandbox: boolean
+  sandbox_flavor: string
+  supports_sampling: boolean
+  timeout_seconds: number
+  transport_type: TransportType
+  updated_at: string
+  url?: string
+  usage_mode: UsageMode
+  user_id?: string
 }
 
 export interface McpSettingsResponse {
   settings?: ConversationMcpSettingsResponse
 }
 
+export interface McpUserPolicy {
+  allowed_transports: string[]
+  updated_at: string
+  updated_by?: string
+  user_stdio_sandbox_flavor?: string
+}
+
 export interface MeResponse {
+  has_password: boolean
   permissions: string[]
   user: User
 }
@@ -1060,12 +1405,16 @@ export interface MemoryAdminSettings {
   embedding_dimensions: number
   embedding_model_id?: string
   enabled: boolean
-  full_summary_prompt?: string
+  fts_candidate_multiplier: number
+  fts_dictionary: string
+  fts_enabled: boolean
+  fts_min_rank: number
+  fts_rebuild_completed_at?: string
+  fts_rebuild_started_at?: string
+  fts_rrf_k: number
   id: number
-  incremental_summary_prompt?: string
+  semantic_enabled: boolean
   soft_delete_grace_days: number
-  summarize_after_n_messages: number
-  summarizer_keep_recent: number
   updated_at: string
 }
 
@@ -1102,14 +1451,16 @@ export interface MemoryUsage {
 }
 
 export interface Message {
-  assistant_id?: string
   created_at: string
   edit_count: number
   id: string
-  mcp_server_ids?: string[]
   model_id?: string
   originated_from_id: string
   role: string
+}
+
+export interface MessageAssistantResponse {
+  assistant_id?: string
 }
 
 export interface MessageContent {
@@ -1155,6 +1506,7 @@ export interface MessageContentDataToolResult {
   attachment?: RichFile | null
   content: string
   hidden_content?: string | null
+  images?: RichFile[] | null
   is_error?: boolean | null
   name?: string | null
   resource_links?: ResourceLink[] | null
@@ -1173,13 +1525,15 @@ export interface MessageContentDataElicitationRequest {
 
 export type MessageContentData = MessageContentDataText | MessageContentDataThinking | MessageContentDataImage | MessageContentDataFileAttachment | MessageContentDataToolUse | MessageContentDataToolResult | MessageContentDataElicitationRequest
 
+export interface MessageMcpServersResponse {
+  server_ids: string[]
+}
+
 export interface MessageWithContent {
-  assistant_id?: string
   contents: MessageContent[]
   created_at: string
   edit_count: number
   id: string
-  mcp_server_ids?: string[]
   model_id?: string
   originated_from_id: string
   role: string
@@ -1231,6 +1585,7 @@ export interface ModelCapabilities {
   audio?: boolean
   chat?: boolean
   code_interpreter?: boolean
+  context_length?: number
   image_generator?: boolean
   text_embedding?: boolean
   tools?: boolean
@@ -1271,6 +1626,22 @@ export interface ModelParameters {
   top_p?: number
 }
 
+export interface ModelUsageInfo {
+  display_name: string
+  engine: string
+  id: string
+  name: string
+  pinned: boolean
+  provider_id: string
+  provider_name: string
+  running: boolean
+}
+
+export interface OnboardingProgress {
+  completed_guide_ids: string[]
+  completed_step_ids: string[]
+}
+
 export interface OperatingSystemInfo {
   architecture: string
   kernel_version?: string
@@ -1301,7 +1672,6 @@ export interface PaginationQuery4 {
 export interface PaginationQuery5 {
   limit?: number
   page?: number
-  project_id?: string
 }
 
 export interface PasswordOnlyLoginRequest {
@@ -1338,20 +1708,16 @@ export interface PingResponse {
   ok: boolean
 }
 
-export type PrefetchStatus = 'running' | 'completed' | 'failed' | 'already_cached'
-
-export interface PrefetchTaskSummary {
-  error?: string
-  flavor: string
-  last_phase?: FetchPhase
-  outcome?: SSEPrefetchCompleteData
-  started_at: string
-  status: PrefetchStatus
-  task_id: string
-}
-
 export interface PreviewQuery {
   page?: number
+}
+
+export interface ProbeFailure {
+  reason: string
+}
+
+export interface ProbeFailure2 {
+  reason: string
 }
 
 export interface Project {
@@ -1361,10 +1727,6 @@ export interface Project {
   default_model_id?: string
   id: string
   instructions?: string
-  mcp_approval_mode: string
-  mcp_auto_approved_tools?: any
-  mcp_disabled_servers?: any
-  mcp_loop_settings?: any
   name: string
   updated_at: string
   user_id: string
@@ -1378,6 +1740,20 @@ export interface ProjectFileListResponse {
 export interface ProjectListResponse {
   projects: Project[]
   total: number
+}
+
+export interface ProjectMcpSettingsRequest {
+  approval_mode: ApprovalMode
+  auto_approved_tools?: AutoApprovedServer[]
+  disabled_servers?: DisabledServer[]
+  loop_settings?: LoopSettings
+}
+
+export interface ProjectMcpSettingsResponse {
+  approval_mode: string
+  auto_approved_tools: AutoApprovedServer[]
+  disabled_servers: DisabledServer[]
+  loop_settings?: LoopSettings
 }
 
 export interface Prompt {
@@ -1537,6 +1913,41 @@ export interface RichFile {
   mime_type: string
 }
 
+export interface RootfsArtifact {
+  arch: string
+  artifact_path: string
+  cosign_bundle?: string
+  downloaded_at: string
+  flavor: string
+  id: string
+  last_used_at?: string
+  package: string
+  sha256: string
+  status: string
+  version: string
+}
+
+export interface RootfsRelease {
+  asset_names: string[]
+  draft: boolean
+  prerelease: boolean
+  published_at?: string
+  version: string
+}
+
+export interface RotateProxyTokenResponse {
+  plaintext_api_key: string
+  provider: LlmProvider
+}
+
+export interface RuntimeSettings {
+  auto_start_timeout_secs: number
+  created_at: string
+  drain_timeout_secs: number
+  idle_unload_secs: number
+  updated_at: string
+}
+
 export interface RuntimeVersionListResponse {
   versions: RuntimeVersionResponse[]
 }
@@ -1646,6 +2057,39 @@ export type SSEDownloadProgressEvent = {
   error: string
 }
 
+export interface SSEEngineDownloadCompleteData {
+  bytes_downloaded: number
+  duration_ms: number
+  version_id: string
+}
+
+export interface SSEEngineDownloadConnectedData {
+  backend: string
+  engine: string
+  key: string
+  status: EngineDownloadStatus
+  task_id: string
+  version: string
+}
+
+export type SSEEngineDownloadEvent = {
+  connected: SSEEngineDownloadConnectedData
+  progress: SSEEngineDownloadProgressData
+  complete: SSEEngineDownloadCompleteData
+  failed: SSEEngineDownloadFailedData
+}
+
+export interface SSEEngineDownloadFailedData {
+  error: string
+}
+
+export interface SSEEngineDownloadProgressData {
+  bytes_received: number
+  percent?: number
+  status: EngineDownloadStatus
+  total_bytes?: number
+}
+
 export interface SSEHardwareUsageConnectedData {
   message: string
 }
@@ -1655,33 +2099,55 @@ export type SSEHardwareUsageEvent = {
   update: HardwareUsageUpdate
 }
 
-export interface SSEPrefetchCompleteData {
+export interface SSEInstallCompleteData {
+  artifact_id: string
   bytes_downloaded: number
   cosign_verified: boolean
   duration_ms: number
-}
-
-export interface SSEPrefetchConnectedData {
-  expected_size_mb: number
-  flavor: string
-  status: PrefetchStatus
   task_id: string
 }
 
-export type SSEPrefetchEvent = {
-  connected: SSEPrefetchConnectedData
-  progress: SSEPrefetchProgressData
-  complete: SSEPrefetchCompleteData
-  failed: SSEPrefetchFailedData
-}
-
-export interface SSEPrefetchFailedData {
-  error: string
-}
-
-export interface SSEPrefetchProgressData {
+export interface SSEInstallConnectedData {
   message: string
-  phase: FetchPhase
+}
+
+export interface SSEInstallFailedData {
+  error: string
+  task_id: string
+}
+
+export interface SSEInstallProgressData {
+  message: string
+  phase: string
+  task_id: string
+}
+
+export type SSEInstallTaskEvent = {
+  connected: SSEInstallConnectedData
+  taskStarted: InstallTaskState
+  progress: SSEInstallProgressData
+  complete: SSEInstallCompleteData
+  failed: SSEInstallFailedData
+  taskState: InstallTaskState
+}
+
+export type SSELogEvent = {
+  log: SSELogLineData
+  lag: SSELogLagData
+}
+
+export interface SSELogLagData {
+  dropped: number
+  message: string
+}
+
+export interface SSELogLineData {
+  line: string
+}
+
+export interface SandboxFlavorsResponse {
+  available: EnvironmentInfo[]
+  host_allowed_commands: string[]
 }
 
 export interface SaveUserApiKeyRequest {
@@ -1702,6 +2168,11 @@ export interface SendMessageRequest {
   tool_approvals?: ToolApprovalDecision[]
 }
 
+export interface SendMessageResponse {
+  assistant_message_id: string
+  user_message_id?: string
+}
+
 export interface ServerGroupsRequest {
   group_ids: string[]
 }
@@ -1717,8 +2188,21 @@ export interface SetMcpServerOAuthConfigRequest {
   scopes?: string
 }
 
+export interface SetPinRequest {
+  version: string
+}
+
+export interface SetPinResponse {
+  status: VersionStatus
+  swap: SwapOutcome
+}
+
 export interface SetSettingRequest {
   value: string
+}
+
+export interface SetSubscriptionRequest {
+  conversation_id?: string
 }
 
 export interface SettingItem {
@@ -1744,18 +2228,6 @@ export interface SetupStatusResponse {
 
 export type StartInstanceRequest = any
 
-export interface StartPrefetchBody {
-  flavor: string
-}
-
-export interface StartPrefetchResponse {
-  events_url: string
-  expected_size_mb: number
-  flavor: string
-  status: PrefetchStatus
-  task_id: string
-}
-
 export interface StreamError {
   code?: string
   message: string
@@ -1766,10 +2238,62 @@ export interface SuccessResponse {
   success: boolean
 }
 
+export interface SummarizationAdminSettings {
+  default_summarization_model_id?: string
+  enabled: boolean
+  full_summary_prompt?: string
+  id: number
+  incremental_summary_prompt?: string
+  summarize_after_tokens: number
+  summarizer_keep_recent_tokens: number
+  updated_at: string
+}
+
+export interface SwapOutcome {
+  cache_wipe: SwapPolicy
+  draining_mounts: number
+  pinned: string
+  was?: string
+}
+
+export type SwapPolicy = 'preserve' | 'wipe_caches_on_drain'
+
+export interface SwapRuntimeVersionRequest {
+  version_id: string
+}
+
+export interface SwapRuntimeVersionResponse {
+  model_id: string
+  restarted: boolean
+  version_id: string
+}
+
+export type SyncAction = 'create' | 'update' | 'delete'
+
 export interface SyncCacheResponse {
   message: string
   synced_count: number
 }
+
+export interface SyncConnectedData {
+  connection_id: string
+}
+
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'user_llm_provider' | 'user_mcp_server' | 'session'
+
+export interface SyncEvent {
+  action: SyncAction
+  entity: SyncEntity
+  id: string
+}
+
+export type SyncSseEvent = {
+  connected: SyncConnectedData
+} | {
+  sync: SyncEvent
+}
+
+export type TaskStatus = 'running' | 'completed' | 'failed'
 
 export interface TestExtractRequest {
   assistant_message: string
@@ -1777,9 +2301,32 @@ export interface TestExtractRequest {
   user_message: string
 }
 
+export interface TestMcpConnectionRequest {
+  args?: string[]
+  command?: string
+  environment_variables_entries?: EnvVarEntry[]
+  headers_entries?: HeaderEntry[]
+  id?: string
+  oauth?: SetMcpServerOAuthConfigRequest
+  timeout_seconds?: number
+  transport_type: TransportType
+  url?: string
+}
+
+export interface TestMcpConnectionResponse {
+  message: string
+  success: boolean
+  tool_count?: number
+}
+
 export interface TestProviderResponse {
   message: string
   ok: boolean
+}
+
+export interface TestRefreshRequest {
+  branch_id: string
+  model_id: string
 }
 
 export interface TestRepositoryConnectionRequest {
@@ -1794,16 +2341,13 @@ export interface TestRepositoryConnectionResponse {
   success: boolean
 }
 
-export interface TestSummarizeRequest {
-  branch_id: string
-  model_id: string
-}
-
 export interface TextPageQuery {
   page?: number
 }
 
 export interface ThinkingMetadata {
+  redacted_data?: string
+  signature?: string
   token_count?: number
 }
 
@@ -1893,10 +2437,16 @@ export interface UpdateCodeSandboxResourceLimits {
   vm_max_concurrent_execs?: number
 }
 
+export interface UpdateConversationMemoryModeRequest {
+  memory_mode: string
+}
+
 export interface UpdateConversationRequest {
   title?: string
-  memory_mode?: string
-  project_id?: string
+}
+
+export interface UpdateConversationSummarizationModeRequest {
+  summarization_mode: string
 }
 
 export interface UpdateGroupProvidersRequest {
@@ -1949,14 +2499,21 @@ export interface UpdateMcpServerRequest {
   command?: string
   display_name?: string
   enabled?: boolean
-  environment_variables?: any
-  headers?: any
+  environment_variables_entries?: EnvVarEntry[]
+  headers_entries?: HeaderEntry[]
   max_concurrent_sessions?: number
   name?: string
+  run_in_sandbox?: boolean
+  sandbox_flavor?: string
   supports_sampling?: boolean
   timeout_seconds?: number
   url?: string
   usage_mode?: UsageMode
+}
+
+export interface UpdateMcpUserPolicyRequest {
+  allowed_transports: string[]
+  user_stdio_sandbox_flavor?: string
 }
 
 export interface UpdateMemoryAdminSettingsRequest {
@@ -1966,11 +2523,13 @@ export interface UpdateMemoryAdminSettingsRequest {
   default_top_k?: number
   embedding_model_id?: string
   enabled?: boolean
-  full_summary_prompt?: string
-  incremental_summary_prompt?: string
+  fts_candidate_multiplier?: number
+  fts_dictionary?: string
+  fts_enabled?: boolean
+  fts_min_rank?: number
+  fts_rrf_k?: number
+  semantic_enabled?: boolean
   soft_delete_grace_days?: number
-  summarize_after_n_messages?: number
-  summarizer_keep_recent?: number
 }
 
 export interface UpdateMemoryRequest {
@@ -1980,11 +2539,9 @@ export interface UpdateMemoryRequest {
   metadata?: any
 }
 
-export interface UpdateProjectMcpSettingsRequest {
-  approval_mode: string
-  auto_approved_tools: McpServerToolEntry[]
-  disabled_servers: McpServerToolEntry[]
-  loop_settings?: any
+export interface UpdateProfileRequest {
+  display_name?: string
+  username?: string
 }
 
 export interface UpdateProjectRequest {
@@ -2000,6 +2557,21 @@ export interface UpdateRemoteAccessSettingsRequest {
   ngrok_auth_token?: string
   ngrok_domain?: string
   password_auth_enabled?: boolean
+}
+
+export interface UpdateRuntimeSettingsRequest {
+  auto_start_timeout_secs?: number
+  drain_timeout_secs?: number
+  idle_unload_secs?: number
+}
+
+export interface UpdateSummarizationAdminSettingsRequest {
+  default_summarization_model_id?: string
+  enabled?: boolean
+  full_summary_prompt?: string
+  incremental_summary_prompt?: string
+  summarize_after_tokens?: number
+  summarizer_keep_recent_tokens?: number
 }
 
 export interface UpdateUserMemorySettingsRequest {
@@ -2038,16 +2610,17 @@ export interface UpsertUserMcpDefaultsRequest {
 }
 
 export interface Usage {
+  cache_creation_input_tokens?: number
+  cache_read_input_tokens?: number
   input_tokens?: number
   output_tokens?: number
+  reasoning_tokens?: number
 }
 
 export type UsageMode = 'auto' | 'always'
 
 export interface User {
   avatar_url?: string
-  completed_onboarding_ids: string[]
-  completed_onboarding_step_ids: string[]
   created_at: string
   display_name?: string
   email: string
@@ -2127,6 +2700,27 @@ export interface UserMemorySettings {
   user_id: string
 }
 
+export interface VersionStatus {
+  available: RootfsRelease[]
+  conversation_count: number
+  draining: DrainEntry[]
+  host_arch: string
+  host_package: string
+  installed: RootfsArtifact[]
+  mcp_server_workspace_count: number
+  pinned_version?: string
+}
+
+export interface VersionUsageEntry {
+  models: ModelUsageInfo[]
+  version: RuntimeVersionResponse
+}
+
+export interface VersionUsageResponse {
+  unresolved: ModelUsageInfo[]
+  versions: VersionUsageEntry[]
+}
+
 // =============================================================================
 // PERMISSIONS
 // =============================================================================
@@ -2171,6 +2765,8 @@ export enum Permissions {
   HubAssistantsRead = 'hub::assistants::read',
   HubAssistantsRefresh = 'hub::assistants::refresh',
   HubAssistantsVersionRead = 'hub::assistants::read_version',
+  HubCatalogManage = 'hub::catalog::manage',
+  HubCatalogRead = 'hub::catalog::read',
   HubMcpServersCreate = 'hub::mcp_servers::create',
   HubMCPServersRead = 'hub::mcp_servers::read',
   HubMCPServersRefresh = 'hub::mcp_servers::refresh',
@@ -2206,6 +2802,7 @@ export enum Permissions {
   McpServersDelete = 'mcp_servers::delete',
   McpServersEdit = 'mcp_servers::edit',
   McpServersRead = 'mcp_servers::read',
+  McpUserPolicyEdit = 'mcp_user_policy::edit',
   MemoryAdminManage = 'memory::admin::manage',
   MemoryAdminRead = 'memory::admin::read',
   MemoryRead = 'memory::read',
@@ -2221,10 +2818,14 @@ export enum Permissions {
   ProjectsRead = 'projects::read',
   RemoteAccessManage = 'remote_access::manage',
   RemoteAccessRead = 'remote_access::read',
+  RuntimeSettingsManage = 'llm_local_runtime::settings_manage',
+  RuntimeSettingsRead = 'llm_local_runtime::settings_read',
   RuntimeVersionCreate = 'llm_local_runtime::create',
   RuntimeVersionDelete = 'llm_local_runtime::delete',
   RuntimeVersionRead = 'llm_local_runtime::versions_read',
   RuntimeVersionUpdate = 'llm_local_runtime::update',
+  SummarizationSettingsManage = 'summarization::settings::manage',
+  SummarizationSettingsRead = 'summarization::settings::read',
   UserLlmProvidersRead = 'user_llm_providers::read',
   UsersCreate = 'users::create',
   UsersDelete = 'users::delete',
@@ -2248,7 +2849,7 @@ export const PermissionDescriptions: Record<string, string> = {
   BranchesCreate: 'Create message branches for edit/regenerate',
   BranchesSwitch: 'Switch between conversation branches',
   CodeSandboxEnvironmentsManage: 'Trigger pre-fetch + cache management of sandbox rootfs environments.',
-  CodeSandboxEnvironmentsRead: 'List available sandbox environments and watch prefetch progress.',
+  CodeSandboxEnvironmentsRead: 'List rootfs versions and watch install progress.',
   CodeSandboxResourceLimitsManage: 'Update the sandbox memory/CPU/PID caps + per-exec timeout + idle-evict policy.',
   CodeSandboxResourceLimitsRead: 'Read the sandbox resource limits configuration.',
   ConversationsCreate: 'Create new chat conversations',
@@ -2274,6 +2875,8 @@ export const PermissionDescriptions: Record<string, string> = {
   HubAssistantsRead: 'View hub assistants',
   HubAssistantsRefresh: 'Refresh hub assistants from GitHub',
   HubAssistantsVersionRead: 'View hub assistants version information',
+  HubCatalogManage: 'Refresh + activate hub catalog versions',
+  HubCatalogRead: 'View hub catalog versions + pending updates',
   HubMcpServersCreate: 'Create MCP servers from hub',
   HubMCPServersRead: 'View hub MCP servers',
   HubMCPServersRefresh: 'Refresh hub MCP servers from GitHub',
@@ -2309,6 +2912,7 @@ export const PermissionDescriptions: Record<string, string> = {
   McpServersDelete: 'Delete MCP servers',
   McpServersEdit: 'Edit MCP servers',
   McpServersRead: 'View MCP servers',
+  McpUserPolicyEdit: 'Edit MCP user policy (allowed transports + sandbox flavor)',
   MemoryAdminManage: 'Update memory admin settings (embedding model, enable/disable).',
   MemoryAdminRead: 'Read memory admin settings (embedding model, defaults).',
   MemoryRead: 'List and read own memories.',
@@ -2324,10 +2928,14 @@ export const PermissionDescriptions: Record<string, string> = {
   ProjectsRead: 'Read chat projects',
   RemoteAccessManage: 'Save the ngrok auth token / custom domain, toggle auto-start, toggle password authentication, start/stop the tunnel, and issue magic-link login tokens.',
   RemoteAccessRead: 'Read remote-access settings, tunnel status, and current public URL.',
+  RuntimeSettingsManage: 'Modify runtime singleton settings (idle/auto-start/drain)',
+  RuntimeSettingsRead: 'Read runtime singleton settings (idle/auto-start/drain)',
   RuntimeVersionCreate: 'Download and register new runtime versions',
   RuntimeVersionDelete: 'Delete runtime versions',
   RuntimeVersionRead: 'View runtime versions and check for updates',
   RuntimeVersionUpdate: 'Update runtime version settings and defaults',
+  SummarizationSettingsManage: 'Update deployment-wide summarization settings (enable, model, thresholds, prompts).',
+  SummarizationSettingsRead: 'Read deployment-wide summarization settings (model + thresholds + prompt overrides).',
   UserLlmProvidersRead: 'View available LLM providers and models',
   UsersCreate: 'Create new user accounts',
   UsersDelete: 'Delete user accounts',
@@ -2357,6 +2965,7 @@ export const ApiEndpoints = {
   'AssistantTemplate.getDefault': 'GET /api/assistant-templates/default',
   'AssistantTemplate.list': 'GET /api/assistant-templates',
   'AssistantTemplate.update': 'PUT /api/assistant-templates/{id}',
+  'Auth.changePassword': 'POST /api/auth/password',
   'Auth.getConfig': 'GET /api/auth/config',
   'Auth.linkAccount': 'POST /api/auth/link-account',
   'Auth.listProviders': 'GET /api/auth/providers',
@@ -2368,6 +2977,7 @@ export const ApiEndpoints = {
   'Auth.me': 'GET /api/auth/me',
   'Auth.refresh': 'POST /api/auth/refresh',
   'Auth.register': 'POST /api/auth/register',
+  'Auth.updateProfile': 'POST /api/auth/profile',
   'AuthProviders.create': 'POST /api/admin/auth-providers',
   'AuthProviders.delete': 'DELETE /api/admin/auth-providers/{id}',
   'AuthProviders.list': 'GET /api/admin/auth-providers',
@@ -2379,18 +2989,25 @@ export const ApiEndpoints = {
   'Branch.getPendingApprovals': 'GET /api/branches/{branch_id}/pending-approvals',
   'Branch.list': 'GET /api/conversations/{id}/branches',
   'Chat.getUserLlmProviders': 'GET /api/chat/llm-providers',
-  'CodeSandbox.evictEnvironment': 'DELETE /api/code-sandbox/environments/{flavor}',
+  'ChatStream.setSubscription': 'PUT /api/chat/stream/subscription',
+  'ChatStream.subscribe': 'GET /api/chat/stream',
+  'CodeSandbox.deleteRootfsVersion': 'DELETE /api/code-sandbox/rootfs/versions/{id}',
   'CodeSandbox.getResourceLimits': 'GET /api/code-sandbox/resource-limits',
-  'CodeSandbox.listEnvironments': 'GET /api/code-sandbox/environments',
-  'CodeSandbox.listPrefetchTasks': 'GET /api/code-sandbox/prefetch',
-  'CodeSandbox.startPrefetch': 'POST /api/code-sandbox/prefetch',
-  'CodeSandbox.subscribePrefetchEvents': 'GET /api/code-sandbox/prefetch/{flavor}/events',
+  'CodeSandbox.installRootfsVersion': 'POST /api/code-sandbox/rootfs/versions/install',
+  'CodeSandbox.listFlavors': 'GET /api/code-sandbox/flavors',
+  'CodeSandbox.listRootfsVersions': 'GET /api/code-sandbox/rootfs/versions',
+  'CodeSandbox.setRootfsPin': 'POST /api/code-sandbox/rootfs/versions/set-pin',
+  'CodeSandbox.subscribeRootfsInstallProgress': 'GET /api/code-sandbox/rootfs/versions/install/subscribe',
   'CodeSandbox.updateResourceLimits': 'PUT /api/code-sandbox/resource-limits',
   'Conversation.create': 'POST /api/conversations',
   'Conversation.delete': 'DELETE /api/conversations/{id}',
   'Conversation.get': 'GET /api/conversations/{id}',
   'Conversation.getMcpSettings': 'GET /api/conversations/{id}/mcp-settings',
+  'Conversation.getMemoryMode': 'GET /api/conversations/{id}/memory-mode',
+  'Conversation.getSummarizationMode': 'GET /api/conversations/{id}/summarization-mode',
   'Conversation.list': 'GET /api/conversations',
+  'Conversation.setMemoryMode': 'PUT /api/conversations/{id}/memory-mode',
+  'Conversation.setSummarizationMode': 'PUT /api/conversations/{id}/summarization-mode',
   'Conversation.update': 'PUT /api/conversations/{id}',
   'Conversation.updateMcpSettings': 'PUT /api/conversations/{id}/mcp-settings',
   'CoreMemory.delete': 'DELETE /api/assistants/{assistant_id}/core-memory/{block_label}',
@@ -2418,17 +3035,26 @@ export const ApiEndpoints = {
   'Hardware.info': 'GET /api/hardware',
   'Hardware.stream': 'GET /api/hardware/usage-stream',
   'Health.check': 'GET /api/health',
+  'Hub.activateVersion': 'POST /api/hub/activate',
   'Hub.createAssistantFromHub': 'POST /api/hub/assistants/create',
+  'Hub.createAssistantTemplateFromHub': 'POST /api/hub/assistant-templates/create',
   'Hub.createMcpServerFromHub': 'POST /api/hub/mcp-servers/create',
   'Hub.createModelFromHub': 'POST /api/hub/models/download',
+  'Hub.createSystemMcpServerFromHub': 'POST /api/hub/mcp-servers/create-system',
   'Hub.getAssistants': 'GET /api/hub/assistants',
   'Hub.getAssistantsVersion': 'GET /api/hub/assistants/version',
+  'Hub.getCatalog': 'GET /api/hub/index',
+  'Hub.getCatalogVersion': 'GET /api/hub/version',
+  'Hub.getInstalled': 'GET /api/hub/installed',
   'Hub.getLocalProviders': 'GET /api/hub/models/local-providers',
   'Hub.getMCPServers': 'GET /api/hub/mcp-servers',
   'Hub.getMCPServersVersion': 'GET /api/hub/mcp-servers/version',
+  'Hub.getManifest': 'GET /api/hub/manifest/{id}',
   'Hub.getModels': 'GET /api/hub/models',
   'Hub.getModelsVersion': 'GET /api/hub/models/version',
+  'Hub.getReleases': 'GET /api/hub/releases',
   'Hub.refreshAssistants': 'POST /api/hub/assistants/refresh',
+  'Hub.refreshCatalog': 'POST /api/hub/refresh',
   'Hub.refreshMCPServers': 'POST /api/hub/mcp-servers/refresh',
   'Hub.refreshModels': 'POST /api/hub/models/refresh',
   'LlmModel.cancelDownload': 'POST /api/llm-models/downloads/{download_id}/cancel',
@@ -2445,16 +3071,19 @@ export const ApiEndpoints = {
   'LlmModel.subscribeDownloadProgress': 'GET /api/llm-models/downloads/subscribe',
   'LlmModel.update': 'POST /api/llm-models/{model_id}',
   'LlmModel.upload': 'POST /api/llm-models/upload',
+  'LlmModel.validate': 'POST /api/llm-models/{model_id}/validate',
   'LlmProvider.assignGroup': 'POST /api/llm-providers/{provider_id}/groups',
   'LlmProvider.create': 'POST /api/llm-providers',
   'LlmProvider.delete': 'DELETE /api/llm-providers/{provider_id}',
   'LlmProvider.deleteUserApiKey': 'DELETE /api/user-llm-providers/api-keys/{provider_id}',
+  'LlmProvider.discoverModels': 'GET /api/llm-providers/{provider_id}/discover-models',
   'LlmProvider.get': 'GET /api/llm-providers/{provider_id}',
   'LlmProvider.getGroups': 'GET /api/llm-providers/{provider_id}/groups',
   'LlmProvider.getUserLlmProviders': 'GET /api/user-llm-providers',
   'LlmProvider.list': 'GET /api/llm-providers',
   'LlmProvider.listUserApiKeys': 'GET /api/user-llm-providers/api-keys',
   'LlmProvider.removeGroup': 'DELETE /api/llm-providers/{provider_id}/groups/{group_id}',
+  'LlmProvider.rotateProxyToken': 'POST /api/llm-providers/{provider_id}/rotate-proxy-token',
   'LlmProvider.saveUserApiKey': 'POST /api/user-llm-providers/api-keys',
   'LlmProvider.update': 'POST /api/llm-providers/{provider_id}',
   'LlmRepository.create': 'POST /api/llm-repositories',
@@ -2462,15 +3091,24 @@ export const ApiEndpoints = {
   'LlmRepository.get': 'GET /api/llm-repositories/{repository_id}',
   'LlmRepository.list': 'GET /api/llm-repositories',
   'LlmRepository.test': 'POST /api/llm-repositories/test',
+  'LlmRepository.testById': 'POST /api/llm-repositories/{repository_id}/test',
   'LlmRepository.update': 'POST /api/llm-repositories/{repository_id}',
+  'LocalLlmProxy.chatCompletions': 'POST /api/local-llm/v1/chat/completions',
+  'LocalLlmProxy.embeddings': 'POST /api/local-llm/v1/embeddings',
+  'LocalLlmProxy.listModels': 'GET /api/local-llm/v1/models',
+  'LocalRuntime.detectGpu': 'GET /api/local-runtime/detect-gpu',
   'LocalRuntime.getInstance': 'GET /api/local-runtime/models/{model_id}/instance',
   'LocalRuntime.getLogs': 'GET /api/local-runtime/models/{model_id}/logs',
   'LocalRuntime.getProviderInstances': 'GET /api/local-runtime/providers/{provider_id}/instances',
+  'LocalRuntime.getRuntimeSettings': 'GET /api/local-runtime/settings',
   'LocalRuntime.getStatus': 'GET /api/local-runtime/models/{model_id}/status',
   'LocalRuntime.healthCheck': 'GET /api/local-runtime/models/{model_id}/health',
   'LocalRuntime.restartModel': 'POST /api/local-runtime/models/{model_id}/restart',
   'LocalRuntime.startModel': 'POST /api/local-runtime/models/{model_id}/start',
   'LocalRuntime.stopModel': 'POST /api/local-runtime/models/{model_id}/stop',
+  'LocalRuntime.streamLogs': 'GET /api/local-runtime/models/{model_id}/logs/stream',
+  'LocalRuntime.swapModelVersion': 'POST /api/local-runtime/models/{model_id}/runtime-version',
+  'LocalRuntime.updateRuntimeSettings': 'PUT /api/local-runtime/settings',
   'Mcp.getDefaults': 'GET /api/mcp/defaults',
   'Mcp.respondToElicitation': 'POST /api/mcp/elicitation/{elicitation_id}/respond',
   'Mcp.updateDefaults': 'PUT /api/mcp/defaults',
@@ -2481,6 +3119,7 @@ export const ApiEndpoints = {
   'McpServer.getOAuthConfig': 'GET /api/mcp/servers/{id}/oauth',
   'McpServer.listAccessible': 'GET /api/mcp/servers',
   'McpServer.setOAuthConfig': 'PUT /api/mcp/servers/{id}/oauth',
+  'McpServer.testConnection': 'POST /api/mcp/servers/test-connection',
   'McpServer.update': 'PUT /api/mcp/servers/{id}',
   'McpServerRuntime.callTool': 'POST /api/mcp/servers/{id}/tools/{name}/call',
   'McpServerRuntime.disconnect': 'DELETE /api/mcp/servers/{id}/disconnect',
@@ -2497,13 +3136,18 @@ export const ApiEndpoints = {
   'McpServerSystem.getServerGroups': 'GET /api/mcp/system-servers/{id}/groups',
   'McpServerSystem.list': 'GET /api/mcp/system-servers',
   'McpServerSystem.removeServerFromGroup': 'DELETE /api/mcp/system-servers/{id}/groups/{group_id}',
+  'McpServerSystem.testConnection': 'POST /api/mcp/system-servers/test-connection',
   'McpServerSystem.update': 'PUT /api/mcp/system-servers/{id}',
+  'McpUserPolicy.get': 'GET /api/mcp/user-policy',
+  'McpUserPolicy.update': 'PUT /api/mcp/user-policy',
   'Memory.create': 'POST /api/memories',
   'Memory.delete': 'DELETE /api/memories/{id}',
   'Memory.deleteAll': 'DELETE /api/memories/all',
   'Memory.get': 'GET /api/memories/{id}',
   'Memory.list': 'GET /api/memories',
   'Memory.update': 'PATCH /api/memories/{id}',
+  'MemoryAdmin.ftsRebuild': 'POST /api/memory/admin/fts/rebuild',
+  'MemoryAdmin.ftsRebuildStatus': 'GET /api/memory/admin/fts/rebuild/status',
   'MemoryAdmin.get': 'GET /api/memory/admin-settings',
   'MemoryAdmin.rebuildStatus': 'GET /api/memory/admin-settings/rebuild-status',
   'MemoryAdmin.reembed': 'POST /api/memory/admin-settings/reembed',
@@ -2512,19 +3156,25 @@ export const ApiEndpoints = {
   'MemorySettings.get': 'GET /api/memory/settings',
   'MemorySettings.update': 'PUT /api/memory/settings',
   'MemoryTest.extract': 'POST /api/_test/memory/extract',
-  'MemoryTest.summarize': 'POST /api/_test/memory/summarize',
   'Message.delete': 'DELETE /api/messages/{id}',
   'Message.edit': 'PUT /api/conversations/{conversation_id}/messages/{message_id}',
   'Message.get': 'GET /api/messages/{id}',
+  'Message.getAssistant': 'GET /api/messages/{id}/assistant',
   'Message.getHistory': 'GET /api/conversations/{id}/messages',
-  'Message.sendStream': 'POST /api/conversations/{id}/messages/stream',
+  'Message.getMcpServers': 'GET /api/messages/{id}/mcp-servers',
+  'Message.send': 'POST /api/conversations/{id}/messages',
+  'Message.stopGeneration': 'POST /api/conversations/{conversation_id}/messages/{assistant_message_id}/stop',
   'Onboarding.complete': 'POST /api/onboarding/{guide_id}/complete',
   'Onboarding.completeStep': 'POST /api/onboarding/{guide_id}/steps/{step_id}/complete',
+  'Onboarding.getProgress': 'GET /api/onboarding/progress',
+  'Project.attachConversation': 'POST /api/projects/{id}/conversations/{conversation_id}',
   'Project.attachFile': 'POST /api/projects/{id}/files',
   'Project.create': 'POST /api/projects',
   'Project.delete': 'DELETE /api/projects/{id}',
+  'Project.detachConversation': 'DELETE /api/projects/{id}/conversations/{conversation_id}',
   'Project.detachFile': 'DELETE /api/projects/{id}/files/{file_id}',
   'Project.duplicate': 'POST /api/projects/{id}/duplicate',
+  'Project.forConversation': 'GET /api/projects/by-conversation/{conversation_id}',
   'Project.get': 'GET /api/projects/{id}',
   'Project.getMcpSettings': 'GET /api/projects/{id}/mcp-settings',
   'Project.list': 'GET /api/projects',
@@ -2543,9 +3193,18 @@ export const ApiEndpoints = {
   'RuntimeVersion.delete': 'DELETE /api/local-runtime/versions/{version_id}',
   'RuntimeVersion.download': 'POST /api/local-runtime/versions/download',
   'RuntimeVersion.get': 'GET /api/local-runtime/versions/{version_id}',
+  'RuntimeVersion.getDownload': 'GET /api/local-runtime/versions/downloads/{key}',
   'RuntimeVersion.list': 'GET /api/local-runtime/versions',
+  'RuntimeVersion.listDownloads': 'GET /api/local-runtime/versions/downloads',
   'RuntimeVersion.setDefault': 'POST /api/local-runtime/versions/{version_id}/set-default',
+  'RuntimeVersion.subscribeDownloadEvents': 'GET /api/local-runtime/versions/downloads/{key}/events',
   'RuntimeVersion.syncCache': 'POST /api/local-runtime/versions/sync-cache',
+  'RuntimeVersion.usage': 'GET /api/local-runtime/version-usage',
+  'Summarization.getConversationSummary': 'GET /api/conversations/{id}/summary',
+  'SummarizationAdmin.get': 'GET /api/summarization/settings',
+  'SummarizationAdmin.update': 'PUT /api/summarization/settings',
+  'SummarizationTest.refresh': 'POST /api/_test/summarization/refresh',
+  'Sync.subscribe': 'GET /api/sync/subscribe',
   'User.create': 'POST /api/users',
   'User.delete': 'DELETE /api/users/{user_id}',
   'User.get': 'GET /api/users/{user_id}',
@@ -2580,6 +3239,7 @@ export type ApiEndpointParameters = {
   'AssistantTemplate.getDefault': void
   'AssistantTemplate.list': { limit: number; page: number }
   'AssistantTemplate.update': { id: string } & UpdateAssistantRequest
+  'Auth.changePassword': ChangePasswordRequest
   'Auth.getConfig': void
   'Auth.linkAccount': LinkAccountRequest
   'Auth.listProviders': void
@@ -2591,6 +3251,7 @@ export type ApiEndpointParameters = {
   'Auth.me': void
   'Auth.refresh': RefreshTokenRequest
   'Auth.register': RegisterRequest
+  'Auth.updateProfile': UpdateProfileRequest
   'AuthProviders.create': CreateAuthProviderRequest
   'AuthProviders.delete': { id: string }
   'AuthProviders.list': void
@@ -2602,18 +3263,25 @@ export type ApiEndpointParameters = {
   'Branch.getPendingApprovals': { branch_id: string }
   'Branch.list': { id: string }
   'Chat.getUserLlmProviders': void
-  'CodeSandbox.evictEnvironment': { flavor: string }
+  'ChatStream.setSubscription': SetSubscriptionRequest
+  'ChatStream.subscribe': void
+  'CodeSandbox.deleteRootfsVersion': { id: string }
   'CodeSandbox.getResourceLimits': void
-  'CodeSandbox.listEnvironments': void
-  'CodeSandbox.listPrefetchTasks': void
-  'CodeSandbox.startPrefetch': StartPrefetchBody
-  'CodeSandbox.subscribePrefetchEvents': { flavor: string }
+  'CodeSandbox.installRootfsVersion': InstallVersionRequest
+  'CodeSandbox.listFlavors': void
+  'CodeSandbox.listRootfsVersions': void
+  'CodeSandbox.setRootfsPin': SetPinRequest
+  'CodeSandbox.subscribeRootfsInstallProgress': void
   'CodeSandbox.updateResourceLimits': UpdateCodeSandboxResourceLimits
   'Conversation.create': CreateConversationRequest
   'Conversation.delete': { id: string }
   'Conversation.get': { id: string }
   'Conversation.getMcpSettings': { id: string }
-  'Conversation.list': { limit?: number; page?: number; project_id?: string }
+  'Conversation.getMemoryMode': { id: string }
+  'Conversation.getSummarizationMode': { id: string }
+  'Conversation.list': { limit?: number; page?: number }
+  'Conversation.setMemoryMode': { id: string } & UpdateConversationMemoryModeRequest
+  'Conversation.setSummarizationMode': { id: string } & UpdateConversationSummarizationModeRequest
   'Conversation.update': { id: string } & UpdateConversationRequest
   'Conversation.updateMcpSettings': { id: string } & UpsertMcpSettingsRequest
   'CoreMemory.delete': { assistant_id: string; block_label: string }
@@ -2641,22 +3309,31 @@ export type ApiEndpointParameters = {
   'Hardware.info': void
   'Hardware.stream': void
   'Health.check': void
+  'Hub.activateVersion': ActivateHubVersionRequest
   'Hub.createAssistantFromHub': CreateAssistantFromHubRequest
+  'Hub.createAssistantTemplateFromHub': CreateAssistantFromHubRequest
   'Hub.createMcpServerFromHub': CreateMcpServerFromHubRequest
   'Hub.createModelFromHub': CreateModelFromHubRequest
+  'Hub.createSystemMcpServerFromHub': CreateMcpServerFromHubRequest
   'Hub.getAssistants': { lang?: string }
   'Hub.getAssistantsVersion': void
+  'Hub.getCatalog': void
+  'Hub.getCatalogVersion': void
+  'Hub.getInstalled': void
   'Hub.getLocalProviders': void
   'Hub.getMCPServers': { lang?: string }
   'Hub.getMCPServersVersion': void
+  'Hub.getManifest': { id: string; category: HubCategory }
   'Hub.getModels': { lang?: string }
   'Hub.getModelsVersion': void
+  'Hub.getReleases': void
   'Hub.refreshAssistants': void
+  'Hub.refreshCatalog': void
   'Hub.refreshMCPServers': void
   'Hub.refreshModels': void
   'LlmModel.cancelDownload': { download_id: string }
   'LlmModel.create': CreateLlmModelRequest
-  'LlmModel.delete': { model_id: string }
+  'LlmModel.delete': { model_id: string; delete_file?: boolean; force?: boolean }
   'LlmModel.deleteDownload': { download_id: string }
   'LlmModel.disable': { model_id: string }
   'LlmModel.download': DownloadFromRepositoryRequest
@@ -2668,16 +3345,19 @@ export type ApiEndpointParameters = {
   'LlmModel.subscribeDownloadProgress': void
   'LlmModel.update': { model_id: string } & UpdateLlmModelRequest
   'LlmModel.upload': FormData
+  'LlmModel.validate': { model_id: string }
   'LlmProvider.assignGroup': { provider_id: string } & AssignProviderToGroupRequest
   'LlmProvider.create': CreateLlmProviderRequest
   'LlmProvider.delete': { provider_id: string }
   'LlmProvider.deleteUserApiKey': { provider_id: string }
+  'LlmProvider.discoverModels': { provider_id: string }
   'LlmProvider.get': { provider_id: string }
   'LlmProvider.getGroups': { provider_id: string }
   'LlmProvider.getUserLlmProviders': void
   'LlmProvider.list': PaginationQuery
   'LlmProvider.listUserApiKeys': void
   'LlmProvider.removeGroup': { provider_id: string; group_id: string }
+  'LlmProvider.rotateProxyToken': { provider_id: string }
   'LlmProvider.saveUserApiKey': SaveUserApiKeyRequest
   'LlmProvider.update': { provider_id: string } & UpdateLlmProviderRequest
   'LlmRepository.create': CreateLlmRepositoryRequest
@@ -2685,15 +3365,24 @@ export type ApiEndpointParameters = {
   'LlmRepository.get': { repository_id: string }
   'LlmRepository.list': PaginationQuery
   'LlmRepository.test': TestRepositoryConnectionRequest
+  'LlmRepository.testById': { repository_id: string } & UpdateLlmRepositoryRequest
   'LlmRepository.update': { repository_id: string } & UpdateLlmRepositoryRequest
+  'LocalLlmProxy.chatCompletions': void
+  'LocalLlmProxy.embeddings': void
+  'LocalLlmProxy.listModels': void
+  'LocalRuntime.detectGpu': void
   'LocalRuntime.getInstance': { model_id: string }
   'LocalRuntime.getLogs': { model_id: string }
   'LocalRuntime.getProviderInstances': { provider_id: string }
+  'LocalRuntime.getRuntimeSettings': void
   'LocalRuntime.getStatus': { model_id: string }
   'LocalRuntime.healthCheck': { model_id: string }
   'LocalRuntime.restartModel': { model_id: string }
   'LocalRuntime.startModel': { model_id: string } & StartInstanceRequest
   'LocalRuntime.stopModel': { model_id: string }
+  'LocalRuntime.streamLogs': { model_id: string }
+  'LocalRuntime.swapModelVersion': { model_id: string } & SwapRuntimeVersionRequest
+  'LocalRuntime.updateRuntimeSettings': UpdateRuntimeSettingsRequest
   'Mcp.getDefaults': void
   'Mcp.respondToElicitation': { elicitation_id: string } & RespondToElicitationRequest
   'Mcp.updateDefaults': UpsertUserMcpDefaultsRequest
@@ -2704,6 +3393,7 @@ export type ApiEndpointParameters = {
   'McpServer.getOAuthConfig': { id: string }
   'McpServer.listAccessible': { page?: number; per_page?: number; search?: string; status?: string }
   'McpServer.setOAuthConfig': { id: string } & SetMcpServerOAuthConfigRequest
+  'McpServer.testConnection': TestMcpConnectionRequest
   'McpServer.update': { id: string } & UpdateMcpServerRequest
   'McpServerRuntime.callTool': { id: string; name: string } & CallToolRequest
   'McpServerRuntime.disconnect': { id: string }
@@ -2720,13 +3410,18 @@ export type ApiEndpointParameters = {
   'McpServerSystem.getServerGroups': { id: string }
   'McpServerSystem.list': { page?: number; per_page?: number; search?: string; status?: string }
   'McpServerSystem.removeServerFromGroup': { id: string; group_id: string }
+  'McpServerSystem.testConnection': TestMcpConnectionRequest
   'McpServerSystem.update': { id: string } & UpdateMcpServerRequest
+  'McpUserPolicy.get': void
+  'McpUserPolicy.update': UpdateMcpUserPolicyRequest
   'Memory.create': CreateMemoryRequest
   'Memory.delete': { id: string }
   'Memory.deleteAll': void
   'Memory.get': { id: string }
   'Memory.list': { kind?: string; limit?: number; offset?: number; page?: number; per_page?: number; search?: string; source?: string }
   'Memory.update': { id: string } & UpdateMemoryRequest
+  'MemoryAdmin.ftsRebuild': FtsRebuildRequest
+  'MemoryAdmin.ftsRebuildStatus': void
   'MemoryAdmin.get': void
   'MemoryAdmin.rebuildStatus': void
   'MemoryAdmin.reembed': void
@@ -2735,26 +3430,32 @@ export type ApiEndpointParameters = {
   'MemorySettings.get': void
   'MemorySettings.update': UpdateUserMemorySettingsRequest
   'MemoryTest.extract': TestExtractRequest
-  'MemoryTest.summarize': TestSummarizeRequest
   'Message.delete': { id: string }
   'Message.edit': { conversation_id: string; message_id: string } & EditMessageRequest
   'Message.get': { id: string }
+  'Message.getAssistant': { id: string }
   'Message.getHistory': { id: string }
-  'Message.sendStream': { id: string } & SendMessageRequest
+  'Message.getMcpServers': { id: string }
+  'Message.send': { id: string } & SendMessageRequest
+  'Message.stopGeneration': { conversation_id: string; assistant_message_id: string }
   'Onboarding.complete': { guide_id: string }
   'Onboarding.completeStep': { guide_id: string; step_id: string }
+  'Onboarding.getProgress': void
+  'Project.attachConversation': { id: string; conversation_id: string }
   'Project.attachFile': { id: string } & AttachFileRequest
   'Project.create': CreateProjectRequest
   'Project.delete': { id: string }
+  'Project.detachConversation': { id: string; conversation_id: string }
   'Project.detachFile': { id: string; file_id: string }
   'Project.duplicate': { id: string }
+  'Project.forConversation': { conversation_id: string }
   'Project.get': { id: string }
   'Project.getMcpSettings': { id: string }
   'Project.list': { limit?: number; page?: number }
   'Project.listConversations': { id: string; limit?: number; page?: number }
   'Project.listFiles': { id: string }
   'Project.update': { id: string } & UpdateProjectRequest
-  'Project.updateMcpSettings': { id: string } & UpdateProjectMcpSettingsRequest
+  'Project.updateMcpSettings': { id: string } & ProjectMcpSettingsRequest
   'Project.uploadAndAttachFile': { id: string } & FormData
   'RemoteAccess.getSettings': void
   'RemoteAccess.getStatus': void
@@ -2766,9 +3467,18 @@ export type ApiEndpointParameters = {
   'RuntimeVersion.delete': { version_id: string; remove_binary?: boolean }
   'RuntimeVersion.download': DownloadVersionRequest
   'RuntimeVersion.get': { version_id: string }
+  'RuntimeVersion.getDownload': { key: string }
   'RuntimeVersion.list': { engine?: string }
+  'RuntimeVersion.listDownloads': void
   'RuntimeVersion.setDefault': { version_id: string }
+  'RuntimeVersion.subscribeDownloadEvents': { key: string }
   'RuntimeVersion.syncCache': void
+  'RuntimeVersion.usage': { engine?: string }
+  'Summarization.getConversationSummary': { id: string }
+  'SummarizationAdmin.get': void
+  'SummarizationAdmin.update': UpdateSummarizationAdminSettingsRequest
+  'SummarizationTest.refresh': TestRefreshRequest
+  'Sync.subscribe': void
   'User.create': CreateUserRequest
   'User.delete': { user_id: string }
   'User.get': { user_id: string }
@@ -2784,7 +3494,7 @@ export type ApiEndpointParameters = {
   'UserGroup.list': PaginationQuery
   'UserGroup.removeUser': { user_id: string; group_id: string }
   'UserGroup.update': { group_id: string } & UpdateGroupRequest
-  'Users.changeOwnPassword': ChangePasswordRequest
+  'Users.changeOwnPassword': ChangePasswordRequest2
 }
 
 // API endpoint responses
@@ -2803,6 +3513,7 @@ export type ApiEndpointResponses = {
   'AssistantTemplate.getDefault': Assistant
   'AssistantTemplate.list': AssistantListResponse
   'AssistantTemplate.update': Assistant
+  'Auth.changePassword': void
   'Auth.getConfig': AuthConfigResponse
   'Auth.linkAccount': AuthResponse
   'Auth.listProviders': PublicProvidersResponse
@@ -2814,7 +3525,8 @@ export type ApiEndpointResponses = {
   'Auth.me': MeResponse
   'Auth.refresh': TokenPair
   'Auth.register': AuthResponse
-  'AuthProviders.create': AuthProviderResponse
+  'Auth.updateProfile': User
+  'AuthProviders.create': CreateAuthProviderResponse
   'AuthProviders.delete': DeleteProviderResponse
   'AuthProviders.list': AuthProviderResponse[]
   'AuthProviders.test': TestProviderResponse
@@ -2825,18 +3537,25 @@ export type ApiEndpointResponses = {
   'Branch.getPendingApprovals': PendingApprovalsResponse
   'Branch.list': Branch[]
   'Chat.getUserLlmProviders': GetUserProvidersResponse2
-  'CodeSandbox.evictEnvironment': EnvironmentsResponse
+  'ChatStream.setSubscription': void
+  'ChatStream.subscribe': ChatStreamSseEvent
+  'CodeSandbox.deleteRootfsVersion': VersionStatus
   'CodeSandbox.getResourceLimits': CodeSandboxResourceLimits
-  'CodeSandbox.listEnvironments': EnvironmentsResponse
-  'CodeSandbox.listPrefetchTasks': ListPrefetchTasksResponse
-  'CodeSandbox.startPrefetch': StartPrefetchResponse
-  'CodeSandbox.subscribePrefetchEvents': SSEPrefetchEvent
+  'CodeSandbox.installRootfsVersion': InstallTaskState
+  'CodeSandbox.listFlavors': SandboxFlavorsResponse
+  'CodeSandbox.listRootfsVersions': VersionStatus
+  'CodeSandbox.setRootfsPin': SetPinResponse
+  'CodeSandbox.subscribeRootfsInstallProgress': SSEInstallTaskEvent
   'CodeSandbox.updateResourceLimits': CodeSandboxResourceLimits
   'Conversation.create': Conversation
   'Conversation.delete': void
   'Conversation.get': Conversation
   'Conversation.getMcpSettings': McpSettingsResponse
+  'Conversation.getMemoryMode': ConversationMemoryModeResponse
+  'Conversation.getSummarizationMode': ConversationSummarizationModeResponse
   'Conversation.list': ConversationResponse[]
+  'Conversation.setMemoryMode': ConversationMemoryModeResponse
+  'Conversation.setSummarizationMode': ConversationSummarizationModeResponse
   'Conversation.update': Conversation
   'Conversation.updateMcpSettings': ConversationMcpSettingsResponse
   'CoreMemory.delete': void
@@ -2864,17 +3583,26 @@ export type ApiEndpointResponses = {
   'Hardware.info': HardwareInfoResponse
   'Hardware.stream': SSEHardwareUsageEvent
   'Health.check': HealthResponse
+  'Hub.activateVersion': HubCatalogRefreshResponse
   'Hub.createAssistantFromHub': AssistantFromHubResponse
+  'Hub.createAssistantTemplateFromHub': AssistantFromHubResponse
   'Hub.createMcpServerFromHub': McpServerFromHubResponse
   'Hub.createModelFromHub': ModelFromHubResponse
+  'Hub.createSystemMcpServerFromHub': McpServerFromHubResponse
   'Hub.getAssistants': HubAssistant[]
   'Hub.getAssistantsVersion': HubVersionResponse
+  'Hub.getCatalog': Catalog
+  'Hub.getCatalogVersion': HubCatalogVersionResponse
+  'Hub.getInstalled': HubInstalledResponse
   'Hub.getLocalProviders': HubLocalProvidersResponse
   'Hub.getMCPServers': HubMCPServer[]
   'Hub.getMCPServersVersion': HubVersionResponse
+  'Hub.getManifest': HubManifest
   'Hub.getModels': HubModel[]
   'Hub.getModelsVersion': HubVersionResponse
+  'Hub.getReleases': HubReleasesResponse
   'Hub.refreshAssistants': HubRefreshResponse
+  'Hub.refreshCatalog': HubCatalogRefreshResponse
   'Hub.refreshMCPServers': HubRefreshResponse
   'Hub.refreshModels': HubRefreshResponse
   'LlmModel.cancelDownload': void
@@ -2891,42 +3619,55 @@ export type ApiEndpointResponses = {
   'LlmModel.subscribeDownloadProgress': SSEDownloadProgressEvent
   'LlmModel.update': LlmModel
   'LlmModel.upload': LlmModel
+  'LlmModel.validate': any
   'LlmProvider.assignGroup': void
-  'LlmProvider.create': LlmProvider
+  'LlmProvider.create': CreateLlmProviderResponse
   'LlmProvider.delete': void
   'LlmProvider.deleteUserApiKey': void
+  'LlmProvider.discoverModels': DiscoverModelsResponse
   'LlmProvider.get': LlmProvider
   'LlmProvider.getGroups': Group[]
   'LlmProvider.getUserLlmProviders': GetUserProvidersResponse
   'LlmProvider.list': LlmProviderListResponse
   'LlmProvider.listUserApiKeys': UserApiKeyListResponse
   'LlmProvider.removeGroup': void
+  'LlmProvider.rotateProxyToken': RotateProxyTokenResponse
   'LlmProvider.saveUserApiKey': void
   'LlmProvider.update': LlmProvider
-  'LlmRepository.create': LlmRepository
+  'LlmRepository.create': LlmRepositoryWithHealthWarning
   'LlmRepository.delete': void
   'LlmRepository.get': LlmRepository
   'LlmRepository.list': LlmRepositoryListResponse
   'LlmRepository.test': TestRepositoryConnectionResponse
+  'LlmRepository.testById': TestRepositoryConnectionResponse
   'LlmRepository.update': LlmRepository
+  'LocalLlmProxy.chatCompletions': void
+  'LocalLlmProxy.embeddings': void
+  'LocalLlmProxy.listModels': void
+  'LocalRuntime.detectGpu': GpuDetectionResponse
   'LocalRuntime.getInstance': InstanceResponse
   'LocalRuntime.getLogs': LogsResponse
   'LocalRuntime.getProviderInstances': ProviderInstancesResponse
+  'LocalRuntime.getRuntimeSettings': RuntimeSettings
   'LocalRuntime.getStatus': InstanceStatusResponse
   'LocalRuntime.healthCheck': HealthCheckResponse
   'LocalRuntime.restartModel': InstanceResponse
   'LocalRuntime.startModel': InstanceResponse
   'LocalRuntime.stopModel': InstanceResponse
+  'LocalRuntime.streamLogs': SSELogEvent
+  'LocalRuntime.swapModelVersion': SwapRuntimeVersionResponse
+  'LocalRuntime.updateRuntimeSettings': RuntimeSettings
   'Mcp.getDefaults': UserMcpDefaultsGetResponse
   'Mcp.respondToElicitation': RespondToElicitationResponse
   'Mcp.updateDefaults': UserMcpDefaultsResponse
-  'McpServer.create': McpServer
+  'McpServer.create': McpServerWithHealthWarning
   'McpServer.delete': void
   'McpServer.deleteOAuthConfig': void
   'McpServer.get': McpServer
   'McpServer.getOAuthConfig': McpServerOAuthConfigResponse | null
   'McpServer.listAccessible': McpServerListResponse
   'McpServer.setOAuthConfig': McpServerOAuthConfigResponse
+  'McpServer.testConnection': TestMcpConnectionResponse
   'McpServer.update': McpServer
   'McpServerRuntime.callTool': CallToolResponse
   'McpServerRuntime.disconnect': any
@@ -2937,19 +3678,24 @@ export type ApiEndpointResponses = {
   'McpServerRuntime.ping': PingResponse
   'McpServerRuntime.readResource': ReadResourceResponse
   'McpServerSystem.assignServerToGroups': void
-  'McpServerSystem.create': McpServer
+  'McpServerSystem.create': McpServerWithHealthWarning
   'McpServerSystem.delete': void
   'McpServerSystem.get': McpServer
   'McpServerSystem.getServerGroups': string[]
   'McpServerSystem.list': McpServerListResponse
   'McpServerSystem.removeServerFromGroup': void
+  'McpServerSystem.testConnection': TestMcpConnectionResponse
   'McpServerSystem.update': McpServer
+  'McpUserPolicy.get': McpUserPolicy
+  'McpUserPolicy.update': McpUserPolicy
   'Memory.create': UserMemory
   'Memory.delete': void
   'Memory.deleteAll': DeleteAllResponse
   'Memory.get': UserMemory
   'Memory.list': MemoryListResponse
   'Memory.update': UserMemory
+  'MemoryAdmin.ftsRebuild': any
+  'MemoryAdmin.ftsRebuildStatus': FtsRebuildStatus
   'MemoryAdmin.get': MemoryAdminSettings
   'MemoryAdmin.rebuildStatus': RebuildStatus
   'MemoryAdmin.reembed': any
@@ -2958,26 +3704,32 @@ export type ApiEndpointResponses = {
   'MemorySettings.get': UserMemorySettings
   'MemorySettings.update': UserMemorySettings
   'MemoryTest.extract': any
-  'MemoryTest.summarize': any
   'Message.delete': void
   'Message.edit': EditMessageResponse
   'Message.get': MessageWithContent
+  'Message.getAssistant': MessageAssistantResponse
   'Message.getHistory': MessageWithContent[]
-  'Message.sendStream': SSEChatStreamEvent
-  'Onboarding.complete': User
-  'Onboarding.completeStep': User
+  'Message.getMcpServers': MessageMcpServersResponse
+  'Message.send': SendMessageResponse
+  'Message.stopGeneration': void
+  'Onboarding.complete': OnboardingProgress
+  'Onboarding.completeStep': OnboardingProgress
+  'Onboarding.getProgress': OnboardingProgress
+  'Project.attachConversation': ConversationResponse
   'Project.attachFile': void
   'Project.create': Project
   'Project.delete': void
+  'Project.detachConversation': void
   'Project.detachFile': void
   'Project.duplicate': Project
+  'Project.forConversation': Project | null
   'Project.get': Project
-  'Project.getMcpSettings': UpdateProjectMcpSettingsRequest
+  'Project.getMcpSettings': ProjectMcpSettingsResponse
   'Project.list': ProjectListResponse
   'Project.listConversations': ConversationResponse[]
   'Project.listFiles': ProjectFileListResponse
   'Project.update': Project
-  'Project.updateMcpSettings': Project
+  'Project.updateMcpSettings': ProjectMcpSettingsResponse
   'Project.uploadAndAttachFile': File
   'RemoteAccess.getSettings': RemoteAccessSettingsResponse
   'RemoteAccess.getStatus': RemoteAccessStatusResponse
@@ -2987,11 +3739,20 @@ export type ApiEndpointResponses = {
   'RemoteAccess.updateSettings': RemoteAccessSettingsResponse
   'RuntimeVersion.checkUpdates': AvailableUpdatesResponse
   'RuntimeVersion.delete': void
-  'RuntimeVersion.download': DownloadVersionResponse
+  'RuntimeVersion.download': DownloadVersionStartedResponse
   'RuntimeVersion.get': RuntimeVersionResponse
+  'RuntimeVersion.getDownload': DownloadSnapshot
   'RuntimeVersion.list': RuntimeVersionListResponse
+  'RuntimeVersion.listDownloads': DownloadListResponse
   'RuntimeVersion.setDefault': RuntimeVersionResponse
+  'RuntimeVersion.subscribeDownloadEvents': SSEEngineDownloadEvent
   'RuntimeVersion.syncCache': SyncCacheResponse
+  'RuntimeVersion.usage': VersionUsageResponse
+  'Summarization.getConversationSummary': ConversationSummary | null
+  'SummarizationAdmin.get': SummarizationAdminSettings
+  'SummarizationAdmin.update': SummarizationAdminSettings
+  'SummarizationTest.refresh': any
+  'Sync.subscribe': SyncSseEvent
   'User.create': User
   'User.delete': void
   'User.get': User

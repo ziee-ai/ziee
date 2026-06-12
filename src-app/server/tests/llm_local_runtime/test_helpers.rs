@@ -268,14 +268,44 @@ pub async fn create_local_model(
     provider_id: Uuid,
     name: &str,
     engine_type: &str,
+    runtime_version_id: Option<Uuid>,
+) -> Uuid {
+    // Nested per-engine shape (`ModelEngineSettings`), the single source of
+    // truth the spawn path now reads.
+    let settings = if engine_type == "llamacpp" {
+        json!({ "llamacpp": { "ctx_size": 512, "n_gpu_layers": 0 } })
+    } else {
+        json!({ "mistralrs": { "max_seqs": 16 } })
+    };
+    create_local_model_with_settings(
+        server,
+        token,
+        provider_id,
+        name,
+        engine_type,
+        runtime_version_id,
+        settings,
+    )
+    .await
+}
+
+/// Like [`create_local_model`] but with caller-supplied nested
+/// `engine_settings` (`{ "llamacpp": { … } }` / `{ "mistralrs": { … } }`).
+pub async fn create_local_model_with_settings(
+    server: &TestServer,
+    token: &str,
+    provider_id: Uuid,
+    name: &str,
+    engine_type: &str,
     _runtime_version_id: Option<Uuid>,
+    engine_settings: serde_json::Value,
 ) -> Uuid {
     let payload = json!({
         "provider_id": provider_id.to_string(),
         "name": name,
         "display_name": format!("Test Model {name}"),
         "engine_type": engine_type,
-        "engine_settings": { "ctx_size": 512, "n_gpu_layers": 0 },
+        "engine_settings": engine_settings,
         "file_format": if engine_type == "llamacpp" { "gguf" } else { "safetensors" },
         "enabled": true,
     });
@@ -345,6 +375,34 @@ pub async fn make_startable_model(
     let model_id =
         create_local_model(server, token, provider_id, name, "llamacpp", Some(runtime_version_id))
             .await;
+    seed_model_file(pool, model_id, gguf_path).await;
+    mark_model_valid(pool, model_id).await;
+    model_id
+}
+
+/// Like [`make_startable_model`] but with caller-supplied nested
+/// `engine_settings`, so a test can assert specific flags reach the argv.
+#[allow(clippy::too_many_arguments)]
+pub async fn make_startable_model_with_settings(
+    server: &TestServer,
+    token: &str,
+    pool: &PgPool,
+    provider_id: Uuid,
+    name: &str,
+    runtime_version_id: Uuid,
+    gguf_path: &str,
+    engine_settings: serde_json::Value,
+) -> Uuid {
+    let model_id = create_local_model_with_settings(
+        server,
+        token,
+        provider_id,
+        name,
+        "llamacpp",
+        Some(runtime_version_id),
+        engine_settings,
+    )
+    .await;
     seed_model_file(pool, model_id, gguf_path).await;
     mark_model_valid(pool, model_id).await;
     model_id
@@ -650,10 +708,7 @@ pub async fn download_test_model(
             "id": "hf-internal-testing/tiny-random-gpt2"
         },
         "engine_type": "llamacpp",
-        "engine_settings": {
-            "ctx_size": 2048,
-            "n_gpu_layers": 0,
-        },
+        "engine_settings": { "llamacpp": { "ctx_size": 2048, "n_gpu_layers": 0 } },
         "enabled": true,
     });
 
@@ -761,7 +816,16 @@ pub async fn download_test_gguf_model(
         "main_filename": filename,
         "source": { "type": "hub", "id": repo },
         "engine_type": "llamacpp",
-        "engine_settings": { "ctx_size": 2048, "n_gpu_layers": 0 },
+        // A richer (but long-stable, value-form) flag set so the gold smoke
+        // proves the REAL llama-server accepts a multi-flag argv built from
+        // the unified engine_settings — not just ctx_size.
+        "engine_settings": { "llamacpp": {
+            "ctx_size": 2048,
+            "n_gpu_layers": 0,
+            "ubatch_size": 256,
+            "parallel": 2,
+            "seed": 42
+        } },
         "enabled": true,
     });
 

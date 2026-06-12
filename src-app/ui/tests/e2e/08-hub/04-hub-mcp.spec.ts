@@ -10,6 +10,11 @@ import {
 import { loginWithPerms } from '../permissions/fixtures'
 import { Permissions } from '../../../src/api-client/types'
 
+// A seeded hub MCP server with HTTP transport. User-scope ("install for me")
+// stdio installs are gated by code_sandbox (disabled in the test env), so the
+// install/View/badge flows target an HTTP server whose user install works.
+const HTTP_HUB_MCP_ID = 'brave-search-mcp'
+
 test.describe('Hub MCP Servers', () => {
   test.beforeEach(async ({ page, testInfra }) => {
     const { baseURL } = testInfra
@@ -29,8 +34,10 @@ test.describe('Hub MCP Servers', () => {
     const mcpCards = await getMcpServerCards(page)
     const firstCard = mcpCards.first()
 
-    // Should have "Install" button
-    await expect(firstCard.getByRole('button', { name: /install/i })).toBeVisible()
+    // Should have the user-scope "Install" / "Install for me" button.
+    // Admin also gets a second "Install for the system" button — pin
+    // the assertion to the testid so the count is unambiguous.
+    await expect(firstCard.getByTestId('hub-mcp-install-btn')).toBeVisible()
 
     // Card should have content (text visible)
     await expect(firstCard).toContainText(/.+/)
@@ -46,14 +53,11 @@ test.describe('Hub MCP Servers', () => {
     page,
     testInfra,
   }) => {
-    const mcpCards = await getMcpServerCards(page)
-    const firstCard = mcpCards.first()
-
-    // Get the MCP server ID from the test ID
-    const testId = await firstCard.getAttribute('data-testid')
-    const mcpServerId = testId?.replace('hub-mcp-card-', '') || ''
-
-    expect(mcpServerId).toBeTruthy()
+    // Most hub MCP servers are stdio; "Install for me" (user scope) of a
+    // stdio server is gated by code_sandbox (disabled in tests), so the
+    // prefilled transport is invalid and the create is blocked. Target an
+    // HTTP hub server, whose user install isn't gated.
+    const mcpServerId = HTTP_HUB_MCP_ID
 
     // Install MCP server
     await installMcpServerFromHub(page, mcpServerId)
@@ -74,18 +78,11 @@ test.describe('Hub MCP Servers', () => {
     page,
     testInfra,
   }) => {
-    const mcpCards = await getMcpServerCards(page)
+    const mcpServerId = HTTP_HUB_MCP_ID
 
-    // Get second MCP server if available
-    const count = await mcpCards.count()
-    const cardIndex = count > 1 ? 1 : 0
-    const card = mcpCards.nth(cardIndex)
-
-    const testId = await card.getAttribute('data-testid')
-    const mcpServerId = testId?.replace('hub-mcp-card-', '') || ''
-
-    // Install with custom name
-    const customName = `Custom MCP Server ${Date.now()}`
+    // Install with a custom name. This fills the "Name" slug field, which
+    // only allows [a-z0-9-] — so use a slug, not a display-name string.
+    const customName = `custom-mcp-${Date.now()}`
     await installMcpServerFromHub(page, mcpServerId, {
       name: customName,
       description: 'Custom description for testing',
@@ -108,11 +105,7 @@ test.describe('Hub MCP Servers', () => {
     testInfra,
   }) => {
     // Install first MCP server
-    const mcpCards = await getMcpServerCards(page)
-    const firstCard = mcpCards.first()
-
-    const testId = await firstCard.getAttribute('data-testid')
-    const mcpServerId = testId?.replace('hub-mcp-card-', '') || ''
+    const mcpServerId = HTTP_HUB_MCP_ID
 
     // Check if already installed
     const alreadyInstalled = await isMcpServerInstalled(page, mcpServerId)
@@ -123,22 +116,21 @@ test.describe('Hub MCP Servers', () => {
       await waitForHubDataLoad(page)
     }
 
-    // Should have "View" button instead of "Install"
+    // Should have "View" button (the user-scope "Install for me"
+    // button collapses to View after a user install).
     const card = page.getByTestId(`hub-mcp-card-${mcpServerId}`)
-    await expect(card.getByRole('button', { name: /view/i })).toBeVisible()
+    await expect(card.getByTestId('hub-mcp-view-btn')).toBeVisible()
 
-    // Should NOT have "Install" button
-    const installButton = card.getByRole('button', { name: /install/i })
-    const installButtonVisible = await installButton.isVisible({ timeout: 1000 }).catch(() => false)
-    expect(installButtonVisible).toBe(false)
+    // The user-scope install button is gone.
+    await expect(card.getByTestId('hub-mcp-install-btn')).toHaveCount(0)
+    // Note: when run as admin (the beforeEach default), the
+    // "Install for the system" button is independent of the user
+    // install state and remains visible. The user-scope install
+    // button collapse is the assertion we care about here.
   })
 
   test('should track installation status badge', async ({ page, testInfra }) => {
-    const mcpCards = await getMcpServerCards(page)
-    const firstCard = mcpCards.first()
-
-    const testId = await firstCard.getAttribute('data-testid')
-    const mcpServerId = testId?.replace('hub-mcp-card-', '') || ''
+    const mcpServerId = HTTP_HUB_MCP_ID
 
     // Get initial status
     const initialStatus = await getMcpCardStatus(page, mcpServerId)
@@ -180,9 +172,7 @@ test.describe('Hub MCP Servers', () => {
 
     // If none installed, install one first
     if (!installedMcpId) {
-      const firstCard = mcpCards.first()
-      const testId = await firstCard.getAttribute('data-testid')
-      installedMcpId = testId?.replace('hub-mcp-card-', '') || ''
+      installedMcpId = HTTP_HUB_MCP_ID
 
       await installMcpServerFromHub(page, installedMcpId)
       await navigateToHub(page, testInfra.baseURL, 'mcp-servers')
@@ -199,7 +189,7 @@ test.describe('Hub MCP Servers', () => {
     // waitForURL (which expects an explicit navigation EVENT —
     // SPA navigations sometimes don't trigger that path reliably
     // under Playwright's history hooks).
-    await page.waitForLoadState('networkidle').catch(() => {})
+    await page.waitForLoadState('load').catch(() => {})
     const urlChanged = !page.url().includes('/hub/')
     const drawer = page.getByRole('dialog', { name: /mcp.*server/i })
     const drawerVisible = await drawer.isVisible({ timeout: 2000 }).catch(() => false)

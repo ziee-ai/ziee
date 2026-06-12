@@ -1,6 +1,9 @@
 import { Dropdown, Tooltip, theme } from 'antd'
+import type { MenuProps } from 'antd'
 import { LogoutOutlined, UserOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 import { useNavigate } from 'react-router-dom'
 
 function SidebarItem({
@@ -55,6 +58,7 @@ function SidebarItem({
 export function UserProfileWidget() {
   const { user } = Stores.Auth
   const { isSidebarCollapsed } = Stores.AppLayout
+  const canViewProfile = usePermission(Permissions.ProfileRead)
   const navigate = useNavigate()
 
   if (!user) return null
@@ -63,11 +67,11 @@ export function UserProfileWidget() {
     <Dropdown
       menu={{
         items: [
-          {
+          canViewProfile && {
             key: 'profile',
             icon: <UserOutlined />,
             label: 'Profile',
-            onClick: () => navigate('/settings/general'),
+            onClick: () => navigate('/settings/profile'),
           },
           {
             key: 'logout',
@@ -75,12 +79,12 @@ export function UserProfileWidget() {
             label: 'Logout',
             onClick: async () => await Stores.Auth.logoutUser(),
           },
-        ].filter(Boolean),
+        ].filter(Boolean) as MenuProps['items'],
       }}
       placement="topLeft"
       trigger={['click']}
     >
-      <div>
+      <div data-testid="user-profile-widget">
         <SidebarItem
           icon={<UserOutlined />}
           label={user.username}

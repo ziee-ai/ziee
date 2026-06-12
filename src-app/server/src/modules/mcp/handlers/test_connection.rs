@@ -59,18 +59,92 @@ pub(crate) fn validate(req: &TestMcpConnectionRequest) -> Result<(), AppError> {
     // Reject interior-invalid header values up front (trailing whitespace is
     // trimmed, not rejected) so a bad Authorization token surfaces as a clear
     // 400 here instead of being silently dropped when we probe the server.
-    super::super::normalize_and_validate_headers(&req.headers)?;
+    if let Some(entries) = req.headers_entries.as_deref() {
+        super::super::validate_header_entries(entries)?;
+    }
     Ok(())
+}
+
+/// Resolve the request's structured entries into a flat
+/// `serde_json::Value` map for the ephemeral probe. Per-entry semantic:
+///
+/// * `value: Some(v)` — use `v` verbatim (secret or not).
+/// * `value: None` + `is_secret: true` + `existing` provided — fall
+///   back to the existing server's decrypted value for that key
+///   (mirrors the OAuth `client_secret` fallback in `resolve_oauth`).
+/// * `value: None` otherwise — use empty string.
+fn resolve_entries_for_probe(
+    entries: Option<&[super::super::types::EnvVarEntry]>,
+    existing_decrypted: Option<&serde_json::Value>,
+) -> serde_json::Value {
+    let mut out = serde_json::Map::new();
+    let Some(entries) = entries else {
+        return serde_json::Value::Object(out);
+    };
+    for entry in entries {
+        let value = match (entry.value.as_deref(), entry.is_secret) {
+            (Some(v), _) => v.to_string(),
+            (None, true) => existing_decrypted
+                .and_then(|v| v.as_object())
+                .and_then(|o| o.get(&entry.key))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            (None, false) => String::new(),
+        };
+        out.insert(entry.key.clone(), serde_json::Value::String(value));
+    }
+    serde_json::Value::Object(out)
+}
+
+/// Header variant of `resolve_entries_for_probe`. Identical logic;
+/// separate signature because `EnvVarEntry` and `HeaderEntry` are
+/// distinct types (see types.rs rationale).
+fn resolve_header_entries_for_probe(
+    entries: Option<&[super::super::types::HeaderEntry]>,
+    existing_decrypted: Option<&serde_json::Value>,
+) -> serde_json::Value {
+    let mut out = serde_json::Map::new();
+    let Some(entries) = entries else {
+        return serde_json::Value::Object(out);
+    };
+    for entry in entries {
+        let value = match (entry.value.as_deref(), entry.is_secret) {
+            (Some(v), _) => v.to_string(),
+            (None, true) => existing_decrypted
+                .and_then(|v| v.as_object())
+                .and_then(|o| o.get(&entry.key))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            (None, false) => String::new(),
+        };
+        out.insert(entry.key.clone(), serde_json::Value::String(value));
+    }
+    serde_json::Value::Object(out)
 }
 
 /// Map the test request into a throwaway `McpServer` the client constructors
 /// accept. `id` is `nil` — this row is never persisted nor pooled.
+///
+/// `existing` (when supplied) is the prior server fetched by the
+/// handler — used to resolve `value: None` secret entries to their
+/// stored decrypted value, mirroring the OAuth secret fallback.
 pub(crate) fn build_ephemeral_server(
     req: &TestMcpConnectionRequest,
     user_id: Option<Uuid>,
     is_system: bool,
+    existing: Option<&McpServer>,
 ) -> McpServer {
     let now = Utc::now();
+    let env_map = resolve_entries_for_probe(
+        req.environment_variables_entries.as_deref(),
+        existing.map(|s| &s.environment_variables),
+    );
+    let header_map = resolve_header_entries_for_probe(
+        req.headers_entries.as_deref(),
+        existing.map(|s| &s.headers),
+    );
     McpServer {
         id: Uuid::nil(),
         user_id,
@@ -87,26 +161,21 @@ pub(crate) fn build_ephemeral_server(
             .as_ref()
             .map(|a| serde_json::json!(a))
             .unwrap_or_else(|| serde_json::json!([])),
-        environment_variables: req
-            .environment_variables
-            .as_ref()
-            .map(|e| serde_json::json!(e))
-            .unwrap_or_else(|| serde_json::json!({})),
+        environment_variables: env_map,
+        environment_variables_entries: Vec::new(),
         url: req.url.clone(),
-        // Store the trimmed/validated header map so the in-memory probe mirrors
-        // exactly what would be persisted. `validate()` runs before this in the
-        // handlers, so normalization can't error here; `unwrap_or_default()` is a
-        // safe fallback that also keeps the unit test (which calls this directly)
-        // honest.
-        headers: serde_json::json!(
-            super::super::normalize_and_validate_headers(&req.headers).unwrap_or_default()
-        ),
+        headers: header_map,
+        headers_entries: Vec::new(),
         timeout_seconds: req.timeout_seconds.unwrap_or(30),
         supports_sampling: false,
         usage_mode: UsageMode::Auto,
         max_concurrent_sessions: None,
         // Connectivity probe only — never routed through the code_sandbox.
         run_in_sandbox: false,
+        sandbox_flavor: "full".to_string(),
+        last_health_check_at: None,
+        last_health_check_status: "untested".to_string(),
+        last_health_check_reason: None,
         created_at: now,
         updated_at: now,
     }
@@ -225,8 +294,22 @@ pub async fn test_user_connection(
     };
     let oauth = resolve_oauth(&request, existing.as_ref()).await?;
 
-    let server = build_ephemeral_server(&request, Some(auth.user.id), false);
+    let server =
+        build_ephemeral_server(&request, Some(auth.user.id), false, existing.as_ref());
     let response = run_connection_test(server, oauth).await;
+    // Record the outcome on the persisted server (if `request.id`
+    // pointed at one). Lets the UI surface "last tested: …" outside
+    // the enable flow too. Non-fatal — log on failure.
+    if let Some(server_id) = request.id {
+        let (status, reason) = if response.success {
+            ("healthy", None)
+        } else {
+            ("unhealthy", Some(response.message.as_str()))
+        };
+        if let Err(e) = Repos.mcp.record_health_check(server_id, status, reason).await {
+            tracing::warn!(error = ?e, server_id = %server_id, "mcp::health: failed to record test-connection result");
+        }
+    }
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -259,8 +342,18 @@ pub async fn test_system_connection(
     };
     let oauth = resolve_oauth(&request, existing.as_ref()).await?;
 
-    let server = build_ephemeral_server(&request, None, true);
+    let server = build_ephemeral_server(&request, None, true, existing.as_ref());
     let response = run_connection_test(server, oauth).await;
+    if let Some(server_id) = request.id {
+        let (status, reason) = if response.success {
+            ("healthy", None)
+        } else {
+            ("unhealthy", Some(response.message.as_str()))
+        };
+        if let Err(e) = Repos.mcp.record_health_check(server_id, status, reason).await {
+            tracing::warn!(error = ?e, server_id = %server_id, "mcp::health: failed to record test-connection result");
+        }
+    }
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -286,17 +379,20 @@ pub fn test_system_connection_docs(op: TransformOperation) -> TransformOperation
 mod tests {
     use super::*;
 
+    use super::super::super::types::{EnvVarEntry, HeaderEntry};
+
     fn http_req() -> TestMcpConnectionRequest {
         TestMcpConnectionRequest {
             transport_type: TransportType::Http,
             command: None,
             args: None,
-            environment_variables: None,
+            environment_variables_entries: None,
             url: Some("https://example.com/mcp".to_string()),
-            headers: Some(std::collections::HashMap::from([(
-                "x-test".to_string(),
-                "1".to_string(),
-            )])),
+            headers_entries: Some(vec![HeaderEntry {
+                key: "x-test".to_string(),
+                value: Some("1".to_string()),
+                is_secret: false,
+            }]),
             timeout_seconds: None,
             oauth: None,
             id: None,
@@ -308,12 +404,13 @@ mod tests {
             transport_type: TransportType::Stdio,
             command: Some("uvx".to_string()),
             args: Some(vec!["mcp-server-fetch".to_string()]),
-            environment_variables: Some(std::collections::HashMap::from([(
-                "FOO".to_string(),
-                "bar".to_string(),
-            )])),
+            environment_variables_entries: Some(vec![EnvVarEntry {
+                key: "FOO".to_string(),
+                value: Some("bar".to_string()),
+                is_secret: false,
+            }]),
             url: None,
-            headers: None,
+            headers_entries: None,
             timeout_seconds: Some(15),
             oauth: None,
             id: None,
@@ -346,7 +443,7 @@ mod tests {
 
     #[test]
     fn build_ephemeral_server_maps_stdio_fields() {
-        let server = build_ephemeral_server(&stdio_req(), Some(Uuid::nil()), false);
+        let server = build_ephemeral_server(&stdio_req(), Some(Uuid::nil()), false, None);
         assert_eq!(server.transport_type, TransportType::Stdio);
         assert_eq!(server.command.as_deref(), Some("uvx"));
         assert_eq!(server.args, serde_json::json!(["mcp-server-fetch"]));
@@ -359,7 +456,7 @@ mod tests {
 
     #[test]
     fn build_ephemeral_server_maps_http_fields_and_defaults() {
-        let server = build_ephemeral_server(&http_req(), None, true);
+        let server = build_ephemeral_server(&http_req(), None, true, None);
         assert_eq!(server.transport_type, TransportType::Http);
         assert_eq!(server.url.as_deref(), Some("https://example.com/mcp"));
         assert_eq!(server.headers, serde_json::json!({"x-test": "1"}));
@@ -375,7 +472,7 @@ mod tests {
     async fn run_connection_test_rejects_sse() {
         let mut req = http_req();
         req.transport_type = TransportType::Sse;
-        let server = build_ephemeral_server(&req, None, false);
+        let server = build_ephemeral_server(&req, None, false, None);
         let res = run_connection_test(server, None).await;
         assert!(!res.success);
         assert!(res.message.contains("deprecated"));
@@ -388,7 +485,7 @@ mod tests {
         // process spawn — a deterministic, network-free failure path.
         let mut req = stdio_req();
         req.command = Some("definitely-not-allowed-binary".to_string());
-        let server = build_ephemeral_server(&req, None, false);
+        let server = build_ephemeral_server(&req, None, false, None);
         let res = run_connection_test(server, None).await;
         assert!(!res.success);
         assert!(res.tool_count.is_none());

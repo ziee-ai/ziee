@@ -256,6 +256,10 @@ async fn main() {
     let mcp_session_manager = std::sync::Arc::new(modules::mcp::client::McpSessionManager::new(
         module_context.config.clone(),
     ));
+    // Make it reachable from the event-bus path (`McpSessionCleanupHandler`)
+    // — module event handlers are registered before this point and can't
+    // receive Axum Extensions, so they read the process-wide handle.
+    modules::mcp::client::manager::set_global(mcp_session_manager.clone());
     tracing::info!("MCP session manager initialized");
 
     // Build API router with all module routes (including auth)

@@ -29,6 +29,10 @@ use uuid::Uuid;
 
 #[tokio::test]
 async fn test_create_user_mcp_server() {
+    // Uses http transport — the MCP user-policy force-sandboxes user
+    // stdio servers, which requires code_sandbox.enabled (off in
+    // tests by default). This test exercises the create CRUD path,
+    // not stdio specifically, so http is the right fixture.
     let server = crate::common::TestServer::start().await;
     let user =
         test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::create"]).await;
@@ -38,10 +42,8 @@ async fn test_create_user_mcp_server() {
         "display_name": "My Local Server",
         "description": "My personal MCP server",
         "enabled": true,
-        "transport_type": "stdio",
-        "command": "node",
-        "args": ["server.js"],
-        "environment_variables": {"NODE_ENV": "production"},
+        "transport_type": "http",
+        "url": "http://127.0.0.1:9/mcp",
         "timeout_seconds": 30
     });
 
@@ -66,7 +68,7 @@ async fn test_create_user_mcp_server() {
     let body: serde_json::Value = serde_json::from_str(&body_text).expect("Failed to parse JSON");
     assert_eq!(body["name"], "my_local_server");
     assert_eq!(body["display_name"], "My Local Server");
-    assert_eq!(body["transport_type"], "stdio");
+    assert_eq!(body["transport_type"], "http");
     assert_eq!(body["is_system"], false);
     assert_eq!(body["user_id"], user.user_id);
 }
@@ -109,13 +111,15 @@ async fn test_list_accessible_servers() {
     )
     .await;
 
-    // Create a personal server
+    // Create a personal server. Uses http transport — the MCP
+    // user-policy force-sandboxes user stdio (requires sandbox);
+    // this test just needs a personal server to verify the list
+    // includes it, transport choice is incidental.
     let payload = json!({
         "name": "personal_server",
         "display_name": "Personal Server",
-        "transport_type": "stdio",
-        "command": "node",
-        "args": ["server.js"]
+        "transport_type": "http",
+        "url": "http://127.0.0.1:9/mcp"
     });
 
     let create_url = server.api_url("/mcp/servers");
@@ -227,13 +231,13 @@ async fn test_update_user_server() {
     )
     .await;
 
-    // Create a server
+    // Create a server (http — user-policy force-sandboxes user
+    // stdio; this test is about update CRUD, not transport).
     let payload = json!({
         "name": "original_server",
         "display_name": "Original Server",
-        "transport_type": "stdio",
-        "command": "node",
-        "args": ["original.js"]
+        "transport_type": "http",
+        "url": "http://127.0.0.1:9/mcp"
     });
 
     let create_url = server.api_url("/mcp/servers");
@@ -253,9 +257,7 @@ async fn test_update_user_server() {
         "display_name": "Updated Server",
         "description": "Updated description",
         "enabled": false,
-        "transport_type": "stdio",
-        "command": "node",
-        "args": ["updated.js"]
+        "url": "http://127.0.0.1:9/mcp-updated"
     });
 
     let update_url = server.api_url(&format!("/mcp/servers/{}", server_id));
@@ -289,13 +291,12 @@ async fn test_delete_user_server() {
     )
     .await;
 
-    // Create a server
+    // Create a server (http — user-policy force-sandboxes stdio).
     let payload = json!({
         "name": "temp_server",
         "display_name": "Temporary Server",
-        "transport_type": "stdio",
-        "command": "node",
-        "args": ["temp.js"]
+        "transport_type": "http",
+        "url": "http://127.0.0.1:9/mcp"
     });
 
     let create_url = server.api_url("/mcp/servers");
@@ -345,13 +346,12 @@ async fn test_user_cannot_access_other_user_server() {
     let user2 =
         test_helpers::create_user_with_permissions(&server, "user2", &["mcp_servers::read"]).await;
 
-    // User1 creates a server
+    // User1 creates a server (http — user-policy force-sandboxes stdio).
     let payload = json!({
         "name": "user1_server",
         "display_name": "User1 Server",
-        "transport_type": "stdio",
-        "command": "node",
-        "args": ["server.js"]
+        "transport_type": "http",
+        "url": "http://127.0.0.1:9/mcp"
     });
 
     let create_url = server.api_url("/mcp/servers");
@@ -662,6 +662,191 @@ async fn test_delete_system_server() {
         get_response.status(),
         404,
         "System server should be deleted"
+    );
+}
+
+// ----------------------------------------------------------------------------
+// Built-in update-guard regression (r2-fresh-sweep-01).
+//
+// Commit 52a5953b narrowed the `update_system_mcp_server` "built-in is
+// immutable" guard (repository.rs) so it gates ONLY the two zero-config
+// privileged built-ins — `files_mcp_server_id()` / `memory_mcp_server_id()`.
+// The admin-CONFIGURABLE built-ins (filesystem/fetch/browser/git from
+// migrations 7+25, code_sandbox) must stay editable. This pins BOTH sides.
+//
+// NOTE: the deterministic ids are `Uuid::new_v5(NAMESPACE_URL, b"<name>")`,
+// matching `files_mcp::files_mcp_server_id()` / `memory_mcp::memory_mcp_server_id()`.
+// Those server-crate fns are NOT re-exported through `ziee::` (their module
+// tree is private), so we recompute the v5 UUID inline rather than import it.
+// ----------------------------------------------------------------------------
+
+fn files_mcp_server_id() -> Uuid {
+    Uuid::new_v5(&Uuid::NAMESPACE_URL, b"files.ziee.internal")
+}
+
+fn memory_mcp_server_id() -> Uuid {
+    Uuid::new_v5(&Uuid::NAMESPACE_URL, b"memory.ziee.internal")
+}
+
+/// The zero-config built-in rows (files/memory) are upserted by an async
+/// `tokio::spawn` at module init, so a GET right after `TestServer::start`
+/// can race the upsert. Poll the per-id GET in a short bounded loop until
+/// the row materializes (status 200) before exercising the PUT guard.
+async fn wait_for_system_server(
+    server: &crate::common::TestServer,
+    token: &str,
+    id: Uuid,
+) -> serde_json::Value {
+    let get_url = server.api_url(&format!("/mcp/system-servers/{}", id));
+    for _ in 0..40 {
+        let response = reqwest::Client::new()
+            .get(&get_url)
+            .header("Authorization", format!("Bearer {}", token))
+            .send()
+            .await
+            .expect("Request failed");
+        if response.status() == 200 {
+            return response.json().await.expect("Failed to parse JSON");
+        }
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    }
+    panic!("built-in system server {} never materialized after boot upsert", id);
+}
+
+#[tokio::test]
+async fn test_update_configurable_builtin_is_editable() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["mcp_servers_admin::read", "mcp_servers_admin::edit"],
+    )
+    .await;
+
+    // Find the seeded `filesystem` row (migration 7 — a random UUID, so it is
+    // NOT in the zero-config guard set and must remain editable).
+    let list_url = server.api_url("/mcp/system-servers");
+    let list_body: serde_json::Value = reqwest::Client::new()
+        .get(&list_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed")
+        .json()
+        .await
+        .expect("Failed to parse JSON");
+    let servers = list_body["servers"]
+        .as_array()
+        .expect("Should have servers array");
+    let filesystem = servers
+        .iter()
+        .find(|s| s["name"] == "filesystem")
+        .expect("Should have seeded filesystem server");
+    let filesystem_id = filesystem["id"].as_str().expect("Should have server ID");
+
+    // PUT a benign config change (mirror `test_update_system_server` shape).
+    let update_payload = json!({
+        "display_name": "Filesystem Access",
+        "description": "Edited filesystem description",
+        "transport_type": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem"]
+    });
+
+    let update_url = server.api_url(&format!("/mcp/system-servers/{}", filesystem_id));
+    let response = reqwest::Client::new()
+        .put(&update_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&update_payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(
+        status, 200,
+        "Admin-configurable built-in (filesystem) must stay editable; got: {body}"
+    );
+    assert_eq!(body["description"], "Edited filesystem description");
+
+    // Confirm persistence via a follow-up GET.
+    let get_url = server.api_url(&format!("/mcp/system-servers/{}", filesystem_id));
+    let get_body: serde_json::Value = reqwest::Client::new()
+        .get(&get_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed")
+        .json()
+        .await
+        .expect("Failed to parse JSON");
+    assert_eq!(
+        get_body["description"], "Edited filesystem description",
+        "Edit must persist for the admin-configurable built-in"
+    );
+}
+
+#[tokio::test]
+async fn test_update_zero_config_builtin_is_immutable() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["mcp_servers_admin::read", "mcp_servers_admin::edit"],
+    )
+    .await;
+
+    // Trivial, benign update payload. The zero-config guard fires BEFORE
+    // transport validation, so the body never has to be valid for the row's
+    // transport — only that the guard rejects it.
+    let update_payload = json!({
+        "display_name": "Hijacked",
+        "description": "should not apply"
+    });
+
+    // files_mcp built-in — must reject with BUILT_IN_SERVER / 400.
+    let files_id = files_mcp_server_id();
+    wait_for_system_server(&server, &admin.token, files_id).await;
+    let update_url = server.api_url(&format!("/mcp/system-servers/{}", files_id));
+    let response = reqwest::Client::new()
+        .put(&update_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&update_payload)
+        .send()
+        .await
+        .expect("Request failed");
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(
+        status, 400,
+        "files built-in must be immutable; got: {body}"
+    );
+    assert_eq!(
+        body["error_code"], "BUILT_IN_SERVER",
+        "files built-in rejection must carry BUILT_IN_SERVER; got: {body}"
+    );
+
+    // memory_mcp built-in — same immutability.
+    let memory_id = memory_mcp_server_id();
+    wait_for_system_server(&server, &admin.token, memory_id).await;
+    let update_url = server.api_url(&format!("/mcp/system-servers/{}", memory_id));
+    let response = reqwest::Client::new()
+        .put(&update_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&update_payload)
+        .send()
+        .await
+        .expect("Request failed");
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(
+        status, 400,
+        "memory built-in must be immutable; got: {body}"
+    );
+    assert_eq!(
+        body["error_code"], "BUILT_IN_SERVER",
+        "memory built-in rejection must carry BUILT_IN_SERVER; got: {body}"
     );
 }
 
@@ -1113,11 +1298,20 @@ async fn create_test_system_server(
 
 #[tokio::test]
 async fn test_stdio_transport_requires_command() {
+    // Uses the SYSTEM create endpoint — user-mode stdio is gated by
+    // the MCP user-policy (force-sandboxed; rejects when sandbox is
+    // disabled in tests), which would 422 before this validation
+    // runs. The 400-on-missing-command invariant is the same for
+    // both endpoints; system path is the cleaner one to exercise.
     let server = crate::common::TestServer::start().await;
-    let user =
-        test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::create"]).await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["mcp_servers_admin::create"],
+    )
+    .await;
 
-    // Try to create stdio server without command
+    // Try to create stdio system server without command
     let payload = json!({
         "name": "invalid_stdio",
         "display_name": "Invalid Stdio",
@@ -1126,10 +1320,10 @@ async fn test_stdio_transport_requires_command() {
         // Missing command
     });
 
-    let url = server.api_url("/mcp/servers");
+    let url = server.api_url("/mcp/system-servers");
     let response = reqwest::Client::new()
         .post(&url)
-        .header("Authorization", format!("Bearer {}", user.token))
+        .header("Authorization", format!("Bearer {}", admin.token))
         .json(&payload)
         .send()
         .await
@@ -1175,12 +1369,14 @@ async fn test_duplicate_server_name_allowed() {
     let user =
         test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::create"]).await;
 
+    // Uses http transport — user-policy force-sandboxes user stdio
+    // (sandbox is off in tests). Duplicate-name semantics are the
+    // same for both transports.
     let payload = json!({
         "name": "duplicate_server",
         "display_name": "Duplicate Server",
-        "transport_type": "stdio",
-        "command": "node",
-        "args": ["server.js"]
+        "transport_type": "http",
+        "url": "http://127.0.0.1:9/mcp"
     });
 
     let url = server.api_url("/mcp/servers");
@@ -1235,6 +1431,7 @@ mod rate_limit_test;              // Global rate-limiter on/off regression (gove
 mod test_connection_test;         // Connection-test endpoints (user + system test-connection)
 mod http_headers_test;            // Custom-header transmission + trim/validation (create/update/test)
 mod http_connection_reuse_test;   // Stale keep-alive reuse regression (proxy/tunnel reap → fresh conn per request)
+mod sync_emit_test;               // Realtime-sync emission: mcp_server (owner) + system dual-audience
 
 // ============================================================================
 // Sampling Field CRUD Tests
@@ -1412,16 +1609,22 @@ fn make_sampling_server_config(url: String, timeout_seconds: i32) -> ziee::McpSe
         command: None,
         args: serde_json::json!([]),
         environment_variables: serde_json::json!({}),
+        environment_variables_entries: vec![],
         url: Some(url),
         headers: serde_json::json!({}),
+        headers_entries: vec![],
         timeout_seconds,
         supports_sampling: true,
         usage_mode: ziee::UsageMode::Auto,
         max_concurrent_sessions: None,
         is_built_in: false,
         run_in_sandbox: false,
+        sandbox_flavor: "full".to_string(),
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
+        last_health_check_at: None,
+        last_health_check_status: "untested".to_string(),
+        last_health_check_reason: None,
     }
 }
 

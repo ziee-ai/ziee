@@ -1,6 +1,23 @@
 import { useState } from 'react'
-import { Alert, Button, DatePicker, Descriptions, Form, Input, InputNumber, Select, Space, Switch, Typography } from 'antd'
-import { CheckCircleOutlined, CloseCircleOutlined, FormOutlined, StopOutlined } from '@ant-design/icons'
+import {
+  Alert,
+  Button,
+  DatePicker,
+  Descriptions,
+  Form,
+  Input,
+  InputNumber,
+  Select,
+  Space,
+  Switch,
+  Typography,
+} from 'antd'
+import {
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  FormOutlined,
+  StopOutlined,
+} from '@ant-design/icons'
 import dayjs, { type Dayjs } from 'dayjs'
 import { Stores } from '@/core/stores'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions'
@@ -51,9 +68,14 @@ interface FieldSchema {
   }
 }
 
-function getOptions(fieldSchema: FieldSchema): { value: string; label: string }[] {
+function getOptions(
+  fieldSchema: FieldSchema,
+): { value: string; label: string }[] {
   // TitledSingleSelectEnum — anyOf or oneOf at top level of the property schema
-  if (fieldSchema.type === 'string' && (fieldSchema.anyOf || fieldSchema.oneOf)) {
+  if (
+    fieldSchema.type === 'string' &&
+    (fieldSchema.anyOf || fieldSchema.oneOf)
+  ) {
     const options = fieldSchema.anyOf ?? fieldSchema.oneOf!
     return options.map(o => ({ value: o.const, label: o.title ?? o.const }))
   }
@@ -63,7 +85,10 @@ function getOptions(fieldSchema: FieldSchema): { value: string; label: string }[
     return fieldSchema.enum.map((v, i) => ({ value: v, label: names[i] ?? v }))
   }
   // TitledMultiSelectEnum — anyOf or oneOf inside items
-  if (fieldSchema.type === 'array' && (fieldSchema.items?.anyOf || fieldSchema.items?.oneOf)) {
+  if (
+    fieldSchema.type === 'array' &&
+    (fieldSchema.items?.anyOf || fieldSchema.items?.oneOf)
+  ) {
     const options = fieldSchema.items.anyOf ?? fieldSchema.items.oneOf!
     return options.map(o => ({ value: o.const, label: o.title ?? o.const }))
   }
@@ -74,24 +99,42 @@ function getOptions(fieldSchema: FieldSchema): { value: string; label: string }[
   return []
 }
 
-function renderField(name: string, fieldSchema: FieldSchema, required: boolean): React.ReactNode {
+function renderField(
+  name: string,
+  fieldSchema: FieldSchema,
+  required: boolean,
+): React.ReactNode {
   const label = fieldSchema.title || name
-  const rules: object[] = required ? [{ required: true, message: `${label} is required` }] : []
+  const rules: object[] = required
+    ? [{ required: true, message: `${label} is required` }]
+    : []
   const testId = `elicitation-field-${name}`
 
   // Select fields (single or multi)
   const isMultiSelect =
     fieldSchema.type === 'array' &&
-    !!(fieldSchema.items?.enum || fieldSchema.items?.anyOf || fieldSchema.items?.oneOf)
+    !!(
+      fieldSchema.items?.enum ||
+      fieldSchema.items?.anyOf ||
+      fieldSchema.items?.oneOf
+    )
   const isSelectField =
     isMultiSelect ||
-    (fieldSchema.type === 'string' && !!(fieldSchema.enum || fieldSchema.anyOf || fieldSchema.oneOf))
+    (fieldSchema.type === 'string' &&
+      !!(fieldSchema.enum || fieldSchema.anyOf || fieldSchema.oneOf))
 
   if (isSelectField) {
     const options = getOptions(fieldSchema)
     if (isMultiSelect) {
-      if (fieldSchema.minItems !== undefined || fieldSchema.maxItems !== undefined) {
-        rules.push({ type: 'array', min: fieldSchema.minItems, max: fieldSchema.maxItems })
+      if (
+        fieldSchema.minItems !== undefined ||
+        fieldSchema.maxItems !== undefined
+      ) {
+        rules.push({
+          type: 'array',
+          min: fieldSchema.minItems,
+          max: fieldSchema.maxItems,
+        })
       }
     }
     return (
@@ -159,7 +202,11 @@ function renderField(name: string, fieldSchema: FieldSchema, required: boolean):
         rules={rules}
         extra={fieldSchema.description}
       >
-        <DatePicker format="YYYY-MM-DD" style={{ width: '100%' }} data-testid={testId} />
+        <DatePicker
+          format="YYYY-MM-DD"
+          style={{ width: '100%' }}
+          data-testid={testId}
+        />
       </Form.Item>
     )
   }
@@ -184,21 +231,29 @@ function renderField(name: string, fieldSchema: FieldSchema, required: boolean):
   }
 
   // ─── String constraints ────────────────────────────────────────────────
-  if (fieldSchema.minLength !== undefined || fieldSchema.maxLength !== undefined) {
+  if (
+    fieldSchema.minLength !== undefined ||
+    fieldSchema.maxLength !== undefined
+  ) {
     rules.push({ min: fieldSchema.minLength, max: fieldSchema.maxLength })
   }
 
   if (fieldSchema.pattern) {
     try {
       const re = new RegExp(fieldSchema.pattern)
-      rules.push({ pattern: re, message: `${label} must match the required pattern` })
+      rules.push({
+        pattern: re,
+        message: `${label} must match the required pattern`,
+      })
     } catch {
       // Server sent a malformed regex — surface it as a soft validation
       // failure rather than crashing the form render.
       rules.push({
         validator: (_: unknown, value: string) =>
           value
-            ? Promise.reject(new Error('Server sent an invalid pattern for this field'))
+            ? Promise.reject(
+                new Error('Server sent an invalid pattern for this field'),
+              )
             : Promise.resolve(),
       })
     }
@@ -227,9 +282,11 @@ function renderField(name: string, fieldSchema: FieldSchema, required: boolean):
   }
 
   const inputType =
-    fieldSchema.format === 'email' ? 'email'
-    : fieldSchema.format === 'uri' ? 'url'
-    : 'text'
+    fieldSchema.format === 'email'
+      ? 'email'
+      : fieldSchema.format === 'uri'
+        ? 'url'
+        : 'text'
 
   return (
     <Form.Item
@@ -256,21 +313,27 @@ function renderField(name: string, fieldSchema: FieldSchema, required: boolean):
  * - declined: declined notice
  * - cancelled: session expired notice
  */
-export function ElicitationFormContent({ content: data }: ContentRendererProps) {
+export function ElicitationFormContent({
+  content: data,
+}: ContentRendererProps) {
   const [form] = Form.useForm()
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const elicitation = data.content as unknown as ElicitationData
 
-  // McpStore is the live source of truth during streaming.
-  // After page reload the store is empty; a pending status from DB means the session ended
-  // without the user responding, so treat it as cancelled (the backend already cancelled it).
-  const mcpEntry = Stores.McpComposer.elicitationRequests.get(elicitation.elicitation_id)
-  const isLive = mcpEntry != null
-  const status = isLive
-    ? (mcpEntry.status ?? elicitation.status ?? 'pending')
-    : (elicitation.status === 'pending' ? 'cancelled' : (elicitation.status ?? 'pending'))
-  const responseContent = mcpEntry?.response_content ?? elicitation.response_content
+  // McpStore holds the live entry while THIS device is streaming the turn; when
+  // present its status is freshest. But generation now runs as a detached
+  // server-side task, so an elicitation stays alive (blocked, awaiting input)
+  // across a reload or on another device that has no live entry. Trust the
+  // persisted DB status in that case — a `pending` block is still answerable
+  // (the form submits by `elicitation_id`); only show cancelled/declined/accepted
+  // when the DB itself records that terminal state.
+  const mcpEntry = Stores.McpComposer.elicitationRequests.get(
+    elicitation.elicitation_id,
+  )
+  const status = mcpEntry?.status ?? elicitation.status ?? 'pending'
+  const responseContent =
+    mcpEntry?.response_content ?? elicitation.response_content
 
   const schema = elicitation.requested_schema
   const properties = schema?.properties || {}
@@ -291,7 +354,7 @@ export function ElicitationFormContent({ content: data }: ContentRendererProps) 
         return [key, d.isValid() ? d : undefined]
       }
       return [key, def]
-    })
+    }),
   )
 
   const handleSubmit = async () => {
@@ -311,17 +374,26 @@ export function ElicitationFormContent({ content: data }: ContentRendererProps) 
         const fs = properties[key] as FieldSchema | undefined
         if (val != null && dayjs.isDayjs(val)) {
           const d = val as Dayjs
-          submitValues[key] = fs?.format === 'date'
-            ? d.format('YYYY-MM-DD')
-            : d.toISOString()
+          submitValues[key] =
+            fs?.format === 'date' ? d.format('YYYY-MM-DD') : d.toISOString()
         } else {
           submitValues[key] = val
         }
       }
-      await Stores.McpComposer.resolveElicitation(elicitation.elicitation_id, 'accept', submitValues)
+      await Stores.McpComposer.resolveElicitation(
+        elicitation.elicitation_id,
+        'accept',
+        submitValues,
+      )
+    } catch (e) {
+      // The store rolls status back to 'pending' on POST failure so the
+      // user can retry; swallow here so the error doesn't bubble to the
+      // chat error boundary.
+      console.warn('mcp.elicitation resolve failed', e)
     } finally {
-      // Re-enable the form if resolveElicitation rolled the status back to
-      // 'pending' after a failed POST; on success the resolved card replaces it.
+      // On success the resolved card replaces this form (no-op); on
+      // failure the catch above kept us interactive — either way,
+      // make sure the submit button is re-enabled.
       setIsSubmitting(false)
     }
   }
@@ -342,12 +414,21 @@ export function ElicitationFormContent({ content: data }: ContentRendererProps) 
       ? Object.entries(responseContent).map(([key, value]) => {
           const fieldSchema = properties[key] as FieldSchema | undefined
           const label = fieldSchema?.title || key
-          return { key, label, children: Array.isArray(value) ? value.join(', ') : String(value ?? '') }
+          return {
+            key,
+            label,
+            children: Array.isArray(value)
+              ? value.join(', ')
+              : String(value ?? ''),
+          }
         })
       : []
 
     return (
-      <div className="my-2" data-testid={`elicitation-accepted-${elicitation.elicitation_id}`}>
+      <div
+        className="my-2"
+        data-testid={`elicitation-accepted-${elicitation.elicitation_id}`}
+      >
         <Alert
           type="success"
           icon={<CheckCircleOutlined />}
@@ -377,7 +458,10 @@ export function ElicitationFormContent({ content: data }: ContentRendererProps) 
 
   if (status === 'declined') {
     return (
-      <div className="my-2" data-testid={`elicitation-declined-${elicitation.elicitation_id}`}>
+      <div
+        className="my-2"
+        data-testid={`elicitation-declined-${elicitation.elicitation_id}`}
+      >
         <Alert
           type="warning"
           icon={<CloseCircleOutlined />}
@@ -397,7 +481,10 @@ export function ElicitationFormContent({ content: data }: ContentRendererProps) 
 
   if (status === 'cancelled') {
     return (
-      <div className="my-2" data-testid={`elicitation-cancelled-${elicitation.elicitation_id}`}>
+      <div
+        className="my-2"
+        data-testid={`elicitation-cancelled-${elicitation.elicitation_id}`}
+      >
         <Alert
           type="error"
           icon={<StopOutlined />}
@@ -418,7 +505,10 @@ export function ElicitationFormContent({ content: data }: ContentRendererProps) 
 
   // --- Pending state: interactive form ---
   return (
-    <div className="my-2" data-testid={`elicitation-pending-${elicitation.elicitation_id}`}>
+    <div
+      className="my-2"
+      data-testid={`elicitation-pending-${elicitation.elicitation_id}`}
+    >
       <Alert
         type="info"
         icon={<FormOutlined />}
@@ -442,7 +532,11 @@ export function ElicitationFormContent({ content: data }: ContentRendererProps) 
               disabled={isSubmitting}
             >
               {Object.entries(properties).map(([name, fieldSchema]) =>
-                renderField(name, fieldSchema as FieldSchema, requiredFields.has(name))
+                renderField(
+                  name,
+                  fieldSchema as FieldSchema,
+                  requiredFields.has(name),
+                ),
               )}
             </Form>
             <Space className="mt-2">

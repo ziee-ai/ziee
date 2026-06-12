@@ -18,6 +18,10 @@ use uuid::Uuid;
 
 use crate::common::AppError;
 use crate::core::Repos;
+use crate::modules::memory::models::is_valid_kind;
+use crate::modules::sync::{
+    Audience, SyncAction, SyncEntity, publish as sync_publish,
+};
 
 /// One extraction op emitted by the LLM.
 #[derive(Debug, Deserialize)]
@@ -239,6 +243,13 @@ async fn apply_add(
         Some(c) if !c.trim().is_empty() => c,
         _ => return Ok(()),
     };
+    // Clamp out-of-enum kinds to 'other' so the op degrades gracefully
+    // instead of hitting the `user_memories.kind` CHECK and being dropped.
+    let kind = if is_valid_kind(&kind) {
+        kind
+    } else {
+        "other".to_string()
+    };
     let new_row = Repos
         .memory
         .insert(
@@ -249,6 +260,11 @@ async fn apply_add(
             &kind,
             &serde_json::json!({}),
             source_message_id,
+            // Background extraction stays user-global (scope-aware extraction is
+            // a documented future option; only explicit `remember` is scoped).
+            "user",
+            None,
+            None,
         )
         .await?;
 
@@ -270,6 +286,15 @@ async fn apply_add(
         .await
         .map_err(AppError::database_error)?;
     }
+    // Background path: notify the user's other devices to refresh the
+    // memories list (origin None — not from a request connection).
+    sync_publish(
+        SyncEntity::Memory,
+        SyncAction::Create,
+        new_row.id,
+        Audience::owner(user_id),
+        None,
+    );
     Ok(())
 }
 
@@ -293,6 +318,13 @@ async fn apply_update(
 ) -> Result<(), AppError> {
     let Some(id) = memory_id else {
         return Ok(());
+    };
+    // Clamp out-of-enum kinds to 'other' (see apply_add) so a bad LLM-supplied
+    // kind degrades the op instead of tripping the CHECK and dropping it.
+    let kind = if is_valid_kind(&kind) {
+        kind
+    } else {
+        "other".to_string()
     };
     let updated = Repos
         .memory
@@ -323,6 +355,13 @@ async fn apply_update(
         .await
         .map_err(AppError::database_error)?;
     }
+    sync_publish(
+        SyncEntity::Memory,
+        SyncAction::Update,
+        row.id,
+        Audience::owner(user_id),
+        None,
+    );
     Ok(())
 }
 
@@ -330,7 +369,16 @@ async fn apply_delete(user_id: Uuid, memory_id: Option<Uuid>) -> Result<(), AppE
     let Some(id) = memory_id else {
         return Ok(());
     };
-    let _ = Repos.memory.soft_delete_owned(user_id, id).await?;
+    let deleted = Repos.memory.soft_delete_owned(user_id, id).await?;
+    if deleted {
+        sync_publish(
+            SyncEntity::Memory,
+            SyncAction::Delete,
+            id,
+            Audience::owner(user_id),
+            None,
+        );
+    }
     Ok(())
 }
 

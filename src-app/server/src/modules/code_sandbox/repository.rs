@@ -96,12 +96,33 @@ impl CodeSandboxRepository {
             -- well-formed UUID strings before casting; malformed
             -- entries are silently dropped (they wouldn't have
             -- matched a real `files` row anyway).
-            file_refs AS (
+            attachment_refs AS (
                 SELECT DISTINCT file_id_str::uuid AS file_id
                 FROM raw_refs
                 WHERE file_id_str ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+            ),
+            -- Also include the PROJECT knowledge files of the project this
+            -- conversation belongs to (if any) — so the sandbox sees the same
+            -- effective file set as the chat (Track A manifest), not just
+            -- attachments. Consistency gap fix.
+            -- Ownership: no `f.user_id` predicate here (unlike the files-MCP
+            -- resolver). It isn't needed — projects are strictly per-user and a
+            -- project file is attached only by its owner (the attach handler 404s
+            -- a foreign file), so a project's files are always owned by the
+            -- conversation owner. Per the single-arg design note below, the
+            -- ownership policy lives at the handler boundary (`assert_owns_conversation`).
+            project_refs AS (
+                SELECT pf.file_id
+                FROM project_conversations pc
+                JOIN project_files pf ON pf.project_id = pc.project_id
+                WHERE pc.conversation_id = $1
+            ),
+            file_refs AS (
+                SELECT file_id FROM attachment_refs
+                UNION
+                SELECT file_id FROM project_refs
             )
-            SELECT
+            SELECT DISTINCT
                 f.id AS file_id,
                 f.filename,
                 f.user_id,
@@ -109,7 +130,10 @@ impl CodeSandboxRepository {
                 f.created_at
             FROM files f
             JOIN file_refs fr ON fr.file_id = f.id
-            ORDER BY f.created_at
+            -- `f.id` tiebreaker keeps the order (and therefore the collision
+            -- suffixing in build_bwrap_argv) deterministic + stable across calls
+            -- even when several files share a created_at (bulk project uploads).
+            ORDER BY f.created_at, f.id
             "#,
         )
         .bind(conversation_id)
@@ -143,9 +167,11 @@ impl CodeSandboxRepository {
 
     /// Idempotent upsert of the built-in sandbox MCP server row.
     ///
-    /// Critical contract (validated by `tests/code_sandbox/integration/mcp_built_in_protection_test.rs`):
-    /// the `ON CONFLICT DO UPDATE SET` clause must ONLY refresh fields
-    /// that are NOT admin-mutable. The admin UI lets operators tweak
+    /// Critical contract: the `ON CONFLICT DO UPDATE SET` clause must
+    /// ONLY refresh fields that are NOT admin-mutable. Unlike the
+    /// `files`/`memory` zero-config built-ins (whose rows the
+    /// `update_system_mcp_server` guard rejects), the `code_sandbox` row
+    /// IS admin-editable: the admin UI lets operators tweak
     /// `display_name`, `description`, `timeout_seconds`, `usage_mode`,
     /// `max_concurrent_sessions`, and `enabled` via PATCH on the
     /// system-servers endpoint (`mcp/repository.rs:update_system_mcp_server`).

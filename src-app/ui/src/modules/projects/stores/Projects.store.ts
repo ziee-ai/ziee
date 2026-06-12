@@ -1,22 +1,24 @@
+import { enableMapSet } from 'immer'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import { enableMapSet } from 'immer'
 import { ApiClient } from '@/api-client'
-import type {
-  Project,
-  CreateProjectRequest,
-  UpdateProjectRequest,
-  ConversationResponse,
-} from '@/api-client/types'
 import {
-  emitProjectCreated,
-  emitProjectUpdated,
-  emitProjectDeleted,
+  type ConversationResponse,
+  type CreateProjectRequest,
+  Permissions,
+  type Project,
+  type UpdateProjectRequest,
+} from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
+import { Stores } from '@/core/stores'
+import {
   emitProjectConversationAttached,
   emitProjectConversationDetached,
+  emitProjectCreated,
+  emitProjectDeleted,
+  emitProjectUpdated,
 } from '@/modules/projects/events'
-import { Stores } from '@/core/stores'
 
 enableMapSet()
 
@@ -38,7 +40,7 @@ interface ProjectsState {
   }
   __destroy__?: () => void
 
-  loadProjects: () => Promise<void>
+  loadProjects: (force?: boolean) => Promise<void>
   createProject: (data: CreateProjectRequest) => Promise<Project>
   updateProject: (id: string, data: UpdateProjectRequest) => Promise<Project>
   deleteProject: (id: string) => Promise<void>
@@ -112,13 +114,22 @@ export const useProjectsStore = create<ProjectsState>()(
               },
               GROUP,
             )
+
+            // Cross-device sync: a `project` change on another device (or a
+            // reconnect resync) triggers a full reload. `loadProjects`
+            // self-gates on `projects::read` so a non-admin reconnect never
+            // hits `GET /api/projects` → 403.
+            const reload = () => void get().loadProjects(true)
+            eventBus.on('sync:project', reload, GROUP)
+            eventBus.on('sync:reconnect', reload, GROUP)
           },
           projects: () => get().loadProjects(),
         },
 
-        loadProjects: async () => {
+        loadProjects: async (force = false) => {
+          if (!hasPermissionNow(Permissions.ProjectsRead)) return
           const state = get()
-          if (state.isInitialized || state.loading) return
+          if ((state.isInitialized && !force) || state.loading) return
           try {
             set({ loading: true, error: null })
             const response = await ApiClient.Project.list({
@@ -245,11 +256,7 @@ export const useProjectsStore = create<ProjectsState>()(
             id: projectId,
             conversation_id: conversationId,
           })
-          await emitProjectConversationAttached(
-            projectId,
-            conversationId,
-            null,
-          )
+          await emitProjectConversationAttached(projectId, conversationId, null)
           return response
         },
 
@@ -272,4 +279,3 @@ export const useProjectsStore = create<ProjectsState>()(
     ),
   ),
 )
-

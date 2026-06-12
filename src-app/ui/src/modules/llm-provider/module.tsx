@@ -1,27 +1,27 @@
-import { createModule } from '@/core'
-import { Stores } from '@/core/stores'
 import { CloudServerOutlined } from '@ant-design/icons'
 import { Permissions } from '@/api-client/types'
-import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
-import {
-  useLlmProviderStore,
-  useLlmModelDownloadStore,
-  useAddLocalLlmModelUploadDrawerStore,
-  useAddLocalLlmModelDownloadDrawerStore,
-  useEditLlmModelDrawerStore,
-  useAddRemoteLlmModelDrawerStore,
-  useViewDownloadDrawerStore,
-  useUploadStore,
-} from '@/modules/llm-provider/stores'
-import { useProviderGroupCardStore } from '@/modules/llm-provider/components/ProviderGroupAssignmentCard.store'
-import { useLlmProviderGroupWidgetStore } from '@/modules/llm-provider/widgets/LLMProviderGroupWidget.store'
-import { useLlmProviderDrawerStore } from '@/modules/llm-provider/components/LlmProviderDrawer.store'
+import { createModule } from '@/core'
+import { Stores } from '@/core/stores'
 import { useGroupLlmProvidersAssignmentStore } from '@/modules/llm-provider/components/GroupLlmProvidersAssignmentDrawer.store'
+import { useLlmProviderDrawerStore } from '@/modules/llm-provider/components/LlmProviderDrawer.store'
 import { useLlmProviderGroupsAssignmentStore } from '@/modules/llm-provider/components/LlmProviderGroupsAssignmentDrawer.store'
+import { useProviderGroupCardStore } from '@/modules/llm-provider/components/ProviderGroupAssignmentCard.store'
 import { DownloadIndicatorWidget } from '@/modules/llm-provider/components/widgets/DownloadIndicatorWidget'
+import {
+  useAddLocalLlmModelDownloadDrawerStore,
+  useAddLocalLlmModelUploadDrawerStore,
+  useAddRemoteLlmModelDrawerStore,
+  useEditLlmModelDrawerStore,
+  useLlmModelDownloadStore,
+  useLlmProviderStore,
+  useUploadStore,
+  useViewDownloadDrawerStore,
+} from '@/modules/llm-provider/stores'
+import { useLlmProviderGroupWidgetStore } from '@/modules/llm-provider/widgets/LLMProviderGroupWidget.store'
+import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import '@/modules/llm-provider/types'
-import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
+import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 
 const LlmProviderSettings = lazyWithPreload(() =>
@@ -42,6 +42,11 @@ const LlmProviderGroupsAssignmentDrawer = lazyWithPreload(() =>
 const LLMProviderGroupWidget = lazyWithPreload(() =>
   import('./widgets/LLMProviderGroupWidget').then(m => ({
     default: m.LLMProviderGroupWidget,
+  })),
+)
+const LlmModelDownloadNotifications = lazyWithPreload(() =>
+  import('./components/LlmModelDownloadNotifications').then(m => ({
+    default: m.LlmModelDownloadNotifications,
   })),
 )
 
@@ -129,6 +134,18 @@ export default createModule({
       shouldMount: () =>
         useDelayedFalse(() => Stores.LlmProviderGroupsAssignment.isOpen),
       order: 101,
+    },
+    {
+      // Globally-mounted listener for the
+      // `llm_model.download_{completed,failed}` events emitted from
+      // the LlmModelDownload store's SSE handler. Surfaces toasts so
+      // the user sees completion / failure regardless of which page
+      // they're on at the time (the hub model card alone only updates
+      // for users still on the Hub page). Renders null; safe to mount
+      // always.
+      id: 'llm-model-download-notifications',
+      component: LlmModelDownloadNotifications,
+      order: 102,
     },
   ],
   slots: {

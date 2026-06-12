@@ -1,10 +1,10 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import { Permissions, type ProviderWithModels } from '@/api-client/types'
 import { ApiClient } from '@/api-client'
-import { Stores } from '@/core/stores'
+import { Permissions, type ProviderWithModels } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
+import { Stores } from '@/core/stores'
 import { sortProviders } from '@/modules/llm-provider/sortProviders'
 
 /**
@@ -183,6 +183,13 @@ export const useModelPickerStore = create<ModelPickerState>()(
             },
             GROUP,
           )
+
+          // Remote sync: an admin changed a provider/model on another
+          // device, or we (re)connected. `loadProviders()` self-gates on
+          // UserLlmProvidersRead and refetches its own scoped view.
+          const reload = () => void get().loadProviders()
+          eventBus.on('sync:user_llm_provider', reload, GROUP)
+          eventBus.on('sync:reconnect', reload, GROUP)
         },
         providers: () => get().loadProviders(),
       },
@@ -204,7 +211,10 @@ export const useModelPickerStore = create<ModelPickerState>()(
           state.error = null
         })
         try {
-          const response = await ApiClient.LlmProvider.getUserLlmProviders(undefined, undefined)
+          const response = await ApiClient.LlmProvider.getUserLlmProviders(
+            undefined,
+            undefined,
+          )
           set(state => {
             state.providers = sortProviders(response.providers)
             state.loading = false

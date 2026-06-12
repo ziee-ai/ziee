@@ -68,6 +68,7 @@ async fn test_anthropic_image_vision_e2e() {
                 ContentBlock::Image {
                     source: ImageSource::File {
                         file_id: upload_result.provider_file_id.clone(),
+                        media_type: None,
                     },
                 },
                 ContentBlock::Text {
@@ -151,6 +152,7 @@ async fn test_anthropic_pdf_document_qa_e2e() {
                 ContentBlock::Document {
                     source: DocumentSource::File {
                         file_id: upload_result.provider_file_id.clone(),
+                        media_type: None,
                     },
                 },
                 ContentBlock::Text {
@@ -321,6 +323,7 @@ async fn test_gemini_image_vision_e2e() {
                 ContentBlock::Image {
                     source: ImageSource::File {
                         file_id: upload_result.provider_file_id.clone(),
+                        media_type: None,
                     },
                 },
                 ContentBlock::Text {
@@ -404,6 +407,7 @@ async fn test_gemini_pdf_document_qa_e2e() {
                 ContentBlock::Document {
                     source: DocumentSource::File {
                         file_id: upload_result.provider_file_id.clone(),
+                        media_type: None,
                     },
                 },
                 ContentBlock::Text {

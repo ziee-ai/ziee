@@ -103,6 +103,54 @@ pub struct HubAssistant {
     /// Array of entity IDs created by current user from this hub assistant
     #[serde(default)]
     pub created_ids: Vec<Uuid>,
+
+    /// Array of system-wide TEMPLATE assistant IDs installed from this
+    /// hub assistant (created_by IS NULL, is_template = true). Usually
+    /// 0-or-1 entries — the backend rejects duplicate template installs
+    /// with 409. Used by the hub card to disable the "Use as Template"
+    /// button when a template install already exists.
+    #[serde(default)]
+    pub created_template_ids: Vec<Uuid>,
+}
+
+/// Declares a single required input the user must configure on a
+/// hub-installed MCP server. ONE struct shape is reused for both
+/// `HubMCPServer.required_env` (environment variables) and
+/// `HubMCPServer.required_headers` (HTTP headers) — the target map
+/// is implied by which field the entry appears in.
+///
+/// Currently the entries only carry display + placeholder metadata;
+/// the install path uses `placeholder` to seed the new MCP server's
+/// env/header map so the user sees in `/settings/mcp-servers`
+/// exactly what to replace. Manifest writers should set
+/// `is_secret: true` for credential-bearing inputs (env vars
+/// carrying tokens; headers carrying tokens directly) and `false`
+/// for non-secret config like tenant IDs.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct HubRequiredInput {
+    /// Key name. For `required_env` this is the env var name (e.g.
+    /// `GITHUB_TOKEN`); for `required_headers` it's the HTTP header
+    /// name (e.g. `X-Tenant-ID`).
+    pub name: String,
+    /// 1-2 sentence human description. Rendered under the name in
+    /// the hub details drawer.
+    pub description: Option<String>,
+    /// Recommended example value. The install path writes this
+    /// verbatim into the new MCP server row so the user sees a
+    /// realistic-looking-but-invalid value to replace. When None,
+    /// install writes an empty string and the UI shows just the
+    /// name + description.
+    pub placeholder: Option<String>,
+    /// True when the value carries credential material — UI hides
+    /// the value behind a reveal toggle on the edit form, redacts
+    /// from logs. Defaults to `false` via serde; manifest writers
+    /// should set explicitly per the README convention (true for
+    /// most env vars, false for most direct-input headers).
+    #[serde(default)]
+    pub is_secret: bool,
+    /// Optional link to upstream docs explaining how to obtain the
+    /// value. Rendered as "Get one →" in the details drawer.
+    pub docs_url: Option<String>,
 }
 
 /// Hub MCP server entry
@@ -148,6 +196,35 @@ pub struct HubMCPServer {
     /// Array of entity IDs created by current user from this hub server
     #[serde(default)]
     pub created_ids: Vec<Uuid>,
+
+    /// Array of system-wide MCP server IDs installed from this hub
+    /// server (created_by IS NULL, is_system = true). Usually 0-or-1
+    /// entries — the backend rejects duplicate system installs with
+    /// 409. Used by the hub card to disable the "Install as System"
+    /// button when a system install already exists. Mirrors
+    /// `HubAssistant.created_template_ids`.
+    #[serde(default)]
+    pub created_system_ids: Vec<Uuid>,
+
+    /// User-supplied env vars the server needs to function (auth
+    /// tokens, connection strings, etc.). Declarative — surfaced in
+    /// the hub card / details drawer and used by the install path to
+    /// seed placeholder values into the new MCP server's env map.
+    /// Empty for servers that need no user-supplied env (filesystem,
+    /// memory). `serde(default)` lets pre-schema catalog versions
+    /// deserialize cleanly with no entries.
+    #[serde(default)]
+    pub required_env: Vec<HubRequiredInput>,
+
+    /// User-supplied HTTP headers the server needs to function.
+    /// Used for HTTP/SSE transports where a header takes direct user
+    /// input (e.g. a per-tenant ID). Headers that interpolate from
+    /// env vars via `${VAR}` should be declared via `required_env`
+    /// instead — the env path is the canonical surface and avoids
+    /// double-listing. Empty for stdio servers + HTTP servers where
+    /// every header is either static or env-interpolated.
+    #[serde(default)]
+    pub required_headers: Vec<HubRequiredInput>,
 }
 
 // =====================================================

@@ -12,6 +12,7 @@ use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleEntry};
 
 pub mod core;
 pub mod extensions;
+pub mod stream;
 
 // Include auto-generated extension registration code
 #[path = "extension_registration.rs"]
@@ -79,7 +80,11 @@ impl AppModule for ChatModule {
                     .merge(chat_router())
                     .layer(Extension(registry.clone()));
 
-                router_with_extension_routes.merge(chat_module_router)
+                // The chat-token stream + its subscription control. No
+                // extension layer needed; merge on the outer router.
+                router_with_extension_routes
+                    .merge(chat_module_router)
+                    .merge(stream::chat_stream_router())
             } else {
                 tracing::error!(
                     "ChatModule: Extension registry not initialized during route registration"

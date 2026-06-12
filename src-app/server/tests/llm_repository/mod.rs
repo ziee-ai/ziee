@@ -8,6 +8,8 @@
 
 use serde_json::json;
 
+mod connection_health_test;
+mod sync_emit_test;
 mod test_connection_user_agent;
 
 #[tokio::test]
@@ -85,7 +87,10 @@ async fn test_create_llm_repository() {
     )
     .await;
 
-    // Create a test repository
+    // Create a test repository. We send `enabled: false` so the
+    // post-create connection probe is skipped — this test is about the
+    // create handler's field handling, not the health-check feature.
+    // The probe flow is covered in `connection_health_test.rs`.
     let url = server.api_url("/llm-repositories");
     let create_data = json!({
         "name": "Test Repository",
@@ -94,7 +99,7 @@ async fn test_create_llm_repository() {
         "auth_config": {
             "api_key": "test-api-key-12345"
         },
-        "enabled": true
+        "enabled": false
     });
 
     let response = reqwest::Client::new()
@@ -108,6 +113,11 @@ async fn test_create_llm_repository() {
     assert_eq!(response.status(), 201, "Should create repository");
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    // Response shape: the `LlmRepository` fields are flattened to the
+    // top level, with an OPTIONAL `connection_warning` sibling that
+    // appears only when the post-create probe failed and the row was
+    // auto-downgraded. See `LlmRepositoryWithHealthWarning` +
+    // `#[serde(flatten)]` in `connection_health.rs`.
     assert!(body.get("id").is_some(), "Should have repository ID");
     assert_eq!(
         body.get("name").and_then(|v| v.as_str()),
@@ -121,7 +131,7 @@ async fn test_create_llm_repository() {
         body.get("auth_type").and_then(|v| v.as_str()),
         Some("api_key")
     );
-    assert_eq!(body.get("enabled").and_then(|v| v.as_bool()), Some(true));
+    assert_eq!(body.get("enabled").and_then(|v| v.as_bool()), Some(false));
     assert_eq!(
         body.get("built_in").and_then(|v| v.as_bool()),
         Some(false),
@@ -937,7 +947,24 @@ async fn test_ssrf_create_rejects_aws_imds_ip() {
     );
 }
 
+/// In debug builds (cargo test default), `validate_url` relaxes to
+/// `DEV_LOCAL` so integration tests can point repositories at a
+/// wiremock instance on 127.0.0.1 — matches the
+/// `auth/providers/oauth2::validate_issuer_url` and `llm_provider/utils`
+/// pattern. Production hardening is locked in two ways:
+///   1. `validate_url` selects `PUBLIC_HTTP_OR_HTTPS` when
+///      `!cfg!(debug_assertions)` (release builds), so an
+///      `http://127.0.0.1/` repository URL is rejected at create-time.
+///   2. The shared `url_validator` unit tests
+///      (`src/utils/url_validator.rs::tests::rejects_v4_loopback`)
+///      assert `PUBLIC_HTTP_OR_HTTPS` rejects 127.0.0.1 directly —
+///      so even if the cfg gate above ever drifted, the policy
+///      itself is regression-guarded at the unit layer.
+///
+/// This test runs in release builds (`cargo test --release`) and CI
+/// hardening jobs; under default debug builds it is silently inert.
 #[tokio::test]
+#[cfg(not(debug_assertions))]
 async fn test_ssrf_create_rejects_loopback_ip() {
     let server = crate::common::TestServer::start().await;
     let admin = crate::common::test_helpers::create_user_with_permissions(

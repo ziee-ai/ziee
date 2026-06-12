@@ -12,6 +12,7 @@ use uuid::Uuid;
 use crate::{
     common::{ApiResult, AppError, PaginationQuery},
     modules::permissions::{RequirePermissions, with_permission},
+    modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
 };
 
 use crate::modules::user::{
@@ -89,7 +90,7 @@ pub fn get_group_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn create_group(
     _auth: RequirePermissions<(GroupsCreate,)>,
-
+    origin: SyncOrigin,
     Json(request): Json<CreateGroupRequest>,
 ) -> ApiResult<Json<Group>> {
     // Validate group name
@@ -107,6 +108,14 @@ pub async fn create_group(
         .group
         .create(&request.name, request.description, request.permissions)
         .await?;
+
+    sync_publish(
+        SyncEntity::Group,
+        SyncAction::Create,
+        group.id,
+        Audience::perm::<GroupsRead>(),
+        origin.0,
+    );
 
     Ok((StatusCode::CREATED, Json(group)))
 }
@@ -128,7 +137,7 @@ pub fn create_group_docs(op: TransformOperation) -> TransformOperation {
 pub async fn update_group(
     auth: RequirePermissions<(GroupsEdit,)>,
     Path(group_id): Path<Uuid>,
-
+    origin: SyncOrigin,
     Json(request): Json<UpdateGroupRequest>,
 ) -> ApiResult<Json<Group>> {
     // Check if group exists
@@ -199,6 +208,23 @@ pub async fn update_group(
         )
         .await?;
 
+    sync_publish(
+        SyncEntity::Group,
+        SyncAction::Update,
+        group.id,
+        Audience::perm::<GroupsRead>(),
+        origin.0,
+    );
+    // Editing a group's permissions changes the effective permissions of
+    // EVERY member, so fan a permissions-changed signal out to each (Owner-
+    // scoped) — their devices re-bootstrap /auth/me immediately rather than
+    // waiting up to 60s for the per-connection re-check. Batched into a single
+    // registry-lock acquisition (the default Users group can contain every
+    // user). Best-effort: a query failure just falls back to the re-check.
+    if let Ok(member_ids) = Repos.group.get_member_ids(group.id).await {
+        crate::modules::sync::publish_session_to_users(&member_ids, origin.0);
+    }
+
     Ok((StatusCode::OK, Json(group)))
 }
 
@@ -220,6 +246,7 @@ pub fn update_group_docs(op: TransformOperation) -> TransformOperation {
 pub async fn delete_group(
     _auth: RequirePermissions<(GroupsDelete,)>,
     Path(group_id): Path<Uuid>,
+    origin: SyncOrigin,
 ) -> ApiResult<StatusCode> {
     // Check if group exists
     let group = Repos
@@ -235,6 +262,14 @@ pub async fn delete_group(
 
     // Delete group
     Repos.group.delete(group_id).await?;
+
+    sync_publish(
+        SyncEntity::Group,
+        SyncAction::Delete,
+        group_id,
+        Audience::perm::<GroupsRead>(),
+        origin.0,
+    );
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
@@ -298,7 +333,7 @@ pub fn get_group_members_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn assign_user_to_group(
     auth: RequirePermissions<(GroupsAssignUsers,)>,
-
+    origin: SyncOrigin,
     Json(request): Json<AssignUserToGroupRequest>,
 ) -> ApiResult<StatusCode> {
     // Check if user exists
@@ -316,6 +351,26 @@ pub async fn assign_user_to_group(
         .user
         .assign_to_group(request.user_id, request.group_id, Some(auth.user.id))
         .await?;
+
+    // Signal the affected user that their permissions changed so their
+    // open sessions re-bootstrap /auth/me immediately (the 60s re-check is
+    // the backstop). Owner-scoped to that user only.
+    sync_publish(
+        SyncEntity::Session,
+        SyncAction::Update,
+        request.user_id,
+        Audience::owner(request.user_id),
+        origin.0,
+    );
+
+    // The group's member list changed → refresh admins viewing it elsewhere.
+    sync_publish(
+        SyncEntity::Group,
+        SyncAction::Update,
+        request.group_id,
+        Audience::perm::<GroupsRead>(),
+        origin.0,
+    );
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
@@ -336,6 +391,7 @@ pub fn assign_user_to_group_docs(op: TransformOperation) -> TransformOperation {
 pub async fn remove_user_from_group(
     _auth: RequirePermissions<(GroupsAssignUsers,)>,
     Path((user_id, group_id)): Path<(Uuid, Uuid)>,
+    origin: SyncOrigin,
 ) -> ApiResult<StatusCode> {
     // Check if user exists
     if Repos.user.get_by_id(user_id).await?.is_none() {
@@ -349,6 +405,24 @@ pub async fn remove_user_from_group(
 
     // Remove user from group
     Repos.user.remove_from_group(user_id, group_id).await?;
+
+    // Signal the affected user that their permissions changed (Owner-scoped).
+    sync_publish(
+        SyncEntity::Session,
+        SyncAction::Update,
+        user_id,
+        Audience::owner(user_id),
+        origin.0,
+    );
+
+    // The group's member list changed → refresh admins viewing it elsewhere.
+    sync_publish(
+        SyncEntity::Group,
+        SyncAction::Update,
+        group_id,
+        Audience::perm::<GroupsRead>(),
+        origin.0,
+    );
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }

@@ -1,4 +1,4 @@
-import { Page, expect } from '@playwright/test'
+import { expect, Page } from '@playwright/test'
 
 /**
  * Common authentication helpers used across multiple test suites
@@ -28,7 +28,7 @@ export const DEFAULT_ADMIN_CREDENTIALS: AdminCredentials = {
 export async function completeOnboarding(
   baseURL: string,
   token: string,
-  guideId: string = 'getting-started'
+  guideId: string = 'getting-started',
 ) {
   const res = await fetch(`${baseURL}/api/onboarding/${guideId}/complete`, {
     method: 'POST',
@@ -36,7 +36,7 @@ export async function completeOnboarding(
   })
   if (!res.ok) {
     throw new Error(
-      `completeOnboarding failed: ${res.status} - ${await res.text()}`
+      `completeOnboarding failed: ${res.status} - ${await res.text()}`,
     )
   }
 }
@@ -57,7 +57,7 @@ async function readAuthToken(page: Page): Promise<string> {
 export async function loginAsAdmin(
   page: Page,
   baseURL: string,
-  credentials: AdminCredentials = DEFAULT_ADMIN_CREDENTIALS
+  credentials: AdminCredentials = DEFAULT_ADMIN_CREDENTIALS,
 ) {
   const {
     username = 'admin',
@@ -76,7 +76,7 @@ export async function loginAsAdmin(
     await Promise.race([
       page.waitForSelector('#setup-form_username', { timeout: 5000 }),
       page.waitForURL(/\/auth/, { timeout: 5000 }),
-      page.waitForURL(/\/$/, { timeout: 5000 }) // Sometimes redirects to home
+      page.waitForURL(/\/$/, { timeout: 5000 }), // Sometimes redirects to home
     ])
   } catch {
     // If both timeout, wait a bit more and check URL
@@ -104,21 +104,24 @@ export async function loginAsAdmin(
     await page.fill('#setup-form_confirm_password', password)
     await page.click('button[type="submit"]')
 
-    // Navigation may redirect to /onboarding; the token wait below is the real signal.
-
-    // CRITICAL: Wait for authentication token to be stored in localStorage
+    // Wait for the persisted token. authenticateUser's catch block
+    // preserves the token across an aborted /me (see Auth.store.ts) —
+    // navigating away while /me is in flight no longer logs the user
+    // back out — so the token-in-localStorage check is sufficient.
     await page.waitForFunction(
       () => {
         const authStorage = localStorage.getItem('auth-storage')
         if (!authStorage) return false
         try {
           const parsed = JSON.parse(authStorage)
-          return parsed.state?.token !== null && parsed.state?.token !== undefined
+          return (
+            parsed.state?.token !== null && parsed.state?.token !== undefined
+          )
         } catch {
           return false
         }
       },
-      { timeout: 10000 }
+      { timeout: 10000 },
     )
   } else {
     // Admin already exists - login instead. Same Vite 504 reload-retry
@@ -143,12 +146,14 @@ export async function loginAsAdmin(
         if (!authStorage) return false
         try {
           const parsed = JSON.parse(authStorage)
-          return parsed.state?.token !== null && parsed.state?.token !== undefined
+          return (
+            parsed.state?.token !== null && parsed.state?.token !== undefined
+          )
         } catch {
           return false
         }
       },
-      { timeout: 10000 }
+      { timeout: 10000 },
     )
   }
 
@@ -156,8 +161,20 @@ export async function loginAsAdmin(
   // the API and land on the app, restoring pre-onboarding login behavior.
   const token = await readAuthToken(page)
   await completeOnboarding(baseURL, token)
+  // Land on the authenticated app shell, signalled by the sidebar "New Chat"
+  // menuitem (antd Menu sidebar; present on every authenticated route).
+  // Navigate ONCE and wait generously — do NOT re-navigate on a short timeout:
+  // each goto('/') throws away the in-progress cold-load and fires a fresh
+  // ~25-request burst, and the heavy admin pages (many stores) take ~15-25s
+  // when two contexts cold-load concurrently against the single debug-build
+  // backend, so a re-nav only deepens the connection-queue saturation.
+  // Onboarding is API-marked complete above and admins are never redirected by
+  // OnboardingRedirect, so a single fresh goto won't bounce. NOT `networkidle`:
+  // the realtime-sync SSE stream keeps the network busy so it never settles.
+  const appShell = page.getByRole('menuitem', { name: /New Chat/ })
   await page.goto(`${baseURL}/`)
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('load')
+  await appShell.waitFor({ state: 'visible', timeout: 45000 })
 }
 
 /**
@@ -178,7 +195,7 @@ export async function login(
   baseURL: string,
   username: string,
   password: string,
-  options: { completeOnboarding?: boolean } = {}
+  options: { completeOnboarding?: boolean } = {},
 ) {
   // Get token via the backend.
   const loginResponse = await fetch(`${baseURL}/api/auth/login`, {
@@ -205,7 +222,7 @@ export async function login(
   // Inject the token BEFORE any app JS runs — addInitScript runs on every
   // page navigation in this context, so Zustand's persist middleware will
   // see the token during its very first hydration pass.
-  await page.addInitScript((token) => {
+  await page.addInitScript(token => {
     try {
       localStorage.setItem(
         'auth-storage',
@@ -250,7 +267,7 @@ export async function login(
         return false
       }
     },
-    { timeout: 10000 }
+    { timeout: 10000 },
   )
 }
 
@@ -262,7 +279,7 @@ export async function loginExpectingOnboarding(
   page: Page,
   baseURL: string,
   username: string,
-  password: string
+  password: string,
 ) {
   const res = await fetch(`${baseURL}/api/auth/login`, {
     method: 'POST',
@@ -271,19 +288,21 @@ export async function loginExpectingOnboarding(
   })
   if (!res.ok) {
     throw new Error(
-      `loginExpectingOnboarding: API returned ${res.status}: ${await res.text()}`
+      `loginExpectingOnboarding: API returned ${res.status}: ${await res.text()}`,
     )
   }
   const { access_token } = await res.json()
   if (!access_token) {
-    throw new Error('loginExpectingOnboarding: API response had no access_token')
+    throw new Error(
+      'loginExpectingOnboarding: API response had no access_token',
+    )
   }
 
-  await page.addInitScript((token) => {
+  await page.addInitScript(token => {
     try {
       localStorage.setItem(
         'auth-storage',
-        JSON.stringify({ state: { token }, version: 0 })
+        JSON.stringify({ state: { token }, version: 0 }),
       )
     } catch {
       /* ignore */
@@ -304,7 +323,7 @@ export async function createTestUser(
   username: string,
   email: string,
   password: string,
-  permissions: string[] = []
+  permissions: string[] = [],
 ): Promise<string> {
   const response = await fetch(`${apiURL}/api/users`, {
     method: 'POST',
@@ -330,34 +349,64 @@ export async function createTestUser(
 }
 
 /**
- * Get admin token for API calls
+ * Get admin token for API calls. Idempotent — if the admin user doesn't
+ * exist yet, this creates it via `POST /api/app/setup/admin` (the same
+ * endpoint the UI setup form submits to) and then logs in.
  *
- * This makes a direct API call to get a fresh token for API operations.
- * Assumes admin user exists with default credentials.
+ * This is the API-only equivalent of `loginAsAdmin()`: it works without
+ * a `Page` and is safe to call from tests that haven't yet driven the
+ * setup UI. Used by 50+ specs that need a token before navigating in.
  */
 export async function getAdminToken(
   apiURL: string,
-  credentials: AdminCredentials = DEFAULT_ADMIN_CREDENTIALS
+  credentials: AdminCredentials = DEFAULT_ADMIN_CREDENTIALS,
 ): Promise<string> {
   const {
     username = 'admin',
+    email = 'admin@example.com',
     password = 'password123',
+    displayName = 'System Administrator',
   } = credentials
 
-  const response = await fetch(`${apiURL}/api/auth/login`, {
+  let response = await fetch(`${apiURL}/api/auth/login`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      username,
-      password,
-    }),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
   })
+
+  if (response.status === 401) {
+    // Admin doesn't exist yet — create it via the setup endpoint and
+    // retry login. Same shape the UI's SetupPage form posts. The 401
+    // path is the "admin not found" branch (`INVALID_CREDENTIALS`);
+    // any other non-ok status is a real failure we want to surface.
+    const setupResp = await fetch(`${apiURL}/api/app/setup/admin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username,
+        email,
+        password,
+        display_name: displayName,
+      }),
+    })
+    if (!setupResp.ok) {
+      const text = await setupResp.text()
+      throw new Error(
+        `Failed to create admin via setup endpoint: ${setupResp.statusText} - ${text}`,
+      )
+    }
+    response = await fetch(`${apiURL}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    })
+  }
 
   if (!response.ok) {
     const text = await response.text()
-    throw new Error(`Failed to get admin token: ${response.statusText} - ${text}`)
+    throw new Error(
+      `Failed to get admin token: ${response.statusText} - ${text}`,
+    )
   }
 
   const data = await response.json()

@@ -10,11 +10,14 @@ import {
   Popconfirm,
   Spin,
   Switch,
-  Tag,
-  Tooltip,
   Typography,
 } from 'antd'
-import { LockOutlined } from '@ant-design/icons'
+import {
+  DeleteOutlined,
+  EditOutlined,
+  ExperimentOutlined,
+  LockOutlined,
+} from '@ant-design/icons'
 import { Permissions, type AuthProviderResponse } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions/Can'
@@ -54,7 +57,12 @@ export function AuthProvidersListSection() {
       await Stores.AuthProvidersAdmin.updateProvider(row.id, { enabled: next })
       message.success(next ? 'Provider enabled' : 'Provider disabled')
     } catch (e: any) {
-      message.error(e?.message ?? 'Failed to update')
+      // The backend's enable-transition probe failure returns 400 with
+      // code AUTH_PROVIDER_ENABLE_FAILED_HEALTH_CHECK and a readable
+      // reason. The store emits `auth_provider.auto_disabled` so the
+      // Switch snaps back; the toast here just surfaces the reason.
+      const reason = e?.message ?? 'Failed to update provider'
+      message.error({ content: reason, duration: 8 })
     } finally {
       setPendingToggleId(null)
     }
@@ -78,69 +86,68 @@ export function AuthProvidersListSection() {
     }
   }
 
-  const renderLastTest = (row: AuthProviderResponse) => {
+  const renderLastTestLine = (row: AuthProviderResponse) => {
     if (row.last_test_ok === null || row.last_test_ok === undefined) {
       return (
-        <Text type="secondary" className="text-xs">
+        <Text type="secondary" className="text-xs block">
           Last test: never
         </Text>
       )
     }
-    const when = relativeTime(row.last_test_at)
-    const tip = row.last_test_message ?? ''
-    return row.last_test_ok ? (
-      <Tooltip title={tip}>
-        <Text type="success" className="text-xs">
-          ✓ Last test: ok ({when})
-        </Text>
-      </Tooltip>
-    ) : (
-      <Tooltip title={tip}>
-        <Text type="danger" className="text-xs">
-          ✗ Last test: fail ({when})
-        </Text>
-      </Tooltip>
+    // The failed case renders as a full Alert below the metadata block
+    // (mirrors the LLM repo unhealthy treatment); here we only render
+    // the success/inline timestamp.
+    if (!row.last_test_ok) return null
+    return (
+      <Text type="secondary" className="text-xs block">
+        Last test: ok ({relativeTime(row.last_test_at)})
+      </Text>
     )
   }
 
   const renderRowActions = (row: AuthProviderResponse) => (
     <Can permission={Permissions.AuthProvidersManage}>
-      <Flex align="center" gap="small" wrap>
-        <Switch
-          size="small"
-          checked={row.enabled}
-          loading={pendingToggleId === row.id}
-          onChange={next => onToggle(row, next)}
-          aria-label={`Toggle ${row.name}`}
-        />
+      <Switch
+        className="!mr-2"
+        checked={row.enabled}
+        loading={pendingToggleId === row.id}
+        onChange={next => onToggle(row, next)}
+        aria-label={`Toggle ${row.name}`}
+      />
+      <Button
+        type="text"
+        icon={<ExperimentOutlined />}
+        aria-label={`Test ${row.name}`}
+        loading={testingIds.has(row.id)}
+        onClick={() => onTest(row)}
+      >
+        Test
+      </Button>
+      <Button
+        type="text"
+        icon={<EditOutlined />}
+        aria-label={`Edit ${row.name}`}
+        onClick={() => setDrawer({ mode: 'edit', existing: row })}
+      >
+        Edit
+      </Button>
+      <Popconfirm
+        title={`Delete ${row.name}?`}
+        description="Linked users lose this sign-in method; their accounts remain."
+        okText="Delete"
+        okButtonProps={{ danger: true }}
+        cancelText="Cancel"
+        onConfirm={() => onDelete(row)}
+      >
         <Button
           type="text"
-          size="small"
-          loading={testingIds.has(row.id)}
-          onClick={() => onTest(row)}
+          danger
+          icon={<DeleteOutlined />}
+          aria-label={`Delete ${row.name}`}
         >
-          Test
+          Delete
         </Button>
-        <Button
-          type="text"
-          size="small"
-          onClick={() => setDrawer({ mode: 'edit', existing: row })}
-        >
-          Edit
-        </Button>
-        <Popconfirm
-          title={`Delete ${row.name}?`}
-          description="Linked users lose this sign-in method; their accounts remain."
-          okText="Delete"
-          okButtonProps={{ danger: true }}
-          cancelText="Cancel"
-          onConfirm={() => onDelete(row)}
-        >
-          <Button type="text" size="small" danger>
-            Delete
-          </Button>
-        </Popconfirm>
-      </Flex>
+      </Popconfirm>
     </Can>
   )
 
@@ -192,7 +199,6 @@ export function AuthProvidersListSection() {
                         <div className="flex-1 min-w-48">
                           <Flex align="center" gap="small">
                             <Text className="font-medium">{row.name}</Text>
-                            <Tag>{row.provider_type}</Tag>
                             {!row.enabled && (
                               <Text type="secondary" className="text-xs">
                                 (Disabled)
@@ -205,7 +211,30 @@ export function AuthProvidersListSection() {
                         </div>
                       </div>
 
-                      <div className="space-y-1">{renderLastTest(row)}</div>
+                      <div className="space-y-1">
+                        <Text type="secondary" className="text-xs block">
+                          Provider type: {row.provider_type}
+                        </Text>
+                        {renderLastTestLine(row)}
+                      </div>
+
+                      {row.last_test_ok === false && (
+                        <Alert
+                          type="error"
+                          showIcon
+                          className="!mt-2"
+                          title={
+                            row.last_test_at
+                              ? `Connection test failed at ${new Date(
+                                  row.last_test_at,
+                                ).toLocaleString()}`
+                              : 'Connection test failed'
+                          }
+                          description={
+                            row.last_test_message ?? 'No reason recorded.'
+                          }
+                        />
+                      )}
                     </div>
                   </div>
                   {index < providers.length - 1 && (

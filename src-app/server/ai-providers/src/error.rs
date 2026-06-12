@@ -9,14 +9,6 @@ pub enum ProviderError {
     #[error("Network error: {0}")]
     Network(#[from] reqwest::Error),
 
-    /// OpenAI library error
-    #[error("OpenAI error: {0}")]
-    OpenAI(String),
-
-    /// Gemini library error
-    #[error("Gemini error: {0}")]
-    Gemini(String),
-
     /// Authentication failed (invalid API key)
     #[error("Authentication failed: {0}")]
     Authentication(String),
@@ -52,10 +44,23 @@ pub enum ProviderError {
     /// Timeout error
     #[error("Request timeout: {0}")]
     Timeout(String),
+}
 
-    /// Unknown error
-    #[error("Unknown error: {0}")]
-    Unknown(String),
+/// Bound + sanitize an untrusted provider response body before it goes into an
+/// error string (which is logged and may reach the user). A hostile/compromised
+/// endpoint could otherwise return a multi-megabyte or newline-laden body to
+/// bloat logs or forge entries; and a reflective endpoint could echo request
+/// material. Truncates to a char boundary and collapses CR/LF to spaces.
+fn sanitize_error_body(body: &str) -> String {
+    const MAX: usize = 1024;
+    let cleaned: String = body
+        .chars()
+        .map(|c| if c == '\n' || c == '\r' { ' ' } else { c })
+        .collect();
+    match cleaned.char_indices().nth(MAX) {
+        Some((i, _)) => format!("{}…[truncated]", &cleaned[..i]),
+        None => cleaned,
+    }
 }
 
 impl ProviderError {
@@ -99,17 +104,14 @@ impl ProviderError {
         Self::Timeout(msg.into())
     }
 
-    /// Creates an unknown error
-    pub fn unknown(msg: impl Into<String>) -> Self {
-        Self::Unknown(msg.into())
-    }
-
-    /// Parses HTTP status codes into appropriate error types
+    /// Parses HTTP status codes into appropriate error types. The (untrusted)
+    /// response `body` is bounded + sanitized before being embedded.
     pub fn from_status_code(status: u16, body: String) -> Self {
+        let body = sanitize_error_body(&body);
         match status {
-            401 => Self::auth(format!("Unauthorized: {}", body)),
+            401 | 403 => Self::auth(format!("Unauthorized: {}", body)),
             429 => Self::rate_limit(format!("Too many requests: {}", body)),
-            400 => Self::invalid_request(format!("Bad request: {}", body)),
+            400 | 404 => Self::invalid_request(format!("Bad request: {}", body)),
             408 | 504 => Self::timeout(format!("Request timeout: {}", body)),
             _ => Self::provider(format!("HTTP {}: {}", status, body)),
         }
@@ -130,3 +132,36 @@ impl ProviderError {
 
 // Note: All providers now use custom HTTP implementations
 // Errors are handled directly via reqwest and status code parsing
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_status_code_truncates_and_strips_newlines() {
+        let body = format!("oops\nsecond line\r\n{}", "x".repeat(5000));
+        let msg = ProviderError::from_status_code(500, body).to_string();
+        // Newlines collapsed (no log-forging) and length bounded.
+        assert!(!msg.contains('\n'));
+        assert!(!msg.contains('\r'));
+        assert!(msg.contains("[truncated]"));
+        assert!(msg.len() < 1200);
+    }
+
+    #[test]
+    fn from_status_code_maps_403_and_404() {
+        assert!(matches!(
+            ProviderError::from_status_code(403, String::new()),
+            ProviderError::Authentication(_)
+        ));
+        assert!(matches!(
+            ProviderError::from_status_code(404, String::new()),
+            ProviderError::InvalidRequest(_)
+        ));
+    }
+
+    #[test]
+    fn sanitize_body_short_input_unchanged() {
+        assert_eq!(sanitize_error_body("hello"), "hello");
+    }
+}
