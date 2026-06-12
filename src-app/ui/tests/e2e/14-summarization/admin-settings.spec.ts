@@ -1,5 +1,3 @@
-// Run with --workers=1 (mandated for all E2E here): parallel workers share the
-// backend + test DB and race.
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
 
@@ -90,6 +88,48 @@ test.describe('Summarization — admin thresholds', () => {
 
     await card.locator('.ant-btn-primary[type="submit"]').click()
 
+    await expect(page.getByText(SUCCESS_TOAST).first()).toBeVisible({
+      timeout: 10000,
+    })
+  })
+
+  test('rejects full_summary_prompt missing the {transcript} placeholder', async ({
+    page,
+  }) => {
+    const card = summarizationCard(page)
+    const fullPrompt = card.getByLabel('Full-summary prompt')
+    // Non-empty value that lacks `{transcript}` — backend (and the
+    // pre-submit validator) must reject so the engine never gets a
+    // template it can't interpolate.
+    await fullPrompt.click()
+    await fullPrompt.press('ControlOrMeta+a')
+    await fullPrompt.fill('Summarize this conversation, please.')
+    await card.locator('.ant-btn-primary[type="submit"]').click()
+
+    // Inline error from the form's pre-submit validator OR a backend
+    // 400 surfaced as a message — match on the placeholder name.
+    await expect(
+      page.getByText(/\{transcript\}/i).first(),
+    ).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText(SUCCESS_TOAST)).toHaveCount(0)
+  })
+
+  test('saves valid prompt overrides', async ({ page }) => {
+    const card = summarizationCard(page)
+    const fullPrompt = card.getByLabel('Full-summary prompt')
+    const incPrompt = card.getByLabel('Incremental-summary prompt')
+
+    await fullPrompt.click()
+    await fullPrompt.press('ControlOrMeta+a')
+    await fullPrompt.fill('Summarize this transcript: {transcript}')
+
+    await incPrompt.click()
+    await incPrompt.press('ControlOrMeta+a')
+    await incPrompt.fill(
+      'Update {previous_summary} with these new turns: {new_transcript}',
+    )
+
+    await card.locator('.ant-btn-primary[type="submit"]').click()
     await expect(page.getByText(SUCCESS_TOAST).first()).toBeVisible({
       timeout: 10000,
     })

@@ -58,7 +58,13 @@ pub async fn setup_real_providers(server: &TestServer) -> RealProviderIds {
         groq["id"].as_str().unwrap(),
         GROQ_LLM_MODEL,
         "Groq Llama 4 Scout",
-        json!({ "text_completion": true }),
+        // `chat` is the codebase's capability flag for conversational
+        // text generation — matches the round-3 chat-capability check
+        // in `update_admin_settings`. An earlier draft used
+        // `text_completion` which serde silently drops (the struct
+        // doesn't declare it), so the model landed with `chat: None`
+        // and the capability gate rejected the subsequent PUT.
+        json!({ "chat": true }),
     )
     .await;
     let llm_model_id = Uuid::parse_str(llm_model["id"].as_str().unwrap()).unwrap();

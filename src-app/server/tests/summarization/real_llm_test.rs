@@ -4,14 +4,14 @@
 //! Llama 4 Scout). These exercise the paths that the rest of the
 //! suite mocks or skips: real LLM summarization (full + incremental).
 //!
-//! Gated behind `#[ignore]` so a default `cargo test` doesn't try to
-//! hit external APIs. Run with:
+//! Run with the rest of the suite:
 //!
 //!   source tests/.env.test && \
-//!     cargo test --test integration_tests -- --ignored --test-threads=1 \
-//!         summarization::real_llm_test
+//!     cargo test --test integration_tests -- --test-threads=1 \
+//!         summarization::
 //!
-//! Self-skip via `skip_if_no_keys` when `GROQ_API_KEY` is absent.
+//! Self-skips via `skip_if_no_keys` when `GROQ_API_KEY` is absent —
+//! `tests/.env.test` ships a working key so the tests run by default.
 //!
 //! Tests were R4/R5/R6 in the memory module's `real_llm_test.rs` prior
 //! to migration 91; moved here as part of the summarization extraction.
@@ -220,7 +220,6 @@ async fn fetch_summary_row(
 // R4 — summarization full path against a real Groq Llama 4 LLM.
 // ────────────────────────────────────────────────────────────────────
 
-#[ignore]
 #[tokio::test]
 async fn r4_summarization_full_with_real_groq_llm() {
     if h::skip_if_no_keys("r4_summarization_full") {
@@ -261,7 +260,6 @@ async fn r4_summarization_full_with_real_groq_llm() {
 // R5 — incremental refresh advances the summary cheaply.
 // ────────────────────────────────────────────────────────────────────
 
-#[ignore]
 #[tokio::test]
 async fn r5_summarization_incremental_with_real_groq_llm() {
     if h::skip_if_no_keys("r5_summarization_incremental") {
@@ -322,7 +320,6 @@ async fn r5_summarization_incremental_with_real_groq_llm() {
 // R6 — incremental falls back to FULL when the anchor is lost.
 // ────────────────────────────────────────────────────────────────────
 
-#[ignore]
 #[tokio::test]
 async fn r6_incremental_falls_back_to_full_on_anchor_loss() {
     if h::skip_if_no_keys("r6_incremental_fallback") {

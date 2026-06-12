@@ -75,8 +75,17 @@ impl ChatExtension for SummarizationExtension {
 
     /// Apply the persisted summary block to the prompt assembly. Drops
     /// the summarized prefix of `chat_request.messages` and replaces
-    /// it with the summary system block. Fail-soft: any error is
-    /// swallowed (summarization must never break chat).
+    /// it with the summary system block.
+    ///
+    /// Fail-soft on every failure path — summarization must NEVER break
+    /// chat. A transient DB blip on the per-conv-mode read defaults to
+    /// `inherit`; a blip on the admin-settings read defaults to
+    /// `enabled = true`. If BOTH read fail, the effective decision is
+    /// `enabled = true` (on-by-default). In that combined-outage path
+    /// the downstream `apply_summary_to_history` also fail-softs
+    /// (returns Ok(None) on its own fetch failure), so the user just
+    /// gets a chat turn without a summary block — the safer choice
+    /// than aborting the turn entirely.
     async fn before_llm_call(
         &self,
         context: &mut StreamContext,
@@ -131,13 +140,6 @@ impl ChatExtension for SummarizationExtension {
         let branch_id = context.branch_id;
         let conversation_id = context.conversation_id;
         let metadata = context.metadata.clone();
-        // Fraction-of-window: clamp the flat summary trigger by 0.75× the chat
-        // model's context window so a small-context local model summarizes before
-        // it overflows. None when the window is unknown → flat admin threshold.
-        let trigger_override: Option<usize> =
-            crate::modules::file::available_files::model_context_window(&context.metadata)
-                .await
-                .map(|w| (w as f64 * 0.75) as usize);
 
         tokio::spawn(async move {
             // Resolve effective-enabled inside the spawn.
@@ -171,6 +173,16 @@ impl ChatExtension for SummarizationExtension {
                 .default_summarization_model_id
                 .or_else(|| conversation_model_id(&metadata));
             let Some(model_id) = model_id else { return; };
+
+            // Fraction-of-window: clamp the flat summary trigger by 0.75× the
+            // chat model's context window so a small-context local model
+            // summarizes before it overflows. None when the window is unknown
+            // → flat admin threshold. Resolved INSIDE the spawn so the chat
+            // turn's hot path stays clean (audit lesson).
+            let trigger_override: Option<usize> =
+                crate::modules::file::available_files::model_context_window(&metadata)
+                    .await
+                    .map(|w| (w as f64 * 0.75) as usize);
 
             if let Err(e) = crate::modules::summarization::engine::summarizer::refresh_summary(
                 branch_id,

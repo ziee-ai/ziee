@@ -47,7 +47,21 @@ export function SummaryBoundaryMarker() {
           align="center"
           gap={6}
           style={{ cursor: 'pointer', userSelect: 'none' }}
+          role="button"
+          tabIndex={0}
+          aria-expanded={expanded}
+          aria-label={
+            expanded
+              ? 'Collapse condensed-conversation summary'
+              : 'Expand condensed-conversation summary'
+          }
           onClick={() => setExpanded(!expanded)}
+          onKeyDown={e => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              setExpanded(!expanded)
+            }
+          }}
         >
           <CompressOutlined style={{ opacity: 0.7 }} />
           <Text type="secondary" style={{ fontSize: 12 }}>

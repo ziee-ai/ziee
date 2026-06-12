@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import { Alert } from 'antd'
 import { ApiClient } from '@/api-client'
 import {
   type LlmModel,
@@ -89,11 +88,14 @@ const loadChatModels = async (
     s.loadingModels = true
   })
   try {
-    // Any text-completion model can summarize — no special capability
-    // gate (unlike memory's embedding-only filter). Pull all enabled
-    // chat models.
+    // Any chat-capable model can summarize — no special capability
+    // gate (unlike memory's embedding-only filter). The backend's
+    // capability allowlist exposes `chat` for "conversational text
+    // generation"; an earlier draft passed `text_completion` here,
+    // which the backend rejects with 400 and silently emptied the
+    // dropdown.
     const body = await ApiClient.LlmModel.list({
-      capability: 'text_completion',
+      capability: 'chat',
       page: 1,
       perPage: 200,
     })
@@ -116,14 +118,9 @@ const loadChatModels = async (
   }
 }
 
-// Suppress the unused-import warning Biome would emit when Alert isn't
-// referenced — we import it as a type-hint for downstream files that
-// re-export this store. (No runtime cost; the importer can tree-shake.)
-void Alert
-
 export const useSummarizationAdminStore = create<SummarizationAdminStore>()(
   subscribeWithSelector(
-    immer((set, _get) => ({
+    immer(set => ({
       settings: null,
       availableModels: [],
       loading: false,

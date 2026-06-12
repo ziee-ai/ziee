@@ -70,7 +70,23 @@ export function SummarizationStatusPill() {
   }, [conversation?.id, messages.size])
 
   if (!conversation?.id) return null
+  // Known cross-cutting limitation (mirrors MemoryStatusPill): for
+  // non-admins, `adminSettings` stays null because
+  // `SummarizationAdmin.__init__.settings` is self-gated on
+  // `summarization::settings::read`. So `null?.enabled === false` is
+  // false, and the pill shows for non-admins even when the admin
+  // disabled summarization deployment-wide. The deeper fix is a
+  // public-readable `enabled` flag served alongside `/auth/me`;
+  // tracked with memory as a single follow-up so the two pills don't
+  // drift apart in the meantime.
   if (adminSettings?.enabled === false) return null
+
+  // Per-conversation mode is fetched on `conversation.id` change above.
+  // It deliberately has NO `sync:conversation` subscription: toggling
+  // mode on device A is not visible on device B until next conv switch
+  // or `messages.size` change. This matches the backend (the PUT
+  // handler emits no Conversation sync event — same shape as memory's
+  // memory-mode endpoint).
 
   async function setRemote(next: Mode) {
     if (!conversation?.id) return

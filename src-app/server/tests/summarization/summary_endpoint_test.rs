@@ -151,3 +151,26 @@ async fn test_summary_endpoint_returns_404_for_other_users_conversation() {
         "intruder must get 404 (conflated to defeat probing)"
     );
 }
+
+#[tokio::test]
+async fn test_summary_endpoint_returns_404_for_nonexistent_conversation() {
+    // A random UUID not present in `conversations` must also return 404
+    // — same response shape as a wrong-owner request, so the endpoint
+    // can't be used to enumerate ids.
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "summ_endpoint_404",
+        &["conversations::read"],
+    )
+    .await;
+
+    let ghost = Uuid::new_v4();
+    let res = reqwest::Client::new()
+        .get(server.api_url(&format!("/conversations/{ghost}/summary")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 404, "GET on ghost id must be 404");
+}

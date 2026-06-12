@@ -120,7 +120,7 @@ export function SummarizationSettingsSection() {
       return
     }
     try {
-      await Stores.SummarizationAdmin.update({
+      await Stores.SummarizationAdmin.__state.update({
         enabled: values.enabled,
         default_summarization_model_id:
           values.default_summarization_model_id ?? null,
@@ -163,7 +163,7 @@ export function SummarizationSettingsSection() {
           valuePropName="checked"
           extra="When off, no conversation is summarized regardless of length. Per-conversation toggle can still force it on (off-default) or off (on-default)."
         >
-          <Switch />
+          <Switch aria-label="Enable summarization deployment-wide" />
         </Form.Item>
 
         <Form.Item
@@ -199,7 +199,12 @@ export function SummarizationSettingsSection() {
           extra="Most-recent messages kept verbatim (not summarized). Must be less than the trigger."
           rules={[{ required: true }]}
         >
-          <InputNumber min={100} step={500} style={{ width: 200 }} />
+          <InputNumber
+            min={100}
+            max={1_000_000}
+            step={500}
+            style={{ width: 200 }}
+          />
         </Form.Item>
 
         <Form.Item

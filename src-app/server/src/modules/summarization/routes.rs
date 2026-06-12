@@ -13,7 +13,7 @@ pub fn summarization_router() -> ApiRouter {
                 .put_with(update_admin_settings, update_admin_settings_docs),
         )
         .api_route(
-            "/conversations/{conversation_id}/summary",
+            "/conversations/{id}/summary",
             get_with(get_conversation_summary, get_conversation_summary_docs),
         );
 

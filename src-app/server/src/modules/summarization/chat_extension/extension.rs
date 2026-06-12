@@ -12,10 +12,13 @@ use crate::modules::chat::core::extension::{
 pub const METADATA: ExtensionMetadata = ExtensionMetadata {
     name: "summarization",
     // 24 — load-bearing: runs BEFORE the memory extension (order 25)
-    // so the summary block lands first; memory's retrieval block is
-    // appended to compacted history. Reordering would let memory
-    // inject before compaction, breaking the [System*, SummaryBlock,
-    // MemoryBlock, RecentTurns] assembly invariant.
+    // so the summary block is in place by the time memory's hooks fire.
+    // Memory's `inject_core_memory_blocks` inserts at position 0 (and
+    // its vector-retrieval block appends to the latest user message);
+    // running memory FIRST would shift the indices summarization counts
+    // when pruning the condensed prefix, so the order is invariant —
+    // not a "summary block sits above memory" claim, which the actual
+    // final layout doesn't honour anyway.
     order: 24,
 };
 

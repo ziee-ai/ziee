@@ -3089,7 +3089,7 @@ export const ApiEndpoints = {
   'RuntimeVersion.subscribeDownloadEvents': 'GET /api/local-runtime/versions/downloads/{key}/events',
   'RuntimeVersion.syncCache': 'POST /api/local-runtime/versions/sync-cache',
   'RuntimeVersion.usage': 'GET /api/local-runtime/version-usage',
-  'Summarization.getConversationSummary': 'GET /api/conversations/{conversation_id}/summary',
+  'Summarization.getConversationSummary': 'GET /api/conversations/{id}/summary',
   'SummarizationAdmin.get': 'GET /api/summarization/settings',
   'SummarizationAdmin.update': 'PUT /api/summarization/settings',
   'SummarizationTest.refresh': 'POST /api/_test/summarization/refresh',
@@ -3347,7 +3347,7 @@ export type ApiEndpointParameters = {
   'RuntimeVersion.subscribeDownloadEvents': { key: string }
   'RuntimeVersion.syncCache': void
   'RuntimeVersion.usage': { engine?: string }
-  'Summarization.getConversationSummary': { conversation_id: string }
+  'Summarization.getConversationSummary': { id: string }
   'SummarizationAdmin.get': void
   'SummarizationAdmin.update': UpdateSummarizationAdminSettingsRequest
   'SummarizationTest.refresh': TestRefreshRequest

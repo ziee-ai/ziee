@@ -201,3 +201,86 @@ async fn test_summarization_mode_returns_404_for_other_users_conversation() {
         "intruder must get 404 (conflated to defeat probing)"
     );
 }
+
+#[tokio::test]
+async fn test_put_summarization_mode_returns_404_for_other_users_conversation() {
+    // Mirror of the GET IDOR test for the PUT path — the ownership
+    // probe runs BEFORE the upsert, so a non-owner's write must be
+    // rejected without materializing a row.
+    let server = crate::common::TestServer::start().await;
+    let owner = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "summ_mode_put_owner",
+        &["conversations::read", "conversations::edit"],
+    )
+    .await;
+    let intruder = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "summ_mode_put_intruder",
+        &["conversations::read", "conversations::edit"],
+    )
+    .await;
+    let conv_id = create_conversation(&server, &owner.token).await;
+
+    let res = reqwest::Client::new()
+        .put(server.api_url(&format!("/conversations/{conv_id}/summarization-mode")))
+        .header("Authorization", format!("Bearer {}", intruder.token))
+        .json(&json!({ "summarization_mode": "off" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        404,
+        "intruder PUT must get 404, NOT write a row"
+    );
+
+    // Confirm no override leaked: owner's GET still reports the implicit
+    // default 'inherit' (row absence).
+    let owner_get = reqwest::Client::new()
+        .get(server.api_url(&format!("/conversations/{conv_id}/summarization-mode")))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .send()
+        .await
+        .unwrap();
+    assert!(owner_get.status().is_success());
+    let body: Value = owner_get.json().await.unwrap();
+    assert_eq!(
+        body["summarization_mode"].as_str(),
+        Some("inherit"),
+        "intruder's blocked PUT must not have written an override row"
+    );
+}
+
+#[tokio::test]
+async fn test_summarization_mode_returns_404_for_nonexistent_conversation() {
+    // A random UUID that doesn't exist anywhere in `conversations` must
+    // surface as 404 — same response as a wrong-owner request, so the
+    // endpoint can't be used to enumerate conversation ids.
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "summ_mode_404",
+        &["conversations::read", "conversations::edit"],
+    )
+    .await;
+
+    let ghost = uuid::Uuid::new_v4();
+
+    let get_res = reqwest::Client::new()
+        .get(server.api_url(&format!("/conversations/{ghost}/summarization-mode")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get_res.status(), 404, "GET on ghost id must be 404");
+
+    let put_res = reqwest::Client::new()
+        .put(server.api_url(&format!("/conversations/{ghost}/summarization-mode")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "summarization_mode": "on" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(put_res.status(), 404, "PUT on ghost id must be 404");
+}

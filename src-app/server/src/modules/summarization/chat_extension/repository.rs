@@ -34,16 +34,14 @@ impl SummarizationChatRepository {
         &self,
         conversation_id: Uuid,
     ) -> Result<String, AppError> {
-        let row: Option<(String,)> = sqlx::query_as(
+        let row = sqlx::query_scalar!(
             "SELECT summarization_mode FROM conversation_summarization_settings WHERE conversation_id = $1",
+            conversation_id,
         )
-        .bind(conversation_id)
         .fetch_optional(&self.pool)
         .await
         .map_err(AppError::database_error)?;
-        Ok(row
-            .map(|(m,)| m)
-            .unwrap_or_else(|| DEFAULT_SUMMARIZATION_MODE.to_string()))
+        Ok(row.unwrap_or_else(|| DEFAULT_SUMMARIZATION_MODE.to_string()))
     }
 
     /// Set the per-conversation summarization mode. Writing
@@ -60,24 +58,25 @@ impl SummarizationChatRepository {
         mode: &str,
     ) -> Result<(), AppError> {
         if mode == DEFAULT_SUMMARIZATION_MODE {
-            sqlx::query(
+            sqlx::query!(
                 "DELETE FROM conversation_summarization_settings WHERE conversation_id = $1",
+                conversation_id,
             )
-            .bind(conversation_id)
             .execute(&self.pool)
             .await
             .map_err(AppError::database_error)?;
         } else {
-            sqlx::query(
+            sqlx::query!(
                 r#"
                 INSERT INTO conversation_summarization_settings (conversation_id, summarization_mode)
                 VALUES ($1, $2)
-                ON CONFLICT (conversation_id) DO UPDATE SET summarization_mode = EXCLUDED.summarization_mode,
-                                                            updated_at = NOW()
+                ON CONFLICT (conversation_id) DO UPDATE
+                    SET summarization_mode = EXCLUDED.summarization_mode,
+                        updated_at = NOW()
                 "#,
+                conversation_id,
+                mode,
             )
-            .bind(conversation_id)
-            .bind(mode)
             .execute(&self.pool)
             .await
             .map_err(AppError::database_error)?;

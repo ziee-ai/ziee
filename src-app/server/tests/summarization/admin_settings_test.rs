@@ -309,3 +309,117 @@ async fn test_admin_endpoints_require_summarization_settings_permission() {
         .unwrap();
     assert_eq!(put_res.status(), 403);
 }
+
+#[tokio::test]
+async fn test_default_model_id_rejects_non_chat_capable_model_returns_400() {
+    // Pointing `default_summarization_model_id` at an embedding-only
+    // (or otherwise non-chat-capable) model must return 400 — the
+    // engine could not produce a summary against it, and the failure
+    // would only surface as a `tracing::warn` at chat-turn time on a
+    // live deployment. Seeded directly via SQL to avoid pulling in the
+    // full provider-create API surface.
+    let (server, admin) = admin_user("summ_default_model_capability").await;
+
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+
+    let provider_id: uuid::Uuid = sqlx::query_scalar(
+        "INSERT INTO llm_providers (name, provider_type, enabled)
+         VALUES ('summ-cap-test', 'openai', true)
+         RETURNING id",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("seed llm_provider");
+
+    let model_id: uuid::Uuid = sqlx::query_scalar(
+        "INSERT INTO llm_models
+            (provider_id, name, display_name, capabilities, enabled)
+         VALUES ($1, 'embed-only', 'Embed Only',
+                 '{\"text_embedding\": true}'::jsonb, true)
+         RETURNING id",
+    )
+    .bind(provider_id)
+    .fetch_one(&pool)
+    .await
+    .expect("seed llm_model");
+
+    let res = reqwest::Client::new()
+        .put(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "default_summarization_model_id": model_id.to_string() }))
+        .send()
+        .await
+        .unwrap();
+    let status = res.status();
+    let body = res.text().await.unwrap_or_default();
+    assert_eq!(
+        status, 400,
+        "non-chat-capable model_id must return 400, got {status}: {body}"
+    );
+    assert!(
+        body.contains("chat-capable"),
+        "error body should mention the chat capability gate, got: {body}"
+    );
+}
+
+#[tokio::test]
+async fn test_default_model_id_validates_existence_returns_400() {
+    // Setting `default_summarization_model_id` to a UUID that doesn't
+    // exist in `llm_models` must return 400 (the handler pre-checks),
+    // not a raw 500 from a deferred FK violation in the DB.
+    let (server, admin) = admin_user("summ_default_model_fk").await;
+
+    let ghost = uuid::Uuid::new_v4();
+    let res = reqwest::Client::new()
+        .put(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "default_summarization_model_id": ghost.to_string() }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        400,
+        "non-existent default_summarization_model_id must return 400"
+    );
+}
+
+#[tokio::test]
+async fn test_read_only_user_can_get_but_not_put() {
+    // A user with `summarization::settings::read` but NOT `::manage`
+    // must succeed on GET (200) and fail on PUT (403). This exercises
+    // the per-endpoint perm split — granting read alone isn't enough
+    // to mutate the singleton.
+    let server = crate::common::TestServer::start().await;
+    let read_only = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "summ_read_only",
+        &["summarization::settings::read"],
+    )
+    .await;
+
+    let get_res = reqwest::Client::new()
+        .get(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", read_only.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get_res.status(), 200, "read perm alone must allow GET");
+
+    let put_res = reqwest::Client::new()
+        .put(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", read_only.token))
+        .json(&json!({ "enabled": false }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        put_res.status(),
+        403,
+        "read perm alone must NOT allow PUT — manage perm required"
+    );
+}

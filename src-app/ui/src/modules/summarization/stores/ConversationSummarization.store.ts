@@ -22,6 +22,11 @@ import type { ConversationSummary } from '@/api-client/types'
  */
 interface ConversationSummarizationStore {
   current: { conversationId: string; summary: ConversationSummary | null } | null
+  // The conversation the most-recent `loadForConversation` was started for.
+  // When a load resolves, we accept its result only if this still matches —
+  // an older in-flight request whose user has already switched conversations
+  // gets dropped instead of clobbering the new conversation's summary.
+  requestedConversationId: string | null
   loading: boolean
   error: string | null
 
@@ -34,37 +39,50 @@ export const useConversationSummarizationStore =
     subscribeWithSelector(
       immer((set, get) => ({
         current: null,
+        requestedConversationId: null,
         loading: false,
         error: null,
 
         loadForConversation: async (conversationId: string) => {
           set(s => {
+            // Drop stale `current` when starting a load for a different
+            // conversation — readers (e.g. SummaryBoundaryMarker) only
+            // key on `summary.summarized_up_to_id === message.id`, so a
+            // surviving prior-conversation `current` could briefly
+            // render against the new conversation's messages.
+            if (s.current && s.current.conversationId !== conversationId) {
+              s.current = null
+            }
+            s.requestedConversationId = conversationId
             s.loading = true
             s.error = null
           })
           try {
             const summary =
               await ApiClient.Summarization.getConversationSummary({
-                conversation_id: conversationId,
+                id: conversationId,
               })
-            // Guard against a slow load winning the race against a
-            // newer conversation switch.
-            if (get().current?.conversationId !== conversationId) {
-              const target = get().current
-              if (!target || target.conversationId !== conversationId) {
-                // Switched conversation while the request was in
-                // flight; drop the result.
-                set(s => {
-                  s.loading = false
-                })
-                return
-              }
+            // Switched conversation while the request was in flight; drop
+            // the result rather than clobber the new conversation.
+            if (get().requestedConversationId !== conversationId) {
+              set(s => {
+                s.loading = false
+              })
+              return
             }
             set(s => {
               s.current = { conversationId, summary }
               s.loading = false
             })
           } catch (error) {
+            // Same race-guard on the failure path — a stale error from
+            // the prior conversation must not poison the new one.
+            if (get().requestedConversationId !== conversationId) {
+              set(s => {
+                s.loading = false
+              })
+              return
+            }
             set(s => {
               s.error =
                 error instanceof Error
@@ -78,6 +96,8 @@ export const useConversationSummarizationStore =
         clear: () => {
           set(s => {
             s.current = null
+            s.requestedConversationId = null
+            s.loading = false
             s.error = null
           })
         },

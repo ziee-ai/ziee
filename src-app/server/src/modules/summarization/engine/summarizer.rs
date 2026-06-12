@@ -47,7 +47,7 @@ use crate::core::Repos;
 
 /// Fallback summarizer thresholds — used only if the admin settings
 /// row can't be read on a given call (transient DB blip). Match the
-/// column DEFAULTs in migration 52. The runtime values come from
+/// column DEFAULTs in migration 91. The runtime values come from
 /// `summarization_admin_settings.summarize_after_tokens` /
 /// `.summarizer_keep_recent_tokens` and can be tuned per-deployment from the
 /// admin UI without a redeploy.
@@ -253,6 +253,45 @@ pub fn build_transcript(msgs: &[SummarizableMessage]) -> String {
     s
 }
 
+/// Single-pass substitution of the incremental-summary prompt's two
+/// placeholders. Sequential `String::replace` calls are unsafe here:
+/// if a previously-LLM-generated `previous_summary` ever contained the
+/// literal text `{new_transcript}` (an admin's persona prompt could
+/// coax this out of a malicious user's branch), the second call would
+/// re-substitute and leak transcript content into the "earlier context"
+/// slot. Single-pass scanning never revisits substituted text, so
+/// neither placeholder can match content the other inserted.
+fn render_incremental_prompt(
+    template: &str,
+    previous_summary: &str,
+    new_transcript: &str,
+) -> String {
+    const PREV: &str = "{previous_summary}";
+    const NEW: &str = "{new_transcript}";
+    let mut out = String::with_capacity(
+        template.len() + previous_summary.len() + new_transcript.len(),
+    );
+    let mut rest = template;
+    while !rest.is_empty() {
+        let next_prev = rest.find(PREV);
+        let next_new = rest.find(NEW);
+        let (cut, replacement, placeholder_len) = match (next_prev, next_new) {
+            (None, None) => {
+                out.push_str(rest);
+                break;
+            }
+            (Some(p), None) => (p, previous_summary, PREV.len()),
+            (None, Some(n)) => (n, new_transcript, NEW.len()),
+            (Some(p), Some(n)) if p <= n => (p, previous_summary, PREV.len()),
+            (Some(_), Some(n)) => (n, new_transcript, NEW.len()),
+        };
+        out.push_str(&rest[..cut]);
+        out.push_str(replacement);
+        rest = &rest[cut + placeholder_len..];
+    }
+    out
+}
+
 /// Fetch the persisted summary (if any) for this branch.
 pub async fn fetch_summary(
     pool: &PgPool,
@@ -304,8 +343,10 @@ pub async fn apply_summary_to_history(
 ///   `[System*, User|Assistant*]`
 /// where the leading System block is the assistant's instructions
 /// (and any other extension-injected system context that has ALREADY
-/// run before us — the retriever's memory-block comes AFTER summary
-/// per the call order in `MemoryExtension::before_llm_call`).
+/// run before us). Extensions execute in ascending-order order, so
+/// summarization (order 24) runs before memory (order 25); memory's
+/// later prepend therefore lands ABOVE summarization's block in the
+/// final array.
 ///
 /// We:
 ///   1. Count the leading System prefix length → `system_prefix_len`.
@@ -427,9 +468,11 @@ pub async fn refresh_summary(
             summarized_up_to_id,
             message_count,
         } => (
-            incremental_prompt
-                .replace("{previous_summary}", &previous_summary)
-                .replace("{new_transcript}", &new_transcript),
+            render_incremental_prompt(
+                &incremental_prompt,
+                &previous_summary,
+                &new_transcript,
+            ),
             summarized_up_to_id,
             message_count,
             "incremental",
@@ -487,6 +530,21 @@ fn message_to_summarizable(
     }
 }
 
+/// Call the configured LLM to generate a summary.
+///
+/// **Known limitation — system-key only.** This path reads
+/// `provider.api_key` directly and does NOT route through
+/// `chat::core::ai_provider::resolve_api_key_for_user`. Chat-time
+/// requests honour a user's personal `user_llm_provider_api_keys`
+/// override; summarization does not. On a deployment where the
+/// `default_summarization_model_id` lives on a provider whose system
+/// `api_key` is NULL (per-user-keys-only deployments), summarization
+/// will silently 401 against the provider and the user will see no
+/// summary marker ever appear. The fail-soft `tracing::warn` in
+/// `after_llm_call` is the only signal. Plumbing `user_id` into
+/// `refresh_summary` so it can call `resolve_api_key_for_user` is the
+/// follow-up; tracked alongside memory's `embedding_worker` which has
+/// the same constraint.
 async fn call_summarization_llm(
     model: &crate::modules::llm_model::models::LlmModel,
     prompt: String,
@@ -976,6 +1034,58 @@ mod tests {
         assert_eq!(req.messages.len(), 1);
         assert!(matches!(req.messages[0].role, Role::System));
         assert!(request_text(&req, 0).contains("condensed"));
+    }
+
+    #[test]
+    fn render_incremental_prompt_substitutes_once() {
+        // Sanity: both placeholders interpolate exactly once each.
+        let out = render_incremental_prompt(
+            "PREV={previous_summary} NEW={new_transcript} END",
+            "S1",
+            "T1",
+        );
+        assert_eq!(out, "PREV=S1 NEW=T1 END");
+    }
+
+    #[test]
+    fn render_incremental_prompt_does_not_re_substitute_inserted_content() {
+        // The prompt-injection guard: a previous_summary that contains
+        // the literal {new_transcript} placeholder must NOT cause the
+        // new transcript to leak into the previous slot. Sequential
+        // .replace() would fail this; the single-pass implementation
+        // passes.
+        let prev = "summary ends with {new_transcript} literal";
+        let new_tx = "SECRET-NEW-TURNS";
+        let out = render_incremental_prompt(
+            "P={previous_summary}|N={new_transcript}",
+            prev,
+            new_tx,
+        );
+        // previous_summary slot keeps the literal `{new_transcript}`
+        // text verbatim; only the explicit `{new_transcript}` outside
+        // the previous slot gets substituted.
+        assert_eq!(
+            out,
+            "P=summary ends with {new_transcript} literal|N=SECRET-NEW-TURNS"
+        );
+        // Belt-and-suspenders: the new transcript appears exactly once
+        // in the rendered prompt.
+        assert_eq!(out.matches(new_tx).count(), 1);
+    }
+
+    #[test]
+    fn render_incremental_prompt_handles_no_placeholders() {
+        // Template with neither placeholder is returned unchanged.
+        let out = render_incremental_prompt("nothing to substitute", "S", "T");
+        assert_eq!(out, "nothing to substitute");
+    }
+
+    #[test]
+    fn render_incremental_prompt_handles_only_one_placeholder() {
+        let out = render_incremental_prompt("only {previous_summary}", "S", "T");
+        assert_eq!(out, "only S");
+        let out = render_incremental_prompt("only {new_transcript}", "S", "T");
+        assert_eq!(out, "only T");
     }
 
     #[test]

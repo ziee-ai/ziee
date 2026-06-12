@@ -64,10 +64,10 @@ pub async fn update_admin_settings(
         }
     }
     if let Some(k) = body.summarizer_keep_recent_tokens {
-        if k < 100 {
+        if !(100..=1_000_000).contains(&k) {
             return Err(AppError::bad_request(
                 "VALIDATION_ERROR",
-                "summarizer_keep_recent_tokens must be >= 100",
+                "summarizer_keep_recent_tokens out of range (100..=1000000)",
             )
             .into());
         }
@@ -108,6 +108,35 @@ pub async fn update_admin_settings(
     let incremental_summary_prompt = body
         .incremental_summary_prompt
         .map(|outer| outer.and_then(|s| if s.is_empty() { None } else { Some(s) }));
+
+    // FK pre-check: a bad `default_summarization_model_id` should be
+    // a clean 400, not a raw 500 from the FK violation. Some(None)
+    // (clear) and missing-field both bypass — only the explicit
+    // Some(Some(id)) set case needs probing. Also enforce that the
+    // picked model is `chat`-capable so the engine doesn't fail
+    // silently at call time against an embedding-only / image-only
+    // model (matches the FE dropdown's filter).
+    if let Some(Some(model_id)) = body.default_summarization_model_id {
+        match Repos.llm_model.get_by_id(model_id).await {
+            Ok(Some(model)) => {
+                if !model.capabilities.chat.unwrap_or(false) {
+                    return Err(AppError::bad_request(
+                        "VALIDATION_ERROR",
+                        "default_summarization_model_id must reference a chat-capable model",
+                    )
+                    .into());
+                }
+            }
+            Ok(None) => {
+                return Err(AppError::bad_request(
+                    "VALIDATION_ERROR",
+                    "default_summarization_model_id refers to a non-existent llm_model",
+                )
+                .into());
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
 
     // Effective keep < trigger invariant (the fields can be updated
     // independently, so check the merged values against the
@@ -158,7 +187,21 @@ pub fn update_admin_settings_docs(op: TransformOperation) -> TransformOperation 
         .id("SummarizationAdmin.update")
         .tag("Summarization")
         .summary("Update deployment-wide summarization settings")
+        .description(
+            "Tri-state partial update — every field is optional. \
+             Missing field = no change; explicit JSON null = clear back \
+             to compiled default. Returns 400 on range / placeholder / \
+             keep<trigger / unknown-llm-model violations before any DB write.",
+        )
         .response::<200, Json<SummarizationAdminSettings>>()
+        .response_with::<400, (), _>(|res| {
+            res.description(
+                "Validation failed (out-of-range token threshold, \
+                 missing prompt placeholder, keep>=trigger, unknown \
+                 default_summarization_model_id, or model that is not \
+                 chat-capable).",
+            )
+        })
 }
 
 // ─── per-branch summary (owner-gated read) ───────────────────────────

@@ -82,6 +82,35 @@ test.describe('Summarization — per-conversation override', () => {
     )
     expect(((await after.json()) as any).summarization_mode).toBe('off')
 
+    // off → on round-trip.
+    const on = await page.request.put(
+      `${apiURL}/api/conversations/${conv.id}/summarization-mode`,
+      { headers: authHeader, data: { summarization_mode: 'on' } },
+    )
+    expect(on.ok()).toBe(true)
+    expect(((await on.json()) as any).summarization_mode).toBe('on')
+    const afterOn = await page.request.get(
+      `${apiURL}/api/conversations/${conv.id}/summarization-mode`,
+      { headers: authHeader },
+    )
+    expect(((await afterOn.json()) as any).summarization_mode).toBe('on')
+
+    // on → inherit clears the override row server-side (set to default
+    // deletes; the next GET should see the implicit `inherit` again).
+    const inherit = await page.request.put(
+      `${apiURL}/api/conversations/${conv.id}/summarization-mode`,
+      { headers: authHeader, data: { summarization_mode: 'inherit' } },
+    )
+    expect(inherit.ok()).toBe(true)
+    expect(((await inherit.json()) as any).summarization_mode).toBe('inherit')
+    const afterInherit = await page.request.get(
+      `${apiURL}/api/conversations/${conv.id}/summarization-mode`,
+      { headers: authHeader },
+    )
+    expect(((await afterInherit.json()) as any).summarization_mode).toBe(
+      'inherit',
+    )
+
     // Invalid value rejected with 400.
     const bad = await page.request.put(
       `${apiURL}/api/conversations/${conv.id}/summarization-mode`,
