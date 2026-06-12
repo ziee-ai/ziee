@@ -574,12 +574,12 @@ async fn first_auth_required_hf_model(
     // is actually about. The `/hub/models` response shape does not
     // surface `min_ziee_version`, so the skip list lives here as a
     // hard-coded fixture exclusion. Update when the seed changes.
-    // v2: matches the reverse-DNS `name` field (was `id` in v1).
+    // Matches the reverse-DNS `name` field on the catalog item.
     const INCOMPATIBLE_FIXTURE_NAMES: &[&str] = &["io.github.phibya/deepseek-r1-70b"];
 
-    // v2 Phase 7: auth + source-registry live on
-    // `sources[].environmentVariables[]` (isRequired+isSecret) and
-    // `sources[].registryType`, not v1's model-wide flat fields.
+    // Auth + source-registry live on `sources[].environmentVariables[]`
+    // (isRequired+isSecret) and `sources[].registryType` — not on
+    // model-wide flat fields.
     models
         .as_array()
         .unwrap()

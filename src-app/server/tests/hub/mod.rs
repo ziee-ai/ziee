@@ -12,7 +12,7 @@ mod mock_release_server;
 // Realtime-sync emission for the `hub_settings` entity (reuses the hermetic
 // mock Pages server to drive POST /hub/refresh).
 mod sync_emit_test;
-// Phase 7 / §13.6 — slug → reverse-DNS rewrite for legacy hub_entities rows.
+// Slug → reverse-DNS rewrite for legacy hub_entities rows.
 mod migration_test;
 
 // ============================================================================
@@ -108,7 +108,7 @@ async fn test_get_hub_models_response_structure() {
         .first()
         .expect("Should have at least one model");
 
-    // Verify model structure (v2 Phase 7 body shape).
+    // Verify model structure.
     assert!(
         first_model.get("name").and_then(|v| v.as_str()).is_some(),
         "Model should have name"
@@ -120,7 +120,7 @@ async fn test_get_hub_models_response_structure() {
             .is_some(),
         "Model should have display_name"
     );
-    // Phase 7: sources[] replaces the v1 flat fields
+    // sources[] carries what would otherwise have been flat fields
     // (repository_url / repository_path / main_filename / file_format
     //  / size_gb / quantization_options).
     let sources = first_model
@@ -256,9 +256,9 @@ async fn test_refresh_hub_models_requires_permission() {
 // Hub Models Auth Required Tests
 // ============================================================================
 
-/// Helper: model "needs auth" under v2 if any of its sources has an
-/// env var marked `isRequired: true, isSecret: true`. Replaces the
-/// v1 model-wide `auth_required` flag.
+/// Helper: model "needs auth" if any of its sources has an env var
+/// marked `isRequired: true, isSecret: true`. There is no model-wide
+/// `auth_required` flag.
 fn model_needs_auth_v2(model: &serde_json::Value) -> bool {
     model
         .get("sources")
@@ -281,10 +281,9 @@ fn model_needs_auth_v2(model: &serde_json::Value) -> bool {
 
 #[tokio::test]
 async fn test_hub_models_sources_have_env_vars_when_auth_needed() {
-    // v2 Phase 7: auth requirements live on
-    // `sources[].environmentVariables[]` with `isRequired+isSecret`
-    // (not the v1 model-wide `auth_required` flag). Verify every
-    // seeded model declares at least one source.
+    // Auth requirements live on `sources[].environmentVariables[]`
+    // with `isRequired+isSecret` (no model-wide `auth_required` flag).
+    // Verify every seeded model declares at least one source.
     let server = crate::common::TestServer::start().await;
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
@@ -330,8 +329,8 @@ async fn test_hub_models_sources_have_env_vars_when_auth_needed() {
 #[tokio::test]
 async fn test_hub_models_seed_marks_huggingface_sources_as_needing_auth() {
     // Every seeded HF model declares HUGGINGFACE_API_KEY as
-    // isRequired+isSecret — this is the v2 successor to the v1
-    // model-wide `auth_required: true`.
+    // isRequired+isSecret, in place of a model-wide
+    // `auth_required: true` flag.
     let server = crate::common::TestServer::start().await;
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
@@ -484,8 +483,8 @@ async fn test_get_hub_assistants_response_structure() {
             .is_some(),
         "Assistant should have tags array"
     );
-    // v2 Phase 7 dropped `popularity_score`. `dependencies[]` is the
-    // new informational field; it may be empty but should be present
+    // There is no `popularity_score` — `dependencies[]` is the
+    // informational field; it may be empty but should be present
     // (serde default) or omitted entirely (`skip_serializing_if`).
 }
 
@@ -691,14 +690,14 @@ async fn test_get_hub_mcp_servers_response_structure() {
         first_server.get("name").and_then(|v| v.as_str()).is_some(),
         "Server should have name"
     );
-    // v2 strict server.json: `display_name` is GONE from the manifest
-    // body; the display title now lives on IndexItem (catalog metadata)
-    // via `_hub_curation.title` in the source YAML. The card / drawer
-    // look it up from `Stores.HubCatalog.catalog` by name.
+    // Strict server.json: `display_name` is NOT on the manifest body;
+    // the display title lives on IndexItem (catalog metadata) via
+    // `_hub_curation.title` in the source YAML. The card / drawer look
+    // it up from `Stores.HubCatalog.catalog` by name.
     // command and args are optional (for HTTP transport servers).
-    // v2 server.json shape drives off packages[] / remotes[] — at
-    // least one MUST be set (the publisher filters to launchable
-    // ones at build time).
+    // The server.json shape drives off packages[] / remotes[] — at
+    // least one MUST be set (the publisher filters to launchable ones
+    // at build time).
     let has_packages = first_server
         .get("packages")
         .and_then(|v| v.as_array())
@@ -1883,7 +1882,7 @@ async fn test_create_model_from_hub() {
     );
 
     // Get first model hub_id
-    // Pick `llama-3-8b-instruct` explicitly — the v2 seed has 2 model
+    // Pick `llama-3-8b-instruct` explicitly — the seed has 2 model
     // entries and the install path needs a known-good id; `[0]` is
     // fragile to seed reorderings.
     let first_model = models
@@ -2029,7 +2028,7 @@ async fn test_create_model_from_hub_requires_permission() {
 
     assert_eq!(response.status(), 200);
     let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    // Pick `llama-3-8b-instruct` explicitly — the v2 seed has 2 model
+    // Pick `llama-3-8b-instruct` explicitly — the seed has 2 model
     // entries and the install path needs a known-good id; `[0]` is
     // fragile to seed reorderings.
     let first_model = models
@@ -2152,7 +2151,7 @@ async fn test_create_model_from_hub_invalid_provider_id() {
         .expect("Request failed");
 
     let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    // Pick `llama-3-8b-instruct` explicitly — the v2 seed has 2 model
+    // Pick `llama-3-8b-instruct` explicitly — the seed has 2 model
     // entries and the install path needs a known-good id; `[0]` is
     // fragile to seed reorderings.
     let first_model = models
@@ -2227,9 +2226,9 @@ async fn test_create_model_from_hub_with_quantization() {
 
     let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
 
-    // v2 Phase 7: quantizations live on `sources[].quantizations[]`,
-    // not the v1 model-wide `quantization_options[]`. Pick a model
-    // whose first source has > 1 quantization (the seed's Llama 3.2 GGUF
+    // Quantizations live on `sources[].quantizations[]`, not a
+    // model-wide `quantization_options[]`. Pick a model whose first
+    // source has > 1 quantization (the seed's Llama 3.2 GGUF
     // satisfies this).
     let model_with_quants = models
         .as_array()
@@ -2332,7 +2331,7 @@ async fn test_duplicate_download_prevention() {
         .expect("Request failed");
 
     let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    // Pick `llama-3-8b-instruct` explicitly — the v2 seed has 2 model
+    // Pick `llama-3-8b-instruct` explicitly — the seed has 2 model
     // entries and the install path needs a known-good id; `[0]` is
     // fragile to seed reorderings.
     let first_model = models
@@ -2724,8 +2723,8 @@ async fn test_hub_models_source_auth_configured_reflects_repo_credential() {
     }
 }
 
-/// v2 Phase 7: detect HF models by walking `sources[]` rather than
-/// the dropped v1 model-wide `repository_url`.
+/// Detect HF models by walking `sources[]`; there is no model-wide
+/// `repository_url`.
 fn model_has_huggingface_source(model: &serde_json::Value) -> bool {
     model
         .get("sources")

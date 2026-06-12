@@ -7,15 +7,15 @@
 //! catalog emits a `hub_settings`/`update` frame to a `hub::catalog::read`
 //! holder and that a user lacking it stays silent.
 //!
-//! Trigger choice — cheapest real path under Hub v2:
+//! Trigger choice — cheapest real path:
 //!   * `refresh_hub_catalog` (POST /hub/refresh) emits `hub_settings`/`update`
 //!     only after the Pages-fetch + atomic index-swap succeeds. A network
 //!     failure aborts the handler before any event.
 //!   * The hermetic `mock_release_server` (a mini Pages site on loopback)
 //!     serves `index.json` with no signature chain, so `/hub/refresh` returns
 //!     200 against it with no real network.
-//!   * v1's `/hub/activate` route is gone (no per-version pinning under v2);
-//!     /hub/refresh is now the only catalog-mutation trigger.
+//!   * There is no `/hub/activate` route (no per-version pinning);
+//!     /hub/refresh is the only catalog-mutation trigger.
 //!
 //! The settings row is a singleton, so the wire id is the nil UUID — assert
 //! entity + action only.

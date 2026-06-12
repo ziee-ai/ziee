@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ziee.ai/hub/schemas/v2/assistant.schema.json",
+  "$id": "https://ziee.ai/hub/schemas/2026-06-12/assistant.schema.json",
   "title": "Hub v2 Assistant Manifest",
   "description": "Per-entry manifest for a HubAssistant. v2 keys the entry off the envelope's reverse-DNS `name` (and `version`). The body drops the v1 `recommended_models` / `recommended_mcp_servers` / `use_cases` / `example_prompts` / `popularity_score` fields and replaces the recommended_* pair with a typed `dependencies[]` list using reverse-DNS names and semver ranges.",
   "allOf": [

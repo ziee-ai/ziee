@@ -3,8 +3,8 @@
 //! Uses the in-test `mock_release_server` (a mini Pages site over
 //! loopback) + the debug-only `ZIEE_HUB_PAGES_BASE` override so the
 //! full refresh → parse-index → lazy-fetch-manifest path is exercised
-//! against a local server. v1's "activate by tag" + cosign chain are
-//! gone; the equivalent flow under v2 is:
+//! against a local server. There is no "activate by tag" or cosign
+//! chain; the flow is:
 //!
 //!   mock.switch_to(version)           // publisher updates the catalog
 //!   POST /hub/refresh (admin)         // server pulls the new index
@@ -34,12 +34,10 @@ fn find_entry<'a>(entries: &'a Json, name: &str) -> &'a Json {
 }
 
 /// Switch the mock's published catalog to `version` and force the
-/// server to pull it via `/hub/refresh`. v1 tests called this flow
-/// `/hub/activate` against a per-version GitHub release; under v2 the
-/// catalog is in-place at the Pages base + refresh is the only knob
-/// (no per-version pinning). Asserting 200 here keeps the test
-/// failure message focused on the code-under-test, not on a missed
-/// setup step.
+/// server to pull it via `/hub/refresh`. The catalog is in-place at
+/// the Pages base + refresh is the only knob (no per-version
+/// pinning). Asserting 200 here keeps the test failure message
+/// focused on the code-under-test, not on a missed setup step.
 async fn apply_catalog(
     mock: &MockHub,
     server: &TestServer,
@@ -193,11 +191,11 @@ fn two_versions() -> Vec<MockVersion> {
 
 #[tokio::test]
 async fn refresh_picks_up_publisher_catalog_changes() {
-    // Covers the end-to-end refresh flow under v2 (the replacement for
-    // v1's activate-by-tag): a publisher updates `index.json` on the
-    // Pages branch, an admin POSTs /hub/refresh, the server pulls the
-    // new index in place. Tested by flipping the mock's published
-    // catalog with `MockHub::switch_to` between two refreshes.
+    // Covers the end-to-end refresh flow: a publisher updates
+    // `index.json` on the Pages branch, an admin POSTs /hub/refresh,
+    // the server pulls the new index in place. Tested by flipping the
+    // mock's published catalog with `MockHub::switch_to` between two
+    // refreshes.
     let mock = spawn_mock_hub(two_versions()).await;
     let server = TestServer::start_with_options(crate::common::TestServerOptions {
         extra_env: mock.test_env(),
@@ -1795,13 +1793,14 @@ async fn replace_existing_preserves_admin_tunable_fields_mcp() {
 }
 
 // ============================================================================
-// REMOVED in §12: required_env/required_headers placeholder seeding tests
+// REMOVED: required_env/required_headers placeholder seeding tests
 // ============================================================================
-// The v1 install path read `hub_mcp_server.required_env[*].placeholder`
-// and seeded the new MCP server's env map with those values. §12 dropped
-// the `required_env` + `required_headers` fields from `HubMCPServer` when
-// the body moved to strict server.json (env vars now declared per-package
-// in `packages[i].environmentVariables`, headers in `remotes[i].headers`).
-// The four tests that exercised the old placeholder-seeding + replace-existing-
-// merging behavior are deleted (not ignored — the feature is gone, see
-// memory note `feedback_no_ignore_unless_platform`).
+// The legacy install path read `hub_mcp_server.required_env[*].placeholder`
+// and seeded the new MCP server's env map with those values. The
+// `required_env` + `required_headers` fields were dropped from
+// `HubMCPServer` when the body moved to strict server.json (env vars now
+// declared per-package in `packages[i].environmentVariables`, headers in
+// `remotes[i].headers`). The four tests that exercised the old
+// placeholder-seeding + replace-existing-merging behavior are deleted (not
+// ignored — the feature is gone, see memory note
+// `feedback_no_ignore_unless_platform`).

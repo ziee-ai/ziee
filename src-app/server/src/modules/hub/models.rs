@@ -8,30 +8,30 @@ use uuid::Uuid;
 
 /// Hub model entry.
 ///
-/// Under v2 the identity envelope is reverse-DNS: the manifest's
-/// `name` is `io.github.<contributor>/<slug>` and is the catalog
-/// lookup key everywhere. The body shape under Hub v2 Phase 7 is
-/// parallel to MCP's `packages[]`: a list of `sources[]` (installable
-/// variants), with each source carrying its own `quantizations[]`.
+/// The identity envelope is reverse-DNS: the manifest's `name` is
+/// `io.github.<contributor>/<slug>` and is the catalog lookup key
+/// everywhere. The body shape is parallel to MCP's `packages[]`: a
+/// list of `sources[]` (installable variants), with each source
+/// carrying its own `quantizations[]`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct HubModel {
-    /// v2 envelope: reverse-DNS canonical name. Matches the
-    /// IndexItem.name in the catalog; used as the lookup key on
-    /// every install / manifest endpoint.
+    /// Reverse-DNS canonical name. Matches the IndexItem.name in the
+    /// catalog; used as the lookup key on every install / manifest
+    /// endpoint.
     pub name: String,
     pub display_name: String,
-    /// v2 envelope: per-entry semver (was a single catalog `hub_version`
-    /// in v1). Absent on legacy seed entries; the `/installed` updates
-    /// path treats `None` as "no update available".
+    /// Per-entry semver. Absent on legacy seed entries; the
+    /// `/installed` updates path treats `None` as "no update
+    /// available".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
-    /// v2 envelope: schema URL the manifest claims to conform to.
-    /// Informational on the consumer; lets the catalog format evolve.
+    /// Schema URL the manifest claims to conform to. Informational on
+    /// the consumer; lets the catalog format evolve.
     #[serde(default, rename = "$schema", skip_serializing_if = "Option::is_none")]
     pub schema_url: Option<String>,
-    /// v2 envelope: namespaced extras
-    /// (`io.modelcontextprotocol.registry/*` preserved from ingested
-    /// entries on the MCP side). Free-form for forward compat.
+    /// Namespaced extras (`io.modelcontextprotocol.registry/*`
+    /// preserved from ingested entries on the MCP side). Free-form for
+    /// forward compat.
     #[serde(default, rename = "_meta", skip_serializing_if = "Option::is_none")]
     pub meta: Option<serde_json::Value>,
     pub description: Option<String>,
@@ -39,7 +39,7 @@ pub struct HubModel {
     /// Source repository pointer. Mirrors `HubMCPServer.repository`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repository: Option<HubRepository>,
-    /// Project / model homepage (renamed from v1 `homepage_url`).
+    /// Project / model homepage URL.
     #[serde(
         default,
         rename = "websiteUrl",
@@ -198,16 +198,16 @@ pub enum DependencyKind {
 
 /// Hub assistant entry.
 ///
-/// Like HubModel, the v2 identity envelope is reverse-DNS via `name`.
-/// Under Hub v2 Phase 7 the body drops v1's `recommended_models`,
-/// `recommended_mcp_servers`, `use_cases`, `example_prompts`,
-/// `popularity_score` in favour of a single `dependencies[]` list.
+/// Like HubModel, the identity envelope is reverse-DNS via `name`. The
+/// body has a single `dependencies[]` list instead of separate
+/// `recommended_models` / `recommended_mcp_servers` / `use_cases` /
+/// `example_prompts` / `popularity_score` fields.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct HubAssistant {
-    /// v2 envelope: reverse-DNS canonical name (the catalog lookup key).
+    /// Reverse-DNS canonical name (the catalog lookup key).
     pub name: String,
     pub display_name: String,
-    /// v2 envelope: per-entry semver. See `HubModel.version`.
+    /// Per-entry semver. See `HubModel.version`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
     #[serde(default, rename = "$schema", skip_serializing_if = "Option::is_none")]
@@ -236,7 +236,6 @@ pub struct HubAssistant {
     pub website_url: Option<String>,
 
     /// Soft dependencies (`{kind: model|mcp-server, name, versionRange}`).
-    /// Replaces v1's `recommended_models` / `recommended_mcp_servers`.
     /// FE renders as "Works best with" chips; NOT auto-installed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dependencies: Vec<HubDependency>,
@@ -257,9 +256,10 @@ pub struct HubAssistant {
 /// Hub MCP server entry — strict official `server.json` shape.
 ///
 /// Mirrors `https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json`
-/// verbatim. The v1 flat ziee fields (`command`/`args`/`url`/`headers`/
-/// `display_name`/`category`/`required_env` etc.) are gone — every install
-/// path drives off `packages[]` / `remotes[]` (the official transports).
+/// verbatim. There are no flat ziee fields (no `command` / `args` /
+/// `url` / `headers` / `display_name` / `category` / `required_env`) —
+/// every install path drives off `packages[]` / `remotes[]` (the
+/// official transports).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct HubMCPServer {
     /// Required: reverse-DNS canonical name (e.g.
@@ -281,10 +281,10 @@ pub struct HubMCPServer {
         skip_serializing_if = "Option::is_none"
     )]
     pub website_url: Option<String>,
-    /// v2 envelope: schema URL the manifest claims to conform to.
+    /// Schema URL the manifest claims to conform to.
     #[serde(default, rename = "$schema", skip_serializing_if = "Option::is_none")]
     pub schema_url: Option<String>,
-    /// v2 envelope: namespaced extras. Preserves
+    /// Namespaced extras. Preserves
     /// `io.modelcontextprotocol.registry/*` keys from ingested entries
     /// so the frontend can surface "official MCP registry" provenance
     /// without a separate lookup.

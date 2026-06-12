@@ -1,13 +1,13 @@
 //! Build-time copy of the tracked hub seed into the include-dir!
 //! source.
 //!
-//! Hub v2 design: the seed is a tracked snapshot under
+//! Design: the seed is a tracked snapshot under
 //! `resources/hub-seed/` (committed to git, evolved by maintainers
 //! syncing from `ziee-ai/hub`'s Pages branch). This helper just
 //! copies that snapshot to `binaries/hub-seed/` where
 //! `hub_manager.rs` bakes it in with `include_dir!`.
 //!
-//! What this REPLACES (deleted in the v2 cutover):
+//! What this REPLACES (deleted with the Pages migration):
 //!   - GitHub Releases tag resolution + 6-artifact download
 //!   - sha256 sidecar verification
 //!   - cosign keyless verification via sigstore
@@ -15,10 +15,10 @@
 //!   - HUB_RELEASE_TAG pinning + GITHUB_TOKEN handling
 //!   - per-build `.tag` cache + flock-based race protection
 //!
-//! Trust model under v2 is HTTPS-only (the Pages branch is the
-//! canonical source); the runtime refresh path validates fetched
-//! catalog JSON against the embedded JSON Schema rather than
-//! against a Sigstore signature.
+//! Trust model is HTTPS-only (the Pages branch is the canonical
+//! source); the runtime refresh path validates fetched catalog JSON
+//! against the embedded JSON Schema rather than against a Sigstore
+//! signature.
 
 use std::fs;
 use std::io::Write;
@@ -46,7 +46,7 @@ pub fn setup_hub_seed(
 
     if !source_dir.exists() {
         return Err(format!(
-            "hub-seed: missing tracked seed at {} — the v2 seed is \
+            "hub-seed: missing tracked seed at {} — the seed is \
              tracked in-repo; restore it from git or pull from \
              ziee-ai/hub's Pages branch",
             source_dir.display()
@@ -65,9 +65,9 @@ pub fn setup_hub_seed(
     copy_dir_recursive(&source_dir, &dest_dir)?;
 
     // Resolve the seed version: read `resources/hub-seed/index.json`
-    // and look for the catalog's `hub_version` field. The v2 catalog
-    // still carries `hub_version` as a build-marker (separate from
-    // the per-entry `version` envelope on each item).
+    // and look for the catalog's `hub_version` field. The catalog
+    // carries `hub_version` as a build-marker (separate from the
+    // per-entry `version` envelope on each item).
     let version = read_seed_version(&dest_dir).unwrap_or_else(|err| {
         // Don't fail the build over a missing version — emit `0.0.0`
         // and warn so the binary still links. A bad seed will be

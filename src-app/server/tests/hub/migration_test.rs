@@ -1,4 +1,4 @@
-//! Phase 7 / §13.6 — `hub_entities.hub_id` reverse-DNS rewrite migration.
+//! `hub_entities.hub_id` reverse-DNS rewrite migration.
 //!
 //! Verifies migration 89 (rewrite_hub_entities_hub_id_to_reverse_dns):
 //!

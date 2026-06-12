@@ -1,10 +1,20 @@
-# Hub v2 — `ziee-ai/hub` build pipeline (spec)
+# Hub `ziee-ai/hub` build pipeline (spec)
 
 This document specifies the build pipeline that lives in the **separate**
 `ziee-ai/hub` repository. It is not implementable in this repo. It exists
 here for cross-team coordination: when the upstream pipeline ships, the
 ziee-chat consumer in `hub_manager.rs` and the embedded seed under
 `resources/hub-seed/` will be the consumers of its output.
+
+## Schema versioning convention
+
+Schemas live under a **date-stamped directory** (`schemas/<YYYY-MM-DD>/`),
+mirroring the upstream MCP convention
+(`static.modelcontextprotocol.io/schemas/2025-09-29/...`). A new dated
+directory is published whenever a breaking schema change ships; the
+catalog's `schema_version: u32` then bumps in lockstep. Throughout this
+doc, `schemas/2026-06-12/` is the current dated directory — replace with
+the live date when the pipeline rebuilds.
 
 ## Goals
 
@@ -23,7 +33,7 @@ ziee-chat consumer in `hub_manager.rs` and the embedded seed under
 
 ```
 /index.json                                # the Catalog
-/schemas/v2/*.schema.json                  # versioned JSON Schemas
+/schemas/2026-06-12/*.schema.json          # versioned JSON Schemas
 /models/<id>/<version>.json                # full per-entry manifest
 /assistants/<id>/<version>.json
 /mcp-servers/<id>/<version>.json           # a server.json + _meta envelope
@@ -37,14 +47,14 @@ fetched **lazily** only when the consumer opens or installs an entry.
 
 ## Source on `main`
 
-Per-entry manifests authored in the **v2 envelope**:
+Per-entry manifests authored in the catalog envelope:
 
 ```
 ziee-ai/hub/
 ├── models/<id>.yaml                       # one YAML per ziee-native model
 ├── assistants/<id>.yaml
 ├── mcp-servers/<id>.yaml                  # a server.json (YAML-formatted) + _meta
-├── schemas/v2/                            # JSON Schemas
+├── schemas/2026-06-12/                    # JSON Schemas (date-stamped)
 └── scripts/build-pages.{ts,rs}            # the publisher script
 ```
 
@@ -61,8 +71,9 @@ The script performs five steps in order:
 
 1. **Load + validate source manifests.** Read every `*.yaml` under
    `models/`, `assistants/`, `mcp-servers/`. Validate each against the
-   matching `schemas/v2/*.schema.json`. Reject + fail the build on any
-   schema violation — the goal is "if it's in `main` it's installable."
+   matching `schemas/2026-06-12/*.schema.json`. Reject + fail the build
+   on any schema violation — the goal is "if it's in `main` it's
+   installable."
 
 2. **Ingest the official MCP registry.** Paginate
    `GET https://registry.modelcontextprotocol.io/v0/servers`. Use the
@@ -92,10 +103,10 @@ The script performs five steps in order:
    output.
 
 4. **Emit the Pages layout** to a build output dir:
-   - `index.json` containing `Catalog { schema_version: 2, hub_version,
+   - `index.json` containing `Catalog { schema_version, hub_version,
      generated_at, items[IndexItem] }`.
    - `<type>/<id>/<version>.json` for each entry, full body + envelope.
-   - `schemas/v2/*.schema.json` copied verbatim from `main`.
+   - `schemas/2026-06-12/*.schema.json` copied verbatim from `main`.
 
 5. **Commit to `gh-pages`.** Force-overwrite the branch with the build
    output (one commit per build, no history pressure — Pages branches
@@ -137,17 +148,18 @@ mirroring the Pages layout to `resources/hub-seed/`.
 
 - A2A Agent Card ingestion (different ecosystem, different envelope).
 - Third-party / multi-repo federation (drat-style overlays). The
-  registry is single-source for v2.
+  registry is single-source.
 - Skills / workflows bundles with code + assets. These will need a
   size-aware download path (probably per-entry tarballs), which can
-  land as a v3 amendment.
+  land as a later amendment.
 - Per-entry cosign signatures. Trust is HTTPS to Pages; the hub repo's
   branch protection rules are the meaningful trust boundary upstream.
 
 ## Versioning rules
 
 - The catalog's `hub_version` is a build marker — bumped on schema
-  changes (`schema_version: 2` → `3`), NOT on every entry update.
+  changes (date-stamped directory rolls forward + `schema_version`
+  increments), NOT on every entry update.
 - Each entry's `version` is independent semver. Bumping a model from
   `1.0.0` → `1.0.1` flags it as "update available" for users with an
   installed `1.0.0`. The consumer never auto-updates — admins click
@@ -170,12 +182,12 @@ Two `just` recipes cover the publisher + consumer ends of the pipeline:
 Both repositories are self-hosting their own automation. No user input is
 required to run them; CI can shell out to the recipes directly.
 
-## Upgrade path for pre-§12 hub installs
+## Upgrade path for pre-reverse-DNS hub installs
 
-Existing `hub_entities` rows from before the §12 reverse-DNS migration
+Existing `hub_entities` rows from before the reverse-DNS migration
 carried a slug `hub_id` (e.g. `"filesystem-mcp"`). The SQL migration
 `00000000000089_rewrite_hub_entities_hub_id_to_reverse_dns.sql` runs at
-boot via build.rs and rewrites every recognized v1 slug to its v2
+boot via build.rs and rewrites every recognized legacy slug to its
 reverse-DNS form (e.g.
 `"io.github.modelcontextprotocol/filesystem"`). The migration is
 **idempotent** (rows whose `hub_id` already contains `/` are skipped)

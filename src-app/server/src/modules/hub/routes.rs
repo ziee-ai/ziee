@@ -95,6 +95,6 @@ pub fn hub_router() -> ApiRouter {
             "/hub/manifest/{id}",
             get_with(get_hub_manifest, get_hub_manifest_docs),
         )
-    // v2 dropped /hub/releases + /hub/activate — see handlers.rs for
-    // the rationale.
+    // /hub/releases and /hub/activate are not exposed — see handlers.rs
+    // for the rationale.
 }

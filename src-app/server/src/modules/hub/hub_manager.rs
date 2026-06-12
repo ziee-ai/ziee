@@ -5,7 +5,7 @@
 //!
 //! ```
 //!   /index.json                                  # the Catalog
-//!   /schemas/v2/*.schema.json                    # versioned schemas
+//!   /schemas/2026-06-12/*.schema.json            # date-stamped schemas
 //!   /<type>/<id>/<version>.json                  # full manifest
 //! ```
 //!
@@ -139,9 +139,9 @@ pub enum CatalogProvenance {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Catalog {
     pub schema_version: u32,
-    /// Build marker stamped by the publisher. Under v2 this is NOT the
-    /// per-entry update signal — per-entry `IndexItem.version` is the
-    /// truth. Kept for diagnostics + the seed-version test guard.
+    /// Build marker stamped by the publisher. This is NOT the per-entry
+    /// update signal — per-entry `IndexItem.version` is the truth. Kept
+    /// for diagnostics + the seed-version test guard.
     pub hub_version: String,
     #[serde(default)]
     pub generated_at: Option<String>,
@@ -150,7 +150,7 @@ pub struct Catalog {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct IndexItem {
-    /// v2 envelope — reverse-DNS canonical name, unique across sources.
+    /// Reverse-DNS canonical name, unique across sources.
     /// ziee-native entries use `io.github.<contributor>/<slug>`; ingested
     /// MCP entries keep their official `name`. Matches the per-entry
     /// manifest's top-level `name` field; used as the lookup key for
@@ -158,8 +158,8 @@ pub struct IndexItem {
     /// (the `hub_id` field on `/hub/*/create` is this value).
     pub name: String,
     pub category: HubCategory,
-    /// Human display label (replaces v1 `IndexItem.name`). Optional —
-    /// cards fall back to the slug portion of `name` when absent.
+    /// Human display label. Optional — cards fall back to the slug
+    /// portion of `name` when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     pub summary: String,
@@ -174,11 +174,11 @@ pub struct IndexItem {
     /// Used as both the HTTP fetch suffix and the on-disk cache path.
     /// Validated by `is_safe_manifest_path` before any file or URL use.
     pub manifest_path: String,
-    /// v2 envelope — per-entry semver. Replaces the role of the
-    /// monolithic `Catalog.hub_version` as the update signal.
+    /// Per-entry semver. This — not the monolithic `Catalog.hub_version`
+    /// — is the update signal.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
-    /// v2 envelope — namespaced extras (e.g.
+    /// Namespaced extras (e.g.
     /// `io.modelcontextprotocol.registry/*` on ingested entries).
     #[serde(default, rename = "_meta", skip_serializing_if = "Option::is_none")]
     pub meta: Option<serde_json::Value>,
@@ -238,8 +238,8 @@ impl Compat {
 }
 
 /// Returned from `refresh()` so handlers can surface "no change" vs
-/// "advanced to v0.X.Y" in toasts. v1 carried a `cosign_verified`
-/// field; v2 dropped it (HTTPS-only trust).
+/// "advanced to v0.X.Y" in toasts. There is no `cosign_verified` field
+/// — trust is HTTPS-only.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct RefreshOutcome {
     pub previous_version: Option<String>,
@@ -602,10 +602,10 @@ impl HubManager {
         })
     }
 
-    /// The active catalog's build-marker `hub_version`. Under v2 this
-    /// is rarely the right value to stamp on installs (use the
-    /// per-entry `IndexItem.version` for that — handlers do this
-    /// directly via `catalog().items.find(...).version`).
+    /// The active catalog's build-marker `hub_version`. This is rarely
+    /// the right value to stamp on installs (use the per-entry
+    /// `IndexItem.version` for that — handlers do this directly via
+    /// `catalog().items.find(...).version`).
     pub async fn current_version(&self) -> Result<String, AppError> {
         let catalog = self.catalog().await?;
         Ok(catalog.hub_version)
@@ -677,9 +677,9 @@ impl HubManager {
 
     /// Refresh the catalog index from Pages.
     ///
-    /// v2 is index-only: per-entry manifests are fetched lazily on
-    /// demand (see `manifest()`), so refresh just GETs `index.json`,
-    /// validates it parses, and atomically replaces
+    /// The catalog is index-only: per-entry manifests are fetched
+    /// lazily on demand (see `manifest()`), so refresh just GETs
+    /// `index.json`, validates it parses, and atomically replaces
     /// `current/index.json`. The seed marker is cleared on success,
     /// flipping the provenance to `Pages`.
     pub async fn refresh(&self) -> Result<RefreshOutcome, AppError> {
@@ -1169,7 +1169,7 @@ mod tests {
         // Pull a real manifest out of the embedded seed and parse it
         // into the typed struct — guards the JSON field mapping (the
         // manifests are authored in resources/hub-seed/, consumed here).
-        // v2 path layout: `<category>/<namespace>/<leaf>/<version>.json`.
+        // Path layout: `<category>/<namespace>/<leaf>/<version>.json`.
         // The seed is a snapshot of ziee-ai/hub's build output, which
         // uses the `io.github.phibya/...` namespace for ziee-native
         // entries.

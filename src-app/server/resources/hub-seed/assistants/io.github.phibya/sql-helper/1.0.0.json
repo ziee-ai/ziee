@@ -1,5 +1,5 @@
 {
-  "$schema": "/schemas/v2/assistant.schema.json",
+  "$schema": "/schemas/2026-06-12/assistant.schema.json",
   "name": "io.github.phibya/sql-helper",
   "version": "1.0.0",
   "display_name": "SQL Helper",

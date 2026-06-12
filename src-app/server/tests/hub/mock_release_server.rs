@@ -1,11 +1,11 @@
-//! In-test mock of the ziee-ai/hub GitHub **Pages** branch (Hub v2).
+//! In-test mock of the ziee-ai/hub GitHub **Pages** branch.
 //!
 //! Lets the hub integration tests exercise the refresh → parse →
 //! lazy-fetch-manifest path WITHOUT touching the network. The spawned
 //! ziee server is pointed at this mock via `ZIEE_HUB_PAGES_BASE`, the
 //! debug-only override that's compiled out of release builds.
 //!
-//! Serves the v2 Pages layout:
+//! Serves the Pages layout:
 //!   GET /index.json                            → the Catalog
 //!   GET /<folder>/<id>/<version>.json          → per-entry manifest
 //!
@@ -33,10 +33,9 @@ use serde_json::{json, Value as Json};
 /// One catalog item to bake into a mock catalog version.
 pub struct MockItem {
     pub category: &'static str, // "model" | "assistant" | "mcp-server"
-    /// Reverse-DNS `name` for v2 (e.g.
-    /// `"io.github.test/mock-asst-a"`). Must contain exactly one `/`
-    /// — this is the catalog lookup key + the path layout under
-    /// dist/`<category>/<namespace>/<leaf>/<version>.json`.
+    /// Reverse-DNS `name` (e.g. `"io.github.test/mock-asst-a"`). Must
+    /// contain exactly one `/` — this is the catalog lookup key + the
+    /// path layout under dist/`<category>/<namespace>/<leaf>/<version>.json`.
     pub name: &'static str,
     pub min_ziee_version: Option<&'static str>,
     /// Optional extra JSON fields merged into the generated manifest
@@ -52,12 +51,11 @@ pub struct MockItem {
 }
 
 /// One mock catalog "version" (snapshot of what the Pages branch is
-/// serving). v1 had per-tag download artifacts and a release list;
-/// v2 has just one `index.json` at a time, so `MockHub::switch_to`
-/// rotates which version is published.
+/// serving). Pages serves just one `index.json` at a time, so
+/// `MockHub::switch_to` rotates which version is published.
 pub struct MockVersion {
     pub version: &'static str, // e.g. "9.9.1-test" (no leading v)
-    /// Retained for source-compat with v1 callers; ignored under v2
+    /// Retained for source-compat with legacy callers; ignored
     /// (no release list to flag).
     pub prerelease: bool,
     pub items: Vec<MockItem>,
@@ -89,9 +87,7 @@ impl MockHub {
     /// Flip the served catalog to a different prepared version. Used
     /// by tests that want to simulate a publisher pushing a newer
     /// `index.json` between two `/hub/refresh` calls. Panics if the
-    /// version string doesn't match any registered version (v1's
-    /// activate-by-tag wouldn't have surfaced this either — the
-    /// release list would just exclude it).
+    /// version string doesn't match any registered version.
     pub fn switch_to(&self, version: &str) {
         let mut active = self.state.active.lock().expect("mock state poisoned");
         let prepared = self
@@ -122,9 +118,8 @@ fn folder(category: &str) -> &'static str {
 fn minimal_manifest_for(category: &str, name: &str, mcp_http: bool) -> Json {
     let leaf = name.rsplit('/').next().unwrap_or(name);
     match category {
-        // v2 Phase 7 body shape — `sources[]` carries the per-source
-        // registry / file format / quantizations instead of the v1
-        // flat fields.
+        // Body shape — `sources[]` carries the per-source registry /
+        // file format / quantizations (no flat top-level fields).
         "model" => json!({
             "name": name,
             "display_name": leaf,
@@ -192,7 +187,7 @@ fn merge_into(base: &mut Json, extra: Json) {
 }
 
 fn prepare_catalog(v: &MockVersion) -> PreparedCatalog {
-    let _ = v.prerelease; // v2 has no release list; field kept for source-compat.
+    let _ = v.prerelease; // no release list; field kept for source-compat.
 
     let mut manifests: HashMap<String, Vec<u8>> = HashMap::new();
     let mut index_items: Vec<Json> = Vec::new();

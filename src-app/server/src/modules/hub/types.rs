@@ -212,9 +212,9 @@ pub struct HubCatalogVersionResponse {
 
 /// Response for `POST /api/hub/refresh` — what changed.
 ///
-/// v2 dropped the `cosign_verified` field — trust is now HTTPS-only
-/// to GitHub Pages, no Sigstore signature. The frontend should not
-/// surface a "verified" badge anywhere.
+/// There is no `cosign_verified` field — trust is HTTPS-only to GitHub
+/// Pages, no Sigstore signature. The frontend should not surface a
+/// "verified" badge anywhere.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct HubCatalogRefreshResponse {
     pub updated: bool,

@@ -29,8 +29,8 @@ use axum::extract::Path as AxumPath;
 /// `hub_entities.hub_version` on install. Returns `None` if the entry
 /// is missing or has no `version` field set (legacy seed entries).
 /// Falls back to the catalog build-marker `hub_version` so older
-/// entries that haven't been re-published with the v2 envelope still
-/// surface SOMETHING in the Installed view rather than blank.
+/// entries that haven't been re-published with the per-entry envelope
+/// still surface SOMETHING in the Installed view rather than blank.
 async fn resolve_entry_version(
     hub_manager: &HubManager,
     category: HubCategory,
@@ -690,7 +690,7 @@ async fn build_mcp_server_create_from_hub(
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
     let hub_data = hub_manager.load_hub_data_with_locale("en").await?;
-    // v2 per-entry version stamping (see resolve_entry_version above).
+    // Per-entry version stamping (see resolve_entry_version above).
     let hub_version =
         resolve_entry_version(&hub_manager, HubCategory::McpServer, &request.hub_id).await;
 
@@ -707,8 +707,8 @@ async fn build_mcp_server_create_from_hub(
         .ensure_installable(HubCategory::McpServer, &request.hub_id)
         .await?;
 
-    // v2 server.json mapping. Strict — drive everything off `remotes[]`
-    // / `packages[]`, no v1 flat fallback. Precedence:
+    // server.json mapping. Strict — drive everything off `remotes[]`
+    // / `packages[]`, no flat-field fallback. Precedence:
     //   1. remotes[0] (streamable-http / sse) → Http / Sse + url + headers
     //   2. packages[0] (npm/pypi stdio)       → Stdio + npx/uvx argv
     //
@@ -824,8 +824,8 @@ async fn build_mcp_server_create_from_hub(
         environment_variables_entries: Some(env_entries),
         url: derived_url,
         headers_entries: Some(header_entries),
-        // v2 dropped the `supports_sampling` flag at the manifest
-        // level. Default to 30s; admins can raise this in the
+        // The manifest does not carry a `supports_sampling` flag.
+        // Default to 30s timeout; admins can raise this in the
         // settings drawer.
         timeout_seconds: Some(30),
         supports_sampling: None,
@@ -1289,9 +1289,9 @@ pub async fn create_model_from_hub(
         .ensure_installable(HubCategory::Model, &request.hub_id)
         .await?;
 
-    // 2. Resolve the source + quantization the user picked (Phase 7
-    // body shape — v1's flat `repository_url` / `repository_path` /
-    // `main_filename` / `file_format` are now per-source).
+    // 2. Resolve the source + quantization the user picked
+    // (`repository_url` / `repository_path` / `main_filename` /
+    // `file_format` are per-source, not flat on the manifest).
     if hub_model.sources.is_empty() {
         return Err(AppError::unprocessable_entity(
             "HUB_MODEL_NO_SOURCES",
@@ -1471,7 +1471,7 @@ pub async fn create_model_from_hub(
     // 7. Build download request for initiate_repository_download.
     //    `main_filename` comes from the selected quantization; the
     //    `repository_branch` is the source's version pin (branch /
-    //    commit / tag). Engine fields are dropped from the v2 manifest
+    //    commit / tag). Engine fields are dropped from the manifest
     //    — the install path no longer carries `recommended_engine` /
     //    `recommended_engine_settings`.
     let download_request = crate::modules::llm_model::handlers::uploads::DownloadFromRepositoryRequest {
@@ -1494,9 +1494,9 @@ pub async fn create_model_from_hub(
         parameters: hub_model
             .recommended_parameters
             .and_then(|p| serde_json::from_value(p).ok()),
-        // Phase 7 dropped model-wide engine hints. `runtime_hint` lives
-        // on the source but is purely informational today — the engine
-        // is picked downstream from the file format.
+        // No model-wide engine hints. `runtime_hint` lives on the
+        // source but is purely informational today — the engine is
+        // picked downstream from the file format.
         engine_type: None,
         engine_settings: None,
     };
@@ -1514,7 +1514,7 @@ pub async fn create_model_from_hub(
     })?;
 
     // 9. Track in hub_entities (stamp the entry's per-entry version
-    //    under v2 — see resolve_entry_version above).
+    //    — see resolve_entry_version above).
     let hub_version =
         resolve_entry_version(&hub_manager, HubCategory::Model, &request.hub_id).await;
     let hub_tracking = Repos
@@ -1849,9 +1849,9 @@ pub fn get_hub_catalog_version_docs(op: TransformOperation) -> TransformOperatio
 }
 
 /// POST /api/hub/refresh — admin-only force fetch from the Pages
-/// catalog. v2 is index-only: per-entry manifests are fetched lazily
-/// by `manifest()`. Network failure leaves the previous index in
-/// place (the tmp/rename swap is atomic).
+/// catalog. The catalog is index-only: per-entry manifests are fetched
+/// lazily by `manifest()`. Network failure leaves the previous index
+/// in place (the tmp/rename swap is atomic).
 #[debug_handler]
 pub async fn refresh_hub_catalog(
     _auth: RequirePermissions<(HubCatalogManage,)>,
@@ -1941,11 +1941,11 @@ pub async fn get_hub_installed(
         .list_installed_entities(Some(user_id), is_admin_view)
         .await?;
 
-    // v2: build a `(category, id) -> version` lookup from the catalog
-    // so each installed row reports its OWN current version rather
-    // than the catalog-wide build marker. Falls back to
-    // `catalog.hub_version` for entries that haven't been republished
-    // with a per-entry `version` envelope yet.
+    // Build a `(category, id) -> version` lookup from the catalog so
+    // each installed row reports its OWN current version rather than
+    // the catalog-wide build marker. Falls back to `catalog.hub_version`
+    // for entries that haven't been republished with a per-entry
+    // `version` envelope yet.
     let entry_versions: std::collections::HashMap<(String, String), String> = catalog
         .items
         .iter()
@@ -2023,7 +2023,7 @@ pub fn get_hub_manifest_docs(op: TransformOperation) -> TransformOperation {
         .response_with::<404, (), _>(|res| res.description("Manifest not found in catalog"))
 }
 
-// v2 dropped GET /hub/releases + POST /hub/activate. Pages doesn't
+// There is no GET /hub/releases or POST /hub/activate. Pages doesn't
 // publish multiple addressable catalog versions (the gh-pages branch
-// is the latest, period), and per-entry semver on each IndexItem
-// replaces the role of a catalog-wide version picker.
+// is the latest, period), and per-entry semver on each IndexItem fills
+// the role of a catalog-wide version picker.

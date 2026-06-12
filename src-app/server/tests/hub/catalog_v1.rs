@@ -1,16 +1,16 @@
-//! Phase 1 — integration coverage for the unified hub catalog endpoints
-//! against the embedded v2 seed catalog.
+//! Integration coverage for the unified hub catalog endpoints against
+//! the embedded seed catalog.
 //!
-//! Exercises the surviving Hub v2 endpoints (v1's `/hub/releases` +
-//! `/hub/activate` are gone — pinning was retired with the Pages
-//! migration):
+//! Exercises the hub endpoints (there is no `/hub/releases` /
+//! `/hub/activate` — pinning is not supported, the Pages branch is the
+//! current catalog):
 //!   - GET    /api/hub/index
 //!   - GET    /api/hub/version
 //!   - POST   /api/hub/refresh    (admin)
 //!   - GET    /api/hub/installed  (any auth; admin sees system rows too)
 //!   - GET    /api/hub/manifest/:id?category=...
 //!
-//! The v2 seed (hub_version `2.0.0`, 5 entries — 2 models, 1 assistant,
+//! The seed (hub_version `2.0.0`, 5 entries — 2 models, 1 assistant,
 //! 2 MCP servers) is install-on-boot via `include_dir!`, so every test
 //! starts with a populated catalog and doesn't need to hit GitHub.
 
@@ -21,7 +21,7 @@ use uuid::Uuid;
 use crate::common::TestServer;
 use crate::common::test_helpers::{create_user_with_no_permissions, create_user_with_permissions};
 
-/// Hub-version constant of the embedded v2 seed (mirrors
+/// Hub-version constant of the embedded seed (mirrors
 /// `resources/hub-seed/index.json::hub_version`). Hard-coded rather
 /// than loaded dynamically so a bumped seed forces test review.
 const SEED_VERSION: &str = "2.0.0";
@@ -74,10 +74,10 @@ async fn index_endpoint_lists_seed_items() {
         .expect("send /hub/index");
     assert_eq!(response.status(), 200);
     let catalog: Json = response.json().await.expect("parse json");
-    // schema_version is `2` under Hub v2. v1 callers were `1`; existing
-    // v1-shaped JSON still deserializes because IndexItem has serde
-    // defaults on the v2 envelope fields (qualified_name, version,
-    // _meta), but the seed itself is freshly authored as v2 = 2.
+    // schema_version is `2`. Older `1`-shaped JSON still deserializes
+    // because IndexItem has serde defaults on the envelope fields
+    // (qualified_name, version, _meta), but the seed itself is
+    // authored at `schema_version: 2`.
     assert_eq!(catalog["schema_version"], 2);
     assert_eq!(catalog["hub_version"], SEED_VERSION);
     let items = catalog["items"]
@@ -90,17 +90,16 @@ async fn index_endpoint_lists_seed_items() {
     );
 
     // Spot-check known ids — the seed is fixed at v2.0.0.
-    // v2 IndexItem uses `name` (reverse-DNS) — `id` was dropped.
+    // IndexItem uses `name` (reverse-DNS); there is no `id` field.
     let ids: Vec<&str> = items.iter().filter_map(|i| i["name"].as_str()).collect();
     assert!(ids.contains(&"io.github.phibya/code-reviewer"), "missing code-reviewer in {ids:?}");
     assert!(ids.contains(&"io.github.phibya/llama-3-1-8b-instruct"));
     assert!(ids.contains(&"io.github.github/mcp"));
 
-    // v2 envelope additions: every seeded item ships a per-entry
-    // `version` string (the source of truth for the per-row
-    // `current_version` on `/hub/installed`).
+    // Every seeded item ships a per-entry `version` string (the source
+    // of truth for the per-row `current_version` on `/hub/installed`).
     for item in items {
-        let v = item["version"].as_str().expect("v2 items have a version");
+        let v = item["version"].as_str().expect("items have a version");
         assert!(!v.is_empty(), "non-empty per-entry version: {item}");
     }
 }
@@ -130,7 +129,7 @@ async fn index_endpoint_requires_auth() {
 async fn manifest_endpoint_returns_model_json() {
     let server = TestServer::start().await;
     let user = create_user_with_permissions(&server, "reader", &["hub::models::read"]).await;
-    // v2 manifest lookup is by reverse-DNS `name` (URL-encoded `/`).
+    // Manifest lookup is by reverse-DNS `name` (URL-encoded `/`).
     let response = reqwest::Client::new()
         .get(server.api_url(
             "/hub/manifest/io.github.phibya%2Fllama-3-1-8b-instruct?category=model",
@@ -144,7 +143,7 @@ async fn manifest_endpoint_returns_model_json() {
     // HubManifest is a typed struct: { category, model?, assistant?, mcp_server? }.
     assert_eq!(payload["category"], "model");
     assert_eq!(payload["model"]["name"], "io.github.phibya/llama-3-1-8b-instruct");
-    // v2 Phase 7 dropped the model-wide `file_format`; check the first source.
+    // There is no model-wide `file_format`; check the first source.
     assert_eq!(payload["model"]["sources"][0]["fileFormat"], "safetensors");
     assert!(
         payload["assistant"].is_null() && payload["mcp_server"].is_null(),
@@ -200,7 +199,7 @@ async fn catalog_read_cannot_refresh() {
 async fn manifest_endpoint_404s_unknown_id() {
     let server = TestServer::start().await;
     let user = create_user_with_permissions(&server, "reader", &["hub::models::read"]).await;
-    // v2 manifest lookup is by reverse-DNS `name`. A well-formed-but-
+    // Manifest lookup is by reverse-DNS `name`. A well-formed-but-
     // unknown name should return 404; the bare slug `does-not-exist`
     // would be rejected by `is_safe_name` as 400 (covered by
     // `manifest_endpoint_400s_unsafe_id` below).
@@ -307,18 +306,19 @@ async fn installed_endpoint_lists_all_tracked_entities() {
     // whether it matches the catalog; the row's `installed_version` vs
     // `current_version` is what the UI compares to flag staleness.
     //
-    // Under v2 `current_version` is derived per-row from the catalog
-    // ITEM's `version` field (1.0.0 for every seeded entry), not from
-    // the catalog-wide `hub_version` (2.0.0). See `IndexItem.version`
-    // + the per-entry stamping in `/hub/installed`'s handler.
+    // `current_version` is derived per-row from the catalog ITEM's
+    // `version` field (1.0.0 for every seeded entry), not from the
+    // catalog-wide `hub_version` (2.0.0). See `IndexItem.version` + the
+    // per-entry stamping in `/hub/installed`'s handler.
     let pool = PgPoolOptions::new()
         .max_connections(1)
         .connect(&server.database_url)
         .await
         .expect("connect test db");
     let entity_id = Uuid::new_v4();
-    // v2: hub_id is reverse-DNS, not slug. The §13.6 migration converts
-    // pre-§12 slug rows; new test inserts use the v2 form directly.
+    // hub_id is reverse-DNS, not slug. The reverse-DNS rewrite
+    // migration converts legacy slug rows; new test inserts use the
+    // reverse-DNS form directly.
     sqlx::query(
         "INSERT INTO hub_entities (id, entity_type, entity_id, hub_id, hub_category, hub_version)
          VALUES ($1, 'assistant', $2, 'io.github.phibya/code-reviewer', 'assistant', '0.0.0-test')",
