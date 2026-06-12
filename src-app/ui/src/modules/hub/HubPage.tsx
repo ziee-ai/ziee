@@ -9,7 +9,6 @@ import {
   Segmented,
   Tag,
   Tooltip,
-  theme,
   Typography,
 } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
@@ -34,7 +33,6 @@ export function HubPage() {
   // visibleTabs useMemo deps below is the load-bearing piece.
   const { policy: mcpPolicy } = Stores.McpUserPolicy
   const windowMinSize = useWindowMinSize()
-  const { token } = theme.useToken()
   const [refreshing, setRefreshing] = useState(false)
 
   // Get hub tabs from slot system, sorted
@@ -169,9 +167,6 @@ export function HubPage() {
                   navigate(`/hub/${value}`)
                 }}
                 className="[&_.ant-segmented-item-label]:!px-4 [&_.ant-segmented-item-label]:!py-1"
-                style={{
-                  backgroundColor: token.colorBgMask,
-                }}
                 shape="round"
                 options={segmentedOptions}
               />

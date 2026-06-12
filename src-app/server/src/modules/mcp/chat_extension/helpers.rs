@@ -129,7 +129,8 @@ pub async fn execute_tool(
     // Elicitation may block for up to 300s; use a generous outer timeout so that
     // elicitation requests have time to complete before we give up.
     // The tool-level timeout is enforced separately inside call_tool_with_sampling.
-    let timeout = Duration::from_secs(timeout_seconds.unwrap_or(30) as u64 + 300);
+    let timeout_secs = timeout_seconds.unwrap_or(30) as u64 + 300;
+    let timeout = Duration::from_secs(timeout_secs);
 
     let result = tokio::time::timeout(
         timeout,
@@ -311,7 +312,7 @@ pub async fn execute_tool(
                 server_id: None, // Will be set by caller
                 content: format!(
                     "Tool execution timed out after {}s",
-                    timeout_seconds.unwrap_or(30)
+                    timeout_secs
                 ),
                 is_error: Some(true),
                 attachment: None,

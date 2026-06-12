@@ -6,3 +6,4 @@
 pub mod everything_server;
 pub mod mock_mcp_server;
 pub mod mock_elicitation_server;
+pub mod mock_get_stream_elicitation_server;

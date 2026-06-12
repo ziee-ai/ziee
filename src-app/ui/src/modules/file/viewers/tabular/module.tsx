@@ -16,6 +16,9 @@ export const viewers: FileViewerModule[] = [
       icon: <FileExcelOutlined />,
       // Text-based delimited format; renders inline as a DelimitedTable.
       inline: true,
+      // The DelimitedTable measures its container to size the virtual grid;
+      // give it a definite inline height so that measurement doesn't loop.
+      inlineFill: true,
     },
   },
   {
@@ -29,6 +32,7 @@ export const viewers: FileViewerModule[] = [
       label: 'TSV',
       icon: <FileExcelOutlined />,
       inline: true,
+      inlineFill: true,
     },
   },
   {

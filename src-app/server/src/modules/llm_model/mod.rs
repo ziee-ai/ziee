@@ -12,6 +12,7 @@ use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleEntry};
 
 pub mod events;
 pub mod handlers;
+pub mod model_files;
 pub mod models;
 pub mod permissions;
 pub mod repository;

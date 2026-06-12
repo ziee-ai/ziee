@@ -19,36 +19,9 @@ import { SettingsPageContainer } from '@/modules/settings/components/SettingsPag
 import { EditUserGroupDrawer } from '@/modules/user/components/group/EditUserGroupDrawer.tsx'
 import { GroupMembersDrawer } from '@/modules/user/components/group/GroupMembersDrawer.tsx'
 import { GroupListItem } from '@/modules/user/components/group/GroupListItem.tsx'
+import { PermissionsField } from '@/modules/user/components/PermissionsField.tsx'
 
 const { TextArea } = Input
-
-// Helper function to validate permissions
-const validatePermissions = (_: any, value: string) => {
-  if (!value) return Promise.resolve()
-
-  try {
-    const parsed = JSON.parse(value)
-    if (!Array.isArray(parsed)) {
-      return Promise.reject('Must be an array')
-    }
-
-    // Check if all values are valid permissions
-    const validPermissions = Object.values(Permissions)
-    const invalidPermissions = parsed.filter(
-      perm => !validPermissions.includes(perm),
-    )
-
-    if (invalidPermissions.length > 0) {
-      return Promise.reject(
-        `Invalid permissions: ${invalidPermissions.join(', ')}`,
-      )
-    }
-
-    return Promise.resolve()
-  } catch {
-    return Promise.reject('Invalid JSON format')
-  }
-}
 
 export function UserGroupsSettings() {
   const { message } = App.useApp()
@@ -79,7 +52,7 @@ export function UserGroupsSettings() {
       const groupData: CreateGroupRequest = {
         name: values.name,
         description: values.description,
-        permissions: values.permissions ? JSON.parse(values.permissions) : [],
+        permissions: values.permissions ?? [],
       }
       await Stores.UserGroups.createUserGroup(groupData)
       message.success('User group created successfully')
@@ -203,15 +176,8 @@ export function UserGroupsSettings() {
           <Form.Item name="description" label="Description">
             <TextArea rows={3} placeholder="Enter group description" />
           </Form.Item>
-          <Form.Item
-            name="permissions"
-            label="Permissions (JSON Array)"
-            rules={[{ validator: validatePermissions }]}
-          >
-            <TextArea
-              rows={6}
-              placeholder={`["${Permissions.UsersRead}", "${Permissions.UsersEdit}"]`}
-            />
+          <Form.Item name="permissions" label="Permissions">
+            <PermissionsField disabled={!canCreate} />
           </Form.Item>
 
           <Form.Item className="mb-0">

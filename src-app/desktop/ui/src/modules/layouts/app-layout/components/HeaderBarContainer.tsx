@@ -28,6 +28,7 @@
 
 import { useRef, useLayoutEffect, useCallback } from 'react'
 import { theme } from 'antd'
+import tinycolor from 'tinycolor2'
 import { Stores } from '@/core/stores'
 import { isTauriView, isMacOS, isLinux } from '@ziee/desktop/core/platform'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -57,17 +58,26 @@ export const HeaderBarContainer = ({
 }: HeaderBarContainerProps) => {
   const { token } = theme.useToken()
   const { isSidebarCollapsed, isFullscreen } = Stores.AppLayout
+
+  // Soft-fade overlay color matched to the content surface, faded
+  // through alpha so the gradient doesn't pass through a faint
+  // gray midpoint on light themes (which is what the CSS
+  // `transparent` keyword would produce).
+  const fadeOut = tinycolor(token.colorBgContainer).setAlpha(0).toRgbString()
   const containerRef = useRef<HTMLDivElement>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   )
 
-  // macOS Tauri: ~110px on the left when the sidebar is collapsed so the
-  // header content doesn't sit under the traffic-light controls. Off in
-  // fullscreen (no traffic lights). Web / non-Tauri: core's 48 | 12.
+  // macOS Tauri: ~118px on the left when the sidebar is collapsed so
+  // the header content clears BOTH the traffic-light cluster
+  // (ends ~x=72 after the x=20 shift) AND the toggle button
+  // (marginLeft=84, width=28 → right edge ~112), with ~6px breathing
+  // room past that. Off in fullscreen (no traffic lights). Web /
+  // non-Tauri: core's 48 | 12.
   const paddingLeft =
     isSidebarCollapsed && isTauriView && !isFullscreen && isMacOS
-      ? 110
+      ? 118
       : isSidebarCollapsed
         ? 48
         : 12
@@ -152,9 +162,8 @@ export const HeaderBarContainer = ({
       // (`width 200ms ease-out`); a different curve here makes the
       // title text appear to "catch up" after the sidebar has
       // already settled, which reads as lag.
-      className={`h-[50px] w-full flex relative border-b transition-[padding] duration-200 ease-out box-border ${className}`}
+      className={`h-[50px] w-full flex relative transition-[padding] duration-200 ease-out box-border ${className}`}
       style={{
-        borderColor: token.colorBorderSecondary,
         // Paint above SidebarToggleButton's full-width drag overlay
         // (fixed z:1) so header content captures pointer events
         // first. The manual mousedown handler below then either
@@ -167,6 +176,22 @@ export const HeaderBarContainer = ({
       onDoubleClick={handleHeaderDoubleClick}
     >
       {children}
+      {/* Soft-fade overlay just below the header. Top edge is the
+          content surface color, bottom edge is transparent. When
+          content scrolls up beneath the (transparent) header, it
+          dissolves into the bg color before being clipped. */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          top: '100%',
+          height: 16,
+          pointerEvents: 'none',
+          background: `linear-gradient(to bottom, ${token.colorBgContainer}, ${fadeOut})`,
+        }}
+      />
     </div>
   )
 }

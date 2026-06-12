@@ -20,13 +20,18 @@
 //! - missing `sse_tx` auto-cancels (no way to surface UI)
 //! - oneshot channel dropped → cancel sent
 //! - HTTP respond endpoint: 404 unknown id, 400 invalid action, 403 no perm
+//! - response POST carries the spec-required headers
+//!   (Accept / MCP-Protocol-Version / mcp-session-id), incl. the sampling path
+//! - strict server (406 on a bad Accept) → elicitation/create times out
+//!   end-to-end (regression for the response-header bug)
 
 use super::fixtures::mock_elicitation_server::{ElicitationScript, MockElicitationServer};
 use std::time::Duration;
 use tokio::sync::mpsc;
 use ziee::{
-    elicitation_registry, ElicitationResponse, ElicitationStartedNotification, HttpMcpClient,
-    McpClient, McpServer, TransportType, UsageMode,
+    elicitation_registry, AppError, ElicitationResponse, ElicitationStartedNotification,
+    HttpMcpClient, McpClient, McpServer, SamplingContent, SamplingCreateMessageRequest,
+    SamplingCreateMessageResult, SamplingHandler, TransportType, UsageMode,
 };
 
 fn server_config(url: String) -> McpServer {
@@ -450,4 +455,304 @@ async fn elicit_registry_remove_cleans_up_pending() {
         ElicitationResponse { action: "accept".to_string(), content: None },
     );
     assert!(!found, "respond after remove must be a no-op");
+}
+
+// ─── Spec-required headers on the elicitation-response POST ─────────────────
+//
+// Regression for the production bug "Elicitation failed: server->client
+// request 'elicitation/create' timed out". When the client POSTs the user's
+// elicitation response back to the MCP server it MUST send the headers the
+// MCP Streamable HTTP spec requires on every POST — chiefly
+// `Accept: application/json, text/event-stream`. A spec-compliant server
+// (the official TypeScript / Python SDKs) replies 406 and drops a response POST that
+// lacks it, stranding the server's elicitation/create request until it times
+// out. The earlier mock ignored request headers, so the flow "passed" while
+// failing against real servers; these tests close that gap.
+
+#[tokio::test]
+async fn elicit_response_post_carries_spec_required_headers() {
+    // Drive a normal accept round-trip, then assert the headers the client
+    // actually put on its elicitation-response POST. Pre-fix the client sent
+    // no Accept header here, so this assertion fails.
+    let (mock, mut client, mut notify_rx, _sse_rx, notify_tx, sse_tx) =
+        setup(ElicitationScript::default()).await;
+
+    let call_handle = tokio::spawn(async move {
+        client
+            .call_tool("anything", serde_json::json!({}), None, Some(sse_tx), Some(notify_tx))
+            .await
+    });
+
+    let notif = tokio::time::timeout(Duration::from_secs(3), notify_rx.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    elicitation_registry::respond(
+        notif.elicitation_id,
+        ElicitationResponse {
+            action: "accept".to_string(),
+            content: Some(serde_json::json!({"confirm": true})),
+        },
+    );
+    let _ = tokio::time::timeout(Duration::from_secs(5), call_handle)
+        .await
+        .expect("call_tool must complete")
+        .expect("task")
+        .expect("tool result");
+
+    let headers = mock.response_post_headers();
+    assert_eq!(headers.len(), 1, "exactly one elicitation-response POST expected");
+    let h = &headers[0];
+    assert_eq!(
+        h.accept.as_deref(),
+        Some("application/json, text/event-stream"),
+        "response POST must carry the spec-required Accept header; got {:?}",
+        h.accept
+    );
+    assert!(
+        h.mcp_protocol_version.is_some(),
+        "response POST must carry MCP-Protocol-Version (spec MUST after init); got {:?}",
+        h.mcp_protocol_version
+    );
+    assert!(
+        h.mcp_session_id.is_some(),
+        "response POST must carry the negotiated mcp-session-id; got {:?}",
+        h.mcp_session_id
+    );
+    // This server has no OAuth configured, so no bearer is acquired and the
+    // helper's Authorization arm must stay silent (the Some-arm is exercised by
+    // the OAuth conformance tests, which share `apply_mcp_post_headers`).
+    assert!(
+        h.authorization.is_none(),
+        "no OAuth configured → response POST must NOT carry Authorization; got {:?}",
+        h.authorization
+    );
+}
+
+#[tokio::test]
+async fn elicit_against_strict_accept_server_completes_roundtrip() {
+    // End-to-end reproduction: a strict server rejects (406) and drops a
+    // response POST whose Accept header is wrong, then times out its
+    // elicitation/create and fails the tool call. With the header fix the POST
+    // is accepted and the tool call completes. A short response timeout makes
+    // the pre-fix failure surface in ~2s instead of hanging.
+    let script = ElicitationScript {
+        tool_result_content: vec![serde_json::json!({
+            "type": "text",
+            "text": "strict-server-done"
+        })],
+        elicitation_response_timeout: Duration::from_secs(2),
+        ..ElicitationScript::default()
+    };
+    let mock = MockElicitationServer::start_with_script(script).await;
+    mock.set_strict_response_accept(true);
+
+    let mut client = HttpMcpClient::new(server_config(mock.base_url())).unwrap();
+    client.connect().await.expect("connect");
+
+    let (notify_tx, mut notify_rx) = mpsc::unbounded_channel::<ElicitationStartedNotification>();
+    let (sse_tx, _sse_rx) = mpsc::unbounded_channel::<
+        Result<axum::response::sse::Event, std::convert::Infallible>,
+    >();
+
+    let call_handle = tokio::spawn(async move {
+        client
+            .call_tool("strict_tool", serde_json::json!({}), None, Some(sse_tx), Some(notify_tx))
+            .await
+    });
+
+    let notif = tokio::time::timeout(Duration::from_secs(3), notify_rx.recv())
+        .await
+        .expect("must surface elicitation notification within 3s")
+        .expect("notification channel must yield Some");
+    elicitation_registry::respond(
+        notif.elicitation_id,
+        ElicitationResponse {
+            action: "accept".to_string(),
+            content: Some(serde_json::json!({"confirm": true})),
+        },
+    );
+
+    let result = tokio::time::timeout(Duration::from_secs(8), call_handle)
+        .await
+        .expect("call_tool must complete")
+        .expect("task")
+        .expect(
+            "tool result — PRE-FIX this is Err: the strict server rejects the \
+             header-less response POST with 406 and times out elicitation/create",
+        );
+
+    assert!(
+        !result.is_error,
+        "tool must succeed against a strict server once the response POST carries Accept"
+    );
+    let combined = serde_json::to_string(&result.content).unwrap();
+    assert!(
+        combined.contains("strict-server-done"),
+        "expected the post-elicitation tool result; got: {combined}"
+    );
+
+    // The strict server only accepts (202) a spec-correct response POST.
+    let headers = mock.response_post_headers();
+    assert_eq!(headers.len(), 1);
+    assert_eq!(
+        headers[0].accept.as_deref(),
+        Some("application/json, text/event-stream")
+    );
+}
+
+#[tokio::test]
+async fn elicit_via_sampling_path_response_post_carries_accept_header() {
+    // The sampling code path (`call_tool_with_sampling`) carries its own copy
+    // of the elicitation handshake. With a sampling handler attached, the
+    // client routes through that path; assert its elicitation-response POST
+    // also carries the spec-required Accept header. The handler is never
+    // invoked here (the mock sends elicitation/create, not sampling/createMessage).
+    struct InstantHandler;
+    #[async_trait::async_trait]
+    impl SamplingHandler for InstantHandler {
+        async fn create_message(
+            &self,
+            _req: SamplingCreateMessageRequest,
+        ) -> Result<SamplingCreateMessageResult, AppError> {
+            Ok(SamplingCreateMessageResult {
+                role: "assistant".to_string(),
+                content: SamplingContent::Text { text: "unused".to_string() },
+                model: "mock".to_string(),
+                stop_reason: Some("end_turn".to_string()),
+            })
+        }
+    }
+
+    let mock = MockElicitationServer::start_with_script(ElicitationScript {
+        tool_result_content: vec![serde_json::json!({
+            "type": "text",
+            "text": "sampling-path-done"
+        })],
+        ..ElicitationScript::default()
+    })
+    .await;
+
+    let handler = std::sync::Arc::new(InstantHandler);
+    let mut client =
+        HttpMcpClient::new_with_sampling(server_config(mock.base_url()), handler).unwrap();
+    client.connect().await.expect("connect");
+
+    let (notify_tx, mut notify_rx) = mpsc::unbounded_channel::<ElicitationStartedNotification>();
+    let (sse_tx, _sse_rx) = mpsc::unbounded_channel::<
+        Result<axum::response::sse::Event, std::convert::Infallible>,
+    >();
+
+    let call_handle = tokio::spawn(async move {
+        client
+            .call_tool("anything", serde_json::json!({}), None, Some(sse_tx), Some(notify_tx))
+            .await
+    });
+
+    let notif = tokio::time::timeout(Duration::from_secs(3), notify_rx.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    elicitation_registry::respond(
+        notif.elicitation_id,
+        ElicitationResponse {
+            action: "accept".to_string(),
+            content: Some(serde_json::json!({"confirm": true})),
+        },
+    );
+    let result = tokio::time::timeout(Duration::from_secs(8), call_handle)
+        .await
+        .expect("call_tool must complete")
+        .expect("task")
+        .expect("tool result");
+    assert!(!result.is_error);
+
+    let headers = mock.response_post_headers();
+    assert_eq!(headers.len(), 1, "exactly one elicitation-response POST expected");
+    assert_eq!(
+        headers[0].accept.as_deref(),
+        Some("application/json, text/event-stream"),
+        "sampling-path response POST must also carry the spec-required Accept header"
+    );
+}
+
+// ─── Elicitation delivered on the standalone GET stream (the `dscc` pattern) ──
+//
+// Some servers answer `tools/call` with plain `application/json` and deliver
+// their `elicitation/create` request on the standalone GET-SSE stream rather
+// than on the tool-call POST response. ziee historically dropped GET-stream
+// elicitation ("…will time out"), so such a tool call hung server-side. This
+// test drives that flow end-to-end: connect (opens the GET stream) → call a
+// tool whose result waits on a GET-stream elicitation → respond → assert the
+// tool completes and the server received our reply.
+
+#[tokio::test]
+async fn elicit_delivered_on_standalone_get_stream_completes() {
+    use super::fixtures::mock_get_stream_elicitation_server::MockGetStreamElicitationServer;
+
+    let mock = MockGetStreamElicitationServer::start().await;
+    let mut client = HttpMcpClient::new(server_config(mock.base_url())).unwrap();
+    client.connect().await.expect("connect");
+
+    // Let the standalone GET stream establish before the tool call.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let (notify_tx, mut notify_rx) = mpsc::unbounded_channel::<ElicitationStartedNotification>();
+    // `_sse_rx` is held (named `_`-prefix, not bare `_`) so the channel stays
+    // open: the GET-stream handler sends the `mcpElicitationRequired` event here,
+    // and a dropped receiver would make that send fail → it would take the cancel
+    // path and the test would see action != "accept".
+    let (sse_tx, _sse_rx) = mpsc::unbounded_channel::<
+        Result<axum::response::sse::Event, std::convert::Infallible>,
+    >();
+    let message_id = uuid::Uuid::new_v4();
+
+    let call_handle = tokio::spawn(async move {
+        client
+            .call_tool(
+                "get_stream_tool",
+                serde_json::json!({}),
+                Some(message_id),
+                Some(sse_tx),
+                Some(notify_tx),
+            )
+            .await
+    });
+
+    // The elicitation arrives on the GET stream and must be routed to this
+    // call's context. PRE-FIX it is dropped, so this notification never fires.
+    let notif = tokio::time::timeout(Duration::from_secs(6), notify_rx.recv())
+        .await
+        .expect("a GET-stream elicitation must surface a notification within 6s")
+        .expect("notification channel must yield Some");
+    assert_eq!(notif.message_id, Some(message_id));
+    assert_eq!(
+        notif.requested_schema["properties"]["empirical"]["type"],
+        "boolean"
+    );
+
+    elicitation_registry::respond(
+        notif.elicitation_id,
+        ElicitationResponse {
+            action: "accept".to_string(),
+            content: Some(serde_json::json!({ "empirical": true })),
+        },
+    );
+
+    let result = tokio::time::timeout(Duration::from_secs(8), call_handle)
+        .await
+        .expect("call_tool must complete")
+        .expect("task")
+        .expect("tool result");
+    assert!(!result.is_error);
+    let combined = serde_json::to_string(&result.content).unwrap();
+    assert!(
+        combined.contains("get-stream-tool-done"),
+        "expected the tool result after answering the GET-stream elicitation; got: {combined}"
+    );
+
+    let responses = mock.responses();
+    assert_eq!(responses.len(), 1, "server should have received exactly one elicitation response");
+    assert_eq!(responses[0]["result"]["action"], "accept");
+    assert_eq!(responses[0]["result"]["content"]["empirical"], true);
 }

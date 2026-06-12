@@ -26,9 +26,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const sidebarRef = useRef<HTMLDivElement>(null)
   const spacerRef = useRef<HTMLDivElement>(null)
   const mainContentRef = useRef<HTMLDivElement>(null)
-  const currentWidth = useRef(200)
+  // Seed the local ref from the persistent store. Each route's
+  // `*Layout` component mounts its OWN `<AppLayout>` instance, so a
+  // plain `useRef(200)` reset the sidebar width every time the user
+  // navigated. The ref stays for fast drag-time writes (no React
+  // re-renders), and we sync back to the store on drag end so the
+  // next mount picks up the same width.
+  const currentWidth = useRef(Stores.AppLayout.__state.sidebarWidth)
 
-  const MIN_WIDTH = 150
+  const MIN_WIDTH = 200
   const MAX_WIDTH = 400
   // Collapsed sidebar fully disappears on desktop (mobile already does
   // via translateX(-100%) below). The toggle button lives outside the
@@ -64,6 +70,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         if (newWidth < MIN_WIDTH / 2) {
           if (spacerRef.current) {
             spacerRef.current.style.transition = SPACER_TRANSITION
+          }
+          // Clear the imperative width override so React's next
+          // re-render (with `width: currentWidth.current`) starts
+          // the CSS transition from the user's settled width
+          // instead of whatever narrow drag value we just wrote.
+          // Without this, the sidebar would visibly grow back to
+          // full width while sliding left.
+          if (sidebarRef.current) {
+            sidebarRef.current.style.width = ''
           }
           Stores.AppLayout.setSidebarCollapsed(true)
         } else if (newWidth >= MIN_WIDTH && newWidth <= MAX_WIDTH) {
@@ -122,6 +137,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         if (sidebarRef.current) {
           sidebarRef.current.style.transition = SIDEBAR_TRANSITION
         }
+
+        // Persist the final width so it survives route navigation.
+        Stores.AppLayout.setSidebarWidth(currentWidth.current)
 
         document.removeEventListener('mousemove', handleMouseMove)
         document.removeEventListener('mouseup', handleMouseUp)
@@ -290,6 +308,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         * fire 2-3 times for any tap, which interacted badly with
         * the closing animation. (audit 02 R-1) */}
       <div
+        // Semantic hook for build overrides (the macOS desktop
+        // override applies `backdrop-filter` so the mask reads as a
+        // frosted glass surface instead of a flat dim).
+        data-sidebar-mask=""
+        // Present only when the overlay is ACTUALLY active so build
+        // overrides can gate filter / blur on it. Without this,
+        // anything applied to `[data-sidebar-mask]` unconditionally
+        // would keep filtering the whole screen even when the mask
+        // is opacity:0 (the element stays mounted to avoid a
+        // first-render transition flash).
+        {...(windowMinSize.xs && !isSidebarCollapsed
+          ? { 'data-sidebar-mask-active': '' }
+          : {})}
         className={'fixed h-full w-full z-3'}
         style={{
           backgroundColor: tinycolor(token.colorBgContainer)
@@ -331,24 +362,34 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           height: '100%',
           overflow: 'hidden',
           zIndex: windowMinSize.xs ? 3 : 1,
-          width: windowMinSize.xs
-            ? 250
-            : isSidebarCollapsed
-              ? COLLAPSED_WIDTH
-              : currentWidth.current,
+          // Width stays at the user's resized value REGARDLESS of
+          // collapse state on desktop — collapse is animated via
+          // `transform: translateX(-100%)` so the sidebar slides off
+          // to the left, not shrinks. The spacer below still
+          // animates from `currentWidth → 0` to free the main
+          // content area's flex space.
+          width: windowMinSize.xs ? 250 : currentWidth.current,
           maxWidth: windowMinSize.xs ? 'calc(100vw - 24px)' : undefined,
-          transform:
-            windowMinSize.xs && isSidebarCollapsed
-              ? 'translateX(-100%)'
-              : 'translateX(0)',
+          transform: isSidebarCollapsed
+            ? 'translateX(-100%)'
+            : 'translateX(0)',
           backdropFilter: windowMinSize.xs ? 'blur(8px)' : undefined,
           borderRight: windowMinSize.xs
             ? `1px solid ${token.colorBorderSecondary}`
             : undefined,
           borderRadius: windowMinSize.xs ? 12 : undefined,
-          boxShadow: windowMinSize.xs
-            ? 'rgba(0, 0, 0, 0.075) 0px 2px 16px 0px'
-            : 'none',
+          // Box-shadow extends ~16px past the wrapper edges. When the
+          // wrapper translates offscreen on collapse (translateX(-100%)
+          // on xs), the right-edge tail of that 16px-blur shadow re-
+          // enters the visible viewport as a phantom 16px stripe along
+          // the screen's left side. Gating on `!isSidebarCollapsed`
+          // means there's no shadow when there's nothing to bleed
+          // from. The shadow fades back in on slide-out via
+          // SIDEBAR_TRANSITION's `box-shadow 200ms ease-out`.
+          boxShadow:
+            windowMinSize.xs && !isSidebarCollapsed
+              ? 'rgba(0, 0, 0, 0.075) 0px 2px 16px 0px'
+              : 'none',
           // Single transition spanning every value that can change
           // on the xs threshold flip. Property name stays constant,
           // so the browser doesn't reset mid-flight. Kept in sync
@@ -383,7 +424,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <div
         className="flex-1 flex flex-col relative overflow-hidden"
         style={{
-          backgroundColor: token.colorBgLayout,
+          // Pure white content surface — `colorBgLayout` would pick
+          // up the sidebar's off-white, washing the chat / settings
+          // panes into the wrong tier of the surface hierarchy.
+          backgroundColor: token.colorBgContainer,
         }}
       >
         {/* Content */}
@@ -397,6 +441,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
         {!isSidebarCollapsed && (
           <div
+            // Generic semantic hook for build overrides (e.g. the
+            // desktop-only floating-sidebar override) that need to
+            // forward synthetic mousedowns into this handler. No
+            // styling depends on it; the attribute is platform-blind.
+            data-sidebar-resize-handle=""
             className="absolute top-0 left-0 w-1 h-full cursor-col-resize z-3"
             onMouseDown={handleMouseDown}
           />

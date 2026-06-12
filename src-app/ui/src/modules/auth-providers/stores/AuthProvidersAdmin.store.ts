@@ -8,6 +8,13 @@ import type {
   TestProviderResponse,
   UpdateAuthProviderRequest,
 } from '@/api-client/types'
+import { Stores } from '@/core/stores'
+import {
+  emitAuthProviderAutoDisabled,
+  emitAuthProviderCreated,
+  emitAuthProviderDeleted,
+  emitAuthProviderUpdated,
+} from '@/modules/auth-providers/events'
 
 /**
  * Admin CRUD store for auth providers. Distinct from the public
@@ -15,10 +22,10 @@ import type {
  * login-page button row; this one drives the admin settings table.
  *
  * Test results are persisted on the row (`last_test_at`,
- * `last_test_ok`, `last_test_message` — migration 48), so the table
- * reads them directly off the provider row. After a Test action we
- * just refresh the list to pick up the new values; no separate
- * in-memory cache.
+ * `last_test_ok`, `last_test_message` — migration 48). The backend
+ * enforces "enabled requires a passing probe" on every transition
+ * and emits an `auth_provider.auto_disabled` event the store
+ * listens to so the Switch snaps back without a manual refresh.
  */
 interface AuthProvidersAdminStore {
   providers: AuthProviderResponse[]
@@ -30,8 +37,10 @@ interface AuthProvidersAdminStore {
   testingIds: Set<string>
 
   __init__: {
+    __store__?: () => void
     providers?: () => Promise<void>
   }
+  __destroy__?: () => void
 
   loadProviders: () => Promise<void>
   createProvider: (req: CreateAuthProviderRequest) => Promise<AuthProviderResponse>
@@ -40,14 +49,17 @@ interface AuthProvidersAdminStore {
     req: UpdateAuthProviderRequest,
   ) => Promise<AuthProviderResponse>
   deleteProvider: (id: string) => Promise<{ affected_user_links: number }>
-  /// Test a saved provider. Server persists the result on the row;
-  /// we refresh the list afterwards so the UI shows the new values.
+  /// Test a saved provider. Server persists the result on the row and
+  /// auto-disables when the probe fails on an enabled row; we refresh
+  /// the list afterwards so the UI shows the new values.
   testProvider: (id: string) => Promise<TestProviderResponse>
   /// Test a config payload WITHOUT saving it to the DB. Used by the
   /// EditDrawer's "Test config" button so admins can verify before
   /// committing.
   testConfig: (req: CreateAuthProviderRequest) => Promise<TestProviderResponse>
 }
+
+const GROUP = 'AuthProvidersAdminStore'
 
 export const useAuthProvidersAdminStore = create<AuthProvidersAdminStore>()(
   subscribeWithSelector(
@@ -59,9 +71,76 @@ export const useAuthProvidersAdminStore = create<AuthProvidersAdminStore>()(
       testingIds: new Set<string>(),
 
       __init__: {
+        __store__: () => {
+          const eventBus = Stores.EventBus
+
+          // In-process: created/updated/deleted from local actions. The
+          // store doing the mutation also emits, so any other component
+          // listening (e.g. the public providers store) can update.
+          eventBus.on(
+            'auth_provider.created',
+            async event => {
+              const { provider } = event.data
+              set(state => {
+                state.providers.push(provider)
+                state.providers.sort((a, b) => a.name.localeCompare(b.name))
+              })
+            },
+            GROUP,
+          )
+          eventBus.on(
+            'auth_provider.updated',
+            async event => {
+              const { provider } = event.data
+              set(state => {
+                const idx = state.providers.findIndex(p => p.id === provider.id)
+                if (idx >= 0) state.providers[idx] = provider
+              })
+            },
+            GROUP,
+          )
+          eventBus.on(
+            'auth_provider.deleted',
+            async event => {
+              const { providerId } = event.data
+              set(state => {
+                state.providers = state.providers.filter(
+                  p => p.id !== providerId,
+                )
+                state.testingIds.delete(providerId)
+              })
+            },
+            GROUP,
+          )
+
+          // Auto-disable: the backend (or another tab) flipped a row to
+          // enabled=false because its probe failed. Reload so the Switch
+          // and Alert reflect the canonical state. The toast itself is
+          // raised by the action that hit the 400 (or by the manual
+          // Test button's caller); the listener's job is just to
+          // re-sync.
+          eventBus.on(
+            'auth_provider.auto_disabled',
+            async () => {
+              await get().loadProviders()
+            },
+            GROUP,
+          )
+
+          // Cross-device sync: another tab / device mutated a provider.
+          // Reload to pick up the new state. `loadProviders` self-guards
+          // against in-flight loads.
+          const reload = () => void get().loadProviders()
+          eventBus.on('sync:auth_provider', reload, GROUP)
+          eventBus.on('sync:reconnect', reload, GROUP)
+        },
         providers: async () => {
           await get().loadProviders()
         },
+      },
+
+      __destroy__: () => {
+        Stores.EventBus.removeGroupListeners(GROUP)
       },
 
       loadProviders: async () => {
@@ -91,11 +170,30 @@ export const useAuthProvidersAdminStore = create<AuthProvidersAdminStore>()(
         try {
           const created = await ApiClient.AuthProviders.create(req, undefined)
           set(s => {
-            s.providers.push(created)
-            s.providers.sort((a, b) => a.name.localeCompare(b.name))
             s.saving = false
           })
-          return created
+          try {
+            await emitAuthProviderCreated(created.provider)
+          } catch (eventError) {
+            console.error(
+              'Failed to emit auth provider created event:',
+              eventError,
+            )
+          }
+          if (created.connection_warning) {
+            try {
+              await emitAuthProviderAutoDisabled(
+                created.provider.id,
+                created.connection_warning,
+              )
+            } catch (eventError) {
+              console.error(
+                'Failed to emit auth provider auto_disabled event:',
+                eventError,
+              )
+            }
+          }
+          return created.provider
         } catch (e: any) {
           set(s => {
             s.error = e?.message ?? 'Failed to create provider'
@@ -116,16 +214,44 @@ export const useAuthProvidersAdminStore = create<AuthProvidersAdminStore>()(
             undefined,
           )
           set(s => {
-            const idx = s.providers.findIndex(p => p.id === id)
-            if (idx >= 0) s.providers[idx] = updated
             s.saving = false
           })
+          try {
+            await emitAuthProviderUpdated(updated)
+          } catch (eventError) {
+            console.error(
+              'Failed to emit auth provider updated event:',
+              eventError,
+            )
+          }
           return updated
         } catch (e: any) {
           set(s => {
             s.error = e?.message ?? 'Failed to update provider'
             s.saving = false
           })
+          // Backend returns 400 AUTH_PROVIDER_ENABLE_FAILED_HEALTH_CHECK
+          // when an enable-transition probe fails. Match on the stable
+          // error_code (not a substring of the user-facing message and
+          // not the presence of `req.enabled` — a duplicate-name or
+          // VALIDATION_ERROR 400 on the same PUT would otherwise
+          // false-trip the auto_disabled emit). The row has been
+          // reverted server-side; the listener reloads the list and
+          // the caller (list page / drawer) surfaces its own toast.
+          const code = (e as { error_code?: string })?.error_code
+          if (code === 'AUTH_PROVIDER_ENABLE_FAILED_HEALTH_CHECK') {
+            try {
+              await emitAuthProviderAutoDisabled(
+                id,
+                typeof e?.message === 'string' ? e.message : 'Probe failed',
+              )
+            } catch (eventError) {
+              console.error(
+                'Failed to emit auth provider auto_disabled event:',
+                eventError,
+              )
+            }
+          }
           throw e
         }
       },
@@ -138,10 +264,16 @@ export const useAuthProvidersAdminStore = create<AuthProvidersAdminStore>()(
         try {
           const res = await ApiClient.AuthProviders.delete({ id }, undefined)
           set(s => {
-            s.providers = s.providers.filter(p => p.id !== id)
-            s.testingIds.delete(id)
             s.saving = false
           })
+          try {
+            await emitAuthProviderDeleted(id)
+          } catch (eventError) {
+            console.error(
+              'Failed to emit auth provider deleted event:',
+              eventError,
+            )
+          }
           return { affected_user_links: res.affected_user_links }
         } catch (e: any) {
           set(s => {
@@ -157,13 +289,33 @@ export const useAuthProvidersAdminStore = create<AuthProvidersAdminStore>()(
           s.testingIds.add(id)
         })
         try {
+          // Snapshot enabled BEFORE the test; the server may flip it.
+          const wasEnabled =
+            get().providers.find(p => p.id === id)?.enabled === true
           const res = await ApiClient.AuthProviders.test({ id }, undefined)
-          // Server persists the result on the row; reload so the
-          // table renders the new last_test_at/ok/message immediately.
+          // The originator's SSE filter suppresses the server's own
+          // sync_publish (self-echo guard), so the canonical refresh
+          // needs an inline reload to surface the new `last_test_*`
+          // columns + (possibly) the auto-flipped `enabled` state.
           await get().loadProviders()
           set(s => {
             s.testingIds.delete(id)
           })
+          // Additional typed signal for the auto-disable path so a
+          // drawer (or other component) listening specifically for
+          // auto_disabled can show its own toast / banner. The
+          // listener's reload is a no-op when the data already
+          // matches the just-loaded state.
+          if (wasEnabled && !res.ok) {
+            try {
+              await emitAuthProviderAutoDisabled(id, res.message)
+            } catch (eventError) {
+              console.error(
+                'Failed to emit auth provider auto_disabled event:',
+                eventError,
+              )
+            }
+          }
           return res
         } catch (e: any) {
           set(s => {

@@ -238,6 +238,20 @@ export interface ConversationResponse {
   user_id: string
 }
 
+export interface ConversationSummarizationModeResponse {
+  summarization_mode: string
+}
+
+export interface ConversationSummary {
+  branch_id: string
+  created_at: string
+  message_count: number
+  model_used?: string
+  summarized_up_to_id?: string
+  summary_text: string
+  updated_at: string
+}
+
 export interface CoreMemoryBlock {
   assistant_id: string
   block_label: string
@@ -275,6 +289,11 @@ export interface CreateAuthProviderRequest {
   enabled?: boolean
   name: string
   provider_type: string
+}
+
+export interface CreateAuthProviderResponse {
+  connection_warning?: string
+  provider: AuthProviderResponse
 }
 
 export interface CreateBranchRequest {
@@ -644,6 +663,18 @@ export interface FileListResponse {
   page: number
   per_page: number
   total: number
+}
+
+export type FileRole = 'weight' | 'index' | 'config' | 'tokenizer' | 'vocab' | 'other'
+
+export interface FtsRebuildRequest {
+  dictionary: string
+}
+
+export interface FtsRebuildStatus {
+  completed_at?: string
+  in_progress: boolean
+  started_at?: string
 }
 
 export interface GPUComputeCapabilities {
@@ -1349,12 +1380,16 @@ export interface MemoryAdminSettings {
   embedding_dimensions: number
   embedding_model_id?: string
   enabled: boolean
-  full_summary_prompt?: string
+  fts_candidate_multiplier: number
+  fts_dictionary: string
+  fts_enabled: boolean
+  fts_min_rank: number
+  fts_rebuild_completed_at?: string
+  fts_rebuild_started_at?: string
+  fts_rrf_k: number
   id: number
-  incremental_summary_prompt?: string
+  semantic_enabled: boolean
   soft_delete_grace_days: number
-  summarize_after_tokens: number
-  summarizer_keep_recent_tokens: number
   updated_at: string
 }
 
@@ -1573,6 +1608,8 @@ export interface ModelQuantization {
   name: string
   sizeGb?: number
 }
+
+export type ModelShape = 'gguf' | 'safetensors' | 'pickle' | 'unknown'
 
 export interface ModelSource {
   contextLength?: number
@@ -1810,6 +1847,29 @@ export interface RepositoryAuthConfig {
   token?: string
   username?: string
 }
+
+export interface RepositoryFile {
+  file_format?: string
+  file_role: FileRole
+  path: string
+  size_bytes: number
+}
+
+export interface RepositoryFileListResponse {
+  files: RepositoryFile[]
+  shape: ModelShape
+  source: RepositorySource
+  suggested_main_filename?: string
+  truncated: boolean
+}
+
+export interface RepositoryFilesQuery {
+  branch?: string
+  path: string
+  repository_id: string
+}
+
+export type RepositorySource = 'huggingface' | 'github' | 'unknown'
 
 export interface ResetPasswordRequest {
   new_password: string
@@ -2149,6 +2209,17 @@ export interface StreamError {
   message: string
 }
 
+export interface SummarizationAdminSettings {
+  default_summarization_model_id?: string
+  enabled: boolean
+  full_summary_prompt?: string
+  id: number
+  incremental_summary_prompt?: string
+  summarize_after_tokens: number
+  summarizer_keep_recent_tokens: number
+  updated_at: string
+}
+
 export interface SwapOutcome {
   cache_wipe: SwapPolicy
   draining_mounts: number
@@ -2179,7 +2250,7 @@ export interface SyncConnectedData {
   connection_id: string
 }
 
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'user_llm_provider' | 'user_mcp_server' | 'session'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'user_llm_provider' | 'user_mcp_server' | 'session'
 
 export interface SyncEvent {
   action: SyncAction
@@ -2224,6 +2295,11 @@ export interface TestProviderResponse {
   ok: boolean
 }
 
+export interface TestRefreshRequest {
+  branch_id: string
+  model_id: string
+}
+
 export interface TestRepositoryConnectionRequest {
   auth_config?: RepositoryAuthConfig
   auth_type: string
@@ -2234,11 +2310,6 @@ export interface TestRepositoryConnectionRequest {
 export interface TestRepositoryConnectionResponse {
   message: string
   success: boolean
-}
-
-export interface TestSummarizeRequest {
-  branch_id: string
-  model_id: string
 }
 
 export interface TextPageQuery {
@@ -2338,6 +2409,10 @@ export interface UpdateConversationRequest {
   title?: string
 }
 
+export interface UpdateConversationSummarizationModeRequest {
+  summarization_mode: string
+}
+
 export interface UpdateGroupProvidersRequest {
   provider_ids: string[]
 }
@@ -2412,11 +2487,13 @@ export interface UpdateMemoryAdminSettingsRequest {
   default_top_k?: number
   embedding_model_id?: string
   enabled?: boolean
-  full_summary_prompt?: string
-  incremental_summary_prompt?: string
+  fts_candidate_multiplier?: number
+  fts_dictionary?: string
+  fts_enabled?: boolean
+  fts_min_rank?: number
+  fts_rrf_k?: number
+  semantic_enabled?: boolean
   soft_delete_grace_days?: number
-  summarize_after_tokens?: number
-  summarizer_keep_recent_tokens?: number
 }
 
 export interface UpdateMemoryRequest {
@@ -2443,6 +2520,15 @@ export interface UpdateRuntimeSettingsRequest {
   auto_start_timeout_secs?: number
   drain_timeout_secs?: number
   idle_unload_secs?: number
+}
+
+export interface UpdateSummarizationAdminSettingsRequest {
+  default_summarization_model_id?: string
+  enabled?: boolean
+  full_summary_prompt?: string
+  incremental_summary_prompt?: string
+  summarize_after_tokens?: number
+  summarizer_keep_recent_tokens?: number
 }
 
 export interface UpdateUserMemorySettingsRequest {
@@ -2692,6 +2778,8 @@ export enum Permissions {
   RuntimeVersionDelete = 'llm_local_runtime::delete',
   RuntimeVersionRead = 'llm_local_runtime::versions_read',
   RuntimeVersionUpdate = 'llm_local_runtime::update',
+  SummarizationSettingsManage = 'summarization::settings::manage',
+  SummarizationSettingsRead = 'summarization::settings::read',
   UserLlmProvidersRead = 'user_llm_providers::read',
   UsersCreate = 'users::create',
   UsersDelete = 'users::delete',
@@ -2797,6 +2885,8 @@ export const PermissionDescriptions: Record<string, string> = {
   RuntimeVersionDelete: 'Delete runtime versions',
   RuntimeVersionRead: 'View runtime versions and check for updates',
   RuntimeVersionUpdate: 'Update runtime version settings and defaults',
+  SummarizationSettingsManage: 'Update deployment-wide summarization settings (enable, model, thresholds, prompts).',
+  SummarizationSettingsRead: 'Read deployment-wide summarization settings (model + thresholds + prompt overrides).',
   UserLlmProvidersRead: 'View available LLM providers and models',
   UsersCreate: 'Create new user accounts',
   UsersDelete: 'Delete user accounts',
@@ -2861,8 +2951,10 @@ export const ApiEndpoints = {
   'Conversation.get': 'GET /api/conversations/{id}',
   'Conversation.getMcpSettings': 'GET /api/conversations/{id}/mcp-settings',
   'Conversation.getMemoryMode': 'GET /api/conversations/{id}/memory-mode',
+  'Conversation.getSummarizationMode': 'GET /api/conversations/{id}/summarization-mode',
   'Conversation.list': 'GET /api/conversations',
   'Conversation.setMemoryMode': 'PUT /api/conversations/{id}/memory-mode',
+  'Conversation.setSummarizationMode': 'PUT /api/conversations/{id}/summarization-mode',
   'Conversation.update': 'PUT /api/conversations/{id}',
   'Conversation.updateMcpSettings': 'PUT /api/conversations/{id}/mcp-settings',
   'CoreMemory.delete': 'DELETE /api/assistants/{assistant_id}/core-memory/{block_label}',
@@ -2916,6 +3008,7 @@ export const ApiEndpoints = {
   'LlmModel.getDownload': 'GET /api/llm-models/downloads/{download_id}',
   'LlmModel.list': 'GET /api/llm-models',
   'LlmModel.listDownloads': 'GET /api/llm-models/downloads',
+  'LlmModel.listRepositoryFiles': 'GET /api/llm-models/repository-files',
   'LlmModel.subscribeDownloadProgress': 'GET /api/llm-models/downloads/subscribe',
   'LlmModel.update': 'POST /api/llm-models/{model_id}',
   'LlmModel.upload': 'POST /api/llm-models/upload',
@@ -2994,6 +3087,8 @@ export const ApiEndpoints = {
   'Memory.get': 'GET /api/memories/{id}',
   'Memory.list': 'GET /api/memories',
   'Memory.update': 'PATCH /api/memories/{id}',
+  'MemoryAdmin.ftsRebuild': 'POST /api/memory/admin/fts/rebuild',
+  'MemoryAdmin.ftsRebuildStatus': 'GET /api/memory/admin/fts/rebuild/status',
   'MemoryAdmin.get': 'GET /api/memory/admin-settings',
   'MemoryAdmin.rebuildStatus': 'GET /api/memory/admin-settings/rebuild-status',
   'MemoryAdmin.reembed': 'POST /api/memory/admin-settings/reembed',
@@ -3002,7 +3097,6 @@ export const ApiEndpoints = {
   'MemorySettings.get': 'GET /api/memory/settings',
   'MemorySettings.update': 'PUT /api/memory/settings',
   'MemoryTest.extract': 'POST /api/_test/memory/extract',
-  'MemoryTest.summarize': 'POST /api/_test/memory/summarize',
   'Message.delete': 'DELETE /api/messages/{id}',
   'Message.edit': 'PUT /api/conversations/{conversation_id}/messages/{message_id}',
   'Message.get': 'GET /api/messages/{id}',
@@ -3041,6 +3135,10 @@ export const ApiEndpoints = {
   'RuntimeVersion.subscribeDownloadEvents': 'GET /api/local-runtime/versions/downloads/{key}/events',
   'RuntimeVersion.syncCache': 'POST /api/local-runtime/versions/sync-cache',
   'RuntimeVersion.usage': 'GET /api/local-runtime/version-usage',
+  'Summarization.getConversationSummary': 'GET /api/conversations/{id}/summary',
+  'SummarizationAdmin.get': 'GET /api/summarization/settings',
+  'SummarizationAdmin.update': 'PUT /api/summarization/settings',
+  'SummarizationTest.refresh': 'POST /api/_test/summarization/refresh',
   'Sync.subscribe': 'GET /api/sync/subscribe',
   'User.create': 'POST /api/users',
   'User.delete': 'DELETE /api/users/{user_id}',
@@ -3110,8 +3208,10 @@ export type ApiEndpointParameters = {
   'Conversation.get': { id: string }
   'Conversation.getMcpSettings': { id: string }
   'Conversation.getMemoryMode': { id: string }
+  'Conversation.getSummarizationMode': { id: string }
   'Conversation.list': { limit?: number; page?: number }
   'Conversation.setMemoryMode': { id: string } & UpdateConversationMemoryModeRequest
+  'Conversation.setSummarizationMode': { id: string } & UpdateConversationSummarizationModeRequest
   'Conversation.update': { id: string } & UpdateConversationRequest
   'Conversation.updateMcpSettings': { id: string } & UpsertMcpSettingsRequest
   'CoreMemory.delete': { assistant_id: string; block_label: string }
@@ -3165,6 +3265,7 @@ export type ApiEndpointParameters = {
   'LlmModel.getDownload': { download_id: string }
   'LlmModel.list': { capability?: string; page?: number; perPage?: number; providerId?: string }
   'LlmModel.listDownloads': { page?: number; per_page?: number; status?: string }
+  'LlmModel.listRepositoryFiles': { branch?: string; path: string; repository_id: string }
   'LlmModel.subscribeDownloadProgress': void
   'LlmModel.update': { model_id: string } & UpdateLlmModelRequest
   'LlmModel.upload': FormData
@@ -3243,6 +3344,8 @@ export type ApiEndpointParameters = {
   'Memory.get': { id: string }
   'Memory.list': { kind?: string; limit?: number; offset?: number; page?: number; per_page?: number; search?: string; source?: string }
   'Memory.update': { id: string } & UpdateMemoryRequest
+  'MemoryAdmin.ftsRebuild': FtsRebuildRequest
+  'MemoryAdmin.ftsRebuildStatus': void
   'MemoryAdmin.get': void
   'MemoryAdmin.rebuildStatus': void
   'MemoryAdmin.reembed': void
@@ -3251,7 +3354,6 @@ export type ApiEndpointParameters = {
   'MemorySettings.get': void
   'MemorySettings.update': UpdateUserMemorySettingsRequest
   'MemoryTest.extract': TestExtractRequest
-  'MemoryTest.summarize': TestSummarizeRequest
   'Message.delete': { id: string }
   'Message.edit': { conversation_id: string; message_id: string } & EditMessageRequest
   'Message.get': { id: string }
@@ -3290,6 +3392,10 @@ export type ApiEndpointParameters = {
   'RuntimeVersion.subscribeDownloadEvents': { key: string }
   'RuntimeVersion.syncCache': void
   'RuntimeVersion.usage': { engine?: string }
+  'Summarization.getConversationSummary': { id: string }
+  'SummarizationAdmin.get': void
+  'SummarizationAdmin.update': UpdateSummarizationAdminSettingsRequest
+  'SummarizationTest.refresh': TestRefreshRequest
   'Sync.subscribe': void
   'User.create': CreateUserRequest
   'User.delete': { user_id: string }
@@ -3333,7 +3439,7 @@ export type ApiEndpointResponses = {
   'Auth.refresh': TokenPair
   'Auth.register': AuthResponse
   'Auth.updateProfile': User
-  'AuthProviders.create': AuthProviderResponse
+  'AuthProviders.create': CreateAuthProviderResponse
   'AuthProviders.delete': DeleteProviderResponse
   'AuthProviders.list': AuthProviderResponse[]
   'AuthProviders.test': TestProviderResponse
@@ -3359,8 +3465,10 @@ export type ApiEndpointResponses = {
   'Conversation.get': Conversation
   'Conversation.getMcpSettings': McpSettingsResponse
   'Conversation.getMemoryMode': ConversationMemoryModeResponse
+  'Conversation.getSummarizationMode': ConversationSummarizationModeResponse
   'Conversation.list': ConversationResponse[]
   'Conversation.setMemoryMode': ConversationMemoryModeResponse
+  'Conversation.setSummarizationMode': ConversationSummarizationModeResponse
   'Conversation.update': Conversation
   'Conversation.updateMcpSettings': ConversationMcpSettingsResponse
   'CoreMemory.delete': void
@@ -3414,6 +3522,7 @@ export type ApiEndpointResponses = {
   'LlmModel.getDownload': DownloadInstance
   'LlmModel.list': LlmModelListResponse
   'LlmModel.listDownloads': DownloadInstanceListResponse
+  'LlmModel.listRepositoryFiles': RepositoryFileListResponse
   'LlmModel.subscribeDownloadProgress': SSEDownloadProgressEvent
   'LlmModel.update': LlmModel
   'LlmModel.upload': LlmModel
@@ -3492,6 +3601,8 @@ export type ApiEndpointResponses = {
   'Memory.get': UserMemory
   'Memory.list': MemoryListResponse
   'Memory.update': UserMemory
+  'MemoryAdmin.ftsRebuild': any
+  'MemoryAdmin.ftsRebuildStatus': FtsRebuildStatus
   'MemoryAdmin.get': MemoryAdminSettings
   'MemoryAdmin.rebuildStatus': RebuildStatus
   'MemoryAdmin.reembed': any
@@ -3500,7 +3611,6 @@ export type ApiEndpointResponses = {
   'MemorySettings.get': UserMemorySettings
   'MemorySettings.update': UserMemorySettings
   'MemoryTest.extract': any
-  'MemoryTest.summarize': any
   'Message.delete': void
   'Message.edit': EditMessageResponse
   'Message.get': MessageWithContent
@@ -3539,6 +3649,10 @@ export type ApiEndpointResponses = {
   'RuntimeVersion.subscribeDownloadEvents': SSEEngineDownloadEvent
   'RuntimeVersion.syncCache': SyncCacheResponse
   'RuntimeVersion.usage': VersionUsageResponse
+  'Summarization.getConversationSummary': ConversationSummary | null
+  'SummarizationAdmin.get': SummarizationAdminSettings
+  'SummarizationAdmin.update': SummarizationAdminSettings
+  'SummarizationTest.refresh': any
   'Sync.subscribe': SyncSseEvent
   'User.create': User
   'User.delete': void

@@ -7,6 +7,7 @@ import {
   Flex,
   Form,
   InputNumber,
+  Switch,
   message,
 } from 'antd'
 import { Stores } from '@/core/stores'
@@ -17,15 +18,16 @@ const READ_PERM = Permissions.MemoryAdminRead
 const MANAGE_PERM = Permissions.MemoryAdminManage
 
 interface FormValues {
+  enabled: boolean
   default_top_k: number
-  cosine_threshold: number
 }
 
 /**
- * Retrieval tuning: top-K + cosine_threshold. Own form so saves don't
- * trip the embedding-model swap path.
+ * Master memory card: deployment-wide kill switch + the shared
+ * `default_top_k` retrieval cap. Per-arm enable toggles
+ * (`fts_enabled`, `semantic_enabled`) live in their own cards below.
  */
-export function RetrievalTuningSection() {
+export function MemorySection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
   const { settings, saving } = Stores.MemoryAdmin
@@ -34,15 +36,15 @@ export function RetrievalTuningSection() {
   useEffect(() => {
     if (settings) {
       form.setFieldsValue({
+        enabled: settings.enabled,
         default_top_k: settings.default_top_k,
-        cosine_threshold: settings.cosine_threshold,
       })
     }
   }, [settings, form])
 
   if (!canRead) {
     return (
-      <Card title="Retrieval tuning">
+      <Card title="Memory">
         <Alert
           type="warning"
           showIcon
@@ -56,45 +58,45 @@ export function RetrievalTuningSection() {
   const handleSubmit = async (values: FormValues) => {
     try {
       await Stores.MemoryAdmin.update({
+        enabled: values.enabled,
         default_top_k: values.default_top_k,
-        cosine_threshold: values.cosine_threshold,
       })
-      message.success('Retrieval tuning saved.')
+      message.success('Memory settings saved.')
     } catch (error) {
       message.error(
-        error instanceof Error
-          ? error.message
-          : 'Failed to save retrieval tuning.',
+        error instanceof Error ? error.message : 'Failed to save memory settings.',
       )
     }
   }
 
   return (
-    <Card title="Retrieval tuning">
+    <Card title="Memory">
       <Form
-        name="memory-admin-retrieval-form"
+        name="memory-admin-master-form"
         form={form}
         layout="horizontal"
-        labelCol={{ flex: '280px' }}
-        wrapperCol={{ flex: 'auto' }}
+        labelCol={{ xs: { span: 24 }, md: { span: 10 } }}
+        wrapperCol={{ xs: { span: 24 }, md: { span: 14 } }}
         labelAlign="left"
         colon={false}
         onFinish={handleSubmit}
         disabled={!canManage}
       >
         <Form.Item
+          name="enabled"
+          label="Enable memory deployment-wide"
+          extra="When off, all memory hooks no-op silently. Per-user toggles are unaffected but have no effect until this is on."
+          valuePropName="checked"
+        >
+          <Switch aria-label="Enable memory deployment-wide" />
+        </Form.Item>
+
+        <Form.Item
           name="default_top_k"
           label="Default top-K"
-          extra="How many memories to inject per turn (per user can be overridden later)."
+          extra="How many memories to inject per turn. Shared across retrieval arms — the fused top-K is what's injected, whether the result came from full-text, semantic, or hybrid search. Users can override their own limit later."
         >
           <InputNumber min={1} max={100} style={{ width: 160 }} />
-        </Form.Item>
-        <Form.Item
-          name="cosine_threshold"
-          label="Cosine distance threshold"
-          extra="Memories with distance ≥ this value are filtered out. Lower = stricter (fewer false-positives, more misses)."
-        >
-          <InputNumber min={0} max={2} step={0.05} style={{ width: 160 }} />
         </Form.Item>
 
         {canManage && (

@@ -4,36 +4,9 @@ import { useEffect, useState } from 'react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type UpdateGroupRequest } from '@/api-client/types'
+import { PermissionsField } from '@/modules/user/components/PermissionsField.tsx'
 
 const { TextArea } = Input
-
-// Helper function to validate permissions
-const validatePermissions = (_: any, value: string) => {
-  if (!value) return Promise.resolve()
-
-  try {
-    const parsed = JSON.parse(value)
-    if (!Array.isArray(parsed)) {
-      return Promise.reject('Must be an array')
-    }
-
-    // Check if all values are valid permissions
-    const validPermissions = Object.values(Permissions)
-    const invalidPermissions = parsed.filter(
-      perm => !validPermissions.includes(perm),
-    )
-
-    if (invalidPermissions.length > 0) {
-      return Promise.reject(
-        `Invalid permissions: ${invalidPermissions.join(', ')}`,
-      )
-    }
-
-    return Promise.resolve()
-  } catch {
-    return Promise.reject('Invalid JSON format')
-  }
-}
 
 export function EditUserGroupDrawer() {
   const { message } = App.useApp()
@@ -49,7 +22,7 @@ export function EditUserGroupDrawer() {
       form.setFieldsValue({
         name: group.name,
         description: group.description,
-        permissions: JSON.stringify(group.permissions, null, 2),
+        permissions: group.permissions ?? [],
         is_active: group.is_active,
       })
     }
@@ -66,23 +39,10 @@ export function EditUserGroupDrawer() {
     try {
       setLoading(true)
 
-      let permissions: string[] = []
-      try {
-        permissions = JSON.parse(values.permissions || '[]')
-        if (!Array.isArray(permissions)) {
-          throw new Error('Permissions must be an array')
-        }
-      } catch (_error) {
-        message.error(
-          'Invalid permissions format. Please enter a valid JSON array.',
-        )
-        return
-      }
-
       const updateData: UpdateGroupRequest = {
         name: values.name,
         description: values.description,
-        permissions,
+        permissions: values.permissions ?? [],
         is_active: values.is_active,
       }
 
@@ -133,15 +93,8 @@ export function EditUserGroupDrawer() {
           />
         </Form.Item>
 
-        <Form.Item
-          name="permissions"
-          label="Permissions (JSON Array)"
-          rules={[{ validator: validatePermissions }]}
-        >
-          <TextArea
-            placeholder={`["${Permissions.UsersRead}", "${Permissions.UsersEdit}"]`}
-            rows={6}
-          />
+        <Form.Item name="permissions" label="Permissions">
+          <PermissionsField disabled={!canEdit} />
         </Form.Item>
 
         <Form.Item name="is_active" label="Active" valuePropName="checked">

@@ -21,6 +21,7 @@ pub mod memory_mcp;
 pub mod onboarding;
 pub mod permissions;
 pub mod project;
+pub mod summarization;
 pub mod sync;
 pub mod user;
 

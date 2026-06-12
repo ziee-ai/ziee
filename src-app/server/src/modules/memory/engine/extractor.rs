@@ -131,6 +131,26 @@ async fn run(
         return Ok(());
     };
 
+    // Guard: the extraction model must be generation-capable. An
+    // embedding model (text_embedding) is started with `--embeddings`
+    // and returns HTTP 500 "the current context does not support logits
+    // computation" on a chat request. Skip gracefully with a clear,
+    // actionable log rather than firing a doomed request and swallowing
+    // the 500. See `engine::capability`.
+    let extraction_model = Repos
+        .llm_model
+        .get_by_id(extraction_model_id)
+        .await
+        .map_err(AppError::database_error)?
+        .ok_or_else(|| AppError::not_found("LlmModel"))?;
+    if let Some(reason) = super::capability::generation_unsupported_reason(
+        &extraction_model.name,
+        &extraction_model.capabilities,
+    ) {
+        tracing::warn!("memory.extract: {reason} — skipping extraction");
+        return Ok(());
+    }
+
     // ── 2. Load existing memories for dedup bias ───────────────────
     let existing = Repos
         .memory
@@ -153,7 +173,7 @@ async fn run(
         .replace("{assistant_message}", &assistant_message);
 
     // ── 4. Call extraction LLM ─────────────────────────────────────
-    let json_text = call_extraction_llm(extraction_model_id, prompt).await?;
+    let json_text = call_extraction_llm(&extraction_model, prompt).await?;
 
     // ── 5. Parse ops ───────────────────────────────────────────────
     let ops: Vec<ExtractionOp> = match parse_extraction_json(&json_text) {
@@ -363,14 +383,12 @@ async fn apply_delete(user_id: Uuid, memory_id: Option<Uuid>) -> Result<(), AppE
 }
 
 /// Call the extraction LLM. Single non-streaming completion accumulated
-/// from the stream.
-async fn call_extraction_llm(model_id: Uuid, prompt: String) -> Result<String, AppError> {
-    let model = Repos
-        .llm_model
-        .get_by_id(model_id)
-        .await
-        .map_err(AppError::database_error)?
-        .ok_or_else(|| AppError::not_found("LlmModel"))?;
+/// from the stream. The model is loaded + capability-checked by the
+/// caller (`run`), so this takes the resolved `&LlmModel` directly.
+async fn call_extraction_llm(
+    model: &crate::modules::llm_model::models::LlmModel,
+    prompt: String,
+) -> Result<String, AppError> {
     let provider = Repos
         .llm_provider
         .get_by_id(model.provider_id)
