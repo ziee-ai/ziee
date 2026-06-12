@@ -210,18 +210,10 @@ async fn create_model_with_files(
         ));
     }
 
-    // Determine which files to copy based on main filename and index files
+    // Determine which files to copy based on main filename and index files.
+    // (`determine_files_to_copy` errors when no weight matches, so the result
+    // is never an empty Ok — no separate empty-check needed.)
     let files_to_copy = determine_files_to_copy(&source_files, &request.main_filename)?;
-
-    if files_to_copy.is_empty() {
-        return Err(AppError::bad_request(
-            "VALIDATION_ERROR",
-            format!(
-                "No relevant files found for main filename: {}",
-                request.main_filename
-            ),
-        ));
-    }
 
     tracing::info!(
         "Found {} files to copy: {:?}",
@@ -396,151 +388,23 @@ async fn create_model_with_files(
     Ok(model)
 }
 
-/// Determine which files to copy based on main filename and index files
+/// Determine which files to copy for a model download/upload.
+///
+/// Delegates to the shared mistral.rs-parity detector
+/// ([`crate::modules::llm_model::model_files::select_download_files`]): for a
+/// safetensors/pickle repo it keeps the WHOLE weight set (so a sharded repo
+/// without a `*.index.json` still pulls every shard), for GGUF it keeps the
+/// chosen quant (+ its shard siblings), and it always includes the
+/// config/tokenizer/index aux files the engine loads alongside the weights.
 fn determine_files_to_copy(
     source_files: &[String],
     main_filename: &str,
 ) -> Result<Vec<String>, AppError> {
-    let mut files_to_copy = Vec::new();
-
-    // First, check if main_filename ends with .json (if so, it might be an index file already)
-    let main_is_json = main_filename.to_lowercase().ends_with(".json");
-
-    // If main file doesn't end with .json, look for {main_filename}.index.json
-    let index_filename = if !main_is_json {
-        format!("{}.index.json", main_filename)
-    } else {
-        main_filename.to_string()
-    };
-
-    // Always check for index file first
-    let index_exists = !main_is_json && source_files.contains(&index_filename);
-    let main_exists = source_files.contains(&main_filename.to_string());
-
-    // Check if index file exists first
-    if index_exists {
-        tracing::debug!("Found index file: {}", index_filename);
-
-        // Add the index file itself
-        files_to_copy.push(index_filename.clone());
-
-        // Extract base name from main filename
-        let mut base_name = main_filename
-            .trim_end_matches(".safetensors")
-            .trim_end_matches(".bin")
-            .trim_end_matches(".pt")
-            .trim_end_matches(".pth")
-            .trim_end_matches(".gguf");
-
-        // Handle case where user provided a sharded filename as main filename
-        if let Some(of_pos) = base_name.find("-of-") {
-            let before_of = &base_name[..of_pos];
-            if let Some(dash_pos) = before_of.rfind('-')
-                && before_of[dash_pos + 1..]
-                    .chars()
-                    .all(|c| c.is_ascii_digit())
-                {
-                    base_name = &before_of[..dash_pos];
-                }
-        } else if let Some(of_pos) = base_name.find("_of_") {
-            let before_of = &base_name[..of_pos];
-            if let Some(underscore_pos) = before_of.rfind('_')
-                && before_of[underscore_pos + 1..]
-                    .chars()
-                    .all(|c| c.is_ascii_digit())
-                {
-                    base_name = &before_of[..underscore_pos];
-                }
-        }
-
-        // Add all weight files that match the sharding pattern
-        for file in source_files {
-            if file.starts_with(base_name)
-                && (file.contains("-of-") || file.contains("_of_"))
-                && (file.ends_with(".safetensors")
-                    || file.ends_with(".bin")
-                    || file.ends_with(".pt")
-                    || file.ends_with(".pth")
-                    || file.ends_with(".gguf"))
-            {
-                files_to_copy.push(file.clone());
-            }
-        }
-    } else if main_is_json
-        && (main_filename.contains("index") || main_filename.ends_with(".index.json"))
-    {
-        tracing::debug!("Main file is an index file: {}", main_filename);
-
-        files_to_copy.push(main_filename.to_string());
-
-        // Extract base name from index file
-        let base_name = main_filename
-            .replace(".index.json", "")
-            .replace("_index.json", "")
-            .replace("-index.json", "");
-
-        // Add all related weight files
-        for file in source_files {
-            if file.starts_with(&base_name)
-                && file != main_filename
-                && (file.ends_with(".safetensors")
-                    || file.ends_with(".bin")
-                    || file.ends_with(".pt")
-                    || file.ends_with(".pth")
-                    || file.ends_with(".gguf"))
-            {
-                files_to_copy.push(file.clone());
-            }
-        }
-    } else if main_exists {
-        tracing::debug!(
-            "No index file found for {}. Only copying main file.",
-            main_filename
-        );
-        files_to_copy.push(main_filename.to_string());
-    } else {
-        return Err(AppError::bad_request(
-            "NOT_FOUND",
-            format!(
-                "Neither '{}' nor '{}' found in source directory",
-                main_filename,
-                if !main_is_json {
-                    &index_filename
-                } else {
-                    main_filename
-                }
-            ),
-        ));
-    }
-
-    // Always add configuration and tokenizer files regardless of sharding
-    for file in source_files {
-        if is_config_or_tokenizer_file(file) && !files_to_copy.contains(&file.to_string()) {
-            files_to_copy.push(file.clone());
-        }
-    }
-
-    // Remove duplicates and sort
-    files_to_copy.sort();
-    files_to_copy.dedup();
-
-    tracing::debug!("Files to copy: {:?}", files_to_copy);
-
-    Ok(files_to_copy)
-}
-
-/// Check if a file is a configuration or tokenizer file
-fn is_config_or_tokenizer_file(filename: &str) -> bool {
-    let filename_lower = filename.to_lowercase();
-    filename_lower.ends_with("config.json")
-        || filename_lower.ends_with("tokenizer.json")
-        || filename_lower.ends_with("tokenizer_config.json")
-        || filename_lower.ends_with("vocab.json")
-        || filename_lower.ends_with("merges.txt")
-        || filename_lower.ends_with("special_tokens_map.json")
-        || filename_lower.ends_with("vocab.txt")
-        || filename_lower.ends_with("spiece.model")
-        || filename_lower == "generation_config.json"
+    let files =
+        crate::modules::llm_model::model_files::select_download_files(source_files, main_filename)
+            .map_err(|m| AppError::bad_request("VALIDATION_ERROR", m))?;
+    tracing::debug!("Files to copy: {:?}", files);
+    Ok(files)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -1324,7 +1188,13 @@ pub async fn initiate_repository_download_internal(
                     }
                 };
 
-                // Determine which files to copy
+                // Determine which files to copy. NOTE: this selection drives
+                // the LFS pull below, and `create_model_with_files` re-derives
+                // the SAME selection from the same clone dir to copy into
+                // storage. The two must agree — they do because the only step
+                // between them (git-LFS smudge) rewrites pointer *content* in
+                // place and never changes the directory's file-name set, which
+                // is all `select_download_files` keys on.
                 let files_to_copy =
                     match determine_files_to_copy(&source_files, &request.main_filename) {
                         Ok(files) => files,

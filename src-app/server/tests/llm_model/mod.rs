@@ -3,6 +3,7 @@
 mod download_management_test;
 mod download_progress_test;
 pub mod download_test;
+mod repo_files_real_test;
 mod storage_test;
 mod sync_emit_test;
 mod upload_test;
