@@ -530,10 +530,14 @@ impl MemoryRepository {
                 enabled,
                 soft_delete_grace_days,
                 daily_extraction_quota,
-                summarize_after_tokens,
-                summarizer_keep_recent_tokens,
-                full_summary_prompt,
-                incremental_summary_prompt,
+                fts_dictionary,
+                fts_enabled,
+                fts_rrf_k,
+                fts_candidate_multiplier,
+                fts_min_rank,
+                fts_rebuild_started_at as "fts_rebuild_started_at: _",
+                fts_rebuild_completed_at as "fts_rebuild_completed_at: _",
+                semantic_enabled,
                 updated_at as "updated_at: _"
             FROM memory_admin_settings
             WHERE id = 1
@@ -543,6 +547,69 @@ impl MemoryRepository {
         .await
         .map_err(AppError::database_error)?;
         Ok(row)
+    }
+
+    /// Atomically claim the FTS-rebuild slot. Returns Ok(true) if this
+    /// caller now owns the slot (and must run the rebuild + call
+    /// `clear_fts_rebuild_marker` on any error path), Ok(false) if another
+    /// rebuild is already in flight.
+    ///
+    /// "In flight" = `fts_rebuild_started_at IS NOT NULL AND
+    /// fts_rebuild_completed_at IS NULL`. The CAS is a single UPDATE
+    /// keyed on that predicate, so two concurrent callers can't both
+    /// observe "no rebuild in flight" and race to start one.
+    pub async fn try_claim_fts_rebuild(&self) -> Result<bool, AppError> {
+        let result = sqlx::query!(
+            "UPDATE memory_admin_settings
+             SET fts_rebuild_started_at = NOW(),
+                 fts_rebuild_completed_at = NULL
+             WHERE id = 1
+               AND (fts_rebuild_started_at IS NULL
+                    OR fts_rebuild_completed_at IS NOT NULL)"
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Reset the started-at marker when a rebuild failed. Idempotent —
+    /// always returns Ok even if a row didn't match. Called from the
+    /// error path of `trigger_fts_rebuild`'s spawned worker so a crash
+    /// or DDL failure doesn't leave the row permanently "in progress".
+    pub async fn clear_fts_rebuild_marker(&self) -> Result<(), AppError> {
+        sqlx::query!(
+            "UPDATE memory_admin_settings
+             SET fts_rebuild_started_at = NULL,
+                 fts_rebuild_completed_at = NULL
+             WHERE id = 1
+               AND fts_rebuild_completed_at IS NULL"
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(())
+    }
+
+    /// Mark the FTS rebuild as complete and persist the new dictionary
+    /// value. Runs INSIDE the same transaction as the DDL so a failed
+    /// rebuild rolls back the dictionary swap and the completed-at write.
+    pub async fn complete_fts_rebuild(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        dictionary: &str,
+    ) -> Result<(), AppError> {
+        sqlx::query!(
+            "UPDATE memory_admin_settings
+             SET fts_dictionary = $1,
+                 fts_rebuild_completed_at = NOW()
+             WHERE id = 1",
+            dictionary
+        )
+        .execute(&mut **tx)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -555,20 +622,22 @@ impl MemoryRepository {
         enabled: Option<bool>,
         soft_delete_grace_days: Option<i32>,
         daily_extraction_quota: Option<i32>,
-        summarize_after_tokens: Option<i32>,
-        summarizer_keep_recent_tokens: Option<i32>,
-        full_summary_prompt: Option<Option<String>>,
-        incremental_summary_prompt: Option<Option<String>>,
+        // FTS knobs (migration 89). `fts_dictionary` is intentionally
+        // NOT writeable through this path — the handler returns 409
+        // FTS_REBUILD_REQUIRED on a dictionary change and the rebuild
+        // endpoint owns the swap.
+        fts_enabled: Option<bool>,
+        fts_rrf_k: Option<i32>,
+        fts_candidate_multiplier: Option<i32>,
+        fts_min_rank: Option<f32>,
+        // Semantic-arm kill switch (migration 90). Mirrors fts_enabled.
+        semantic_enabled: Option<bool>,
     ) -> Result<MemoryAdminSettings, AppError> {
         // Same Option<Option<T>> split as update_user_settings.
         let embedding_set = embedding_model_id.is_some();
         let embedding_val = embedding_model_id.flatten();
         let extraction_set = default_extraction_model_id.is_some();
         let extraction_val = default_extraction_model_id.flatten();
-        let full_prompt_set = full_summary_prompt.is_some();
-        let full_prompt_val = full_summary_prompt.flatten();
-        let inc_prompt_set = incremental_summary_prompt.is_some();
-        let inc_prompt_val = incremental_summary_prompt.flatten();
 
         let row = sqlx::query_as!(
             MemoryAdminSettings,
@@ -581,10 +650,11 @@ impl MemoryRepository {
                 enabled                       = COALESCE($7, enabled),
                 soft_delete_grace_days        = COALESCE($8, soft_delete_grace_days),
                 daily_extraction_quota        = COALESCE($9, daily_extraction_quota),
-                summarize_after_tokens        = COALESCE($10, summarize_after_tokens),
-                summarizer_keep_recent_tokens = COALESCE($11, summarizer_keep_recent_tokens),
-                full_summary_prompt           = CASE WHEN $12::bool THEN $13 ELSE full_summary_prompt END,
-                incremental_summary_prompt    = CASE WHEN $14::bool THEN $15 ELSE incremental_summary_prompt END,
+                fts_enabled                   = COALESCE($10, fts_enabled),
+                fts_rrf_k                     = COALESCE($11, fts_rrf_k),
+                fts_candidate_multiplier      = COALESCE($12, fts_candidate_multiplier),
+                fts_min_rank                  = COALESCE($13, fts_min_rank),
+                semantic_enabled              = COALESCE($14, semantic_enabled),
                 updated_at                    = NOW()
             WHERE id = 1
             RETURNING
@@ -597,10 +667,14 @@ impl MemoryRepository {
                 enabled,
                 soft_delete_grace_days,
                 daily_extraction_quota,
-                summarize_after_tokens,
-                summarizer_keep_recent_tokens,
-                full_summary_prompt,
-                incremental_summary_prompt,
+                fts_dictionary,
+                fts_enabled,
+                fts_rrf_k,
+                fts_candidate_multiplier,
+                fts_min_rank,
+                fts_rebuild_started_at as "fts_rebuild_started_at: _",
+                fts_rebuild_completed_at as "fts_rebuild_completed_at: _",
+                semantic_enabled,
                 updated_at as "updated_at: _"
             "#,
             embedding_set,
@@ -612,12 +686,11 @@ impl MemoryRepository {
             enabled,
             soft_delete_grace_days,
             daily_extraction_quota,
-            summarize_after_tokens,
-            summarizer_keep_recent_tokens,
-            full_prompt_set,
-            full_prompt_val,
-            inc_prompt_set,
-            inc_prompt_val
+            fts_enabled,
+            fts_rrf_k,
+            fts_candidate_multiplier,
+            fts_min_rank,
+            semantic_enabled
         )
         .fetch_one(&self.pool)
         .await

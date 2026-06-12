@@ -31,6 +31,25 @@ use tokio::net::TcpListener;
 use tokio::sync::Notify;
 use tokio::task::JoinHandle;
 
+/// Headers captured from a single elicitation-response POST (the client's
+/// JSON-RPC reply to the server-initiated `elicitation/create` request).
+/// Used by tests to assert the client sent the headers the MCP Streamable
+/// HTTP spec requires on every POST.
+#[derive(Clone, Debug, Default)]
+pub struct RecordedPostHeaders {
+    pub accept: Option<String>,
+    pub mcp_protocol_version: Option<String>,
+    pub mcp_session_id: Option<String>,
+    pub authorization: Option<String>,
+}
+
+fn header_str(headers: &HeaderMap, name: &str) -> Option<String> {
+    headers
+        .get(name)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+}
+
 /// Programmable per-test plan for a single tool call.
 #[derive(Clone)]
 pub struct ElicitationScript {
@@ -91,6 +110,15 @@ struct State_ {
     next_server_request_id: Mutex<i64>,
     /// How many elicitation/create requests to issue per tool call (default 1).
     elicitations_per_tool_call: Mutex<u32>,
+    /// When true, the client's elicitation-response POST MUST carry an
+    /// `Accept` header listing `text/event-stream` (per the MCP Streamable
+    /// HTTP spec). If it doesn't, the mock replies 406 and drops the message
+    /// without signaling the open SSE stream — faithfully reproducing a
+    /// spec-compliant server (the TypeScript / Python SDK) so the unanswered
+    /// `elicitation/create` request times out. Default false (lenient).
+    strict_response_accept: Mutex<bool>,
+    /// Headers captured from each elicitation-response POST, in order.
+    response_post_headers: Mutex<Vec<RecordedPostHeaders>>,
 }
 
 pub struct MockElicitationServer {
@@ -113,6 +141,8 @@ impl MockElicitationServer {
             session_id: format!("elicit-mock-{}", uuid::Uuid::new_v4()),
             next_server_request_id: Mutex::new(1000),
             elicitations_per_tool_call: Mutex::new(1),
+            strict_response_accept: Mutex::new(false),
+            response_post_headers: Mutex::new(Vec::new()),
         });
 
         let app = Router::new()
@@ -147,6 +177,19 @@ impl MockElicitationServer {
     pub fn set_elicitations_per_tool_call(&self, n: u32) {
         *self.state.elicitations_per_tool_call.lock().unwrap() = n;
     }
+
+    /// Require the client's elicitation-response POST to carry a spec-correct
+    /// `Accept` header. When enabled, a missing/wrong `Accept` causes the mock
+    /// to reply 406 and drop the message, so the `elicitation/create` request
+    /// times out — reproducing the production bug against a strict server.
+    pub fn set_strict_response_accept(&self, v: bool) {
+        *self.state.strict_response_accept.lock().unwrap() = v;
+    }
+
+    /// Headers captured from each elicitation-response POST, in order.
+    pub fn response_post_headers(&self) -> Vec<RecordedPostHeaders> {
+        self.state.response_post_headers.lock().unwrap().clone()
+    }
 }
 
 impl Drop for MockElicitationServer {
@@ -161,7 +204,7 @@ impl Drop for MockElicitationServer {
 
 async fn handle_post(
     State(state): State<Arc<State_>>,
-    _headers: HeaderMap,
+    headers: HeaderMap,
     body: String,
 ) -> Response {
     let json: serde_json::Value = match serde_json::from_str(&body) {
@@ -181,6 +224,34 @@ async fn handle_post(
 
     // Response to a server-initiated request (no method, has result/error).
     if method.is_none() && (json.get("result").is_some() || json.get("error").is_some()) {
+        // Capture the headers the client sent on this response POST so tests
+        // can assert the spec-required Accept / MCP-Protocol-Version / etc.
+        let recorded = RecordedPostHeaders {
+            accept: header_str(&headers, "accept"),
+            mcp_protocol_version: header_str(&headers, "mcp-protocol-version"),
+            mcp_session_id: header_str(&headers, "mcp-session-id"),
+            authorization: header_str(&headers, "authorization"),
+        };
+        let accept_ok = recorded
+            .accept
+            .as_deref()
+            .map(|a| a.contains("text/event-stream"))
+            .unwrap_or(false);
+        state.response_post_headers.lock().unwrap().push(recorded);
+
+        // A spec-compliant server (the TypeScript / Python SDK) rejects a POST whose Accept
+        // header does not list text/event-stream with 406 Not Acceptable and
+        // drops the message. Simulate that under strict mode: the headers were
+        // captured above for assertion, but skip the elicitation_responses push
+        // and the notify, so the open stream is never signaled and the pending
+        // elicitation/create request goes unanswered and times out.
+        if *state.strict_response_accept.lock().unwrap() && !accept_ok {
+            return Response::builder()
+                .status(StatusCode::NOT_ACCEPTABLE)
+                .body(Body::from(""))
+                .unwrap();
+        }
+
         state.elicitation_responses.lock().unwrap().push(json.clone());
         state.elicitation_response_received.notify_one();
         return Response::builder()
@@ -273,7 +344,9 @@ fn build_elicitation_stream(
         let n_elicitations = *state.elicitations_per_tool_call.lock().unwrap();
         let script = state.script.lock().unwrap().clone();
         let notify = state.elicitation_response_received.clone();
+        let strict = *state.strict_response_accept.lock().unwrap();
 
+        let mut all_responded = true;
         for _ in 0..n_elicitations {
             // Server-initiated elicitation/create request.
             let server_req_id = {
@@ -295,22 +368,42 @@ fn build_elicitation_stream(
 
             // Wait for the client to POST the response on a different
             // connection. Bounded by the script's timeout so tests don't hang.
-            let _ = tokio::time::timeout(
+            let got = tokio::time::timeout(
                 script.elicitation_response_timeout,
                 notify.notified(),
-            ).await;
+            ).await.is_ok();
+            if !got {
+                all_responded = false;
+                break;
+            }
         }
 
-        // Emit tool result and close.
-        let tool_result = serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": tool_call_id,
-            "result": {
-                "content": script.tool_result_content,
-                "isError": false,
-            }
-        });
-        yield Ok(Event::default().data(tool_result.to_string()));
+        if !all_responded && strict {
+            // No (valid) response arrived for an elicitation/create request.
+            // Mirror a spec-compliant server giving up: fail the tool call with
+            // the exact error the production bug surfaced to users.
+            let err = serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": tool_call_id,
+                "error": {
+                    "code": -32001,
+                    "message": "Elicitation failed: server->client request 'elicitation/create' timed out"
+                }
+            });
+            yield Ok(Event::default().data(err.to_string()));
+        } else {
+            // Emit tool result and close. (Non-strict mode also takes this path
+            // on timeout as a legacy safety net so older tests never hang.)
+            let tool_result = serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": tool_call_id,
+                "result": {
+                    "content": script.tool_result_content,
+                    "isError": false,
+                }
+            });
+            yield Ok(Event::default().data(tool_result.to_string()));
+        }
     };
 
     Box::pin(s)

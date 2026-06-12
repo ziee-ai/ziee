@@ -188,6 +188,20 @@ pub struct TestProviderResponse {
     pub message: String,
 }
 
+/// Response body for `POST /admin/auth-providers`. Wraps the persisted
+/// row in an envelope so we can attach a `connection_warning` when a
+/// create-time probe failed and the row was auto-downgraded to
+/// `enabled=false`. Mirrors `llm_repository`'s create-response shape.
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct CreateAuthProviderResponse {
+    pub provider: AuthProviderResponse,
+    /// Populated when the provider was created with `enabled=true` but
+    /// the connection probe failed; the row is persisted with
+    /// `enabled=false` and this carries the failure reason so the UI
+    /// can render an inline warning. `null` on the happy path.
+    pub connection_warning: Option<String>,
+}
+
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct DeleteProviderResponse {
     pub deleted: bool,

@@ -21,14 +21,20 @@ use super::jwt::{JwtService, TokenPair};
 use super::jwt_extractor::JwtAuth;
 use super::password;
 use super::permissions::{AuthProvidersManage, AuthProvidersRead};
-use super::providers::{AuthResult, create_provider, repository as provider_repo};
+use super::providers::events::AuthProviderEvent;
+use super::providers::{
+    AuthResult, create_provider, health as provider_health, repository as provider_repo,
+};
 use super::refresh_tokens;
 use super::types::{
     AppleCallbackForm, AuthProviderResponse, AuthResponse, ChangePasswordRequest,
-    CreateAuthProviderRequest, DeleteProviderResponse, LinkAccountRequest, LoginRequest,
-    MeResponse, OAuthAuthorizeQuery, OAuthCallbackQuery, PublicProvider, PublicProvidersResponse,
-    RefreshTokenRequest, RegisterRequest, TestProviderResponse, UpdateAuthProviderRequest,
-    UpdateProfileRequest,
+    CreateAuthProviderRequest, CreateAuthProviderResponse, DeleteProviderResponse,
+    LinkAccountRequest, LoginRequest, MeResponse, OAuthAuthorizeQuery, OAuthCallbackQuery,
+    PublicProvider, PublicProvidersResponse, RefreshTokenRequest, RegisterRequest,
+    TestProviderResponse, UpdateAuthProviderRequest, UpdateProfileRequest,
+};
+use crate::modules::sync::{
+    Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish,
 };
 
 // =====================================================
@@ -1667,8 +1673,10 @@ pub fn admin_list_providers_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn admin_create_provider(
     _: RequirePermissions<(AuthProvidersManage,)>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Json(req): Json<CreateAuthProviderRequest>,
-) -> ApiResult<Json<AuthProviderResponse>> {
+) -> ApiResult<Json<CreateAuthProviderResponse>> {
     if req.name.trim().is_empty() {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -1700,7 +1708,33 @@ pub async fn admin_create_provider(
     )
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    Ok((StatusCode::CREATED, Json(provider_to_response(row))))
+    let row_id = row.id;
+    // If enabled=true, probe immediately; on failure the row stays
+    // created but `enabled` is flipped back to false and
+    // `connection_warning` carries the reason.
+    let outcome = provider_health::enforce_on_create_with_enabled(row, &event_bus)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                e,
+            )
+        })?;
+    event_bus.emit_async(AuthProviderEvent::created(outcome.provider.id).into());
+    sync_publish(
+        SyncEntity::AuthProvider,
+        SyncAction::Create,
+        row_id,
+        Audience::perm::<AuthProvidersRead>(),
+        origin.0,
+    );
+    Ok((
+        StatusCode::CREATED,
+        Json(CreateAuthProviderResponse {
+            provider: provider_to_response(outcome.provider),
+            connection_warning: outcome.connection_warning,
+        }),
+    ))
 }
 
 pub fn admin_create_provider_docs(op: TransformOperation) -> TransformOperation {
@@ -1708,26 +1742,40 @@ pub fn admin_create_provider_docs(op: TransformOperation) -> TransformOperation 
         .id("AuthProviders.create")
         .tag("auth-providers")
         .summary("Create a new auth provider")
-        .response::<201, Json<AuthProviderResponse>>()
+        .response::<201, Json<CreateAuthProviderResponse>>()
 }
 
 /// PUT /api/admin/auth-providers/{id}
 /// Empty `client_secret` in the patch config preserves the existing
 /// value — so admins can edit other fields without re-entering
 /// secrets they don't have at hand.
+///
+/// Enable-transition (`enabled` going false → true) runs a live
+/// connection probe; on failure the row's `enabled` is forced back
+/// to false in the same response and a 400
+/// `AUTH_PROVIDER_ENABLE_FAILED_HEALTH_CHECK` is returned. Other
+/// fields in the same PUT stay persisted — the partial save is
+/// preferable to losing the admin's concurrent edits.
 #[debug_handler]
 pub async fn admin_update_provider(
     _: RequirePermissions<(AuthProvidersManage,)>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Path(id): Path<uuid::Uuid>,
     Json(req): Json<UpdateAuthProviderRequest>,
 ) -> ApiResult<Json<AuthProviderResponse>> {
+    // Snapshot the existing row BEFORE the update so the
+    // enable-transition check below can compare. We also need the
+    // existing config to preserve sensitive fields.
+    let existing = provider_repo::get_provider_by_id(Repos.pool(), id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, AppError::not_found("Auth provider")))?;
+    let old_enabled = existing.enabled;
+
     // If config is being patched, merge sensitive empty fields with
     // the existing row to preserve secrets.
     let final_config = if let Some(mut new_config) = req.config {
-        let existing = provider_repo::get_provider_by_id(Repos.pool(), id)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
-            .ok_or_else(|| (StatusCode::NOT_FOUND, AppError::not_found("Auth provider")))?;
         preserve_sensitive_fields(&existing.config, &mut new_config);
         Some(new_config)
     } else {
@@ -1743,7 +1791,27 @@ pub async fn admin_update_provider(
     )
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    Ok((StatusCode::OK, Json(provider_to_response(row))))
+
+    // Enforce: if enabled transitioned false → true, probe live; on
+    // failure this returns Err(400) which the `?` propagates.
+    let enforced = provider_health::enforce_on_update_transition(row, old_enabled, &event_bus)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::BAD_REQUEST),
+                e,
+            )
+        })?;
+
+    event_bus.emit_async(AuthProviderEvent::updated(enforced.id).into());
+    sync_publish(
+        SyncEntity::AuthProvider,
+        SyncAction::Update,
+        id,
+        Audience::perm::<AuthProvidersRead>(),
+        origin.0,
+    );
+    Ok((StatusCode::OK, Json(provider_to_response(enforced))))
 }
 
 /// For each `SENSITIVE_CONFIG_KEYS`: if it's missing or empty in
@@ -1791,8 +1859,14 @@ pub fn admin_update_provider_docs(op: TransformOperation) -> TransformOperation 
 #[debug_handler]
 pub async fn admin_delete_provider(
     _: RequirePermissions<(AuthProvidersManage,)>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<DeleteProviderResponse>> {
+    let existing = provider_repo::get_provider_by_id(Repos.pool(), id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, AppError::not_found("Auth provider")))?;
     let affected = provider_repo::count_links_for_provider(Repos.pool(), id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
@@ -1802,6 +1876,14 @@ pub async fn admin_delete_provider(
     if n == 0 {
         return Err((StatusCode::NOT_FOUND, AppError::not_found("Auth provider")));
     }
+    event_bus.emit_async(AuthProviderEvent::deleted(id, existing.name).into());
+    sync_publish(
+        SyncEntity::AuthProvider,
+        SyncAction::Delete,
+        id,
+        Audience::perm::<AuthProvidersRead>(),
+        origin.0,
+    );
     Ok((
         StatusCode::OK,
         Json(DeleteProviderResponse {
@@ -1830,6 +1912,8 @@ pub fn admin_delete_provider_docs(op: TransformOperation) -> TransformOperation 
 #[debug_handler]
 pub async fn admin_test_provider(
     _: RequirePermissions<(AuthProvidersManage,)>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<TestProviderResponse>> {
     let row = provider_repo::get_provider_by_id(Repos.pool(), id)
@@ -1837,20 +1921,35 @@ pub async fn admin_test_provider(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, AppError::not_found("Auth provider")))?;
 
-    let result = run_test_for_row(row).await;
-    // Persist the outcome regardless of pass/fail so the row reflects
-    // current state on the next list call.
-    if let Err(e) = provider_repo::record_test_result(
-        Repos.pool(),
-        id,
-        result.ok,
-        &result.message,
-    )
-    .await
+    let was_enabled = row.enabled;
+    let probe = provider_health::probe_provider(&row).await;
+    // record_test_outcome persists last_test_* AND auto-disables the
+    // row when the probe failed on a currently-enabled provider —
+    // mirroring the LLM repo's pattern.
+    if let Err(e) =
+        provider_health::record_test_outcome(&event_bus, id, was_enabled, &probe).await
     {
-        tracing::warn!(error = ?e, "failed to persist auth-provider test result");
+        tracing::warn!(error = ?e, "failed to persist auth-provider test outcome");
     }
-    Ok((StatusCode::OK, Json(result)))
+    // Emit Updated regardless of the auto-disable path so listeners
+    // that don't subscribe to AutoDisabled (e.g. a future audit hook)
+    // still see "the test changed this row." Mirrors LLM repo's
+    // test_repository_connection_by_id pattern.
+    event_bus.emit_async(AuthProviderEvent::updated(id).into());
+    sync_publish(
+        SyncEntity::AuthProvider,
+        SyncAction::Update,
+        id,
+        Audience::perm::<AuthProvidersRead>(),
+        origin.0,
+    );
+    Ok((
+        StatusCode::OK,
+        Json(TestProviderResponse {
+            ok: probe.ok,
+            message: probe.message,
+        }),
+    ))
 }
 
 pub fn admin_test_provider_docs(op: TransformOperation) -> TransformOperation {
@@ -1902,8 +2001,14 @@ pub async fn admin_test_provider_config(
         last_test_ok: None,
         last_test_message: None,
     };
-    let result = run_test_for_row(transient).await;
-    Ok((StatusCode::OK, Json(result)))
+    let probe = provider_health::probe_provider(&transient).await;
+    Ok((
+        StatusCode::OK,
+        Json(TestProviderResponse {
+            ok: probe.ok,
+            message: probe.message,
+        }),
+    ))
 }
 
 pub fn admin_test_provider_config_docs(op: TransformOperation) -> TransformOperation {
@@ -1914,34 +2019,10 @@ pub fn admin_test_provider_config_docs(op: TransformOperation) -> TransformOpera
         .response::<200, Json<TestProviderResponse>>()
 }
 
-/// Shared core: build the provider in-memory, run test_connection,
-/// massage the result into a TestProviderResponse. Used by both the
-/// per-row /test endpoint and the pre-save /test-config endpoint.
-async fn run_test_for_row(
-    mut row: super::providers::models::AuthProvider,
-) -> TestProviderResponse {
-    // The provider factory refuses to construct a disabled provider
-    // (so the normal login flow stops early). Force-enable a copy
-    // here so admins can test config BEFORE flipping the switch
-    // — the row in the DB is untouched.
-    row.enabled = true;
-    let provider = match create_provider(&row, Repos.pool().clone()) {
-        Ok(p) => p,
-        Err(e) => {
-            return TestProviderResponse {
-                ok: false,
-                message: format!("Configuration error: {}", e),
-            };
-        }
-    };
-    match provider.test_connection().await {
-        Ok(msg) => TestProviderResponse { ok: true, message: msg },
-        Err(e) => TestProviderResponse {
-            ok: false,
-            message: format!("{}", e),
-        },
-    }
-}
+// `run_test_for_row` lived here pre-migration. The probe was moved
+// to `super::providers::health::probe_provider`; the three callers
+// (admin_test_provider, admin_test_provider_config, the enforce
+// paths) all consume it from there now.
 
 // NOTE: `get_auth_config`, `login_password_only`, and `change_password`
 // all live in the desktop tauri crate (`desktop/tauri/src/modules/

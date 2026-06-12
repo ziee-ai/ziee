@@ -33,6 +33,20 @@ export async function waitForNewChatPageLoad(page: Page) {
   const retryDelay = 1000 // 1 second between retries
 
   for (let i = 0; i < maxRetries; i++) {
+    // If the app has already auto-selected a model (it does when the user has
+    // exactly one accessible model), models are loaded — return early. The
+    // selected value renders an `.ant-select-content-value` overlay that
+    // intercepts pointer events on the combobox below, so the polling click
+    // would otherwise be blocked and time out.
+    const selectedModel = await page
+      .locator('[data-testid="model-selector"] .ant-select-content-value')
+      .first()
+      .textContent({ timeout: 500 })
+      .catch(() => null)
+    if (selectedModel && selectedModel.trim().length > 0) {
+      return
+    }
+
     // Open dropdown
     await page
     .locator('[data-testid="model-selector"]')

@@ -134,6 +134,7 @@ export default function SettingsPage() {
       w-fit
       h-full
       !p-1
+      !border-r-0
       [&_.ant-menu]:!px-2
       [&_.ant-menu-item]:!h-8
       [&_.ant-menu-item]:!leading-[32px]
@@ -221,9 +222,13 @@ export default function SettingsPage() {
 
       {/* Page Content */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Desktop Sidebar */}
+        {/* Desktop Sidebar — top padding gives the menu a 16px gap
+            from the HeaderBarContainer above. Without it the menu's
+            first item sits flush against the bottom of the header,
+            which fights the soft fade overlay HeaderBarContainer
+            paints below itself. */}
         {!useMobileLayout && (
-          <div className="w-fit">
+          <div className="w-fit pt-1">
             <SettingsMenu />
           </div>
         )}
