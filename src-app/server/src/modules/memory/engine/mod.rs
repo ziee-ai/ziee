@@ -15,6 +15,7 @@
 //! `summarizer.rs` moved to `crate::modules::summarization::engine`
 //! in migration 91 — summarization is no longer a memory submodule.
 
+pub mod capability;
 pub mod dispatch;
 pub mod extractor;
 pub mod prompts;

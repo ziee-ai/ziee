@@ -418,6 +418,8 @@ pub async fn update_user_settings(
             .into());
         }
     }
+    // A per-user extraction override must also be generation-capable.
+    validate_extraction_model(body.extraction_model_id).await?;
     let row = Repos
         .memory
         .update_user_settings(
@@ -463,6 +465,67 @@ pub fn get_admin_settings_docs(op: TransformOperation) -> TransformOperation {
         .tag("Memory")
         .summary("Read admin memory settings")
         .response::<200, Json<MemoryAdminSettings>>()
+}
+
+/// Reject configuring an embedding model as the memory extraction model.
+/// An embedding model is served in `--embeddings` mode and cannot
+/// generate text (HTTP 500 "the current context does not support logits
+/// computation"), so the silent extraction/summarization pipeline would
+/// never work. Surface it as a 400 at config time instead of a silent
+/// background failure. See `engine::capability`.
+///
+/// Only a concrete `Some(Some(id))` is checked — the "absent = leave"
+/// and (admin-only) `null` = clear cases need no validation. The
+/// client-facing message is deliberately generic; the offending model
+/// name is logged server-side only (the same generic-message policy
+/// `dispatch.rs` uses for `INVALID_EMBEDDING_MODEL`), because the
+/// per-user settings endpoint that also calls this is reachable by
+/// non-admins.
+async fn validate_extraction_model(field: Option<Option<Uuid>>) -> Result<(), AppError> {
+    if let Some(Some(model_id)) = field {
+        if let Some(model) = Repos.llm_model.get_by_id(model_id).await? {
+            if let Some(reason) =
+                crate::modules::memory::engine::capability::generation_unsupported_reason(
+                    &model.name,
+                    &model.capabilities,
+                )
+            {
+                tracing::warn!("memory: rejected extraction-model config — {reason}");
+                return Err(AppError::bad_request(
+                    "INVALID_EXTRACTION_MODEL",
+                    "configured model is an embedding model and cannot generate text; \
+                     choose a chat-capable model",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Reject configuring a non-embedding model as the memory embedding
+/// model — the symmetric counterpart to [`validate_extraction_model`].
+/// A model without the `text_embedding` capability has no embeddings
+/// endpoint, so retrieval/extraction embedding would fail at runtime
+/// (`dispatch.rs`). Same generic-message + server-log policy.
+async fn validate_embedding_model(field: Option<Option<Uuid>>) -> Result<(), AppError> {
+    if let Some(Some(model_id)) = field {
+        if let Some(model) = Repos.llm_model.get_by_id(model_id).await? {
+            if let Some(reason) =
+                crate::modules::memory::engine::capability::embedding_unsupported_reason(
+                    &model.name,
+                    &model.capabilities,
+                )
+            {
+                tracing::warn!("memory: rejected embedding-model config — {reason}");
+                return Err(AppError::bad_request(
+                    "INVALID_EMBEDDING_MODEL",
+                    "configured model is not an embedding model (missing the text_embedding \
+                     capability); choose an embedding model",
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[debug_handler]
@@ -530,6 +593,12 @@ pub async fn update_admin_settings(
             .into());
         }
     }
+
+    // Reject mis-capability'd model configs at config time (clear 400)
+    // rather than letting them fail silently in the background: the
+    // embedding model must embed, the extraction model must generate.
+    validate_embedding_model(body.embedding_model_id).await?;
+    validate_extraction_model(body.default_extraction_model_id).await?;
 
     // Snapshot the current embedding model id so we can detect a swap
     // and trigger the re-embed worker if it changed.

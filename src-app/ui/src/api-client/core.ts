@@ -366,7 +366,9 @@ export const callAsync = async <U extends ApiEndpointUrl>(
     ) {
       if (!response.ok) {
         const errorMessage = `HTTP error! status: ${response.status}`
-        throw new Error(errorMessage)
+        const error = new Error(errorMessage) as Error & { status: number }
+        error.status = response.status
+        throw error
       }
 
       const reader = response.body?.getReader()
@@ -472,13 +474,20 @@ export const callAsync = async <U extends ApiEndpointUrl>(
         }
       }
 
-      // Surface the stable machine-readable error_code on the thrown
-      // Error so callers can branch on it without parsing the message.
-      const apiError = new Error(errorMessage)
-      if (errorCode) {
-        ;(apiError as Error & { error_code?: string }).error_code = errorCode
+      // Attach both the HTTP status AND the stable machine-readable
+      // error_code so a caller's `catch` can branch on either without
+      // parsing the message. A plain `Error` has neither field so a
+      // `'status' in e` / `'error_code' in e` check would silently
+      // never match without this.
+      const error = new Error(errorMessage) as Error & {
+        status: number
+        error_code?: string
       }
-      throw apiError
+      error.status = response.status
+      if (errorCode) {
+        error.error_code = errorCode
+      }
+      throw error
     }
 
     //try to parse the response based on content type

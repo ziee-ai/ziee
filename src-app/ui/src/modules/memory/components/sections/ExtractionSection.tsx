@@ -87,7 +87,11 @@ export function ExtractionSection() {
           extra="LLM used by the silent extraction pipeline. Users can override per-account. Cheap models (Haiku-class, Gemini Flash) are ideal here."
         >
           <Select
-            placeholder="Select an extraction model (optional)"
+            placeholder={
+              !loadingModels && availableModels.length === 0
+                ? 'No chat-capable models — add one on the LLM Providers page'
+                : 'Select an extraction model (optional)'
+            }
             loading={loadingModels}
             options={availableModels.map((m) => ({
               value: m.id,
