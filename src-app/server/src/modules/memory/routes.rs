@@ -56,22 +56,18 @@ pub fn memory_router() -> ApiRouter {
             get_with(get_fts_rebuild_status, get_fts_rebuild_status_docs),
         );
 
-    // Test-only synchronous hooks for the extraction + summarizer
-    // pipelines. Compiled into debug builds only — `cargo test` and
-    // dev `cargo run` see them; `cargo build --release` strips them
-    // out so they can't reach production binaries.
+    // Test-only synchronous hook for the extraction pipeline. Compiled
+    // into debug builds only — `cargo test` and dev `cargo run` see
+    // them; `cargo build --release` strips them out so they can't
+    // reach production binaries. The summarizer test hook moved to
+    // the `summarization` module (migration 91).
     #[cfg(debug_assertions)]
     {
         use aide::axum::routing::post_with;
-        router = router
-            .api_route(
-                "/_test/memory/extract",
-                post_with(super::handlers::test_extract, super::handlers::test_extract_docs),
-            )
-            .api_route(
-                "/_test/memory/summarize",
-                post_with(super::handlers::test_summarize, super::handlers::test_summarize_docs),
-            );
+        router = router.api_route(
+            "/_test/memory/extract",
+            post_with(super::handlers::test_extract, super::handlers::test_extract_docs),
+        );
     }
     router
 }

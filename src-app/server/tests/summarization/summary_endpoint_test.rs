@@ -1,0 +1,153 @@
+// ============================================================================
+// GET /api/conversations/{id}/summary — read the active-branch summary.
+//
+// Three tests:
+//   - null-when-none: a conversation with no summary row returns
+//     `null` (not 404) so the frontend can render "no summary yet"
+//     uniformly.
+//   - seeded-round-trip: write a `conversation_summaries` row directly
+//     via SQL, then assert the endpoint returns the same fields.
+//   - 404-on-other-user: ownership-gated; intruder gets 404 to defeat
+//     probing.
+// ============================================================================
+
+use serde_json::{Value, json};
+use sqlx::PgPool;
+use uuid::Uuid;
+
+async fn create_conversation(
+    server: &crate::common::TestServer,
+    token: &str,
+) -> String {
+    let res = reqwest::Client::new()
+        .post(server.api_url("/conversations"))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&json!({ "title": "summary endpoint test" }))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        res.status().is_success(),
+        "create conversation failed: {}",
+        res.status()
+    );
+    let row: Value = res.json().await.unwrap();
+    row["id"].as_str().expect("conversation id").to_string()
+}
+
+async fn open_pool(server: &crate::common::TestServer) -> PgPool {
+    sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .expect("connect to test DB")
+}
+
+async fn active_branch_id(pool: &PgPool, conversation_id: Uuid) -> Uuid {
+    sqlx::query_scalar!(
+        r#"SELECT active_branch_id as "active_branch_id!" FROM conversations WHERE id = $1"#,
+        conversation_id
+    )
+    .fetch_one(pool)
+    .await
+    .expect("active_branch_id on conversation")
+}
+
+#[tokio::test]
+async fn test_summary_endpoint_returns_null_when_no_row() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "summ_endpoint_null",
+        &["conversations::read"],
+    )
+    .await;
+    let conv_id = create_conversation(&server, &user.token).await;
+
+    let res = reqwest::Client::new()
+        .get(server.api_url(&format!("/conversations/{conv_id}/summary")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: Value = res.json().await.unwrap();
+    assert!(body.is_null(), "no summary row should return null, got {body}");
+}
+
+#[tokio::test]
+async fn test_summary_endpoint_returns_seeded_row() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "summ_endpoint_seed",
+        &["conversations::read", "conversations::edit"],
+    )
+    .await;
+    let conv_id_str = create_conversation(&server, &user.token).await;
+    let conv_id = Uuid::parse_str(&conv_id_str).unwrap();
+    let pool = open_pool(&server).await;
+    let branch_id = active_branch_id(&pool, conv_id).await;
+
+    // Seed a summary row directly via SQL — the engine's
+    // `upsert_summary` is the only writer in production but we bypass
+    // it here to keep the endpoint test focused.
+    sqlx::query!(
+        r#"
+        INSERT INTO conversation_summaries
+            (branch_id, summary_text, summarized_up_to_id, message_count, model_used)
+        VALUES ($1, $2, NULL, 42, 'test-model')
+        "#,
+        branch_id,
+        "user mentioned a trip to tokyo and a dog named sneezles"
+    )
+    .execute(&pool)
+    .await
+    .expect("seed conversation_summaries");
+
+    let res = reqwest::Client::new()
+        .get(server.api_url(&format!("/conversations/{conv_id_str}/summary")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(
+        body["summary_text"].as_str(),
+        Some("user mentioned a trip to tokyo and a dog named sneezles")
+    );
+    assert_eq!(body["message_count"], 42);
+    assert_eq!(body["model_used"], "test-model");
+    assert_eq!(body["branch_id"], branch_id.to_string());
+}
+
+#[tokio::test]
+async fn test_summary_endpoint_returns_404_for_other_users_conversation() {
+    let server = crate::common::TestServer::start().await;
+    let owner = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "summ_endpoint_owner",
+        &["conversations::read", "conversations::edit"],
+    )
+    .await;
+    let intruder = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "summ_endpoint_intruder",
+        &["conversations::read"],
+    )
+    .await;
+    let conv_id = create_conversation(&server, &owner.token).await;
+
+    let res = reqwest::Client::new()
+        .get(server.api_url(&format!("/conversations/{conv_id}/summary")))
+        .header("Authorization", format!("Bearer {}", intruder.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        404,
+        "intruder must get 404 (conflated to defeat probing)"
+    );
+}

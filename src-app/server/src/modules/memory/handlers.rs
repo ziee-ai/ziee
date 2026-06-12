@@ -487,64 +487,9 @@ pub async fn update_admin_settings(
             .into());
         }
     }
-    // Token thresholds — validate in-handler so a bad value is a 400, not a raw
-    // 500 from the DB CHECK (migration 88: trigger 500..=1_000_000, keep >= 100,
-    // keep < trigger). Mirrors the default_top_k / cosine_threshold checks above.
-    if let Some(t) = body.summarize_after_tokens {
-        if !(500..=1_000_000).contains(&t) {
-            return Err(AppError::bad_request(
-                "VALIDATION_ERROR",
-                "summarize_after_tokens out of range (500..=1000000)",
-            )
-            .into());
-        }
-    }
-    if let Some(k) = body.summarizer_keep_recent_tokens {
-        if k < 100 {
-            return Err(AppError::bad_request(
-                "VALIDATION_ERROR",
-                "summarizer_keep_recent_tokens must be >= 100",
-            )
-            .into());
-        }
-    }
-
-    // Prompt-template validation: a non-empty override MUST contain
-    // the placeholders the summarizer interpolates. Otherwise
-    // summarization would silently produce broken prompts.
-    // `Some(None)` (clear back to default) and `Some(Some(""))`
-    // (clear-via-empty) both skip validation — those reset to the
-    // compiled-in default, which is always valid.
-    if let Some(Some(s)) = body.full_summary_prompt.as_ref() {
-        if !s.is_empty() && !s.contains("{transcript}") {
-            return Err(AppError::bad_request(
-                "VALIDATION_ERROR",
-                "full_summary_prompt must contain the {transcript} placeholder",
-            )
-            .into());
-        }
-    }
-    if let Some(Some(s)) = body.incremental_summary_prompt.as_ref() {
-        if !s.is_empty()
-            && (!s.contains("{previous_summary}") || !s.contains("{new_transcript}"))
-        {
-            return Err(AppError::bad_request(
-                "VALIDATION_ERROR",
-                "incremental_summary_prompt must contain both {previous_summary} and {new_transcript} placeholders",
-            )
-            .into());
-        }
-    }
-    // Normalize: treat Some(Some("")) as Some(None) (clear). Otherwise
-    // the empty string would be written verbatim and the summarizer
-    // would short-circuit to "empty prompt" without falling back to
-    // the default.
-    let full_summary_prompt = body.full_summary_prompt.map(|outer| {
-        outer.and_then(|s| if s.is_empty() { None } else { Some(s) })
-    });
-    let incremental_summary_prompt = body.incremental_summary_prompt.map(|outer| {
-        outer.and_then(|s| if s.is_empty() { None } else { Some(s) })
-    });
+    // Summarizer-field validation lived here pre-migration-91; the
+    // four fields moved to the `summarization` module along with the
+    // engine + per-conversation toggle.
 
     // FTS validation (migration 89). Range bounds mirror the CHECK
     // constraints — handler returns 400 with a clean reason instead of
@@ -607,24 +552,6 @@ pub async fn update_admin_settings(
         }
     }
 
-    // Effective keep < trigger invariant (the fields can be updated
-    // independently, so check the merged values against the migration-88 CHECK
-    // before the DB rejects it with a raw 500). E.g. lowering the trigger below
-    // the existing keep, or raising keep above the existing trigger.
-    let effective_trigger = body
-        .summarize_after_tokens
-        .unwrap_or(prior.summarize_after_tokens);
-    let effective_keep = body
-        .summarizer_keep_recent_tokens
-        .unwrap_or(prior.summarizer_keep_recent_tokens);
-    if effective_keep >= effective_trigger {
-        return Err(AppError::bad_request(
-            "VALIDATION_ERROR",
-            "summarizer_keep_recent_tokens must be less than summarize_after_tokens",
-        )
-        .into());
-    }
-
     let row = Repos
         .memory
         .update_admin_settings(
@@ -635,10 +562,6 @@ pub async fn update_admin_settings(
             body.enabled,
             body.soft_delete_grace_days,
             body.daily_extraction_quota,
-            body.summarize_after_tokens,
-            body.summarizer_keep_recent_tokens,
-            full_summary_prompt,
-            incremental_summary_prompt,
             body.fts_enabled,
             body.fts_rrf_k,
             body.fts_candidate_multiplier,
@@ -1071,8 +994,8 @@ pub fn get_fts_rebuild_status_docs(op: TransformOperation) -> TransformOperation
 // Test-only hooks (Tier-5 real-LLM integration tests).
 //
 // Gated behind `#[cfg(debug_assertions)]` so release builds physically
-// don't ship these routes. They expose the extractor/summarizer
-// pipelines that normally fire from `after_llm_call` so a test can
+// don't ship these routes. They expose the extractor pipeline that
+// normally fires from `after_llm_call` so a test can
 // trigger them synchronously via HTTP without needing to drive a
 // full chat conversation. Admin-perm-gated for paranoia in case a
 // debug binary ever runs in a quasi-production setting.
@@ -1111,35 +1034,5 @@ pub fn test_extract_docs(op: TransformOperation) -> TransformOperation {
         .response::<200, Json<serde_json::Value>>()
 }
 
-#[cfg(debug_assertions)]
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct TestSummarizeRequest {
-    pub branch_id: Uuid,
-    pub model_id: Uuid,
-}
-
-#[cfg(debug_assertions)]
-#[debug_handler]
-pub async fn test_summarize(
-    _auth: RequirePermissions<(MemoryAdminManage,)>,
-    Json(body): Json<TestSummarizeRequest>,
-) -> ApiResult<Json<serde_json::Value>> {
-    crate::modules::memory::engine::summarizer::refresh_summary(
-        body.branch_id,
-        body.model_id,
-        // Manual/admin-triggered refresh has no chat-model context → use the flat
-        // admin threshold (no fraction-of-window override).
-        None,
-    )
-    .await?;
-    Ok((StatusCode::OK, Json(serde_json::json!({ "ok": true }))))
-}
-
-#[cfg(debug_assertions)]
-pub fn test_summarize_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(MemoryAdminManage,)>(op)
-        .id("MemoryTest.summarize")
-        .tag("Memory")
-        .summary("Test-only: trigger summary refresh synchronously (debug builds)")
-        .response::<200, Json<serde_json::Value>>()
-}
+// `test_summarize` debug handler moved to the `summarization` module
+// (migration 91 — `POST /api/_test/summarization/refresh`).

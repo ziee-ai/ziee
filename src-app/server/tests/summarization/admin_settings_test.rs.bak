@@ -1,0 +1,312 @@
+// ============================================================================
+// Summarization admin-settings integration tests.
+//
+// The pure logic of `decide_summarize_action`, `build_transcript`, and
+// `apply_summary_block` lives in `#[cfg(test)] mod tests` inside
+// `src/modules/summarization/engine/summarizer.rs` (19 tests, all
+// pure, ~0ms). These integration tests cover the REST surface for
+// the admin-tunable knobs that drive the summarizer:
+//
+//   * enable round-trip
+//   * default_summarization_model_id round-trip incl. NULL (zero-config)
+//   * summarize_after_tokens / summarizer_keep_recent_tokens round-trip
+//     + range checks + the keep < trigger invariant
+//   * full_summary_prompt / incremental_summary_prompt placeholder validation
+//   * NULL-as-fallback semantics (clearing back to the compiled defaults)
+//   * permission gate (non-admin gets 403)
+//
+// The actual chat → summarizer → LLM → apply pipeline is a Tier-5
+// manual exercise — see `real_llm_test.rs`.
+// ============================================================================
+
+use serde_json::{Value, json};
+
+async fn admin_user(
+    name: &str,
+) -> (crate::common::TestServer, crate::common::test_helpers::TestUser) {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        name,
+        &[
+            "summarization::settings::read",
+            "summarization::settings::manage",
+        ],
+    )
+    .await;
+    (server, user)
+}
+
+#[tokio::test]
+async fn test_enabled_round_trip() {
+    let (server, admin) = admin_user("summ_enabled").await;
+
+    // Default is TRUE per migration 91 — toggle it to FALSE.
+    let res = reqwest::Client::new()
+        .put(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "enabled": false }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let row: Value = res.json().await.unwrap();
+    assert_eq!(row["enabled"], false);
+
+    // Round-trip via GET.
+    let get = reqwest::Client::new()
+        .get(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .unwrap();
+    let body: Value = get.json().await.unwrap();
+    assert_eq!(body["enabled"], false);
+}
+
+#[tokio::test]
+async fn test_default_summarization_model_round_trip_and_clear() {
+    let (server, admin) = admin_user("summ_model").await;
+
+    // Start at NULL (the migration-seeded default — zero-config).
+    let row: Value = reqwest::Client::new()
+        .get(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(row["default_summarization_model_id"].is_null());
+
+    // Set + clear via explicit null tri-state.
+    let cleared = reqwest::Client::new()
+        .put(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "default_summarization_model_id": null }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(cleared.status(), 200);
+    let row: Value = cleared.json().await.unwrap();
+    assert!(row["default_summarization_model_id"].is_null());
+}
+
+#[tokio::test]
+async fn test_threshold_round_trip() {
+    let (server, admin) = admin_user("summ_thresholds").await;
+
+    let res = reqwest::Client::new()
+        .put(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "summarize_after_tokens": 7500,
+            "summarizer_keep_recent_tokens": 1500,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let row: Value = res.json().await.unwrap();
+    assert_eq!(row["summarize_after_tokens"], 7500);
+    assert_eq!(row["summarizer_keep_recent_tokens"], 1500);
+}
+
+#[tokio::test]
+async fn test_threshold_range_validation_returns_400() {
+    let (server, admin) = admin_user("summ_range").await;
+
+    // Below minimum (500).
+    let too_low = reqwest::Client::new()
+        .put(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "summarize_after_tokens": 100 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(too_low.status(), 400);
+
+    // Above maximum (1_000_000).
+    let too_high = reqwest::Client::new()
+        .put(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "summarize_after_tokens": 2_000_000 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(too_high.status(), 400);
+
+    // keep_recent must be >= 100.
+    let keep_low = reqwest::Client::new()
+        .put(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "summarizer_keep_recent_tokens": 50 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(keep_low.status(), 400);
+}
+
+#[tokio::test]
+async fn test_keep_recent_must_be_below_trigger() {
+    // Effective-keep < effective-trigger invariant checked in the handler
+    // before the DB CHECK gets a chance to bubble up as a 500.
+    let (server, admin) = admin_user("summ_invariant").await;
+
+    let res = reqwest::Client::new()
+        .put(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "summarize_after_tokens": 5000,
+            "summarizer_keep_recent_tokens": 5000, // not < 5000
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        400,
+        "keep_recent >= trigger must return 400 from the handler"
+    );
+
+    // And the case where only keep is updated, but the prior trigger
+    // is below the new keep value — still 400 because the effective
+    // values violate the invariant.
+    let _ = reqwest::Client::new()
+        .put(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "summarize_after_tokens": 5000 }))
+        .send()
+        .await
+        .unwrap();
+    let bad_keep = reqwest::Client::new()
+        .put(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "summarizer_keep_recent_tokens": 6000 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(bad_keep.status(), 400);
+}
+
+#[tokio::test]
+async fn test_full_prompt_validation_missing_transcript_placeholder() {
+    let (server, admin) = admin_user("summ_full_prompt").await;
+
+    let res = reqwest::Client::new()
+        .put(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "full_summary_prompt": "Summarize the conversation:",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        400,
+        "full_summary_prompt without {{transcript}} placeholder must be rejected"
+    );
+}
+
+#[tokio::test]
+async fn test_incremental_prompt_validation_missing_placeholders() {
+    let (server, admin) = admin_user("summ_inc_prompt").await;
+
+    // Missing {previous_summary}.
+    let res = reqwest::Client::new()
+        .put(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "incremental_summary_prompt":
+                "Update summary with these new turns: {new_transcript}",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+
+    // Missing {new_transcript}.
+    let res = reqwest::Client::new()
+        .put(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "incremental_summary_prompt":
+                "Update {previous_summary} with new turns.",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+}
+
+#[tokio::test]
+async fn test_prompt_override_round_trip_and_clear() {
+    let (server, admin) = admin_user("summ_prompt_clear").await;
+
+    // Set valid overrides.
+    let good_full = "Summarize this conversation: {transcript}";
+    let good_inc = "Update {previous_summary} using {new_transcript}";
+    let res = reqwest::Client::new()
+        .put(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "full_summary_prompt": good_full,
+            "incremental_summary_prompt": good_inc,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let row: Value = res.json().await.unwrap();
+    assert_eq!(row["full_summary_prompt"], good_full);
+    assert_eq!(row["incremental_summary_prompt"], good_inc);
+
+    // Clear back to NULL (compiled-in default) via explicit null.
+    let cleared = reqwest::Client::new()
+        .put(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "full_summary_prompt": null,
+            "incremental_summary_prompt": null,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(cleared.status(), 200);
+    let row: Value = cleared.json().await.unwrap();
+    assert!(row["full_summary_prompt"].is_null());
+    assert!(row["incremental_summary_prompt"].is_null());
+}
+
+#[tokio::test]
+async fn test_admin_endpoints_require_summarization_settings_permission() {
+    // A user WITHOUT `summarization::settings::{read,manage}` must hit
+    // 403 on both endpoints — `RequirePermissions` is the gate.
+    let server = crate::common::TestServer::start().await;
+    let unauthorized = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "summ_no_perm",
+        &[],
+    )
+    .await;
+
+    let get_res = reqwest::Client::new()
+        .get(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", unauthorized.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get_res.status(), 403);
+
+    let put_res = reqwest::Client::new()
+        .put(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", unauthorized.token))
+        .json(&json!({ "enabled": false }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(put_res.status(), 403);
+}
+DELIBERATE BUG

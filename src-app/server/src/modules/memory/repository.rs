@@ -530,10 +530,6 @@ impl MemoryRepository {
                 enabled,
                 soft_delete_grace_days,
                 daily_extraction_quota,
-                summarize_after_tokens,
-                summarizer_keep_recent_tokens,
-                full_summary_prompt,
-                incremental_summary_prompt,
                 fts_dictionary,
                 fts_enabled,
                 fts_rrf_k,
@@ -626,10 +622,6 @@ impl MemoryRepository {
         enabled: Option<bool>,
         soft_delete_grace_days: Option<i32>,
         daily_extraction_quota: Option<i32>,
-        summarize_after_tokens: Option<i32>,
-        summarizer_keep_recent_tokens: Option<i32>,
-        full_summary_prompt: Option<Option<String>>,
-        incremental_summary_prompt: Option<Option<String>>,
         // FTS knobs (migration 89). `fts_dictionary` is intentionally
         // NOT writeable through this path — the handler returns 409
         // FTS_REBUILD_REQUIRED on a dictionary change and the rebuild
@@ -646,10 +638,6 @@ impl MemoryRepository {
         let embedding_val = embedding_model_id.flatten();
         let extraction_set = default_extraction_model_id.is_some();
         let extraction_val = default_extraction_model_id.flatten();
-        let full_prompt_set = full_summary_prompt.is_some();
-        let full_prompt_val = full_summary_prompt.flatten();
-        let inc_prompt_set = incremental_summary_prompt.is_some();
-        let inc_prompt_val = incremental_summary_prompt.flatten();
 
         let row = sqlx::query_as!(
             MemoryAdminSettings,
@@ -662,15 +650,11 @@ impl MemoryRepository {
                 enabled                       = COALESCE($7, enabled),
                 soft_delete_grace_days        = COALESCE($8, soft_delete_grace_days),
                 daily_extraction_quota        = COALESCE($9, daily_extraction_quota),
-                summarize_after_tokens        = COALESCE($10, summarize_after_tokens),
-                summarizer_keep_recent_tokens = COALESCE($11, summarizer_keep_recent_tokens),
-                full_summary_prompt           = CASE WHEN $12::bool THEN $13 ELSE full_summary_prompt END,
-                incremental_summary_prompt    = CASE WHEN $14::bool THEN $15 ELSE incremental_summary_prompt END,
-                fts_enabled                   = COALESCE($16, fts_enabled),
-                fts_rrf_k                     = COALESCE($17, fts_rrf_k),
-                fts_candidate_multiplier      = COALESCE($18, fts_candidate_multiplier),
-                fts_min_rank                  = COALESCE($19, fts_min_rank),
-                semantic_enabled              = COALESCE($20, semantic_enabled),
+                fts_enabled                   = COALESCE($10, fts_enabled),
+                fts_rrf_k                     = COALESCE($11, fts_rrf_k),
+                fts_candidate_multiplier      = COALESCE($12, fts_candidate_multiplier),
+                fts_min_rank                  = COALESCE($13, fts_min_rank),
+                semantic_enabled              = COALESCE($14, semantic_enabled),
                 updated_at                    = NOW()
             WHERE id = 1
             RETURNING
@@ -683,10 +667,6 @@ impl MemoryRepository {
                 enabled,
                 soft_delete_grace_days,
                 daily_extraction_quota,
-                summarize_after_tokens,
-                summarizer_keep_recent_tokens,
-                full_summary_prompt,
-                incremental_summary_prompt,
                 fts_dictionary,
                 fts_enabled,
                 fts_rrf_k,
@@ -706,12 +686,6 @@ impl MemoryRepository {
             enabled,
             soft_delete_grace_days,
             daily_extraction_quota,
-            summarize_after_tokens,
-            summarizer_keep_recent_tokens,
-            full_prompt_set,
-            full_prompt_val,
-            inc_prompt_set,
-            inc_prompt_val,
             fts_enabled,
             fts_rrf_k,
             fts_candidate_multiplier,

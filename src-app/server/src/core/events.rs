@@ -59,6 +59,10 @@ pub enum AppEvent {
     /// `AutoDisabled` signal a probe failure flips an enabled row to
     /// disabled. Mirrors `LlmRepository`.
     AuthProvider(crate::modules::auth::providers::events::AuthProviderEvent),
+
+    /// Summarization admin settings updated. Notify-only — no row
+    /// payload. The frontend refetches via the existing REST endpoint.
+    Summarization(crate::modules::summarization::events::SummarizationEvent),
     // Add new module events here as the application grows
 }
 

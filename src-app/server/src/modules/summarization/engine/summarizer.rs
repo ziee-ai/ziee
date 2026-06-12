@@ -1,9 +1,9 @@
 //! Conversation summarizer — when a branch exceeds N messages the
 //! summarizer condenses the oldest messages into a single text block
 //! stored in `conversation_summaries`. `apply_summary_to_history`
-//! (called from `MemoryExtension::before_llm_call`) replaces those
-//! summarized messages in the LLM request with the summary block,
-//! freeing real prompt-side budget.
+//! (called from `SummarizationExtension::before_llm_call`) replaces
+//! those summarized messages in the LLM request with the summary
+//! block, freeing real prompt-side budget.
 //!
 //! Refresh strategy:
 //!   - First call for a branch: FULL re-summarize of all messages
@@ -20,9 +20,20 @@
 //!     • `keep_recent` was raised between refreshes so the prior
 //!       summary covers messages we now want to keep verbatim.
 //!
-//! Trigger lives in `MemoryExtension::after_llm_call` (fire-and-forget
-//! spawn). Threshold + keep-recent come from `memory_admin_settings`
-//! (admin-tunable, no restart needed).
+//! Trigger lives in `SummarizationExtension::after_llm_call`
+//! (fire-and-forget spawn). Threshold + keep-recent come from
+//! `summarization_admin_settings` (admin-tunable, no restart needed).
+//!
+//! Concurrent-refresh race: two simultaneous turns on the same branch
+//! could each spawn their own `refresh_summary`. Last-write-wins is
+//! INTENTIONAL — this is an approximate rolling summary; the
+//! authoritative content is always the message history itself.
+//! A `>=message_count` UPSERT guard would block a legitimate
+//! `keep_recent`-raise shrink, so we accept the cosmetic race.
+//!
+//! Unit tests (`#[cfg(test)] mod tests` at the bottom) cover the
+//! pure decision logic + transcript assembly + summary-block apply.
+//! Count: 19 tests (decide × 13, build/apply × 6).
 
 use ai_providers::{ChatMessage, ChatRequest, ContentBlock, Provider, Role};
 use chrono::{DateTime, Utc};
@@ -37,14 +48,14 @@ use crate::core::Repos;
 /// Fallback summarizer thresholds — used only if the admin settings
 /// row can't be read on a given call (transient DB blip). Match the
 /// column DEFAULTs in migration 52. The runtime values come from
-/// `memory_admin_settings.summarize_after_tokens` /
+/// `summarization_admin_settings.summarize_after_tokens` /
 /// `.summarizer_keep_recent_tokens` and can be tuned per-deployment from the
 /// admin UI without a redeploy.
 const FALLBACK_SUMMARIZE_AFTER_TOKENS: usize = 12000;
 const FALLBACK_KEEP_RECENT_TOKENS: usize = 3000;
 
 /// Default prompt for the FULL-summarize path. Used when
-/// `memory_admin_settings.full_summary_prompt` is NULL. Exposed as
+/// `summarization_admin_settings.full_summary_prompt` is NULL. Exposed as
 /// `pub` so the admin UI can render it as the placeholder.
 pub const DEFAULT_FULL_SUMMARY_PROMPT: &str = r#"Summarize the following conversation into a concise narrative (3-6 sentences) capturing the essential context: who the user is, what they're trying to accomplish, key facts established, and any unresolved threads. Output only the summary text; no preamble.
 
@@ -52,7 +63,7 @@ Conversation:
 {transcript}"#;
 
 /// Default prompt for the INCREMENTAL-refresh path. Used when
-/// `memory_admin_settings.incremental_summary_prompt` is NULL.
+/// `summarization_admin_settings.incremental_summary_prompt` is NULL.
 pub const DEFAULT_INCREMENTAL_SUMMARY_PROMPT: &str = r#"You are maintaining a running summary of an ongoing conversation between a user and an assistant.
 
 An EXISTING summary is below. Additional conversation turns have happened since. Produce an UPDATED summary (3-6 sentences) that:
@@ -69,7 +80,7 @@ Existing summary:
 New conversation turns since the existing summary:
 {new_transcript}"#;
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, schemars::JsonSchema)]
 pub struct ConversationSummary {
     pub branch_id: Uuid,
     pub summary_text: String,
@@ -198,7 +209,7 @@ pub fn decide_summarize_action(
                 // or a `summarized_up_to_id` from a different branch.
                 // Fall through to Full path.
                 tracing::info!(
-                    "memory.summarizer: previous anchor {prev_anchor_id} not in branch history; falling back to full re-summarize"
+                    "summarization: previous anchor {prev_anchor_id} not in branch history; falling back to full re-summarize"
                 );
             } else {
                 // Previous summary covered MORE messages than we now
@@ -206,7 +217,7 @@ pub fn decide_summarize_action(
                 // summary's content is "ahead" of the new cutoff —
                 // safest path is a full re-summarize from scratch.
                 tracing::info!(
-                    "memory.summarizer: prev.message_count={prev_count} > current to_summarize.len()={}; falling back to full re-summarize",
+                    "summarization: prev.message_count={prev_count} > current to_summarize.len()={}; falling back to full re-summarize",
                     to_summarize.len()
                 );
             }
@@ -276,7 +287,7 @@ pub async fn apply_summary_to_history(
     branch_id: Uuid,
     chat_request: &mut ChatRequest,
 ) -> Result<(), AppError> {
-    let pool = Repos.memory.pool_clone();
+    let pool = Repos.summarization.pool_clone();
     let summary = match fetch_summary(&pool, branch_id).await? {
         Some(s) => s,
         None => return Ok(()),
@@ -358,7 +369,7 @@ pub async fn refresh_summary(
     // back to the compiled-in constants when the row is NULL or read
     // fails.
     let (trigger, keep_recent, full_prompt, incremental_prompt) =
-        match Repos.memory.get_admin_settings().await {
+        match Repos.summarization.get_admin_settings().await {
             Ok(s) => (
                 s.summarize_after_tokens as usize,
                 s.summarizer_keep_recent_tokens as usize,
@@ -369,7 +380,7 @@ pub async fn refresh_summary(
             ),
             Err(e) => {
                 tracing::warn!(
-                    "memory.summarizer: get_admin_settings failed ({e}); using compiled-in defaults"
+                    "summarization: get_admin_settings failed ({e}); using compiled-in defaults"
                 );
                 (
                     FALLBACK_SUMMARIZE_AFTER_TOKENS,
@@ -393,7 +404,7 @@ pub async fn refresh_summary(
     // cutoff walks to 0 → Noop). Re-clamp so summarization still fires.
     let keep_recent = keep_recent.min(trigger.saturating_sub(1));
 
-    let pool = Repos.memory.pool_clone();
+    let pool = Repos.summarization.pool_clone();
     let existing = fetch_summary(&pool, branch_id).await?;
 
     let action = decide_summarize_action(&msgs, trigger, keep_recent, existing.as_ref());
@@ -434,7 +445,7 @@ pub async fn refresh_summary(
     let summary_text = call_summarization_llm(&model, prompt).await?;
     if summary_text.is_empty() {
         tracing::warn!(
-            "memory.summarizer: empty {mode} summary returned for branch {branch_id} — skipping write"
+            "summarization: empty {mode} summary returned for branch {branch_id} — skipping write"
         );
         return Ok(());
     }
@@ -450,7 +461,7 @@ pub async fn refresh_summary(
     .await?;
 
     tracing::info!(
-        "memory.summarizer: {mode} refresh for branch {branch_id} ({message_count} total summarized, model={})",
+        "summarization: {mode} refresh for branch {branch_id} ({message_count} total summarized, model={})",
         model.name
     );
     Ok(())

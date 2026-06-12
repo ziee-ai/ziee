@@ -80,17 +80,11 @@ pub struct MemoryAdminSettings {
     pub soft_delete_grace_days: i32,
     /// Per-user/day extraction quota (rows created via extraction).
     pub daily_extraction_quota: i32,
-    /// Summarizer trigger threshold (estimated tokens, chars/4).
-    pub summarize_after_tokens: i32,
-    /// Estimated tokens of recent messages kept verbatim alongside the summary.
-    pub summarizer_keep_recent_tokens: i32,
-    /// Override for the full-resummarize LLM prompt. NULL = use the
-    /// compiled-in default. Must contain `{transcript}` if set.
-    pub full_summary_prompt: Option<String>,
-    /// Override for the incremental-refresh LLM prompt. NULL = use the
-    /// compiled-in default. Must contain `{previous_summary}` and
-    /// `{new_transcript}` if set.
-    pub incremental_summary_prompt: Option<String>,
+
+    // Summarizer fields (`summarize_after_tokens`,
+    // `summarizer_keep_recent_tokens`, `full_summary_prompt`,
+    // `incremental_summary_prompt`) moved to
+    // `summarization_admin_settings` in migration 91.
 
     // ─── FTS (migration 89) ────────────────────────────────────────────
     /// Postgres dictionary used by `websearch_to_tsquery` at retrieval
@@ -207,12 +201,8 @@ pub struct UpdateMemoryAdminSettingsRequest {
     pub enabled: Option<bool>,
     pub soft_delete_grace_days: Option<i32>,
     pub daily_extraction_quota: Option<i32>,
-    pub summarize_after_tokens: Option<i32>,
-    pub summarizer_keep_recent_tokens: Option<i32>,
-    #[serde(default, deserialize_with = "deserialize_nullable_field")]
-    pub full_summary_prompt: Option<Option<String>>,
-    #[serde(default, deserialize_with = "deserialize_nullable_field")]
-    pub incremental_summary_prompt: Option<Option<String>>,
+
+    // Summarizer fields moved to `summarization` module (migration 91).
 
     // ─── FTS (migration 89) — runtime-tunable retrieval knobs ──────────
     // Dictionary changes are validated and trigger a 409 here; the actual

@@ -75,6 +75,9 @@ pub enum SyncEntity {
     /// public `/api/auth/providers` (login page) is unaffected — it just shows
     /// the next list state on the next page load.
     AuthProvider,
+    /// Deployment-wide summarization settings (singleton). Notify-only;
+    /// the frontend refetches via the existing REST endpoint.
+    SummarizationAdminSettings,
 
     // --- Group-scoped user view (delivered to holders of the user read
     // perm; safe because we only NOTIFY — each recipient refetches its own

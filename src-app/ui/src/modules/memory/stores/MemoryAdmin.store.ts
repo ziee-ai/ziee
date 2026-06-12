@@ -28,15 +28,10 @@ export type EmbeddingCapableModelRow = Pick<
 // Widen at the boundary so callers can pass `null` to clear.
 export type MemoryAdminUpdatePatch = Omit<
   UpdateMemoryAdminSettingsRequest,
-  | 'embedding_model_id'
-  | 'default_extraction_model_id'
-  | 'full_summary_prompt'
-  | 'incremental_summary_prompt'
+  'embedding_model_id' | 'default_extraction_model_id'
 > & {
   embedding_model_id?: string | null
   default_extraction_model_id?: string | null
-  full_summary_prompt?: string | null
-  incremental_summary_prompt?: string | null
 }
 
 interface MemoryAdminStore {

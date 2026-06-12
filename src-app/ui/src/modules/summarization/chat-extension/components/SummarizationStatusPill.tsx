@@ -1,0 +1,140 @@
+import { useEffect, useState } from 'react'
+import { App, Tooltip, Tag, Dropdown } from 'antd'
+import { CompressOutlined, FileTextOutlined, EyeInvisibleOutlined } from '@ant-design/icons'
+import { Stores } from '@/core/stores'
+import { ApiClient } from '@/api-client'
+
+type Mode = 'inherit' | 'on' | 'off'
+
+/**
+ * SummarizationStatusPill — per-conversation summarization-mode pill
+ * in the chat composer's `toolbar_status` slot. Mirrors
+ * `MemoryStatusPill` (memory's per-conversation pill).
+ *
+ * Also acts as the **read-model driver** for the in-thread summary
+ * marker: subscribes to `messages.size` + `conversation.id` and calls
+ * `Stores.ConversationSummarization.__state.loadForConversation(id)`
+ * on change. This load-bearing pattern rides cross-device freshness
+ * transitively on `sync:conversation` — DO NOT move the trigger
+ * elsewhere (audit lesson from the crashed-session redo).
+ */
+export function SummarizationStatusPill() {
+  const { message } = App.useApp()
+  // Read every Stores.X.field at the TOP, before any conditional.
+  // Each proxy access fires a useEffect; reading conditionally after
+  // a guard triggers "Rendered more hooks than during the previous
+  // render."
+  const conversation = Stores.Chat.conversation
+  const messages = Stores.Chat.messages
+  const adminSettings = Stores.SummarizationAdmin.settings
+  const [mode, setMode] = useState<Mode>('inherit')
+  const [loading, setLoading] = useState(false)
+
+  // Per-conversation mode fetch. Soft-fails to 'inherit' on any error
+  // (the pill stays interactive even if the read raced a switch).
+  useEffect(() => {
+    let cancelled = false
+    if (!conversation?.id) {
+      setMode('inherit')
+      return
+    }
+    ;(async () => {
+      try {
+        const resp = await ApiClient.Conversation.getSummarizationMode({
+          id: conversation.id,
+        })
+        if (!cancelled)
+          setMode((resp.summarization_mode as Mode) ?? 'inherit')
+      } catch {
+        if (!cancelled) setMode('inherit')
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [conversation?.id])
+
+  // Drive the summary read-model: re-fetch when the conversation
+  // changes OR when message count changes (a new turn just landed,
+  // and the summary might have been updated by the after_llm_call
+  // hook on the server). The single-entry cache in
+  // ConversationSummarization rotates on conversation switch.
+  useEffect(() => {
+    if (!conversation?.id) {
+      Stores.ConversationSummarization.__state.clear()
+      return
+    }
+    void Stores.ConversationSummarization.__state.loadForConversation(
+      conversation.id,
+    )
+  }, [conversation?.id, messages.size])
+
+  if (!conversation?.id) return null
+  if (adminSettings?.enabled === false) return null
+
+  async function setRemote(next: Mode) {
+    if (!conversation?.id) return
+    setLoading(true)
+    try {
+      await ApiClient.Conversation.setSummarizationMode({
+        id: conversation.id,
+        summarization_mode: next,
+      })
+      setMode(next)
+      message.success(`Summarization: ${next} for this conversation`)
+    } catch (e: any) {
+      message.error(e?.message ?? 'Failed to update summarization mode')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const items = [
+    {
+      key: 'inherit',
+      label: 'Inherit (follow deployment setting)',
+      icon: <CompressOutlined />,
+    },
+    { key: 'on', label: 'Always summarize this conversation', icon: <FileTextOutlined /> },
+    {
+      key: 'off',
+      label: 'Never summarize this conversation',
+      icon: <EyeInvisibleOutlined />,
+    },
+  ]
+
+  const labelByMode: Record<Mode, string> = {
+    inherit: 'Summary: auto',
+    on: 'Summary: on',
+    off: 'Summary: off',
+  }
+  const colorByMode: Record<Mode, string> = {
+    inherit: 'default',
+    on: 'green',
+    off: 'red',
+  }
+
+  return (
+    <Tooltip title="Per-conversation summarization override">
+      <Dropdown
+        menu={{
+          items,
+          selectable: true,
+          selectedKeys: [mode],
+          onClick: ({ key }) => setRemote(key as Mode),
+        }}
+        disabled={loading}
+      >
+        <Tag
+          color={colorByMode[mode]}
+          icon={
+            mode === 'off' ? <EyeInvisibleOutlined /> : <CompressOutlined />
+          }
+          style={{ cursor: 'pointer', margin: 0 }}
+        >
+          {labelByMode[mode]}
+        </Tag>
+      </Dropdown>
+    </Tooltip>
+  )
+}
