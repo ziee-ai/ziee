@@ -10,10 +10,6 @@
 // TYPE DEFINITIONS
 // =============================================================================
 
-export interface ActivateHubVersionRequest {
-  version?: string
-}
-
 export type ApprovalMode = 'disabled' | 'auto_approve' | 'manual_approve'
 
 export interface AssignProviderToGroupRequest {
@@ -138,7 +134,7 @@ export interface Catalog {
   schema_version: number
 }
 
-export type CatalogProvenance = 'seed' | 'github'
+export type CatalogProvenance = 'seed' | 'pages'
 
 export interface ChangePasswordRequest {
   current_password: string
@@ -402,6 +398,7 @@ export interface CreateModelFromHubRequest {
   hub_id: string
   provider_id: string
   quantization_name?: string
+  source_index?: number
 }
 
 export interface CreateProjectRequest {
@@ -437,6 +434,8 @@ export interface DeleteProviderResponse {
 export interface DeleteVersionQuery {
   remove_binary?: boolean
 }
+
+export type DependencyKind = 'model' | 'mcp-server'
 
 export type DeviceType = 'cpu' | 'cuda' | 'metal' | 'rocm' | 'vulkan' | 'opencl' | 'auto'
 
@@ -800,22 +799,23 @@ export interface HealthResponse {
 }
 
 export interface HubAssistant {
+  $schema?: string
   description?: string
+  _meta?: any
   author?: string
   capabilities_required?: string[]
   category?: string
   created_ids?: string[]
   created_template_ids?: string[]
+  dependencies?: HubDependency[]
   display_name: string
-  example_prompts?: string[]
-  id: string
   instructions?: string
   name: string
   parameters: any
-  popularity_score?: number
-  recommended_models?: string[]
+  repository?: HubRepository
   tags?: string[]
-  use_cases?: string[]
+  version?: string
+  websiteUrl?: string
 }
 
 export interface HubCatalogCounts {
@@ -825,7 +825,6 @@ export interface HubCatalogCounts {
 }
 
 export interface HubCatalogRefreshResponse {
-  cosign_verified: boolean
   new_version: string
   previous_version?: string
   updated: boolean
@@ -840,6 +839,12 @@ export interface HubCatalogVersionResponse {
 }
 
 export type HubCategory = 'assistant' | 'mcp-server' | 'model'
+
+export interface HubDependency {
+  kind: DependencyKind
+  name: string
+  versionRange: string
+}
 
 export interface HubEntity {
   created_at: string
@@ -880,41 +885,17 @@ export interface HubLocalProvidersResponse {
 }
 
 export interface HubMCPServer {
+  $schema?: string
   description?: string
-  args?: string[]
-  author?: string
-  category?: string
-  command?: string
+  _meta?: any
   created_ids?: string[]
   created_system_ids?: string[]
-  display_name: string
-  documentation_url?: string
-  download_count?: number
-  environment_variables?: any
-  example_prompts?: string[]
-  example_tools?: string[]
-  headers?: any
-  homepage?: string
-  icon_url?: string
-  id: string
-  license?: string
-  minimum_version?: string
   name: string
-  platform_support?: string[]
-  popularity_score?: number
-  rating?: number
-  repository_url?: string
-  required_env?: HubRequiredInput[]
-  required_headers?: HubRequiredInput[]
-  requires_desktop?: boolean
-  supports_sampling?: boolean
-  tags?: string[]
-  tool_categories?: string[]
-  tool_count?: number
-  transport_type?: string
-  url?: string
-  use_cases?: string[]
+  packages?: McpPackage[]
+  remotes?: McpRemote[]
+  repository?: HubRepository
   version?: string
+  websiteUrl?: string
 }
 
 export interface HubManifest {
@@ -929,37 +910,24 @@ export interface HubManifestQuery {
 }
 
 export interface HubModel {
+  $schema?: string
   description?: string
-  auth_required?: boolean
+  _meta?: any
   author?: string
   capabilities?: ModelCapabilities2
-  context_length?: number
   created_ids?: string[]
+  dependencies?: HubDependency[]
   display_name: string
-  file_format: FileFormat2
-  homepage_url?: string
-  id: string
   language_support?: string[]
   license?: string
-  main_filename: string
   name: string
-  popularity_score: number
-  public?: boolean
-  quantization_options?: HubModelQuantizationOption[]
-  recommended_engine?: string
-  recommended_engine_settings?: any
   recommended_parameters?: any
-  repository_path: string
-  repository_url: string
-  size_gb: number
+  repository?: HubRepository
   source_auth_configured?: boolean
+  sources: ModelSource[]
   tags?: string[]
-}
-
-export interface HubModelQuantizationOption {
-  main_filename: string
-  name: string
-  size_gb?: number
+  version?: string
+  websiteUrl?: string
 }
 
 export interface HubQuery {
@@ -971,25 +939,11 @@ export interface HubRefreshResponse {
   version: string
 }
 
-export interface HubReleaseInfo {
-  prerelease: boolean
-  published_at?: string
-  tag: string
-  version: string
-}
-
-export interface HubReleasesResponse {
-  active_version?: string
-  pinned_version?: string
-  releases: HubReleaseInfo[]
-}
-
-export interface HubRequiredInput {
-  description?: string
-  docs_url?: string
-  is_secret?: boolean
-  name: string
-  placeholder?: string
+export interface HubRepository {
+  id?: string
+  source?: string
+  subfolder?: string
+  url: string
 }
 
 export interface HubVersionResponse {
@@ -1010,15 +964,17 @@ export type ImageSource = {
 }
 
 export interface IndexItem {
+  title?: string
+  _meta?: any
   added_at?: string
   category: HubCategory
-  id: string
   manifest_path: string
   min_ziee_version?: string
   name: string
   summary: string
   tags?: string[]
   verified?: boolean
+  version?: string
 }
 
 export interface InstallTaskState {
@@ -1259,8 +1215,51 @@ export interface LoopSettings {
   stop_when_tools_called?: ToolIdentifier[]
 }
 
+export interface McpArgument {
+  description?: string
+  type?: string
+  format?: string
+  choices?: string[]
+  default?: string
+  isRepeated?: boolean
+  isRequired?: boolean
+  name?: string
+  value?: string
+  valueHint?: string
+}
+
 export interface McpConfig {
   mcp_servers: McpServerConfig[]
+}
+
+export interface McpKeyValueInput {
+  description?: string
+  format?: string
+  choices?: string[]
+  default?: string
+  isRequired?: boolean
+  isSecret?: boolean
+  name: string
+  value?: string
+}
+
+export interface McpPackage {
+  environmentVariables?: McpKeyValueInput[]
+  fileSha256?: string
+  identifier: string
+  packageArguments?: McpArgument[]
+  registryBaseUrl?: string
+  registryType: string
+  runtimeArguments?: McpArgument[]
+  runtimeHint?: string
+  transport: McpTransport
+  version: string
+}
+
+export interface McpRemote {
+  type: string
+  headers?: McpKeyValueInput[]
+  url: string
 }
 
 export interface McpServer {
@@ -1354,6 +1353,10 @@ export interface McpServerWithHealthWarning {
 
 export interface McpSettingsResponse {
   settings?: ConversationMcpSettingsResponse
+}
+
+export interface McpTransport {
+  type: string
 }
 
 export interface McpUserPolicy {
@@ -1598,7 +1601,26 @@ export interface ModelParameters {
   top_p?: number
 }
 
+export interface ModelQuantization {
+  fileSha256?: string
+  isDefault?: boolean
+  mainFile: string
+  name: string
+  sizeGb?: number
+}
+
 export type ModelShape = 'gguf' | 'safetensors' | 'pickle' | 'unknown'
+
+export interface ModelSource {
+  contextLength?: number
+  environmentVariables?: McpKeyValueInput[]
+  fileFormat: FileFormat2
+  identifier: string
+  quantizations: ModelQuantization[]
+  registryType: string
+  runtimeHint?: string
+  version: string
+}
 
 export interface ModelUsageInfo {
   display_name: string
@@ -2701,7 +2723,6 @@ export enum Permissions {
   HubAssistantsRefresh = 'hub::assistants::refresh',
   HubAssistantsVersionRead = 'hub::assistants::read_version',
   HubCatalogManage = 'hub::catalog::manage',
-  HubCatalogRead = 'hub::catalog::read',
   HubMcpServersCreate = 'hub::mcp_servers::create',
   HubMCPServersRead = 'hub::mcp_servers::read',
   HubMCPServersRefresh = 'hub::mcp_servers::refresh',
@@ -2809,7 +2830,6 @@ export const PermissionDescriptions: Record<string, string> = {
   HubAssistantsRefresh: 'Refresh hub assistants from GitHub',
   HubAssistantsVersionRead: 'View hub assistants version information',
   HubCatalogManage: 'Refresh + activate hub catalog versions',
-  HubCatalogRead: 'View hub catalog versions + pending updates',
   HubMcpServersCreate: 'Create MCP servers from hub',
   HubMCPServersRead: 'View hub MCP servers',
   HubMCPServersRefresh: 'Refresh hub MCP servers from GitHub',
@@ -2957,7 +2977,6 @@ export const ApiEndpoints = {
   'Hardware.info': 'GET /api/hardware',
   'Hardware.stream': 'GET /api/hardware/usage-stream',
   'Health.check': 'GET /api/health',
-  'Hub.activateVersion': 'POST /api/hub/activate',
   'Hub.createAssistantFromHub': 'POST /api/hub/assistants/create',
   'Hub.createAssistantTemplateFromHub': 'POST /api/hub/assistant-templates/create',
   'Hub.createMcpServerFromHub': 'POST /api/hub/mcp-servers/create',
@@ -2974,7 +2993,6 @@ export const ApiEndpoints = {
   'Hub.getManifest': 'GET /api/hub/manifest/{id}',
   'Hub.getModels': 'GET /api/hub/models',
   'Hub.getModelsVersion': 'GET /api/hub/models/version',
-  'Hub.getReleases': 'GET /api/hub/releases',
   'Hub.refreshAssistants': 'POST /api/hub/assistants/refresh',
   'Hub.refreshCatalog': 'POST /api/hub/refresh',
   'Hub.refreshMCPServers': 'POST /api/hub/mcp-servers/refresh',
@@ -3216,7 +3234,6 @@ export type ApiEndpointParameters = {
   'Hardware.info': void
   'Hardware.stream': void
   'Health.check': void
-  'Hub.activateVersion': ActivateHubVersionRequest
   'Hub.createAssistantFromHub': CreateAssistantFromHubRequest
   'Hub.createAssistantTemplateFromHub': CreateAssistantFromHubRequest
   'Hub.createMcpServerFromHub': CreateMcpServerFromHubRequest
@@ -3233,7 +3250,6 @@ export type ApiEndpointParameters = {
   'Hub.getManifest': { id: string; category: HubCategory }
   'Hub.getModels': { lang?: string }
   'Hub.getModelsVersion': void
-  'Hub.getReleases': void
   'Hub.refreshAssistants': void
   'Hub.refreshCatalog': void
   'Hub.refreshMCPServers': void
@@ -3475,7 +3491,6 @@ export type ApiEndpointResponses = {
   'Hardware.info': HardwareInfoResponse
   'Hardware.stream': SSEHardwareUsageEvent
   'Health.check': HealthResponse
-  'Hub.activateVersion': HubCatalogRefreshResponse
   'Hub.createAssistantFromHub': AssistantFromHubResponse
   'Hub.createAssistantTemplateFromHub': AssistantFromHubResponse
   'Hub.createMcpServerFromHub': McpServerFromHubResponse
@@ -3492,7 +3507,6 @@ export type ApiEndpointResponses = {
   'Hub.getManifest': HubManifest
   'Hub.getModels': HubModel[]
   'Hub.getModelsVersion': HubVersionResponse
-  'Hub.getReleases': HubReleasesResponse
   'Hub.refreshAssistants': HubRefreshResponse
   'Hub.refreshCatalog': HubCatalogRefreshResponse
   'Hub.refreshMCPServers': HubRefreshResponse

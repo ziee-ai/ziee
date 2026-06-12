@@ -5628,6 +5628,81 @@
         ]
       }
     },
+    "/api/llm-models/repository-files": {
+      "get": {
+        "tags": [
+          "LLM Models"
+        ],
+        "summary": "List model files in a repository",
+        "description": "Detect the model files available at a Hugging Face or GitHub repo path before downloading, classified the same way the engine loads them.",
+        "operationId": "LlmModel.listRepositoryFiles",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "branch",
+            "description": "Branch / revision (defaults to \"main\").",
+            "schema": {
+              "description": "Branch / revision (defaults to \"main\").",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "description": "Repo path within the source, e.g. \"meta-llama/Llama-3.1-8B-Instruct\".",
+            "required": true,
+            "schema": {
+              "description": "Repo path within the source, e.g. \"meta-llama/Llama-3.1-8B-Instruct\".",
+              "type": "string"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "repository_id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Upstream rejected the request (auth required or rate-limited)"
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepositoryFileListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid repository path or branch"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Repository or path not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/llm-models/downloads": {
       "get": {
         "tags": [
@@ -11083,6 +11158,447 @@
         ]
       }
     },
+    "/api/code-sandbox/resource-limits": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Read the singleton sandbox resource-limits configuration",
+        "description": "Returns the current memory / CPU / PID / prlimit / timeout caps that the sandbox runtime applies on every `execute_command`. Admin-only.",
+        "operationId": "CodeSandbox.getResourceLimits",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read the sandbox resource limits configuration.",
+                        "name": "CodeSandboxResourceLimitsRead",
+                        "value": "code_sandbox::resource_limits::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::resource_limits::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Update the singleton sandbox resource-limits configuration",
+        "description": "PATCH semantics: any field omitted from the body preserves its existing value. Validation rejects out-of-range values with 422; the new limits take effect on the very next `execute_command`.",
+        "operationId": "CodeSandbox.updateResourceLimits",
+        "requestBody": {
+          "description": "Admin PUT payload. All fields optional; absent fields preserve their\n existing value. Mirrors the `llm_provider` admin-update pattern.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCodeSandboxResourceLimits"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update the sandbox memory/CPU/PID caps + per-exec timeout + idle-evict policy.",
+                        "name": "CodeSandboxResourceLimitsManage",
+                        "value": "code_sandbox::resource_limits::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::resource_limits::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Value out of range"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/flavors": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "List selectable sandbox rootfs flavors + host command allowlist",
+        "description": "Powers the MCP server form's sandbox flavor picker AND the MCP user-policy admin card's flavor select. Returns the KNOWN_FLAVORS catalog (name / description / approximate size / cached) plus the host-path command allowlist a non-sandboxed stdio server must use.",
+        "operationId": "CodeSandbox.listFlavors",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View system MCP servers",
+                        "name": "McpServersAdminRead",
+                        "value": "mcp_servers_admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers_admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "REST response for the MCP-server form's sandbox flavor picker:\n the selectable rootfs flavors plus the host command allowlist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxFlavorsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/rootfs/versions": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "List installed + available rootfs versions",
+        "description": "Returns the system-wide pin, every downloaded artifact, and (best-effort) the GitHub Releases catalog. The UI uses this single call to render the rootfs-versions admin page.",
+        "operationId": "CodeSandbox.listRootfsVersions",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List rootfs versions and watch install progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Snapshot returned by `status()` for the admin UI's \"Rootfs\n versions\" page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionStatus"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/rootfs/versions/install": {
+      "post": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Spawn a background install task for a rootfs artifact",
+        "description": "Spawns a background task to download the matching artifact from the GitHub release, sha256 + cosign verify it, and record the row in `code_sandbox_rootfs_artifacts`. Returns 202 Accepted immediately with the task's initial state; live progress is available via `GET .../install/subscribe` (SSE).",
+        "operationId": "CodeSandbox.installRootfsVersion",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
+                        "name": "CodeSandboxEnvironmentsManage",
+                        "value": "code_sandbox::environments::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallTaskState"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/rootfs/versions/install/subscribe": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Subscribe to rootfs install task progress (SSE)",
+        "description": "Server-Sent Events stream of `connected | taskStarted | progress | complete | failed | taskState` events for every install task. On connect the stream emits a `connected` event then replays the current registry (recent terminal states + in-flight tasks) so a fresh subscriber doesn't have to wait for the next tick.",
+        "operationId": "CodeSandbox.subscribeRootfsInstallProgress",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List rootfs versions and watch install progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SSEInstallTaskEvent"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/rootfs/versions/set-pin": {
+      "post": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Change the system-wide rootfs version pin",
+        "description": "Validates the target version exists on GitHub, updates the pin in `code_sandbox_settings`, then schedules a drain-then- evict task for every old-version mount. On a major version bump the workspace install-cache subdirs (`.local`, `.cache`, `.npm`, ...) are wiped across both per-conversation and per-MCP-server workspaces AFTER drain; minor + patch bumps preserve workspace state. Returns the swap outcome (draining-mount count + cache wipe policy) alongside the refreshed status snapshot.",
+        "operationId": "CodeSandbox.setRootfsPin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPinRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
+                        "name": "CodeSandboxEnvironmentsManage",
+                        "value": "code_sandbox::environments::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetPinResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/rootfs/versions/{id}": {
+      "delete": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Delete an installed rootfs artifact",
+        "description": "Deletes the DB row + the on-disk artifact + sidecars. Refused with 409 when the row is the currently-pinned version (change the pin first).",
+        "operationId": "CodeSandbox.deleteRootfsVersion",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
+                        "name": "CodeSandboxEnvironmentsManage",
+                        "value": "code_sandbox::environments::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Snapshot returned by `status()` for the admin UI's \"Rootfs\n versions\" page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionStatus"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/hub/models": {
       "get": {
         "tags": [
@@ -12194,7 +12710,7 @@
             }
           },
           "200": {
-            "description": "Response for `POST /api/hub/refresh` — what changed.",
+            "description": "Response for `POST /api/hub/refresh` — what changed.\n\n v2 dropped the `cosign_verified` field — trust is now HTTPS-only\n to GitHub Pages, no Sigstore signature. The frontend should not\n surface a \"verified\" badge anywhere.",
             "content": {
               "application/json": {
                 "schema": {
@@ -12285,7 +12801,7 @@
             }
           },
           "200": {
-            "description": "Full manifest for one hub item, returned by `GET /api/hub/manifest/:id`.\n\n A struct (not a `#[serde(tag)]` enum) because the tagged-enum +\n `Box<Struct>` form produces an empty OpenAPI schema — clients\n couldn't see the payload fields. Exactly one of `model` /\n `assistant` / `mcp_server` is populated, matching `category`.",
+            "description": "Full manifest for one hub item, returned by `GET /api/hub/manifest/:id`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -12302,573 +12818,6 @@
           },
           "404": {
             "description": "Manifest not found in catalog"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/hub/releases": {
-      "get": {
-        "tags": [
-          "Hub"
-        ],
-        "summary": "List catalog versions published on GitHub (admin only)",
-        "description": "\n\n**Required Permission:** `hub::catalog::read`\n\nView hub catalog versions + pending updates",
-        "operationId": "Hub.getReleases",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "View hub catalog versions + pending updates",
-                        "name": "HubCatalogRead",
-                        "value": "hub::catalog::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: hub::catalog::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Response for `GET /api/hub/releases` — the versions published on\n GitHub, plus which is currently installed (`active_version`) and the\n admin's pin (`pinned_version`, None = tracking latest).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HubReleasesResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "500": {
-            "description": "GitHub unreachable"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/hub/activate": {
-      "post": {
-        "tags": [
-          "Hub"
-        ],
-        "summary": "Pin + activate a catalog version server-wide (admin only)",
-        "description": "\n\n**Required Permission:** `hub::catalog::manage`\n\nRefresh + activate hub catalog versions",
-        "operationId": "Hub.activateVersion",
-        "requestBody": {
-          "description": "Request body for `POST /api/hub/activate`. `version: null` clears the\n pin (track latest); otherwise pins + activates that exact version\n (semver without the leading `v`).",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ActivateHubVersionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Refresh + activate hub catalog versions",
-                        "name": "HubCatalogManage",
-                        "value": "hub::catalog::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: hub::catalog::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Response for `POST /api/hub/refresh` — what changed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HubCatalogRefreshResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid version string"
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "500": {
-            "description": "Fetch / verify failure — pin not persisted, previous catalog kept"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/resource-limits": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Read the singleton sandbox resource-limits configuration",
-        "description": "Returns the current memory / CPU / PID / prlimit / timeout caps that the sandbox runtime applies on every `execute_command`. Admin-only.",
-        "operationId": "CodeSandbox.getResourceLimits",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read the sandbox resource limits configuration.",
-                        "name": "CodeSandboxResourceLimitsRead",
-                        "value": "code_sandbox::resource_limits::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::resource_limits::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Update the singleton sandbox resource-limits configuration",
-        "description": "PATCH semantics: any field omitted from the body preserves its existing value. Validation rejects out-of-range values with 422; the new limits take effect on the very next `execute_command`.",
-        "operationId": "CodeSandbox.updateResourceLimits",
-        "requestBody": {
-          "description": "Admin PUT payload. All fields optional; absent fields preserve their\n existing value. Mirrors the `llm_provider` admin-update pattern.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateCodeSandboxResourceLimits"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update the sandbox memory/CPU/PID caps + per-exec timeout + idle-evict policy.",
-                        "name": "CodeSandboxResourceLimitsManage",
-                        "value": "code_sandbox::resource_limits::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::resource_limits::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "422": {
-            "description": "Value out of range"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/flavors": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "List selectable sandbox rootfs flavors + host command allowlist",
-        "description": "Powers the MCP server form's sandbox flavor picker AND the MCP user-policy admin card's flavor select. Returns the KNOWN_FLAVORS catalog (name / description / approximate size / cached) plus the host-path command allowlist a non-sandboxed stdio server must use.",
-        "operationId": "CodeSandbox.listFlavors",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "View system MCP servers",
-                        "name": "McpServersAdminRead",
-                        "value": "mcp_servers_admin::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: mcp_servers_admin::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "REST response for the MCP-server form's sandbox flavor picker:\n the selectable rootfs flavors plus the host command allowlist.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SandboxFlavorsResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/rootfs/versions": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "List installed + available rootfs versions",
-        "description": "Returns the system-wide pin, every downloaded artifact, and (best-effort) the GitHub Releases catalog. The UI uses this single call to render the rootfs-versions admin page.",
-        "operationId": "CodeSandbox.listRootfsVersions",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "List rootfs versions and watch install progress.",
-                        "name": "CodeSandboxEnvironmentsRead",
-                        "value": "code_sandbox::environments::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Snapshot returned by `status()` for the admin UI's \"Rootfs\n versions\" page.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/VersionStatus"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/rootfs/versions/install": {
-      "post": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Spawn a background install task for a rootfs artifact",
-        "description": "Spawns a background task to download the matching artifact from the GitHub release, sha256 + cosign verify it, and record the row in `code_sandbox_rootfs_artifacts`. Returns 202 Accepted immediately with the task's initial state; live progress is available via `GET .../install/subscribe` (SSE).",
-        "operationId": "CodeSandbox.installRootfsVersion",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/InstallVersionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
-                        "name": "CodeSandboxEnvironmentsManage",
-                        "value": "code_sandbox::environments::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "202": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InstallTaskState"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/rootfs/versions/install/subscribe": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Subscribe to rootfs install task progress (SSE)",
-        "description": "Server-Sent Events stream of `connected | taskStarted | progress | complete | failed | taskState` events for every install task. On connect the stream emits a `connected` event then replays the current registry (recent terminal states + in-flight tasks) so a fresh subscriber doesn't have to wait for the next tick.",
-        "operationId": "CodeSandbox.subscribeRootfsInstallProgress",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "List rootfs versions and watch install progress.",
-                        "name": "CodeSandboxEnvironmentsRead",
-                        "value": "code_sandbox::environments::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SSEInstallTaskEvent"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/rootfs/versions/set-pin": {
-      "post": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Change the system-wide rootfs version pin",
-        "description": "Validates the target version exists on GitHub, updates the pin in `code_sandbox_settings`, then schedules a drain-then- evict task for every old-version mount. On a major version bump the workspace install-cache subdirs (`.local`, `.cache`, `.npm`, ...) are wiped across both per-conversation and per-MCP-server workspaces AFTER drain; minor + patch bumps preserve workspace state. Returns the swap outcome (draining-mount count + cache wipe policy) alongside the refreshed status snapshot.",
-        "operationId": "CodeSandbox.setRootfsPin",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetPinRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
-                        "name": "CodeSandboxEnvironmentsManage",
-                        "value": "code_sandbox::environments::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SetPinResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/rootfs/versions/{id}": {
-      "delete": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Delete an installed rootfs artifact",
-        "description": "Deletes the DB row + the on-disk artifact + sidecars. Refused with 409 when the row is the currently-pinned version (change the pin first).",
-        "operationId": "CodeSandbox.deleteRootfsVersion",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
-                        "name": "CodeSandboxEnvironmentsManage",
-                        "value": "code_sandbox::environments::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Snapshot returned by `status()` for the admin UI's \"Rootfs\n versions\" page.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/VersionStatus"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -14495,694 +14444,6 @@
           }
         ]
       }
-    },
-    "/api/desktop/backend/status": {
-      "get": {
-        "tags": [
-          "desktop-backend"
-        ],
-        "description": "Get backend server status",
-        "operationId": "DesktopBackend.status",
-        "responses": {
-          "200": {
-            "description": "Backend status response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BackendStatusResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/desktop/settings": {
-      "get": {
-        "tags": [
-          "desktop-settings"
-        ],
-        "description": "Get all desktop settings",
-        "operationId": "DesktopSettings.getAll",
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AllSettingsResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/desktop/settings/{key}": {
-      "get": {
-        "tags": [
-          "desktop-settings"
-        ],
-        "description": "Get a specific desktop setting by key",
-        "operationId": "DesktopSettings.get",
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SettingResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "desktop-settings"
-        ],
-        "description": "Set a desktop setting value",
-        "operationId": "DesktopSettings.set",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetSettingRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuccessResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "desktop-settings"
-        ],
-        "description": "Delete a desktop setting",
-        "operationId": "DesktopSettings.delete",
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuccessResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/desktop/updater/check": {
-      "post": {
-        "tags": [
-          "updater"
-        ],
-        "description": "Check for an available application update.",
-        "operationId": "Updater.check",
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UpdateCheckResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/desktop/updater/download": {
-      "post": {
-        "tags": [
-          "updater"
-        ],
-        "description": "Start downloading the available update (progress via /status).",
-        "operationId": "Updater.download",
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SimpleResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/desktop/updater/install": {
-      "post": {
-        "tags": [
-          "updater"
-        ],
-        "description": "Install the downloaded update and restart the app.",
-        "operationId": "Updater.install",
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SimpleResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/desktop/updater/status": {
-      "get": {
-        "tags": [
-          "updater"
-        ],
-        "description": "Get the current update status (checking/downloading/progress).",
-        "operationId": "Updater.status",
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UpdateStatusResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/remote-access/status": {
-      "get": {
-        "tags": [
-          "remote-access"
-        ],
-        "summary": "Get the combined remote-access status (settings + live tunnel state).",
-        "description": "\n\n**Required Permission:** `remote_access::read`\n\nRead remote-access settings, tunnel status, and current public URL.",
-        "operationId": "RemoteAccess.getStatus",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read remote-access settings, tunnel status, and current public URL.",
-                        "name": "RemoteAccessRead",
-                        "value": "remote_access::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: remote_access::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "GET /api/remote-access/status — combined status surface for the\n admin page. Aggregates settings + live tunnel state + password\n rotation status.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RemoteAccessStatusResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/remote-access/settings": {
-      "get": {
-        "tags": [
-          "remote-access"
-        ],
-        "summary": "Get the remote-access settings (never echoes the ngrok auth token).",
-        "description": "\n\n**Required Permission:** `remote_access::read`\n\nRead remote-access settings, tunnel status, and current public URL.",
-        "operationId": "RemoteAccess.getSettings",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read remote-access settings, tunnel status, and current public URL.",
-                        "name": "RemoteAccessRead",
-                        "value": "remote_access::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: remote_access::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "GET /api/remote-access/settings response. Token is NEVER included\n in the response body — only the `auth_token_set` boolean. The\n domain IS included because it becomes public the moment the tunnel\n connects.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RemoteAccessSettingsResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "remote-access"
-        ],
-        "summary": "Update remote-access settings (ngrok token, domain, auto-start, password-auth).",
-        "description": "Three-state semantics per field: missing key = preserve, null = clear, value = set. Token plaintext is encrypted at rest and never echoed back.",
-        "operationId": "RemoteAccess.updateSettings",
-        "requestBody": {
-          "description": "PUT /api/remote-access/settings request body. Each field uses\n three-state semantics:\n   - missing key → don't touch (keep DB value)\n   - null → clear (set to NULL / FALSE)\n   - value → set\n\n Implemented via `Option<Option<T>>` + a custom serde fn that\n distinguishes \"absent\" from \"null\". The frontend matches by\n only sending fields it actually wants to change.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateRemoteAccessSettingsRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Save the ngrok auth token / custom domain, toggle auto-start, toggle password authentication, start/stop the tunnel, and issue magic-link login tokens.",
-                        "name": "RemoteAccessManage",
-                        "value": "remote_access::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: remote_access::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "GET /api/remote-access/settings response. Token is NEVER included\n in the response body — only the `auth_token_set` boolean. The\n domain IS included because it becomes public the moment the tunnel\n connects.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RemoteAccessSettingsResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/remote-access/tunnel/start": {
-      "post": {
-        "tags": [
-          "remote-access"
-        ],
-        "summary": "Start the ngrok tunnel using the saved auth token + optional domain.",
-        "description": "\n\n**Required Permission:** `remote_access::manage`\n\nSave the ngrok auth token / custom domain, toggle auto-start, toggle password authentication, start/stop the tunnel, and issue magic-link login tokens.",
-        "operationId": "RemoteAccess.startTunnel",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Save the ngrok auth token / custom domain, toggle auto-start, toggle password authentication, start/stop the tunnel, and issue magic-link login tokens.",
-                        "name": "RemoteAccessManage",
-                        "value": "remote_access::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: remote_access::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "POST /api/remote-access/tunnel/start response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TunnelStartResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Tunnel already running"
-          },
-          "422": {
-            "description": "No auth token configured"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/remote-access/tunnel/stop": {
-      "post": {
-        "tags": [
-          "remote-access"
-        ],
-        "summary": "Stop the active ngrok tunnel. Idempotent.",
-        "description": "\n\n**Required Permission:** `remote_access::manage`\n\nSave the ngrok auth token / custom domain, toggle auto-start, toggle password authentication, start/stop the tunnel, and issue magic-link login tokens.",
-        "operationId": "RemoteAccess.stopTunnel",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Save the ngrok auth token / custom domain, toggle auto-start, toggle password authentication, start/stop the tunnel, and issue magic-link login tokens.",
-                        "name": "RemoteAccessManage",
-                        "value": "remote_access::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: remote_access::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "204": {
-            "description": "no content"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/remote-access/admin-password": {
-      "post": {
-        "tags": [
-          "remote-access"
-        ],
-        "summary": "Set the desktop admin password (no current-password required; localhost-gated).",
-        "description": "Replaces the admin user's password without requiring the current one. Safe because the localhost-Host middleware that wraps every /api/remote-access/* route already gates this to callers with shell-level access to the desktop machine. The standard /api/users/me/password endpoint with current-password verification remains available for multi-user web deployments.",
-        "operationId": "RemoteAccess.setAdminPassword",
-        "requestBody": {
-          "description": "POST /api/remote-access/admin-password request.\n\n No `current_password` field — physical presence at the desktop\n (proven by the localhost-Host middleware) IS the auth proof.\n The standard `/api/users/me/password` flow that requires the\n current password is still available for multi-user web deployments;\n this endpoint exists specifically for the single-admin desktop\n case where the bootstrap default is a published string and\n requiring it would be friction without security benefit.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetAdminPasswordRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Save the ngrok auth token / custom domain, toggle auto-start, toggle password authentication, start/stop the tunnel, and issue magic-link login tokens.",
-                        "name": "RemoteAccessManage",
-                        "value": "remote_access::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: remote_access::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "204": {
-            "description": "no content"
-          },
-          "400": {
-            "description": "New password fails strength check"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/auth/magic-link/issue": {
-      "post": {
-        "tags": [
-          "auth"
-        ],
-        "summary": "Mint a one-time magic-link token (admin-only, localhost-gated).",
-        "description": "Returns the plaintext token ONCE. The token is single-use, has a 5-minute TTL, and authenticates as the admin user when redeemed via POST /api/auth/magic-link/exchange. Only reachable from localhost (i.e. the desktop UI); rejected when called via the public tunnel.",
-        "operationId": "Auth.magicLinkIssue",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Save the ngrok auth token / custom domain, toggle auto-start, toggle password authentication, start/stop the tunnel, and issue magic-link login tokens.",
-                        "name": "RemoteAccessManage",
-                        "value": "remote_access::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: remote_access::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Response of POST /api/auth/magic-link/issue.\n\n `token` is the plaintext — returned ONCE and never persisted.\n The desktop UI encodes it into the QR URL\n `https://<tunnel>/auth/magic/<token>`.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MagicLinkIssueResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/auth/magic-link/exchange": {
-      "post": {
-        "tags": [
-          "auth"
-        ],
-        "summary": "Exchange a magic-link token for a JWT pair (unauth, single-use).",
-        "operationId": "Auth.magicLinkExchange",
-        "requestBody": {
-          "description": "Body of POST /api/auth/magic-link/exchange.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MagicLinkExchangeRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "JWT token pair (access + refresh)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Token is invalid, expired, or already used"
-          }
-        }
-      }
-    },
-    "/api/auth/config": {
-      "get": {
-        "tags": [
-          "auth"
-        ],
-        "summary": "Public auth config that drives the login page (no auth required).",
-        "description": "Returns flags describing what login UI to render for this request. Tunneled requests (Host header is not localhost) get hide_username=true and password_auth_enabled mirrors the admin's Remote Access toggle. Localhost requests always get the full multi-user UI behavior.",
-        "operationId": "Auth.getConfig",
-        "responses": {
-          "200": {
-            "description": "Public, unauthenticated config that drives how the login page\n renders for a given request. Returned by `GET /api/auth/config`.\n\n Computed from the `remote_access_settings` singleton + the\n inbound request's `Host` header. Tunneled requests (Host is not\n localhost) get `hide_username: true` and only see the password\n form when `password_auth_enabled: true`. Localhost requests get\n the full multi-user UI behavior the web bundle would normally use.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthConfigResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/auth/login-password-only": {
-      "post": {
-        "tags": [
-          "auth"
-        ],
-        "summary": "Password-only login for the single-admin desktop deployment.",
-        "description": "Authenticates as the admin user using only a password. Rejected with 403 when called from a tunneled request and the admin has not enabled password authentication via the Remote Access settings.",
-        "operationId": "Auth.loginPasswordOnly",
-        "requestBody": {
-          "description": "Body of `POST /api/auth/login-password-only`. Authenticates as the\n single admin user using just a password (no username). Used by\n the remote-served login page when `hide_username: true`.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PasswordOnlyLoginRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "JWT token pair (access + refresh)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Invalid password"
-          },
-          "403": {
-            "description": "Password login is disabled for tunneled requests"
-          }
-        }
-      }
-    },
-    "/api/users/me/password": {
-      "post": {
-        "tags": [
-          "users"
-        ],
-        "summary": "Change the authenticated user's password.",
-        "description": "Requires the current password as proof. On success, bumps `users.password_changed_at` (used by the Remote Access module to gate enabling password authentication).",
-        "operationId": "Users.changeOwnPassword",
-        "requestBody": {
-          "description": "Body of `POST /api/users/me/password`. Current + new password.\n The endpoint sets `users.password_changed_at` so the Remote\n Access module can allow enabling password authentication.\n\n This handler lives in the desktop crate because its sole consumer\n is the Remote Access flow — only the desktop installs the\n migration that adds `password_changed_at`, and only the desktop\n gates password-auth toggling on it.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChangePasswordRequest2"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "204": {
-            "description": "no content"
-          },
-          "401": {
-            "description": "Current password incorrect"
-          },
-          "400": {
-            "description": "New password fails strength check"
-          }
-        }
-      }
     }
   },
   "components": {
@@ -15195,33 +14456,6 @@
       }
     },
     "schemas": {
-      "ActivateHubVersionRequest": {
-        "description": "Request body for `POST /api/hub/activate`. `version: null` clears the\n pin (track latest); otherwise pins + activates that exact version\n (semver without the leading `v`).",
-        "type": "object",
-        "properties": {
-          "version": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "default": null
-          }
-        }
-      },
-      "AllSettingsResponse": {
-        "type": "object",
-        "properties": {
-          "settings": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/SettingItem"
-            }
-          }
-        },
-        "required": [
-          "settings"
-        ]
-      },
       "ApprovalMode": {
         "description": "Approval mode for conversation MCP settings",
         "oneOf": [
@@ -15394,26 +14628,6 @@
         },
         "required": [
           "file_id"
-        ]
-      },
-      "AuthConfigResponse": {
-        "description": "Public, unauthenticated config that drives how the login page\n renders for a given request. Returned by `GET /api/auth/config`.\n\n Computed from the `remote_access_settings` singleton + the\n inbound request's `Host` header. Tunneled requests (Host is not\n localhost) get `hide_username: true` and only see the password\n form when `password_auth_enabled: true`. Localhost requests get\n the full multi-user UI behavior the web bundle would normally use.",
-        "type": "object",
-        "properties": {
-          "hide_username": {
-            "type": "boolean"
-          },
-          "magic_link_enabled": {
-            "type": "boolean"
-          },
-          "password_auth_enabled": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "password_auth_enabled",
-          "magic_link_enabled",
-          "hide_username"
         ]
       },
       "AuthProviderResponse": {
@@ -15622,26 +14836,6 @@
           "prerelease"
         ]
       },
-      "BackendStatusResponse": {
-        "description": "Backend status response",
-        "type": "object",
-        "properties": {
-          "ready": {
-            "type": "boolean"
-          },
-          "running": {
-            "type": "boolean"
-          },
-          "version": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "running",
-          "ready",
-          "version"
-        ]
-      },
       "BlobType": {
         "description": "Helper type for documenting binary responses in OpenAPI",
         "type": "object"
@@ -15798,6 +14992,7 @@
             "default": null
           },
           "hub_version": {
+            "description": "Build marker stamped by the publisher. Under v2 this is NOT the\n per-entry update signal — per-entry `IndexItem.version` is the\n truth. Kept for diagnostics + the seed-version test guard.",
             "type": "string"
           },
           "items": {
@@ -15827,30 +15022,14 @@
             "const": "seed"
           },
           {
-            "description": "Downloaded + sha256 + cosign-verified from ziee-ai/hub.",
+            "description": "Fetched from the Pages branch at `hub_pages_base()`. HTTPS-only\n trust — no cosign / sha256.",
             "type": "string",
-            "const": "github"
+            "const": "pages"
           }
         ]
       },
       "ChangePasswordRequest": {
         "description": "Self-service password change for the authenticated user. Requires\n the current password as proof. Only valid for local-password\n accounts (`password_hash IS NOT NULL`).",
-        "type": "object",
-        "properties": {
-          "current_password": {
-            "type": "string"
-          },
-          "new_password": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "current_password",
-          "new_password"
-        ]
-      },
-      "ChangePasswordRequest2": {
-        "description": "Body of `POST /api/users/me/password`. Current + new password.\n The endpoint sets `users.password_changed_at` so the Remote\n Access module can allow enabling password authentication.\n\n This handler lives in the desktop crate because its sole consumer\n is the Remote Access flow — only the desktop installs the\n migration that adds `password_changed_at`, and only the desktop\n gates password-auth toggling on it.",
         "type": "object",
         "properties": {
           "current_password": {
@@ -17124,11 +16303,20 @@
             "format": "uuid"
           },
           "quantization_name": {
-            "description": "Optional: Select quantization option (defaults to main file)",
+            "description": "Optional: name of the quantization within the chosen source's\n `quantizations[]`. Defaults to the entry with `is_default: true`,\n falling back to `quantizations[0]` if no entry sets it.",
             "type": [
               "string",
               "null"
             ]
+          },
+          "source_index": {
+            "description": "Optional: index into `HubModel.sources[]` (default 0). Phase-7\n addition — v1 had a single source per model so the index was\n implicit.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint",
+            "minimum": 0
           }
         },
         "required": [
@@ -17265,6 +16453,14 @@
             ]
           }
         }
+      },
+      "DependencyKind": {
+        "description": "`kind` discriminant on `HubDependency`. On the wire the values are\n `model` / `mcp-server` (kebab-case).",
+        "type": "string",
+        "enum": [
+          "model",
+          "mcp-server"
+        ]
       },
       "DeviceType": {
         "description": "Device types for ML model inference",
@@ -18298,6 +17494,7 @@
         ]
       },
       "FileFormat2": {
+        "description": "Same shape as the v1 `FileFormat`. Kept exactly as before so older\n catalog entries + the `llm_model` module's translation layer continue\n to deserialize.",
         "type": "string",
         "enum": [
           "gguf",
@@ -18333,6 +17530,18 @@
           "total",
           "page",
           "per_page"
+        ]
+      },
+      "FileRole": {
+        "description": "Coarse role of a single file, surfaced to the UI for grouping.",
+        "type": "string",
+        "enum": [
+          "weight",
+          "index",
+          "config",
+          "tokenizer",
+          "vocab",
+          "other"
         ]
       },
       "FtsRebuildRequest": {
@@ -18850,15 +18059,22 @@
         ]
       },
       "HubAssistant": {
-        "description": "Hub assistant entry",
+        "description": "Hub assistant entry.\n\n Like HubModel, the v2 identity envelope is reverse-DNS via `name`.\n Under Hub v2 Phase 7 the body drops v1's `recommended_models`,\n `recommended_mcp_servers`, `use_cases`, `example_prompts`,\n `popularity_score` in favour of a single `dependencies[]` list.",
         "type": "object",
         "properties": {
+          "$schema": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "description": {
             "type": [
               "string",
               "null"
             ]
           },
+          "_meta": true,
           "author": {
             "type": [
               "string",
@@ -18898,19 +18114,14 @@
               "format": "uuid"
             }
           },
-          "display_name": {
-            "type": "string"
-          },
-          "example_prompts": {
-            "type": [
-              "array",
-              "null"
-            ],
+          "dependencies": {
+            "description": "Soft dependencies (`{kind: model|mcp-server, name, versionRange}`).\n Replaces v1's `recommended_models` / `recommended_mcp_servers`.\n FE renders as \"Works best with\" chips; NOT auto-installed.",
+            "type": "array",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/HubDependency"
             }
           },
-          "id": {
+          "display_name": {
             "type": "string"
           },
           "instructions": {
@@ -18920,22 +18131,20 @@
             ]
           },
           "name": {
+            "description": "v2 envelope: reverse-DNS canonical name (the catalog lookup key).",
             "type": "string"
           },
           "parameters": true,
-          "popularity_score": {
-            "type": "number",
-            "format": "double",
-            "default": 0.0
-          },
-          "recommended_models": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "string"
-            }
+          "repository": {
+            "description": "Source repository pointer (rare for assistants, but supported).",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HubRepository"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "tags": {
             "type": "array",
@@ -18944,18 +18153,22 @@
               "type": "string"
             }
           },
-          "use_cases": {
+          "version": {
+            "description": "v2 envelope: per-entry semver. See `HubModel.version`.",
             "type": [
-              "array",
+              "string",
               "null"
-            ],
-            "items": {
-              "type": "string"
-            }
+            ]
+          },
+          "websiteUrl": {
+            "description": "Project / website link.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
-          "id",
           "name",
           "display_name",
           "parameters"
@@ -18988,12 +18201,9 @@
         ]
       },
       "HubCatalogRefreshResponse": {
-        "description": "Response for `POST /api/hub/refresh` — what changed.",
+        "description": "Response for `POST /api/hub/refresh` — what changed.\n\n v2 dropped the `cosign_verified` field — trust is now HTTPS-only\n to GitHub Pages, no Sigstore signature. The frontend should not\n surface a \"verified\" badge anywhere.",
         "type": "object",
         "properties": {
-          "cosign_verified": {
-            "type": "boolean"
-          },
           "new_version": {
             "type": "string"
           },
@@ -19009,8 +18219,7 @@
         },
         "required": [
           "updated",
-          "new_version",
-          "cosign_verified"
+          "new_version"
         ]
       },
       "HubCatalogVersionResponse": {
@@ -19056,6 +18265,28 @@
           "assistant",
           "mcp-server",
           "model"
+        ]
+      },
+      "HubDependency": {
+        "description": "One informational dependency on a hub entry. Used on both\n `HubModel` and `HubAssistant`. NOT auto-installed — the FE shows\n \"Works best with…\" chips and routes the user to the relevant hub\n page if they click through.",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/DependencyKind"
+          },
+          "name": {
+            "description": "Reverse-DNS canonical name of the dependency.",
+            "type": "string"
+          },
+          "versionRange": {
+            "description": "Semver range (`\"^1.0.0\"`, `\"*\"`, etc.). Free-form on the wire;\n not validated by the consumer.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "versionRange"
         ]
       },
       "HubEntity": {
@@ -19213,44 +18444,28 @@
         ]
       },
       "HubMCPServer": {
-        "description": "Hub MCP server entry",
+        "description": "Hub MCP server entry — strict official `server.json` shape.\n\n Mirrors `https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json`\n verbatim. The v1 flat ziee fields (`command`/`args`/`url`/`headers`/\n `display_name`/`category`/`required_env` etc.) are gone — every install\n path drives off `packages[]` / `remotes[]` (the official transports).",
         "type": "object",
         "properties": {
+          "$schema": {
+            "description": "v2 envelope: schema URL the manifest claims to conform to.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "description": {
+            "description": "One-line human description from the manifest body.",
             "type": [
               "string",
               "null"
             ]
           },
-          "args": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "string"
-            }
-          },
-          "author": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "category": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "command": {
-            "type": [
-              "string",
-              "null"
-            ]
+          "_meta": {
+            "description": "v2 envelope: namespaced extras. Preserves\n `io.modelcontextprotocol.registry/*` keys from ingested entries\n so the frontend can surface \"official MCP registry\" provenance\n without a separate lookup."
           },
           "created_ids": {
-            "description": "Array of entity IDs created by current user from this hub server",
+            "description": "Array of entity IDs created by current user from this hub server.\n Populated by the handler at response time; never present in the\n raw manifest JSON.",
             "type": "array",
             "default": [],
             "items": {
@@ -19267,173 +18482,50 @@
               "format": "uuid"
             }
           },
-          "display_name": {
-            "type": "string"
-          },
-          "documentation_url": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "download_count": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32"
-          },
-          "environment_variables": true,
-          "example_prompts": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "string"
-            }
-          },
-          "example_tools": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "string"
-            }
-          },
-          "headers": true,
-          "homepage": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "icon_url": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "id": {
-            "type": "string"
-          },
-          "license": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "minimum_version": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "name": {
+            "description": "Required: reverse-DNS canonical name (e.g.\n `io.github.modelcontextprotocol/filesystem`). Catalog lookup key.",
             "type": "string"
           },
-          "platform_support": {
+          "packages": {
+            "description": "Official `server.json`: stdio-runnable packages\n (npm/pypi/oci/nuget/mcpb via npx/uvx/docker/dnx). Ziee filters\n to npx/uvx + stdio at install time.",
             "type": [
               "array",
               "null"
             ],
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/McpPackage"
             }
           },
-          "popularity_score": {
-            "type": "number",
-            "format": "double",
-            "default": 0.0
-          },
-          "rating": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double"
-          },
-          "repository_url": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "required_env": {
-            "description": "User-supplied env vars the server needs to function (auth\n tokens, connection strings, etc.). Declarative — surfaced in\n the hub card / details drawer and used by the install path to\n seed placeholder values into the new MCP server's env map.\n Empty for servers that need no user-supplied env (filesystem,\n memory). `serde(default)` lets pre-schema catalog versions\n deserialize cleanly with no entries.",
-            "type": "array",
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/HubRequiredInput"
-            }
-          },
-          "required_headers": {
-            "description": "User-supplied HTTP headers the server needs to function.\n Used for HTTP/SSE transports where a header takes direct user\n input (e.g. a per-tenant ID). Headers that interpolate from\n env vars via `${VAR}` should be declared via `required_env`\n instead — the env path is the canonical surface and avoids\n double-listing. Empty for stdio servers + HTTP servers where\n every header is either static or env-interpolated.",
-            "type": "array",
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/HubRequiredInput"
-            }
-          },
-          "requires_desktop": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "supports_sampling": {
-            "description": "Whether this MCP server uses MCP sampling (sends sampling/createMessage requests back to the platform)",
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "tags": {
-            "type": "array",
-            "default": [],
-            "items": {
-              "type": "string"
-            }
-          },
-          "tool_categories": {
+          "remotes": {
+            "description": "Official `server.json`: remote transports\n (streamable-http + sse). Preferred over `packages` if present.",
             "type": [
               "array",
               "null"
             ],
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/McpRemote"
             }
           },
-          "tool_count": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32"
-          },
-          "transport_type": {
-            "type": [
-              "string",
-              "null"
+          "repository": {
+            "description": "Source repository pointer.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HubRepository"
+              },
+              {
+                "type": "null"
+              }
             ]
-          },
-          "url": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "use_cases": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "string"
-            }
           },
           "version": {
+            "description": "Per-entry semver matching the IndexItem.version.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "websiteUrl": {
+            "description": "Project homepage (`websiteUrl` on the wire).",
             "type": [
               "string",
               "null"
@@ -19441,13 +18533,11 @@
           }
         },
         "required": [
-          "id",
-          "name",
-          "display_name"
+          "name"
         ]
       },
       "HubManifest": {
-        "description": "Full manifest for one hub item, returned by `GET /api/hub/manifest/:id`.\n\n A struct (not a `#[serde(tag)]` enum) because the tagged-enum +\n `Box<Struct>` form produces an empty OpenAPI schema — clients\n couldn't see the payload fields. Exactly one of `model` /\n `assistant` / `mcp_server` is populated, matching `category`.",
+        "description": "Full manifest for one hub item, returned by `GET /api/hub/manifest/:id`.",
         "type": "object",
         "properties": {
           "assistant": {
@@ -19501,19 +18591,24 @@
         ]
       },
       "HubModel": {
-        "description": "Hub model entry",
+        "description": "Hub model entry.\n\n Under v2 the identity envelope is reverse-DNS: the manifest's\n `name` is `io.github.<contributor>/<slug>` and is the catalog\n lookup key everywhere. The body shape under Hub v2 Phase 7 is\n parallel to MCP's `packages[]`: a list of `sources[]` (installable\n variants), with each source carrying its own `quantizations[]`.",
         "type": "object",
         "properties": {
+          "$schema": {
+            "description": "v2 envelope: schema URL the manifest claims to conform to.\n Informational on the consumer; lets the catalog format evolve.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "description": {
             "type": [
               "string",
               "null"
             ]
           },
-          "auth_required": {
-            "description": "Whether authentication is required to download/use this model",
-            "type": "boolean",
-            "default": false
+          "_meta": {
+            "description": "v2 envelope: namespaced extras\n (`io.modelcontextprotocol.registry/*` preserved from ingested\n entries on the MCP side). Free-form for forward compat."
           },
           "author": {
             "type": [
@@ -19531,13 +18626,6 @@
               }
             ]
           },
-          "context_length": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32"
-          },
           "created_ids": {
             "description": "Array of model IDs downloaded by ANYONE from this hub model (system-wide)",
             "type": "array",
@@ -19547,19 +18635,14 @@
               "format": "uuid"
             }
           },
+          "dependencies": {
+            "description": "Soft, informational dependencies (`{kind, name, versionRange}`).\n Surfaced in the FE; NOT auto-installed (mirrors `HubAssistant`).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HubDependency"
+            }
+          },
           "display_name": {
-            "type": "string"
-          },
-          "file_format": {
-            "$ref": "#/components/schemas/FileFormat2"
-          },
-          "homepage_url": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "id": {
             "type": "string"
           },
           "language_support": {
@@ -19577,51 +18660,33 @@
               "null"
             ]
           },
-          "main_filename": {
-            "type": "string"
-          },
           "name": {
+            "description": "v2 envelope: reverse-DNS canonical name. Matches the\n IndexItem.name in the catalog; used as the lookup key on\n every install / manifest endpoint.",
             "type": "string"
           },
-          "popularity_score": {
-            "type": "number",
-            "format": "double"
-          },
-          "public": {
-            "type": "boolean",
-            "default": false
-          },
-          "quantization_options": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "$ref": "#/components/schemas/HubModelQuantizationOption"
-            }
-          },
-          "recommended_engine": {
-            "type": [
-              "string",
-              "null"
+          "recommended_parameters": true,
+          "repository": {
+            "description": "Source repository pointer. Mirrors `HubMCPServer.repository`.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HubRepository"
+              },
+              {
+                "type": "null"
+              }
             ]
           },
-          "recommended_engine_settings": true,
-          "recommended_parameters": true,
-          "repository_path": {
-            "type": "string"
-          },
-          "repository_url": {
-            "type": "string"
-          },
-          "size_gb": {
-            "type": "number",
-            "format": "double"
-          },
           "source_auth_configured": {
-            "description": "Whether the model's SOURCE repository currently has a credential\n configured. Computed at response time (never read from the catalog file)\n by joining against `llm_repositories`. When `auth_required` is true and\n this is false, the UI blocks download and points the user to\n Settings → LLM Repositories.",
+            "description": "Whether the model's SOURCE repository currently has a credential\n configured. Computed at response time (never read from the catalog file)\n by checking, for each `sources[].environment_variables` entry marked\n `is_required + is_secret`, whether the matching `llm_repositories` row\n has a credential. `true` if at least one source has its required\n secret credential configured. When all required-secret sources are\n unconfigured, the UI blocks download and points the user to\n Settings → LLM Repositories.",
             "type": "boolean",
             "default": false
+          },
+          "sources": {
+            "description": "Installable variants. Required — the publisher always sets at\n least one. Parallel to `HubMCPServer.packages`.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelSource"
+            }
           },
           "tags": {
             "type": "array",
@@ -19629,40 +18694,26 @@
             "items": {
               "type": "string"
             }
+          },
+          "version": {
+            "description": "v2 envelope: per-entry semver (was a single catalog `hub_version`\n in v1). Absent on legacy seed entries; the `/installed` updates\n path treats `None` as \"no update available\".",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "websiteUrl": {
+            "description": "Project / model homepage (renamed from v1 `homepage_url`).",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
-          "id",
           "name",
           "display_name",
-          "repository_url",
-          "repository_path",
-          "main_filename",
-          "file_format",
-          "size_gb",
-          "popularity_score"
-        ]
-      },
-      "HubModelQuantizationOption": {
-        "type": "object",
-        "properties": {
-          "main_filename": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "size_gb": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double"
-          }
-        },
-        "required": [
-          "name",
-          "main_filename"
+          "sources"
         ]
       },
       "HubQuery": {
@@ -19692,98 +18743,34 @@
           "version"
         ]
       },
-      "HubReleaseInfo": {
-        "description": "One published catalog version on GitHub Releases. Surfaced by\n `list_releases()` for the admin version picker.",
+      "HubRepository": {
+        "description": "Repository pointer block on a manifest entry. Mirrors the official\n `server.json` `Repository` object.",
         "type": "object",
         "properties": {
-          "prerelease": {
-            "type": "boolean"
-          },
-          "published_at": {
+          "id": {
             "type": [
               "string",
               "null"
             ]
           },
-          "tag": {
-            "description": "Full git tag (e.g. `v0.0.2-alpha`).",
-            "type": "string"
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
-          "version": {
-            "description": "Version without the leading `v` (e.g. `0.0.2-alpha`).",
+          "subfolder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
             "type": "string"
           }
         },
         "required": [
-          "version",
-          "tag",
-          "prerelease"
-        ]
-      },
-      "HubReleasesResponse": {
-        "description": "Response for `GET /api/hub/releases` — the versions published on\n GitHub, plus which is currently installed (`active_version`) and the\n admin's pin (`pinned_version`, None = tracking latest).",
-        "type": "object",
-        "properties": {
-          "active_version": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "pinned_version": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "releases": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/HubReleaseInfo"
-            }
-          }
-        },
-        "required": [
-          "releases"
-        ]
-      },
-      "HubRequiredInput": {
-        "description": "Declares a single required input the user must configure on a\n hub-installed MCP server. ONE struct shape is reused for both\n `HubMCPServer.required_env` (environment variables) and\n `HubMCPServer.required_headers` (HTTP headers) — the target map\n is implied by which field the entry appears in.\n\n Currently the entries only carry display + placeholder metadata;\n the install path uses `placeholder` to seed the new MCP server's\n env/header map so the user sees in `/settings/mcp-servers`\n exactly what to replace. Manifest writers should set\n `is_secret: true` for credential-bearing inputs (env vars\n carrying tokens; headers carrying tokens directly) and `false`\n for non-secret config like tenant IDs.",
-        "type": "object",
-        "properties": {
-          "description": {
-            "description": "1-2 sentence human description. Rendered under the name in\n the hub details drawer.",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "docs_url": {
-            "description": "Optional link to upstream docs explaining how to obtain the\n value. Rendered as \"Get one →\" in the details drawer.",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "is_secret": {
-            "description": "True when the value carries credential material — UI hides\n the value behind a reveal toggle on the edit form, redacts\n from logs. Defaults to `false` via serde; manifest writers\n should set explicitly per the README convention (true for\n most env vars, false for most direct-input headers).",
-            "type": "boolean",
-            "default": false
-          },
-          "name": {
-            "description": "Key name. For `required_env` this is the env var name (e.g.\n `GITHUB_TOKEN`); for `required_headers` it's the HTTP header\n name (e.g. `X-Tenant-ID`).",
-            "type": "string"
-          },
-          "placeholder": {
-            "description": "Recommended example value. The install path writes this\n verbatim into the new MCP server row so the user sees a\n realistic-looking-but-invalid value to replace. When None,\n install writes an empty string and the UI shows just the\n name + description.",
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "name"
+          "url"
         ]
       },
       "HubVersionResponse": {
@@ -19864,6 +18851,16 @@
       "IndexItem": {
         "type": "object",
         "properties": {
+          "title": {
+            "description": "Human display label (replaces v1 `IndexItem.name`). Optional —\n cards fall back to the slug portion of `name` when absent.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "_meta": {
+            "description": "v2 envelope — namespaced extras (e.g.\n `io.modelcontextprotocol.registry/*` on ingested entries)."
+          },
           "added_at": {
             "type": [
               "string",
@@ -19873,10 +18870,8 @@
           "category": {
             "$ref": "#/components/schemas/HubCategory"
           },
-          "id": {
-            "type": "string"
-          },
           "manifest_path": {
+            "description": "Pages-relative path to the full manifest, e.g.\n `\"models/io.github.ziee-ai/llama-3-8b-instruct/1.0.0.json\"`.\n Used as both the HTTP fetch suffix and the on-disk cache path.\n Validated by `is_safe_manifest_path` before any file or URL use.",
             "type": "string"
           },
           "min_ziee_version": {
@@ -19886,6 +18881,7 @@
             ]
           },
           "name": {
+            "description": "v2 envelope — reverse-DNS canonical name, unique across sources.\n ziee-native entries use `io.github.<contributor>/<slug>`; ingested\n MCP entries keep their official `name`. Matches the per-entry\n manifest's top-level `name` field; used as the lookup key for\n `manifest()` / `ensure_installable()` / install requests\n (the `hub_id` field on `/hub/*/create` is this value).",
             "type": "string"
           },
           "summary": {
@@ -19901,12 +18897,18 @@
           "verified": {
             "type": "boolean",
             "default": false
+          },
+          "version": {
+            "description": "v2 envelope — per-entry semver. Replaces the role of the\n monolithic `Catalog.hub_version` as the update signal.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
-          "id",
-          "category",
           "name",
+          "category",
           "summary",
           "manifest_path"
         ]
@@ -21044,34 +20046,78 @@
           }
         }
       },
-      "MagicLinkExchangeRequest": {
-        "description": "Body of POST /api/auth/magic-link/exchange.",
+      "McpArgument": {
+        "description": "Discriminated argument under `McpPackage.runtime_arguments` /\n `package_arguments`. The official schema is union-shaped\n `{ type: \"positional\" | \"named\", ... }`; this struct flattens both\n arms (the `name` field is present only for `\"named\"` args) so a\n single shape can deserialize either.",
         "type": "object",
         "properties": {
-          "token": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "token"
-        ]
-      },
-      "MagicLinkIssueResponse": {
-        "description": "Response of POST /api/auth/magic-link/issue.\n\n `token` is the plaintext — returned ONCE and never persisted.\n The desktop UI encodes it into the QR URL\n `https://<tunnel>/auth/magic/<token>`.",
-        "type": "object",
-        "properties": {
-          "expires_at": {
-            "type": "string",
-            "format": "date-time"
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
-          "token": {
-            "type": "string"
+          "type": {
+            "description": "`\"positional\"` (default if absent) | `\"named\"`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "format": {
+            "description": "One of `\"string\"` / `\"boolean\"` / `\"number\"` / `\"filepath\"`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "choices": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "default": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "isRepeated": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "isRequired": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "Flag name for `\"named\"` args (e.g. `\"--workspace\"`). None for\n positionals.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value": {
+            "description": "The argument's literal value, when fixed. For an arg the user\n supplies at install time, `default` / `value_hint` may be the\n only populated fields.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "valueHint": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
-        },
-        "required": [
-          "token",
-          "expires_at"
-        ]
+        }
       },
       "McpConfig": {
         "description": "MCP configuration for chat requests",
@@ -21087,6 +20133,160 @@
         },
         "required": [
           "mcp_servers"
+        ]
+      },
+      "McpKeyValueInput": {
+        "description": "One env var / header descriptor on an `McpPackage` /\n `McpRemote`. The official schema names this `KeyValueInput`.",
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "format": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "choices": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "default": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "isRequired": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "isSecret": {
+            "type": "boolean",
+            "default": false
+          },
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "description": "Default / suggested value. Mapped into the new MCP\n server's env/header map verbatim so the user has a clear\n \"replace with your token\" surface.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "McpPackage": {
+        "description": "One installable package entry under `HubMCPServer.packages`.\n Mirrors the official `server.json` `Package` object.",
+        "type": "object",
+        "properties": {
+          "environmentVariables": {
+            "description": "Env vars the package needs. Become the ziee MCP server's\n `environment_variables` map.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/McpKeyValueInput"
+            }
+          },
+          "fileSha256": {
+            "description": "Optional sha256 (hex) for OCI / mcpb pinning. Not verified by\n the consumer today; kept on the wire for forward compat.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "identifier": {
+            "description": "Package name / identifier in the registry (e.g.\n `@modelcontextprotocol/server-filesystem`).",
+            "type": "string"
+          },
+          "packageArguments": {
+            "description": "Args passed to the package itself, after `identifier`.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/McpArgument"
+            }
+          },
+          "registryBaseUrl": {
+            "description": "Optional alternate registry hostname.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "registryType": {
+            "description": "e.g. `\"npm\"` / `\"pypi\"` / `\"oci\"` / `\"nuget\"` / `\"mcpb\"`. Ziee\n filters to npm/pypi + npx/uvx at install time; other values are\n kept on the wire for forward compat but won't be launched.",
+            "type": "string"
+          },
+          "runtimeArguments": {
+            "description": "Args passed to the runtime (e.g. `[\"-y\"]` for npx).\n Prepended to the spawned argv (before `identifier` +\n `package_arguments`).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/McpArgument"
+            }
+          },
+          "runtimeHint": {
+            "description": "`\"npx\"` / `\"uvx\"` / `\"docker\"` / `\"dnx\"`. The install path uses\n this verbatim as the spawned command for the supported ones\n (npx/uvx); other values are kept for forward compat.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "transport": {
+            "description": "Transport object (official spec — anyOf StdioTransport /\n StreamableHttpTransport / SseTransport, each shaped as\n `{ \"type\": \"stdio\" | \"streamable-http\" | \"sse\" }`). Ziee filters\n `packages[]` to stdio at install time; the consumer doesn't read\n this value today but keeps the struct around to round-trip the\n official shape unchanged.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/McpTransport"
+              }
+            ]
+          },
+          "version": {
+            "description": "Package version pin. Required by the official schema; the\n install path appends it to the command line as part of the\n package spec (e.g. `npx -y <identifier>@<version>`).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "registryType",
+          "identifier",
+          "version",
+          "transport"
+        ]
+      },
+      "McpRemote": {
+        "description": "One remote transport under `HubMCPServer.remotes`. Mirrors the\n official `server.json` `Remote` object.",
+        "type": "object",
+        "properties": {
+          "type": {
+            "description": "Official spelling: `\"streamable-http\"` (kebab-case) or `\"sse\"`.\n Mapped to ziee `TransportType::Http` / `TransportType::Sse` at\n install.",
+            "type": "string"
+          },
+          "headers": {
+            "description": "HTTP headers (may include `${VAR}` interpolation refs that the\n install path templates against `environment_variables`).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/McpKeyValueInput"
+            }
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "url"
         ]
       },
       "McpServer": {
@@ -21538,6 +20738,19 @@
             ]
           }
         }
+      },
+      "McpTransport": {
+        "description": "Transport block on an `McpPackage`. The official `server.json`\n schema models this as an `anyOf` over three single-field structs\n (`{type: \"stdio\"}`, `{type: \"streamable-http\"}`, `{type: \"sse\"}`).\n We flatten that to one struct with a single `type` field — round-\n trips all three shapes cleanly.",
+        "type": "object",
+        "properties": {
+          "type": {
+            "description": "`\"stdio\"` | `\"streamable-http\"` | `\"sse\"`. Consumer doesn't\n read this today; ziee install path implies stdio whenever a\n `package[]` entry is selected.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ]
       },
       "McpUserPolicy": {
         "description": "The global MCP user-policy row (singleton; id always = 1 in the DB).\n\n Drives what regular users can install:\n   - `allowed_transports == []` → no Add button, no Hub MCP tab for\n     non-admins.\n   - `'stdio' ∈ allowed_transports` → user-installed stdio MCP rows\n     get `run_in_sandbox = true` + `sandbox_flavor =\n     user_stdio_sandbox_flavor` force-applied at create/update time.\n\n Admin-only edits via PUT /api/mcp/user-policy (perm\n `McpUserPolicyEdit`); read is open to any authenticated user (the\n UI needs it to gate the Add button + Hub tab visibility).",
@@ -22802,6 +22015,116 @@
           }
         }
       },
+      "ModelQuantization": {
+        "description": "One quantization choice nested under a `ModelSource`. Captures the\n download-time selection a user makes in the FE (Q4_K_M vs Q5_K_M\n vs f16, etc.).",
+        "type": "object",
+        "properties": {
+          "fileSha256": {
+            "description": "Optional sha256 (hex) for integrity verification. Not enforced\n today; kept on the wire for forward compat.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "isDefault": {
+            "description": "Marks the install-time default. Exactly one entry SHOULD set\n this; the install handler falls back to `quantizations[0]` if\n no entry does.",
+            "type": "boolean",
+            "default": false
+          },
+          "mainFile": {
+            "description": "File within the source repo to download (matches v1's\n `main_filename` semantics — passed straight through to the\n download path).",
+            "type": "string"
+          },
+          "name": {
+            "description": "Display name (`\"Q4_K_M\"`, `\"f16\"`, `\"Q8_0\"`).",
+            "type": "string"
+          },
+          "sizeGb": {
+            "description": "Size in GB (informational; surfaced in the FE). Optional —\n publishers commonly omit it for non-default quants where the\n canonical size is the default's. The FE renders \"—\" when absent.",
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          }
+        },
+        "required": [
+          "name",
+          "mainFile"
+        ]
+      },
+      "ModelShape": {
+        "description": "The kind of weight container a repo holds. Priority gguf > safetensors >\n pickle mirrors how the engine decides what to load.",
+        "type": "string",
+        "enum": [
+          "gguf",
+          "safetensors",
+          "pickle",
+          "unknown"
+        ]
+      },
+      "ModelSource": {
+        "description": "One installable source variant under `HubModel.sources`. Parallel to\n MCP's `McpPackage`: each source pins a registry, identifier, version,\n and (model-specific) one or more `quantizations[]`.",
+        "type": "object",
+        "properties": {
+          "contextLength": {
+            "description": "Per-source context length (replaces v1 model-wide field).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "environmentVariables": {
+            "description": "Env vars the source needs (e.g. `HUGGINGFACE_API_KEY`). Reuses\n the same `McpKeyValueInput` struct used by `McpPackage` /\n `McpRemote`. The install handler's auth gate iterates this list\n to find required+secret entries.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/McpKeyValueInput"
+            }
+          },
+          "fileFormat": {
+            "description": "Per-source file format. Replaces the v1 model-wide `file_format`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FileFormat2"
+              }
+            ]
+          },
+          "identifier": {
+            "description": "Repo path (`huggingface`/`s3`) or absolute URL (`url`). For\n `huggingface` this is `owner/repo`.",
+            "type": "string"
+          },
+          "quantizations": {
+            "description": "Per-source quantization choices. At least one entry per source\n (the publisher always lists the default file as a single\n quantization). `is_default: true` marks the install-time default.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelQuantization"
+            }
+          },
+          "registryType": {
+            "description": "`\"huggingface\"` | `\"s3\"` | `\"url\"` | `\"local\"` etc. Drives URL\n derivation in the install handler.",
+            "type": "string"
+          },
+          "runtimeHint": {
+            "description": "`\"mistralrs\"` | `\"llamacpp\"` etc. Informational; the install\n path does not currently use this to pick an engine.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "description": "Branch / commit / tag pin.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "registryType",
+          "identifier",
+          "version",
+          "fileFormat",
+          "quantizations"
+        ]
+      },
       "ModelUsageInfo": {
         "description": "A local model and how it relates to a given engine version.",
         "type": "object",
@@ -22983,18 +22306,6 @@
             "default": 1
           }
         }
-      },
-      "PasswordOnlyLoginRequest": {
-        "description": "Body of `POST /api/auth/login-password-only`. Authenticates as the\n single admin user using just a password (no username). Used by\n the remote-served login page when `hide_username: true`.",
-        "type": "object",
-        "properties": {
-          "password": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "password"
-        ]
       },
       "PendingApprovalsResponse": {
         "type": "object",
@@ -23670,95 +22981,6 @@
           "password"
         ]
       },
-      "RemoteAccessSettingsResponse": {
-        "description": "GET /api/remote-access/settings response. Token is NEVER included\n in the response body — only the `auth_token_set` boolean. The\n domain IS included because it becomes public the moment the tunnel\n connects.",
-        "type": "object",
-        "properties": {
-          "auth_token_set": {
-            "type": "boolean"
-          },
-          "auto_start_tunnel": {
-            "type": "boolean"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "ngrok_domain": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "password_auth_enabled": {
-            "type": "boolean"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "auth_token_set",
-          "auto_start_tunnel",
-          "password_auth_enabled",
-          "created_at",
-          "updated_at"
-        ]
-      },
-      "RemoteAccessStatusResponse": {
-        "description": "GET /api/remote-access/status — combined status surface for the\n admin page. Aggregates settings + live tunnel state + password\n rotation status.",
-        "type": "object",
-        "properties": {
-          "auth_token_set": {
-            "type": "boolean"
-          },
-          "auto_start_tunnel": {
-            "type": "boolean"
-          },
-          "last_error": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "ngrok_domain": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "password_auth_enabled": {
-            "type": "boolean"
-          },
-          "password_rotated": {
-            "type": "boolean"
-          },
-          "public_url": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "started_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
-          },
-          "tunnel_state": {
-            "$ref": "#/components/schemas/TunnelStateKind"
-          }
-        },
-        "required": [
-          "password_rotated",
-          "password_auth_enabled",
-          "auth_token_set",
-          "auto_start_tunnel",
-          "tunnel_state"
-        ]
-      },
       "RepositoryAuthConfig": {
         "description": "Authentication configuration for LLM repositories\n This is part of the database entity and stored as JSONB in PostgreSQL.\n\n SECURITY: api_key / password / token are write-only — accepted from\n request bodies (Deserialize unchanged) so admins can set values, but\n NEVER returned in responses. Without these `skip_serializing` guards\n the credentials round-tripped on every GET /llm-repositories and\n /llm-repositories/{id}, exposing the secret to every user with\n `llm_repositories::read` (no per-user scope on llm_repositories).\n Closes 09-llm-repository F-02 (High). The deeper at-rest encryption\n (pgcrypto / SecretView) is the follow-up A5-full work.",
         "type": "object",
@@ -23797,6 +23019,99 @@
             ]
           }
         }
+      },
+      "RepositoryFile": {
+        "type": "object",
+        "properties": {
+          "file_format": {
+            "description": "\"safetensors\" | \"pytorch\" | \"gguf\" for weight files, else null.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "file_role": {
+            "$ref": "#/components/schemas/FileRole"
+          },
+          "path": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "path",
+          "size_bytes",
+          "file_role"
+        ]
+      },
+      "RepositoryFileListResponse": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RepositoryFile"
+            }
+          },
+          "shape": {
+            "$ref": "#/components/schemas/ModelShape"
+          },
+          "source": {
+            "$ref": "#/components/schemas/RepositorySource"
+          },
+          "suggested_main_filename": {
+            "description": "A sensible default to pre-fill the download form's main filename.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "truncated": {
+            "description": "True when the upstream listing was capped (very large GitHub trees).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "source",
+          "shape",
+          "files",
+          "truncated"
+        ]
+      },
+      "RepositoryFilesQuery": {
+        "type": "object",
+        "properties": {
+          "branch": {
+            "description": "Branch / revision (defaults to \"main\").",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "description": "Repo path within the source, e.g. \"meta-llama/Llama-3.1-8B-Instruct\".",
+            "type": "string"
+          },
+          "repository_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "repository_id",
+          "path"
+        ]
+      },
+      "RepositorySource": {
+        "type": "string",
+        "enum": [
+          "huggingface",
+          "github",
+          "unknown"
+        ]
       },
       "ResetPasswordRequest": {
         "type": "object",
@@ -25265,18 +24580,6 @@
           "group_ids"
         ]
       },
-      "SetAdminPasswordRequest": {
-        "description": "POST /api/remote-access/admin-password request.\n\n No `current_password` field — physical presence at the desktop\n (proven by the localhost-Host middleware) IS the auth proof.\n The standard `/api/users/me/password` flow that requires the\n current password is still available for multi-user web deployments;\n this endpoint exists specifically for the single-admin desktop\n case where the bootstrap default is a published string and\n requiring it would be friction without security benefit.",
-        "type": "object",
-        "properties": {
-          "new_password": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "new_password"
-        ]
-      },
       "SetMcpServerOAuthConfigRequest": {
         "description": "Request to set (create or replace) a server's OAuth config.",
         "type": "object",
@@ -25333,17 +24636,6 @@
           "status"
         ]
       },
-      "SetSettingRequest": {
-        "type": "object",
-        "properties": {
-          "value": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "value"
-        ]
-      },
       "SetSubscriptionRequest": {
         "description": "Body of `PUT /api/chat/stream/subscription`: the conversation whose live\n tokens this connection wants (or `null` to receive nothing).",
         "type": "object",
@@ -25356,38 +24648,6 @@
             "format": "uuid"
           }
         }
-      },
-      "SettingItem": {
-        "type": "object",
-        "properties": {
-          "key": {
-            "type": "string"
-          },
-          "value": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "key",
-          "value"
-        ]
-      },
-      "SettingResponse": {
-        "type": "object",
-        "properties": {
-          "key": {
-            "type": "string"
-          },
-          "value": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "key"
-        ]
       },
       "SetupAdminRequest": {
         "type": "object",
@@ -25426,21 +24686,6 @@
           "needs_setup"
         ]
       },
-      "SimpleResponse": {
-        "type": "object",
-        "properties": {
-          "message": {
-            "type": "string"
-          },
-          "success": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "success",
-          "message"
-        ]
-      },
       "StartInstanceRequest": {
         "type": "object"
       },
@@ -25459,21 +24704,6 @@
           }
         },
         "required": [
-          "message"
-        ]
-      },
-      "SuccessResponse": {
-        "type": "object",
-        "properties": {
-          "message": {
-            "type": "string"
-          },
-          "success": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "success",
           "message"
         ]
       },
@@ -26263,32 +25493,6 @@
           "sse"
         ]
       },
-      "TunnelStartResponse": {
-        "description": "POST /api/remote-access/tunnel/start response.",
-        "type": "object",
-        "properties": {
-          "public_url": {
-            "type": "string"
-          },
-          "started_at": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "public_url",
-          "started_at"
-        ]
-      },
-      "TunnelStateKind": {
-        "type": "string",
-        "enum": [
-          "idle",
-          "starting",
-          "connected",
-          "error"
-        ]
-      },
       "UpdateAssistantRequest": {
         "description": "Request structure for updating an existing assistant",
         "type": "object",
@@ -26367,29 +25571,6 @@
             "default": null
           }
         }
-      },
-      "UpdateCheckResponse": {
-        "type": "object",
-        "properties": {
-          "available": {
-            "type": "boolean"
-          },
-          "notes": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "version": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "available"
-        ]
       },
       "UpdateCodeSandboxResourceLimits": {
         "description": "Admin PUT payload. All fields optional; absent fields preserve their\n existing value. Mirrors the `llm_provider` admin-update pattern.",
@@ -27082,39 +26263,6 @@
           }
         }
       },
-      "UpdateRemoteAccessSettingsRequest": {
-        "description": "PUT /api/remote-access/settings request body. Each field uses\n three-state semantics:\n   - missing key → don't touch (keep DB value)\n   - null → clear (set to NULL / FALSE)\n   - value → set\n\n Implemented via `Option<Option<T>>` + a custom serde fn that\n distinguishes \"absent\" from \"null\". The frontend matches by\n only sending fields it actually wants to change.",
-        "type": "object",
-        "properties": {
-          "auto_start_tunnel": {
-            "description": "Booleans don't need null semantics — absent means \"don't touch\".",
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "ngrok_auth_token": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "default": null
-          },
-          "ngrok_domain": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "default": null
-          },
-          "password_auth_enabled": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          }
-        }
-      },
       "UpdateRuntimeSettingsRequest": {
         "type": "object",
         "properties": {
@@ -27140,65 +26288,6 @@
             "format": "int32"
           }
         }
-      },
-      "UpdateState": {
-        "type": "object",
-        "properties": {
-          "available": {
-            "type": "boolean"
-          },
-          "checking": {
-            "type": "boolean"
-          },
-          "downloading": {
-            "type": "boolean"
-          },
-          "error": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "notes": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "progress": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "float"
-          },
-          "ready_to_install": {
-            "type": "boolean"
-          },
-          "version": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "checking",
-          "available",
-          "downloading",
-          "ready_to_install"
-        ]
-      },
-      "UpdateStatusResponse": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "$ref": "#/components/schemas/UpdateState"
-          }
-        },
-        "required": [
-          "status"
-        ]
       },
       "UpdateSummarizationAdminSettingsRequest": {
         "description": "Partial-update request for the singleton admin settings row.\n\n The four nullable fields (model id + the two prompts) use the\n `Option<Option<T>>` tri-state:\n   missing  → `None`        → leave the column alone\n   `null`   → `Some(None)`  → clear the column\n   value    → `Some(Some(v))` → set the column",

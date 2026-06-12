@@ -130,8 +130,16 @@ pub struct CreateModelFromHubRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
 
-    /// Optional: Select quantization option (defaults to main file)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Optional: index into `HubModel.sources[]` (default 0). Phase-7
+    /// addition — v1 had a single source per model so the index was
+    /// implicit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_index: Option<usize>,
+
+    /// Optional: name of the quantization within the chosen source's
+    /// `quantizations[]`. Defaults to the entry with `is_default: true`,
+    /// falling back to `quantizations[0]` if no entry sets it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quantization_name: Option<String>,
 
     /// Whether this model is enabled
@@ -203,12 +211,15 @@ pub struct HubCatalogVersionResponse {
 }
 
 /// Response for `POST /api/hub/refresh` — what changed.
+///
+/// There is no `cosign_verified` field — trust is HTTPS-only to GitHub
+/// Pages, no Sigstore signature. The frontend should not surface a
+/// "verified" badge anywhere.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct HubCatalogRefreshResponse {
     pub updated: bool,
     pub previous_version: Option<String>,
     pub new_version: String,
-    pub cosign_verified: bool,
 }
 
 /// Single row in `GET /api/hub/updates` — one installed hub entity
@@ -258,25 +269,6 @@ pub struct HubInstalledResponse {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct HubManifestQuery {
     pub category: super::models::HubCategory,
-}
-
-/// Response for `GET /api/hub/releases` — the versions published on
-/// GitHub, plus which is currently installed (`active_version`) and the
-/// admin's pin (`pinned_version`, None = tracking latest).
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct HubReleasesResponse {
-    pub active_version: Option<String>,
-    pub pinned_version: Option<String>,
-    pub releases: Vec<super::hub_manager::HubReleaseInfo>,
-}
-
-/// Request body for `POST /api/hub/activate`. `version: null` clears the
-/// pin (track latest); otherwise pins + activates that exact version
-/// (semver without the leading `v`).
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct ActivateHubVersionRequest {
-    #[serde(default)]
-    pub version: Option<String>,
 }
 
 /// A local LLM provider available as download target

@@ -26,50 +26,130 @@ export function ModelDetailsDrawer({
           <Title level={3} className="!m-0 !mb-2">
             {model.display_name}
           </Title>
+          <Text type="secondary" className="text-xs">
+            {model.name}
+          </Text>
           {model.description && (
-            <Text type="secondary">{model.description}</Text>
+            <div className="mt-2">
+              <Text type="secondary">{model.description}</Text>
+            </div>
           )}
         </div>
 
         {/* Repository Information */}
-        <div>
-          <Title level={5}>Repository Information</Title>
-          <Flex vertical className="gap-2">
-            <Flex justify="space-between">
-              <Text type="secondary">Repository URL:</Text>
-              <Text className="text-right break-all">
-                <a
-                  href={model.repository_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {model.repository_url}
-                </a>
-              </Text>
+        {(model.repository?.url || model.websiteUrl) && (
+          <div>
+            <Title level={5}>Links</Title>
+            <Flex vertical className="gap-2">
+              {model.repository?.url && (
+                <Flex justify="space-between">
+                  <Text type="secondary">Repository:</Text>
+                  <Text className="text-right break-all">
+                    <a
+                      href={model.repository.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {model.repository.url}
+                    </a>
+                  </Text>
+                </Flex>
+              )}
+              {model.websiteUrl && (
+                <Flex justify="space-between">
+                  <Text type="secondary">Website:</Text>
+                  <Text className="text-right break-all">
+                    <a
+                      href={model.websiteUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {model.websiteUrl}
+                    </a>
+                  </Text>
+                </Flex>
+              )}
             </Flex>
-            <Flex justify="space-between">
-              <Text type="secondary">Repository Path:</Text>
-              <Text className="text-right">{model.repository_path}</Text>
+          </div>
+        )}
+
+        {/* Sources — v2 Phase 7 replaces the flat repository_url /
+            repository_path / main_filename / file_format / size_gb /
+            quantization_options fields. Each source surfaces its
+            registry, identifier, version pin, and per-quantization
+            choices. */}
+        {model.sources && model.sources.length > 0 && (
+          <div>
+            <Title level={5}>Sources</Title>
+            <Flex vertical className="gap-3">
+              {model.sources.map((source, idx) => (
+                <Card key={idx} size="small">
+                  <Flex vertical className="gap-2">
+                    <Flex justify="space-between" align="center">
+                      <Text strong>
+                        {source.registryType} · {source.identifier}
+                      </Text>
+                      <Tag color="blue">
+                        {source.fileFormat.toUpperCase()}
+                      </Tag>
+                    </Flex>
+                    <Flex justify="space-between">
+                      <Text type="secondary">Version:</Text>
+                      <Text>{source.version}</Text>
+                    </Flex>
+                    {source.runtimeHint && (
+                      <Flex justify="space-between">
+                        <Text type="secondary">Runtime hint:</Text>
+                        <Text>{source.runtimeHint}</Text>
+                      </Flex>
+                    )}
+                    {source.contextLength && (
+                      <Flex justify="space-between">
+                        <Text type="secondary">Context length:</Text>
+                        <Text>{source.contextLength}</Text>
+                      </Flex>
+                    )}
+                    {source.quantizations.length > 0 && (
+                      <div>
+                        <Text type="secondary" className="text-xs">
+                          Quantizations:
+                        </Text>
+                        <Flex vertical className="gap-1 mt-1">
+                          {source.quantizations.map(q => (
+                            <Flex
+                              key={q.name}
+                              justify="space-between"
+                              align="center"
+                            >
+                              <div>
+                                <Text strong>{q.name}</Text>
+                                {q.isDefault && (
+                                  <Tag color="geekblue" className="ml-2 text-xs">
+                                    default
+                                  </Tag>
+                                )}
+                                <br />
+                                <Text type="secondary" className="text-xs">
+                                  {q.mainFile}
+                                </Text>
+                              </div>
+                              <Text>{q.sizeGb} GB</Text>
+                            </Flex>
+                          ))}
+                        </Flex>
+                      </div>
+                    )}
+                  </Flex>
+                </Card>
+              ))}
             </Flex>
-            <Flex justify="space-between">
-              <Text type="secondary">Main Filename:</Text>
-              <Text className="text-right">{model.main_filename}</Text>
-            </Flex>
-          </Flex>
-        </div>
+          </div>
+        )}
 
         {/* Model Details */}
         <div>
           <Title level={5}>Model Details</Title>
           <Flex vertical className="gap-2">
-            <Flex justify="space-between">
-              <Text type="secondary">File Format:</Text>
-              <Tag color="blue">{model.file_format?.toUpperCase()}</Tag>
-            </Flex>
-            <Flex justify="space-between">
-              <Text type="secondary">Size:</Text>
-              <Text>{model.size_gb} GB</Text>
-            </Flex>
             {model.license && (
               <Flex justify="space-between">
                 <Text type="secondary">License:</Text>
@@ -82,14 +162,28 @@ export function ModelDetailsDrawer({
                 <Text>{model.author}</Text>
               </Flex>
             )}
-            {model.popularity_score && (
-              <Flex justify="space-between">
-                <Text type="secondary">Popularity Score:</Text>
-                <Text>{model.popularity_score}</Text>
-              </Flex>
-            )}
           </Flex>
         </div>
+
+        {/* Dependencies — v2 Phase 7 informational deps. */}
+        {model.dependencies && model.dependencies.length > 0 && (
+          <div>
+            <Title level={5}>Works best with</Title>
+            <Flex wrap className="gap-1">
+              {model.dependencies.map(dep => {
+                const leaf = dep.name.split('/').slice(-1)[0]
+                return (
+                  <Tag
+                    key={`${dep.kind}-${dep.name}`}
+                    color={dep.kind === 'model' ? 'cyan' : 'purple'}
+                  >
+                    {leaf} {dep.versionRange}
+                  </Tag>
+                )
+              })}
+            </Flex>
+          </div>
+        )}
 
         {/* Capabilities */}
         {model.capabilities && (
@@ -128,30 +222,6 @@ export function ModelDetailsDrawer({
             </Flex>
           </div>
         )}
-
-        {/* Quantization Options */}
-        {model.quantization_options &&
-          model.quantization_options.length > 0 && (
-            <div>
-              <Title level={5}>Quantization Options</Title>
-              <Flex vertical className="gap-2">
-                {model.quantization_options.map(option => (
-                  <Card key={option.name} size="small">
-                    <Flex justify="space-between" align="center">
-                      <div>
-                        <Text strong>{option.name}</Text>
-                        <br />
-                        <Text type="secondary" className="text-xs">
-                          {option.main_filename}
-                        </Text>
-                      </div>
-                      <Text>{option.size_gb} GB</Text>
-                    </Flex>
-                  </Card>
-                ))}
-              </Flex>
-            </div>
-          )}
 
         {/* Recommended Parameters */}
         {model.recommended_parameters &&

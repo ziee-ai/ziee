@@ -1,0 +1,45 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.modelcontextprotocol/postgres",
+  "description": "Connect to PostgreSQL databases and execute queries, manage schemas, and analyze data.",
+  "version": "1.0.0",
+  "repository": {
+    "url": "https://github.com/modelcontextprotocol/servers",
+    "source": "github",
+    "subfolder": "src/postgres"
+  },
+  "websiteUrl": "https://modelcontextprotocol.io/",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@modelcontextprotocol/server-postgres",
+      "version": "0.6.2",
+      "transport": {
+        "type": "stdio"
+      },
+      "runtimeHint": "npx",
+      "runtimeArguments": [
+        {
+          "type": "positional",
+          "value": "-y"
+        }
+      ],
+      "environmentVariables": [
+        {
+          "name": "POSTGRES_CONNECTION_STRING",
+          "value": "{POSTGRES_CONNECTION_STRING}",
+          "description": "PostgreSQL connection string in libpq format. Use a read-only role for safety.",
+          "isSecret": true,
+          "variables": {
+            "POSTGRES_CONNECTION_STRING": {
+              "description": "PostgreSQL connection string in libpq format. Use a read-only role for safety.",
+              "isRequired": true,
+              "isSecret": true,
+              "format": "string"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -22,7 +22,6 @@ import {
   ReloadOutlined,
   SearchOutlined,
   ToolOutlined,
-  UnlockOutlined,
 } from '@ant-design/icons'
 import { formatSpeed, formatTime } from '@/utils/downloadUtils'
 import {
@@ -30,7 +29,8 @@ import {
   type DownloadInstance,
   type HubLocalProvider,
   type HubModel,
-  type HubModelQuantizationOption,
+  type ModelQuantization,
+  type ModelSource,
 } from '@/api-client/types'
 import { useState } from 'react'
 import { ModelDetailsDrawer } from '@/modules/hub/modules/llm-models/components/ModelDetailsDrawer'
@@ -57,14 +57,40 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
   const { localProviders } = Stores.HubModels
   const { downloads } = Stores.LlmModelDownload
 
+  // v2 Phase 7: repository_path moved off the model and onto each
+  // source. Walk every source's identifier to match (a single model
+  // may have multiple sources, but each source uses its identifier
+  // as the repository_path passed to the download backend).
+  const sourcePaths = (model.sources ?? []).map(s => s.identifier)
+
+  // v2 Phase 7 auth gate: derive the required+secret env var name from
+  // the first source (single-source models are the common case in the
+  // current seed; a future multi-source UI would pivot on the selected
+  // source index). Falls back to `null` when the model needs no auth.
+  const selectedSource = model.sources?.[0]
+  const requiredSecretEnvVar = selectedSource?.environmentVariables?.find(
+    e => e.isRequired && e.isSecret,
+  )
+  const modelNeedsAuth = !!requiredSecretEnvVar
+  const authEnvVarName = requiredSecretEnvVar?.name ?? null
+  // Surfaced metadata: format chip + size pull from the default
+  // quantization within the first source rather than v1's model-wide
+  // `file_format` / `size_gb`.
+  const primarySource = selectedSource
+  const primarySourceDefaultQuant =
+    primarySource?.quantizations.find(q => q.isDefault) ??
+    primarySource?.quantizations[0]
+  const displayFormat = primarySource?.fileFormat
+  const displaySizeGb = primarySourceDefaultQuant?.sizeGb
   // All downloads belonging to this model (matched by repository_path),
   // partitioned by status. Precedence below: active > downloaded > failed > idle.
   // Failed entries stay in the store array (they're filtered out only on
   // cancelled/completed transitions per LlmModelDownload.store.ts), so we
   // intentionally surface them on the card with a Retry affordance.
-  const downloadsForThisModel = downloads.filter(
-    d => d.request_data.repository_path === model.repository_path,
-  )
+  const downloadsForThisModel = downloads.filter(d => {
+    const p = d.request_data.repository_path
+    return p ? sourcePaths.includes(p) : false
+  })
   const activeDownload = downloadsForThisModel.find(
     d => d.status === 'downloading' || d.status === 'pending',
   )
@@ -104,6 +130,17 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
       return
     }
 
+    // v2 Phase 7 source + quantization defaults. For now the FE picks
+    // source[0] automatically (the seed only ships single-source models
+    // — a multi-source picker is a follow-up). The quantization picker
+    // walks `sources[0].quantizations[]` for backward-compat with the
+    // prior UX.
+    const primarySource: ModelSource | undefined = model.sources?.[0]
+    const sourceQuants: ModelQuantization[] =
+      primarySource?.quantizations ?? []
+    const defaultQuant: ModelQuantization | undefined =
+      sourceQuants.find(q => q.isDefault) ?? sourceQuants[0]
+
     // Retry-from-failed shortcut: reuse the provider + quantization
     // the user already picked on the first attempt instead of
     // re-prompting. Without this, a Retry click silently re-opens
@@ -112,15 +149,15 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
     // accidentally pick a different quant on retry. Both lookups
     // tolerate a stale ID (provider deleted / quant removed from
     // the manifest) by falling through to the modal flow.
-    let provider: HubLocalProvider = localProviders[0]
-    let selectedQuantization: HubModelQuantizationOption | undefined = undefined
+    let provider: HubLocalProvider | undefined = localProviders[0]
+    let selectedQuantization: ModelQuantization | undefined = defaultQuant
 
     const retryProvider = retryFrom?.provider_id
       ? localProviders.find(p => p.id === retryFrom.provider_id)
       : undefined
     const retryQuantName = retryFrom?.request_data.quantization
     const retryQuant = retryQuantName
-      ? model.quantization_options?.find(q => q.name === retryQuantName)
+      ? sourceQuants.find(q => q.name === retryQuantName)
       : undefined
 
     if (retryProvider) provider = retryProvider
@@ -130,12 +167,8 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
     const skipQuantModal = !!retryQuant
 
     // Handle quantization options selection
-    if (
-      !skipQuantModal &&
-      model.quantization_options &&
-      model.quantization_options.length > 1
-    ) {
-      selectedQuantization = model.quantization_options[0]
+    if (!skipQuantModal && sourceQuants.length > 1) {
+      selectedQuantization = defaultQuant ?? sourceQuants[0]
 
       await new Promise<void>(resolve => {
         let m = modal.info({
@@ -153,20 +186,20 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                 Multiple quantization options available. Please select one:
               </Text>
               <Select
-                options={model.quantization_options!.map(option => ({
+                options={sourceQuants.map(option => ({
                   label: (
                     <div className="flex flex-col">
                       <Text strong>{option.name.toUpperCase()}</Text>
                       <Text type="secondary" className="text-xs">
-                        Main file: {option.main_filename}
+                        {option.mainFile} · {option.sizeGb} GB
                       </Text>
                     </div>
                   ),
                   value: option.name,
                 }))}
-                defaultValue={model.quantization_options![0].name}
+                defaultValue={selectedQuantization?.name}
                 onChange={value => {
-                  selectedQuantization = model.quantization_options!.find(
+                  selectedQuantization = sourceQuants.find(
                     opt => opt.name === value,
                   )
                 }}
@@ -204,12 +237,6 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
       if (!selectedQuantization) {
         return
       }
-    } else if (
-      !skipQuantModal &&
-      model.quantization_options &&
-      model.quantization_options.length === 1
-    ) {
-      selectedQuantization = model.quantization_options[0]
     }
 
     if (!skipProviderModal && localProviders.length > 1) {
@@ -220,7 +247,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
           title: 'Select Local Provider',
           closable: false,
           onCancel: () => {
-            provider = undefined as any
+            provider = undefined
             resolve()
           },
           content: (
@@ -243,7 +270,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
               <Flex className={'gap-2 w-full justify-end'}>
                 <Button
                   onClick={() => {
-                    provider = undefined as any
+                    provider = undefined
                     m.destroy()
                     resolve()
                   }}
@@ -276,10 +303,13 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
         : model.display_name
 
       await Stores.HubModels.downloadModelFromHub(
-        model.id,
+        model.name,
         provider.id,
         display_name,
         selectedQuantization?.name,
+        // v2 Phase 7: pin to sources[0]. A future multi-source UI
+        // would surface this picker.
+        0,
       )
 
       message.success(
@@ -299,8 +329,8 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
         hoverable
         className="cursor-pointer relative group hover:!shadow-md transition-shadow h-full"
         onClick={() => setShowDetails(true)}
-        data-model-id={model.id}
-        data-testid={`hub-model-card-${model.id}`}
+        data-model-id={model.name}
+        data-testid={`hub-model-card-${model.name}`}
       >
         <div className="flex items-start gap-3 flex-wrap">
           {/* Model Info */}
@@ -312,14 +342,9 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                   <Text className="font-medium cursor-pointer">
                     {model.display_name}
                   </Text>
-                  {model.public ? (
-                    <Tag color="green" icon={<UnlockOutlined />}>
-                      Public
-                    </Tag>
-                  ) : (
-                    <Tag color="red" icon={<LockOutlined />}>
-                      Private
-                    </Tag>
+                  {/* v2 per-entry version — see AssistantHubCard. */}
+                  {model.version && (
+                    <Tag className="text-xs !m-0">v{model.version}</Tag>
                   )}
                   {/* Top status tag — minimal, no percent (the
                       full-width bar at the bottom carries that).
@@ -335,12 +360,12 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                       Download Failed
                     </Tag>
                   ) : null}
-                  {model.auth_required && (
+                  {modelNeedsAuth && (
                     <Tooltip
                       title={
                         model.source_auth_configured
                           ? 'This model requires authentication; a credential is configured.'
-                          : 'This model needs a credential for its source repository. Add one in Settings → LLM Repositories before downloading.'
+                          : `This model needs ${authEnvVarName ?? 'a credential'} for its source repository. Add one in Settings → LLM Repositories before downloading.`
                       }
                     >
                       <Tag
@@ -355,23 +380,37 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                       >
                         {model.source_auth_configured
                           ? 'Auth Required'
-                          : 'Token Needed'}
+                          : `${authEnvVarName ?? 'Token'} Needed`}
                       </Tag>
                     </Tooltip>
                   )}
                 </Flex>
               </div>
               <div className="flex gap-1 items-center justify-end">
-                <Button
-                  icon={<FileTextOutlined />}
-                  onClick={e => {
-                    e.stopPropagation()
-                    const readmeUrl = `${model.repository_url}/${model.repository_path}/blob/main/README.md`
-                    window.open(readmeUrl, '_blank')
-                  }}
-                >
-                  README
-                </Button>
+                {/* v2 Phase 7: link out to the source repository's
+                    homepage. Prefer the per-source identifier under
+                    huggingface.co; fall back to the model-level
+                    `repository.url` / `website_url` if neither is set
+                    (the seed always sets one). */}
+                {model.repository?.url || primarySource ? (
+                  <Button
+                    icon={<FileTextOutlined />}
+                    onClick={e => {
+                      e.stopPropagation()
+                      const fallback =
+                        primarySource?.registryType === 'huggingface'
+                          ? `https://huggingface.co/${primarySource.identifier}/blob/main/README.md`
+                          : model.repository?.url
+                      const readmeUrl =
+                        fallback ?? model.websiteUrl ?? ''
+                      if (readmeUrl) {
+                        window.open(readmeUrl, '_blank')
+                      }
+                    }}
+                  >
+                    README
+                  </Button>
+                ) : null}
                 {canDownload && !failedDownload && (
                   <Button
                     type="primary"
@@ -492,21 +531,26 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                 </div>
               )}
 
-              {/* Metadata */}
+              {/* Metadata — pulled from sources[0]/quantizations under
+                  v2 Phase 7 (model-wide `size_gb`/`file_format` gone). */}
               <div className="mb-2">
                 <Flex wrap className="gap-x-4 text-xs">
-                  <span>
-                    <Text type="secondary" className="text-xs">
-                      Size:
-                    </Text>{' '}
-                    {model.size_gb} GB
-                  </span>
-                  <span>
-                    <Text type="secondary" className="text-xs">
-                      Format:
-                    </Text>{' '}
-                    {model.file_format?.toUpperCase()}
-                  </span>
+                  {typeof displaySizeGb === 'number' && (
+                    <span>
+                      <Text type="secondary" className="text-xs">
+                        Size:
+                      </Text>{' '}
+                      {displaySizeGb} GB
+                    </span>
+                  )}
+                  {displayFormat && (
+                    <span>
+                      <Text type="secondary" className="text-xs">
+                        Format:
+                      </Text>{' '}
+                      {displayFormat.toUpperCase()}
+                    </span>
+                  )}
                   {model.license && (
                     <span>
                       <Text type="secondary" className="text-xs">

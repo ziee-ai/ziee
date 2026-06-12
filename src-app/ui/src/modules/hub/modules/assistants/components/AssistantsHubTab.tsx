@@ -15,12 +15,13 @@ export function AssistantsHubTab() {
   const serverVersion = Stores.HubCatalog.serverVersion
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedTags, setSelectedTags] = useState<string[]>([])
-  const [sortBy, setSortBy] = useState('popular')
+  // v2 Phase 7 dropped `popularity_score`; sort by name only.
+  const [sortBy, setSortBy] = useState('name')
 
   const clearAllFilters = () => {
     setSearchTerm('')
     setSelectedTags([])
-    setSortBy('popular')
+    setSortBy('name')
   }
 
   // Extract unique tags
@@ -54,12 +55,13 @@ export function AssistantsHubTab() {
       )
     }
 
-    // Sort (create a copy to avoid mutating read-only array from store)
+    // Sort (create a copy to avoid mutating read-only array from store).
+    // v2 Phase 7: `popularity_score` is gone; sort by canonical name
+    // or display_name.
     const sorted = [...filtered].sort((a, b) => {
-      if (sortBy === 'popular')
-        return (b.popularity_score || 0) - (a.popularity_score || 0)
-      if (sortBy === 'name') return a.name.localeCompare(b.name)
-      return 0
+      if (sortBy === 'display_name')
+        return a.display_name.localeCompare(b.display_name)
+      return a.name.localeCompare(b.name)
     })
 
     return sorted
@@ -124,8 +126,8 @@ export function AssistantsHubTab() {
             onChange={setSortBy}
             className="flex-1"
             options={[
-              { value: 'popular', label: 'Popular' },
-              { value: 'name', label: 'Name' },
+              { value: 'name', label: 'ID' },
+              { value: 'display_name', label: 'Display name' },
             ]}
             popupMatchSelectWidth={false}
             aria-label="Sort assistants"
@@ -162,17 +164,17 @@ export function AssistantsHubTab() {
           const indexById = new Map(
             (catalog?.items ?? [])
               .filter(it => it.category === 'assistant')
-              .map(it => [it.id, it]),
+              .map(it => [it.name, it]),
           )
           const visible = filteredAssistants.filter(a => {
-            const ix = indexById.get(a.id)
+            const ix = indexById.get(a.name)
             return !ix || compatOf(ix, serverVersion).status === 'ok'
           })
           return (
             <>
               <div className="flex flex-col gap-3">
                 {visible.map(assistant => (
-                  <AssistantHubCard key={assistant.id} assistant={assistant} />
+                  <AssistantHubCard key={assistant.name} assistant={assistant} />
                 ))}
               </div>
               {visible.length === 0 && (

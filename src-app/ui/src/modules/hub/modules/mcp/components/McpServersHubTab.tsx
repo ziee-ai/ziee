@@ -23,47 +23,60 @@ export function McpServersHubTab() {
     setSortBy('popular')
   }
 
-  // Extract unique tags
+  // v2: catalog curation (tags, title, summary) lives on IndexItem.
+  // Build a name → IndexItem map so the tab can search/filter against
+  // it; the manifest body itself no longer carries display fields.
+  const indexByName = useMemo(() => {
+    const m = new Map(
+      (catalog?.items ?? [])
+        .filter(it => it.category === 'mcp-server')
+        .map(it => [it.name, it]),
+    )
+    return m
+  }, [catalog])
+
   const serverTags = useMemo(() => {
     const allTags = new Set<string>()
-    servers.forEach(server => {
-      server.tags?.forEach(tag => allTags.add(tag))
+    indexByName.forEach(ix => {
+      ix.tags?.forEach(tag => allTags.add(tag))
     })
     return Array.from(allTags).sort()
-  }, [servers])
+  }, [indexByName])
 
-  // Filter and sort
   const filteredServers = useMemo(() => {
     let filtered = servers
 
-    // Search
     if (searchTerm) {
       const search = searchTerm.toLowerCase()
-      filtered = filtered.filter(
-        s =>
+      filtered = filtered.filter(s => {
+        const ix = indexByName.get(s.name)
+        const title = ix?.title ?? ''
+        return (
           s.name.toLowerCase().includes(search) ||
-          s.display_name.toLowerCase().includes(search) ||
-          s.description?.toLowerCase().includes(search),
-      )
+          title.toLowerCase().includes(search) ||
+          s.description?.toLowerCase().includes(search)
+        )
+      })
     }
 
-    // Tags
     if (selectedTags.length > 0) {
-      filtered = filtered.filter(s =>
-        selectedTags.some(tag => s.tags?.includes(tag)),
-      )
+      filtered = filtered.filter(s => {
+        const tags = indexByName.get(s.name)?.tags ?? []
+        return selectedTags.some(tag => tags.includes(tag))
+      })
     }
 
-    // Sort (create a copy to avoid mutating read-only array from store)
+    // Sort. "Popular" is dropped (no popularity_score on the strict
+    // manifest); both modes fall through to alphabetical sort on the
+    // reverse-DNS name.
     const sorted = [...filtered].sort((a, b) => {
-      if (sortBy === 'popular')
-        return (b.popularity_score || 0) - (a.popularity_score || 0)
-      if (sortBy === 'name') return a.name.localeCompare(b.name)
+      if (sortBy === 'name' || sortBy === 'popular')
+        return a.name.localeCompare(b.name)
       return 0
     })
 
     return sorted
-  }, [servers, searchTerm, selectedTags, sortBy])
+  }, [servers, searchTerm, selectedTags, sortBy, indexByName])
 
   // Show loading state
   if (loading && servers.length === 0) {
@@ -159,20 +172,15 @@ export function McpServersHubTab() {
       {/* Servers List — incompatible items hidden entirely. */}
       <div className="flex-1 overflow-auto px-3 pb-3">
         {(() => {
-          const indexById = new Map(
-            (catalog?.items ?? [])
-              .filter(it => it.category === 'mcp-server')
-              .map(it => [it.id, it]),
-          )
           const visible = filteredServers.filter(s => {
-            const ix = indexById.get(s.id)
+            const ix = indexByName.get(s.name)
             return !ix || compatOf(ix, serverVersion).status === 'ok'
           })
           return (
             <>
               <div className="flex flex-col gap-3">
                 {visible.map(server => (
-                  <McpServerHubCard key={server.id} server={server} />
+                  <McpServerHubCard key={server.name} server={server} />
                 ))}
               </div>
               {visible.length === 0 && (

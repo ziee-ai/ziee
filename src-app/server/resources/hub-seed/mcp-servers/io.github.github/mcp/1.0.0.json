@@ -1,0 +1,38 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.github/mcp",
+  "description": "Access GitHub repos, issues, and pull requests via the official GitHub MCP endpoint.",
+  "version": "1.0.0",
+  "repository": {
+    "url": "https://github.com/github/github-mcp-server",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/github/github-mcp-server",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {GITHUB_PERSONAL_ACCESS_TOKEN}",
+          "description": "Bearer token; interpolates GITHUB_PERSONAL_ACCESS_TOKEN at runtime.",
+          "isSecret": true,
+          "variables": {
+            "GITHUB_PERSONAL_ACCESS_TOKEN": {
+              "description": "GitHub personal access token (classic or fine-grained) with appropriate scopes for the tools used.",
+              "isRequired": true,
+              "isSecret": true,
+              "format": "string"
+            }
+          }
+        },
+        {
+          "name": "Accept",
+          "value": "application/vnd.github.v3+json",
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}

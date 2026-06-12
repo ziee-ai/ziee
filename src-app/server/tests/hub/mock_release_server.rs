@@ -1,23 +1,24 @@
-//! In-test mock of the ziee-ai/hub GitHub Releases surface.
+//! In-test mock of the ziee-ai/hub GitHub **Pages** branch.
 //!
-//! Lets the hub integration tests exercise the full
-//! fetch → sha256 → unpack → rotate path WITHOUT touching the network
-//! or needing a real cosign signature. The spawned ziee server is
-//! pointed at this mock via the debug-only overrides
-//! (`ZIEE_HUB_API_BASE_OVERRIDE`, `ZIEE_HUB_DOWNLOAD_BASE_OVERRIDE`,
-//! `ZIEE_HUB_ALLOW_UNSIGNED=1`), which are compiled out of release
-//! builds.
+//! Lets the hub integration tests exercise the refresh → parse →
+//! lazy-fetch-manifest path WITHOUT touching the network. The spawned
+//! ziee server is pointed at this mock via `ZIEE_HUB_PAGES_BASE`, the
+//! debug-only override that's compiled out of release builds.
 //!
-//! Serves, for each configured version:
-//!   GET /repos/ziee-ai/hub/releases                          → release list JSON
-//!   GET /ziee-ai/hub/releases/download/<tag>/hub.tar.gz       → manifest bundle
-//!   GET /ziee-ai/hub/releases/download/<tag>/hub.tar.gz.sha256
-//!   GET /ziee-ai/hub/releases/download/<tag>/hub.index.json
-//!   GET /ziee-ai/hub/releases/download/<tag>/hub.index.json.sha256
+//! Serves the Pages layout:
+//!   GET /index.json                            → the Catalog
+//!   GET /<folder>/<id>/<version>.json          → per-entry manifest
+//!
+//! `<folder>` is `models` / `assistants` / `mcp-servers` to match the
+//! production layout (and `is_safe_manifest_path` validator).
+//!
+//! Tests that want to simulate a publisher updating the catalog can
+//! call [`MockHub::switch_to`] to flip which `MockVersion` is the
+//! active "published" state, then trigger another `/hub/refresh` on
+//! the server side.
 
 use std::collections::HashMap;
-use std::io::Write;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use axum::{
     body::Body,
@@ -27,49 +28,74 @@ use axum::{
     routing::get,
     Router,
 };
-use sha2::{Digest, Sha256};
+use serde_json::{json, Value as Json};
 
-/// One catalog item to bake into a mock version.
+/// One catalog item to bake into a mock catalog version.
 pub struct MockItem {
     pub category: &'static str, // "model" | "assistant" | "mcp-server"
-    pub id: &'static str,
+    /// Reverse-DNS `name` (e.g. `"io.github.test/mock-asst-a"`). Must
+    /// contain exactly one `/` — this is the catalog lookup key + the
+    /// path layout under dist/`<category>/<namespace>/<leaf>/<version>.json`.
+    pub name: &'static str,
     pub min_ziee_version: Option<&'static str>,
-    /// Optional verbatim YAML lines appended to the generated
-    /// manifest body. Use for tests that need fields the minimal
-    /// manifest doesn't ship — e.g. `required_env:` /
-    /// `required_headers:` blocks for the hub-mcp required-input
-    /// tests. None for everything else (most tests).
-    pub extra_yaml: Option<&'static str>,
-    /// For `mcp-server` items only: when true, the minimal manifest
-    /// emits `transport_type: http` + `url:` instead of the default
-    /// `transport_type: stdio` + `command:`. Needed for tests that
-    /// install on the user-scoped endpoint, which the MCP user
-    /// policy gates against stdio whenever `code_sandbox.enabled` is
-    /// false (test default). Ignored for non-mcp-server categories.
+    /// Optional extra JSON fields merged into the generated manifest
+    /// body. Use for tests that need fields the minimal manifest
+    /// doesn't ship. `None` for most tests.
+    pub extra_json: Option<Json>,
+    /// For `mcp-server` items only: when true, emit a `remotes[]` with
+    /// `type: streamable-http` instead of the default `packages[]`
+    /// with `runtimeHint: npx`. Needed for tests that install on the
+    /// user-scoped endpoint (the MCP user policy gates stdio whenever
+    /// `code_sandbox.enabled` is false). Ignored for non-mcp-server.
     pub mcp_http: bool,
 }
 
-/// One mock release version.
+/// One mock catalog "version" (snapshot of what the Pages branch is
+/// serving). Pages serves just one `index.json` at a time, so
+/// `MockHub::switch_to` rotates which version is published.
 pub struct MockVersion {
     pub version: &'static str, // e.g. "9.9.1-test" (no leading v)
+    /// Retained for source-compat with legacy callers; ignored
+    /// (no release list to flag).
     pub prerelease: bool,
     pub items: Vec<MockItem>,
 }
 
+/// In-memory representation of a built mock version — pre-rendered
+/// index.json + per-entry manifest map keyed by `manifest_path`
+/// (e.g. `"models/foo/1.0.0.json"`).
+#[derive(Clone)]
+struct PreparedCatalog {
+    version: String,
+    index_bytes: Vec<u8>,
+    manifests: HashMap<String, Vec<u8>>,
+}
+
 pub struct MockHub {
     pub base_url: String,
+    state: Arc<MockState>,
     _handle: tokio::task::JoinHandle<()>,
 }
 
 impl MockHub {
     /// Extra env to inject into a spawned TestServer so its HubManager
-    /// fetches from this mock with cosign skipped.
+    /// fetches from this mock instead of GitHub Pages.
     pub fn test_env(&self) -> Vec<(String, String)> {
-        vec![
-            ("ZIEE_HUB_API_BASE_OVERRIDE".into(), self.base_url.clone()),
-            ("ZIEE_HUB_DOWNLOAD_BASE_OVERRIDE".into(), self.base_url.clone()),
-            ("ZIEE_HUB_ALLOW_UNSIGNED".into(), "1".into()),
-        ]
+        vec![("ZIEE_HUB_PAGES_BASE".into(), self.base_url.clone())]
+    }
+
+    /// Flip the served catalog to a different prepared version. Used
+    /// by tests that want to simulate a publisher pushing a newer
+    /// `index.json` between two `/hub/refresh` calls. Panics if the
+    /// version string doesn't match any registered version.
+    pub fn switch_to(&self, version: &str) {
+        let mut active = self.state.active.lock().expect("mock state poisoned");
+        let prepared = self
+            .state
+            .prepared
+            .get(version)
+            .unwrap_or_else(|| panic!("mock hub has no prepared version {version:?}"));
+        *active = prepared.clone();
     }
 }
 
@@ -82,116 +108,169 @@ fn folder(category: &str) -> &'static str {
     }
 }
 
-fn minimal_manifest_for(category: &str, id: &str, mcp_http: bool) -> String {
-    if category == "mcp-server" && mcp_http {
-        return format!(
-            "id: {id}\nname: {id}\ndisplay_name: {id}\ntransport_type: http\nurl: https://example.com/mcp\n"
-        );
-    }
-    minimal_manifest(category, id)
-}
-
-fn minimal_manifest(category: &str, id: &str) -> String {
+/// Build the JSON body for one per-entry manifest. Mirrors the shape
+/// the hub-seed manifests use so the typed `HubModel` /
+/// `HubAssistant` / `HubMCPServer` structs deserialize cleanly.
+///
+/// `name` is reverse-DNS (e.g. `io.github.test/foo`); the leaf
+/// (after the last `/`) is used for display-fallback labels in
+/// model/assistant manifests.
+fn minimal_manifest_for(category: &str, name: &str, mcp_http: bool) -> Json {
+    let leaf = name.rsplit('/').next().unwrap_or(name);
     match category {
-        "model" => format!(
-            "id: {id}\nname: {id}\ndisplay_name: {id}\nrepository_url: https://huggingface.co\nrepository_path: test/{id}\nmain_filename: model.safetensors\nfile_format: safetensors\nsize_gb: 1.0\npopularity_score: 0.5\n"
-        ),
-        "assistant" => format!(
-            "id: {id}\nname: {id}\ndisplay_name: {id}\nparameters: {{}}\n"
-        ),
-        // MCP servers need a transport-specific required field
-        // (`command` for stdio) or `validate_transport_config` rejects
-        // the install with 400. Use `npx` — a host-allowed launcher
-        // (HOST_ALLOWED_COMMANDS) — so install passes the tiered command
-        // validation for a non-sandboxed (host) server.
-        "mcp-server" => format!(
-            "id: {id}\nname: {id}\ndisplay_name: {id}\ntransport_type: stdio\ncommand: npx\nargs: [\"{id}\"]\n"
-        ),
-        _ => format!("id: {id}\nname: {id}\ndisplay_name: {id}\n"),
+        // Body shape — `sources[]` carries the per-source registry /
+        // file format / quantizations (no flat top-level fields).
+        "model" => json!({
+            "name": name,
+            "display_name": leaf,
+            "version": "1.0.0",
+            "sources": [{
+                "registryType": "huggingface",
+                "identifier": format!("test/{leaf}"),
+                "version": "main",
+                "fileFormat": "safetensors",
+                "quantizations": [{
+                    "name": "f16",
+                    "mainFile": "model.safetensors",
+                    "sizeGb": 1.0,
+                    "isDefault": true
+                }]
+            }],
+            "tags": ["mock"],
+        }),
+        "assistant" => json!({
+            "name": name,
+            "display_name": leaf,
+            "version": "1.0.0",
+            "parameters": {},
+        }),
+        // Strict server.json `remotes[]` for HTTP mocks.
+        "mcp-server" if mcp_http => json!({
+            "name": name,
+            "description": format!("mock {leaf}"),
+            "version": "1.0.0",
+            "remotes": [{
+                "type": "streamable-http",
+                "url": "https://example.com/mcp",
+                "headers": []
+            }],
+        }),
+        // Strict server.json `packages[]` for stdio mocks. `npx` is in
+        // `HOST_ALLOWED_COMMANDS` so host (non-sandbox) installs pass
+        // the command-validation tier.
+        "mcp-server" => json!({
+            "name": name,
+            "description": format!("mock {leaf}"),
+            "version": "1.0.0",
+            "packages": [{
+                "registryType": "npm",
+                "identifier": leaf,
+                "version": "1.0.0",
+                "transport": { "type": "stdio" },
+                "runtimeHint": "npx",
+                "runtimeArguments": [],
+                "packageArguments": [],
+                "environmentVariables": []
+            }],
+        }),
+        _ => json!({"name": name}),
     }
 }
 
-fn build_index(v: &MockVersion) -> String {
-    let items: Vec<String> = v
-        .items
-        .iter()
-        .map(|it| {
-            let min = it
-                .min_ziee_version
-                .map(|m| format!("\"{m}\""))
-                .unwrap_or_else(|| "null".to_string());
-            format!(
-                r#"    {{"id":"{id}","category":"{cat}","name":"{id}","summary":"mock {id}","tags":["mock"],"verified":true,"added_at":"2026-05-29","min_ziee_version":{min},"manifest_path":"{folder}/{id}.yaml"}}"#,
-                id = it.id,
-                cat = it.category,
-                folder = folder(it.category),
-                min = min,
-            )
-        })
-        .collect();
-    format!(
-        "{{\n  \"schema_version\": 1,\n  \"hub_version\": \"{ver}\",\n  \"generated_at\": \"2026-05-29T00:00:00Z\",\n  \"items\": [\n{items}\n  ]\n}}\n",
-        ver = v.version,
-        items = items.join(",\n"),
-    )
+fn merge_into(base: &mut Json, extra: Json) {
+    let (Json::Object(base), Json::Object(extra)) = (base, extra) else {
+        return;
+    };
+    for (k, v) in extra {
+        base.insert(k, v);
+    }
 }
 
-fn build_tarball(v: &MockVersion, index_json: &str) -> Vec<u8> {
-    let mut tar = tar::Builder::new(Vec::new());
-    // manifests
+fn prepare_catalog(v: &MockVersion) -> PreparedCatalog {
+    let _ = v.prerelease; // no release list; field kept for source-compat.
+
+    let mut manifests: HashMap<String, Vec<u8>> = HashMap::new();
+    let mut index_items: Vec<Json> = Vec::new();
+
     for it in &v.items {
-        let path = format!("{}/{}.yaml", folder(it.category), it.id);
-        let mut body = minimal_manifest_for(it.category, it.id, it.mcp_http);
-        if let Some(extra) = it.extra_yaml {
-            // Ensure the extra block starts on a fresh line.
-            if !body.ends_with('\n') {
-                body.push('\n');
-            }
-            body.push_str(extra);
-            if !body.ends_with('\n') {
-                body.push('\n');
-            }
+        // Path layout: `<folder>/<namespace>/<leaf>/<version>.json`
+        // — split on the FIRST `/`. Panics in test if name lacks `/`.
+        let (namespace, leaf) = it
+            .name
+            .split_once('/')
+            .unwrap_or_else(|| panic!("MockItem.name must be reverse-DNS with one `/`: {:?}", it.name));
+        let manifest_path = format!(
+            "{}/{}/{}/{}.json",
+            folder(it.category),
+            namespace,
+            leaf,
+            v.version
+        );
+        let mut body = minimal_manifest_for(it.category, it.name, it.mcp_http);
+        if let Some(extra) = it.extra_json.clone() {
+            merge_into(&mut body, extra);
         }
-        let mut header = tar::Header::new_gnu();
-        header.set_size(body.len() as u64);
-        header.set_mode(0o644);
-        header.set_cksum();
-        tar.append_data(&mut header, path, body.as_bytes()).unwrap();
-    }
-    // index.json at root (gets overwritten by the verified copy, but
-    // present so the structure matches a real bundle)
-    let mut header = tar::Header::new_gnu();
-    header.set_size(index_json.len() as u64);
-    header.set_mode(0o644);
-    header.set_cksum();
-    tar.append_data(&mut header, "index.json", index_json.as_bytes())
-        .unwrap();
-    let tar_bytes = tar.into_inner().unwrap();
-    let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
-    gz.write_all(&tar_bytes).unwrap();
-    gz.finish().unwrap()
-}
+        manifests.insert(
+            manifest_path.clone(),
+            serde_json::to_vec(&body).expect("serialize manifest"),
+        );
 
-fn sha256_hex(bytes: &[u8]) -> String {
-    let mut h = Sha256::new();
-    h.update(bytes);
-    format!("{:x}", h.finalize())
+        let item = json!({
+            "name": it.name,
+            "category": it.category,
+            "title": leaf,
+            "summary": format!("mock {}", leaf),
+            "tags": ["mock"],
+            "verified": true,
+            "added_at": "2026-05-29T00:00:00Z",
+            "min_ziee_version": it.min_ziee_version,
+            "manifest_path": manifest_path,
+            "version": v.version,
+        });
+        index_items.push(item);
+    }
+
+    let index = json!({
+        "schema_version": 2,
+        "hub_version": v.version,
+        "generated_at": "2026-05-29T00:00:00Z",
+        "items": index_items,
+    });
+
+    PreparedCatalog {
+        version: v.version.to_string(),
+        index_bytes: serde_json::to_vec(&index).expect("serialize index"),
+        manifests,
+    }
 }
 
 struct MockState {
-    /// path → (content-type, bytes)
-    routes: HashMap<String, (String, Vec<u8>)>,
+    /// `version_string -> PreparedCatalog` for every registered version,
+    /// looked up by `switch_to`.
+    prepared: HashMap<String, PreparedCatalog>,
+    /// Catalog currently being served from `/index.json` and the
+    /// per-entry endpoints. Replaced wholesale by `switch_to`.
+    active: Mutex<PreparedCatalog>,
 }
 
-async fn serve_asset(
+async fn serve_index(State(state): State<Arc<MockState>>) -> Response {
+    let active = state.active.lock().expect("mock state poisoned");
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(active.index_bytes.clone()))
+        .unwrap()
+}
+
+async fn serve_manifest(
     State(state): State<Arc<MockState>>,
     Path(rest): Path<String>,
 ) -> Response {
-    let key = format!("/{}", rest);
-    match state.routes.get(&key) {
-        Some((ct, bytes)) => Response::builder()
+    let active = state.active.lock().expect("mock state poisoned");
+    match active.manifests.get(&rest) {
+        Some(bytes) => Response::builder()
             .status(StatusCode::OK)
-            .header(header::CONTENT_TYPE, ct)
+            .header(header::CONTENT_TYPE, "application/json")
             .body(Body::from(bytes.clone()))
             .unwrap(),
         None => Response::builder()
@@ -201,65 +280,33 @@ async fn serve_asset(
     }
 }
 
-/// Build + start the mock. Versions are listed newest-first in the
-/// release JSON (GitHub's order).
+/// Build + start the mock. The FIRST version in the list is the
+/// initially-active catalog (matches v1's "newest-first" convention —
+/// tests that want to "activate" the older version flip with
+/// `switch_to`); every version is pre-rendered so any of them can be
+/// served later. Most tests only register one version + never switch.
 pub async fn spawn_mock_hub(versions: Vec<MockVersion>) -> MockHub {
-    let mut routes: HashMap<String, (String, Vec<u8>)> = HashMap::new();
+    assert!(!versions.is_empty(), "spawn_mock_hub needs at least one version");
 
-    // Release list JSON.
-    let releases: Vec<String> = versions
-        .iter()
-        .map(|v| {
-            format!(
-                r#"{{"tag_name":"v{ver}","prerelease":{pre},"draft":false,"published_at":"2026-05-29T00:00:00Z"}}"#,
-                ver = v.version,
-                pre = v.prerelease,
-            )
-        })
-        .collect();
-    routes.insert(
-        "/repos/ziee-ai/hub/releases".to_string(),
-        (
-            "application/json".to_string(),
-            format!("[{}]", releases.join(",")).into_bytes(),
-        ),
-    );
-
-    // Per-version download assets.
+    let mut prepared: HashMap<String, PreparedCatalog> = HashMap::new();
+    let mut first: Option<PreparedCatalog> = None;
     for v in &versions {
-        let index = build_index(v);
-        let tarball = build_tarball(v, &index);
-        let tag = format!("v{}", v.version);
-        let base = format!("/ziee-ai/hub/releases/download/{}", tag);
-
-        routes.insert(
-            format!("{base}/hub.index.json"),
-            ("application/json".into(), index.clone().into_bytes()),
-        );
-        routes.insert(
-            format!("{base}/hub.index.json.sha256"),
-            (
-                "text/plain".into(),
-                format!("{}  hub.index.json\n", sha256_hex(index.as_bytes())).into_bytes(),
-            ),
-        );
-        routes.insert(
-            format!("{base}/hub.tar.gz"),
-            ("application/gzip".into(), tarball.clone()),
-        );
-        routes.insert(
-            format!("{base}/hub.tar.gz.sha256"),
-            (
-                "text/plain".into(),
-                format!("{}  hub.tar.gz\n", sha256_hex(&tarball)).into_bytes(),
-            ),
-        );
+        let cat = prepare_catalog(v);
+        if first.is_none() {
+            first = Some(cat.clone());
+        }
+        prepared.insert(cat.version.clone(), cat);
     }
 
-    let state = Arc::new(MockState { routes });
+    let state = Arc::new(MockState {
+        prepared,
+        active: Mutex::new(first.expect("at least one prepared catalog")),
+    });
+
     let app = Router::new()
-        .route("/{*rest}", get(serve_asset))
-        .with_state(state);
+        .route("/index.json", get(serve_index))
+        .route("/{*rest}", get(serve_manifest))
+        .with_state(state.clone());
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -269,6 +316,7 @@ pub async fn spawn_mock_hub(versions: Vec<MockVersion>) -> MockHub {
 
     MockHub {
         base_url: format!("http://127.0.0.1:{}", addr.port()),
+        state,
         _handle: handle,
     }
 }

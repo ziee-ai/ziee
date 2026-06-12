@@ -1,0 +1,33 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "app.linear/mcp",
+  "description": "Manage Linear issues, projects, and cycles over the Streamable HTTP transport.",
+  "version": "1.0.0",
+  "repository": {
+    "url": "https://github.com/linear/linear-mcp",
+    "source": "github"
+  },
+  "websiteUrl": "https://linear.app/docs/mcp",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.linear.app/sse",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {LINEAR_API_KEY}",
+          "description": "Bearer token; interpolates LINEAR_API_KEY at runtime.",
+          "isSecret": true,
+          "variables": {
+            "LINEAR_API_KEY": {
+              "description": "Linear personal API key (Settings \u2192 API).",
+              "isRequired": true,
+              "isSecret": true,
+              "format": "string"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

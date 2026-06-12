@@ -6,7 +6,6 @@ import type {
   Catalog,
   HubCatalogVersionResponse,
   HubCategory,
-  HubReleaseInfo,
   IndexItem,
 } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'
@@ -66,20 +65,10 @@ interface HubCatalogState {
   refreshing: boolean
   error: string | null
 
-  // Admin version picker (lazy — only loaded when an admin opens the
-  // dropdown via loadReleases()).
-  releases: HubReleaseInfo[]
-  pinnedVersion: string | null
-  activeVersion: string | null
-  releasesLoading: boolean
-  activating: boolean
-
   // Actions
   loadCatalog: (force?: boolean) => Promise<void>
   loadVersion: () => Promise<void>
   refresh: () => Promise<void>
-  loadReleases: () => Promise<void>
-  activateVersion: (version: string | null) => Promise<void>
   itemsByCategory: (category: HubCategory) => IndexItem[]
 
   // Lazy initialization
@@ -105,21 +94,16 @@ export const useHubCatalogStore = create<HubCatalogState>()(
         loading: false,
         refreshing: false,
         error: null,
-        releases: [],
-        pinnedVersion: null,
-        activeVersion: null,
-        releasesLoading: false,
-        activating: false,
 
         loadCatalog: async (force = false) => {
-          // `force` lets refresh/activate bypass the in-flight guard so
-          // a concurrent first-load doesn't make the post-switch reload
+          // `force` lets refresh bypass the in-flight guard so a
+          // concurrent first-load doesn't make the post-refresh reload
           // a no-op (which would leave the UI on the old catalog).
           if (get().loading && !force) return
           // GET /hub/index requires hub::models::read. The hub shell
-          // (VersionPicker) reads this store for ANY hub user, so a
-          // hub-but-not-models user (e.g. MCP-only) would 403. Short-
-          // circuit; the catalog stays null and consumers degrade.
+          // reads this store for ANY hub user, so a hub-but-not-models
+          // user (e.g. MCP-only) would 403. Short-circuit; the catalog
+          // stays null and consumers degrade.
           if (!hasPermissionNow(Permissions.HubModelsRead)) return
           set({ loading: true, error: null })
           try {
@@ -158,9 +142,7 @@ export const useHubCatalogStore = create<HubCatalogState>()(
           try {
             const outcome = await ApiClient.Hub.refreshCatalog()
             // Even when nothing advanced, re-pull the catalog so the
-            // generated_at timestamp + counts (server might have added
-            // a sidecar after staging an air-gapped update) stay
-            // fresh in the UI.
+            // generated_at timestamp + counts stay fresh in the UI.
             await get().loadCatalog(true)
             await get().loadVersion()
             await reloadAllTabs()
@@ -170,47 +152,6 @@ export const useHubCatalogStore = create<HubCatalogState>()(
             set({
               error: error?.message || 'Failed to refresh hub catalog',
               refreshing: false,
-            })
-            throw error
-          }
-        },
-
-        loadReleases: async () => {
-          set({ releasesLoading: true, error: null })
-          try {
-            const resp = await ApiClient.Hub.getReleases()
-            set({
-              releases: resp.releases,
-              activeVersion: resp.active_version ?? null,
-              pinnedVersion: resp.pinned_version ?? null,
-              releasesLoading: false,
-            })
-          } catch (error: any) {
-            set({
-              error: error?.message || 'Failed to list hub versions',
-              releasesLoading: false,
-            })
-          }
-        },
-
-        // Activate a specific version server-wide (admin). `null` clears
-        // the pin and tracks latest. On success, re-pulls catalog +
-        // version + releases so the UI reflects the new active version.
-        activateVersion: async (version: string | null) => {
-          set({ activating: true, error: null })
-          try {
-            await ApiClient.Hub.activateVersion({
-              version: version ?? undefined,
-            })
-            await get().loadCatalog(true)
-            await get().loadVersion()
-            await get().loadReleases()
-            await reloadAllTabs()
-            set({ activating: false })
-          } catch (error: any) {
-            set({
-              error: error?.message || 'Failed to activate hub version',
-              activating: false,
             })
             throw error
           }
@@ -227,28 +168,13 @@ export const useHubCatalogStore = create<HubCatalogState>()(
             const eventBus = Stores.EventBus
             const GROUP = 'HubCatalogStore'
 
-            // The hub catalog version was pinned/refreshed (singleton; event
-            // id is nil). Refetch the version + releases AND reload every
-            // hub category tab so stale per-category lists pick up the new
-            // catalog. `reloadAllTabs` self-gates on the perms it needs, so
-            // a non-admin reconnect won't 403; `loadVersion` is gated on
-            // the user being able to see /api/hub/version (admins always).
-            //
-            // The mirror-action `activateVersion` in this same store already
-            // calls loadVersion/loadReleases/reloadAllTabs after a local
-            // mutation; this handler is the cross-device equivalent so it
-            // must run the same trio — otherwise device B's VersionPicker
-            // tag stays pinned at the pre-activate string even though the
-            // backend (and tab contents) have moved on.
+            // Cross-device sync handler. Under Hub v2 the catalog
+            // version isn't pinnable (per-entry semver replaced the
+            // version-picker), so this just refetches the version
+            // marker + reloads every hub category tab when the
+            // backend tells us the catalog changed.
             const handleHubSettingsChange = () => {
               void get().loadVersion()
-              // releases list is admin-only and lazy — only reload if it
-              // was previously populated (no point firing a 403 for a
-              // user without hub::catalog::manage who happens to be
-              // subscribed via hub::catalog::read).
-              if (get().releases.length > 0) {
-                void get().loadReleases()
-              }
               void reloadAllTabs()
             }
             eventBus.on('sync:hub_settings', handleHubSettingsChange, GROUP)

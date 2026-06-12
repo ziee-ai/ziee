@@ -1,17 +1,10 @@
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Flex, List, Tag, Typography, Card } from 'antd'
-import {
-  LinkOutlined,
-  LockOutlined,
-  KeyOutlined,
-} from '@ant-design/icons'
-import type { HubMCPServer, HubRequiredInput } from '@/api-client/types'
+import { Flex, Tag, Typography, Card } from 'antd'
+import { LinkOutlined } from '@ant-design/icons'
+import type { HubMCPServer } from '@/api-client/types'
+import { Stores } from '@/core/stores'
 
 const { Title, Text } = Typography
-
-/// Per-entry kind discriminator used only inside the drawer to tag
-/// rows of the merged required-config list (env vars vs headers).
-type RequiredInputRow = HubRequiredInput & { kind: 'env' | 'header' }
 
 interface McpServerDetailsDrawerProps {
   server: HubMCPServer | null
@@ -19,6 +12,15 @@ interface McpServerDetailsDrawerProps {
   onClose: () => void
 }
 
+/**
+ * Strict server.json drawer. v1 surfaced display_name / category /
+ * transport_type / command / args / url / headers / author / homepage /
+ * popularity_score / required_env / required_headers; all of those
+ * dropped with the move to the official server.json shape. Display
+ * now drives off `name` (reverse-DNS), `description`, `version`,
+ * `repository.url`, `websiteUrl`, and the first `packages[]` or
+ * `remotes[]` entry to show the install command / URL.
+ */
 export function McpServerDetailsDrawer({
   server,
   open,
@@ -26,29 +28,35 @@ export function McpServerDetailsDrawer({
 }: McpServerDetailsDrawerProps) {
   if (!server) return null
 
-  // Merged required-config list: env vars + headers in one rendering
-  // pass, each row tagged with its target surface so the user
-  // understands whether they'll edit the env map or the headers map
-  // post-install.
-  const requiredInputs: RequiredInputRow[] = [
-    ...(server.required_env ?? []).map(
-      (v): RequiredInputRow => ({ ...v, kind: 'env' }),
-    ),
-    ...(server.required_headers ?? []).map(
-      (v): RequiredInputRow => ({ ...v, kind: 'header' }),
-    ),
-  ]
+  // Display title: prefer the curated `IndexItem.title` (publisher
+  // sets via `_hub_curation.title` in the source YAML); fall back to
+  // the leaf of the reverse-DNS name. The full reverse-DNS lives
+  // below as a subtitle so operators can see the upstream identity.
+  const leaf = (() => {
+    const slash = server.name.indexOf('/')
+    return slash >= 0 ? server.name.slice(slash + 1) : server.name
+  })()
+  const indexItem = Stores.HubCatalog.catalog?.items.find(
+    it => it.category === 'mcp-server' && it.name === server.name,
+  )
+  const displayTitle = indexItem?.title ?? leaf
+
+  // Resolve the install surface: prefer the first remote (http/sse),
+  // fall back to the first package (stdio).
+  const firstRemote = server.remotes && server.remotes[0]
+  const firstPackage = server.packages && server.packages[0]
 
   return (
-    <Drawer title={server.display_name} open={open} onClose={onClose}>
+    <Drawer title={displayTitle} open={open} onClose={onClose}>
       <Flex vertical className="gap-4">
         {/* Basic Info */}
         <div>
           <Title level={3} className="!m-0 !mb-2">
-            {server.display_name}
+            {displayTitle}
           </Title>
-          <Text type="secondary" className="text-xs">
+          <Text type="secondary" className="text-xs break-all">
             {server.name}
+            {server.version ? ` · v${server.version}` : ''}
           </Text>
           {server.description && (
             <div className="mt-2">
@@ -57,167 +65,120 @@ export function McpServerDetailsDrawer({
           )}
         </div>
 
-        {/* Connection — shape depends on transport. stdio servers
-            launch a local subprocess (show the resolved command line);
-            http/sse servers connect to a remote URL (show as a
-            clickable link). Anything else (or missing transport on
-            legacy manifests) falls through to the stdio-style render
-            since the install helper defaults to stdio. */}
-        {server.transport_type === 'http' ||
-        server.transport_type === 'sse' ||
-        server.transport_type === 'streamable-http' ? (
+        {/* Connection — remote URL (http/sse) takes priority; falls
+            back to the package command (stdio). */}
+        {firstRemote ? (
           <div>
-            <Title level={5}>URL</Title>
+            <Title level={5}>Remote endpoint</Title>
             <Card size="small" className="bg-gray-50">
-              {server.url ? (
-                <a
-                  href={server.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs break-all"
-                >
-                  <LinkOutlined /> {server.url}
-                </a>
-              ) : (
-                <Text type="secondary" className="text-xs">
-                  No URL specified in manifest.
-                </Text>
-              )}
+              <a
+                href={firstRemote.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs break-all"
+              >
+                <LinkOutlined /> {firstRemote.url}
+              </a>
+              <div className="mt-1">
+                <Tag color="cyan" className="text-xs">
+                  {firstRemote.type ?? 'remote'}
+                </Tag>
+              </div>
+            </Card>
+          </div>
+        ) : firstPackage ? (
+          <div>
+            <Title level={5}>Install command</Title>
+            <Card size="small" className="bg-gray-50">
+              <Text code className="text-xs break-all">
+                {firstPackage.runtimeHint ?? 'run'}{' '}
+                {(firstPackage.runtimeArguments ?? [])
+                  .map(a => a.value)
+                  .filter(Boolean)
+                  .join(' ')}{' '}
+                {firstPackage.identifier}@{firstPackage.version}{' '}
+                {(firstPackage.packageArguments ?? [])
+                  .map(a => a.value)
+                  .filter(Boolean)
+                  .join(' ')}
+              </Text>
+              <div className="mt-1">
+                <Tag color="blue" className="text-xs">
+                  {firstPackage.registryType} · {firstPackage.transport?.type ?? 'stdio'}
+                </Tag>
+              </div>
             </Card>
           </div>
         ) : (
           <div>
-            <Title level={5}>Command</Title>
-            <Card size="small" className="bg-gray-50">
-              {server.command ? (
-                <Text code className="text-xs break-all">
-                  {server.command} {server.args?.join(' ')}
-                </Text>
-              ) : (
-                <Text type="secondary" className="text-xs">
-                  No command specified in manifest.
-                </Text>
-              )}
-            </Card>
+            <Title level={5}>Connection</Title>
+            <Text type="secondary" className="text-xs">
+              No packages or remotes declared in the manifest.
+            </Text>
           </div>
         )}
 
-        {/* Required configuration — primary view for env vars +
-            headers that the user must set post-install. Each row
-            tags the target surface (env var vs header) so the user
-            knows where to edit. */}
-        {requiredInputs.length > 0 && (
-          <div>
-            <Title level={5}>Required configuration</Title>
-            <List
-              size="small"
-              dataSource={requiredInputs}
-              renderItem={v => (
-                <List.Item key={`${v.kind}:${v.name}`}>
-                  <List.Item.Meta
-                    avatar={
-                      v.is_secret ? (
-                        <LockOutlined className="text-orange-500" />
-                      ) : (
-                        <KeyOutlined className="text-blue-500" />
-                      )
-                    }
-                    title={
-                      <Flex className="gap-2 items-center" wrap>
-                        <Text code className="text-xs">
-                          {v.name}
-                        </Text>
-                        <Tag
-                          color={v.kind === 'env' ? 'blue' : 'cyan'}
-                          className="text-xs"
-                        >
-                          {v.kind === 'env' ? 'env var' : 'header'}
-                        </Tag>
-                        {v.is_secret && (
-                          <Tag color="orange" className="text-xs">
-                            secret
-                          </Tag>
-                        )}
-                      </Flex>
-                    }
-                    description={
-                      <Flex vertical className="gap-1">
-                        {v.description && (
-                          <Text type="secondary" className="text-xs">
-                            {v.description}
-                          </Text>
-                        )}
-                        {v.placeholder && (
-                          <Text type="secondary" className="text-xs">
-                            Example:{' '}
-                            <Text code className="text-xs">
-                              {v.placeholder}
-                            </Text>
-                          </Text>
-                        )}
-                        {v.docs_url && (
-                          <a
-                            href={v.docs_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs inline-flex items-center gap-1"
-                          >
-                            <LinkOutlined /> Get one
-                          </a>
-                        )}
-                      </Flex>
-                    }
-                  />
-                </List.Item>
-              )}
-            />
-          </div>
-        )}
-
-        {/* Fallback — legacy catalog versions without `required_*`
-            metadata still get the raw JSON dump so the user can
-            inspect the env map. Suppressed when the structured view
-            above is rendered (avoid duplicating info). */}
-        {requiredInputs.length === 0 &&
-          server.environment_variables &&
-          Object.keys(server.environment_variables).length > 0 && (
+        {/* Env vars declared on the first package — these get seeded
+            into the installed server's env map; the user fills in
+            their tokens post-install. */}
+        {firstPackage?.environmentVariables &&
+          firstPackage.environmentVariables.length > 0 && (
             <div>
-              <Title level={5}>Environment Variables</Title>
+              <Title level={5}>Environment variables</Title>
               <Card size="small">
-                <pre className="text-xs overflow-auto m-0">
-                  {JSON.stringify(server.environment_variables, null, 2)}
-                </pre>
+                <Flex vertical className="gap-1">
+                  {firstPackage.environmentVariables.map(ev => (
+                    <Flex
+                      key={ev.name}
+                      justify="space-between"
+                      className="text-xs"
+                    >
+                      <Text code>{ev.name}</Text>
+                      {ev.isSecret && (
+                        <Tag color="orange" className="text-xs">
+                          secret
+                        </Tag>
+                      )}
+                    </Flex>
+                  ))}
+                </Flex>
               </Card>
             </div>
           )}
 
-        {/* Server Details */}
-        <div>
-          <Title level={5}>Server Details</Title>
-          <Flex vertical className="gap-2">
-            {server.author && (
-              <Flex justify="space-between">
-                <Text type="secondary">Author:</Text>
-                <Text>{server.author}</Text>
+        {/* Headers declared on the first remote. */}
+        {firstRemote?.headers && firstRemote.headers.length > 0 && (
+          <div>
+            <Title level={5}>Headers</Title>
+            <Card size="small">
+              <Flex vertical className="gap-1">
+                {firstRemote.headers.map(h => (
+                  <Flex
+                    key={h.name}
+                    justify="space-between"
+                    className="text-xs"
+                  >
+                    <Text code>{h.name}</Text>
+                    {h.isSecret && (
+                      <Tag color="orange" className="text-xs">
+                        secret
+                      </Tag>
+                    )}
+                  </Flex>
+                ))}
               </Flex>
-            )}
-            {server.popularity_score && (
-              <Flex justify="space-between">
-                <Text type="secondary">Popularity Score:</Text>
-                <Text>{server.popularity_score}</Text>
-              </Flex>
-            )}
-          </Flex>
-        </div>
+            </Card>
+          </div>
+        )}
 
         {/* Links */}
-        {(server.repository_url || server.homepage) && (
+        {(server.repository?.url || server.websiteUrl) && (
           <div>
             <Title level={5}>Links</Title>
             <Flex vertical className="gap-2">
-              {server.repository_url && (
+              {server.repository?.url && (
                 <a
-                  href={server.repository_url}
+                  href={server.repository.url}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2"
@@ -225,30 +186,16 @@ export function McpServerDetailsDrawer({
                   <LinkOutlined /> Repository
                 </a>
               )}
-              {server.homepage && (
+              {server.websiteUrl && (
                 <a
-                  href={server.homepage}
+                  href={server.websiteUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2"
                 >
-                  <LinkOutlined /> Homepage
+                  <LinkOutlined /> Website
                 </a>
               )}
-            </Flex>
-          </div>
-        )}
-
-        {/* Tags */}
-        {server.tags && server.tags.length > 0 && (
-          <div>
-            <Title level={5}>Tags</Title>
-            <Flex wrap className="gap-1">
-              {server.tags.map(tag => (
-                <Tag key={tag} color="default">
-                  {tag}
-                </Tag>
-              ))}
             </Flex>
           </div>
         )}

@@ -1,0 +1,321 @@
+{
+  "schema_version": 2,
+  "hub_version": "2.0.0",
+  "generated_at": "2026-06-12T04:38:39Z",
+  "items": [
+    {
+      "name": "io.github.phibya/code-reviewer",
+      "category": "assistant",
+      "title": "Code Reviewer",
+      "summary": "Expert code reviewer with a security-and-best-practices focus.",
+      "tags": [
+        "code",
+        "security",
+        "review",
+        "best-practices"
+      ],
+      "verified": true,
+      "added_at": "2026-05-29",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "assistants/io.github.phibya/code-reviewer/1.0.0.json"
+    },
+    {
+      "name": "io.github.phibya/creative-writer",
+      "category": "assistant",
+      "title": "Creative Writer",
+      "summary": "Professional creative writer for stories, articles, and content.",
+      "tags": [
+        "writing",
+        "creative",
+        "storytelling",
+        "content"
+      ],
+      "verified": true,
+      "added_at": "2026-05-29",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "assistants/io.github.phibya/creative-writer/1.0.0.json"
+    },
+    {
+      "name": "io.github.phibya/deep-researcher",
+      "category": "assistant",
+      "title": "Deep Researcher",
+      "summary": "Multi-step research assistant. Pinned to a future ziee-chat that ships the parallel sub-agent runtime.",
+      "tags": [
+        "research",
+        "analysis",
+        "synthesis"
+      ],
+      "verified": true,
+      "added_at": "2026-05-29",
+      "min_ziee_version": "99.0.0",
+      "version": "1.0.0",
+      "manifest_path": "assistants/io.github.phibya/deep-researcher/1.0.0.json"
+    },
+    {
+      "name": "io.github.phibya/sql-helper",
+      "category": "assistant",
+      "title": "SQL Helper",
+      "summary": "Writes, explains, and optimizes SQL across Postgres, MySQL, and SQLite dialects.",
+      "tags": [
+        "sql",
+        "database",
+        "queries"
+      ],
+      "verified": true,
+      "added_at": "2026-05-29",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "assistants/io.github.phibya/sql-helper/1.0.0.json"
+    },
+    {
+      "name": "io.github.phibya/vision-analyst",
+      "category": "assistant",
+      "title": "Vision Analyst",
+      "summary": "Specialized assistant for image and visual content analysis.",
+      "tags": [
+        "vision",
+        "image-analysis",
+        "visual",
+        "description"
+      ],
+      "verified": true,
+      "added_at": "2026-05-29",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "assistants/io.github.phibya/vision-analyst/1.0.0.json"
+    },
+    {
+      "name": "app.linear/mcp",
+      "category": "mcp-server",
+      "title": "Linear MCP Server",
+      "summary": "Manage Linear issues, projects, and cycles over Streamable HTTP.",
+      "tags": [
+        "linear",
+        "issues",
+        "project-management",
+        "api",
+        "streamable-http"
+      ],
+      "verified": true,
+      "added_at": "2026-05-29",
+      "min_ziee_version": "99.0.0",
+      "version": "1.0.0",
+      "manifest_path": "mcp-servers/app.linear/mcp/1.0.0.json"
+    },
+    {
+      "name": "com.brave/search-mcp",
+      "category": "mcp-server",
+      "title": "Brave Search MCP Server",
+      "summary": "Web search via the Brave Search API for up-to-date information.",
+      "tags": [
+        "search",
+        "web",
+        "api",
+        "research",
+        "streamable-http"
+      ],
+      "verified": true,
+      "added_at": "2026-05-29",
+      "min_ziee_version": null,
+      "version": "1.2.0",
+      "manifest_path": "mcp-servers/com.brave/search-mcp/1.2.0.json"
+    },
+    {
+      "name": "io.github.github/mcp",
+      "category": "mcp-server",
+      "title": "GitHub MCP Server",
+      "summary": "Access GitHub repositories, issues, and pull requests over the official GitHub MCP endpoint.",
+      "tags": [
+        "github",
+        "git",
+        "version-control",
+        "api",
+        "streamable-http"
+      ],
+      "verified": true,
+      "added_at": "2026-05-29",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "mcp-servers/io.github.github/mcp/1.0.0.json"
+    },
+    {
+      "name": "io.github.modelcontextprotocol/filesystem",
+      "category": "mcp-server",
+      "title": "Filesystem MCP Server",
+      "summary": "Local filesystem access (read/write/search) over MCP (stdio).",
+      "tags": [
+        "filesystem",
+        "files",
+        "io",
+        "stdio"
+      ],
+      "verified": true,
+      "added_at": "2026-05-29",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "mcp-servers/io.github.modelcontextprotocol/filesystem/1.0.0.json"
+    },
+    {
+      "name": "io.github.modelcontextprotocol/memory",
+      "category": "mcp-server",
+      "title": "Memory & Context MCP Server",
+      "summary": "Store and retrieve conversation context, notes, and knowledge across sessions.",
+      "tags": [
+        "memory",
+        "context",
+        "notes",
+        "knowledge",
+        "stdio"
+      ],
+      "verified": true,
+      "added_at": "2026-05-29",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "mcp-servers/io.github.modelcontextprotocol/memory/1.0.0.json"
+    },
+    {
+      "name": "io.github.modelcontextprotocol/postgres",
+      "category": "mcp-server",
+      "title": "PostgreSQL MCP Server",
+      "summary": "Connect to PostgreSQL databases, execute queries, manage schemas, and analyze data.",
+      "tags": [
+        "database",
+        "sql",
+        "postgresql",
+        "data",
+        "stdio"
+      ],
+      "verified": true,
+      "added_at": "2026-05-29",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "mcp-servers/io.github.modelcontextprotocol/postgres/1.0.0.json"
+    },
+    {
+      "name": "io.github.phibya/deepseek-r1-70b",
+      "category": "model",
+      "title": "DeepSeek-R1 70B",
+      "summary": "Large reasoning model. Flagged as requiring a future ziee-chat for its tensor-parallel runtime support.",
+      "tags": [
+        "reasoning",
+        "large",
+        "instruct"
+      ],
+      "verified": true,
+      "added_at": "2026-05-29",
+      "min_ziee_version": "99.0.0",
+      "version": "1.0.0",
+      "manifest_path": "models/io.github.phibya/deepseek-r1-70b/1.0.0.json"
+    },
+    {
+      "name": "io.github.phibya/llama-3-1-8b-instruct",
+      "category": "model",
+      "title": "Llama 3.1 8B",
+      "summary": "Meta's Llama 3.1 8B instruction-tuned model with improved capabilities.",
+      "tags": [
+        "instruct",
+        "chat",
+        "code",
+        "reasoning"
+      ],
+      "verified": true,
+      "added_at": "2026-05-29",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "models/io.github.phibya/llama-3-1-8b-instruct/1.0.0.json"
+    },
+    {
+      "name": "io.github.phibya/llama-3-2-3b-instruct-gguf",
+      "category": "model",
+      "title": "Llama 3.2 3B",
+      "summary": "Meta's Llama 3.2 3B instruction-tuned model in GGUF format. Multiple quantizations available.",
+      "tags": [
+        "instruct",
+        "chat",
+        "code",
+        "gguf",
+        "efficient",
+        "small"
+      ],
+      "verified": true,
+      "added_at": "2026-05-29",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "models/io.github.phibya/llama-3-2-3b-instruct-gguf/1.0.0.json"
+    },
+    {
+      "name": "io.github.phibya/nomic-embed-text-v1-5-gguf",
+      "category": "model",
+      "title": "Nomic Embed Text v1.5",
+      "summary": "High-quality general-purpose English embedding model (768-dim) packaged as GGUF for llama.cpp.",
+      "tags": [
+        "embedding",
+        "english",
+        "retrieval",
+        "rag",
+        "text-similarity",
+        "gguf",
+        "memory-recommended"
+      ],
+      "verified": true,
+      "added_at": "2026-05-29",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "models/io.github.phibya/nomic-embed-text-v1-5-gguf/1.0.0.json"
+    },
+    {
+      "name": "io.github.phibya/phi-3-mini-4k-instruct",
+      "category": "model",
+      "title": "Phi-3 Mini",
+      "summary": "Microsoft's small but capable instruction-tuned model. Great for low-resource setups.",
+      "tags": [
+        "instruct",
+        "chat",
+        "small",
+        "efficient"
+      ],
+      "verified": true,
+      "added_at": "2026-05-29",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "models/io.github.phibya/phi-3-mini-4k-instruct/1.0.0.json"
+    },
+    {
+      "name": "io.github.phibya/qwen2.5-coder-7b-instruct",
+      "category": "model",
+      "title": "Qwen2.5-Coder 7B",
+      "summary": "Alibaba's Qwen2.5-Coder 7B \u2014 code generation, completion, and reasoning across 40+ languages.",
+      "tags": [
+        "code",
+        "instruct",
+        "chat",
+        "reasoning"
+      ],
+      "verified": true,
+      "added_at": "2026-05-29",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "models/io.github.phibya/qwen2.5-coder-7b-instruct/1.0.0.json"
+    },
+    {
+      "name": "io.github.phibya/qwen2.5-vl-3b-instruct",
+      "category": "model",
+      "title": "Qwen2.5-VL 3B",
+      "summary": "Qwen2.5-VL 3B instruction-tuned vision-language model. Supports image understanding plus tool use.",
+      "tags": [
+        "vision",
+        "multimodal",
+        "instruct",
+        "chat",
+        "image-understanding"
+      ],
+      "verified": true,
+      "added_at": "2026-05-29",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "models/io.github.phibya/qwen2.5-vl-3b-instruct/1.0.0.json"
+    }
+  ]
+}
