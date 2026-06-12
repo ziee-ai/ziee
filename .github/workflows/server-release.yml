@@ -1,0 +1,207 @@
+name: Server Release
+
+# Tag-triggered (v*) Linux server build → tarball + .deb/.rpm/.apk + Docker
+# image, all uploaded to the SAME GitHub Release vX.Y.Z that desktop-release.yml
+# creates. The server job does NOT create the release with conflicting notes —
+# it `gh release create … || true` (create-if-absent) and `--clobber` uploads.
+#
+# Build prerequisites (the server compiles the whole crate):
+#   - pgvector Postgres on :54321 (SQLx macros; .cargo/config.toml DATABASE_URL)
+#   - GITHUB_TOKEN for the hub-seed build helper (panics without it)
+#   - zig + cargo-zigbuild for the static musl cross-build (mirrors `just build-linux`)
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write      # Sigstore OIDC for build-provenance attestation
+  attestations: write
+
+jobs:
+  build:
+    name: build ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, target: x86_64-unknown-linux-musl }
+          - { arch: arm64, target: aarch64-unknown-linux-musl }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install zig + cargo-zigbuild
+        uses: mlugg/setup-zig@v1
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild
+
+      # Build-time Postgres (pgvector) on :54321 — same step as desktop-release.yml.
+      - name: Setup Postgres + pgvector
+        run: |
+          docker run -d --name ziee-build-db \
+            -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password -e POSTGRES_DB=postgres \
+            -p 54321:5432 pgvector/pgvector:pg18
+          for _ in $(seq 1 30); do
+            if docker exec ziee-build-db pg_isready -U postgres >/dev/null 2>&1; then
+              echo "postgres ready"; break
+            fi
+            sleep 2
+          done
+
+      # Stamp the workspace version from the tag so the built binary's
+      # CARGO_PKG_VERSION matches the release (otherwise a fresh `latest` install
+      # reports the stale 0.1.0 and the update checker says "update available"
+      # forever).
+      - name: Sync version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          sed -i -E "0,/^version = \"[^\"]*\"/s//version = \"$VERSION\"/" src-app/Cargo.toml
+          grep -m1 '^version = ' src-app/Cargo.toml
+
+      # Build with the seccomp feature OFF. The default `code_sandbox_seccomp`
+      # statically links libseccomp, but a glibc libseccomp.a does not link into
+      # a static-musl target; building a musl libseccomp per-arch is fragile in
+      # CI. Without the feature the sandbox still runs with every other hardening
+      # (pid-ns, cgroup, --clearenv, rlimits); seccomp logs "off-feature-not-linked".
+      - name: Build (cargo zigbuild, static musl, seccomp off)
+        working-directory: src-app/server
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: cargo zigbuild --release --no-default-features --features gpu-detect --target ${{ matrix.target }}
+
+      - name: Stage binary
+        run: |
+          mkdir -p dist
+          cp "src-app/target/${{ matrix.target }}/release/ziee" "dist/ziee-${{ matrix.arch }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ziee-${{ matrix.arch }}
+          path: dist/ziee-${{ matrix.arch }}
+
+  package:
+    name: package + upload to release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nfpm
+
+      - name: Build tarballs + packages
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p out
+          for arch in amd64 arm64; do
+            bin="dist/ziee-${arch}"
+            chmod +x "$bin"
+            # Stage the per-arch binary at the fixed path nfpm + the tarball use.
+            cp "$bin" dist/ziee
+            # tarball (standalone)
+            tar -C dist -czf "out/ziee_${VERSION}_linux_${arch}.tar.gz" ziee
+            # native packages — force the EXACT filename install.sh requests
+            # (nfpm's default template differs: no `linux` infix, rpm uses
+            # x86_64/aarch64). Explicit --target makes the contract match.
+            # No .apk: Alpine has no systemd, so it uses the standalone tarball.
+            for pkg in deb rpm; do
+              PKG_ARCH="$arch" PKG_VERSION="$VERSION" \
+                nfpm pkg --config packaging/nfpm.yaml --packager "$pkg" \
+                  --target "out/ziee_${VERSION}_linux_${arch}.${pkg}"
+            done
+          done
+          # Stage the starter config alongside the binaries so it is BOTH
+          # checksummed and provenance-attested (out/* below) — the standalone
+          # install path fetches it, so it shouldn't be the one unverified asset.
+          cp packaging/config.default.yaml out/config.default.yaml
+          # Checksums sidecar (generated into a temp file so it isn't hashed
+          # into itself), which install.sh verifies before installing as root.
+          ( cd out && sha256sum ziee_* config.default.yaml > /tmp/sums.txt && mv /tmp/sums.txt "ziee_${VERSION}_checksums.txt" )
+          ls -la out
+
+      # Sigstore build-provenance attestation over every release artifact.
+      # Verifiable out-of-band with: gh attestation verify <file> --repo ${{ github.repository }}
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: out/*
+
+      - name: Upload to the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          # Create the release if desktop-release.yml hasn't yet. Don't set
+          # --notes here (desktop-release.yml owns the release body); only
+          # create-if-absent. Mark prereleases (tag contains a hyphen, e.g.
+          # v1.2.0-rc.1) so `releases/latest` never resolves to an RC.
+          case "$TAG" in
+            *-*) gh release create "$TAG" --title "Ziee $TAG" --generate-notes --verify-tag --prerelease || true ;;
+            *)   gh release create "$TAG" --title "Ziee $TAG" --generate-notes --verify-tag || true ;;
+          esac
+          # out/* now includes config.default.yaml (staged + checksummed above).
+          gh release upload "$TAG" out/* scripts/install.sh --clobber
+
+  docker:
+    name: docker (ghcr)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build + push multi-arch image
+        id: build
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          chmod +x dist/ziee-amd64 dist/ziee-arm64
+          # Only move `:latest` for stable tags (not v*-rc.* prereleases).
+          # --metadata-file captures the pushed index digest for attestation.
+          case "${GITHUB_REF_NAME}" in
+            *-*)
+              docker buildx build --push --platform linux/amd64,linux/arm64 \
+                -t "ghcr.io/phibya/ziee:${VERSION}" \
+                --metadata-file /tmp/meta.json . ;;
+            *)
+              docker buildx build --push --platform linux/amd64,linux/arm64 \
+                -t "ghcr.io/phibya/ziee:${VERSION}" \
+                -t "ghcr.io/phibya/ziee:latest" \
+                --metadata-file /tmp/meta.json . ;;
+          esac
+          digest=$(jq -r '."containerimage.digest"' /tmp/meta.json)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      # Provenance attestation over the pushed image manifest — parity with the
+      # release tarballs/packages (which the package job attests).
+      - name: Attest image provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ghcr.io/phibya/ziee
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true

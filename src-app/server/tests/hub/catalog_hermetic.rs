@@ -1,15 +1,64 @@
-//! Hermetic hub catalog tests — no network, no real cosign.
+//! Hermetic hub catalog tests — no network.
 //!
-//! Uses the in-test `mock_release_server` + the debug-only fetch
-//! overrides so the full activate → fetch → sha256 → unpack → rotate
-//! path is exercised against a local server. Replaces the
-//! network-dependent assertions the plan flagged.
+//! Uses the in-test `mock_release_server` (a mini Pages site over
+//! loopback) + the debug-only `ZIEE_HUB_PAGES_BASE` override so the
+//! full refresh → parse-index → lazy-fetch-manifest path is exercised
+//! against a local server. There is no "activate by tag" or cosign
+//! chain; the flow is:
+//!
+//!   mock.switch_to(version)           // publisher updates the catalog
+//!   POST /hub/refresh (admin)         // server pulls the new index
+//!
+//! Helper [`apply_catalog`] below performs both in one call so the
+//! test bodies stay readable.
 
 use serde_json::{json, Value as Json};
 
-use super::mock_release_server::{spawn_mock_hub, MockItem, MockVersion};
+use super::mock_release_server::{spawn_mock_hub, MockHub, MockItem, MockVersion};
 use crate::common::TestServer;
 use crate::common::test_helpers::create_user_with_permissions;
+
+/// Find the first entry in a JSON `environment_variables_entries` or
+/// `headers_entries` array whose `key` field matches `name`. Used by
+/// the replace-existing tests that assert per-entry value/secrecy
+/// after a re-install.
+fn find_entry<'a>(entries: &'a Json, name: &str) -> &'a Json {
+    entries
+        .as_array()
+        .unwrap_or_else(|| panic!("entries should be a JSON array, got: {entries}"))
+        .iter()
+        .find(|e| e.get("key").and_then(|v| v.as_str()) == Some(name))
+        .unwrap_or_else(|| {
+            panic!("entry with key {name} not found in: {entries}")
+        })
+}
+
+/// Switch the mock's published catalog to `version` and force the
+/// server to pull it via `/hub/refresh`. The catalog is in-place at
+/// the Pages base + refresh is the only knob (no per-version
+/// pinning). Asserting 200 here keeps the test failure message
+/// focused on the code-under-test, not on a missed setup step.
+async fn apply_catalog(
+    mock: &MockHub,
+    server: &TestServer,
+    admin_token: &str,
+    version: &str,
+) {
+    mock.switch_to(version);
+    let resp = reqwest::Client::new()
+        .post(server.api_url("/hub/refresh"))
+        .header("Authorization", format!("Bearer {admin_token}"))
+        .send()
+        .await
+        .expect("refresh");
+    assert_eq!(
+        resp.status(),
+        200,
+        "/hub/refresh against mock Pages must 200; got {}: {}",
+        resp.status(),
+        resp.text().await.unwrap_or_default(),
+    );
+}
 
 /// Companion to `two_versions` for MCP-system install tests. Same
 /// shape (two versions, newest-first, both prerelease so the mock
@@ -25,16 +74,16 @@ fn mcp_versions() -> Vec<MockVersion> {
             items: vec![
                 MockItem {
                     category: "mcp-server",
-                    id: "mock-mcp-a",
+                    name: "io.github.test/mock-mcp-a",
                     min_ziee_version: None,
-                    extra_yaml: None,
+                    extra_json: None,
                     mcp_http: false,
                 },
                 MockItem {
                     category: "mcp-server",
-                    id: "mock-mcp-future",
+                    name: "io.github.test/mock-mcp-future",
                     min_ziee_version: Some("99.0.0"),
-                    extra_yaml: None,
+                    extra_json: None,
                     mcp_http: false,
                 },
             ],
@@ -44,9 +93,9 @@ fn mcp_versions() -> Vec<MockVersion> {
             prerelease: true,
             items: vec![MockItem {
                 category: "mcp-server",
-                id: "mock-mcp-a",
+                name: "io.github.test/mock-mcp-a",
                 min_ziee_version: None,
-                extra_yaml: None,
+                extra_json: None,
                 mcp_http: false,
             }],
         },
@@ -66,9 +115,9 @@ fn mcp_versions_http() -> Vec<MockVersion> {
             prerelease: true,
             items: vec![MockItem {
                 category: "mcp-server",
-                id: "mock-mcp-a",
+                name: "io.github.test/mock-mcp-a",
                 min_ziee_version: None,
-                extra_yaml: None,
+                extra_json: None,
                 mcp_http: true,
             }],
         },
@@ -77,9 +126,9 @@ fn mcp_versions_http() -> Vec<MockVersion> {
             prerelease: true,
             items: vec![MockItem {
                 category: "mcp-server",
-                id: "mock-mcp-a",
+                name: "io.github.test/mock-mcp-a",
                 min_ziee_version: None,
-                extra_yaml: None,
+                extra_json: None,
                 mcp_http: true,
             }],
         },
@@ -96,23 +145,23 @@ fn two_versions() -> Vec<MockVersion> {
             items: vec![
                 MockItem {
                     category: "model",
-                    id: "mock-model-a",
+                    name: "io.github.test/mock-model-a",
                     min_ziee_version: None,
-                    extra_yaml: None,
+                    extra_json: None,
                     mcp_http: false,
                 },
                 MockItem {
                     category: "assistant",
-                    id: "mock-asst-a",
+                    name: "io.github.test/mock-asst-a",
                     min_ziee_version: None,
-                    extra_yaml: None,
+                    extra_json: None,
                     mcp_http: false,
                 },
                 MockItem {
                     category: "assistant",
-                    id: "mock-asst-future",
+                    name: "io.github.test/mock-asst-future",
                     min_ziee_version: Some("99.0.0"),
-                    extra_yaml: None,
+                    extra_json: None,
                     mcp_http: false,
                 },
             ],
@@ -123,16 +172,16 @@ fn two_versions() -> Vec<MockVersion> {
             items: vec![
                 MockItem {
                     category: "model",
-                    id: "mock-model-a",
+                    name: "io.github.test/mock-model-a",
                     min_ziee_version: None,
-                    extra_yaml: None,
+                    extra_json: None,
                     mcp_http: false,
                 },
                 MockItem {
                     category: "assistant",
-                    id: "mock-asst-a",
+                    name: "io.github.test/mock-asst-a",
                     min_ziee_version: None,
-                    extra_yaml: None,
+                    extra_json: None,
                     mcp_http: false,
                 },
             ],
@@ -141,7 +190,12 @@ fn two_versions() -> Vec<MockVersion> {
 }
 
 #[tokio::test]
-async fn activate_then_switch_versions_against_mock() {
+async fn refresh_picks_up_publisher_catalog_changes() {
+    // Covers the end-to-end refresh flow: a publisher updates
+    // `index.json` on the Pages branch, an admin POSTs /hub/refresh,
+    // the server pulls the new index in place. Tested by flipping the
+    // mock's published catalog with `MockHub::switch_to` between two
+    // refreshes.
     let mock = spawn_mock_hub(two_versions()).await;
     let server = TestServer::start_with_options(crate::common::TestServerOptions {
         extra_env: mock.test_env(),
@@ -156,20 +210,8 @@ async fn activate_then_switch_versions_against_mock() {
     .await;
     let client = reqwest::Client::new();
 
-    // Activate the older mock version (2 items).
-    let resp = client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.1-test" }))
-        .send()
-        .await
-        .expect("activate 9.9.1");
-    assert_eq!(
-        resp.status(),
-        200,
-        "activate 9.9.1-test (unsigned mock) should succeed: {}",
-        resp.text().await.unwrap_or_default()
-    );
+    // Publisher state: older catalog (2 items). Refresh pulls it.
+    apply_catalog(&mock, &server, &admin.token, "9.9.1-test").await;
 
     let idx: Json = client
         .get(server.api_url("/hub/index"))
@@ -183,8 +225,8 @@ async fn activate_then_switch_versions_against_mock() {
     assert_eq!(idx["hub_version"], "9.9.1-test");
     assert_eq!(idx["items"].as_array().map(|a| a.len()), Some(2));
 
-    // /version reports source=github (a fetch replaced the seed) +
-    // cosign was skipped (unsigned mock).
+    // /version reports source=pages (a Pages fetch replaced the seed).
+    // v1's "github" provenance + cosign_verified field are gone.
     let ver: Json = client
         .get(server.api_url("/hub/version"))
         .header("Authorization", format!("Bearer {}", admin.token))
@@ -194,18 +236,12 @@ async fn activate_then_switch_versions_against_mock() {
         .json()
         .await
         .expect("parse version");
-    assert_eq!(ver["source"], "github");
+    assert_eq!(ver["source"], "pages");
     assert_eq!(ver["hub_version"], "9.9.1-test");
 
-    // Switch to the newer version (3 items).
-    let resp = client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.2-test" }))
-        .send()
-        .await
-        .expect("activate 9.9.2");
-    assert_eq!(resp.status(), 200);
+    // Publisher pushes a newer catalog (3 items). Refresh picks it up
+    // in place — no per-version pin, no rotation step.
+    apply_catalog(&mock, &server, &admin.token, "9.9.2-test").await;
     let idx: Json = client
         .get(server.api_url("/hub/index"))
         .header("Authorization", format!("Bearer {}", admin.token))
@@ -236,20 +272,13 @@ async fn install_rejects_incompatible_item() {
     let client = reqwest::Client::new();
 
     // Activate v9.9.2 which contains the future-pinned assistant.
-    let resp = client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.2-test" }))
-        .send()
-        .await
-        .expect("activate");
-    assert_eq!(resp.status(), 200);
+    apply_catalog(&mock, &server, &admin.token, "9.9.2-test").await;
 
     // A compatible assistant installs fine (201).
     let ok = client
         .post(server.api_url("/hub/assistants/create"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-asst-a" }))
+        .json(&json!({ "hub_id": "io.github.test/mock-asst-a" }))
         .send()
         .await
         .expect("create compatible");
@@ -265,7 +294,7 @@ async fn install_rejects_incompatible_item() {
     let blocked = client
         .post(server.api_url("/hub/assistants/create"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-asst-future" }))
+        .json(&json!({ "hub_id": "io.github.test/mock-asst-future" }))
         .send()
         .await
         .expect("create incompatible");
@@ -301,19 +330,11 @@ async fn install_stamps_current_version_so_installed_row_is_not_outdated() {
     let client = reqwest::Client::new();
 
     // Activate v9.9.1-test, then install a compatible assistant from it.
-    client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.1-test" }))
-        .send()
-        .await
-        .expect("activate")
-        .error_for_status()
-        .expect("activate ok");
+    apply_catalog(&mock, &server, &admin.token, "9.9.1-test").await;
     client
         .post(server.api_url("/hub/assistants/create"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-asst-a" }))
+        .json(&json!({ "hub_id": "io.github.test/mock-asst-a" }))
         .send()
         .await
         .expect("install")
@@ -335,7 +356,7 @@ async fn install_stamps_current_version_so_installed_row_is_not_outdated() {
     let rows = installed["items"].as_array().expect("items array");
     let row = rows
         .iter()
-        .find(|r| r["hub_id"] == "mock-asst-a")
+        .find(|r| r["hub_id"] == "io.github.test/mock-asst-a")
         .unwrap_or_else(|| panic!("fresh install must appear in /hub/installed: {installed}"));
     assert_eq!(
         row["installed_version"], row["current_version"],
@@ -374,20 +395,12 @@ async fn install_as_template_creates_template_with_null_owner() {
     let client = reqwest::Client::new();
 
     // Activate v9.9.1 — both compatible assistants are installable here.
-    client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.1-test" }))
-        .send()
-        .await
-        .expect("activate")
-        .error_for_status()
-        .expect("activate ok");
+    apply_catalog(&mock, &server, &admin.token, "9.9.1-test").await;
 
     let resp = client
         .post(server.api_url("/hub/assistant-templates/create"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-asst-a" }))
+        .json(&json!({ "hub_id": "io.github.test/mock-asst-a" }))
         .send()
         .await
         .expect("create template");
@@ -440,7 +453,7 @@ async fn install_as_template_requires_template_permission() {
             "Authorization",
             format!("Bearer {}", user_no_template.token),
         )
-        .json(&json!({ "hub_id": "mock-asst-a" }))
+        .json(&json!({ "hub_id": "io.github.test/mock-asst-a" }))
         .send()
         .await
         .expect("create template no perm");
@@ -487,20 +500,12 @@ async fn install_as_template_rejects_incompatible_item() {
     .await;
     let client = reqwest::Client::new();
 
-    client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.2-test" }))
-        .send()
-        .await
-        .expect("activate")
-        .error_for_status()
-        .expect("activate ok");
+    apply_catalog(&mock, &server, &admin.token, "9.9.2-test").await;
 
     let resp = client
         .post(server.api_url("/hub/assistant-templates/create"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-asst-future" }))
+        .json(&json!({ "hub_id": "io.github.test/mock-asst-future" }))
         .send()
         .await
         .expect("create incompatible template");
@@ -535,21 +540,13 @@ async fn install_as_template_duplicate_is_409() {
     .await;
     let client = reqwest::Client::new();
 
-    client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.1-test" }))
-        .send()
-        .await
-        .expect("activate")
-        .error_for_status()
-        .expect("activate ok");
+    apply_catalog(&mock, &server, &admin.token, "9.9.1-test").await;
 
     // First install succeeds.
     let first = client
         .post(server.api_url("/hub/assistant-templates/create"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-asst-a" }))
+        .json(&json!({ "hub_id": "io.github.test/mock-asst-a" }))
         .send()
         .await
         .expect("first install");
@@ -559,7 +556,7 @@ async fn install_as_template_duplicate_is_409() {
     let second = client
         .post(server.api_url("/hub/assistant-templates/create"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-asst-a" }))
+        .json(&json!({ "hub_id": "io.github.test/mock-asst-a" }))
         .send()
         .await
         .expect("second install");
@@ -600,20 +597,12 @@ async fn install_as_template_with_replace_existing_succeeds() {
     .await;
     let client = reqwest::Client::new();
 
-    client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.1-test" }))
-        .send()
-        .await
-        .expect("activate")
-        .error_for_status()
-        .expect("activate ok");
+    apply_catalog(&mock, &server, &admin.token, "9.9.1-test").await;
 
     let first: Json = client
         .post(server.api_url("/hub/assistant-templates/create"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-asst-a" }))
+        .json(&json!({ "hub_id": "io.github.test/mock-asst-a" }))
         .send()
         .await
         .expect("first install")
@@ -625,7 +614,7 @@ async fn install_as_template_with_replace_existing_succeeds() {
     let second: Json = client
         .post(server.api_url("/hub/assistant-templates/create"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-asst-a", "replace_existing": true }))
+        .json(&json!({ "hub_id": "io.github.test/mock-asst-a", "replace_existing": true }))
         .send()
         .await
         .expect("replace install")
@@ -653,7 +642,7 @@ async fn install_as_template_with_replace_existing_succeeds() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|a| a["id"] == "mock-asst-a")
+        .find(|a| a["name"] == "io.github.test/mock-asst-a")
         .expect("mock-asst-a in listing");
     let ids: Vec<String> = row["created_template_ids"]
         .as_array()
@@ -672,7 +661,7 @@ async fn install_as_template_with_replace_existing_succeeds() {
     let third: Json = client
         .post(server.api_url("/hub/assistant-templates/create"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-asst-a", "replace_existing": true }))
+        .json(&json!({ "hub_id": "io.github.test/mock-asst-a", "replace_existing": true }))
         .send()
         .await
         .expect("third install")
@@ -697,7 +686,7 @@ async fn install_as_template_with_replace_existing_succeeds() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|a| a["id"] == "mock-asst-a")
+        .find(|a| a["name"] == "io.github.test/mock-asst-a")
         .expect("mock-asst-a in final listing");
     let final_ids: Vec<String> = final_row["created_template_ids"]
         .as_array()
@@ -742,22 +731,14 @@ async fn replace_existing_preserves_is_default() {
     .await;
     let client = reqwest::Client::new();
 
-    client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.1-test" }))
-        .send()
-        .await
-        .expect("activate")
-        .error_for_status()
-        .expect("activate ok");
+    apply_catalog(&mock, &server, &admin.token, "9.9.1-test").await;
 
     // Install + promote to default in one shot (the API accepts the
     // is_default flag on install).
     let first: Json = client
         .post(server.api_url("/hub/assistant-templates/create"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-asst-a", "is_default": true }))
+        .json(&json!({ "hub_id": "io.github.test/mock-asst-a", "is_default": true }))
         .send()
         .await
         .expect("first install")
@@ -772,7 +753,7 @@ async fn replace_existing_preserves_is_default() {
     let second: Json = client
         .post(server.api_url("/hub/assistant-templates/create"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-asst-a", "replace_existing": true }))
+        .json(&json!({ "hub_id": "io.github.test/mock-asst-a", "replace_existing": true }))
         .send()
         .await
         .expect("replace install")
@@ -812,19 +793,11 @@ async fn replace_existing_aborts_on_validation_failure() {
     let client = reqwest::Client::new();
 
     // v9.9.1 has `mock-asst-a` compatible — install fine.
-    client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.1-test" }))
-        .send()
-        .await
-        .expect("activate v1")
-        .error_for_status()
-        .expect("activate v1 ok");
+    apply_catalog(&mock, &server, &admin.token, "9.9.1-test").await;
     let first: Json = client
         .post(server.api_url("/hub/assistant-templates/create"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-asst-a" }))
+        .json(&json!({ "hub_id": "io.github.test/mock-asst-a" }))
         .send()
         .await
         .expect("first install")
@@ -836,15 +809,7 @@ async fn replace_existing_aborts_on_validation_failure() {
     // Activate v9.9.2 — same `mock-asst-a` is still present and
     // compatible, but we'll attempt `replace_existing` with an
     // explicit overflow on description to force a 400.
-    client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.2-test" }))
-        .send()
-        .await
-        .expect("activate v2")
-        .error_for_status()
-        .expect("activate v2 ok");
+    apply_catalog(&mock, &server, &admin.token, "9.9.2-test").await;
 
     // Oversized description (>4 KiB) triggers
     // validate_assistant_text_lengths → 400. The prior template must
@@ -854,7 +819,7 @@ async fn replace_existing_aborts_on_validation_failure() {
         .post(server.api_url("/hub/assistant-templates/create"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&json!({
-            "hub_id": "mock-asst-a",
+            "hub_id": "io.github.test/mock-asst-a",
             "replace_existing": true,
             "description": oversized,
         }))
@@ -882,7 +847,7 @@ async fn replace_existing_aborts_on_validation_failure() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|a| a["id"] == "mock-asst-a")
+        .find(|a| a["name"] == "io.github.test/mock-asst-a")
         .expect("mock-asst-a in catalog");
     let ids: Vec<String> = row["created_template_ids"]
         .as_array()
@@ -924,33 +889,17 @@ async fn template_install_surfaces_in_installed_with_template_flag() {
 
     // Activate v9.9.1, install template, then activate v9.9.2 so the
     // template's hub_version (9.9.1) is now behind.
-    client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.1-test" }))
-        .send()
-        .await
-        .expect("activate v1")
-        .error_for_status()
-        .expect("activate v1 ok");
+    apply_catalog(&mock, &server, &admin.token, "9.9.1-test").await;
     client
         .post(server.api_url("/hub/assistant-templates/create"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-asst-a" }))
+        .json(&json!({ "hub_id": "io.github.test/mock-asst-a" }))
         .send()
         .await
         .expect("install")
         .error_for_status()
         .expect("install ok");
-    client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.2-test" }))
-        .send()
-        .await
-        .expect("activate v2")
-        .error_for_status()
-        .expect("activate v2 ok");
+    apply_catalog(&mock, &server, &admin.token, "9.9.2-test").await;
 
     let installed: Json = client
         .get(server.api_url("/hub/installed"))
@@ -965,7 +914,7 @@ async fn template_install_surfaces_in_installed_with_template_flag() {
         .as_array()
         .expect("items array")
         .iter()
-        .find(|r| r["hub_id"] == "mock-asst-a")
+        .find(|r| r["hub_id"] == "io.github.test/mock-asst-a")
         .expect("template install must appear in /hub/installed");
     assert_eq!(
         row["is_template_install"], true,
@@ -994,7 +943,7 @@ async fn template_install_surfaces_in_installed_with_template_flag() {
         INSERT INTO hub_entities
             (entity_type, entity_id, hub_id, hub_category, created_by, hub_version)
         VALUES
-            ('llm_model', gen_random_uuid(), 'mock-model-a', 'model', NULL, '9.9.1-test')
+            ('llm_model', gen_random_uuid(), 'io.github.test/mock-model-a', 'model', NULL, '9.9.1-test')
         "#,
     )
     .execute(&pool)
@@ -1014,7 +963,7 @@ async fn template_install_surfaces_in_installed_with_template_flag() {
         .as_array()
         .expect("items2 array")
         .iter()
-        .find(|r| r["hub_id"] == "mock-model-a")
+        .find(|r| r["hub_id"] == "io.github.test/mock-model-a")
         .expect("synthetic model row should appear in /hub/installed");
     assert_eq!(
         model_row["is_template_install"], false,
@@ -1049,15 +998,7 @@ async fn template_install_appears_in_created_template_ids_on_get_assistants() {
     .await;
     let client = reqwest::Client::new();
 
-    client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.1-test" }))
-        .send()
-        .await
-        .expect("activate")
-        .error_for_status()
-        .expect("activate ok");
+    apply_catalog(&mock, &server, &admin.token, "9.9.1-test").await;
 
     // Pre-install: created_template_ids is empty.
     let before: Json = client
@@ -1073,7 +1014,7 @@ async fn template_install_appears_in_created_template_ids_on_get_assistants() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|a| a["id"] == "mock-asst-a")
+        .find(|a| a["name"] == "io.github.test/mock-asst-a")
         .expect("mock-asst-a must be in catalog");
     assert_eq!(
         pre["created_template_ids"].as_array().map(|a| a.len()),
@@ -1084,7 +1025,7 @@ async fn template_install_appears_in_created_template_ids_on_get_assistants() {
     let install: Json = client
         .post(server.api_url("/hub/assistant-templates/create"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-asst-a" }))
+        .json(&json!({ "hub_id": "io.github.test/mock-asst-a" }))
         .send()
         .await
         .expect("install")
@@ -1106,7 +1047,7 @@ async fn template_install_appears_in_created_template_ids_on_get_assistants() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|a| a["id"] == "mock-asst-a")
+        .find(|a| a["name"] == "io.github.test/mock-asst-a")
         .expect("mock-asst-a must still be in catalog");
     let ids: Vec<String> = post["created_template_ids"]
         .as_array()
@@ -1146,20 +1087,12 @@ async fn user_install_honors_replace_existing_flag() {
     .await;
     let client = reqwest::Client::new();
 
-    client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.1-test" }))
-        .send()
-        .await
-        .expect("activate")
-        .error_for_status()
-        .expect("activate ok");
+    apply_catalog(&mock, &server, &admin.token, "9.9.1-test").await;
 
     let resp = client
         .post(server.api_url("/hub/assistants/create"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-asst-a", "replace_existing": true }))
+        .json(&json!({ "hub_id": "io.github.test/mock-asst-a", "replace_existing": true }))
         .send()
         .await
         .expect("install");
@@ -1207,20 +1140,12 @@ async fn install_as_system_mcp_creates_server_with_null_owner() {
     .await;
     let client = reqwest::Client::new();
 
-    client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.1-test" }))
-        .send()
-        .await
-        .expect("activate")
-        .error_for_status()
-        .expect("activate ok");
+    apply_catalog(&mock, &server, &admin.token, "9.9.1-test").await;
 
     let resp = client
         .post(server.api_url("/hub/mcp-servers/create-system"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-mcp-a" }))
+        .json(&json!({ "hub_id": "io.github.test/mock-mcp-a" }))
         .send()
         .await
         .expect("create system");
@@ -1269,7 +1194,7 @@ async fn install_as_system_mcp_requires_admin_permission() {
             "Authorization",
             format!("Bearer {}", user_no_admin.token),
         )
-        .json(&json!({ "hub_id": "mock-mcp-a" }))
+        .json(&json!({ "hub_id": "io.github.test/mock-mcp-a" }))
         .send()
         .await
         .expect("create system no perm");
@@ -1307,21 +1232,13 @@ async fn install_as_system_mcp_duplicate_is_409() {
     .await;
     let client = reqwest::Client::new();
 
-    client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.1-test" }))
-        .send()
-        .await
-        .expect("activate")
-        .error_for_status()
-        .expect("activate ok");
+    apply_catalog(&mock, &server, &admin.token, "9.9.1-test").await;
 
     // First install succeeds.
     let first = client
         .post(server.api_url("/hub/mcp-servers/create-system"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-mcp-a" }))
+        .json(&json!({ "hub_id": "io.github.test/mock-mcp-a" }))
         .send()
         .await
         .expect("first install");
@@ -1331,7 +1248,7 @@ async fn install_as_system_mcp_duplicate_is_409() {
     let second = client
         .post(server.api_url("/hub/mcp-servers/create-system"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-mcp-a" }))
+        .json(&json!({ "hub_id": "io.github.test/mock-mcp-a" }))
         .send()
         .await
         .expect("second install");
@@ -1371,20 +1288,12 @@ async fn install_as_system_mcp_with_replace_existing_succeeds() {
     .await;
     let client = reqwest::Client::new();
 
-    client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.1-test" }))
-        .send()
-        .await
-        .expect("activate")
-        .error_for_status()
-        .expect("activate ok");
+    apply_catalog(&mock, &server, &admin.token, "9.9.1-test").await;
 
     let first: Json = client
         .post(server.api_url("/hub/mcp-servers/create-system"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-mcp-a" }))
+        .json(&json!({ "hub_id": "io.github.test/mock-mcp-a" }))
         .send()
         .await
         .expect("first install")
@@ -1396,7 +1305,7 @@ async fn install_as_system_mcp_with_replace_existing_succeeds() {
     let second: Json = client
         .post(server.api_url("/hub/mcp-servers/create-system"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-mcp-a", "replace_existing": true }))
+        .json(&json!({ "hub_id": "io.github.test/mock-mcp-a", "replace_existing": true }))
         .send()
         .await
         .expect("replace install")
@@ -1425,7 +1334,7 @@ async fn install_as_system_mcp_with_replace_existing_succeeds() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|s| s["id"] == "mock-mcp-a")
+        .find(|s| s["name"] == "io.github.test/mock-mcp-a")
         .expect("mock-mcp-a in listing");
     let ids: Vec<String> = row["created_system_ids"]
         .as_array()
@@ -1444,7 +1353,7 @@ async fn install_as_system_mcp_with_replace_existing_succeeds() {
     let third: Json = client
         .post(server.api_url("/hub/mcp-servers/create-system"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-mcp-a", "replace_existing": true }))
+        .json(&json!({ "hub_id": "io.github.test/mock-mcp-a", "replace_existing": true }))
         .send()
         .await
         .expect("third install")
@@ -1467,7 +1376,7 @@ async fn install_as_system_mcp_with_replace_existing_succeeds() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|s| s["id"] == "mock-mcp-a")
+        .find(|s| s["name"] == "io.github.test/mock-mcp-a")
         .expect("mock-mcp-a in final listing");
     let final_ids: Vec<String> = final_row["created_system_ids"]
         .as_array()
@@ -1510,33 +1419,17 @@ async fn system_mcp_install_surfaces_in_installed_with_system_flag() {
     .await;
     let client = reqwest::Client::new();
 
-    client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.1-test" }))
-        .send()
-        .await
-        .expect("activate v1")
-        .error_for_status()
-        .expect("activate v1 ok");
+    apply_catalog(&mock, &server, &admin.token, "9.9.1-test").await;
     client
         .post(server.api_url("/hub/mcp-servers/create-system"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-mcp-a" }))
+        .json(&json!({ "hub_id": "io.github.test/mock-mcp-a" }))
         .send()
         .await
         .expect("install")
         .error_for_status()
         .expect("install ok");
-    client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.2-test" }))
-        .send()
-        .await
-        .expect("activate v2")
-        .error_for_status()
-        .expect("activate v2 ok");
+    apply_catalog(&mock, &server, &admin.token, "9.9.2-test").await;
 
     let installed: Json = client
         .get(server.api_url("/hub/installed"))
@@ -1551,7 +1444,7 @@ async fn system_mcp_install_surfaces_in_installed_with_system_flag() {
         .as_array()
         .expect("items array")
         .iter()
-        .find(|r| r["hub_id"] == "mock-mcp-a")
+        .find(|r| r["hub_id"] == "io.github.test/mock-mcp-a")
         .expect("system install must appear in /hub/installed");
     assert_eq!(
         row["is_system_mcp_install"], true,
@@ -1589,9 +1482,9 @@ async fn replace_existing_aborts_on_validation_failure_mcp() {
             prerelease: true,
             items: vec![MockItem {
                 category: "mcp-server",
-                id: "mock-mcp-a",
+                name: "io.github.test/mock-mcp-a",
                 min_ziee_version: Some("99.0.0"),
-                extra_yaml: None,
+                extra_json: None,
                     mcp_http: false,
             }],
         },
@@ -1600,9 +1493,9 @@ async fn replace_existing_aborts_on_validation_failure_mcp() {
             prerelease: true,
             items: vec![MockItem {
                 category: "mcp-server",
-                id: "mock-mcp-a",
+                name: "io.github.test/mock-mcp-a",
                 min_ziee_version: None,
-                extra_yaml: None,
+                extra_json: None,
                     mcp_http: false,
             }],
         },
@@ -1627,20 +1520,12 @@ async fn replace_existing_aborts_on_validation_failure_mcp() {
     .await;
     let client = reqwest::Client::new();
 
-    client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.1-test" }))
-        .send()
-        .await
-        .expect("activate v1")
-        .error_for_status()
-        .expect("activate v1 ok");
+    apply_catalog(&mock, &server, &admin.token, "9.9.1-test").await;
 
     let first: Json = client
         .post(server.api_url("/hub/mcp-servers/create-system"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-mcp-a" }))
+        .json(&json!({ "hub_id": "io.github.test/mock-mcp-a" }))
         .send()
         .await
         .expect("first install")
@@ -1650,22 +1535,14 @@ async fn replace_existing_aborts_on_validation_failure_mcp() {
     let first_id = first["server"]["id"].as_str().unwrap().to_string();
 
     // Activate v9.9.4 — same `mock-mcp-a` is now incompatible.
-    client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.4-test" }))
-        .send()
-        .await
-        .expect("activate v2")
-        .error_for_status()
-        .expect("activate v2 ok");
+    apply_catalog(&mock, &server, &admin.token, "9.9.4-test").await;
 
     // Attempt re-install — ensure_installable fires → 422.
     let resp = client
         .post(server.api_url("/hub/mcp-servers/create-system"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&json!({
-            "hub_id": "mock-mcp-a",
+            "hub_id": "io.github.test/mock-mcp-a",
             "replace_existing": true,
         }))
         .send()
@@ -1693,7 +1570,7 @@ async fn replace_existing_aborts_on_validation_failure_mcp() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|s| s["id"] == "mock-mcp-a")
+        .find(|s| s["name"] == "io.github.test/mock-mcp-a")
         .expect("mock-mcp-a in catalog");
     let ids: Vec<String> = row["created_system_ids"]
         .as_array()
@@ -1738,20 +1615,12 @@ async fn user_mcp_install_honors_replace_existing_flag() {
     .await;
     let client = reqwest::Client::new();
 
-    client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.1-test" }))
-        .send()
-        .await
-        .expect("activate")
-        .error_for_status()
-        .expect("activate ok");
+    apply_catalog(&mock, &server, &admin.token, "9.9.1-test").await;
 
     let resp = client
         .post(server.api_url("/hub/mcp-servers/create"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-mcp-a", "replace_existing": true }))
+        .json(&json!({ "hub_id": "io.github.test/mock-mcp-a", "replace_existing": true }))
         .send()
         .await
         .expect("install");
@@ -1804,20 +1673,12 @@ async fn replace_existing_preserves_admin_tunable_fields_mcp() {
     .await;
     let client = reqwest::Client::new();
 
-    client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.1-test" }))
-        .send()
-        .await
-        .expect("activate")
-        .error_for_status()
-        .expect("activate ok");
+    apply_catalog(&mock, &server, &admin.token, "9.9.1-test").await;
 
     let first: Json = client
         .post(server.api_url("/hub/mcp-servers/create-system"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-mcp-a" }))
+        .json(&json!({ "hub_id": "io.github.test/mock-mcp-a" }))
         .send()
         .await
         .expect("first install")
@@ -1878,7 +1739,7 @@ async fn replace_existing_preserves_admin_tunable_fields_mcp() {
     let second: Json = client
         .post(server.api_url("/hub/mcp-servers/create-system"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-mcp-a", "replace_existing": true }))
+        .json(&json!({ "hub_id": "io.github.test/mock-mcp-a", "replace_existing": true }))
         .send()
         .await
         .expect("replace")
@@ -1932,662 +1793,14 @@ async fn replace_existing_preserves_admin_tunable_fields_mcp() {
 }
 
 // ============================================================================
-// Required-input schema — placeholder seeding on install
+// REMOVED: required_env/required_headers placeholder seeding tests
 // ============================================================================
-//
-// The hub schema gained `required_env` + `required_headers` lists declaring
-// inputs the user must configure. The install path seeds the new MCP row's
-// env / header maps from each required input's `placeholder` so the user
-// sees in the settings page exactly what to replace (instead of an opaque
-// empty string).
-
-#[tokio::test]
-async fn install_with_required_inputs_seeds_placeholders_mcp() {
-    // Mock catalog with one MCP server declaring one required env var
-    // and one required header, each with a recognizable placeholder.
-    // After install, both placeholders must land in the new server
-    // row's `environment_variables` / `headers` maps verbatim.
-    let mock = spawn_mock_hub(vec![MockVersion {
-        version: "9.9.1-test",
-        prerelease: true,
-        items: vec![MockItem {
-            category: "mcp-server",
-            id: "mock-mcp-needs-config",
-            min_ziee_version: None,
-            extra_yaml: Some(
-                "required_env:\n\
-                 - name: MOCK_API_KEY\n\
-                 \x20\x20description: Mock service API key\n\
-                 \x20\x20placeholder: mk_xxxxxxxxxxxxxxxxxxxx\n\
-                 \x20\x20is_secret: true\n\
-                 required_headers:\n\
-                 - name: X-Mock-Tenant\n\
-                 \x20\x20description: Mock tenant identifier\n\
-                 \x20\x20placeholder: tenant_abc123\n\
-                 \x20\x20is_secret: false\n",
-            ),
-                    mcp_http: false,
-        }],
-    }])
-    .await;
-    let server = TestServer::start_with_options(crate::common::TestServerOptions {
-        extra_env: mock.test_env(),
-        ..Default::default()
-    })
-    .await;
-    let admin = create_user_with_permissions(
-        &server,
-        "admin",
-        &[
-            "hub::catalog::read",
-            "hub::catalog::manage",
-            "hub::mcp_servers::create",
-            "mcp_servers_admin::create",
-        ],
-    )
-    .await;
-    let client = reqwest::Client::new();
-
-    client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.1-test" }))
-        .send()
-        .await
-        .expect("activate")
-        .error_for_status()
-        .expect("activate ok");
-
-    let resp: Json = client
-        .post(server.api_url("/hub/mcp-servers/create-system"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-mcp-needs-config" }))
-        .send()
-        .await
-        .expect("install")
-        .json()
-        .await
-        .expect("parse install");
-    let server_id = uuid::Uuid::parse_str(resp["server"]["id"].as_str().unwrap())
-        .expect("server id");
-
-    // API-level assertions on the entries view. The MOCK_API_KEY
-    // placeholder lives in the encrypted column (is_secret=true), so
-    // the API redacts it to value=null on read; the X-Mock-Tenant
-    // placeholder is non-secret so its value is visible.
-    let env_entry = find_entry(
-        &resp["server"]["environment_variables_entries"],
-        "MOCK_API_KEY",
-    );
-    assert_eq!(
-        env_entry["is_secret"], true,
-        "MOCK_API_KEY must be marked secret: {resp}",
-    );
-    assert!(
-        env_entry["value"].is_null(),
-        "MOCK_API_KEY value must be redacted to null on read: {resp}",
-    );
-    let hdr_entry = find_entry(&resp["server"]["headers_entries"], "X-Mock-Tenant");
-    assert_eq!(
-        hdr_entry["is_secret"], false,
-        "X-Mock-Tenant must be marked non-secret: {resp}",
-    );
-    assert_eq!(
-        hdr_entry["value"], "tenant_abc123",
-        "X-Mock-Tenant must expose placeholder verbatim: {resp}",
-    );
-
-    // DB-direct assertions: confirm the encrypted-column path is
-    // actually populated (i.e. the placeholder didn't just land in the
-    // plain map for a secret entry).
-    let pool = sqlx::PgPool::connect(&server.database_url)
-        .await
-        .expect("connect to test db");
-    let row = sqlx::query!(
-        r#"SELECT environment_variables_encrypted as "env_enc!: serde_json::Value",
-                   environment_variables_secret_keys as "env_secret_keys!: Vec<String>",
-                   headers as "headers!: serde_json::Value",
-                   headers_secret_keys as "hdr_secret_keys!: Vec<String>"
-            FROM mcp_servers WHERE id = $1"#,
-        server_id,
-    )
-    .fetch_one(&pool)
-    .await
-    .expect("fetch mcp row");
-    assert!(
-        row.env_secret_keys.iter().any(|k| k == "MOCK_API_KEY"),
-        "environment_variables_secret_keys must contain MOCK_API_KEY: {:?}",
-        row.env_secret_keys,
-    );
-    let env_enc_value = row.env_enc.get("MOCK_API_KEY").and_then(|v| v.as_str());
-    assert!(
-        env_enc_value.map(|s| !s.is_empty()).unwrap_or(false),
-        "environment_variables_encrypted->>'MOCK_API_KEY' must be a \
-         non-empty string (the base64-encoded placeholder bytes): \
-         got {:?}",
-        env_enc_value,
-    );
-    let hdr_plain_value = row.headers.get("X-Mock-Tenant").and_then(|v| v.as_str());
-    assert_eq!(
-        hdr_plain_value,
-        Some("tenant_abc123"),
-        "headers->>'X-Mock-Tenant' must equal the plaintext placeholder: \
-         got {:?}",
-        hdr_plain_value,
-    );
-    assert!(
-        !row.hdr_secret_keys.iter().any(|k| k == "X-Mock-Tenant"),
-        "headers_secret_keys must NOT contain X-Mock-Tenant: {:?}",
-        row.hdr_secret_keys,
-    );
-}
-
-/// Lookup helper for `*_entries` arrays: returns the JSON value of the
-/// single entry whose `key` field equals `name`. Panics with a clear
-/// message when the key isn't found.
-fn find_entry<'a>(arr: &'a Json, name: &str) -> &'a Json {
-    arr.as_array()
-        .unwrap_or_else(|| panic!("expected entries array, got: {arr}"))
-        .iter()
-        .find(|e| e["key"] == name)
-        .unwrap_or_else(|| panic!("entry with key {name} not found in: {arr}"))
-}
-
-#[tokio::test]
-async fn replace_existing_preserves_env_var_overrides_mcp() {
-    // Install with placeholder, edit env var to a real value, then
-    // re-install with `replace_existing: true`. The real value must
-    // survive — otherwise Re-install silently breaks the server by
-    // stomping the admin's real token with the placeholder again.
-    let mock = spawn_mock_hub(vec![MockVersion {
-        version: "9.9.1-test",
-        prerelease: true,
-        items: vec![MockItem {
-            category: "mcp-server",
-            id: "mock-mcp-needs-key",
-            min_ziee_version: None,
-            extra_yaml: Some(
-                "required_env:\n\
-                 - name: API_KEY\n\
-                 \x20\x20placeholder: placeholder_value\n\
-                 \x20\x20is_secret: true\n",
-            ),
-                    mcp_http: false,
-        }],
-    }])
-    .await;
-    let server = TestServer::start_with_options(crate::common::TestServerOptions {
-        extra_env: mock.test_env(),
-        ..Default::default()
-    })
-    .await;
-    let admin = create_user_with_permissions(
-        &server,
-        "admin",
-        &[
-            "hub::catalog::read",
-            "hub::catalog::manage",
-            "hub::mcp_servers::create",
-            "mcp_servers_admin::create",
-            "mcp_servers_admin::edit",
-        ],
-    )
-    .await;
-    let client = reqwest::Client::new();
-
-    client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.1-test" }))
-        .send()
-        .await
-        .expect("activate")
-        .error_for_status()
-        .expect("activate ok");
-
-    let first: Json = client
-        .post(server.api_url("/hub/mcp-servers/create-system"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-mcp-needs-key" }))
-        .send()
-        .await
-        .expect("install")
-        .json()
-        .await
-        .expect("parse install");
-    let first_id = first["server"]["id"].as_str().unwrap().to_string();
-    let first_uuid = uuid::Uuid::parse_str(&first_id).expect("first id");
-
-    // Sanity: the install seeded the placeholder as a secret entry
-    // (value redacted to null on the API surface).
-    let first_entry = find_entry(
-        &first["server"]["environment_variables_entries"],
-        "API_KEY",
-    );
-    assert_eq!(first_entry["is_secret"], true);
-    assert!(first_entry["value"].is_null());
-
-    // Admin pastes the real value via the new entries shape.
-    let promote = client
-        .put(server.api_url(&format!("/mcp/system-servers/{}", first_id)))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({
-            "environment_variables_entries": [
-                { "key": "API_KEY", "value": "real_secret_token_admin_pasted", "is_secret": true }
-            ]
-        }))
-        .send()
-        .await
-        .expect("promote");
-    assert_eq!(promote.status(), 200);
-
-    // Capture the encrypted bytes BEFORE the re-install — these are
-    // what carry-forward must preserve.
-    let pool = sqlx::PgPool::connect(&server.database_url)
-        .await
-        .expect("connect to test db");
-    let before = sqlx::query!(
-        r#"SELECT environment_variables_encrypted as "env_enc!: serde_json::Value",
-                   environment_variables_secret_keys as "env_secret_keys!: Vec<String>"
-            FROM mcp_servers WHERE id = $1"#,
-        first_uuid,
-    )
-    .fetch_one(&pool)
-    .await
-    .expect("fetch before");
-    let encrypted_before = before
-        .env_enc
-        .get("API_KEY")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .expect("API_KEY must be in encrypted column after PUT");
-    assert!(!encrypted_before.is_empty());
-    assert!(before.env_secret_keys.iter().any(|k| k == "API_KEY"));
-
-    let second: Json = client
-        .post(server.api_url("/hub/mcp-servers/create-system"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-mcp-needs-key", "replace_existing": true }))
-        .send()
-        .await
-        .expect("replace")
-        .json()
-        .await
-        .expect("parse replace");
-    // `replace_existing` deletes the prior row and creates a NEW one
-    // with a fresh UUID — read the new id from the response, not the
-    // first install's id.
-    let second_id = uuid::Uuid::parse_str(second["server"]["id"].as_str().unwrap())
-        .expect("second id");
-
-    // After re-install, decrypt the encrypted column and assert the
-    // PLAINTEXT is preserved. Byte-equality of the ciphertext is NOT
-    // a correctness criterion — `pgp_sym_encrypt` includes a random
-    // IV per call, so re-encrypting the same plaintext produces
-    // different ciphertext. What matters is that the carry-forward
-    // round-trips the value through decrypt → re-encrypt without
-    // losing it.
-    let _ = encrypted_before; // kept for context — referenced below
-    let after = sqlx::query!(
-        r#"SELECT environment_variables_encrypted as "env_enc!: serde_json::Value",
-                   environment_variables_secret_keys as "env_secret_keys!: Vec<String>"
-            FROM mcp_servers WHERE id = $1"#,
-        second_id,
-    )
-    .fetch_one(&pool)
-    .await
-    .expect("fetch after");
-    let encrypted_after = after
-        .env_enc
-        .get("API_KEY")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .expect("API_KEY must still be in encrypted column after re-install");
-    assert!(!encrypted_after.is_empty());
-
-    // Decrypt with the test storage key (configured in the test
-    // harness — see harness_inner.rs::init_storage_key). pgcrypto's
-    // pgp_sym_decrypt expects raw bytes, so base64-decode first.
-    let plaintext: (String,) = sqlx::query_as(
-        "SELECT pgp_sym_decrypt(decode($1, 'base64'), $2)",
-    )
-    .bind(&encrypted_after)
-    .bind("test-storage-key-for-pgcrypto-min-32-chars-long")
-    .fetch_one(&pool)
-    .await
-    .expect("decrypt API_KEY");
-    assert_eq!(
-        plaintext.0, "real_secret_token_admin_pasted",
-        "re-install MUST carry forward the admin's real value via \
-         decrypt → re-encrypt round-trip (not stomp it back to the \
-         catalog placeholder)",
-    );
-    assert!(after.env_secret_keys.iter().any(|k| k == "API_KEY"));
-}
-
-#[tokio::test]
-async fn replace_existing_merges_new_catalog_keys_with_admin_values() {
-    // Regression guard for the merge-not-replace carry-forward (Round
-    // 1 of the required-input audit). Without this test, the prior
-    // `_preserves_env_var_overrides_mcp` test would pass on EITHER
-    // the broken (wholesale replace) OR the fixed (merge) carry-
-    // forward — both produce the same single-key result. This test
-    // distinguishes the two by introducing a SECOND required_env key
-    // in the catalog v2 that the admin's prior row doesn't have:
-    //
-    //   v1 catalog: required_env = [KEY_A]
-    //   admin PUTs KEY_A = "real_a"
-    //   v2 catalog: required_env = [KEY_A, KEY_B] (new placeholder pb)
-    //   re-install
-    //
-    //   broken (REPLACE): env = prior_env = {KEY_A: "real_a"}
-    //                     → KEY_B silently dropped, server breaks
-    //   fixed (MERGE):   env = {KEY_A: "real_a", KEY_B: "pb"}
-    //                     → admin still sees the new placeholder
-    let mock = spawn_mock_hub(vec![
-        MockVersion {
-            version: "9.9.2-test",
-            prerelease: true,
-            items: vec![MockItem {
-                category: "mcp-server",
-                id: "mock-mcp-evolving",
-                min_ziee_version: None,
-                extra_yaml: Some(
-                    "required_env:\n\
-                     - name: KEY_A\n\
-                     \x20\x20placeholder: pa\n\
-                     \x20\x20is_secret: true\n\
-                     - name: KEY_B\n\
-                     \x20\x20placeholder: pb\n\
-                     \x20\x20is_secret: true\n",
-                ),
-                    mcp_http: false,
-            }],
-        },
-        MockVersion {
-            version: "9.9.1-test",
-            prerelease: true,
-            items: vec![MockItem {
-                category: "mcp-server",
-                id: "mock-mcp-evolving",
-                min_ziee_version: None,
-                extra_yaml: Some(
-                    "required_env:\n\
-                     - name: KEY_A\n\
-                     \x20\x20placeholder: pa\n\
-                     \x20\x20is_secret: true\n",
-                ),
-                    mcp_http: false,
-            }],
-        },
-    ])
-    .await;
-    let server = TestServer::start_with_options(crate::common::TestServerOptions {
-        extra_env: mock.test_env(),
-        ..Default::default()
-    })
-    .await;
-    let admin = create_user_with_permissions(
-        &server,
-        "admin",
-        &[
-            "hub::catalog::read",
-            "hub::catalog::manage",
-            "hub::mcp_servers::create",
-            "mcp_servers_admin::create",
-            "mcp_servers_admin::edit",
-        ],
-    )
-    .await;
-    let client = reqwest::Client::new();
-
-    // v1: install + promote KEY_A to a real value.
-    client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.1-test" }))
-        .send()
-        .await
-        .expect("activate v1")
-        .error_for_status()
-        .expect("activate v1 ok");
-
-    let first: Json = client
-        .post(server.api_url("/hub/mcp-servers/create-system"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-mcp-evolving" }))
-        .send()
-        .await
-        .expect("first install")
-        .json()
-        .await
-        .expect("parse first");
-    let first_id = first["server"]["id"].as_str().unwrap().to_string();
-    let first_uuid = uuid::Uuid::parse_str(&first_id).expect("first id");
-    // v1 install seeded KEY_A as a secret entry (placeholder pa lives
-    // in the encrypted column, redacted to value=null on read).
-    let key_a_entry = find_entry(
-        &first["server"]["environment_variables_entries"],
-        "KEY_A",
-    );
-    assert_eq!(key_a_entry["is_secret"], true);
-    assert!(key_a_entry["value"].is_null());
-
-    let promote = client
-        .put(server.api_url(&format!("/mcp/system-servers/{}", first_id)))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({
-            "environment_variables_entries": [
-                { "key": "KEY_A", "value": "real_a", "is_secret": true }
-            ]
-        }))
-        .send()
-        .await
-        .expect("promote");
-    assert_eq!(promote.status(), 200);
-
-    // Capture KEY_A's encrypted bytes BEFORE v2 re-install.
-    let pool = sqlx::PgPool::connect(&server.database_url)
-        .await
-        .expect("connect to test db");
-    let before = sqlx::query!(
-        r#"SELECT environment_variables_encrypted as "env_enc!: serde_json::Value"
-            FROM mcp_servers WHERE id = $1"#,
-        first_uuid,
-    )
-    .fetch_one(&pool)
-    .await
-    .expect("fetch before");
-    let key_a_before = before
-        .env_enc
-        .get("KEY_A")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .expect("KEY_A must be in encrypted column after PUT");
-    assert!(!key_a_before.is_empty());
-
-    // Activate v2 — catalog now declares KEY_B as also-required.
-    client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.2-test" }))
-        .send()
-        .await
-        .expect("activate v2")
-        .error_for_status()
-        .expect("activate v2 ok");
-
-    let second: Json = client
-        .post(server.api_url("/hub/mcp-servers/create-system"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-mcp-evolving", "replace_existing": true }))
-        .send()
-        .await
-        .expect("replace")
-        .json()
-        .await
-        .expect("parse replace");
-    // `replace_existing` deletes the prior row and creates a NEW one
-    // with a fresh UUID — read the new id from the response, not the
-    // first install's id.
-    let second_id = uuid::Uuid::parse_str(second["server"]["id"].as_str().unwrap())
-        .expect("second id");
-
-    // MERGE assertion: KEY_A's PLAINTEXT survives the carry-forward
-    // (admin's real value preserved via decrypt → re-encrypt round
-    // trip — bytes differ because pgcrypto uses a random IV per
-    // encryption, but plaintext is the load-bearing contract).
-    // KEY_B's placeholder is freshly seeded into the encrypted
-    // column, and BOTH keys appear in
-    // environment_variables_secret_keys. WOULD FAIL on broken
-    // wholesale-replace carry-forward — KEY_B would be absent.
-    let _ = key_a_before; // kept for context
-    let after = sqlx::query!(
-        r#"SELECT environment_variables_encrypted as "env_enc!: serde_json::Value",
-                   environment_variables_secret_keys as "env_secret_keys!: Vec<String>"
-            FROM mcp_servers WHERE id = $1"#,
-        second_id,
-    )
-    .fetch_one(&pool)
-    .await
-    .expect("fetch after");
-    let key_a_after = after
-        .env_enc
-        .get("KEY_A")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .expect("KEY_A must still be in encrypted column after re-install");
-    let key_a_plaintext: (String,) = sqlx::query_as(
-        "SELECT pgp_sym_decrypt(decode($1, 'base64'), $2)",
-    )
-    .bind(&key_a_after)
-    .bind("test-storage-key-for-pgcrypto-min-32-chars-long")
-    .fetch_one(&pool)
-    .await
-    .expect("decrypt KEY_A");
-    assert_eq!(
-        key_a_plaintext.0, "real_a",
-        "merge MUST preserve admin's prior KEY_A plaintext through \
-         the carry-forward (decrypt → re-encrypt round-trip)",
-    );
-    let key_b_after = after
-        .env_enc
-        .get("KEY_B")
-        .and_then(|v| v.as_str())
-        .map(|s| !s.is_empty())
-        .unwrap_or(false);
-    assert!(
-        key_b_after,
-        "merge MUST seed newly-required KEY_B placeholder from v2 \
-         catalog into the encrypted column (this is the load-bearing \
-         assertion that proves merge-not-replace): env_enc = {:?}",
-        after.env_enc,
-    );
-    assert!(
-        after.env_secret_keys.iter().any(|k| k == "KEY_A"),
-        "secret_keys must contain KEY_A: {:?}",
-        after.env_secret_keys,
-    );
-    assert!(
-        after.env_secret_keys.iter().any(|k| k == "KEY_B"),
-        "secret_keys must contain KEY_B (the merge-not-replace proof): {:?}",
-        after.env_secret_keys,
-    );
-}
-
-#[tokio::test]
-async fn replace_existing_preserves_header_overrides_mcp() {
-    // Header carry-forward symmetric to the env-var test: install,
-    // PUT a header to a real value, re-install, assert the header
-    // survives. Covers the `required_headers` path specifically.
-    let mock = spawn_mock_hub(vec![MockVersion {
-        version: "9.9.1-test",
-        prerelease: true,
-        items: vec![MockItem {
-            category: "mcp-server",
-            id: "mock-mcp-needs-header",
-            min_ziee_version: None,
-            extra_yaml: Some(
-                "required_headers:\n\
-                 - name: X-Tenant-ID\n\
-                 \x20\x20placeholder: tenant_placeholder\n\
-                 \x20\x20is_secret: false\n",
-            ),
-                    mcp_http: false,
-        }],
-    }])
-    .await;
-    let server = TestServer::start_with_options(crate::common::TestServerOptions {
-        extra_env: mock.test_env(),
-        ..Default::default()
-    })
-    .await;
-    let admin = create_user_with_permissions(
-        &server,
-        "admin",
-        &[
-            "hub::catalog::read",
-            "hub::catalog::manage",
-            "hub::mcp_servers::create",
-            "mcp_servers_admin::create",
-            "mcp_servers_admin::edit",
-        ],
-    )
-    .await;
-    let client = reqwest::Client::new();
-
-    client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "version": "9.9.1-test" }))
-        .send()
-        .await
-        .expect("activate")
-        .error_for_status()
-        .expect("activate ok");
-
-    let first: Json = client
-        .post(server.api_url("/hub/mcp-servers/create-system"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-mcp-needs-header" }))
-        .send()
-        .await
-        .expect("install")
-        .json()
-        .await
-        .expect("parse install");
-    let first_id = first["server"]["id"].as_str().unwrap().to_string();
-
-    let promote = client
-        .put(server.api_url(&format!("/mcp/system-servers/{}", first_id)))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({
-            "headers_entries": [
-                { "key": "X-Tenant-ID", "value": "tenant_real_id_admin_pasted", "is_secret": false }
-            ]
-        }))
-        .send()
-        .await
-        .expect("promote");
-    assert_eq!(promote.status(), 200);
-
-    let second: Json = client
-        .post(server.api_url("/hub/mcp-servers/create-system"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "hub_id": "mock-mcp-needs-header", "replace_existing": true }))
-        .send()
-        .await
-        .expect("replace")
-        .json()
-        .await
-        .expect("parse replace");
-
-    // X-Tenant-ID is a non-secret header, so its value is visible in
-    // the entries view (no encryption / redaction).
-    let entry = find_entry(&second["server"]["headers_entries"], "X-Tenant-ID");
-    assert_eq!(entry["is_secret"], false, "X-Tenant-ID must stay non-secret: {second}");
-    assert_eq!(
-        entry["value"], "tenant_real_id_admin_pasted",
-        "re-install MUST carry forward header values set by admin: {second}",
-    );
-}
+// The legacy install path read `hub_mcp_server.required_env[*].placeholder`
+// and seeded the new MCP server's env map with those values. The
+// `required_env` + `required_headers` fields were dropped from
+// `HubMCPServer` when the body moved to strict server.json (env vars now
+// declared per-package in `packages[i].environmentVariables`, headers in
+// `remotes[i].headers`). The four tests that exercised the old
+// placeholder-seeding + replace-existing-merging behavior are deleted (not
+// ignored — the feature is gone, see memory note
+// `feedback_no_ignore_unless_platform`).

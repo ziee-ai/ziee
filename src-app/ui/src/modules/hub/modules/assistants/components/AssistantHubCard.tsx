@@ -47,7 +47,7 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
     try {
       // Create a user assistant from the hub assistant via store action
       await Stores.HubAssistants.createFromHub({
-        hub_id: assistant.id,
+        hub_id: assistant.name,
         name: assistant.name,
         description: assistant.description,
         instructions: assistant.instructions,
@@ -89,7 +89,7 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
       // single transaction when a new default is set, which would
       // silently bump the existing default off auto-clone duty.
       await Stores.HubAssistants.createTemplateFromHub({
-        hub_id: assistant.id,
+        hub_id: assistant.name,
         name: assistant.name,
         description: assistant.description,
         instructions: assistant.instructions,
@@ -123,8 +123,8 @@ for new users.`,
         hoverable
         className="cursor-pointer relative group hover:!shadow-md transition-shadow h-full"
         onClick={() => setShowDetails(true)}
-        data-assistant-id={assistant.id}
-        data-testid={`hub-assistant-card-${assistant.id}`}
+        data-assistant-id={assistant.name}
+        data-testid={`hub-assistant-card-${assistant.name}`}
       >
         <div className="flex items-start gap-3 flex-wrap">
           {/* Assistant Info */}
@@ -136,6 +136,13 @@ for new users.`,
                   <Text className="font-medium cursor-pointer">
                     {assistant.display_name}
                   </Text>
+                  {/* v2 per-entry version. Surfaced so admins can spot a
+                      catalog bump at a glance — the "Updates" view
+                      compares this against the installed entity's
+                      `hub_version` per-row, not per-catalog. */}
+                  {assistant.version && (
+                    <Tag className="text-xs !m-0">v{assistant.version}</Tag>
+                  )}
                   {assistant.category && (
                     <Tag color="geekblue" className="text-xs">
                       {assistant.category}
@@ -253,18 +260,38 @@ for new users.`,
                       {assistant.author}
                     </span>
                   )}
-                  {assistant.recommended_models &&
-                    assistant.recommended_models.length > 0 && (
-                      <span>
-                        <Text type="secondary" className="text-xs">
-                          Models:
-                        </Text>{' '}
-                        {assistant.recommended_models.slice(0, 2).join(', ')}
-                        {assistant.recommended_models.length > 2 && '...'}
-                      </span>
-                    )}
                 </Flex>
               </div>
+
+              {/* v2 Phase 7: dependencies[] replaces recommended_models
+                  / recommended_mcp_servers. Show as "Works best with"
+                  chips with the reverse-DNS leaf + version range. */}
+              {assistant.dependencies &&
+                assistant.dependencies.length > 0 && (
+                  <div className="mb-2">
+                    <Text type="secondary" className="text-xs mr-2">
+                      Works best with:
+                    </Text>
+                    <Flex
+                      wrap
+                      className="gap-1"
+                      style={{ display: 'inline-flex' }}
+                    >
+                      {assistant.dependencies.map(dep => {
+                        const leaf = dep.name.split('/').slice(-1)[0]
+                        return (
+                          <Tag
+                            key={`${dep.kind}-${dep.name}`}
+                            color={dep.kind === 'model' ? 'cyan' : 'purple'}
+                            className="text-xs"
+                          >
+                            {leaf} {dep.versionRange}
+                          </Tag>
+                        )
+                      })}
+                    </Flex>
+                  </div>
+                )}
             </div>
           </div>
         </div>

@@ -6,7 +6,12 @@ import {
   openEditGroupDrawer,
   closeDrawer,
 } from './helpers/user-navigation'
-import { createGroup, updateGroup, deleteGroup } from './helpers/group-actions'
+import {
+  createGroup,
+  updateGroup,
+  deleteGroup,
+  enableAdvancedPermissions,
+} from './helpers/group-actions'
 import {
   assertGroupExists,
   assertGroupNotExists,
@@ -96,50 +101,33 @@ test.describe('User Groups CRUD Operations', () => {
 
   test('should show error for invalid permissions JSON', async ({ page }) => {
     await openCreateGroupDrawer(page)
+    const drawer = page.locator('.ant-drawer.ant-drawer-open')
 
     const timestamp = Date.now()
-    await page.getByLabel(/group name/i).fill(`TestGroup${timestamp}`)
-    await page
-      .getByLabel(/permissions.*json/i)
-      .fill('invalid json') // Invalid JSON
+    await drawer.getByLabel(/group name/i).fill(`TestGroup${timestamp}`)
 
-    // Drawer submit label was standardised to "Create" (audit I-2);
-    // scope by primary-button class to avoid colliding with the list
-    // CTA which still carries aria-label="Create group".
-    const submitButton = page
-      .locator('.ant-drawer.ant-drawer-open .ant-btn-primary[type="submit"]')
-    await submitButton.click()
+    // The permissions field defaults to the picker; validation of raw
+    // arrays lives in the Advanced JSON editor, which surfaces an inline
+    // role="alert" error rather than a Form.Item explain message.
+    await enableAdvancedPermissions(drawer)
+    await drawer.getByLabel(/permissions.*json/i).fill('invalid json')
 
-    // Check for validation error
-    await expect(
-      page.locator('.ant-form-item-explain-error', {
-        hasText: /invalid json/i,
-      })
-    ).toBeVisible()
+    await expect(drawer.getByText(/invalid json format/i)).toBeVisible()
   })
 
   test('should show error for invalid permission values', async ({ page }) => {
     await openCreateGroupDrawer(page)
+    const drawer = page.locator('.ant-drawer.ant-drawer-open')
 
     const timestamp = Date.now()
-    await page.getByLabel(/group name/i).fill(`TestGroup${timestamp}`)
-    await page
+    await drawer.getByLabel(/group name/i).fill(`TestGroup${timestamp}`)
+
+    await enableAdvancedPermissions(drawer)
+    await drawer
       .getByLabel(/permissions.*json/i)
-      .fill('["invalid::permission"]') // Invalid permission
+      .fill('["invalid::permission"]') // valid JSON, unknown permission
 
-    // Drawer submit label was standardised to "Create" (audit I-2);
-    // scope by primary-button class to avoid colliding with the list
-    // CTA which still carries aria-label="Create group".
-    const submitButton = page
-      .locator('.ant-drawer.ant-drawer-open .ant-btn-primary[type="submit"]')
-    await submitButton.click()
-
-    // Check for validation error
-    await expect(
-      page.locator('.ant-form-item-explain-error', {
-        hasText: /invalid permissions/i,
-      })
-    ).toBeVisible()
+    await expect(drawer.getByText(/invalid permissions/i)).toBeVisible()
   })
 
   test('should edit an existing group', async ({ page }) => {

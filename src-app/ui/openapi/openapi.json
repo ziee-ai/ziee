@@ -404,11 +404,11 @@
             }
           },
           "201": {
-            "description": "Admin-view summary of an auth provider. The `config` JSONB is\n returned with `client_secret` and any sensitive key contents\n MASKED — see handlers.rs::mask_provider_config.",
+            "description": "Response body for `POST /admin/auth-providers`. Wraps the persisted\n row in an envelope so we can attach a `connection_warning` when a\n create-time probe failed and the row was auto-downgraded to\n `enabled=false`. Mirrors `llm_repository`'s create-response shape.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AuthProviderResponse"
+                  "$ref": "#/components/schemas/CreateAuthProviderResponse"
                 }
               }
             }
@@ -6061,6 +6061,81 @@
         ]
       }
     },
+    "/api/llm-models/repository-files": {
+      "get": {
+        "tags": [
+          "LLM Models"
+        ],
+        "summary": "List model files in a repository",
+        "description": "Detect the model files available at a Hugging Face or GitHub repo path before downloading, classified the same way the engine loads them.",
+        "operationId": "LlmModel.listRepositoryFiles",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "branch",
+            "description": "Branch / revision (defaults to \"main\").",
+            "schema": {
+              "description": "Branch / revision (defaults to \"main\").",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "description": "Repo path within the source, e.g. \"meta-llama/Llama-3.1-8B-Instruct\".",
+            "required": true,
+            "schema": {
+              "description": "Repo path within the source, e.g. \"meta-llama/Llama-3.1-8B-Instruct\".",
+              "type": "string"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "repository_id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Upstream rejected the request (auth required or rate-limited)"
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepositoryFileListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid repository path or branch"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Repository or path not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/llm-models/downloads": {
       "get": {
         "tags": [
@@ -8016,6 +8091,124 @@
           },
           "404": {
             "description": "Message not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations/{id}/summarization-mode": {
+      "get": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Get the per-conversation summarization mode",
+        "description": "Returns the conversation's `summarization_mode` override (`inherit` / `on` / `off`). Defaults to `inherit` when the conversation has no explicit override. Returns 404 if the conversation doesn't exist or the caller doesn't own it.",
+        "operationId": "Conversation.getSummarizationMode",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View chat conversations",
+                        "name": "ConversationsRead",
+                        "value": "conversations::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response for `GET /api/conversations/{id}/summarization-mode`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationSummarizationModeResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Conversation not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Set the per-conversation summarization mode",
+        "description": "Updates the conversation's `summarization_mode` override (`inherit` / `on` / `off`). Setting `inherit` removes any stored override. Returns 400 on invalid value, 404 if the conversation doesn't exist or the caller doesn't own it.",
+        "operationId": "Conversation.setSummarizationMode",
+        "requestBody": {
+          "description": "Request body for `PUT /api/conversations/{id}/summarization-mode`.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateConversationSummarizationModeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit conversation titles and metadata",
+                        "name": "ConversationsEdit",
+                        "value": "conversations::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response for `GET /api/conversations/{id}/summarization-mode`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationSummarizationModeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid summarization_mode"
+          },
+          "404": {
+            "description": "Conversation not found"
           }
         },
         "security": [
@@ -12509,7 +12702,7 @@
             }
           },
           "200": {
-            "description": "Response for `POST /api/hub/refresh` — what changed.",
+            "description": "Response for `POST /api/hub/refresh` — what changed.\n\n There is no `cosign_verified` field — trust is HTTPS-only to GitHub\n Pages, no Sigstore signature. The frontend should not surface a\n \"verified\" badge anywhere.",
             "content": {
               "application/json": {
                 "schema": {
@@ -12600,7 +12793,7 @@
             }
           },
           "200": {
-            "description": "Full manifest for one hub item, returned by `GET /api/hub/manifest/:id`.\n\n A struct (not a `#[serde(tag)]` enum) because the tagged-enum +\n `Box<Struct>` form produces an empty OpenAPI schema — clients\n couldn't see the payload fields. Exactly one of `model` /\n `assistant` / `mcp_server` is populated, matching `category`.",
+            "description": "Full manifest for one hub item, returned by `GET /api/hub/manifest/:id`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -12617,132 +12810,6 @@
           },
           "404": {
             "description": "Manifest not found in catalog"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/hub/releases": {
-      "get": {
-        "tags": [
-          "Hub"
-        ],
-        "summary": "List catalog versions published on GitHub (admin only)",
-        "description": "\n\n**Required Permission:** `hub::catalog::read`\n\nView hub catalog versions + pending updates",
-        "operationId": "Hub.getReleases",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "View hub catalog versions + pending updates",
-                        "name": "HubCatalogRead",
-                        "value": "hub::catalog::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: hub::catalog::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Response for `GET /api/hub/releases` — the versions published on\n GitHub, plus which is currently installed (`active_version`) and the\n admin's pin (`pinned_version`, None = tracking latest).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HubReleasesResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "500": {
-            "description": "GitHub unreachable"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/hub/activate": {
-      "post": {
-        "tags": [
-          "Hub"
-        ],
-        "summary": "Pin + activate a catalog version server-wide (admin only)",
-        "description": "\n\n**Required Permission:** `hub::catalog::manage`\n\nRefresh + activate hub catalog versions",
-        "operationId": "Hub.activateVersion",
-        "requestBody": {
-          "description": "Request body for `POST /api/hub/activate`. `version: null` clears the\n pin (track latest); otherwise pins + activates that exact version\n (semver without the leading `v`).",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ActivateHubVersionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Refresh + activate hub catalog versions",
-                        "name": "HubCatalogManage",
-                        "value": "hub::catalog::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: hub::catalog::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Response for `POST /api/hub/refresh` — what changed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HubCatalogRefreshResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid version string"
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "500": {
-            "description": "Fetch / verify failure — pin not persisted, previous catalog kept"
           }
         },
         "security": [
@@ -14126,6 +14193,115 @@
         ]
       }
     },
+    "/api/memory/admin/fts/rebuild": {
+      "post": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Rebuild user_memories.content_tsv with a new dictionary",
+        "description": "Long-running; client should poll GET /memory/admin/fts/rebuild/status until completed_at is set.",
+        "operationId": "MemoryAdmin.ftsRebuild",
+        "requestBody": {
+          "description": "Request body for `POST /api/memory/admin/fts/rebuild`. Drops + re-creates\n `user_memories.content_tsv` with the new dictionary baked into the\n GENERATED ALWAYS expression. Long-running; the caller polls\n `GET /api/memory/admin/fts/rebuild/status` to see when it finishes.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FtsRebuildRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update memory admin settings (embedding model, enable/disable).",
+                        "name": "MemoryAdminManage",
+                        "value": "memory::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/memory/admin/fts/rebuild/status": {
+      "get": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Read FTS rebuild status",
+        "description": "\n\n**Required Permission:** `memory::admin::read`\n\nRead memory admin settings (embedding model, defaults).",
+        "operationId": "MemoryAdmin.ftsRebuildStatus",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read memory admin settings (embedding model, defaults).",
+                        "name": "MemoryAdminRead",
+                        "value": "memory::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response body for `GET /api/memory/admin/fts/rebuild/status`. All\n three fields are derived from `memory_admin_settings.fts_rebuild_*`.\n `in_progress` is `started_at IS NOT NULL AND completed_at IS NULL`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FtsRebuildStatus"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/_test/memory/extract": {
       "post": {
         "tags": [
@@ -14184,19 +14360,68 @@
         ]
       }
     },
-    "/api/_test/memory/summarize": {
-      "post": {
+    "/api/summarization/settings": {
+      "get": {
         "tags": [
-          "Memory"
+          "Summarization"
         ],
-        "summary": "Test-only: trigger summary refresh synchronously (debug builds)",
-        "description": "\n\n**Required Permission:** `memory::admin::manage`\n\nUpdate memory admin settings (embedding model, enable/disable).",
-        "operationId": "MemoryTest.summarize",
+        "summary": "Read deployment-wide summarization settings",
+        "description": "\n\n**Required Permission:** `summarization::settings::read`\n\nRead deployment-wide summarization settings (model + thresholds + prompt overrides).",
+        "operationId": "SummarizationAdmin.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read deployment-wide summarization settings (model + thresholds + prompt overrides).",
+                        "name": "SummarizationSettingsRead",
+                        "value": "summarization::settings::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummarizationAdminSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Update deployment-wide summarization settings",
+        "description": "Tri-state partial update — every field is optional. Missing field = no change; explicit JSON null = clear back to compiled default. Returns 400 on range / placeholder / keep<trigger / unknown-llm-model violations before any DB write.",
+        "operationId": "SummarizationAdmin.update",
         "requestBody": {
+          "description": "Partial-update request for the singleton admin settings row.\n\n The four nullable fields (model id + the two prompts) use the\n `Option<Option<T>>` tri-state:\n   missing  → `None`        → leave the column alone\n   `null`   → `Some(None)`  → clear the column\n   value    → `Some(Some(v))` → set the column",
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/TestSummarizeRequest"
+                "$ref": "#/components/schemas/UpdateSummarizationAdminSettingsRequest"
               }
             }
           },
@@ -14214,13 +14439,133 @@
                   "details": {
                     "required_permissions": [
                       {
-                        "description": "Update memory admin settings (embedding model, enable/disable).",
-                        "name": "MemoryAdminManage",
-                        "value": "memory::admin::manage"
+                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
+                        "name": "SummarizationSettingsManage",
+                        "value": "summarization::settings::manage"
                       }
                     ]
                   },
-                  "error": "Missing required permission: memory::admin::manage",
+                  "error": "Missing required permission: summarization::settings::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummarizationAdminSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed (out-of-range token threshold, missing prompt placeholder, keep>=trigger, unknown default_summarization_model_id, or model that is not chat-capable)."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations/{id}/summary": {
+      "get": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Get the active-branch summary for a conversation (null if none)",
+        "description": "\n\n**Required Permission:** `conversations::read`\n\nView chat conversations",
+        "operationId": "Summarization.getConversationSummary",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View chat conversations",
+                        "name": "ConversationsRead",
+                        "value": "conversations::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConversationSummary"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/_test/summarization/refresh": {
+      "post": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Test-only: trigger summary refresh synchronously (debug builds)",
+        "description": "\n\n**Required Permission:** `summarization::settings::manage`\n\nUpdate deployment-wide summarization settings (enable, model, thresholds, prompts).",
+        "operationId": "SummarizationTest.refresh",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestRefreshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
+                        "name": "SummarizationSettingsManage",
+                        "value": "summarization::settings::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::manage",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
@@ -14477,6 +14822,59 @@
         }
       }
     },
+    "/api/server-update/status": {
+      "get": {
+        "tags": [
+          "Server Update"
+        ],
+        "summary": "Get server update-availability status",
+        "description": "Cached server update-availability status (admin).",
+        "operationId": "ServerUpdate.getStatus",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View the cached server update-availability status.",
+                        "name": "ServerUpdateRead",
+                        "value": "server_update::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: server_update::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Cached server update-availability status (admin endpoint).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "no content"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/sync/subscribe": {
       "get": {
         "tags": [
@@ -14544,19 +14942,6 @@
       }
     },
     "schemas": {
-      "ActivateHubVersionRequest": {
-        "description": "Request body for `POST /api/hub/activate`. `version: null` clears the\n pin (track latest); otherwise pins + activates that exact version\n (semver without the leading `v`).",
-        "type": "object",
-        "properties": {
-          "version": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "default": null
-          }
-        }
-      },
       "ApprovalMode": {
         "description": "Approval mode for conversation MCP settings",
         "oneOf": [
@@ -15093,6 +15478,7 @@
             "default": null
           },
           "hub_version": {
+            "description": "Build marker stamped by the publisher. This is NOT the per-entry\n update signal — per-entry `IndexItem.version` is the truth. Kept\n for diagnostics + the seed-version test guard.",
             "type": "string"
           },
           "items": {
@@ -15122,9 +15508,9 @@
             "const": "seed"
           },
           {
-            "description": "Downloaded + sha256 + cosign-verified from ziee-ai/hub.",
+            "description": "Fetched from the Pages branch at `hub_pages_base()`. HTTPS-only\n trust — no cosign / sha256.",
             "type": "string",
-            "const": "github"
+            "const": "pages"
           }
         ]
       },
@@ -15650,6 +16036,62 @@
           "message_count"
         ]
       },
+      "ConversationSummarizationModeResponse": {
+        "description": "Response for `GET /api/conversations/{id}/summarization-mode`.",
+        "type": "object",
+        "properties": {
+          "summarization_mode": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "summarization_mode"
+        ]
+      },
+      "ConversationSummary": {
+        "type": "object",
+        "properties": {
+          "branch_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "message_count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "model_used": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "summarized_up_to_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "summary_text": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "branch_id",
+          "summary_text",
+          "message_count",
+          "created_at",
+          "updated_at"
+        ]
+      },
       "CoreMemoryBlock": {
         "type": "object",
         "properties": {
@@ -15828,6 +16270,25 @@
           "name",
           "provider_type",
           "config"
+        ]
+      },
+      "CreateAuthProviderResponse": {
+        "description": "Response body for `POST /admin/auth-providers`. Wraps the persisted\n row in an envelope so we can attach a `connection_warning` when a\n create-time probe failed and the row was auto-downgraded to\n `enabled=false`. Mirrors `llm_repository`'s create-response shape.",
+        "type": "object",
+        "properties": {
+          "connection_warning": {
+            "description": "Populated when the provider was created with `enabled=true` but\n the connection probe failed; the row is persisted with\n `enabled=false` and this carries the failure reason so the UI\n can render an inline warning. `null` on the happy path.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider": {
+            "$ref": "#/components/schemas/AuthProviderResponse"
+          }
+        },
+        "required": [
+          "provider"
         ]
       },
       "CreateBranchRequest": {
@@ -16328,11 +16789,20 @@
             "format": "uuid"
           },
           "quantization_name": {
-            "description": "Optional: Select quantization option (defaults to main file)",
+            "description": "Optional: name of the quantization within the chosen source's\n `quantizations[]`. Defaults to the entry with `is_default: true`,\n falling back to `quantizations[0]` if no entry sets it.",
             "type": [
               "string",
               "null"
             ]
+          },
+          "source_index": {
+            "description": "Optional: index into `HubModel.sources[]` (default 0). Phase-7\n addition — v1 had a single source per model so the index was\n implicit.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint",
+            "minimum": 0
           }
         },
         "required": [
@@ -16469,6 +16939,14 @@
             ]
           }
         }
+      },
+      "DependencyKind": {
+        "description": "`kind` discriminant on `HubDependency`. On the wire the values are\n `model` / `mcp-server` (kebab-case).",
+        "type": "string",
+        "enum": [
+          "model",
+          "mcp-server"
+        ]
       },
       "DeviceType": {
         "description": "Device types for ML model inference",
@@ -17533,6 +18011,7 @@
         ]
       },
       "FileFormat2": {
+        "description": "Same shape as the v1 `FileFormat`. Kept exactly as before so older\n catalog entries + the `llm_model` module's translation layer continue\n to deserialize.",
         "type": "string",
         "enum": [
           "gguf",
@@ -17568,6 +18047,18 @@
           "total",
           "page",
           "per_page"
+        ]
+      },
+      "FileRole": {
+        "description": "Coarse role of a single file, surfaced to the UI for grouping.",
+        "type": "string",
+        "enum": [
+          "weight",
+          "index",
+          "config",
+          "tokenizer",
+          "vocab",
+          "other"
         ]
       },
       "FileVersion": {
@@ -17651,6 +18142,44 @@
           "processing_metadata",
           "created_by",
           "created_at"
+        ]
+      },
+      "FtsRebuildRequest": {
+        "description": "Request body for `POST /api/memory/admin/fts/rebuild`. Drops + re-creates\n `user_memories.content_tsv` with the new dictionary baked into the\n GENERATED ALWAYS expression. Long-running; the caller polls\n `GET /api/memory/admin/fts/rebuild/status` to see when it finishes.",
+        "type": "object",
+        "properties": {
+          "dictionary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "dictionary"
+        ]
+      },
+      "FtsRebuildStatus": {
+        "description": "Response body for `GET /api/memory/admin/fts/rebuild/status`. All\n three fields are derived from `memory_admin_settings.fts_rebuild_*`.\n `in_progress` is `started_at IS NOT NULL AND completed_at IS NULL`.",
+        "type": "object",
+        "properties": {
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "in_progress": {
+            "type": "boolean"
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "in_progress"
         ]
       },
       "GPUComputeCapabilities": {
@@ -18130,15 +18659,22 @@
         ]
       },
       "HubAssistant": {
-        "description": "Hub assistant entry",
+        "description": "Hub assistant entry.\n\n Like HubModel, the identity envelope is reverse-DNS via `name`. The\n body has a single `dependencies[]` list instead of separate\n `recommended_models` / `recommended_mcp_servers` / `use_cases` /\n `example_prompts` / `popularity_score` fields.",
         "type": "object",
         "properties": {
+          "$schema": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "description": {
             "type": [
               "string",
               "null"
             ]
           },
+          "_meta": true,
           "author": {
             "type": [
               "string",
@@ -18178,19 +18714,14 @@
               "format": "uuid"
             }
           },
-          "display_name": {
-            "type": "string"
-          },
-          "example_prompts": {
-            "type": [
-              "array",
-              "null"
-            ],
+          "dependencies": {
+            "description": "Soft dependencies (`{kind: model|mcp-server, name, versionRange}`).\n FE renders as \"Works best with\" chips; NOT auto-installed.",
+            "type": "array",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/HubDependency"
             }
           },
-          "id": {
+          "display_name": {
             "type": "string"
           },
           "instructions": {
@@ -18200,22 +18731,20 @@
             ]
           },
           "name": {
+            "description": "Reverse-DNS canonical name (the catalog lookup key).",
             "type": "string"
           },
           "parameters": true,
-          "popularity_score": {
-            "type": "number",
-            "format": "double",
-            "default": 0.0
-          },
-          "recommended_models": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "string"
-            }
+          "repository": {
+            "description": "Source repository pointer (rare for assistants, but supported).",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HubRepository"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "tags": {
             "type": "array",
@@ -18224,18 +18753,22 @@
               "type": "string"
             }
           },
-          "use_cases": {
+          "version": {
+            "description": "Per-entry semver. See `HubModel.version`.",
             "type": [
-              "array",
+              "string",
               "null"
-            ],
-            "items": {
-              "type": "string"
-            }
+            ]
+          },
+          "websiteUrl": {
+            "description": "Project / website link.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
-          "id",
           "name",
           "display_name",
           "parameters"
@@ -18268,12 +18801,9 @@
         ]
       },
       "HubCatalogRefreshResponse": {
-        "description": "Response for `POST /api/hub/refresh` — what changed.",
+        "description": "Response for `POST /api/hub/refresh` — what changed.\n\n There is no `cosign_verified` field — trust is HTTPS-only to GitHub\n Pages, no Sigstore signature. The frontend should not surface a\n \"verified\" badge anywhere.",
         "type": "object",
         "properties": {
-          "cosign_verified": {
-            "type": "boolean"
-          },
           "new_version": {
             "type": "string"
           },
@@ -18289,8 +18819,7 @@
         },
         "required": [
           "updated",
-          "new_version",
-          "cosign_verified"
+          "new_version"
         ]
       },
       "HubCatalogVersionResponse": {
@@ -18336,6 +18865,28 @@
           "assistant",
           "mcp-server",
           "model"
+        ]
+      },
+      "HubDependency": {
+        "description": "One informational dependency on a hub entry. Used on both\n `HubModel` and `HubAssistant`. NOT auto-installed — the FE shows\n \"Works best with…\" chips and routes the user to the relevant hub\n page if they click through.",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/DependencyKind"
+          },
+          "name": {
+            "description": "Reverse-DNS canonical name of the dependency.",
+            "type": "string"
+          },
+          "versionRange": {
+            "description": "Semver range (`\"^1.0.0\"`, `\"*\"`, etc.). Free-form on the wire;\n not validated by the consumer.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "versionRange"
         ]
       },
       "HubEntity": {
@@ -18493,44 +19044,28 @@
         ]
       },
       "HubMCPServer": {
-        "description": "Hub MCP server entry",
+        "description": "Hub MCP server entry — strict official `server.json` shape.\n\n Mirrors `https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json`\n verbatim. There are no flat ziee fields (no `command` / `args` /\n `url` / `headers` / `display_name` / `category` / `required_env`) —\n every install path drives off `packages[]` / `remotes[]` (the\n official transports).",
         "type": "object",
         "properties": {
+          "$schema": {
+            "description": "Schema URL the manifest claims to conform to.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "description": {
+            "description": "One-line human description from the manifest body.",
             "type": [
               "string",
               "null"
             ]
           },
-          "args": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "string"
-            }
-          },
-          "author": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "category": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "command": {
-            "type": [
-              "string",
-              "null"
-            ]
+          "_meta": {
+            "description": "Namespaced extras. Preserves\n `io.modelcontextprotocol.registry/*` keys from ingested entries\n so the frontend can surface \"official MCP registry\" provenance\n without a separate lookup."
           },
           "created_ids": {
-            "description": "Array of entity IDs created by current user from this hub server",
+            "description": "Array of entity IDs created by current user from this hub server.\n Populated by the handler at response time; never present in the\n raw manifest JSON.",
             "type": "array",
             "default": [],
             "items": {
@@ -18547,173 +19082,50 @@
               "format": "uuid"
             }
           },
-          "display_name": {
-            "type": "string"
-          },
-          "documentation_url": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "download_count": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32"
-          },
-          "environment_variables": true,
-          "example_prompts": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "string"
-            }
-          },
-          "example_tools": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "string"
-            }
-          },
-          "headers": true,
-          "homepage": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "icon_url": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "id": {
-            "type": "string"
-          },
-          "license": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "minimum_version": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "name": {
+            "description": "Required: reverse-DNS canonical name (e.g.\n `io.github.modelcontextprotocol/filesystem`). Catalog lookup key.",
             "type": "string"
           },
-          "platform_support": {
+          "packages": {
+            "description": "Official `server.json`: stdio-runnable packages\n (npm/pypi/oci/nuget/mcpb via npx/uvx/docker/dnx). Ziee filters\n to npx/uvx + stdio at install time.",
             "type": [
               "array",
               "null"
             ],
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/McpPackage"
             }
           },
-          "popularity_score": {
-            "type": "number",
-            "format": "double",
-            "default": 0.0
-          },
-          "rating": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double"
-          },
-          "repository_url": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "required_env": {
-            "description": "User-supplied env vars the server needs to function (auth\n tokens, connection strings, etc.). Declarative — surfaced in\n the hub card / details drawer and used by the install path to\n seed placeholder values into the new MCP server's env map.\n Empty for servers that need no user-supplied env (filesystem,\n memory). `serde(default)` lets pre-schema catalog versions\n deserialize cleanly with no entries.",
-            "type": "array",
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/HubRequiredInput"
-            }
-          },
-          "required_headers": {
-            "description": "User-supplied HTTP headers the server needs to function.\n Used for HTTP/SSE transports where a header takes direct user\n input (e.g. a per-tenant ID). Headers that interpolate from\n env vars via `${VAR}` should be declared via `required_env`\n instead — the env path is the canonical surface and avoids\n double-listing. Empty for stdio servers + HTTP servers where\n every header is either static or env-interpolated.",
-            "type": "array",
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/HubRequiredInput"
-            }
-          },
-          "requires_desktop": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "supports_sampling": {
-            "description": "Whether this MCP server uses MCP sampling (sends sampling/createMessage requests back to the platform)",
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "tags": {
-            "type": "array",
-            "default": [],
-            "items": {
-              "type": "string"
-            }
-          },
-          "tool_categories": {
+          "remotes": {
+            "description": "Official `server.json`: remote transports\n (streamable-http + sse). Preferred over `packages` if present.",
             "type": [
               "array",
               "null"
             ],
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/McpRemote"
             }
           },
-          "tool_count": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32"
-          },
-          "transport_type": {
-            "type": [
-              "string",
-              "null"
+          "repository": {
+            "description": "Source repository pointer.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HubRepository"
+              },
+              {
+                "type": "null"
+              }
             ]
-          },
-          "url": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "use_cases": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "string"
-            }
           },
           "version": {
+            "description": "Per-entry semver matching the IndexItem.version.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "websiteUrl": {
+            "description": "Project homepage (`websiteUrl` on the wire).",
             "type": [
               "string",
               "null"
@@ -18721,13 +19133,11 @@
           }
         },
         "required": [
-          "id",
-          "name",
-          "display_name"
+          "name"
         ]
       },
       "HubManifest": {
-        "description": "Full manifest for one hub item, returned by `GET /api/hub/manifest/:id`.\n\n A struct (not a `#[serde(tag)]` enum) because the tagged-enum +\n `Box<Struct>` form produces an empty OpenAPI schema — clients\n couldn't see the payload fields. Exactly one of `model` /\n `assistant` / `mcp_server` is populated, matching `category`.",
+        "description": "Full manifest for one hub item, returned by `GET /api/hub/manifest/:id`.",
         "type": "object",
         "properties": {
           "assistant": {
@@ -18781,19 +19191,24 @@
         ]
       },
       "HubModel": {
-        "description": "Hub model entry",
+        "description": "Hub model entry.\n\n The identity envelope is reverse-DNS: the manifest's `name` is\n `io.github.<contributor>/<slug>` and is the catalog lookup key\n everywhere. The body shape is parallel to MCP's `packages[]`: a\n list of `sources[]` (installable variants), with each source\n carrying its own `quantizations[]`.",
         "type": "object",
         "properties": {
+          "$schema": {
+            "description": "Schema URL the manifest claims to conform to. Informational on\n the consumer; lets the catalog format evolve.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "description": {
             "type": [
               "string",
               "null"
             ]
           },
-          "auth_required": {
-            "description": "Whether authentication is required to download/use this model",
-            "type": "boolean",
-            "default": false
+          "_meta": {
+            "description": "Namespaced extras (`io.modelcontextprotocol.registry/*`\n preserved from ingested entries on the MCP side). Free-form for\n forward compat."
           },
           "author": {
             "type": [
@@ -18811,13 +19226,6 @@
               }
             ]
           },
-          "context_length": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32"
-          },
           "created_ids": {
             "description": "Array of model IDs downloaded by ANYONE from this hub model (system-wide)",
             "type": "array",
@@ -18827,19 +19235,14 @@
               "format": "uuid"
             }
           },
+          "dependencies": {
+            "description": "Soft, informational dependencies (`{kind, name, versionRange}`).\n Surfaced in the FE; NOT auto-installed (mirrors `HubAssistant`).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HubDependency"
+            }
+          },
           "display_name": {
-            "type": "string"
-          },
-          "file_format": {
-            "$ref": "#/components/schemas/FileFormat2"
-          },
-          "homepage_url": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "id": {
             "type": "string"
           },
           "language_support": {
@@ -18857,51 +19260,33 @@
               "null"
             ]
           },
-          "main_filename": {
-            "type": "string"
-          },
           "name": {
+            "description": "Reverse-DNS canonical name. Matches the IndexItem.name in the\n catalog; used as the lookup key on every install / manifest\n endpoint.",
             "type": "string"
           },
-          "popularity_score": {
-            "type": "number",
-            "format": "double"
-          },
-          "public": {
-            "type": "boolean",
-            "default": false
-          },
-          "quantization_options": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "$ref": "#/components/schemas/HubModelQuantizationOption"
-            }
-          },
-          "recommended_engine": {
-            "type": [
-              "string",
-              "null"
+          "recommended_parameters": true,
+          "repository": {
+            "description": "Source repository pointer. Mirrors `HubMCPServer.repository`.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HubRepository"
+              },
+              {
+                "type": "null"
+              }
             ]
           },
-          "recommended_engine_settings": true,
-          "recommended_parameters": true,
-          "repository_path": {
-            "type": "string"
-          },
-          "repository_url": {
-            "type": "string"
-          },
-          "size_gb": {
-            "type": "number",
-            "format": "double"
-          },
           "source_auth_configured": {
-            "description": "Whether the model's SOURCE repository currently has a credential\n configured. Computed at response time (never read from the catalog file)\n by joining against `llm_repositories`. When `auth_required` is true and\n this is false, the UI blocks download and points the user to\n Settings → LLM Repositories.",
+            "description": "Whether the model's SOURCE repository currently has a credential\n configured. Computed at response time (never read from the catalog file)\n by checking, for each `sources[].environment_variables` entry marked\n `is_required + is_secret`, whether the matching `llm_repositories` row\n has a credential. `true` if at least one source has its required\n secret credential configured. When all required-secret sources are\n unconfigured, the UI blocks download and points the user to\n Settings → LLM Repositories.",
             "type": "boolean",
             "default": false
+          },
+          "sources": {
+            "description": "Installable variants. Required — the publisher always sets at\n least one. Parallel to `HubMCPServer.packages`.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelSource"
+            }
           },
           "tags": {
             "type": "array",
@@ -18909,40 +19294,26 @@
             "items": {
               "type": "string"
             }
+          },
+          "version": {
+            "description": "Per-entry semver. Absent on legacy seed entries; the\n `/installed` updates path treats `None` as \"no update\n available\".",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "websiteUrl": {
+            "description": "Project / model homepage URL.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
-          "id",
           "name",
           "display_name",
-          "repository_url",
-          "repository_path",
-          "main_filename",
-          "file_format",
-          "size_gb",
-          "popularity_score"
-        ]
-      },
-      "HubModelQuantizationOption": {
-        "type": "object",
-        "properties": {
-          "main_filename": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "size_gb": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double"
-          }
-        },
-        "required": [
-          "name",
-          "main_filename"
+          "sources"
         ]
       },
       "HubQuery": {
@@ -18972,98 +19343,34 @@
           "version"
         ]
       },
-      "HubReleaseInfo": {
-        "description": "One published catalog version on GitHub Releases. Surfaced by\n `list_releases()` for the admin version picker.",
+      "HubRepository": {
+        "description": "Repository pointer block on a manifest entry. Mirrors the official\n `server.json` `Repository` object.",
         "type": "object",
         "properties": {
-          "prerelease": {
-            "type": "boolean"
-          },
-          "published_at": {
+          "id": {
             "type": [
               "string",
               "null"
             ]
           },
-          "tag": {
-            "description": "Full git tag (e.g. `v0.0.2-alpha`).",
-            "type": "string"
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
-          "version": {
-            "description": "Version without the leading `v` (e.g. `0.0.2-alpha`).",
+          "subfolder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
             "type": "string"
           }
         },
         "required": [
-          "version",
-          "tag",
-          "prerelease"
-        ]
-      },
-      "HubReleasesResponse": {
-        "description": "Response for `GET /api/hub/releases` — the versions published on\n GitHub, plus which is currently installed (`active_version`) and the\n admin's pin (`pinned_version`, None = tracking latest).",
-        "type": "object",
-        "properties": {
-          "active_version": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "pinned_version": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "releases": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/HubReleaseInfo"
-            }
-          }
-        },
-        "required": [
-          "releases"
-        ]
-      },
-      "HubRequiredInput": {
-        "description": "Declares a single required input the user must configure on a\n hub-installed MCP server. ONE struct shape is reused for both\n `HubMCPServer.required_env` (environment variables) and\n `HubMCPServer.required_headers` (HTTP headers) — the target map\n is implied by which field the entry appears in.\n\n Currently the entries only carry display + placeholder metadata;\n the install path uses `placeholder` to seed the new MCP server's\n env/header map so the user sees in `/settings/mcp-servers`\n exactly what to replace. Manifest writers should set\n `is_secret: true` for credential-bearing inputs (env vars\n carrying tokens; headers carrying tokens directly) and `false`\n for non-secret config like tenant IDs.",
-        "type": "object",
-        "properties": {
-          "description": {
-            "description": "1-2 sentence human description. Rendered under the name in\n the hub details drawer.",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "docs_url": {
-            "description": "Optional link to upstream docs explaining how to obtain the\n value. Rendered as \"Get one →\" in the details drawer.",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "is_secret": {
-            "description": "True when the value carries credential material — UI hides\n the value behind a reveal toggle on the edit form, redacts\n from logs. Defaults to `false` via serde; manifest writers\n should set explicitly per the README convention (true for\n most env vars, false for most direct-input headers).",
-            "type": "boolean",
-            "default": false
-          },
-          "name": {
-            "description": "Key name. For `required_env` this is the env var name (e.g.\n `GITHUB_TOKEN`); for `required_headers` it's the HTTP header\n name (e.g. `X-Tenant-ID`).",
-            "type": "string"
-          },
-          "placeholder": {
-            "description": "Recommended example value. The install path writes this\n verbatim into the new MCP server row so the user sees a\n realistic-looking-but-invalid value to replace. When None,\n install writes an empty string and the UI shows just the\n name + description.",
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "name"
+          "url"
         ]
       },
       "HubVersionResponse": {
@@ -19144,6 +19451,16 @@
       "IndexItem": {
         "type": "object",
         "properties": {
+          "title": {
+            "description": "Human display label. Optional — cards fall back to the slug\n portion of `name` when absent.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "_meta": {
+            "description": "Namespaced extras (e.g.\n `io.modelcontextprotocol.registry/*` on ingested entries)."
+          },
           "added_at": {
             "type": [
               "string",
@@ -19153,10 +19470,8 @@
           "category": {
             "$ref": "#/components/schemas/HubCategory"
           },
-          "id": {
-            "type": "string"
-          },
           "manifest_path": {
+            "description": "Pages-relative path to the full manifest, e.g.\n `\"models/io.github.ziee-ai/llama-3-8b-instruct/1.0.0.json\"`.\n Used as both the HTTP fetch suffix and the on-disk cache path.\n Validated by `is_safe_manifest_path` before any file or URL use.",
             "type": "string"
           },
           "min_ziee_version": {
@@ -19166,6 +19481,7 @@
             ]
           },
           "name": {
+            "description": "Reverse-DNS canonical name, unique across sources.\n ziee-native entries use `io.github.<contributor>/<slug>`; ingested\n MCP entries keep their official `name`. Matches the per-entry\n manifest's top-level `name` field; used as the lookup key for\n `manifest()` / `ensure_installable()` / install requests\n (the `hub_id` field on `/hub/*/create` is this value).",
             "type": "string"
           },
           "summary": {
@@ -19181,12 +19497,18 @@
           "verified": {
             "type": "boolean",
             "default": false
+          },
+          "version": {
+            "description": "Per-entry semver. This — not the monolithic `Catalog.hub_version`\n — is the update signal.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
-          "id",
-          "category",
           "name",
+          "category",
           "summary",
           "manifest_path"
         ]
@@ -20324,6 +20646,79 @@
           }
         }
       },
+      "McpArgument": {
+        "description": "Discriminated argument under `McpPackage.runtime_arguments` /\n `package_arguments`. The official schema is union-shaped\n `{ type: \"positional\" | \"named\", ... }`; this struct flattens both\n arms (the `name` field is present only for `\"named\"` args) so a\n single shape can deserialize either.",
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": {
+            "description": "`\"positional\"` (default if absent) | `\"named\"`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "format": {
+            "description": "One of `\"string\"` / `\"boolean\"` / `\"number\"` / `\"filepath\"`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "choices": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "default": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "isRepeated": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "isRequired": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "Flag name for `\"named\"` args (e.g. `\"--workspace\"`). None for\n positionals.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value": {
+            "description": "The argument's literal value, when fixed. For an arg the user\n supplies at install time, `default` / `value_hint` may be the\n only populated fields.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "valueHint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "McpConfig": {
         "description": "MCP configuration for chat requests",
         "type": "object",
@@ -20338,6 +20733,160 @@
         },
         "required": [
           "mcp_servers"
+        ]
+      },
+      "McpKeyValueInput": {
+        "description": "One env var / header descriptor on an `McpPackage` /\n `McpRemote`. The official schema names this `KeyValueInput`.",
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "format": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "choices": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "default": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "isRequired": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "isSecret": {
+            "type": "boolean",
+            "default": false
+          },
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "description": "Default / suggested value. Mapped into the new MCP\n server's env/header map verbatim so the user has a clear\n \"replace with your token\" surface.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "McpPackage": {
+        "description": "One installable package entry under `HubMCPServer.packages`.\n Mirrors the official `server.json` `Package` object.",
+        "type": "object",
+        "properties": {
+          "environmentVariables": {
+            "description": "Env vars the package needs. Become the ziee MCP server's\n `environment_variables` map.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/McpKeyValueInput"
+            }
+          },
+          "fileSha256": {
+            "description": "Optional sha256 (hex) for OCI / mcpb pinning. Not verified by\n the consumer today; kept on the wire for forward compat.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "identifier": {
+            "description": "Package name / identifier in the registry (e.g.\n `@modelcontextprotocol/server-filesystem`).",
+            "type": "string"
+          },
+          "packageArguments": {
+            "description": "Args passed to the package itself, after `identifier`.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/McpArgument"
+            }
+          },
+          "registryBaseUrl": {
+            "description": "Optional alternate registry hostname.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "registryType": {
+            "description": "e.g. `\"npm\"` / `\"pypi\"` / `\"oci\"` / `\"nuget\"` / `\"mcpb\"`. Ziee\n filters to npm/pypi + npx/uvx at install time; other values are\n kept on the wire for forward compat but won't be launched.",
+            "type": "string"
+          },
+          "runtimeArguments": {
+            "description": "Args passed to the runtime (e.g. `[\"-y\"]` for npx).\n Prepended to the spawned argv (before `identifier` +\n `package_arguments`).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/McpArgument"
+            }
+          },
+          "runtimeHint": {
+            "description": "`\"npx\"` / `\"uvx\"` / `\"docker\"` / `\"dnx\"`. The install path uses\n this verbatim as the spawned command for the supported ones\n (npx/uvx); other values are kept for forward compat.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "transport": {
+            "description": "Transport object (official spec — anyOf StdioTransport /\n StreamableHttpTransport / SseTransport, each shaped as\n `{ \"type\": \"stdio\" | \"streamable-http\" | \"sse\" }`). Ziee filters\n `packages[]` to stdio at install time; the consumer doesn't read\n this value today but keeps the struct around to round-trip the\n official shape unchanged.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/McpTransport"
+              }
+            ]
+          },
+          "version": {
+            "description": "Package version pin. Required by the official schema; the\n install path appends it to the command line as part of the\n package spec (e.g. `npx -y <identifier>@<version>`).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "registryType",
+          "identifier",
+          "version",
+          "transport"
+        ]
+      },
+      "McpRemote": {
+        "description": "One remote transport under `HubMCPServer.remotes`. Mirrors the\n official `server.json` `Remote` object.",
+        "type": "object",
+        "properties": {
+          "type": {
+            "description": "Official spelling: `\"streamable-http\"` (kebab-case) or `\"sse\"`.\n Mapped to ziee `TransportType::Http` / `TransportType::Sse` at\n install.",
+            "type": "string"
+          },
+          "headers": {
+            "description": "HTTP headers (may include `${VAR}` interpolation refs that the\n install path templates against `environment_variables`).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/McpKeyValueInput"
+            }
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "url"
         ]
       },
       "McpServer": {
@@ -20790,6 +21339,19 @@
           }
         }
       },
+      "McpTransport": {
+        "description": "Transport block on an `McpPackage`. The official `server.json`\n schema models this as an `anyOf` over three single-field structs\n (`{type: \"stdio\"}`, `{type: \"streamable-http\"}`, `{type: \"sse\"}`).\n We flatten that to one struct with a single `type` field — round-\n trips all three shapes cleanly.",
+        "type": "object",
+        "properties": {
+          "type": {
+            "description": "`\"stdio\"` | `\"streamable-http\"` | `\"sse\"`. Consumer doesn't\n read this today; ziee install path implies stdio whenever a\n `package[]` entry is selected.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
       "McpUserPolicy": {
         "description": "The global MCP user-policy row (singleton; id always = 1 in the DB).\n\n Drives what regular users can install:\n   - `allowed_transports == []` → no Add button, no Hub MCP tab for\n     non-admins.\n   - `'stdio' ∈ allowed_transports` → user-installed stdio MCP rows\n     get `run_in_sandbox = true` + `sandbox_flavor =\n     user_stdio_sandbox_flavor` force-applied at create/update time.\n\n Admin-only edits via PUT /api/mcp/user-policy (perm\n `McpUserPolicyEdit`); read is open to any authenticated user (the\n UI needs it to gate the Add button + Hub tab visibility).",
         "type": "object",
@@ -20889,12 +21451,44 @@
           "enabled": {
             "type": "boolean"
           },
-          "full_summary_prompt": {
-            "description": "Override for the full-resummarize LLM prompt. NULL = use the\n compiled-in default. Must contain `{transcript}` if set.",
+          "fts_candidate_multiplier": {
+            "description": "Hybrid retrieval pulls top-K × this many candidates from each arm\n before RRF fusion. Higher = more recall, more DB load.",
+            "type": "integer",
+            "format": "int32"
+          },
+          "fts_dictionary": {
+            "description": "Postgres dictionary used by `websearch_to_tsquery` at retrieval\n time AND in the GENERATED expression on `user_memories.content_tsv`.\n `simple` = no stemming, language-agnostic. `english`/`spanish`/etc.\n = Porter stemmer for that language only. Changing this requires\n the explicit rebuild flow (`POST /memory/admin/fts/rebuild`); the\n PUT settings handler returns 409 on a dictionary change.",
+            "type": "string"
+          },
+          "fts_enabled": {
+            "description": "FTS arm kill switch. When `false`, the retriever skips FTS even\n in the no-embedding-model path (then it bails entirely).",
+            "type": "boolean"
+          },
+          "fts_min_rank": {
+            "description": "`ts_rank_cd` cutoff. 0.0 = no filter (default). Increase to drop\n weak lexical matches at query time.",
+            "type": "number",
+            "format": "float"
+          },
+          "fts_rebuild_completed_at": {
+            "description": "Set when the most recent FTS rebuild finished successfully.",
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "format": "date-time"
+          },
+          "fts_rebuild_started_at": {
+            "description": "Set when an FTS rebuild starts; cleared when it completes (or\n stays NULL if no rebuild has ever run on this deployment).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "fts_rrf_k": {
+            "description": "Reciprocal Rank Fusion constant for hybrid (vector ⊕ FTS) recall.\n Higher k = more egalitarian; lower = lopsided toward each arm's\n top-ranked. Default 60 matches the RRF paper.",
+            "type": "integer",
+            "format": "int32"
           },
           "id": {
             "type": "integer",
@@ -20902,25 +21496,12 @@
             "maximum": 32767,
             "minimum": -32768
           },
-          "incremental_summary_prompt": {
-            "description": "Override for the incremental-refresh LLM prompt. NULL = use the\n compiled-in default. Must contain `{previous_summary}` and\n `{new_transcript}` if set.",
-            "type": [
-              "string",
-              "null"
-            ]
+          "semantic_enabled": {
+            "description": "Semantic (vector) arm kill switch. When `false`, the retriever\n skips the vector arm regardless of whether an embedding model is\n configured. Effective vector recall requires\n `semantic_enabled AND embedding_model_id IS NOT NULL`.",
+            "type": "boolean"
           },
           "soft_delete_grace_days": {
             "description": "Reaper hard-delete grace period for soft-deleted memories (days).",
-            "type": "integer",
-            "format": "int32"
-          },
-          "summarize_after_tokens": {
-            "description": "Summarizer trigger threshold (estimated tokens, chars/4).",
-            "type": "integer",
-            "format": "int32"
-          },
-          "summarizer_keep_recent_tokens": {
-            "description": "Estimated tokens of recent messages kept verbatim alongside the summary.",
             "type": "integer",
             "format": "int32"
           },
@@ -20937,8 +21518,12 @@
           "enabled",
           "soft_delete_grace_days",
           "daily_extraction_quota",
-          "summarize_after_tokens",
-          "summarizer_keep_recent_tokens",
+          "fts_dictionary",
+          "fts_enabled",
+          "semantic_enabled",
+          "fts_rrf_k",
+          "fts_candidate_multiplier",
+          "fts_min_rank",
           "updated_at"
         ]
       },
@@ -22046,6 +22631,116 @@
           }
         }
       },
+      "ModelQuantization": {
+        "description": "One quantization choice nested under a `ModelSource`. Captures the\n download-time selection a user makes in the FE (Q4_K_M vs Q5_K_M\n vs f16, etc.).",
+        "type": "object",
+        "properties": {
+          "fileSha256": {
+            "description": "Optional sha256 (hex) for integrity verification. Not enforced\n today; kept on the wire for forward compat.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "isDefault": {
+            "description": "Marks the install-time default. Exactly one entry SHOULD set\n this; the install handler falls back to `quantizations[0]` if\n no entry does.",
+            "type": "boolean",
+            "default": false
+          },
+          "mainFile": {
+            "description": "File within the source repo to download (matches v1's\n `main_filename` semantics — passed straight through to the\n download path).",
+            "type": "string"
+          },
+          "name": {
+            "description": "Display name (`\"Q4_K_M\"`, `\"f16\"`, `\"Q8_0\"`).",
+            "type": "string"
+          },
+          "sizeGb": {
+            "description": "Size in GB (informational; surfaced in the FE). Optional —\n publishers commonly omit it for non-default quants where the\n canonical size is the default's. The FE renders \"—\" when absent.",
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          }
+        },
+        "required": [
+          "name",
+          "mainFile"
+        ]
+      },
+      "ModelShape": {
+        "description": "The kind of weight container a repo holds. Priority gguf > safetensors >\n pickle mirrors how the engine decides what to load.",
+        "type": "string",
+        "enum": [
+          "gguf",
+          "safetensors",
+          "pickle",
+          "unknown"
+        ]
+      },
+      "ModelSource": {
+        "description": "One installable source variant under `HubModel.sources`. Parallel to\n MCP's `McpPackage`: each source pins a registry, identifier, version,\n and (model-specific) one or more `quantizations[]`.",
+        "type": "object",
+        "properties": {
+          "contextLength": {
+            "description": "Per-source context length (replaces v1 model-wide field).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "environmentVariables": {
+            "description": "Env vars the source needs (e.g. `HUGGINGFACE_API_KEY`). Reuses\n the same `McpKeyValueInput` struct used by `McpPackage` /\n `McpRemote`. The install handler's auth gate iterates this list\n to find required+secret entries.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/McpKeyValueInput"
+            }
+          },
+          "fileFormat": {
+            "description": "Per-source file format. Replaces the v1 model-wide `file_format`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FileFormat2"
+              }
+            ]
+          },
+          "identifier": {
+            "description": "Repo path (`huggingface`/`s3`) or absolute URL (`url`). For\n `huggingface` this is `owner/repo`.",
+            "type": "string"
+          },
+          "quantizations": {
+            "description": "Per-source quantization choices. At least one entry per source\n (the publisher always lists the default file as a single\n quantization). `is_default: true` marks the install-time default.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelQuantization"
+            }
+          },
+          "registryType": {
+            "description": "`\"huggingface\"` | `\"s3\"` | `\"url\"` | `\"local\"` etc. Drives URL\n derivation in the install handler.",
+            "type": "string"
+          },
+          "runtimeHint": {
+            "description": "`\"mistralrs\"` | `\"llamacpp\"` etc. Informational; the install\n path does not currently use this to pick an engine.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "description": "Branch / commit / tag pin.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "registryType",
+          "identifier",
+          "version",
+          "fileFormat",
+          "quantizations"
+        ]
+      },
       "ModelUsageInfo": {
         "description": "A local model and how it relates to a given engine version.",
         "type": "object",
@@ -22940,6 +23635,99 @@
             ]
           }
         }
+      },
+      "RepositoryFile": {
+        "type": "object",
+        "properties": {
+          "file_format": {
+            "description": "\"safetensors\" | \"pytorch\" | \"gguf\" for weight files, else null.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "file_role": {
+            "$ref": "#/components/schemas/FileRole"
+          },
+          "path": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "path",
+          "size_bytes",
+          "file_role"
+        ]
+      },
+      "RepositoryFileListResponse": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RepositoryFile"
+            }
+          },
+          "shape": {
+            "$ref": "#/components/schemas/ModelShape"
+          },
+          "source": {
+            "$ref": "#/components/schemas/RepositorySource"
+          },
+          "suggested_main_filename": {
+            "description": "A sensible default to pre-fill the download form's main filename.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "truncated": {
+            "description": "True when the upstream listing was capped (very large GitHub trees).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "source",
+          "shape",
+          "files",
+          "truncated"
+        ]
+      },
+      "RepositoryFilesQuery": {
+        "type": "object",
+        "properties": {
+          "branch": {
+            "description": "Branch / revision (defaults to \"main\").",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "description": "Repo path within the source, e.g. \"meta-llama/Llama-3.1-8B-Instruct\".",
+            "type": "string"
+          },
+          "repository_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "repository_id",
+          "path"
+        ]
+      },
+      "RepositorySource": {
+        "type": "string",
+        "enum": [
+          "huggingface",
+          "github",
+          "unknown"
+        ]
       },
       "ResetPasswordRequest": {
         "type": "object",
@@ -24565,6 +25353,61 @@
           "message"
         ]
       },
+      "SummarizationAdminSettings": {
+        "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
+        "type": "object",
+        "properties": {
+          "default_summarization_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "full_summary_prompt": {
+            "description": "Custom prompt for the full-resume path. NULL → use the compiled-in\n default. Must contain `{transcript}` placeholder when set.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "format": "int16",
+            "maximum": 32767,
+            "minimum": -32768
+          },
+          "incremental_summary_prompt": {
+            "description": "Custom prompt for the incremental-fold path. NULL → use the\n compiled-in default. Must contain `{previous_summary}` AND\n `{new_transcript}` placeholders when set.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "summarize_after_tokens": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "summarizer_keep_recent_tokens": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "enabled",
+          "summarize_after_tokens",
+          "summarizer_keep_recent_tokens",
+          "updated_at"
+        ]
+      },
       "SwapOutcome": {
         "description": "Result of a pin change. Surfaced via the `set-pin` HTTP handler so\n the admin UI can render a \"n session(s) draining\" indicator.",
         "type": "object",
@@ -24721,7 +25564,7 @@
             "const": "conversation"
           },
           {
-            "description": "A user-owned file whose version set / head changed (a restore, an MCP\n edit, or a sandbox version-back). `id` is the stable file_id; the\n recipient refetches the file + its versions (if open in a panel).",
+            "description": "A user-owned file whose version set / head changed — via a REST restore,\n the built-in `files_mcp` write tools (create_file / edit_file /\n edit_file_lines / rewrite_file), or a code-sandbox version-back. `id` is\n the stable file_id; the recipient refetches the file + its versions (if\n open in a panel).",
             "type": "string",
             "const": "file"
           },
@@ -24784,6 +25627,16 @@
             "description": "Hub catalog settings (singleton).",
             "type": "string",
             "const": "hub_settings"
+          },
+          {
+            "description": "Admin view of an authentication provider (Google/Microsoft/Apple/LDAP\n /OIDC). Emitted on create/update/test/delete and on auto-disable. The\n public `/api/auth/providers` (login page) is unaffected — it just shows\n the next list state on the next page load.",
+            "type": "string",
+            "const": "auth_provider"
+          },
+          {
+            "description": "Deployment-wide summarization settings (singleton). Notify-only;\n the frontend refetches via the existing REST endpoint.",
+            "type": "string",
+            "const": "summarization_admin_settings"
           },
           {
             "description": "A user's accessible-providers (with enabled models) view changed.",
@@ -24996,6 +25849,23 @@
           "message"
         ]
       },
+      "TestRefreshRequest": {
+        "type": "object",
+        "properties": {
+          "branch_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "model_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "branch_id",
+          "model_id"
+        ]
+      },
       "TestRepositoryConnectionRequest": {
         "type": "object",
         "properties": {
@@ -25038,23 +25908,6 @@
         "required": [
           "success",
           "message"
-        ]
-      },
-      "TestSummarizeRequest": {
-        "type": "object",
-        "properties": {
-          "branch_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "model_id": {
-            "type": "string",
-            "format": "uuid"
-          }
-        },
-        "required": [
-          "branch_id",
-          "model_id"
         ]
       },
       "TextPageQuery": {
@@ -25498,6 +26351,18 @@
           }
         }
       },
+      "UpdateConversationSummarizationModeRequest": {
+        "description": "Request body for `PUT /api/conversations/{id}/summarization-mode`.",
+        "type": "object",
+        "properties": {
+          "summarization_mode": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "summarization_mode"
+        ]
+      },
       "UpdateGroupProvidersRequest": {
         "type": "object",
         "properties": {
@@ -25910,35 +26775,46 @@
               "null"
             ]
           },
-          "full_summary_prompt": {
+          "fts_candidate_multiplier": {
             "type": [
-              "string",
+              "integer",
               "null"
             ],
-            "default": null
+            "format": "int32"
           },
-          "incremental_summary_prompt": {
+          "fts_dictionary": {
             "type": [
               "string",
               "null"
+            ]
+          },
+          "fts_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "fts_min_rank": {
+            "type": [
+              "number",
+              "null"
             ],
-            "default": null
+            "format": "float"
+          },
+          "fts_rrf_k": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "semantic_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "soft_delete_grace_days": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32"
-          },
-          "summarize_after_tokens": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32"
-          },
-          "summarizer_keep_recent_tokens": {
             "type": [
               "integer",
               "null"
@@ -26056,6 +26932,105 @@
             "format": "int32"
           },
           "idle_unload_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "UpdateStatusResponse": {
+        "description": "Cached server update-availability status (admin endpoint).",
+        "type": "object",
+        "properties": {
+          "checked_at": {
+            "description": "RFC3339 timestamp of the last successful check, or null if never.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "current_version": {
+            "description": "The running server version (`CARGO_PKG_VERSION`).",
+            "type": "string"
+          },
+          "enabled": {
+            "description": "Whether update checks are enabled in config (false → air-gapped or the\n embedded desktop server).",
+            "type": "boolean"
+          },
+          "latest_version": {
+            "description": "Latest version seen on GitHub, or null if not yet checked / disabled.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "notes": {
+            "description": "Release notes (markdown) for the latest version.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "release_url": {
+            "description": "GitHub release page for the latest version.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "update_available": {
+            "description": "True when `latest_version` is newer than `current_version`.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "current_version",
+          "update_available",
+          "enabled"
+        ]
+      },
+      "UpdateSummarizationAdminSettingsRequest": {
+        "description": "Partial-update request for the singleton admin settings row.\n\n The four nullable fields (model id + the two prompts) use the\n `Option<Option<T>>` tri-state:\n   missing  → `None`        → leave the column alone\n   `null`   → `Some(None)`  → clear the column\n   value    → `Some(Some(v))` → set the column",
+        "type": "object",
+        "properties": {
+          "default_summarization_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "default": null
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "full_summary_prompt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "incremental_summary_prompt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "summarize_after_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "summarizer_keep_recent_tokens": {
             "type": [
               "integer",
               "null"

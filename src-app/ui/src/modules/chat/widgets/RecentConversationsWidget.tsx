@@ -1,19 +1,21 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   App,
   Typography,
   Button,
   Dropdown,
   Empty,
+  Menu,
   Spin,
   theme,
 } from 'antd'
+import type { MenuProps } from 'antd'
 import {
   MessageOutlined,
   DeleteOutlined,
   MoreOutlined,
 } from '@ant-design/icons'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import type { ConversationResponse } from '@/api-client/types'
 import { DivScrollY } from '@/components/common/DivScrollY'
@@ -24,9 +26,29 @@ import {
 
 const { Text } = Typography
 
+// Shared styling with the LeftSidebar's Menus so the "Recent chats"
+// group reads as the same surface family as Navigation / Tools.
+// Keep in lockstep with `LeftSidebar.tsx::menuClass`.
+const SIDEBAR_MENU_CLASS =
+  '!bg-transparent !border-none ' +
+  '[&_.ant-menu-item]:!h-7 [&_.ant-menu-item]:!leading-[28px] ' +
+  '[&_.ant-menu-item]:!mx-2 ' +
+  '[&_.ant-menu-item]:!w-[calc(100%-1rem)] ' +
+  '[&_.ant-menu-item]:!pl-2 [&_.ant-menu-item]:!pr-2 ' +
+  '[&_.ant-menu-item]:!py-0 ' +
+  '[&_.ant-menu-item]:!rounded-md ' +
+  '[&_.ant-menu-title-content]:!py-0 ' +
+  '[&_.ant-menu-item-group-title]:!px-3 [&_.ant-menu-item-group-title]:!pt-0 ' +
+  '[&_.ant-menu-item-group-title]:!pb-0.5 ' +
+  '[&_.ant-menu-item-group-title]:!text-xs ' +
+  '[&_.ant-menu-item-group-title]:!font-semibold ' +
+  '[&_.ant-menu-item-group-title]:!tracking-wide'
+
 /**
  * Sidebar list of the user's recent conversations, backed by
- * `Stores.ChatHistory.recentConversations`.
+ * `Stores.ChatHistory.recentConversations`. Renders as an antd
+ * `<Menu>` so hover / selected / focus styling matches the
+ * Navigation + Tools menus above it in the sidebar.
  *
  * Click navigation routes through the `conversationHref` extension
  * hook so any cross-cutting feature can override URL resolution
@@ -34,11 +56,9 @@ const { Text } = Typography
  */
 export function RecentConversationsWidget() {
   const { token } = theme.useToken()
-  const {
-    recentConversations,
-    loading,
-    isInitialized,
-  } = Stores.ChatHistory
+  const location = useLocation()
+  const navigate = useNavigate()
+  const { recentConversations, loading, isInitialized } = Stores.ChatHistory
 
   useEffect(() => {
     if (!isInitialized) {
@@ -46,25 +66,22 @@ export function RecentConversationsWidget() {
     }
   }, [isInitialized])
 
-  // Section header matching the LeftSidebar's `SectionHeader` style.
-  const header = (
-    <div className="flex-shrink-0">
-      <Text
-        className="px-3 pb-0.5 block font-semibold tracking-wide"
-        style={{
-          fontSize: token.fontSizeSM,
-          color: token.colorTextSecondary,
-        }}
-      >
-        Recent chats
-      </Text>
-    </div>
+  // Section header rendered as a Menu group title so it shares typography
+  // with Navigation / Tools — but the empty + loading states render the
+  // header standalone (no Menu) since there are no items to host it.
+  const headerOnly = (
+    <Menu
+      mode="inline"
+      selectable={false}
+      className={SIDEBAR_MENU_CLASS}
+      items={[{ type: 'group', label: 'Recent chats' }]}
+    />
   )
 
   if (loading && !isInitialized) {
     return (
       <div className="flex flex-col h-full">
-        {header}
+        {headerOnly}
         <div className="flex justify-center items-center py-8">
           <Spin />
         </div>
@@ -75,7 +92,7 @@ export function RecentConversationsWidget() {
   if (!loading && recentConversations.length === 0) {
     return (
       <div className="flex flex-col h-full">
-        {header}
+        {headerOnly}
         <div className="px-2 py-4">
           <Empty
             image={<MessageOutlined className="text-4xl text-gray-400" />}
@@ -91,60 +108,84 @@ export function RecentConversationsWidget() {
     )
   }
 
+  // Conversation href is owned by the extension registry — same call
+  // the row click handler uses below, so the selected-key derivation
+  // stays in lockstep with what navigation actually does.
+  const hrefFor = (c: ConversationResponse) =>
+    chatExtensionRegistry.conversationHref(c) ?? `/chat/${c.id}`
+
+  // The currently-open conversation gets the Menu's `selected`
+  // treatment (token-based colorPrimary background + colorText).
+  const selectedKey = recentConversations.find(
+    c => location.pathname === hrefFor(c),
+  )?.id
+
+  const items: MenuProps['items'] = recentConversations.map(c => ({
+    key: c.id,
+    label: <ConversationRowLabel conversation={c} />,
+  }))
+
   return (
-    <div className="flex flex-col h-full min-h-0">
-      {header}
+    <div
+      className="flex flex-col h-full min-h-0"
+      // Hold the section header outside the scroll viewport so it
+      // stays put while the list scrolls — matches how the original
+      // implementation pinned its bespoke header.
+      style={{ color: token.colorTextBase }}
+    >
       <DivScrollY className="flex-col flex-1 min-h-0">
-        {recentConversations.map((conversation: ConversationResponse) => (
-          <RecentConversationRow
-            key={conversation.id}
-            conversation={conversation}
-          />
-        ))}
+        <Menu
+          mode="inline"
+          className={SIDEBAR_MENU_CLASS}
+          selectedKeys={selectedKey ? [selectedKey] : []}
+          items={[
+            {
+              type: 'group',
+              label: 'Recent chats',
+              children: items,
+            },
+          ]}
+          onClick={({ key, domEvent }) => {
+            // The per-row action dropdown stops propagation, so any
+            // click we see here came from the row body itself.
+            const c = recentConversations.find(x => x.id === key)
+            if (!c) return
+            // Defensive: still bail if the click originated inside the
+            // floating dropdown menu (body-level portal), in case
+            // antd's event routing ever changes.
+            const target = domEvent.target as HTMLElement | null
+            if (target?.closest('.ant-dropdown')) return
+            navigate(hrefFor(c))
+          }}
+        />
       </DivScrollY>
     </div>
   )
 }
 
 /**
- * Per-row component — extracted because `useConversationMenuContributions`
- * is a hook and must be called from the top of a component (not
- * inside a `.map`).
+ * Renders one Menu item's label: the conversation title + a hover-only
+ * actions button anchored to the right. The actions button hosts a
+ * dropdown with extension contributions (project: open/add/remove,
+ * future: …) and the always-present Delete entry.
+ *
+ * The button has `onClick={e => e.stopPropagation()}` so opening the
+ * dropdown does NOT also fire the Menu's row-click navigate.
  */
-function RecentConversationRow({
+function ConversationRowLabel({
   conversation,
 }: {
   conversation: ConversationResponse
 }) {
-  const navigate = useNavigate()
   const { token } = theme.useToken()
   const { modal } = App.useApp()
-  const [hovered, setHovered] = useState(false)
   const [deleting, setDeleting] = useState(false)
   // Controlled dropdown open so we can suppress closing while an
   // extension overlay (popconfirm etc.) is showing.
   const [menuOpen, setMenuOpen] = useState(false)
-  const rowRef = useRef<HTMLDivElement>(null)
 
-  // Extension contributions (project: open/add/remove, future: …).
-  const {
-    items: extensionItems,
-    overlays,
-    keepMenuOpen,
-  } = useConversationMenuContributions(conversation)
-
-  // Row-click navigates ONLY when the click landed on something
-  // inside this row's DOM. Antd Dropdown's popup renders in a
-  // body-level portal — clicks there have a DOM target outside
-  // `rowRef`, so this check rejects them even though React's
-  // synthetic event still bubbles up to here.
-  const handleRowClick = (e: React.MouseEvent) => {
-    if (!rowRef.current?.contains(e.target as Node)) return
-    const href =
-      chatExtensionRegistry.conversationHref(conversation) ??
-      `/chat/${conversation.id}`
-    navigate(href)
-  }
+  const { items: extensionItems, overlays, keepMenuOpen } =
+    useConversationMenuContributions(conversation)
 
   const confirmDelete = () => {
     const title = conversation.title || 'Untitled Conversation'
@@ -179,41 +220,34 @@ function RecentConversationRow({
     },
   ]
 
+  // `group` + `[&:hover_.row-actions]:opacity-100` makes the actions
+  // button fade in on row hover without a stateful onMouseEnter dance.
   return (
-    <div
-      ref={rowRef}
-      className="group relative px-3 py-1 mx-2 cursor-pointer rounded-md"
-      style={{
-        backgroundColor: hovered ? token.colorPrimaryHover : 'transparent',
-        color: hovered ? token.colorTextLightSolid : token.colorTextBase,
-        transition: 'background-color 150ms, color 150ms',
-      }}
-      onClick={handleRowClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      <Text
-        className="text-sm truncate block"
-        style={{ color: 'inherit' }}
+    <div className="group flex items-center justify-between gap-2">
+      <span
+        className="truncate"
         title={conversation.title || 'Untitled Conversation'}
       >
         {conversation.title || 'Untitled Conversation'}
-      </Text>
-
+      </span>
       <div
-        className="absolute right-2 top-1/2 -translate-y-1/2"
-        style={{ width: 24, height: 24 }}
+        className={
+          'row-actions flex-shrink-0 opacity-0 group-hover:opacity-100 ' +
+          'transition-opacity duration-150'
+        }
+        // Keep the button visible while its dropdown is open OR while
+        // a delete is in flight — `opacity-0` would otherwise hide it
+        // mid-interaction. Inline style wins over the Tailwind class
+        // because it sets the same property.
+        style={
+          menuOpen || keepMenuOpen || deleting ? { opacity: 1 } : undefined
+        }
         onClick={e => e.stopPropagation()}
       >
         <Dropdown
           menu={{ items: menuItems }}
           trigger={['click']}
           placement="bottomRight"
-          // Controlled open so we can keep the dropdown visible
-          // while an extension overlay (popconfirm in a body-level
-          // portal) is showing — clicking the overlay would
-          // otherwise register as outside the dropdown and close
-          // it, yanking the popconfirm's anchor away.
           open={menuOpen || keepMenuOpen}
           onOpenChange={open => {
             if (!open && keepMenuOpen) return
@@ -226,21 +260,16 @@ function RecentConversationRow({
             icon={<MoreOutlined />}
             loading={deleting}
             style={{
-              width: 24,
-              height: 24,
+              width: 22,
+              height: 22,
               padding: 0,
-              backgroundColor: token.colorBgContainer,
-              color: token.colorTextBase,
-              border: `1px solid ${token.colorBorderSecondary}`,
-              opacity: hovered || deleting ? 1 : 0,
-              transition: 'opacity 120ms ease-out',
+              color: token.colorText,
             }}
             aria-label="Conversation options"
           />
         </Dropdown>
       </div>
-
-      {/* Extension overlays (modals, popconfirms). Mounted alongside
+      {/* Extension overlays (modals, popconfirms). Render alongside
           the row trigger; menu items above toggle their state. */}
       {overlays}
     </div>

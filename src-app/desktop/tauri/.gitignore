@@ -24,6 +24,10 @@ Cargo.lock
 # Tauri specific
 WixTools/
 
+# Tauri updater signing keys — NEVER commit the private key.
+# Only the matching public key (baked into tauri.conf.json) is safe to commit.
+.tauri-keys/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

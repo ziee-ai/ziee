@@ -25,10 +25,13 @@ import { AuditLogSection } from '@ziee/ui-core/modules/memory/components/section
 
 // Admin sections (web: /settings/admin/memory)
 import { RebuildStatusSection } from '@ziee/ui-core/modules/memory/components/sections/RebuildStatusSection'
-import { EmbeddingEngineSection } from '@ziee/ui-core/modules/memory/components/sections/EmbeddingEngineSection'
-import { RetrievalTuningSection } from '@ziee/ui-core/modules/memory/components/sections/RetrievalTuningSection'
+import { MemorySection } from '@ziee/ui-core/modules/memory/components/sections/MemorySection'
+import { FullTextSearchSection } from '@ziee/ui-core/modules/memory/components/sections/FullTextSearchSection'
+import { SemanticSearchSection } from '@ziee/ui-core/modules/memory/components/sections/SemanticSearchSection'
+import { ExtractionSection } from '@ziee/ui-core/modules/memory/components/sections/ExtractionSection'
 import { RetentionLimitsSection } from '@ziee/ui-core/modules/memory/components/sections/RetentionLimitsSection'
-import { SummarizerSection } from '@ziee/ui-core/modules/memory/components/sections/SummarizerSection'
+// Summarization admin (web: /settings/summarization-admin).
+import { SummarizationSettingsSection } from '@ziee/ui-core/modules/summarization/components/sections/SummarizationSettingsSection'
 
 export function MemoryCombinedPage() {
   return (
@@ -50,10 +53,12 @@ export function MemoryCombinedPage() {
         Administration
       </Typography.Title>
       <RebuildStatusSection />
-      <EmbeddingEngineSection />
-      <RetrievalTuningSection />
+      <MemorySection />
+      <FullTextSearchSection />
+      <SemanticSearchSection />
+      <ExtractionSection />
       <RetentionLimitsSection />
-      <SummarizerSection />
+      <SummarizationSettingsSection />
     </SettingsPageContainer>
   )
 }

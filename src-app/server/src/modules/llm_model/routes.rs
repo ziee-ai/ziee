@@ -57,6 +57,11 @@ pub fn llm_model_router() -> ApiRouter {
             "/llm-models/download",
             post_with(initiate_repository_download, initiate_download_docs),
         )
+        // Pre-download file discovery (Hugging Face / GitHub auto-detect)
+        .api_route(
+            "/llm-models/repository-files",
+            get_with(list_repository_files, list_repository_files_docs),
+        )
         // Download management
         .api_route(
             "/llm-models/downloads",

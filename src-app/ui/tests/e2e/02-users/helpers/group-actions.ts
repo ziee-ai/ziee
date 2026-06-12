@@ -1,4 +1,17 @@
-import { Page, expect } from '@playwright/test'
+import { Locator, Page, expect } from '@playwright/test'
+
+/**
+ * The permissions field defaults to the searchable picker. Flip it into
+ * "Advanced JSON" mode so the raw-array textarea (aria-label
+ * "Permissions (JSON Array)") is mounted and fillable. Idempotent — reads
+ * the switch's aria-checked before toggling.
+ */
+export async function enableAdvancedPermissions(drawer: Locator) {
+  const advancedSwitch = drawer.getByRole('switch', { name: /advanced json/i })
+  if ((await advancedSwitch.getAttribute('aria-checked')) !== 'true') {
+    await advancedSwitch.click()
+  }
+}
 
 export interface CreateGroupData {
   name: string
@@ -32,6 +45,7 @@ export async function createGroup(page: Page, groupData: CreateGroupData) {
   }
 
   if (groupData.permissions && groupData.permissions.length > 0) {
+    await enableAdvancedPermissions(drawer)
     const permissionsField = drawer.getByLabel(/permissions.*json/i)
     await permissionsField.fill(JSON.stringify(groupData.permissions))
   }
@@ -69,6 +83,7 @@ export async function updateGroup(page: Page, groupData: UpdateGroupData) {
   }
 
   if (groupData.permissions) {
+    await enableAdvancedPermissions(drawer)
     const permissionsField = drawer.getByLabel(/permissions.*json/i)
     await permissionsField.clear()
     await permissionsField.fill(JSON.stringify(groupData.permissions))

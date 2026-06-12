@@ -54,6 +54,15 @@ pub enum AppEvent {
     /// file attached to / detached from a project). Owned by the file
     /// module per the project↔file inversion.
     FileProject(crate::modules::file::project_extension::events::FileProjectEvent),
+
+    /// Auth provider admin lifecycle: create/update/delete plus the
+    /// `AutoDisabled` signal a probe failure flips an enabled row to
+    /// disabled. Mirrors `LlmRepository`.
+    AuthProvider(crate::modules::auth::providers::events::AuthProviderEvent),
+
+    /// Summarization admin settings updated. Notify-only — no row
+    /// payload. The frontend refetches via the existing REST endpoint.
+    Summarization(crate::modules::summarization::events::SummarizationEvent),
     // Add new module events here as the application grows
 }
 

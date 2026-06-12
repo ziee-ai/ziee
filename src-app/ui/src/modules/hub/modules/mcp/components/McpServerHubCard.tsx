@@ -1,12 +1,10 @@
 import { App, Card, Tag, Tooltip, Typography, Button, Flex } from 'antd'
 import {
   DownloadOutlined,
-  StarOutlined,
   GlobalOutlined,
   GithubOutlined,
   EyeOutlined,
   CopyOutlined,
-  KeyOutlined,
 } from '@ant-design/icons'
 import {
   Permissions,
@@ -26,6 +24,21 @@ interface McpServerHubCardProps {
   server: HubMCPServer
 }
 
+/// Derive the ziee MCP server slug (`^[a-z0-9-]+$`) from the
+/// reverse-DNS `name` — take the leaf after the FIRST `/`, lowercase
+/// + replace non-`[a-z0-9-]` with `-`. Mirrors the backend's
+/// `derive_mcp_slug` so the card's prefill matches what the install
+/// handler would compute.
+function deriveSlug(name: string): string {
+  const slash = name.indexOf('/')
+  const leaf = slash >= 0 ? name.slice(slash + 1) : name
+  return leaf
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 63)
+}
+
 export function McpServerHubCard({ server }: McpServerHubCardProps) {
   const { message } = App.useApp()
   const navigate = useNavigate()
@@ -34,110 +47,112 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
   const [installingSystem, setInstallingSystem] = useState(false)
   const canInstall = usePermission(Permissions.HubMcpServersCreate)
   const canInstallSystem = usePermission(Permissions.McpServersAdminCreate)
-  // On a single-admin desktop (multiUserMode === false) the user MCP
-  // page is hidden — every install must be system-scope. Suppress the
-  // user-scope "Install for me" / "View Server" affordances entirely
-  // so only the "Install for the system" button remains.
   const { multiUserMode } = Stores.AppMode
 
-  // Check if server was already created from this hub server
+  const slug = deriveSlug(server.name)
+  // Leaf (after the first `/` in the reverse-DNS name) — used only as
+  // the display fallback when the catalog's IndexItem has no curated
+  // title. Publishers set the title via `_hub_curation.title` in the
+  // source YAML; the build script promotes it to `IndexItem.title`.
+  const leaf = (() => {
+    const slash = server.name.indexOf('/')
+    return slash >= 0 ? server.name.slice(slash + 1) : server.name
+  })()
+  // Prefer the catalog-curated title over the bare leaf. Subscribe to
+  // `Stores.HubCatalog.catalog` so the title updates when the catalog
+  // refreshes (e.g. mid-test against the mock Pages server).
+  const indexItem = Stores.HubCatalog.catalog?.items.find(
+    it => it.category === 'mcp-server' && it.name === server.name,
+  )
+  const displayTitle = indexItem?.title ?? leaf
+
+  // Pick the first package / remote so the card can show a transport
+  // tag without re-deriving in two places.
+  const firstRemote = server.remotes && server.remotes[0]
+  const firstPackage = server.packages && server.packages[0]
+  const transportLabel: string = firstRemote
+    ? (firstRemote.type ?? 'remote').toUpperCase()
+    : firstPackage
+      ? (firstPackage.transport?.type ?? 'stdio').toUpperCase()
+      : 'STDIO'
+
   const isAlreadyInstalled = server.created_ids && server.created_ids.length > 0
-  // Check if a SYSTEM-WIDE server already exists for this hub_id
-  // (is_system=true, user_id=NULL). Backend rejects duplicates with
-  // 409; the UI uses this to disable the button + show a clearer
-  // "System Installed" label.
   const isAlreadyInstalledAsSystem =
     server.created_system_ids && server.created_system_ids.length > 0
 
-  // Combined list of required inputs (env vars + headers) the user
-  // must configure post-install. Treated as one list for card UX —
-  // the structured per-type view lives in the details drawer.
-  // Each entry carries a kind discriminator so the toast text can
-  // disambiguate when a name appears on both surfaces (catalog
-  // author mistake, but worth surfacing rather than rendering it
-  // twice silently).
-  const requiredInputs: { name: string; kind: 'env' | 'header' }[] = [
-    ...(server.required_env ?? []).map(v => ({
-      name: v.name,
-      kind: 'env' as const,
-    })),
-    ...(server.required_headers ?? []).map(v => ({
-      name: v.name,
-      kind: 'header' as const,
-    })),
-  ]
-  const requiresSetup = requiredInputs.length > 0
-  const requiredInputsLabel = requiredInputs
-    .map(i => (i.kind === 'header' ? `${i.name} (header)` : i.name))
-    .join(', ')
-
   /**
-   * Translate a hub MCP manifest into the McpServerDrawer's prefill
-   * shape so the drawer opens fully populated with the catalog's
-   * defaults. The user reviews, fills in any required secrets, then
-   * submits via the normal /mcp/servers POST — the backend records
-   * the install in `hub_entities` via the `hub_id` field we
-   * forward through the request body.
-   *
-   * Marks every `required_env` / `required_header` entry as a
-   * secret with `value: ''` so the form renders the redacted input
-   * with a "(required)" hint instead of pre-filling a placeholder.
+   * Translate the strict server.json into the McpServerDrawer's
+   * prefill. The backend's install path mirrors this derivation in
+   * `build_mcp_server_create_from_hub` — keep them in sync.
    */
-  const prefillFromHub = (): McpServerDrawerPrefill => ({
-    fields: {
-      name: server.name,
-      display_name: server.display_name,
-      description: server.description,
-      transport_type: (server.transport_type ?? 'stdio') as TransportType,
-      command: server.command,
-      args: server.args,
-      url: server.url,
-      environment_variables_entries: [
-        // Hub-supplied defaults (free-form key/value map in the
-        // manifest). Treated as non-secret because the catalog
-        // wouldn't ship a real secret in plaintext.
-        ...Object.entries(
-          (server.environment_variables ?? {}) as Record<string, string>,
-        ).map(([key, value]) => ({
-          key,
-          value: String(value ?? ''),
-          is_secret: false,
-        })),
-        // Required-secret env vars the user must fill in. Tagged
-        // as secret so the form renders a redacted input.
-        ...(server.required_env ?? []).map(e => ({
-          key: e.name,
-          value: '',
-          is_secret: true,
-        })),
-      ],
-      headers_entries: [
-        ...Object.entries(
-          (server.headers ?? {}) as Record<string, string>,
-        ).map(([key, value]) => ({
-          key,
-          value: String(value ?? ''),
-          is_secret: false,
-        })),
-        ...(server.required_headers ?? []).map(e => ({
-          key: e.name,
-          value: '',
-          is_secret: true,
-        })),
-      ],
-      supports_sampling: server.supports_sampling ?? false,
-      enabled: true,
-    },
-    hub_id: server.id,
-  })
+  const prefillFromHub = (): McpServerDrawerPrefill => {
+    let transport: TransportType = 'stdio'
+    let command: string | undefined = undefined
+    let args: string[] | undefined = undefined
+    let url: string | undefined = undefined
+    const envEntries: {
+      key: string
+      value: string
+      is_secret: boolean
+    }[] = []
+    const headerEntries: {
+      key: string
+      value: string
+      is_secret: boolean
+    }[] = []
 
-  /**
-   * "Install for me" — opens the drawer in `create` (user-scope) mode
-   * prefilled from the hub manifest. The drawer's save path POSTs
-   * /api/mcp/servers with `hub_id` so the backend records the
-   * install in `hub_entities`. Replaces the prior silent createFromHub
-   * call: the user always reviews + fills in secrets before saving.
-   */
+    if (firstRemote) {
+      transport = firstRemote.type === 'sse' ? 'sse' : 'http'
+      url = firstRemote.url ?? undefined
+      for (const h of firstRemote.headers ?? []) {
+        headerEntries.push({
+          key: h.name,
+          value: String(h.value ?? h.default ?? ''),
+          is_secret: !!h.isSecret,
+        })
+      }
+    } else if (firstPackage) {
+      transport = 'stdio'
+      command = firstPackage.runtimeHint ?? undefined
+      const argv: string[] = []
+      for (const a of firstPackage.runtimeArguments ?? []) {
+        if (a.value) argv.push(a.value)
+      }
+      const spec = firstPackage.version
+        ? `${firstPackage.identifier}@${firstPackage.version}`
+        : firstPackage.identifier
+      argv.push(spec)
+      for (const a of firstPackage.packageArguments ?? []) {
+        if (a.value) argv.push(a.value)
+      }
+      args = argv
+      for (const ev of firstPackage.environmentVariables ?? []) {
+        envEntries.push({
+          key: ev.name,
+          value: String(ev.value ?? ev.default ?? ''),
+          is_secret: !!ev.isSecret,
+        })
+      }
+    }
+
+    return {
+      fields: {
+        name: slug,
+        display_name: displayTitle,
+        description: server.description,
+        transport_type: transport,
+        command,
+        args,
+        url,
+        environment_variables_entries: envEntries,
+        headers_entries: headerEntries,
+        supports_sampling: false,
+        enabled: true,
+      },
+      hub_id: server.name,
+    }
+  }
+
   const handleInstall = () => {
     try {
       setInstalling(true)
@@ -146,25 +161,15 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
         'create',
         prefillFromHub(),
       )
-      if (requiresSetup) {
-        message.info({
-          content: `Review settings + configure ${requiredInputsLabel}, then save.`,
-          duration: 5,
-        })
-      }
+      message.info({
+        content: 'Review settings and configure any required secrets, then save.',
+        duration: 5,
+      })
     } finally {
-      // Drawer is mounted; the spinner clears immediately. The user
-      // sees the drawer open, not a long loading state.
       setInstalling(false)
     }
   }
 
-  /**
-   * "Install for the system" — admin path. Opens the drawer in
-   * `create-system` mode prefilled from the hub manifest. Same
-   * mechanism: drawer save POSTs /api/mcp/system-servers with
-   * `hub_id`.
-   */
   const handleInstallAsSystem = () => {
     try {
       setInstallingSystem(true)
@@ -173,16 +178,17 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
         'create-system',
         prefillFromHub(),
       )
-      if (requiresSetup) {
-        message.info({
-          content: `Review settings + configure ${requiredInputsLabel}, then save.`,
-          duration: 5,
-        })
-      }
+      message.info({
+        content: 'Review settings and configure any required secrets, then save.',
+        duration: 5,
+      })
     } finally {
       setInstallingSystem(false)
     }
   }
+
+  const repoUrl = server.repository?.url
+  const homepageUrl = server.websiteUrl
 
   return (
     <>
@@ -190,96 +196,59 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
         hoverable
         className="cursor-pointer relative group hover:!shadow-md transition-shadow h-full"
         onClick={() => setShowDetails(true)}
-        data-server-id={server.id}
-        data-testid={`hub-mcp-card-${server.id}`}
+        data-server-id={server.name}
+        data-testid={`hub-mcp-card-${server.name}`}
       >
         <div className="flex items-start gap-3 flex-wrap">
-          {/* Server Info */}
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <div className="flex-1 min-w-48">
                 <Flex className="gap-2 items-center">
-                  {server.icon_url && (
-                    <img
-                      src={server.icon_url}
-                      alt={server.display_name}
-                      className="w-6 h-6 rounded"
-                    />
+                  <Text className="font-medium cursor-pointer">{displayTitle}</Text>
+                  {server.version && (
+                    <Tag className="text-xs !m-0">v{server.version}</Tag>
                   )}
-                  <Text className="font-medium cursor-pointer">
-                    {server.display_name}
-                  </Text>
-                  {server.category && (
-                    <Tag color="blue" className="text-xs">
-                      {server.category}
-                    </Tag>
+                  {/* Provenance badge: ingested MCP registry entries
+                      carry `_meta["io.modelcontextprotocol.registry"]`. */}
+                  {!!(
+                    server._meta &&
+                    (server._meta as Record<string, unknown>)[
+                      'io.modelcontextprotocol.registry'
+                    ]
+                  ) && (
+                    <Tooltip title="From the official Model Context Protocol registry">
+                      <Tag color="cyan" className="text-xs !m-0">
+                        MCP Registry
+                      </Tag>
+                    </Tooltip>
                   )}
-                  {/* Always render a transport tag so users can tell
-                      at a glance whether the server runs locally
-                      (stdio) or talks to a remote URL (http/sse).
-                      Missing `transport_type` in the manifest is
-                      treated as stdio per the install helper. */}
-                  <Tag className="text-xs">
-                    {(server.transport_type ?? 'stdio').toUpperCase()}
-                  </Tag>
+                  <Tag className="text-xs">{transportLabel}</Tag>
                   {installing && <Tag color="blue">Installing...</Tag>}
                   {isAlreadyInstalled && <Tag color="green">Installed</Tag>}
                   {isAlreadyInstalledAsSystem && (
                     <Tag color="purple">System installed</Tag>
                   )}
-                  {requiresSetup && (
-                    <Tooltip
-                      title={`Requires setup after install: ${requiredInputsLabel}`}
-                    >
-                      <Tag
-                        color="warning"
-                        icon={<KeyOutlined />}
-                        className="text-xs"
-                        data-testid="hub-mcp-requires-setup-tag"
-                      >
-                        Requires setup
-                      </Tag>
-                    </Tooltip>
-                  )}
                 </Flex>
               </div>
               <div className="flex gap-1 items-center justify-end">
-                {server.homepage && (
+                {homepageUrl && (
                   <Button
                     icon={<GlobalOutlined />}
                     onClick={e => {
                       e.stopPropagation()
-                      window.open(server.homepage, '_blank')
+                      window.open(homepageUrl, '_blank')
                     }}
                   />
                 )}
-                {server.repository_url && (
+                {repoUrl && (
                   <Button
                     icon={<GithubOutlined />}
                     onClick={e => {
                       e.stopPropagation()
-                      window.open(server.repository_url, '_blank')
+                      window.open(repoUrl, '_blank')
                     }}
                   />
                 )}
-                {/* Install button layout — per-scope independence:
-                    * User-scope: render "View Server" when already
-                      installed for the current user (collapses the
-                      "Install for me" button), else render the install
-                      button. Label is "Install for me" when the user
-                      also has admin perms (paired with the system
-                      button below), else just "Install".
-                    * System-scope (admin only): always render the
-                      "Install for the system" button; it disables to
-                      "System Installed" when a system install already
-                      exists. The system button is independent of the
-                      user-scope install state so admins can install
-                      for themselves AND for the system in either
-                      order.
-                    Both install paths open the McpServerDrawer
-                    prefilled from the hub manifest; the user reviews
-                    + fills secrets and submits via the regular create
-                    endpoint with `hub_id` forwarded. */}
                 {multiUserMode &&
                   (isAlreadyInstalled ? (
                     <Button
@@ -336,76 +305,13 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                   {server.description}
                 </Text>
               )}
-
-              {/* Tags */}
-              {server.tags && server.tags.length > 0 && (
-                <div className="mb-2">
-                  <Text type="secondary" className="text-xs mr-2">
-                    Tags:
-                  </Text>
-                  <Flex
-                    wrap
-                    className="gap-1"
-                    style={{ display: 'inline-flex' }}
-                  >
-                    {server.tags.slice(0, 3).map(tag => (
-                      <Tag key={tag} color="default" className="text-xs">
-                        {tag}
-                      </Tag>
-                    ))}
-                    {server.tags.length > 3 && (
-                      <Tag color="default" className="text-xs">
-                        +{server.tags.length - 3}
-                      </Tag>
-                    )}
-                  </Flex>
-                </div>
-              )}
-
-              {/* Metadata */}
-              <div className="mb-2">
-                <Flex wrap className="gap-4 text-xs">
-                  {server.author && (
-                    <span>
-                      <Text type="secondary" className="text-xs">
-                        Author:
-                      </Text>{' '}
-                      {server.author}
-                    </span>
-                  )}
-                  {server.tool_count && (
-                    <span>
-                      <Text type="secondary" className="text-xs">
-                        Tools:
-                      </Text>{' '}
-                      {server.tool_count}
-                    </span>
-                  )}
-                  {server.download_count && (
-                    <span>
-                      <Text type="secondary" className="text-xs">
-                        Downloads:
-                      </Text>{' '}
-                      {server.download_count.toLocaleString()}
-                    </span>
-                  )}
-                  {server.rating && (
-                    <span>
-                      <Text type="secondary" className="text-xs">
-                        Rating:
-                      </Text>{' '}
-                      <StarOutlined /> {server.rating.toFixed(1)}
-                    </span>
-                  )}
-                </Flex>
-              </div>
             </div>
           </div>
         </div>
       </Card>
 
       <McpServerDetailsDrawer
-        server={showDetails ? server : null}
+        server={server}
         open={showDetails}
         onClose={() => setShowDetails(false)}
       />

@@ -120,9 +120,13 @@ export function DownloadIndicatorWidget() {
     // not a render path. The bare `Stores.HubModels.models` proxy
     // would call React hooks outside render. See
     // `feedback_stores_state_in_handlers` in project memory.
+    // v2 Phase 7: walk every source's identifier (the source
+    // identifier is what the backend passes as `repository_path` to
+    // the download path; matching against ALL of them lets a model
+    // with multiple sources still be detected on retry).
     const hubModel = repoPath
-      ? Stores.HubModels.__state.models.find(
-          m => m.repository_path === repoPath,
+      ? Stores.HubModels.__state.models.find(m =>
+          (m.sources ?? []).some(s => s.identifier === repoPath),
         )
       : undefined
 
@@ -141,7 +145,7 @@ export function DownloadIndicatorWidget() {
       }
       try {
         await Stores.HubModels.downloadModelFromHub(
-          hubModel.id,
+          hubModel.name,
           d.provider_id,
           d.request_data.display_name ?? hubModel.display_name,
           d.request_data.quantization ?? undefined,

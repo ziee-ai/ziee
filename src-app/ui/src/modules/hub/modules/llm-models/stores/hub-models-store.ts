@@ -23,6 +23,7 @@ interface HubModelsState {
     providerId: string,
     displayName: string,
     quantizationName?: string,
+    sourceIndex?: number,
   ) => Promise<void>
 
   // Lazy initialization
@@ -106,12 +107,16 @@ export const useHubModelsStore = create<HubModelsState>()(
           providerId: string,
           displayName: string,
           quantizationName?: string,
+          sourceIndex?: number,
         ) => {
           const result = await ApiClient.Hub.createModelFromHub({
             hub_id: hubId,
             provider_id: providerId,
             display_name: displayName,
             quantization_name: quantizationName,
+            // v2 Phase 7: source_index picks which `sources[]` entry to
+            // install from. Defaults to 0 server-side when omitted.
+            source_index: sourceIndex,
           })
           Stores.LlmModelDownload.addExternalDownload(result.download)
         },

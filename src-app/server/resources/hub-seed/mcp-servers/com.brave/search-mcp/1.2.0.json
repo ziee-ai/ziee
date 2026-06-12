@@ -1,0 +1,33 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "com.brave/search-mcp",
+  "description": "Web search via the Brave Search API for up-to-date information.",
+  "version": "1.2.0",
+  "repository": {
+    "url": "https://github.com/brave/brave-search-mcp",
+    "source": "github"
+  },
+  "websiteUrl": "https://brave.com/search/api/",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://api.search.brave.com/mcp",
+      "headers": [
+        {
+          "name": "X-Subscription-Token",
+          "value": "{BRAVE_SUBSCRIPTION_TOKEN}",
+          "description": "Brave Search subscription token; interpolates BRAVE_SUBSCRIPTION_TOKEN at runtime.",
+          "isSecret": true,
+          "variables": {
+            "BRAVE_SUBSCRIPTION_TOKEN": {
+              "description": "Brave Search subscription token (Data for AI tier or higher).",
+              "isRequired": true,
+              "isSecret": true,
+              "format": "string"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

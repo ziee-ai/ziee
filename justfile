@@ -388,3 +388,153 @@ check-remote-access-real-ngrok:
 check-remote-access-all: check-remote-access-unit check-remote-access-e2e
     @echo "✓ remote-access: unit + integration + e2e all green"
 
+# ─── Hub Registry (Feature: hub v2 install-from-hub flows) ──────────
+#
+# Recipes for the `feat/hub-registry` work. All recipes hard-fail if
+# their prerequisites (Postgres on 54321, tests/.env.test, etc.) are
+# missing — no interactive prompts. Names are `hub-`-prefixed (or end
+# in `-hub`) to avoid collision with the existing sandbox recipes
+# (`check`, `test`).
+
+# Postgres connection string for the dedicated hub build DB. Kept
+# separate from the docker-compose-managed `postgres` DB so sqlx's
+# in-process migrations (run by build.rs) can wipe + recreate schema
+# without touching the other crates' build DB.
+HUB_DB_URL := "postgresql://postgres:password@127.0.0.1:54321/hubreg_build"
+
+# Verify the dedicated build DB exists; create it if not. Hard-fails
+# if Postgres on 127.0.0.1:54321 isn't reachable.
+ensure-build-db:
+    @bash -c 'set -euo pipefail; \
+        if ! PGPASSWORD=password psql -h 127.0.0.1 -p 54321 -U postgres -tAc "SELECT 1" >/dev/null 2>&1; then \
+            echo "ERROR: Postgres not reachable on 127.0.0.1:54321. Start docker-compose first:" >&2; \
+            echo "  cd src-app && docker compose up -d" >&2; \
+            exit 1; \
+        fi; \
+        if ! PGPASSWORD=password psql -h 127.0.0.1 -p 54321 -U postgres -tAc \
+                "SELECT 1 FROM pg_database WHERE datname='\''hubreg_build'\''" | grep -q 1; then \
+            echo "==> creating hubreg_build database"; \
+            PGPASSWORD=password psql -h 127.0.0.1 -p 54321 -U postgres -c "CREATE DATABASE hubreg_build;" >/dev/null; \
+        fi; \
+        echo "✓ build DB ready: hubreg_build"'
+
+# Compile the server workspace + tests against the isolated build DB.
+# Build.rs wipes + re-runs migrations on every cargo build, so this
+# also validates that all migrations apply cleanly.
+check-hub: ensure-build-db
+    @cd src-app && DATABASE_URL="{{HUB_DB_URL}}" cargo check -p ziee --all-targets
+
+# Run `tsc --noEmit` against both UI workspaces (core + desktop).
+# Hard-fails on the first error; second workspace runs only if the
+# first compiled. Caller can run `npm install` from the repo root if
+# the workspace's node_modules are missing.
+tsc:
+    @cd src-app/ui && npx tsc --noEmit
+    @cd src-app/desktop/ui && npx tsc --noEmit
+
+# Run the FULL hub-related integration test suite end-to-end. Saves
+# the log per CLAUDE.md memory ("ALWAYS Save Full Test Logs").
+# Hard-fails (exit non-zero) if tests/.env.test is missing — the test
+# harness reads HUGGINGFACE_API_KEY from it.
+test-hub: ensure-build-db
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd src-app/server
+    if [ ! -f tests/.env.test ]; then
+        echo "ERROR: src-app/server/tests/.env.test is missing." >&2
+        echo "       Copy from tests/.env.test.example and fill in real values:" >&2
+        echo "         cp tests/.env.test.example tests/.env.test" >&2
+        echo "       (HUGGINGFACE_API_KEY is required for the model download tests)." >&2
+        exit 1
+    fi
+    log="hub-strict-int-$(date +%Y%m%d-%H%M%S).log"
+    echo "Writing log to src-app/server/$log"
+    source tests/.env.test
+    # cargo test only takes one positional filter — pass the OR-set
+    # via `--` so the runner does the matching.
+    DATABASE_URL="{{HUB_DB_URL}}" \
+        cargo test --test integration_tests -- \
+            --test-threads=1 \
+            hub:: assistant:: mcp:: llm_model:: \
+            2>&1 | tee "$log"
+
+# OpenAPI two-step regen: server emits openapi.json into the core UI
+# workspace, then we copy it across to the desktop UI workspace and
+# run each workspace's generate-openapi script (which rewrites
+# `src/api-client/types.ts` from openapi.json). The whole pair is the
+# single source-of-truth flow for API types.
+openapi-regen: check-hub
+    @cd src-app && DATABASE_URL="{{HUB_DB_URL}}" CONFIG_FILE=server/config/openapi-gen.yaml \
+        cargo run --bin ziee -- --generate-openapi ui/openapi
+    @cp -f src-app/ui/openapi/openapi.json src-app/desktop/ui/openapi/openapi.json
+    @cd src-app/ui && npm run generate-openapi
+    @cd src-app/desktop/ui && npm run generate-openapi
+
+# The "all green" hub compile gate — check + tsc + openapi-regen, but
+# NOT test-hub (slow, needs creds, separate recipe).
+ci-hub: check-hub tsc openapi-regen
+    @echo "✓ hub: compile + tsc + openapi-regen all green"
+# ─── Desktop auto-updater ────────────────────────────────────────────
+
+# Always-on updater tests (no Docker needed):
+#   Tier 1 — frontend store unit (vitest)
+#   Tier 2 — manifest builder unit (node --test)
+#   Tier 3 — signing round-trip (Rust; auto-generates an ephemeral key,
+#            signs via `tauri signer`, verifies with minisign-verify,
+#            asserts a tampered artifact fails). Needs the build DB on
+#            :54321 to compile (same as every desktop cargo recipe).
+check-updater: workspace-cargo-pin-sqlx
+    node --test scripts/updater/build-latest-json.test.mjs
+    cd src-app/desktop/ui && npm run test:unit -- src/modules/updater/stores/Updater.store.test.ts
+    cd src-app/desktop/tauri && cargo test --test updater_signing_test -- --test-threads=1
+    @echo "✓ updater: Tier 1 (store) + Tier 2 (manifest) + Tier 3 (signing) green"
+
+# Tier 4 — release/Pages workflow exercised locally with `act` (Docker)
+# against a temp bare repo, plus a dockerized actionlint over both
+# workflows. Self-asserting: the workflow fails if the published
+# latest.json is wrong, so act's exit code is the signal. Needs Docker
+# + act (external deps; own recipe like the sandbox external-dep tiers).
+check-updater-ci:
+    @echo "==> actionlint (dockerized) over updater workflows"
+    docker run --rm -v "{{justfile_directory()}}":/repo --workdir /repo \
+        rhysd/actionlint:latest -color \
+        .github/workflows/desktop-release.yml \
+        .github/workflows/desktop-updater-pages-test.yml
+    @echo "==> act: run desktop-updater-pages-test.yml (publishes to a temp bare repo, self-asserts)"
+    act workflow_dispatch \
+        -W .github/workflows/desktop-updater-pages-test.yml \
+        --bind --rm
+    @echo "✓ updater Tier 4: workflow + manifest + gh-pages publish verified via act"
+
+# Everything testable locally for the updater (Tiers 1-3 + 4).
+check-updater-all: check-updater check-updater-ci
+    @echo "✓ updater: all locally-runnable tiers green"
+
+# ─── Server distribution + update notification ───────────────────────
+
+# Always-on server-update tests:
+#   - backend unit (semver / config default / release-JSON parse)
+#   - install.sh shellcheck + --dry-run URL/method/arch asserts; the install
+#     test's Part B additionally checks distro detection inside ubuntu/fedora/
+#     alpine containers when Docker is up.
+# Needs the build DB on :54321 to compile the server (like every cargo recipe).
+check-server-update: workspace-cargo-pin-sqlx
+    cd src-app && cargo test -p ziee --lib server_update::
+    docker run --rm -v "{{justfile_directory()}}":/mnt -w /mnt koalaman/shellcheck:stable \
+        scripts/install.sh scripts/install.test.sh packaging/postinstall.sh packaging/preremove.sh
+    sh scripts/install.test.sh
+    @echo "✓ server-update: backend unit + install.sh (shellcheck + dry-run + distro) green"
+
+# Server-update HTTP integration test: mock GitHub via SERVER_UPDATE_API_MIRROR,
+# assert auth-gate + the update-available path through /api/server-update/status.
+# Needs the build/test DB on :54321.
+check-server-update-int:
+    cd src-app/server && cargo test --test integration_tests server_update:: -- --test-threads=1
+    @echo "✓ server-update integration green"
+
+# Lint the server release workflow (dockerized actionlint).
+check-server-release-ci:
+    docker run --rm -v "{{justfile_directory()}}":/repo --workdir /repo \
+        rhysd/actionlint:latest -color .github/workflows/server-release.yml
+    @echo "✓ server-release.yml lint clean"
+

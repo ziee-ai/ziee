@@ -10,10 +10,6 @@
 // TYPE DEFINITIONS
 // =============================================================================
 
-export interface ActivateHubVersionRequest {
-  version?: string
-}
-
 export type ApprovalMode = 'disabled' | 'auto_approve' | 'manual_approve'
 
 export interface AssignProviderToGroupRequest {
@@ -138,7 +134,7 @@ export interface Catalog {
   schema_version: number
 }
 
-export type CatalogProvenance = 'seed' | 'github'
+export type CatalogProvenance = 'seed' | 'pages'
 
 export interface ChangePasswordRequest {
   current_password: string
@@ -242,6 +238,20 @@ export interface ConversationResponse {
   user_id: string
 }
 
+export interface ConversationSummarizationModeResponse {
+  summarization_mode: string
+}
+
+export interface ConversationSummary {
+  branch_id: string
+  created_at: string
+  message_count: number
+  model_used?: string
+  summarized_up_to_id?: string
+  summary_text: string
+  updated_at: string
+}
+
 export interface CoreMemoryBlock {
   assistant_id: string
   block_label: string
@@ -279,6 +289,11 @@ export interface CreateAuthProviderRequest {
   enabled?: boolean
   name: string
   provider_type: string
+}
+
+export interface CreateAuthProviderResponse {
+  connection_warning?: string
+  provider: AuthProviderResponse
 }
 
 export interface CreateBranchRequest {
@@ -383,6 +398,7 @@ export interface CreateModelFromHubRequest {
   hub_id: string
   provider_id: string
   quantization_name?: string
+  source_index?: number
 }
 
 export interface CreateProjectRequest {
@@ -418,6 +434,8 @@ export interface DeleteProviderResponse {
 export interface DeleteVersionQuery {
   remove_binary?: boolean
 }
+
+export type DependencyKind = 'model' | 'mcp-server'
 
 export type DeviceType = 'cpu' | 'cuda' | 'metal' | 'rocm' | 'vulkan' | 'opencl' | 'auto'
 
@@ -654,6 +672,8 @@ export interface FileListResponse {
   total: number
 }
 
+export type FileRole = 'weight' | 'index' | 'config' | 'tokenizer' | 'vocab' | 'other'
+
 export interface FileVersion {
   blob_version_id: string
   checksum?: string
@@ -670,6 +690,16 @@ export interface FileVersion {
   source_message_id?: string
   text_page_count: number
   version: number
+}
+
+export interface FtsRebuildRequest {
+  dictionary: string
+}
+
+export interface FtsRebuildStatus {
+  completed_at?: string
+  in_progress: boolean
+  started_at?: string
 }
 
 export interface GPUComputeCapabilities {
@@ -794,22 +824,23 @@ export interface HealthResponse {
 }
 
 export interface HubAssistant {
+  $schema?: string
   description?: string
+  _meta?: any
   author?: string
   capabilities_required?: string[]
   category?: string
   created_ids?: string[]
   created_template_ids?: string[]
+  dependencies?: HubDependency[]
   display_name: string
-  example_prompts?: string[]
-  id: string
   instructions?: string
   name: string
   parameters: any
-  popularity_score?: number
-  recommended_models?: string[]
+  repository?: HubRepository
   tags?: string[]
-  use_cases?: string[]
+  version?: string
+  websiteUrl?: string
 }
 
 export interface HubCatalogCounts {
@@ -819,7 +850,6 @@ export interface HubCatalogCounts {
 }
 
 export interface HubCatalogRefreshResponse {
-  cosign_verified: boolean
   new_version: string
   previous_version?: string
   updated: boolean
@@ -834,6 +864,12 @@ export interface HubCatalogVersionResponse {
 }
 
 export type HubCategory = 'assistant' | 'mcp-server' | 'model'
+
+export interface HubDependency {
+  kind: DependencyKind
+  name: string
+  versionRange: string
+}
 
 export interface HubEntity {
   created_at: string
@@ -874,41 +910,17 @@ export interface HubLocalProvidersResponse {
 }
 
 export interface HubMCPServer {
+  $schema?: string
   description?: string
-  args?: string[]
-  author?: string
-  category?: string
-  command?: string
+  _meta?: any
   created_ids?: string[]
   created_system_ids?: string[]
-  display_name: string
-  documentation_url?: string
-  download_count?: number
-  environment_variables?: any
-  example_prompts?: string[]
-  example_tools?: string[]
-  headers?: any
-  homepage?: string
-  icon_url?: string
-  id: string
-  license?: string
-  minimum_version?: string
   name: string
-  platform_support?: string[]
-  popularity_score?: number
-  rating?: number
-  repository_url?: string
-  required_env?: HubRequiredInput[]
-  required_headers?: HubRequiredInput[]
-  requires_desktop?: boolean
-  supports_sampling?: boolean
-  tags?: string[]
-  tool_categories?: string[]
-  tool_count?: number
-  transport_type?: string
-  url?: string
-  use_cases?: string[]
+  packages?: McpPackage[]
+  remotes?: McpRemote[]
+  repository?: HubRepository
   version?: string
+  websiteUrl?: string
 }
 
 export interface HubManifest {
@@ -923,37 +935,24 @@ export interface HubManifestQuery {
 }
 
 export interface HubModel {
+  $schema?: string
   description?: string
-  auth_required?: boolean
+  _meta?: any
   author?: string
   capabilities?: ModelCapabilities2
-  context_length?: number
   created_ids?: string[]
+  dependencies?: HubDependency[]
   display_name: string
-  file_format: FileFormat2
-  homepage_url?: string
-  id: string
   language_support?: string[]
   license?: string
-  main_filename: string
   name: string
-  popularity_score: number
-  public?: boolean
-  quantization_options?: HubModelQuantizationOption[]
-  recommended_engine?: string
-  recommended_engine_settings?: any
   recommended_parameters?: any
-  repository_path: string
-  repository_url: string
-  size_gb: number
+  repository?: HubRepository
   source_auth_configured?: boolean
+  sources: ModelSource[]
   tags?: string[]
-}
-
-export interface HubModelQuantizationOption {
-  main_filename: string
-  name: string
-  size_gb?: number
+  version?: string
+  websiteUrl?: string
 }
 
 export interface HubQuery {
@@ -965,25 +964,11 @@ export interface HubRefreshResponse {
   version: string
 }
 
-export interface HubReleaseInfo {
-  prerelease: boolean
-  published_at?: string
-  tag: string
-  version: string
-}
-
-export interface HubReleasesResponse {
-  active_version?: string
-  pinned_version?: string
-  releases: HubReleaseInfo[]
-}
-
-export interface HubRequiredInput {
-  description?: string
-  docs_url?: string
-  is_secret?: boolean
-  name: string
-  placeholder?: string
+export interface HubRepository {
+  id?: string
+  source?: string
+  subfolder?: string
+  url: string
 }
 
 export interface HubVersionResponse {
@@ -1004,15 +989,17 @@ export type ImageSource = {
 }
 
 export interface IndexItem {
+  title?: string
+  _meta?: any
   added_at?: string
   category: HubCategory
-  id: string
   manifest_path: string
   min_ziee_version?: string
   name: string
   summary: string
   tags?: string[]
   verified?: boolean
+  version?: string
 }
 
 export interface InstallTaskState {
@@ -1253,8 +1240,51 @@ export interface LoopSettings {
   stop_when_tools_called?: ToolIdentifier[]
 }
 
+export interface McpArgument {
+  description?: string
+  type?: string
+  format?: string
+  choices?: string[]
+  default?: string
+  isRepeated?: boolean
+  isRequired?: boolean
+  name?: string
+  value?: string
+  valueHint?: string
+}
+
 export interface McpConfig {
   mcp_servers: McpServerConfig[]
+}
+
+export interface McpKeyValueInput {
+  description?: string
+  format?: string
+  choices?: string[]
+  default?: string
+  isRequired?: boolean
+  isSecret?: boolean
+  name: string
+  value?: string
+}
+
+export interface McpPackage {
+  environmentVariables?: McpKeyValueInput[]
+  fileSha256?: string
+  identifier: string
+  packageArguments?: McpArgument[]
+  registryBaseUrl?: string
+  registryType: string
+  runtimeArguments?: McpArgument[]
+  runtimeHint?: string
+  transport: McpTransport
+  version: string
+}
+
+export interface McpRemote {
+  type: string
+  headers?: McpKeyValueInput[]
+  url: string
 }
 
 export interface McpServer {
@@ -1350,6 +1380,10 @@ export interface McpSettingsResponse {
   settings?: ConversationMcpSettingsResponse
 }
 
+export interface McpTransport {
+  type: string
+}
+
 export interface McpUserPolicy {
   allowed_transports: string[]
   updated_at: string
@@ -1371,12 +1405,16 @@ export interface MemoryAdminSettings {
   embedding_dimensions: number
   embedding_model_id?: string
   enabled: boolean
-  full_summary_prompt?: string
+  fts_candidate_multiplier: number
+  fts_dictionary: string
+  fts_enabled: boolean
+  fts_min_rank: number
+  fts_rebuild_completed_at?: string
+  fts_rebuild_started_at?: string
+  fts_rrf_k: number
   id: number
-  incremental_summary_prompt?: string
+  semantic_enabled: boolean
   soft_delete_grace_days: number
-  summarize_after_tokens: number
-  summarizer_keep_recent_tokens: number
   updated_at: string
 }
 
@@ -1588,6 +1626,27 @@ export interface ModelParameters {
   temperature?: number
   top_k?: number
   top_p?: number
+}
+
+export interface ModelQuantization {
+  fileSha256?: string
+  isDefault?: boolean
+  mainFile: string
+  name: string
+  sizeGb?: number
+}
+
+export type ModelShape = 'gguf' | 'safetensors' | 'pickle' | 'unknown'
+
+export interface ModelSource {
+  contextLength?: number
+  environmentVariables?: McpKeyValueInput[]
+  fileFormat: FileFormat2
+  identifier: string
+  quantizations: ModelQuantization[]
+  registryType: string
+  runtimeHint?: string
+  version: string
 }
 
 export interface ModelUsageInfo {
@@ -1815,6 +1874,29 @@ export interface RepositoryAuthConfig {
   token?: string
   username?: string
 }
+
+export interface RepositoryFile {
+  file_format?: string
+  file_role: FileRole
+  path: string
+  size_bytes: number
+}
+
+export interface RepositoryFileListResponse {
+  files: RepositoryFile[]
+  shape: ModelShape
+  source: RepositorySource
+  suggested_main_filename?: string
+  truncated: boolean
+}
+
+export interface RepositoryFilesQuery {
+  branch?: string
+  path: string
+  repository_id: string
+}
+
+export type RepositorySource = 'huggingface' | 'github' | 'unknown'
 
 export interface ResetPasswordRequest {
   new_password: string
@@ -2160,6 +2242,17 @@ export interface StreamError {
   message: string
 }
 
+export interface SummarizationAdminSettings {
+  default_summarization_model_id?: string
+  enabled: boolean
+  full_summary_prompt?: string
+  id: number
+  incremental_summary_prompt?: string
+  summarize_after_tokens: number
+  summarizer_keep_recent_tokens: number
+  updated_at: string
+}
+
 export interface SwapOutcome {
   cache_wipe: SwapPolicy
   draining_mounts: number
@@ -2190,7 +2283,7 @@ export interface SyncConnectedData {
   connection_id: string
 }
 
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'file' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'user_llm_provider' | 'user_mcp_server' | 'session'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'file' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'user_llm_provider' | 'user_mcp_server' | 'session'
 
 export interface SyncEvent {
   action: SyncAction
@@ -2235,6 +2328,11 @@ export interface TestProviderResponse {
   ok: boolean
 }
 
+export interface TestRefreshRequest {
+  branch_id: string
+  model_id: string
+}
+
 export interface TestRepositoryConnectionRequest {
   auth_config?: RepositoryAuthConfig
   auth_type: string
@@ -2245,11 +2343,6 @@ export interface TestRepositoryConnectionRequest {
 export interface TestRepositoryConnectionResponse {
   message: string
   success: boolean
-}
-
-export interface TestSummarizeRequest {
-  branch_id: string
-  model_id: string
 }
 
 export interface TextPageQuery {
@@ -2349,6 +2442,10 @@ export interface UpdateConversationRequest {
   title?: string
 }
 
+export interface UpdateConversationSummarizationModeRequest {
+  summarization_mode: string
+}
+
 export interface UpdateGroupProvidersRequest {
   provider_ids: string[]
 }
@@ -2423,11 +2520,13 @@ export interface UpdateMemoryAdminSettingsRequest {
   default_top_k?: number
   embedding_model_id?: string
   enabled?: boolean
-  full_summary_prompt?: string
-  incremental_summary_prompt?: string
+  fts_candidate_multiplier?: number
+  fts_dictionary?: string
+  fts_enabled?: boolean
+  fts_min_rank?: number
+  fts_rrf_k?: number
+  semantic_enabled?: boolean
   soft_delete_grace_days?: number
-  summarize_after_tokens?: number
-  summarizer_keep_recent_tokens?: number
 }
 
 export interface UpdateMemoryRequest {
@@ -2454,6 +2553,25 @@ export interface UpdateRuntimeSettingsRequest {
   auto_start_timeout_secs?: number
   drain_timeout_secs?: number
   idle_unload_secs?: number
+}
+
+export interface UpdateStatusResponse {
+  checked_at?: string
+  current_version: string
+  enabled: boolean
+  latest_version?: string
+  notes?: string
+  release_url?: string
+  update_available: boolean
+}
+
+export interface UpdateSummarizationAdminSettingsRequest {
+  default_summarization_model_id?: string
+  enabled?: boolean
+  full_summary_prompt?: string
+  incremental_summary_prompt?: string
+  summarize_after_tokens?: number
+  summarizer_keep_recent_tokens?: number
 }
 
 export interface UpdateUserMemorySettingsRequest {
@@ -2648,7 +2766,6 @@ export enum Permissions {
   HubAssistantsRefresh = 'hub::assistants::refresh',
   HubAssistantsVersionRead = 'hub::assistants::read_version',
   HubCatalogManage = 'hub::catalog::manage',
-  HubCatalogRead = 'hub::catalog::read',
   HubMcpServersCreate = 'hub::mcp_servers::create',
   HubMCPServersRead = 'hub::mcp_servers::read',
   HubMCPServersRefresh = 'hub::mcp_servers::refresh',
@@ -2704,6 +2821,9 @@ export enum Permissions {
   RuntimeVersionDelete = 'llm_local_runtime::delete',
   RuntimeVersionRead = 'llm_local_runtime::versions_read',
   RuntimeVersionUpdate = 'llm_local_runtime::update',
+  ServerUpdateRead = 'server_update::read',
+  SummarizationSettingsManage = 'summarization::settings::manage',
+  SummarizationSettingsRead = 'summarization::settings::read',
   UserLlmProvidersRead = 'user_llm_providers::read',
   UsersCreate = 'users::create',
   UsersDelete = 'users::delete',
@@ -2754,7 +2874,6 @@ export const PermissionDescriptions: Record<string, string> = {
   HubAssistantsRefresh: 'Refresh hub assistants from GitHub',
   HubAssistantsVersionRead: 'View hub assistants version information',
   HubCatalogManage: 'Refresh + activate hub catalog versions',
-  HubCatalogRead: 'View hub catalog versions + pending updates',
   HubMcpServersCreate: 'Create MCP servers from hub',
   HubMCPServersRead: 'View hub MCP servers',
   HubMCPServersRefresh: 'Refresh hub MCP servers from GitHub',
@@ -2810,6 +2929,9 @@ export const PermissionDescriptions: Record<string, string> = {
   RuntimeVersionDelete: 'Delete runtime versions',
   RuntimeVersionRead: 'View runtime versions and check for updates',
   RuntimeVersionUpdate: 'Update runtime version settings and defaults',
+  ServerUpdateRead: 'View the cached server update-availability status.',
+  SummarizationSettingsManage: 'Update deployment-wide summarization settings (enable, model, thresholds, prompts).',
+  SummarizationSettingsRead: 'Read deployment-wide summarization settings (model + thresholds + prompt overrides).',
   UserLlmProvidersRead: 'View available LLM providers and models',
   UsersCreate: 'Create new user accounts',
   UsersDelete: 'Delete user accounts',
@@ -2874,8 +2996,10 @@ export const ApiEndpoints = {
   'Conversation.get': 'GET /api/conversations/{id}',
   'Conversation.getMcpSettings': 'GET /api/conversations/{id}/mcp-settings',
   'Conversation.getMemoryMode': 'GET /api/conversations/{id}/memory-mode',
+  'Conversation.getSummarizationMode': 'GET /api/conversations/{id}/summarization-mode',
   'Conversation.list': 'GET /api/conversations',
   'Conversation.setMemoryMode': 'PUT /api/conversations/{id}/memory-mode',
+  'Conversation.setSummarizationMode': 'PUT /api/conversations/{id}/summarization-mode',
   'Conversation.update': 'PUT /api/conversations/{id}',
   'Conversation.updateMcpSettings': 'PUT /api/conversations/{id}/mcp-settings',
   'CoreMemory.delete': 'DELETE /api/assistants/{assistant_id}/core-memory/{block_label}',
@@ -2905,7 +3029,6 @@ export const ApiEndpoints = {
   'Hardware.info': 'GET /api/hardware',
   'Hardware.stream': 'GET /api/hardware/usage-stream',
   'Health.check': 'GET /api/health',
-  'Hub.activateVersion': 'POST /api/hub/activate',
   'Hub.createAssistantFromHub': 'POST /api/hub/assistants/create',
   'Hub.createAssistantTemplateFromHub': 'POST /api/hub/assistant-templates/create',
   'Hub.createMcpServerFromHub': 'POST /api/hub/mcp-servers/create',
@@ -2922,7 +3045,6 @@ export const ApiEndpoints = {
   'Hub.getManifest': 'GET /api/hub/manifest/{id}',
   'Hub.getModels': 'GET /api/hub/models',
   'Hub.getModelsVersion': 'GET /api/hub/models/version',
-  'Hub.getReleases': 'GET /api/hub/releases',
   'Hub.refreshAssistants': 'POST /api/hub/assistants/refresh',
   'Hub.refreshCatalog': 'POST /api/hub/refresh',
   'Hub.refreshMCPServers': 'POST /api/hub/mcp-servers/refresh',
@@ -2938,6 +3060,7 @@ export const ApiEndpoints = {
   'LlmModel.getDownload': 'GET /api/llm-models/downloads/{download_id}',
   'LlmModel.list': 'GET /api/llm-models',
   'LlmModel.listDownloads': 'GET /api/llm-models/downloads',
+  'LlmModel.listRepositoryFiles': 'GET /api/llm-models/repository-files',
   'LlmModel.subscribeDownloadProgress': 'GET /api/llm-models/downloads/subscribe',
   'LlmModel.update': 'POST /api/llm-models/{model_id}',
   'LlmModel.upload': 'POST /api/llm-models/upload',
@@ -3016,6 +3139,8 @@ export const ApiEndpoints = {
   'Memory.get': 'GET /api/memories/{id}',
   'Memory.list': 'GET /api/memories',
   'Memory.update': 'PATCH /api/memories/{id}',
+  'MemoryAdmin.ftsRebuild': 'POST /api/memory/admin/fts/rebuild',
+  'MemoryAdmin.ftsRebuildStatus': 'GET /api/memory/admin/fts/rebuild/status',
   'MemoryAdmin.get': 'GET /api/memory/admin-settings',
   'MemoryAdmin.rebuildStatus': 'GET /api/memory/admin-settings/rebuild-status',
   'MemoryAdmin.reembed': 'POST /api/memory/admin-settings/reembed',
@@ -3024,7 +3149,6 @@ export const ApiEndpoints = {
   'MemorySettings.get': 'GET /api/memory/settings',
   'MemorySettings.update': 'PUT /api/memory/settings',
   'MemoryTest.extract': 'POST /api/_test/memory/extract',
-  'MemoryTest.summarize': 'POST /api/_test/memory/summarize',
   'Message.delete': 'DELETE /api/messages/{id}',
   'Message.edit': 'PUT /api/conversations/{conversation_id}/messages/{message_id}',
   'Message.get': 'GET /api/messages/{id}',
@@ -3063,6 +3187,11 @@ export const ApiEndpoints = {
   'RuntimeVersion.subscribeDownloadEvents': 'GET /api/local-runtime/versions/downloads/{key}/events',
   'RuntimeVersion.syncCache': 'POST /api/local-runtime/versions/sync-cache',
   'RuntimeVersion.usage': 'GET /api/local-runtime/version-usage',
+  'ServerUpdate.getStatus': 'GET /api/server-update/status',
+  'Summarization.getConversationSummary': 'GET /api/conversations/{id}/summary',
+  'SummarizationAdmin.get': 'GET /api/summarization/settings',
+  'SummarizationAdmin.update': 'PUT /api/summarization/settings',
+  'SummarizationTest.refresh': 'POST /api/_test/summarization/refresh',
   'Sync.subscribe': 'GET /api/sync/subscribe',
   'User.create': 'POST /api/users',
   'User.delete': 'DELETE /api/users/{user_id}',
@@ -3132,8 +3261,10 @@ export type ApiEndpointParameters = {
   'Conversation.get': { id: string }
   'Conversation.getMcpSettings': { id: string }
   'Conversation.getMemoryMode': { id: string }
+  'Conversation.getSummarizationMode': { id: string }
   'Conversation.list': { limit?: number; page?: number }
   'Conversation.setMemoryMode': { id: string } & UpdateConversationMemoryModeRequest
+  'Conversation.setSummarizationMode': { id: string } & UpdateConversationSummarizationModeRequest
   'Conversation.update': { id: string } & UpdateConversationRequest
   'Conversation.updateMcpSettings': { id: string } & UpsertMcpSettingsRequest
   'CoreMemory.delete': { assistant_id: string; block_label: string }
@@ -3163,7 +3294,6 @@ export type ApiEndpointParameters = {
   'Hardware.info': void
   'Hardware.stream': void
   'Health.check': void
-  'Hub.activateVersion': ActivateHubVersionRequest
   'Hub.createAssistantFromHub': CreateAssistantFromHubRequest
   'Hub.createAssistantTemplateFromHub': CreateAssistantFromHubRequest
   'Hub.createMcpServerFromHub': CreateMcpServerFromHubRequest
@@ -3180,7 +3310,6 @@ export type ApiEndpointParameters = {
   'Hub.getManifest': { id: string; category: HubCategory }
   'Hub.getModels': { lang?: string }
   'Hub.getModelsVersion': void
-  'Hub.getReleases': void
   'Hub.refreshAssistants': void
   'Hub.refreshCatalog': void
   'Hub.refreshMCPServers': void
@@ -3196,6 +3325,7 @@ export type ApiEndpointParameters = {
   'LlmModel.getDownload': { download_id: string }
   'LlmModel.list': { capability?: string; page?: number; perPage?: number; providerId?: string }
   'LlmModel.listDownloads': { page?: number; per_page?: number; status?: string }
+  'LlmModel.listRepositoryFiles': { branch?: string; path: string; repository_id: string }
   'LlmModel.subscribeDownloadProgress': void
   'LlmModel.update': { model_id: string } & UpdateLlmModelRequest
   'LlmModel.upload': FormData
@@ -3274,6 +3404,8 @@ export type ApiEndpointParameters = {
   'Memory.get': { id: string }
   'Memory.list': { kind?: string; limit?: number; offset?: number; page?: number; per_page?: number; search?: string; source?: string }
   'Memory.update': { id: string } & UpdateMemoryRequest
+  'MemoryAdmin.ftsRebuild': FtsRebuildRequest
+  'MemoryAdmin.ftsRebuildStatus': void
   'MemoryAdmin.get': void
   'MemoryAdmin.rebuildStatus': void
   'MemoryAdmin.reembed': void
@@ -3282,7 +3414,6 @@ export type ApiEndpointParameters = {
   'MemorySettings.get': void
   'MemorySettings.update': UpdateUserMemorySettingsRequest
   'MemoryTest.extract': TestExtractRequest
-  'MemoryTest.summarize': TestSummarizeRequest
   'Message.delete': { id: string }
   'Message.edit': { conversation_id: string; message_id: string } & EditMessageRequest
   'Message.get': { id: string }
@@ -3321,6 +3452,11 @@ export type ApiEndpointParameters = {
   'RuntimeVersion.subscribeDownloadEvents': { key: string }
   'RuntimeVersion.syncCache': void
   'RuntimeVersion.usage': { engine?: string }
+  'ServerUpdate.getStatus': void
+  'Summarization.getConversationSummary': { id: string }
+  'SummarizationAdmin.get': void
+  'SummarizationAdmin.update': UpdateSummarizationAdminSettingsRequest
+  'SummarizationTest.refresh': TestRefreshRequest
   'Sync.subscribe': void
   'User.create': CreateUserRequest
   'User.delete': { user_id: string }
@@ -3364,7 +3500,7 @@ export type ApiEndpointResponses = {
   'Auth.refresh': TokenPair
   'Auth.register': AuthResponse
   'Auth.updateProfile': User
-  'AuthProviders.create': AuthProviderResponse
+  'AuthProviders.create': CreateAuthProviderResponse
   'AuthProviders.delete': DeleteProviderResponse
   'AuthProviders.list': AuthProviderResponse[]
   'AuthProviders.test': TestProviderResponse
@@ -3390,8 +3526,10 @@ export type ApiEndpointResponses = {
   'Conversation.get': Conversation
   'Conversation.getMcpSettings': McpSettingsResponse
   'Conversation.getMemoryMode': ConversationMemoryModeResponse
+  'Conversation.getSummarizationMode': ConversationSummarizationModeResponse
   'Conversation.list': ConversationResponse[]
   'Conversation.setMemoryMode': ConversationMemoryModeResponse
+  'Conversation.setSummarizationMode': ConversationSummarizationModeResponse
   'Conversation.update': Conversation
   'Conversation.updateMcpSettings': ConversationMcpSettingsResponse
   'CoreMemory.delete': void
@@ -3421,7 +3559,6 @@ export type ApiEndpointResponses = {
   'Hardware.info': HardwareInfoResponse
   'Hardware.stream': SSEHardwareUsageEvent
   'Health.check': HealthResponse
-  'Hub.activateVersion': HubCatalogRefreshResponse
   'Hub.createAssistantFromHub': AssistantFromHubResponse
   'Hub.createAssistantTemplateFromHub': AssistantFromHubResponse
   'Hub.createMcpServerFromHub': McpServerFromHubResponse
@@ -3438,7 +3575,6 @@ export type ApiEndpointResponses = {
   'Hub.getManifest': HubManifest
   'Hub.getModels': HubModel[]
   'Hub.getModelsVersion': HubVersionResponse
-  'Hub.getReleases': HubReleasesResponse
   'Hub.refreshAssistants': HubRefreshResponse
   'Hub.refreshCatalog': HubCatalogRefreshResponse
   'Hub.refreshMCPServers': HubRefreshResponse
@@ -3454,6 +3590,7 @@ export type ApiEndpointResponses = {
   'LlmModel.getDownload': DownloadInstance
   'LlmModel.list': LlmModelListResponse
   'LlmModel.listDownloads': DownloadInstanceListResponse
+  'LlmModel.listRepositoryFiles': RepositoryFileListResponse
   'LlmModel.subscribeDownloadProgress': SSEDownloadProgressEvent
   'LlmModel.update': LlmModel
   'LlmModel.upload': LlmModel
@@ -3532,6 +3669,8 @@ export type ApiEndpointResponses = {
   'Memory.get': UserMemory
   'Memory.list': MemoryListResponse
   'Memory.update': UserMemory
+  'MemoryAdmin.ftsRebuild': any
+  'MemoryAdmin.ftsRebuildStatus': FtsRebuildStatus
   'MemoryAdmin.get': MemoryAdminSettings
   'MemoryAdmin.rebuildStatus': RebuildStatus
   'MemoryAdmin.reembed': any
@@ -3540,7 +3679,6 @@ export type ApiEndpointResponses = {
   'MemorySettings.get': UserMemorySettings
   'MemorySettings.update': UserMemorySettings
   'MemoryTest.extract': any
-  'MemoryTest.summarize': any
   'Message.delete': void
   'Message.edit': EditMessageResponse
   'Message.get': MessageWithContent
@@ -3579,6 +3717,11 @@ export type ApiEndpointResponses = {
   'RuntimeVersion.subscribeDownloadEvents': SSEEngineDownloadEvent
   'RuntimeVersion.syncCache': SyncCacheResponse
   'RuntimeVersion.usage': VersionUsageResponse
+  'ServerUpdate.getStatus': UpdateStatusResponse
+  'Summarization.getConversationSummary': ConversationSummary | null
+  'SummarizationAdmin.get': SummarizationAdminSettings
+  'SummarizationAdmin.update': SummarizationAdminSettings
+  'SummarizationTest.refresh': any
   'Sync.subscribe': SyncSseEvent
   'User.create': User
   'User.delete': void

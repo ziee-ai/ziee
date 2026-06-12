@@ -95,12 +95,6 @@ pub fn hub_router() -> ApiRouter {
             "/hub/manifest/{id}",
             get_with(get_hub_manifest, get_hub_manifest_docs),
         )
-        .api_route(
-            "/hub/releases",
-            get_with(get_hub_releases, get_hub_releases_docs),
-        )
-        .api_route(
-            "/hub/activate",
-            post_with(activate_hub_version, activate_hub_version_docs),
-        )
+    // /hub/releases and /hub/activate are not exposed — see handlers.rs
+    // for the rationale.
 }

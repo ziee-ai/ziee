@@ -44,6 +44,12 @@ src-app/server/vendor/pgvector/pg_config_wrapper/
 # macOS Finder cruft.
 .DS_Store
 
+# Output of the updater Pages CI test (`just check-updater-ci` via act --bind).
+.updater-test-out/
+
 # Per-session Claude Code state (lock file used by the scheduled-task
 # bookkeeping). Never committed.
 .claude/scheduled_tasks.lock
+
+# Transient server build/packaging staging (server-release.yml + nfpm smoke).
+/dist/

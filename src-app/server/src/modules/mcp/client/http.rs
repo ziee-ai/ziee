@@ -320,6 +320,7 @@ async fn drain_standalone_sse(
     last_event_id: &mut Option<String>,
     backoff_initial_ms: &mut u64,
     reconnect_attempt: &mut u32,
+    ctx: &GetStreamContext,
 ) {
     let mut buf = String::new();
     let mut stream = resp.bytes_stream();
@@ -365,7 +366,88 @@ async fn drain_standalone_sse(
                 );
                 *backoff_initial_ms = retry_ms;
             }
-            route_unsolicited_event(server_name, &event_block);
+            use std::sync::atomic::Ordering;
+            match route_unsolicited_event(server_name, &event_block) {
+                UnsolicitedAction::Handled => {}
+                UnsolicitedAction::Elicitation(json) => {
+                    // Snapshot the connection state + active-call context and run
+                    // the handshake in its own task so the stream keeps reading.
+                    let bearer = ctx
+                        .oauth_token
+                        .read()
+                        .ok()
+                        .and_then(|g| g.clone())
+                        .filter(|t| t.is_valid())
+                        .map(|t| t.access_token);
+                    // Soft cap: beyond the limit, route with no active context so
+                    // the handler just POSTs a cancel (cheap — no registry/DB/SSE)
+                    // instead of parking, bounding a flooding server.
+                    let inflight = ctx.inflight.clone();
+                    let over_cap =
+                        inflight.fetch_add(1, Ordering::Relaxed) >= MAX_INFLIGHT_GET_ELICITATIONS;
+                    let active = if over_cap {
+                        tracing::warn!(
+                            "[elicitation] '{server_name}' GET-SSE concurrent elicitation cap \
+                             ({MAX_INFLIGHT_GET_ELICITATIONS}) reached — auto-cancelling"
+                        );
+                        None
+                    } else {
+                        ctx.active_call_ctx.read().ok().and_then(|g| g.clone())
+                    };
+                    let server_name_owned = server_name.to_string();
+                    let stream_client = ctx.stream_client.clone();
+                    let url = ctx.url.clone();
+                    let session_id = ctx.session_id.read().ok().and_then(|g| g.clone());
+                    let protocol_version = ctx.protocol_version.read().ok().and_then(|g| g.clone());
+                    tokio::spawn(async move {
+                        handle_get_stream_elicitation(
+                            json,
+                            server_name_owned,
+                            stream_client,
+                            url,
+                            session_id,
+                            protocol_version,
+                            bearer,
+                            active,
+                        )
+                        .await;
+                        inflight.fetch_sub(1, Ordering::Relaxed);
+                    });
+                }
+                UnsolicitedAction::RejectUnsupported(json) => {
+                    // POST a JSON-RPC method-not-found so the server fails fast.
+                    let req_id = json.get("id").cloned().unwrap_or(Value::Null);
+                    let bearer = ctx
+                        .oauth_token
+                        .read()
+                        .ok()
+                        .and_then(|g| g.clone())
+                        .filter(|t| t.is_valid())
+                        .map(|t| t.access_token);
+                    let stream_client = ctx.stream_client.clone();
+                    let url = ctx.url.clone();
+                    let session_id = ctx.session_id.read().ok().and_then(|g| g.clone());
+                    let protocol_version = ctx.protocol_version.read().ok().and_then(|g| g.clone());
+                    tokio::spawn(async move {
+                        let body = serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "id": req_id,
+                            "error": {
+                                "code": -32601,
+                                "message": "This request type is not supported on the standalone stream"
+                            }
+                        });
+                        let _ = apply_mcp_post_headers(
+                            stream_client.post(&url).json(&body),
+                            session_id,
+                            protocol_version.as_deref(),
+                            bearer.as_deref(),
+                        )
+                        .send()
+                        .await;
+                    });
+                }
+            }
         }
     }
     tracing::debug!(
@@ -436,22 +518,81 @@ fn sse_event_data(event_block: &str) -> String {
         .join("\n")
 }
 
+/// In-flight tool-call context captured so the standalone GET-SSE task can
+/// answer a server→client `elicitation/create` that arrives on the GET stream
+/// rather than on the tool-call POST response. Some servers (e.g. `dscc`)
+/// answer `tools/call` with plain JSON and deliver elicitation on the
+/// standalone stream. Non-built-in sessions are ephemeral — one tool call per
+/// client (see `McpSessionManager`) — so binding the GET-stream elicitation to
+/// "the active call on this client" is unambiguous.
+#[derive(Clone)]
+struct ActiveCallContext {
+    message_id: Option<uuid::Uuid>,
+    sse_tx: Option<
+        tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>,
+    >,
+    elicit_notify_tx: Option<
+        tokio::sync::mpsc::UnboundedSender<
+            crate::modules::mcp::elicitation::models::ElicitationStartedNotification,
+        >,
+    >,
+}
+
+/// Backstop timeout for a GET-stream elicitation handshake. The handler runs in
+/// a *detached* task that is NOT bounded by the tool call's outer timeout (a
+/// `dscc`-style server answers `tools/call` with plain JSON, so `call_tool`
+/// returns before the user replies), so it needs its own bound to reclaim the
+/// task + registry entry (and cancel the server's request) if the user never
+/// answers. Generous enough to fill a form; the server's own request timeout
+/// governs real responsiveness.
+const GET_STREAM_ELICITATION_TIMEOUT: Duration = Duration::from_secs(600);
+
+/// Soft cap on concurrent outstanding GET-stream elicitations per client, to
+/// bound a misbehaving/compromised server that floods the standalone stream
+/// with `elicitation/create` frames. Beyond it, new ones are auto-cancelled.
+const MAX_INFLIGHT_GET_ELICITATIONS: usize = 16;
+
+/// What the standalone GET-SSE task needs to answer an `elicitation/create`
+/// that arrives on the stream: the means to POST the reply back, and the
+/// in-flight call context to route the form to the browser.
+struct GetStreamContext {
+    stream_client: Client,
+    url: String,
+    session_id: Arc<RwLock<Option<String>>>,
+    protocol_version: Arc<RwLock<Option<String>>>,
+    oauth_token: Arc<RwLock<Option<StoredToken>>>,
+    active_call_ctx: Arc<RwLock<Option<ActiveCallContext>>>,
+    /// Concurrent outstanding GET-stream elicitations (soft-capped).
+    inflight: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+/// Outcome of classifying an unsolicited GET-stream event.
+enum UnsolicitedAction {
+    /// Already fully handled (logged) — nothing more for the caller to do.
+    Handled,
+    /// A server→client `elicitation/create` request the caller must answer.
+    Elicitation(Value),
+    /// A server→client request ziee can't service on the standalone stream
+    /// (currently `sampling/createMessage`): the caller POSTs a JSON-RPC error
+    /// so the server fails fast instead of timing out.
+    RejectUnsupported(Value),
+}
+
 /// Dispatch an unsolicited SSE event received on the standalone GET stream.
-/// Today: parse the JSON-RPC envelope + log by method shape. Tomorrow: route
-/// `sampling/createMessage` to the registered SamplingHandler,
-/// `elicitation/create` to the elicitation channel, `notifications/progress`
-/// to the progress consumer for the matching token, `notifications/cancelled`
-/// into the in-flight cancel set — all those consumer channels are currently
-/// per-call (set on `tools/call`), so there is no live consumer for an
-/// unsolicited arrival outside a POST flow. The skeleton stays here so the
-/// future wiring is mechanical, AND so production logs name the method
-/// instead of dumping the raw JSON.
-fn route_unsolicited_event(server_name: &str, event_block: &str) {
+/// Notifications are logged (there is no per-call consumer for them outside a
+/// POST flow). A server→client `elicitation/create` is returned as
+/// [`UnsolicitedAction::Elicitation`] so the caller can run the handshake
+/// against the in-flight tool call (see `handle_get_stream_elicitation`).
+/// `sampling/createMessage` on the GET stream is returned as
+/// [`UnsolicitedAction::RejectUnsupported`] (no GET-path sampling handler yet)
+/// so the caller can reply with a method-not-found error rather than letting
+/// the server hang — parity with the POST path.
+fn route_unsolicited_event(server_name: &str, event_block: &str) -> UnsolicitedAction {
     let data = sse_event_data(event_block);
     if data.is_empty() {
         // Spec's "priming event" — `id:` with empty `data:` — used for
         // Last-Event-Id seeding (GET-resume support is a Phase-3 follow-up).
-        return;
+        return UnsolicitedAction::Handled;
     }
     let parsed: Value = match serde_json::from_str(&data) {
         Ok(v) => v,
@@ -460,7 +601,7 @@ fn route_unsolicited_event(server_name: &str, event_block: &str) {
                 "[mcp] standalone GET-SSE for '{server_name}' got non-JSON payload: {e}; data={}",
                 data.chars().take(200).collect::<String>()
             );
-            return;
+            return UnsolicitedAction::Handled;
         }
     };
     let method = parsed.get("method").and_then(|m| m.as_str());
@@ -489,17 +630,17 @@ fn route_unsolicited_event(server_name: &str, event_block: &str) {
         }
         (Some("sampling/createMessage"), true) => {
             tracing::warn!(
-                "[mcp] '{server_name}' GET-SSE sampling/createMessage received but no \
-                 consumer is attached to the standalone stream — request will time out on \
-                 the server side. Follow-up: wire SamplingHandler into the GET path."
+                "[mcp] '{server_name}' GET-SSE sampling/createMessage received — replying \
+                 method-not-found (sampling is not wired into the GET path)."
             );
+            return UnsolicitedAction::RejectUnsupported(parsed);
         }
         (Some("elicitation/create"), true) => {
-            tracing::warn!(
-                "[mcp] '{server_name}' GET-SSE elicitation/create received but no \
-                 consumer is attached to the standalone stream — request will time out. \
-                 Follow-up: wire elicitation channel into the GET path."
+            tracing::trace!(
+                "[elicitation] '{server_name}' GET-SSE raw elicitation/create: {}",
+                data.chars().take(2000).collect::<String>()
             );
+            return UnsolicitedAction::Elicitation(parsed);
         }
         (Some(m), _) => {
             tracing::debug!("[mcp] '{server_name}' GET-SSE {m} (no router branch)");
@@ -511,6 +652,168 @@ fn route_unsolicited_event(server_name: &str, event_block: &str) {
             );
         }
     }
+    UnsolicitedAction::Handled
+}
+
+/// Answer a server→client `elicitation/create` that arrived on the standalone
+/// GET stream, mirroring the POST-stream handshake: register a oneshot, surface
+/// the form to the browser via the in-flight call's channels, await the user's
+/// reply, and POST it back through [`apply_mcp_post_headers`]. When there is no
+/// active call (no browser to ask) it auto-cancels so the server isn't stranded.
+async fn handle_get_stream_elicitation(
+    json: Value,
+    server_name: String,
+    stream_client: Client,
+    url: String,
+    session_id: Option<String>,
+    protocol_version: Option<String>,
+    bearer: Option<String>,
+    ctx: Option<ActiveCallContext>,
+) {
+    use crate::modules::mcp::elicitation::{models, registry};
+
+    let req_id = json.get("id").cloned().unwrap_or(Value::Null);
+    let params = json.get("params").cloned().unwrap_or(Value::Null);
+    let message = params
+        .get("message")
+        .and_then(|m| m.as_str())
+        .unwrap_or("")
+        .to_string();
+    let requested_schema = params.get("requestedSchema").cloned().unwrap_or(Value::Null);
+
+    // POST a JSON-RPC result back to the server with the spec-required headers.
+    let post_result = |result_value: Value| {
+        let body = serde_json::json!({ "jsonrpc": "2.0", "id": req_id.clone(), "result": result_value });
+        apply_mcp_post_headers(
+            stream_client.post(&url).json(&body),
+            session_id.clone(),
+            protocol_version.as_deref(),
+            bearer.as_deref(),
+        )
+    };
+
+    let (message_id, sse_tx, elicit_notify_tx) = match ctx {
+        Some(c) => (c.message_id, c.sse_tx, c.elicit_notify_tx),
+        None => (None, None, None),
+    };
+
+    // No browser to ask → auto-cancel so the server's request doesn't hang.
+    let Some(sse_tx) = sse_tx else {
+        tracing::warn!(
+            "[elicitation] '{server_name}' GET-SSE elicitation/create id={req_id:?} but no active \
+             call context — auto-cancelling"
+        );
+        let _ = post_result(serde_json::json!({ "action": "cancel" })).send().await;
+        return;
+    };
+
+    tracing::info!(
+        "[elicitation] '{server_name}' GET-SSE received elicitation/create id={req_id:?}"
+    );
+
+    let elicitation_id = uuid::Uuid::new_v4();
+    let content_id = uuid::Uuid::new_v4();
+    let (elicit_tx, elicit_rx) = tokio::sync::oneshot::channel::<models::ElicitationResponse>();
+    registry::register(elicitation_id, elicit_tx, Some(content_id));
+
+    // Persist the DB row + bind the owning user (via the extension layer).
+    if let Some(ref notify_tx) = elicit_notify_tx {
+        let _ = notify_tx.send(models::ElicitationStartedNotification {
+            elicitation_id,
+            content_id,
+            message_id,
+            message: message.clone(),
+            requested_schema: requested_schema.clone(),
+            server: server_name.clone(),
+        });
+    }
+
+    // Surface the form to the browser.
+    let event_data = serde_json::json!({
+        "elicitation_id": elicitation_id.to_string(),
+        "message_id": message_id.map(|m| m.to_string()),
+        "message": message,
+        "requested_schema": requested_schema,
+        "server": server_name,
+    });
+    let event = axum::response::sse::Event::default()
+        .event("mcpElicitationRequired")
+        .data(event_data.to_string());
+    if sse_tx.send(Ok(event)).is_err() {
+        tracing::warn!("[elicitation] '{server_name}' GET-SSE channel closed — cancelling id={req_id:?}");
+        let _ = registry::remove(elicitation_id);
+        let _ = post_result(serde_json::json!({ "action": "cancel" })).send().await;
+        return;
+    }
+
+    // Block until the user responds. This runs in a DETACHED task — for the
+    // GET-stream pattern `call_tool` already returned (the server answered
+    // tools/call with plain JSON), so it is NOT covered by the tool call's outer
+    // timeout. Bound it here so an abandoned elicitation reclaims its task +
+    // registry entry and cancels the server's request instead of parking forever.
+    let user_response = match tokio::time::timeout(GET_STREAM_ELICITATION_TIMEOUT, elicit_rx).await {
+        Ok(Ok(r)) => r,
+        Ok(Err(_)) => {
+            // Channel dropped (SSE closed / registry removed) — treat as cancel.
+            models::ElicitationResponse { action: "cancel".to_string(), content: None }
+        }
+        Err(_) => {
+            tracing::warn!(
+                "[elicitation] '{server_name}' GET-SSE elicitation id={req_id:?} unanswered after \
+                 {}s — cancelling",
+                GET_STREAM_ELICITATION_TIMEOUT.as_secs()
+            );
+            let _ = registry::remove(elicitation_id);
+            models::ElicitationResponse { action: "cancel".to_string(), content: None }
+        }
+    };
+    let result_value = if user_response.action == "accept" {
+        serde_json::json!({ "action": user_response.action, "content": user_response.content.unwrap_or(Value::Null) })
+    } else {
+        serde_json::json!({ "action": user_response.action })
+    };
+    let action_str = result_value.get("action").and_then(|v| v.as_str()).unwrap_or("?").to_string();
+    match post_result(result_value).send().await {
+        Ok(r) => tracing::info!(
+            "[elicitation] '{server_name}' GET-SSE POSTed response id={req_id:?} action='{action_str}' → HTTP {}",
+            r.status()
+        ),
+        Err(e) => tracing::error!(
+            "[elicitation] '{server_name}' GET-SSE failed to POST response id={req_id:?}: {e}"
+        ),
+    }
+}
+
+/// Apply the headers the MCP Streamable HTTP spec requires on every
+/// client→server POST — including JSON-RPC *responses* to server→client
+/// requests (`elicitation/create`, `sampling/createMessage`) and their
+/// cancels.
+///
+/// Omitting `Accept` is the bug this closes: a spec-compliant server (the
+/// official TypeScript `StreamableHTTPServerTransport`, the Python SDK) replies
+/// `406 Not Acceptable` and silently drops the message when `Accept` does not
+/// list both `application/json` and `text/event-stream`. The server's pending
+/// `elicitation/create` request is then never answered and times out, surfacing
+/// to the user as "server->client request 'elicitation/create' timed out".
+/// `MCP-Protocol-Version` (spec MUST after init) and `Authorization` (else
+/// OAuth servers 401) are required on the same POSTs for the same reason.
+fn apply_mcp_post_headers(
+    builder: reqwest::RequestBuilder,
+    session_id: Option<String>,
+    protocol_version: Option<&str>,
+    bearer: Option<&str>,
+) -> reqwest::RequestBuilder {
+    let mut b = builder.header("Accept", "application/json, text/event-stream");
+    if let Some(s) = session_id {
+        b = b.header("mcp-session-id", s);
+    }
+    if let Some(ver) = protocol_version {
+        b = b.header("MCP-Protocol-Version", ver);
+    }
+    if let Some(token) = bearer {
+        b = b.header("Authorization", format!("Bearer {token}"));
+    }
+    b
 }
 
 /// Attempt to resume a dropped tool-call SSE stream via `GET` +
@@ -597,6 +900,13 @@ pub struct HttpMcpClient {
     /// tool-call tasks so they attach the same bearer.
     oauth_token: Arc<RwLock<Option<StoredToken>>>,
     oauth_token_endpoint: Arc<RwLock<Option<String>>>,
+    /// Context of the in-flight tool call, so the standalone GET-SSE task can
+    /// answer an `elicitation/create` that a server delivers on the GET stream
+    /// rather than on the tool-call POST response. See [`ActiveCallContext`].
+    active_call_ctx: Arc<RwLock<Option<ActiveCallContext>>>,
+    /// Concurrent outstanding GET-stream elicitations (soft-capped to bound a
+    /// flooding server). Shared into the GET task via [`GetStreamContext`].
+    get_elicit_inflight: Arc<std::sync::atomic::AtomicUsize>,
     /// Plan-3 Phase-3 (I2) — standalone GET-SSE consumer. After `initialized`
     /// the client opens a `GET` with `Accept: text/event-stream` to receive
     /// unsolicited server→client messages (notifications/progress beyond the
@@ -604,6 +914,20 @@ pub struct HttpMcpClient {
     /// on `disconnect`; a 405 from the server is the documented "no standalone
     /// stream" signal and the task exits silently.
     get_sse_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
+}
+
+impl Drop for HttpMcpClient {
+    fn drop(&mut self) {
+        // Ephemeral sessions are dropped, not `disconnect()`ed, and dropping a
+        // tokio JoinHandle *detaches* rather than aborts — so without this the
+        // standalone GET task (and its held connection) would leak past the call.
+        // Abort it here, and clear the active-call context so a not-yet-aborted
+        // task can't act on stale channels.
+        self.abort_standalone_get_sse();
+        if let Ok(mut g) = self.active_call_ctx.write() {
+            *g = None;
+        }
+    }
 }
 
 impl HttpMcpClient {
@@ -713,6 +1037,8 @@ impl HttpMcpClient {
             oauth: oauth.map(Arc::new),
             oauth_token: Arc::new(RwLock::new(None)),
             oauth_token_endpoint: Arc::new(RwLock::new(None)),
+            active_call_ctx: Arc::new(RwLock::new(None)),
+            get_elicit_inflight: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             get_sse_task: Mutex::new(None),
         })
     }
@@ -802,8 +1128,21 @@ impl HttpMcpClient {
         let oauth = self.oauth.clone();
         let oauth_token = self.oauth_token.clone();
         let oauth_token_endpoint = self.oauth_token_endpoint.clone();
+        let active_call_ctx = self.active_call_ctx.clone();
+        let get_elicit_inflight = self.get_elicit_inflight.clone();
 
         let handle = tokio::spawn(async move {
+            // Bundle of what `drain_standalone_sse` needs to answer an
+            // `elicitation/create` that arrives on this GET stream.
+            let get_ctx = GetStreamContext {
+                stream_client: stream_client.clone(),
+                url: url.clone(),
+                session_id: session_id.clone(),
+                protocol_version: protocol_version.clone(),
+                oauth_token: oauth_token.clone(),
+                inflight: get_elicit_inflight,
+                active_call_ctx,
+            };
             // Persistent across reconnects.
             let mut last_event_id: Option<String> = None;
             // SDK-default backoff curve; a server `retry:` field overrides the
@@ -955,6 +1294,7 @@ impl HttpMcpClient {
                     &mut last_event_id,
                     &mut backoff_initial_ms,
                     &mut reconnect_attempt,
+                    &get_ctx,
                 )
                 .await;
 
@@ -1526,10 +1866,12 @@ impl HttpMcpClient {
                                             "id": req_id,
                                             "result": { "action": "cancel" }
                                         });
-                                        let mut post = stream_client.post(&url).json(&body);
-                                        if let Some(s) = get_sid() {
-                                            post = post.header("mcp-session-id", s);
-                                        }
+                                        let post = apply_mcp_post_headers(
+                                            stream_client.post(&url).json(&body),
+                                            get_sid(),
+                                            protocol_version.as_deref(),
+                                            bearer.as_deref(),
+                                        );
                                         let _ = post.send().await;
                                         continue;
                                     }
@@ -1542,19 +1884,25 @@ impl HttpMcpClient {
                                         "id": req_id,
                                         "result": { "action": "cancel" }
                                     });
-                                    let mut post = stream_client.post(&url).json(&body);
-                                    if let Some(s) = get_sid() {
-                                        post = post.header("mcp-session-id", s);
-                                    }
+                                    let post = apply_mcp_post_headers(
+                                        stream_client.post(&url).json(&body),
+                                        get_sid(),
+                                        protocol_version.as_deref(),
+                                        bearer.as_deref(),
+                                    );
                                     let _ = post.send().await;
                                     continue;
                                 }
 
-                                // Block the loop until the user responds.
-                                // No timeout — the MCP spec defines none and users need time to think.
-                                // Cleanup happens via SSE close: when sse_tx.send() fails,
-                                // registry::remove() is called which drops the tx, causing elicit_rx
-                                // to return Err(RecvError) below.
+                                // Block the loop until the user responds. There is no inner
+                                // timeout here (the MCP spec defines none, and users need time to
+                                // think), but the whole call_tool future is bounded by execute_tool's
+                                // outer timeout (timeout_seconds + 300s): on expiry the future is
+                                // dropped and this await is simply cancelled (torn down) — that is
+                                // what bounds the wait. The Err arm below is instead reached when the
+                                // registry's sender (elicit_tx, held in ELICITATION_REGISTRY) is
+                                // dropped elsewhere — e.g. on SSE close, registry::remove() drops it,
+                                // causing elicit_rx to return Err(RecvError) and we send a cancel.
                                 let user_response = match elicit_rx.await {
                                     Ok(response) => response,
                                     Err(_) => {
@@ -1581,10 +1929,12 @@ impl HttpMcpClient {
                                     "id": req_id,
                                     "result": result_value
                                 });
-                                let mut post = stream_client.post(&url).json(&body);
-                                if let Some(s) = get_sid() {
-                                    post = post.header("mcp-session-id", s);
-                                }
+                                let post = apply_mcp_post_headers(
+                                    stream_client.post(&url).json(&body),
+                                    get_sid(),
+                                    protocol_version.as_deref(),
+                                    bearer.as_deref(),
+                                );
                                 match post.send().await {
                                     Ok(r) => tracing::info!(
                                         "[elicitation] POSTed response id={:?} action='{}' → HTTP {}",
@@ -1619,6 +1969,8 @@ impl HttpMcpClient {
                                             let url = url.clone();
                                             let sid = get_sid();
                                             let req_id = req_id.clone();
+                                            let bearer = bearer.clone();
+                                            let protocol_version = protocol_version.clone();
                                             async move {
                                                 let result = match handler.create_message(sampling_req).await {
                                                     Ok(r) => r,
@@ -1643,10 +1995,12 @@ impl HttpMcpClient {
                                                     "id": req_id,
                                                     "result": result
                                                 });
-                                                let mut post = client.post(&url).json(&body);
-                                                if let Some(s) = sid {
-                                                    post = post.header("mcp-session-id", s);
-                                                }
+                                                let post = apply_mcp_post_headers(
+                                                    client.post(&url).json(&body),
+                                                    sid,
+                                                    protocol_version.as_deref(),
+                                                    bearer.as_deref(),
+                                                );
                                                 match post.send().await {
                                                     Ok(r) => tracing::info!(
                                                         "[sampling] POSTed sampling response id={:?} → HTTP {}",
@@ -1671,6 +2025,8 @@ impl HttpMcpClient {
                                             let url = url.clone();
                                             let sid = get_sid();
                                             let req_id = req_id.clone();
+                                            let bearer = bearer.clone();
+                                            let protocol_version = protocol_version.clone();
                                             async move {
                                                 let error_result = SamplingCreateMessageResult {
                                                     role: "assistant".to_string(),
@@ -1685,10 +2041,12 @@ impl HttpMcpClient {
                                                     "id": req_id,
                                                     "result": error_result
                                                 });
-                                                let mut post = client.post(&url).json(&body);
-                                                if let Some(s) = sid {
-                                                    post = post.header("mcp-session-id", s);
-                                                }
+                                                let post = apply_mcp_post_headers(
+                                                    client.post(&url).json(&body),
+                                                    sid,
+                                                    protocol_version.as_deref(),
+                                                    bearer.as_deref(),
+                                                );
                                                 if let Err(post_err) = post.send().await {
                                                     tracing::error!(
                                                         "[sampling] Failed to POST parse-error response id={:?}: {}",
@@ -1894,10 +2252,12 @@ impl HttpMcpClient {
                                             "id": req_id,
                                             "result": { "action": "cancel" }
                                         });
-                                        let mut post = stream_client.post(&url).json(&body);
-                                        if let Some(s) = get_sid() {
-                                            post = post.header("mcp-session-id", s);
-                                        }
+                                        let post = apply_mcp_post_headers(
+                                            stream_client.post(&url).json(&body),
+                                            get_sid(),
+                                            protocol_version.as_deref(),
+                                            bearer.as_deref(),
+                                        );
                                         let _ = post.send().await;
                                         continue;
                                     }
@@ -1909,10 +2269,12 @@ impl HttpMcpClient {
                                         "id": req_id,
                                         "result": { "action": "cancel" }
                                     });
-                                    let mut post = stream_client.post(&url).json(&body);
-                                    if let Some(s) = get_sid() {
-                                        post = post.header("mcp-session-id", s);
-                                    }
+                                    let post = apply_mcp_post_headers(
+                                        stream_client.post(&url).json(&body),
+                                        get_sid(),
+                                        protocol_version.as_deref(),
+                                        bearer.as_deref(),
+                                    );
                                     let _ = post.send().await;
                                     continue;
                                 }
@@ -1941,10 +2303,12 @@ impl HttpMcpClient {
                                     "id": req_id,
                                     "result": result_value
                                 });
-                                let mut post = stream_client.post(&url).json(&body);
-                                if let Some(s) = get_sid() {
-                                    post = post.header("mcp-session-id", s);
-                                }
+                                let post = apply_mcp_post_headers(
+                                    stream_client.post(&url).json(&body),
+                                    get_sid(),
+                                    protocol_version.as_deref(),
+                                    bearer.as_deref(),
+                                );
                                 match post.send().await {
                                     Ok(r) => tracing::info!(
                                         "[elicitation] POSTed response id={:?} action='{}' → HTTP {}",
@@ -1976,10 +2340,12 @@ impl HttpMcpClient {
                                         "message": "sampling/createMessage is not supported — enable sampling on this MCP server to use this feature"
                                     }
                                 });
-                                let mut post = stream_client.post(&url).json(&body);
-                                if let Some(s) = get_sid() {
-                                    post = post.header("mcp-session-id", s);
-                                }
+                                let post = apply_mcp_post_headers(
+                                    stream_client.post(&url).json(&body),
+                                    get_sid(),
+                                    protocol_version.as_deref(),
+                                    bearer.as_deref(),
+                                );
                                 let _ = post.send().await;
                                 continue;
                             }
@@ -2131,6 +2497,19 @@ impl McpClient for HttpMcpClient {
         let protocol_version = self.get_protocol_version();
         // Cached OAuth bearer (acquired at connect/initialize for OAuth servers).
         let bearer = self.current_bearer();
+
+        // Publish this call's channels so the standalone GET-SSE task can route a
+        // server→client `elicitation/create` that arrives on the GET stream (some
+        // servers answer tools/call with plain JSON and elicit on the GET stream).
+        // Set before the POST is sent, since the elicitation arrives in response
+        // to it. Ephemeral sessions ⇒ one active call per client ⇒ unambiguous.
+        if let Ok(mut g) = self.active_call_ctx.write() {
+            *g = Some(ActiveCallContext {
+                message_id,
+                sse_tx: sse_tx.clone(),
+                elicit_notify_tx: elicit_notify_tx.clone(),
+            });
+        }
 
         // Use sampling-aware SSE streaming if a sampling handler is present.
         // Spawn in a completely independent task so that req.send().await inside

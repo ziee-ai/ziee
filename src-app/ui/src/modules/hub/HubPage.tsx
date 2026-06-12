@@ -9,7 +9,6 @@ import {
   Segmented,
   Tag,
   Tooltip,
-  theme,
   Typography,
 } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
@@ -21,7 +20,6 @@ import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/Head
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { DivScrollY } from '@/components/common/DivScrollY'
-import { VersionPicker } from '@/modules/hub/components/VersionPicker'
 
 export function HubPage() {
   const { message } = App.useApp()
@@ -35,7 +33,6 @@ export function HubPage() {
   // visibleTabs useMemo deps below is the load-bearing piece.
   const { policy: mcpPolicy } = Stores.McpUserPolicy
   const windowMinSize = useWindowMinSize()
-  const { token } = theme.useToken()
   const [refreshing, setRefreshing] = useState(false)
 
   // Get hub tabs from slot system, sorted
@@ -103,8 +100,8 @@ export function HubPage() {
     setRefreshing(true)
     try {
       await Stores.HubCatalog.refresh()
-      // The refresh handler returns an updated/new_version/cosign_verified
-      // tuple, but the user just needs a success toast.
+      // The refresh handler returns an updated/new_version tuple,
+      // but the user just needs a success toast.
       message.success(`Hub catalog refreshed to v${Stores.HubCatalog.hubVersion ?? '?'}`)
       // Trigger each visible tab's own refresh hook so per-tab lists
       // re-render against the new catalog (the back-compat per-category
@@ -170,9 +167,6 @@ export function HubPage() {
                   navigate(`/hub/${value}`)
                 }}
                 className="[&_.ant-segmented-item-label]:!px-4 [&_.ant-segmented-item-label]:!py-1"
-                style={{
-                  backgroundColor: token.colorBgMask,
-                }}
                 shape="round"
                 options={segmentedOptions}
               />
@@ -201,26 +195,20 @@ export function HubPage() {
           )}
 
           <Flex align="center" gap={8}>
-            {/* Version indicator. Gated only on permission (NOT on the
-                xs breakpoint) — the breakpoint flips while the layout
-                settles on first load, and conditionally mounting the
-                picker on it caused the store-subscribed VersionPicker to
-                churn mount/unmount and intermittently fail to render. */}
-            {canRefresh ? (
-              // Admins get the version picker (list + activate).
-              <VersionPicker />
-            ) : (
-              hubVersion && (
-                <Tooltip
-                  title={
-                    serverVersion
-                      ? `Server v${serverVersion} — installed catalog from ziee-ai/hub`
-                      : 'Installed catalog from ziee-ai/hub'
-                  }
-                >
-                  <Tag>v{hubVersion}</Tag>
-                </Tooltip>
-              )
+            {/* Catalog-version indicator. Hub v2 uses per-entry semver;
+                the catalog hub_version is now just a build marker shown
+                read-only here for diagnostics (and is identical for
+                admins + users — no version picker anymore). */}
+            {hubVersion && (
+              <Tooltip
+                title={
+                  serverVersion
+                    ? `Server v${serverVersion} — installed catalog from ziee-ai/hub`
+                    : 'Installed catalog from ziee-ai/hub'
+                }
+              >
+                <Tag>v{hubVersion}</Tag>
+              </Tooltip>
             )}
             {canRefresh && (
               <Button

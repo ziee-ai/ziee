@@ -10,8 +10,10 @@ mod catalog_v1;
 mod catalog_hermetic;
 mod mock_release_server;
 // Realtime-sync emission for the `hub_settings` entity (reuses the hermetic
-// mock release server to drive POST /hub/activate).
+// mock Pages server to drive POST /hub/refresh).
 mod sync_emit_test;
+// Slug → reverse-DNS rewrite for legacy hub_entities rows.
+mod migration_test;
 
 // ============================================================================
 // Hub Models Tests
@@ -106,11 +108,7 @@ async fn test_get_hub_models_response_structure() {
         .first()
         .expect("Should have at least one model");
 
-    // Verify model structure
-    assert!(
-        first_model.get("id").and_then(|v| v.as_str()).is_some(),
-        "Model should have id"
-    );
+    // Verify model structure.
     assert!(
         first_model.get("name").and_then(|v| v.as_str()).is_some(),
         "Model should have name"
@@ -122,37 +120,37 @@ async fn test_get_hub_models_response_structure() {
             .is_some(),
         "Model should have display_name"
     );
+    // sources[] carries what would otherwise have been flat fields
+    // (repository_url / repository_path / main_filename / file_format
+    //  / size_gb / quantization_options).
+    let sources = first_model
+        .get("sources")
+        .and_then(|v| v.as_array())
+        .expect("Model should have sources array");
+    assert!(!sources.is_empty(), "Model should have at least one source");
+    let first_source = &sources[0];
     assert!(
-        first_model
-            .get("repository_url")
+        first_source
+            .get("registryType")
             .and_then(|v| v.as_str())
             .is_some(),
-        "Model should have repository_url"
+        "Source should have registryType"
     );
     assert!(
-        first_model
-            .get("file_format")
+        first_source
+            .get("fileFormat")
             .and_then(|v| v.as_str())
             .is_some(),
-        "Model should have file_format"
+        "Source should have fileFormat"
     );
-    assert!(
-        first_model
-            .get("size_gb")
-            .and_then(|v| v.as_f64())
-            .is_some(),
-        "Model should have size_gb"
-    );
+    let quants = first_source
+        .get("quantizations")
+        .and_then(|v| v.as_array())
+        .expect("Source should have quantizations array");
+    assert!(!quants.is_empty(), "Source should have at least one quantization");
     assert!(
         first_model.get("tags").and_then(|v| v.as_array()).is_some(),
         "Model should have tags array"
-    );
-    assert!(
-        first_model
-            .get("popularity_score")
-            .and_then(|v| v.as_f64())
-            .is_some(),
-        "Model should have popularity_score"
     );
 }
 
@@ -258,8 +256,34 @@ async fn test_refresh_hub_models_requires_permission() {
 // Hub Models Auth Required Tests
 // ============================================================================
 
+/// Helper: model "needs auth" if any of its sources has an env var
+/// marked `isRequired: true, isSecret: true`. There is no model-wide
+/// `auth_required` flag.
+fn model_needs_auth_v2(model: &serde_json::Value) -> bool {
+    model
+        .get("sources")
+        .and_then(|s| s.as_array())
+        .map(|sources| {
+            sources.iter().any(|src| {
+                src.get("environmentVariables")
+                    .and_then(|e| e.as_array())
+                    .map(|envs| {
+                        envs.iter().any(|ev| {
+                            ev.get("isRequired").and_then(|v| v.as_bool()) == Some(true)
+                                && ev.get("isSecret").and_then(|v| v.as_bool()) == Some(true)
+                        })
+                    })
+                    .unwrap_or(false)
+            })
+        })
+        .unwrap_or(false)
+}
+
 #[tokio::test]
-async fn test_hub_models_have_auth_required_field() {
+async fn test_hub_models_sources_have_env_vars_when_auth_needed() {
+    // Auth requirements live on `sources[].environmentVariables[]`
+    // with `isRequired+isSecret` (no model-wide `auth_required` flag).
+    // Verify every seeded model declares at least one source.
     let server = crate::common::TestServer::start().await;
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
@@ -286,27 +310,27 @@ async fn test_hub_models_have_auth_required_field() {
     }
 
     let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    assert!(models.is_array(), "Response should be an array");
-
     let models_array = models.as_array().unwrap();
     assert!(!models_array.is_empty(), "Should have at least one model");
 
-    // Verify all models have auth_required field
     for model in models_array {
-        let model_id = model
-            .get("id")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
+        let name = model.get("name").and_then(|v| v.as_str()).unwrap_or("?");
+        let sources = model
+            .get("sources")
+            .and_then(|v| v.as_array())
+            .unwrap_or_else(|| panic!("Model {name} should have sources[]"));
         assert!(
-            model.get("auth_required").is_some(),
-            "Model {} should have auth_required field",
-            model_id
+            !sources.is_empty(),
+            "Model {name} should have at least one source"
         );
     }
 }
 
 #[tokio::test]
-async fn test_hub_models_auth_required_defaults_to_true() {
+async fn test_hub_models_seed_marks_huggingface_sources_as_needing_auth() {
+    // Every seeded HF model declares HUGGINGFACE_API_KEY as
+    // isRequired+isSecret, in place of a model-wide
+    // `auth_required: true` flag.
     let server = crate::common::TestServer::start().await;
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
@@ -324,119 +348,22 @@ async fn test_hub_models_auth_required_defaults_to_true() {
         .expect("Request failed");
 
     assert_eq!(response.status(), 200);
-
     let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    let models_array = models.as_array().unwrap();
 
-    // Verify all current models have auth_required set to true
-    // (as per configuration in base.json)
-    for model in models_array {
-        let model_id = model
-            .get("id")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
-        let auth_required = model.get("auth_required").and_then(|v| v.as_bool());
-
-        assert_eq!(
-            auth_required,
-            Some(true),
-            "Model {} should have auth_required: true",
-            model_id
-        );
-    }
-}
-
-#[tokio::test]
-async fn test_hub_models_auth_required_field_type() {
-    let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "hub_user",
-        &["hub::models::read"],
-    )
-    .await;
-
-    let url = server.api_url("/hub/models?lang=en");
-    let response = reqwest::Client::new()
-        .get(&url)
-        .header("Authorization", format!("Bearer {}", user.token))
-        .send()
-        .await
-        .expect("Request failed");
-
-    assert_eq!(response.status(), 200);
-
-    let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    let first_model = models
-        .as_array()
-        .unwrap()
-        .first()
-        .expect("Should have at least one model");
-
-    // Verify auth_required is a boolean
-    let auth_required = first_model.get("auth_required");
-    assert!(
-        auth_required.is_some(),
-        "Model should have auth_required field"
-    );
-    assert!(
-        auth_required.unwrap().is_boolean(),
-        "auth_required should be a boolean type"
-    );
-}
-
-#[tokio::test]
-async fn test_hub_models_auth_required_in_all_locales() {
-    let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "hub_user",
-        &["hub::models::read"],
-    )
-    .await;
-
-    let locales = vec!["en", "zh", "vi"];
-
-    for locale in locales {
-        let url = server.api_url(&format!("/hub/models?lang={}", locale));
-        let response = reqwest::Client::new()
-            .get(&url)
-            .header("Authorization", format!("Bearer {}", user.token))
-            .send()
-            .await
-            .expect("Request failed");
-
-        assert_eq!(
-            response.status(),
-            200,
-            "Should succeed for locale {}",
-            locale
-        );
-
-        let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-        let models_array = models.as_array().unwrap();
-
-        // Verify all models in this locale have auth_required field
-        for model in models_array {
-            let model_id = model
-                .get("id")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
+    for model in models.as_array().unwrap() {
+        let name = model.get("name").and_then(|v| v.as_str()).unwrap_or("?");
+        let has_hf_source = model
+            .get("sources")
+            .and_then(|s| s.as_array())
+            .map(|srcs| {
+                srcs.iter()
+                    .any(|src| src.get("registryType").and_then(|v| v.as_str()) == Some("huggingface"))
+            })
+            .unwrap_or(false);
+        if has_hf_source {
             assert!(
-                model.get("auth_required").is_some(),
-                "Model {} in locale {} should have auth_required field",
-                model_id,
-                locale
-            );
-
-            // All current models should have auth_required: true
-            let auth_required = model.get("auth_required").and_then(|v| v.as_bool());
-            assert_eq!(
-                auth_required,
-                Some(true),
-                "Model {} in locale {} should have auth_required: true",
-                model_id,
-                locale
+                model_needs_auth_v2(model),
+                "Seed HF model {name} should mark at least one source as requiring a secret env var"
             );
         }
     }
@@ -528,7 +455,7 @@ async fn test_get_hub_assistants_response_structure() {
 
     // Verify assistant structure
     assert!(
-        first_assistant.get("id").and_then(|v| v.as_str()).is_some(),
+        first_assistant.get("name").and_then(|v| v.as_str()).is_some(),
         "Assistant should have id"
     );
     assert!(
@@ -556,13 +483,9 @@ async fn test_get_hub_assistants_response_structure() {
             .is_some(),
         "Assistant should have tags array"
     );
-    assert!(
-        first_assistant
-            .get("popularity_score")
-            .and_then(|v| v.as_f64())
-            .is_some(),
-        "Assistant should have popularity_score"
-    );
+    // There is no `popularity_score` — `dependencies[]` is the
+    // informational field; it may be empty but should be present
+    // (serde default) or omitted entirely (`skip_serializing_if`).
 }
 
 #[tokio::test]
@@ -760,34 +683,34 @@ async fn test_get_hub_mcp_servers_response_structure() {
 
     // Verify MCP server structure
     assert!(
-        first_server.get("id").and_then(|v| v.as_str()).is_some(),
-        "Server should have id"
+        first_server.get("name").and_then(|v| v.as_str()).is_some(),
+        "Server should have name"
     );
     assert!(
         first_server.get("name").and_then(|v| v.as_str()).is_some(),
         "Server should have name"
     );
+    // Strict server.json: `display_name` is NOT on the manifest body;
+    // the display title lives on IndexItem (catalog metadata) via
+    // `_hub_curation.title` in the source YAML. The card / drawer look
+    // it up from `Stores.HubCatalog.catalog` by name.
+    // command and args are optional (for HTTP transport servers).
+    // The server.json shape drives off packages[] / remotes[] — at
+    // least one MUST be set (the publisher filters to launchable ones
+    // at build time).
+    let has_packages = first_server
+        .get("packages")
+        .and_then(|v| v.as_array())
+        .map(|p| !p.is_empty())
+        .unwrap_or(false);
+    let has_remotes = first_server
+        .get("remotes")
+        .and_then(|v| v.as_array())
+        .map(|r| !r.is_empty())
+        .unwrap_or(false);
     assert!(
-        first_server
-            .get("display_name")
-            .and_then(|v| v.as_str())
-            .is_some(),
-        "Server should have display_name"
-    );
-    // command and args are optional (for HTTP transport servers)
-    assert!(
-        first_server
-            .get("tags")
-            .and_then(|v| v.as_array())
-            .is_some(),
-        "Server should have tags array"
-    );
-    assert!(
-        first_server
-            .get("popularity_score")
-            .and_then(|v| v.as_f64())
-            .is_some(),
-        "Server should have popularity_score"
+        has_packages || has_remotes,
+        "MCP server should have packages[] or remotes[]"
     );
 }
 
@@ -961,7 +884,7 @@ async fn test_create_assistant_from_hub() {
 
     // Get first assistant hub_id
     let first_assistant = &assistants.as_array().unwrap()[0];
-    let hub_id = first_assistant.get("id").and_then(|v| v.as_str()).unwrap();
+    let hub_id = first_assistant.get("name").and_then(|v| v.as_str()).unwrap();
 
     // Verify created_ids is initially empty
     let created_ids = first_assistant
@@ -1049,7 +972,7 @@ async fn test_create_assistant_from_hub() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|a| a.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .find(|a| a.get("name").and_then(|v| v.as_str()) == Some(hub_id))
         .expect("Should find the hub assistant");
 
     let created_ids = updated_assistant
@@ -1094,8 +1017,18 @@ async fn test_create_mcp_server_from_hub() {
     );
 
     // Get first server hub_id
-    let first_server = &servers.as_array().unwrap()[0];
-    let hub_id = first_server.get("id").and_then(|v| v.as_str()).unwrap();
+    // Pick a known-compatible streamable-http server. servers[0] is
+    // alphabetically `app.linear/mcp` which has min_ziee_version=99.0.0
+    // (incompat fixture) — install would 422. Stdio servers would 422
+    // under the default user policy (no code_sandbox). github/mcp is
+    // streamable-http and compatible.
+    let first_server = servers
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s.get("name").and_then(|v| v.as_str()) == Some("io.github.github/mcp"))
+        .expect("seed must include io.github.github/mcp");
+    let hub_id = first_server.get("name").and_then(|v| v.as_str()).unwrap();
 
     // Verify created_ids is initially empty
     let created_ids = first_server.get("created_ids").and_then(|v| v.as_array());
@@ -1120,11 +1053,13 @@ async fn test_create_mcp_server_from_hub() {
         .await
         .expect("Request failed");
 
-    assert_eq!(
-        response.status(),
-        201,
-        "Should create MCP server successfully"
-    );
+    let status = response.status();
+    if status != 201 {
+        let error_body = response.text().await.expect("read error body");
+        panic!(
+            "Should create MCP server successfully. Status: {status}, hub_id: {hub_id:?}, Body: {error_body}",
+        );
+    }
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
 
     // Verify response structure
@@ -1191,7 +1126,7 @@ async fn test_create_mcp_server_from_hub() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|s| s.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .find(|s| s.get("name").and_then(|v| v.as_str()) == Some(hub_id))
         .expect("Should find the hub MCP server");
 
     let created_ids = updated_server
@@ -1238,7 +1173,7 @@ async fn test_created_ids_are_user_specific() {
     assert_eq!(response.status(), 200);
     let assistants: serde_json::Value = response.json().await.expect("Failed to parse JSON");
     let hub_id = assistants.as_array().unwrap()[0]
-        .get("id")
+        .get("name")
         .and_then(|v| v.as_str())
         .unwrap();
 
@@ -1306,7 +1241,7 @@ async fn test_created_ids_are_user_specific() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|a| a.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .find(|a| a.get("name").and_then(|v| v.as_str()) == Some(hub_id))
         .unwrap();
 
     let created_ids = assistant
@@ -1331,7 +1266,7 @@ async fn test_created_ids_are_user_specific() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|a| a.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .find(|a| a.get("name").and_then(|v| v.as_str()) == Some(hub_id))
         .unwrap();
 
     let created_ids = assistant
@@ -1365,7 +1300,7 @@ async fn test_multiple_creations_from_same_hub_item() {
 
     let assistants: serde_json::Value = response.json().await.expect("Failed to parse JSON");
     let hub_id = assistants.as_array().unwrap()[0]
-        .get("id")
+        .get("name")
         .and_then(|v| v.as_str())
         .unwrap();
 
@@ -1419,7 +1354,7 @@ async fn test_multiple_creations_from_same_hub_item() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|a| a.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .find(|a| a.get("name").and_then(|v| v.as_str()) == Some(hub_id))
         .unwrap();
 
     let created_ids = assistant
@@ -1476,7 +1411,7 @@ async fn test_hub_entity_cleaned_up_when_assistant_deleted() {
 
     let assistants: serde_json::Value = response.json().await.expect("Failed to parse JSON");
     let hub_id = assistants.as_array().unwrap()[0]
-        .get("id")
+        .get("name")
         .and_then(|v| v.as_str())
         .unwrap();
 
@@ -1519,7 +1454,7 @@ async fn test_hub_entity_cleaned_up_when_assistant_deleted() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|a| a.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .find(|a| a.get("name").and_then(|v| v.as_str()) == Some(hub_id))
         .unwrap();
 
     let created_ids = assistant
@@ -1566,7 +1501,7 @@ async fn test_hub_entity_cleaned_up_when_assistant_deleted() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|a| a.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .find(|a| a.get("name").and_then(|v| v.as_str()) == Some(hub_id))
         .unwrap();
 
     let created_ids = assistant.get("created_ids").and_then(|v| v.as_array());
@@ -1603,8 +1538,15 @@ async fn test_hub_entity_cleaned_up_when_user_mcp_server_deleted() {
         .expect("Request failed");
 
     let servers: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    let hub_id = servers.as_array().unwrap()[0]
-        .get("id")
+    // See test_create_mcp_server_from_hub — pick io.github.github/mcp
+    // (compatible + streamable-http; passes user policy + ziee version gate).
+    let hub_id = servers
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s.get("name").and_then(|v| v.as_str()) == Some("io.github.github/mcp"))
+        .expect("seed must include io.github.github/mcp")
+        .get("name")
         .and_then(|v| v.as_str())
         .unwrap();
 
@@ -1624,7 +1566,11 @@ async fn test_hub_entity_cleaned_up_when_user_mcp_server_deleted() {
         .await
         .expect("Request failed");
 
-    assert_eq!(response.status(), 201);
+    let status = response.status();
+    if status != 201 {
+        let error_body = response.text().await.expect("read error body");
+        panic!("expected 201, got {status}, hub_id: {hub_id:?}, body: {error_body}");
+    }
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
     let server_id = body
         .get("server")
@@ -1646,7 +1592,7 @@ async fn test_hub_entity_cleaned_up_when_user_mcp_server_deleted() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|s| s.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .find(|s| s.get("name").and_then(|v| v.as_str()) == Some(hub_id))
         .unwrap();
 
     let created_ids = mcp_server
@@ -1693,7 +1639,7 @@ async fn test_hub_entity_cleaned_up_when_user_mcp_server_deleted() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|s| s.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .find(|s| s.get("name").and_then(|v| v.as_str()) == Some(hub_id))
         .unwrap();
 
     let created_ids = mcp_server.get("created_ids").and_then(|v| v.as_array());
@@ -1730,7 +1676,7 @@ async fn test_multiple_hub_entities_cleanup_when_multiple_assistants_deleted() {
 
     let assistants: serde_json::Value = response.json().await.expect("Failed to parse JSON");
     let hub_id = assistants.as_array().unwrap()[0]
-        .get("id")
+        .get("name")
         .and_then(|v| v.as_str())
         .unwrap();
 
@@ -1780,7 +1726,7 @@ async fn test_multiple_hub_entities_cleanup_when_multiple_assistants_deleted() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|a| a.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .find(|a| a.get("name").and_then(|v| v.as_str()) == Some(hub_id))
         .unwrap();
 
     let created_ids = assistant
@@ -1818,7 +1764,7 @@ async fn test_multiple_hub_entities_cleanup_when_multiple_assistants_deleted() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|a| a.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .find(|a| a.get("name").and_then(|v| v.as_str()) == Some(hub_id))
         .unwrap();
 
     let created_ids = assistant
@@ -1880,7 +1826,7 @@ async fn test_multiple_hub_entities_cleanup_when_multiple_assistants_deleted() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|a| a.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .find(|a| a.get("name").and_then(|v| v.as_str()) == Some(hub_id))
         .unwrap();
 
     let created_ids = assistant.get("created_ids").and_then(|v| v.as_array());
@@ -1936,16 +1882,16 @@ async fn test_create_model_from_hub() {
     );
 
     // Get first model hub_id
-    // Pick a COMPATIBLE model: the v0.0.3-alpha catalog leads with
-    // `deepseek-r1-70b`, a deliberate `min_ziee_version = 99.0.0` sentinel that
-    // the server rejects as HUB_INCOMPATIBLE, so `[0]` can no longer be created.
+    // Pick `llama-3-8b-instruct` explicitly — the seed has 2 model
+    // entries and the install path needs a known-good id; `[0]` is
+    // fragile to seed reorderings.
     let first_model = models
         .as_array()
         .unwrap()
         .iter()
-        .find(|m| m.get("id").and_then(|v| v.as_str()) == Some("llama-3-1-8b-instruct"))
-        .expect("compatible model 'llama-3-1-8b-instruct' should be in the catalog");
-    let hub_id = first_model.get("id").and_then(|v| v.as_str()).unwrap();
+        .find(|m| m.get("name").and_then(|v| v.as_str()) == Some("io.github.phibya/llama-3-1-8b-instruct"))
+        .expect("compatible model 'llama-3-8b-instruct' should be in the catalog");
+    let hub_id = first_model.get("name").and_then(|v| v.as_str()).unwrap();
 
     // Verify created_ids is initially empty
     let created_ids = first_model.get("created_ids").and_then(|v| v.as_array());
@@ -2035,7 +1981,7 @@ async fn test_create_model_from_hub() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|m| m.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .find(|m| m.get("name").and_then(|v| v.as_str()) == Some(hub_id))
         .expect("Should find the hub model");
 
     let created_ids = updated_model
@@ -2082,16 +2028,16 @@ async fn test_create_model_from_hub_requires_permission() {
 
     assert_eq!(response.status(), 200);
     let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    // Pick a COMPATIBLE model: the v0.0.3-alpha catalog leads with
-    // `deepseek-r1-70b`, a deliberate `min_ziee_version = 99.0.0` sentinel that
-    // the server rejects as HUB_INCOMPATIBLE, so `[0]` can no longer be created.
+    // Pick `llama-3-8b-instruct` explicitly — the seed has 2 model
+    // entries and the install path needs a known-good id; `[0]` is
+    // fragile to seed reorderings.
     let first_model = models
         .as_array()
         .unwrap()
         .iter()
-        .find(|m| m.get("id").and_then(|v| v.as_str()) == Some("llama-3-1-8b-instruct"))
-        .expect("compatible model 'llama-3-1-8b-instruct' should be in the catalog");
-    let hub_id = first_model.get("id").and_then(|v| v.as_str()).unwrap();
+        .find(|m| m.get("name").and_then(|v| v.as_str()) == Some("io.github.phibya/llama-3-1-8b-instruct"))
+        .expect("compatible model 'llama-3-8b-instruct' should be in the catalog");
+    let hub_id = first_model.get("name").and_then(|v| v.as_str()).unwrap();
 
     // Try to create model download without permission
     let url = server.api_url("/hub/models/download");
@@ -2153,7 +2099,7 @@ async fn test_create_model_from_hub_invalid_hub_id() {
     // Try to create download with invalid hub_id
     let url = server.api_url("/hub/models/download");
     let request_body = serde_json::json!({
-        "hub_id": "nonexistent-hub-model-id",
+        "hub_id": "io.github.test/nonexistent-hub-model",
         "provider_id": provider_id,
         "enabled": true
     });
@@ -2205,16 +2151,16 @@ async fn test_create_model_from_hub_invalid_provider_id() {
         .expect("Request failed");
 
     let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    // Pick a COMPATIBLE model: the v0.0.3-alpha catalog leads with
-    // `deepseek-r1-70b`, a deliberate `min_ziee_version = 99.0.0` sentinel that
-    // the server rejects as HUB_INCOMPATIBLE, so `[0]` can no longer be created.
+    // Pick `llama-3-8b-instruct` explicitly — the seed has 2 model
+    // entries and the install path needs a known-good id; `[0]` is
+    // fragile to seed reorderings.
     let first_model = models
         .as_array()
         .unwrap()
         .iter()
-        .find(|m| m.get("id").and_then(|v| v.as_str()) == Some("llama-3-1-8b-instruct"))
-        .expect("compatible model 'llama-3-1-8b-instruct' should be in the catalog");
-    let hub_id = first_model.get("id").and_then(|v| v.as_str()).unwrap();
+        .find(|m| m.get("name").and_then(|v| v.as_str()) == Some("io.github.phibya/llama-3-1-8b-instruct"))
+        .expect("compatible model 'llama-3-8b-instruct' should be in the catalog");
+    let hub_id = first_model.get("name").and_then(|v| v.as_str()).unwrap();
 
     // Try to create download with invalid provider_id
     let url = server.api_url("/hub/models/download");
@@ -2280,27 +2226,41 @@ async fn test_create_model_from_hub_with_quantization() {
 
     let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
 
-    // Find a model with quantization options
-    let model_with_quant = models
+    // Quantizations live on `sources[].quantizations[]`, not a
+    // model-wide `quantization_options[]`. Pick a model whose first
+    // source has > 1 quantization (the seed's Llama 3.2 GGUF
+    // satisfies this).
+    let model_with_quants = models
         .as_array()
         .unwrap()
         .iter()
         .find(|m| {
-            m.get("quantization_options")
+            m.get("sources")
+                .and_then(|s| s.as_array())
+                .and_then(|srcs| srcs.first())
+                .and_then(|first_src| first_src.get("quantizations"))
                 .and_then(|q| q.as_array())
-                .map(|arr| !arr.is_empty())
+                .map(|arr| arr.len() > 1)
                 .unwrap_or(false)
         });
 
-    if model_with_quant.is_none() {
-        println!("No models with quantization options found, skipping test");
+    if model_with_quants.is_none() {
+        println!("No models with multi-quantization sources found, skipping test");
         return;
     }
 
-    let model = model_with_quant.unwrap();
-    let hub_id = model.get("id").and_then(|v| v.as_str()).unwrap();
-    let quant_options = model.get("quantization_options").and_then(|v| v.as_array()).unwrap();
-    let first_quant = &quant_options[0];
+    let model = model_with_quants.unwrap();
+    let hub_id = model.get("name").and_then(|v| v.as_str()).unwrap();
+    let first_source = model
+        .get("sources")
+        .and_then(|s| s.as_array())
+        .and_then(|srcs| srcs.first())
+        .unwrap();
+    let quants = first_source
+        .get("quantizations")
+        .and_then(|v| v.as_array())
+        .unwrap();
+    let first_quant = &quants[0];
     let quant_name = first_quant.get("name").and_then(|v| v.as_str()).unwrap();
 
     // auth_required model: configure the source repo credential so the gate passes.
@@ -2312,6 +2272,7 @@ async fn test_create_model_from_hub_with_quantization() {
         "hub_id": hub_id,
         "provider_id": provider_id,
         "enabled": true,
+        "source_index": 0,
         "quantization_name": quant_name
     });
 
@@ -2370,16 +2331,16 @@ async fn test_duplicate_download_prevention() {
         .expect("Request failed");
 
     let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    // Pick a COMPATIBLE model: the v0.0.3-alpha catalog leads with
-    // `deepseek-r1-70b`, a deliberate `min_ziee_version = 99.0.0` sentinel that
-    // the server rejects as HUB_INCOMPATIBLE, so `[0]` can no longer be created.
+    // Pick `llama-3-8b-instruct` explicitly — the seed has 2 model
+    // entries and the install path needs a known-good id; `[0]` is
+    // fragile to seed reorderings.
     let first_model = models
         .as_array()
         .unwrap()
         .iter()
-        .find(|m| m.get("id").and_then(|v| v.as_str()) == Some("llama-3-1-8b-instruct"))
-        .expect("compatible model 'llama-3-1-8b-instruct' should be in the catalog");
-    let hub_id = first_model.get("id").and_then(|v| v.as_str()).unwrap();
+        .find(|m| m.get("name").and_then(|v| v.as_str()) == Some("io.github.phibya/llama-3-1-8b-instruct"))
+        .expect("compatible model 'llama-3-8b-instruct' should be in the catalog");
+    let hub_id = first_model.get("name").and_then(|v| v.as_str()).unwrap();
 
     // auth_required model: configure the source repo credential so the gate passes.
     configure_hf_repo_credential(&server).await;
@@ -2447,7 +2408,7 @@ async fn test_duplicate_download_prevention() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|m| m.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .find(|m| m.get("name").and_then(|v| v.as_str()) == Some(hub_id))
         .expect("Should find the hub model");
 
     let created_ids = updated_model
@@ -2581,7 +2542,7 @@ async fn test_get_hub_local_providers_response_structure() {
 
     let created = create_enabled_provider(&server, &user.token, "E2E Local Alpha", "local").await;
     let created_id = created
-        .get("id")
+        .get("name")
         .and_then(|v| v.as_str())
         .expect("created provider should have id");
 
@@ -2602,7 +2563,7 @@ async fn test_get_hub_local_providers_response_structure() {
 
     let entry = providers
         .iter()
-        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(created_id))
+        .find(|p| p.get("name").and_then(|v| v.as_str()) == Some(created_id))
         .expect("Created enabled local provider should appear in the list");
     assert_eq!(
         entry.get("name").and_then(|v| v.as_str()),
@@ -2611,7 +2572,7 @@ async fn test_get_hub_local_providers_response_structure() {
     );
     // Response items expose only id + name.
     assert!(
-        entry.get("id").and_then(|v| v.as_str()).is_some(),
+        entry.get("name").and_then(|v| v.as_str()).is_some(),
         "Provider entry should have an id"
     );
 }
@@ -2630,7 +2591,7 @@ async fn test_get_hub_local_providers_excludes_non_local_and_disabled() {
     // Enabled local — must appear.
     let local =
         create_enabled_provider(&server, &user.token, "E2E Local Included", "local").await;
-    let local_id = local.get("id").and_then(|v| v.as_str()).unwrap();
+    let local_id = local.get("name").and_then(|v| v.as_str()).unwrap();
 
     // Enabled non-local (custom is exempt from the api_key requirement) — must NOT appear.
     create_enabled_provider(&server, &user.token, "E2E Custom Excluded", "custom").await;
@@ -2658,7 +2619,7 @@ async fn test_get_hub_local_providers_excludes_non_local_and_disabled() {
     assert!(
         providers
             .iter()
-            .any(|p| p.get("id").and_then(|v| v.as_str()) == Some(local_id)),
+            .any(|p| p.get("name").and_then(|v| v.as_str()) == Some(local_id)),
         "Enabled local provider should be included"
     );
     assert!(
@@ -2700,13 +2661,13 @@ async fn test_hub_models_source_auth_configured_reflects_repo_credential() {
         .unwrap();
     let mut hf_count = 0;
     for m in before.as_array().unwrap() {
-        if m["repository_url"].as_str() == Some("https://huggingface.co") {
+        if model_has_huggingface_source(m) {
             hf_count += 1;
             assert_eq!(
                 m["source_auth_configured"].as_bool(),
                 Some(false),
                 "model {} should be unconfigured while the HF repo is empty",
-                m["id"]
+                m["name"]
             );
         }
     }
@@ -2751,15 +2712,29 @@ async fn test_hub_models_source_auth_configured_reflects_repo_credential() {
         .await
         .unwrap();
     for m in after.as_array().unwrap() {
-        if m["repository_url"].as_str() == Some("https://huggingface.co") {
+        if model_has_huggingface_source(m) {
             assert_eq!(
                 m["source_auth_configured"].as_bool(),
                 Some(true),
                 "model {} should be configured after setting a key",
-                m["id"]
+                m["name"]
             );
         }
     }
+}
+
+/// Detect HF models by walking `sources[]`; there is no model-wide
+/// `repository_url`.
+fn model_has_huggingface_source(model: &serde_json::Value) -> bool {
+    model
+        .get("sources")
+        .and_then(|s| s.as_array())
+        .map(|srcs| {
+            srcs.iter().any(|src| {
+                src.get("registryType").and_then(|v| v.as_str()) == Some("huggingface")
+            })
+        })
+        .unwrap_or(false)
 }
 
 /// A PARTIAL repository update (changing only a non-secret field, omitting the
@@ -2834,7 +2809,7 @@ async fn test_partial_repo_update_preserves_stored_secret() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|m| m["repository_url"].as_str() == Some("https://huggingface.co"))
+        .find(|m| model_has_huggingface_source(m))
         .expect("an HF hub model");
     assert_eq!(
         hf_model["source_auth_configured"].as_bool(),

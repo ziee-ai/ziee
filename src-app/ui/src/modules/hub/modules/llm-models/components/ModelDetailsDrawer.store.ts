@@ -26,12 +26,12 @@ export const useModelDetailsDrawerStore = create<ModelDetailsDrawerState>()(
       // so the drawer always reflects the active catalog version.
       open: (model: HubModel) => {
         set({ isOpen: true, selectedModel: model, loading: true })
-        ApiClient.Hub.getManifest({ id: model.id, category: 'model' })
+        ApiClient.Hub.getManifest({ id: model.name, category: 'model' })
           .then(manifest => {
             // Ignore if the user already closed or switched items.
             if (
               get().isOpen &&
-              get().selectedModel?.id === model.id &&
+              get().selectedModel?.name === model.name &&
               manifest.model
             ) {
               set({ selectedModel: manifest.model, loading: false })

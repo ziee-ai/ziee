@@ -5,6 +5,7 @@ import {
   Permissions,
   type DownloadFromRepositoryRequest,
   type DownloadInstance,
+  type RepositoryFileListResponse,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
 import { useLlmProviderStore } from '@/modules/llm-provider/stores/LlmProvider.store'
@@ -34,6 +35,11 @@ interface LlmModelDownloadState {
     request: DownloadFromRepositoryRequest,
     onStart?: (downloadId: string) => void,
   ) => Promise<{ downloadId: string }>
+  listRepositoryFiles: (
+    repositoryId: string,
+    path: string,
+    branch?: string,
+  ) => Promise<RepositoryFileListResponse>
   addExternalDownload: (instance: DownloadInstance) => void
   cancelLlmModelDownload: (downloadId: string) => Promise<void>
   deleteLlmModelDownload: (downloadId: string) => Promise<void>
@@ -123,6 +129,21 @@ export const useLlmModelDownloadStore = create<LlmModelDownloadState>()(
           console.error('Failed to initiate download:', error)
           throw error
         }
+      },
+
+      // Detect the model files available at a repository path (Hugging Face /
+      // GitHub) so the download form can offer a picker instead of a
+      // hand-typed filename. Stateless pass-through to the backend detector.
+      listRepositoryFiles: async (
+        repositoryId: string,
+        path: string,
+        branch?: string,
+      ): Promise<RepositoryFileListResponse> => {
+        return await ApiClient.LlmModel.listRepositoryFiles({
+          repository_id: repositoryId,
+          path,
+          branch: branch || 'main',
+        })
       },
 
       addExternalDownload: (instance: DownloadInstance): void => {

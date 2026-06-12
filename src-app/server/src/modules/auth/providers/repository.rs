@@ -183,6 +183,21 @@ pub async fn delete_provider(pool: &PgPool, id: Uuid) -> Result<u64, AppError> {
     Ok(res.rows_affected())
 }
 
+/// Flip `enabled` to false on the row. Called by the health-enforcement
+/// layer when an enable-transition probe fails or a manual Test of an
+/// enabled row turns up failing. Touches `updated_at` so frontend
+/// caches see the row as fresh.
+pub async fn set_enabled_false(pool: &PgPool, id: Uuid) -> Result<(), AppError> {
+    sqlx::query!(
+        "UPDATE auth_providers SET enabled = FALSE, updated_at = NOW() WHERE id = $1",
+        id,
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(())
+}
+
 /// Record the outcome of a test_connection call on the row.
 /// Updates last_test_at/ok/message so the admin UI can show the
 /// result on the next list refresh.

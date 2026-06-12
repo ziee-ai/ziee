@@ -358,9 +358,15 @@ export function ElicitationFormContent({
   )
 
   const handleSubmit = async () => {
+    let values: Record<string, unknown>
     try {
-      const values = await form.validateFields()
-      setIsSubmitting(true)
+      values = await form.validateFields()
+    } catch {
+      // Validation failed — form shows inline errors, stay interactive
+      return
+    }
+    setIsSubmitting(true)
+    try {
       // Convert dayjs values back to ISO strings per the field's schema format
       // so the MCP server receives the canonical JSON Schema representation.
       const submitValues: Record<string, unknown> = {}
@@ -374,22 +380,31 @@ export function ElicitationFormContent({
           submitValues[key] = val
         }
       }
-      const mcpStore = Stores.McpComposer
-      await mcpStore.resolveElicitation(
+      await Stores.McpComposer.resolveElicitation(
         elicitation.elicitation_id,
         'accept',
         submitValues,
       )
-    } catch {
-      // Validation failed — form shows inline errors, stay interactive
+    } catch (e) {
+      // The store rolls status back to 'pending' on POST failure so the
+      // user can retry; swallow here so the error doesn't bubble to the
+      // chat error boundary.
+      console.warn('mcp.elicitation resolve failed', e)
+    } finally {
+      // On success the resolved card replaces this form (no-op); on
+      // failure the catch above kept us interactive — either way,
+      // make sure the submit button is re-enabled.
       setIsSubmitting(false)
     }
   }
 
   const handleDecline = async () => {
     setIsSubmitting(true)
-    const mcpStore = Stores.McpComposer
-    await mcpStore.resolveElicitation(elicitation.elicitation_id, 'decline')
+    try {
+      await Stores.McpComposer.resolveElicitation(elicitation.elicitation_id, 'decline')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   // --- Resolved states ---

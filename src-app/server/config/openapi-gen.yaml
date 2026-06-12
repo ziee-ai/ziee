@@ -43,3 +43,7 @@ jwt:
   audience: "ziee-api"
   access_token_expiry_hours: 24
   refresh_token_expiry_days: 30
+
+# OpenAPI codegen must not poll GitHub for updates.
+update_check:
+  enabled: false

@@ -1,0 +1,174 @@
+name: Desktop Release
+
+# Tag-triggered cross-platform desktop build + signed updater artifacts.
+# Pushing `vX.Y.Z` builds the Tauri app for macOS (arm64 + x86_64), Windows,
+# and Linux; signs each updater bundle with the Tauri updater key; uploads the
+# bundles + `.sig` to a GitHub Release; then publishes a static `latest.json`
+# manifest to the `gh-pages` branch (served at the updater endpoint).
+#
+# Required repo secrets:
+#   TAURI_SIGNING_PRIVATE_KEY           contents of the updater private key
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  its password ('' if generated without one)
+# See docs/DESKTOP-UPDATER-RUNBOOK.md.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, target: aarch64-apple-darwin, args: '--target aarch64-apple-darwin' }
+          - { os: macos-latest, target: x86_64-apple-darwin, args: '--target x86_64-apple-darwin' }
+          - { os: ubuntu-22.04, target: x86_64-unknown-linux-gnu, args: '' }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, args: '' }
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # ---- Build-time Postgres (pgvector) on :54321 ----
+      # The desktop build compiles the whole server, whose SQLx macros need a
+      # live pgvector Postgres at the URL in .cargo/config.toml (127.0.0.1:54321).
+      - name: Setup Postgres + pgvector (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          docker run -d --name ziee-build-db \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=password \
+            -e POSTGRES_DB=postgres \
+            -p 54321:5432 \
+            pgvector/pgvector:pg18
+          for _ in $(seq 1 30); do
+            if docker exec ziee-build-db pg_isready -U postgres >/dev/null 2>&1; then
+              echo "postgres ready"; break
+            fi
+            sleep 2
+          done
+
+      - name: Setup Postgres + pgvector (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install postgresql@18 pgvector
+          PG_PREFIX="$(brew --prefix postgresql@18)"
+          export PATH="$PG_PREFIX/bin:$PATH"
+          PGDATA="$RUNNER_TEMP/pgdata"
+          initdb -D "$PGDATA" --username=postgres --auth=trust
+          pg_ctl -D "$PGDATA" -o "-p 54321" -l "$RUNNER_TEMP/pg.log" -w start
+          createdb -p 54321 -U postgres postgres || true
+          psql -p 54321 -U postgres -c "ALTER USER postgres WITH PASSWORD 'password';"
+
+      - name: Setup Postgres + pgvector (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # NOTE: validate on first real run — Windows runners ship Postgres
+          # but pgvector must be built/installed. See runbook for the current
+          # known-good approach if this step needs adjustment.
+          & "$env:PGBIN\pg_ctl.exe" register -N pg -D "$env:PGDATA" -o "-p 54321" 2>$null
+          Start-Service postgresql* -ErrorAction SilentlyContinue
+          $env:PGPASSWORD = "postgres"
+
+      - name: Install Linux build deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev patchelf build-essential
+
+      - name: Install npm deps (workspace hoist at repo root)
+        run: npm ci
+
+      - name: Sync version from tag
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          node -e '
+            const fs = require("fs");
+            const p = "src-app/desktop/tauri/tauri.conf.json";
+            const c = JSON.parse(fs.readFileSync(p, "utf8"));
+            c.version = process.argv[1];
+            fs.writeFileSync(p, JSON.stringify(c, null, 2) + "\n");
+          ' "$VERSION"
+          echo "Building version $VERSION"
+
+      - name: Build, sign, and upload to release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: src-app/desktop/tauri
+          args: ${{ matrix.args }}
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Ziee ${{ github.ref_name }}'
+          releaseDraft: false
+          # Mark RC tags (v*-rc.*) as prerelease so GitHub's `releases/latest`
+          # (used by the server install.sh + the update checker) never resolves
+          # to an RC. Must match server-release.yml's prerelease logic since
+          # both workflows race to create the same release.
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          includeUpdaterJson: true
+
+  publish-manifest:
+    name: publish latest.json to gh-pages
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Download signed updater artifacts from the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p staging
+          # Pull every updater artifact + its .sig from the release. The build
+          # job named each bundle with its platform target, so the manifest
+          # builder can key them. (.sig files carry the embedded signatures.)
+          gh release download "${GITHUB_REF_NAME}" --dir staging \
+            --pattern '*.sig' \
+            --pattern '*.tar.gz' --pattern '*.zip' \
+            --pattern '*.AppImage' --pattern '*.msi' --pattern '*.exe'
+
+      - name: Build latest.json
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          node scripts/updater/build-latest-json.mjs \
+            --artifacts-dir staging \
+            --base-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}" \
+            --version "$VERSION" \
+            --notes "Ziee ${GITHUB_REF_NAME}" \
+            --out latest.json
+          cat latest.json
+
+      - name: Publish to gh-pages
+        env:
+          GH_PAGES_REMOTE: https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+        run: bash scripts/updater/publish-pages.sh latest.json

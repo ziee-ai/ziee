@@ -85,5 +85,10 @@ declare module '@/core/module-system/types' {
     sidebarContent: SidebarWidgetItem[]
     sidebarBottom: SidebarWidgetItem[]
     sidebarFooter: SidebarWidgetItem[]
+    /** App-wide banners rendered at the top of the content area (above the
+     *  routed page). Used for the admin "update available" notice. Modules not
+     *  loaded in a given bundle (e.g. server-update on desktop) contribute
+     *  nothing here. */
+    appBanners: SidebarWidgetItem[]
   }
 }

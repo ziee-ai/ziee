@@ -102,6 +102,20 @@ export interface FileViewerEntry {
    *  side — keeping MIME dispatch in one place.
    */
   inline?: boolean | FileSupportEntry[]
+
+  /**
+   * When inline, render the body inside a fixed-height box (with internal
+   * scroll) instead of letting it size to its content.
+   *
+   * Required for bodies that measure their own container height and feed it
+   * back into their layout (e.g. the tabular viewer's virtual data grid sets
+   * the antd table's `scroll.y` from a `ResizeObserver`). Inline, the preview
+   * wrapper only imposes a `max-height`, so such a body's `height: 100%`
+   * resolves to `auto` and the measurement loops toward zero. A definite
+   * height breaks the loop. Intrinsic bodies (image / text / markdown) size to
+   * content and leave this unset.
+   */
+  inlineFill?: boolean
 }
 
 /**

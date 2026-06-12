@@ -7,8 +7,8 @@
 //!   - Built-in MCP server (`modules/memory_mcp`) exposing
 //!     `remember`/`recall`/`forget` tools.
 //!
-//! Shared dual-use engine (`engine/`) holds extract/summarize/dispatch/
-//! prompts — called from the bridge hooks AND directly from
+//! Shared dual-use engine (`engine/`) holds extract/dispatch/prompts —
+//! called from the bridge hooks AND directly from
 //! `handlers.rs`, `embedding_worker.rs`, and `memory_mcp/handlers.rs`.
 //!
 //! All three surfaces share the same Postgres tables (`user_memories`,

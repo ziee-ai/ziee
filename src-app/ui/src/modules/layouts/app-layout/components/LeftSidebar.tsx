@@ -1,5 +1,8 @@
-import { Link, useLocation } from 'react-router-dom'
-import { theme, Typography, Divider, Tooltip } from 'antd'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { Divider, Menu, theme } from 'antd'
+import type { MenuProps } from 'antd'
+import type { CSSProperties } from 'react'
+import { useMemo } from 'react'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { SidebarHeaderSpacer } from '@/modules/layouts/app-layout/components/SidebarHeaderSpacer'
 import { Stores } from '@/core/stores'
@@ -11,122 +14,51 @@ import type {
   SidebarActionItem,
 } from '@/modules/layouts/app-layout/types'
 
-const { Text } = Typography
+type MenuItem = NonNullable<MenuProps['items']>[number]
 
-interface SidebarItemProps {
-  icon: React.ReactNode
-  label: string
-  isActive?: boolean
-  to?: string
-  onClick?: () => void
-  collapsed?: boolean
-}
-
-function SidebarItem({ icon, label, isActive, to, onClick, collapsed }: SidebarItemProps) {
-  const { token } = theme.useToken()
-
-  const item = (
-    <Link
-      to={to || '#'}
-      onClick={onClick}
-      className="flex items-center px-3 py-1 mx-2 rounded-md cursor-pointer no-underline"
-      style={{
-        textDecoration: 'none',
-        backgroundColor: isActive ? token.colorPrimary : 'transparent',
-        color: isActive ? token.colorTextLightSolid : token.colorTextBase,
-        borderRadius: token.borderRadius,
-        transition: 'background-color 150ms, color 150ms',
-      }}
-      onMouseEnter={e => {
-        if (!isActive) {
-          e.currentTarget.style.backgroundColor = token.colorPrimaryHover
-          e.currentTarget.style.color = token.colorTextLightSolid
-        }
-      }}
-      onMouseLeave={e => {
-        if (!isActive) {
-          e.currentTarget.style.backgroundColor = 'transparent'
-          e.currentTarget.style.color = token.colorTextBase
-        }
-      }}
-    >
-      <div
-        className="w-4 h-4 mr-1.5 flex items-center justify-center"
-        style={{
-          fontSize: 18,
-        }}
-        aria-hidden="true"
-      >
-        {icon}
-      </div>
-      <Text
-        style={{
-          color: 'inherit',
-          fontSize: token.fontSize,
-          opacity: collapsed ? 0 : 1,
-          maxWidth: collapsed ? 0 : 200,
-          overflow: 'hidden',
-          whiteSpace: 'nowrap',
-          transition: 'opacity 200ms ease-out, max-width 200ms ease-out',
-        }}
-      >
-        {label}
-      </Text>
-    </Link>
-  )
-
-  if (collapsed) {
-    return (
-      <Tooltip title={label} placement="right">
-        {item}
-      </Tooltip>
-    )
+/**
+ * Pick the most-specific item whose `path` is a prefix of the current
+ * pathname. Returns the item's id (the Menu's `key`) or undefined when
+ * nothing in this group is active. Matches the original sidebar's
+ * "startsWith" semantics so submenu pages keep their parent
+ * highlighted (e.g. `/settings/profile` highlights "Settings").
+ */
+function selectedKeyForGroup(
+  pathname: string,
+  items: { id: string; path: string }[],
+): string | undefined {
+  let best: { id: string; pathLen: number } | undefined
+  for (const it of items) {
+    if (pathname === it.path || pathname.startsWith(it.path + '/')) {
+      if (!best || it.path.length > best.pathLen) {
+        best = { id: it.id, pathLen: it.path.length }
+      }
+    }
   }
-
-  return item
+  return best?.id
 }
 
-interface SectionHeaderProps {
-  children: React.ReactNode
-  collapsed?: boolean
+/**
+ * Optional shape that lets an outer wrapper (typically a platform-
+ * specific build override) tweak the sidebar's outer chrome without
+ * forking the whole component. Default values come from theme tokens.
+ *
+ * Both `rootStyle` and `rootClassName` are spread / appended AFTER
+ * the defaults so the override always wins.
+ */
+interface LeftSidebarProps {
+  rootStyle?: CSSProperties
+  rootClassName?: string
 }
 
-function SectionHeader({ children, collapsed }: SectionHeaderProps) {
-  const { token } = theme.useToken()
-
-  return (
-    <div
-      style={{
-        maxHeight: collapsed ? 0 : 32,
-        opacity: collapsed ? 0 : 1,
-        overflow: 'hidden',
-        transition: 'opacity 200ms ease-out, max-height 200ms ease-out',
-      }}
-    >
-      <Text
-        className="px-3 pb-0.5 block font-semibold tracking-wide"
-        style={{
-          fontSize: token.fontSizeSM,
-          color: token.colorTextSecondary,
-        }}
-      >
-        {children}
-      </Text>
-    </div>
-  )
-}
-
-export function LeftSidebar() {
+export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {}) {
+  const navigate = useNavigate()
   const location = useLocation()
   const { token } = theme.useToken()
   const windowMinSize = useWindowMinSize()
   const { slots } = Stores.ModuleSystem
   const { isSidebarCollapsed } = Stores.AppLayout
   const { user, permissions } = Stores.Auth
-
-  const isActive = (path: string) => {
-    return location.pathname.startsWith(path)
-  }
 
   const isAllowed = (item: { permission?: SidebarNavItem['permission'] }) =>
     !item.permission || evaluatePermission(user, permissions, item.permission)
@@ -140,71 +72,165 @@ export function LeftSidebar() {
   const bottomWidgets = slots.get('sidebarBottom') || []
   const footerWidgets = slots.get('sidebarFooter') || []
 
-  const sortedPrimaryActions = [...primaryActions].sort(
-    (a, b) => (a.order ?? 0) - (b.order ?? 0),
+  const sortedPrimaryActions = useMemo(
+    () => [...primaryActions].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+    [primaryActions],
   )
-  const sortedNavigation = [...navigation]
-    .filter(isAllowed)
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-  const sortedTools = [...tools]
-    .filter(isAllowed)
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  const sortedNavigation = useMemo(
+    () =>
+      [...navigation]
+        .filter(isAllowed)
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [navigation, user, permissions],
+  )
+  const sortedTools = useMemo(
+    () =>
+      [...tools]
+        .filter(isAllowed)
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tools, user, permissions],
+  )
 
   // On desktop, collapsed means icon-only mode (not fully hidden)
   const isIconOnly = isSidebarCollapsed && !windowMinSize.xs
 
+  // Build antd Menu item lists per group. Action / tool / nav are
+  // separate Menus because the widget slots (`sidebarContent`,
+  // `sidebarBottom`, `sidebarFooter`) sit BETWEEN them as their own
+  // flow elements. Within each Menu, antd handles hover/active/focus
+  // tokens, keyboard nav, and the icon-only tooltip on its own.
+  const primaryItems: MenuItem[] = sortedPrimaryActions.map(a => ({
+    key: a.id,
+    icon: a.icon,
+    label: a.label,
+  }))
+
+  const navigationItems: MenuItem[] = sortedNavigation.map(n => ({
+    key: n.id,
+    icon: n.icon,
+    label: n.label,
+  }))
+
+  const toolsItems: MenuItem[] = sortedTools.map(t => ({
+    key: t.id,
+    icon: t.icon,
+    label: t.label,
+  }))
+
+  const navSelectedKey = selectedKeyForGroup(location.pathname, sortedNavigation)
+  const toolsSelectedKey = selectedKeyForGroup(location.pathname, sortedTools)
+  // Primary actions surface paths only when present (otherwise the
+  // action is a pure `onClick` like "New Chat" which never has a
+  // selected state). Build the list with non-null paths only.
+  const primarySelectedKey = selectedKeyForGroup(
+    location.pathname,
+    sortedPrimaryActions
+      .filter((a): a is SidebarActionItem & { to: string } => Boolean(a.to))
+      .map(a => ({ id: a.id, path: a.to })),
+  )
+
+  // Shared Menu props — transparent background to inherit the sidebar
+  // surface, no right border (the sidebar container owns its own
+  // border). Items keep antd's default margin-from-panel +
+  // rounded-pill selection look, but the CONTENT inside each item is
+  // tight: 28px row, 8px horizontal padding (vs antd's default ~16px).
+  const menuClass =
+    '!bg-transparent !border-none ' +
+    '[&_.ant-menu-item]:!h-7 [&_.ant-menu-item]:!leading-[28px] ' +
+    // Force BOTH width and margin together so antd's own
+    // `width: calc(100% - 8px)` and small default margin can't
+    // re-assert — without the width override, an `mx-*` on the item
+    // pushes the left in but the right keeps overflowing to the
+    // box edge. Width: 100% minus the 16px combined margin (8px
+    // each side) puts the right edge exactly where we want.
+    '[&_.ant-menu-item]:!mx-2 ' +
+    '[&_.ant-menu-item]:!w-[calc(100%-1rem)] ' +
+    '[&_.ant-menu-item]:!pl-2 [&_.ant-menu-item]:!pr-2 ' +
+    '[&_.ant-menu-item]:!py-0 ' +
+    '[&_.ant-menu-item]:!rounded-md ' +
+    '[&_.ant-menu-title-content]:!py-0 ' +
+    '[&_.ant-menu-item-group-title]:!px-3 [&_.ant-menu-item-group-title]:!pt-0 ' +
+    '[&_.ant-menu-item-group-title]:!pb-0.5 ' +
+    '[&_.ant-menu-item-group-title]:!text-xs ' +
+    '[&_.ant-menu-item-group-title]:!font-semibold ' +
+    '[&_.ant-menu-item-group-title]:!tracking-wide'
+
+  const handleNavMenuClick = (key: string) => {
+    const item = sortedNavigation.find(n => n.id === key)
+    if (item) navigate(item.path)
+  }
+
+  const handleToolsMenuClick = (key: string) => {
+    const item = sortedTools.find(t => t.id === key)
+    if (item) navigate(item.path)
+  }
+
+  const handlePrimaryMenuClick = (key: string) => {
+    const item = sortedPrimaryActions.find(a => a.id === key)
+    if (!item) return
+    if (item.onClick) item.onClick()
+    if (item.to) navigate(item.to)
+  }
+
   return (
     <div
-      className="h-full flex flex-col overflow-hidden"
+      className={
+        'h-full flex flex-col overflow-hidden' +
+        (rootClassName ? ' ' + rootClassName : '')
+      }
       style={{
-        width: '100%', // Take full width of container
+        width: '100%',
         borderRight: windowMinSize.xs
           ? 'none'
           : '1px solid ' + token.colorBorderSecondary,
-        backgroundColor: token.colorBgContainer,
+        // Sidebar uses the layout surface (off-white) so it reads as
+        // a fractionally recessed panel against the main content
+        // pane (`colorBgContainer`, pure white).
+        backgroundColor: token.colorBgLayout,
+        // Wrapper overrides win — applied last.
+        ...rootStyle,
       }}
     >
       <SidebarHeaderSpacer />
-      {/* Sidebar content - always rendered */}
 
-      {/* Primary Actions */}
-      {sortedPrimaryActions.length > 0 && (
-        <div className="mb-4">
-          {sortedPrimaryActions.map(action => (
-            <SidebarItem
-              key={action.id}
-              icon={action.icon}
-              label={action.label}
-              to={action.to}
-              onClick={action.onClick}
-              collapsed={isIconOnly}
-            />
-          ))}
+      {/* Primary Actions — no section header, like the original. */}
+      {primaryItems.length > 0 && (
+        <Menu
+          mode="inline"
+          inlineCollapsed={isIconOnly}
+          className={menuClass}
+          selectedKeys={primarySelectedKey ? [primarySelectedKey] : []}
+          items={primaryItems}
+          onClick={({ key }) => handlePrimaryMenuClick(String(key))}
+        />
+      )}
+
+      {/* Navigation — section header rendered as a Menu item group so
+          antd handles the collapsed-mode hide + token-based typography. */}
+      {navigationItems.length > 0 && (
+        <div className="mt-2">
+          <Menu
+            mode="inline"
+            inlineCollapsed={isIconOnly}
+            className={menuClass}
+            selectedKeys={navSelectedKey ? [navSelectedKey] : []}
+            items={[
+              {
+                type: 'group',
+                label: 'Navigation',
+                children: navigationItems,
+              },
+            ]}
+            onClick={({ key }) => handleNavMenuClick(String(key))}
+          />
         </div>
       )}
 
-      {/* Navigation Section */}
-      {sortedNavigation.length > 0 && (
-        <div className="mb-4">
-          <SectionHeader collapsed={isIconOnly}>Navigation</SectionHeader>
-          <div className="space-y-0">
-            {sortedNavigation.map(item => (
-              <SidebarItem
-                key={item.id}
-                icon={item.icon}
-                label={item.label}
-                isActive={isActive(item.path)}
-                to={item.path}
-                collapsed={isIconOnly}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Content Section - Widget Slot (hidden in icon-only mode) */}
+      {/* Content Section — widget slot (hidden in icon-only mode). */}
       {!isIconOnly && (
-        <div className="flex-1 overflow-hidden flex flex-col">
+        <div className="flex-1 overflow-hidden flex flex-col mt-2">
           {contentWidgets
             .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
             .map(widget => (
@@ -218,26 +244,27 @@ export function LeftSidebar() {
       {/* Spacer in icon-only mode to push tools to bottom */}
       {isIconOnly && <div className="flex-1" />}
 
-      {/* Tools Section */}
-      {sortedTools.length > 0 && (
-        <div>
-          <SectionHeader collapsed={isIconOnly}>Tools</SectionHeader>
-          <div className="space-y-0 mb-2">
-            {sortedTools.map(item => (
-              <SidebarItem
-                key={item.id}
-                icon={item.icon}
-                label={item.label}
-                isActive={isActive(item.path)}
-                to={item.path}
-                collapsed={isIconOnly}
-              />
-            ))}
-          </div>
+      {/* Tools — same shape as Navigation. */}
+      {toolsItems.length > 0 && (
+        <div className="mt-2">
+          <Menu
+            mode="inline"
+            inlineCollapsed={isIconOnly}
+            className={menuClass}
+            selectedKeys={toolsSelectedKey ? [toolsSelectedKey] : []}
+            items={[
+              {
+                type: 'group',
+                label: 'Tools',
+                children: toolsItems,
+              },
+            ]}
+            onClick={({ key }) => handleToolsMenuClick(String(key))}
+          />
 
           {/* Bottom Widgets (hidden in icon-only mode) */}
           {!isIconOnly && bottomWidgets.length > 0 && (
-            <div className="px-2">
+            <div className="px-2 mt-2">
               {bottomWidgets
                 .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
                 .map(widget => (

@@ -107,17 +107,25 @@ export function AssistantDetailsDrawer({
           </Card>
         </div>
 
-        {/* Use Cases */}
-        {assistant.use_cases && assistant.use_cases.length > 0 && (
+        {/* Dependencies — v2 Phase 7 replaces use_cases /
+            example_prompts / recommended_models / recommended_mcp_servers
+            with a single informational dependencies[] list. */}
+        {assistant.dependencies && assistant.dependencies.length > 0 && (
           <div>
-            <Title level={5}>Use Cases</Title>
-            <ul className="ml-4">
-              {assistant.use_cases.map((useCase, idx) => (
-                <li key={idx} className="text-sm">
-                  {useCase}
-                </li>
-              ))}
-            </ul>
+            <Title level={5}>Works best with</Title>
+            <Flex wrap className="gap-1">
+              {assistant.dependencies.map(dep => {
+                const leaf = dep.name.split('/').slice(-1)[0]
+                return (
+                  <Tag
+                    key={`${dep.kind}-${dep.name}`}
+                    color={dep.kind === 'model' ? 'cyan' : 'purple'}
+                  >
+                    {leaf} {dep.versionRange}
+                  </Tag>
+                )
+              })}
+            </Flex>
           </div>
         )}
 
@@ -129,12 +137,6 @@ export function AssistantDetailsDrawer({
               <Flex justify="space-between">
                 <Text type="secondary">Author:</Text>
                 <Text>{assistant.author}</Text>
-              </Flex>
-            )}
-            {assistant.popularity_score && (
-              <Flex justify="space-between">
-                <Text type="secondary">Popularity Score:</Text>
-                <Text>{assistant.popularity_score}</Text>
               </Flex>
             )}
           </Flex>
