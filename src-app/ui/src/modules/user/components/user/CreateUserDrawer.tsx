@@ -4,36 +4,7 @@ import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import type { CreateUserRequest } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'
-
-const { TextArea } = Input
-
-// Helper function to validate permissions
-const validatePermissions = (_: any, value: string) => {
-  if (!value) return Promise.resolve()
-
-  try {
-    const parsed = JSON.parse(value)
-    if (!Array.isArray(parsed)) {
-      return Promise.reject('Must be an array')
-    }
-
-    // Check if all values are valid permissions
-    const validPermissions = Object.values(Permissions)
-    const invalidPermissions = parsed.filter(
-      perm => !validPermissions.includes(perm),
-    )
-
-    if (invalidPermissions.length > 0) {
-      return Promise.reject(
-        `Invalid permissions: ${invalidPermissions.join(', ')}`,
-      )
-    }
-
-    return Promise.resolve()
-  } catch {
-    return Promise.reject('Invalid JSON format')
-  }
-}
+import { PermissionsField } from '@/modules/user/components/PermissionsField.tsx'
 
 export function CreateUserDrawer() {
   const { message } = App.useApp()
@@ -49,8 +20,8 @@ export function CreateUserDrawer() {
         email: values.email,
         password: values.password,
         display_name: values.display_name,
-        permissions: values.permissions
-          ? JSON.parse(values.permissions)
+        permissions: values.permissions?.length
+          ? values.permissions
           : undefined,
       }
 
@@ -117,15 +88,8 @@ export function CreateUserDrawer() {
         <Form.Item name="display_name" label="Display Name">
           <Input placeholder="Enter display name (optional)" />
         </Form.Item>
-        <Form.Item
-          name="permissions"
-          label="Permissions (JSON Array)"
-          rules={[{ validator: validatePermissions }]}
-        >
-          <TextArea
-            rows={6}
-            placeholder={`["${Permissions.UsersRead}", "${Permissions.UsersEdit}"]`}
-          />
+        <Form.Item name="permissions" label="Permissions">
+          <PermissionsField disabled={!canCreate} />
         </Form.Item>
         <Form.Item className="mb-0">
           <Flex className="justify-end gap-2">
