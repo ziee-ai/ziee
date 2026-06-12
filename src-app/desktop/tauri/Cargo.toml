@@ -75,6 +75,10 @@ serde_json.workspace = true
 sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "macros"] }
 portpicker.workspace = true
 url.workspace = true
+# Updater signing round-trip test (`tests/updater_signing_test.rs`):
+# verify a `tauri signer`-produced signature with the SAME crate the
+# runtime updater uses to verify downloaded updates.
+minisign-verify = "0.2"
 # Pull in `tauri::test::{mock_builder, get_ipc_response, ...}` for
 # Layer-1 command tests (`tests/tauri_commands_test.rs`). Without the
 # `test` feature, `tauri::test` is gated behind `#[cfg(test)]` on the

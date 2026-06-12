@@ -20,6 +20,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -32,9 +33,9 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://releases.ziee.chat/{{target}}/{{arch}}/{{current_version}}"
+        "https://phibya.github.io/ziee-chat-new/latest.json"
       ],
-      "pubkey": ""
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdCMTZEQ0VBMDBFOEU5RkUKUldUKzZlZ0E2dHdXZTlLSytNRnJlWlUyNDczM1VHbmEzTUxHcHo4OGxLalpTc3FMVXVmbVBnTGYK"
     }
   }
 }

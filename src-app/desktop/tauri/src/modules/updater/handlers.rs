@@ -1,11 +1,18 @@
 //! Updater Handlers
 //!
-//! HTTP route handlers for application update management
+//! HTTP route handlers for application update management.
+//!
+//! These are aide-documented (`ApiRouter` + `_docs` fns) so they appear in the
+//! generated OpenAPI spec and the typed `ApiClient.Updater.*` client — matching
+//! the `settings` / `remote_access` desktop modules. (They previously used the
+//! plain-`Router` `register_routes` hook, which nothing in `lib.rs` calls, so
+//! the routes were unreachable.)
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::RwLock;
 use tauri_plugin_updater::UpdaterExt;
-use ziee::{Json, StatusCode};
+use ziee::{Json, StatusCode, TransformOperation};
 
 use crate::core::get_app_handle;
 
@@ -24,7 +31,7 @@ pub static UPDATE_STATE: RwLock<UpdateState> = RwLock::new(UpdateState {
 /// Global storage for downloaded update bytes
 pub static UPDATE_BYTES: RwLock<Option<Vec<u8>>> = RwLock::new(None);
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, JsonSchema)]
 pub struct UpdateState {
     pub checking: bool,
     pub available: bool,
@@ -36,23 +43,59 @@ pub struct UpdateState {
     pub error: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct UpdateCheckResponse {
     pub available: bool,
     pub version: Option<String>,
     pub notes: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct UpdateStatusResponse {
     pub status: UpdateState,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct SimpleResponse {
     pub success: bool,
     pub message: String,
 }
+
+// =====================================================
+// OpenAPI docs (produce the typed `ApiClient.Updater.*`)
+// =====================================================
+
+pub fn check_for_updates_docs(op: TransformOperation) -> TransformOperation {
+    op.description("Check for an available application update.")
+        .id("Updater.check")
+        .tag("updater")
+        .response::<200, Json<UpdateCheckResponse>>()
+}
+
+pub fn download_update_docs(op: TransformOperation) -> TransformOperation {
+    op.description("Start downloading the available update (progress via /status).")
+        .id("Updater.download")
+        .tag("updater")
+        .response::<200, Json<SimpleResponse>>()
+}
+
+pub fn install_update_docs(op: TransformOperation) -> TransformOperation {
+    op.description("Install the downloaded update and restart the app.")
+        .id("Updater.install")
+        .tag("updater")
+        .response::<200, Json<SimpleResponse>>()
+}
+
+pub fn get_update_status_docs(op: TransformOperation) -> TransformOperation {
+    op.description("Get the current update status (checking/downloading/progress).")
+        .id("Updater.status")
+        .tag("updater")
+        .response::<200, Json<UpdateStatusResponse>>()
+}
+
+// =====================================================
+// Handlers
+// =====================================================
 
 /// Check for available updates
 pub async fn check_for_updates() -> Result<Json<UpdateCheckResponse>, (StatusCode, String)> {
@@ -201,6 +244,9 @@ pub async fn download_update() -> Result<Json<SimpleResponse>, (StatusCode, Stri
             }
         };
 
+        // NOTE: we re-`check()` here (and again in `install`) because
+        // `tauri_plugin_updater::Update` is not `Send`/storable across the
+        // global state boundary — each operation re-resolves its own handle.
         match updater.check().await {
             Ok(Some(update)) => {
                 // Download with progress tracking
@@ -310,6 +356,7 @@ pub async fn install_update() -> Result<Json<SimpleResponse>, (StatusCode, Strin
         )
     })?;
 
+    // Re-resolve the Update handle (see NOTE in `download_update`).
     match updater.check().await {
         Ok(Some(update)) => {
             // Install will quit the app and restart
@@ -348,4 +395,28 @@ pub async fn get_update_status() -> Result<Json<UpdateStatusResponse>, (StatusCo
     Ok(Json(UpdateStatusResponse {
         status: state.clone(),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn status_reports_default_state_without_app() {
+        // `get_update_status` only reads the global `UPDATE_STATE`; it does not
+        // touch the Tauri app handle, so it is safe to call in a unit test.
+        // Reset to a known baseline first (other in-process tests may mutate it).
+        {
+            let mut state = UPDATE_STATE.write().unwrap();
+            *state = UpdateState::default();
+        }
+        let resp = get_update_status().await.expect("status ok");
+        let s = &resp.0.status;
+        assert!(!s.checking);
+        assert!(!s.available);
+        assert!(!s.downloading);
+        assert!(!s.ready_to_install);
+        assert!(s.version.is_none());
+        assert!(s.progress.is_none());
+    }
 }

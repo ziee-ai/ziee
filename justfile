@@ -388,3 +388,39 @@ check-remote-access-real-ngrok:
 check-remote-access-all: check-remote-access-unit check-remote-access-e2e
     @echo "✓ remote-access: unit + integration + e2e all green"
 
+# ─── Desktop auto-updater ────────────────────────────────────────────
+
+# Always-on updater tests (no Docker needed):
+#   Tier 1 — frontend store unit (vitest)
+#   Tier 2 — manifest builder unit (node --test)
+#   Tier 3 — signing round-trip (Rust; auto-generates an ephemeral key,
+#            signs via `tauri signer`, verifies with minisign-verify,
+#            asserts a tampered artifact fails). Needs the build DB on
+#            :54321 to compile (same as every desktop cargo recipe).
+check-updater: workspace-cargo-pin-sqlx
+    node --test scripts/updater/build-latest-json.test.mjs
+    cd src-app/desktop/ui && npm run test:unit -- src/modules/updater/stores/Updater.store.test.ts
+    cd src-app/desktop/tauri && cargo test --test updater_signing_test -- --test-threads=1
+    @echo "✓ updater: Tier 1 (store) + Tier 2 (manifest) + Tier 3 (signing) green"
+
+# Tier 4 — release/Pages workflow exercised locally with `act` (Docker)
+# against a temp bare repo, plus a dockerized actionlint over both
+# workflows. Self-asserting: the workflow fails if the published
+# latest.json is wrong, so act's exit code is the signal. Needs Docker
+# + act (external deps; own recipe like the sandbox external-dep tiers).
+check-updater-ci:
+    @echo "==> actionlint (dockerized) over updater workflows"
+    docker run --rm -v "{{justfile_directory()}}":/repo --workdir /repo \
+        rhysd/actionlint:latest -color \
+        .github/workflows/desktop-release.yml \
+        .github/workflows/desktop-updater-pages-test.yml
+    @echo "==> act: run desktop-updater-pages-test.yml (publishes to a temp bare repo, self-asserts)"
+    act workflow_dispatch \
+        -W .github/workflows/desktop-updater-pages-test.yml \
+        --bind --rm
+    @echo "✓ updater Tier 4: workflow + manifest + gh-pages publish verified via act"
+
+# Everything testable locally for the updater (Tiers 1-3 + 4).
+check-updater-all: check-updater check-updater-ci
+    @echo "✓ updater: all locally-runnable tiers green"
+
