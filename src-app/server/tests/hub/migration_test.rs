@@ -19,7 +19,7 @@ use uuid::Uuid;
 use crate::common::TestServer;
 
 const MIGRATION_SQL: &str = include_str!(
-    "../../migrations/00000000000089_rewrite_hub_entities_hub_id_to_reverse_dns.sql"
+    "../../migrations/00000000000092_rewrite_hub_entities_hub_id_to_reverse_dns.sql"
 );
 
 async fn pool(server: &TestServer) -> sqlx::PgPool {
