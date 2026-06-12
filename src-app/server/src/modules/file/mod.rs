@@ -21,6 +21,8 @@ pub mod provider_routing;
 pub mod repository;
 pub mod routes;
 pub mod storage;
+pub mod sync;
+pub mod versioning;
 pub mod types;
 pub mod utils;
 

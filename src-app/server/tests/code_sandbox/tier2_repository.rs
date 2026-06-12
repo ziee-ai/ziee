@@ -20,6 +20,46 @@ async fn repo(server: &TestServer) -> CodeSandboxRepository {
     CodeSandboxRepository::new(pool)
 }
 
+/// Insert a `files` row + its v1 `file_versions` head in one deferred-FK
+/// transaction (mirrors `Repos.file.create`). A bare `INSERT INTO files` now
+/// violates `current_version_id NOT NULL` (versioning migration); the two FKs
+/// are circular so both rows go in one tx, the `current_version_id` FK being
+/// DEFERRABLE INITIALLY DEFERRED (checked at COMMIT). `created_at` is an
+/// optional RFC3339-ish literal for ordering tests.
+async fn seed_file(
+    pool: &sqlx::PgPool,
+    file_id: Uuid,
+    user_id: Uuid,
+    filename: &str,
+    file_size: i64,
+    mime: &str,
+    created_at: Option<&str>,
+) {
+    let mut tx = pool.begin().await.unwrap();
+    if let Some(ts) = created_at {
+        sqlx::query(
+            "INSERT INTO files (id, user_id, filename, file_size, mime_type, current_version_id, created_at) \
+             VALUES ($1, $2, $3, $4, $5, $1, $6::timestamptz)",
+        )
+        .bind(file_id).bind(user_id).bind(filename).bind(file_size).bind(mime).bind(ts)
+        .execute(&mut *tx).await.unwrap();
+    } else {
+        sqlx::query(
+            "INSERT INTO files (id, user_id, filename, file_size, mime_type, current_version_id) \
+             VALUES ($1, $2, $3, $4, $5, $1)",
+        )
+        .bind(file_id).bind(user_id).bind(filename).bind(file_size).bind(mime)
+        .execute(&mut *tx).await.unwrap();
+    }
+    sqlx::query(
+        "INSERT INTO file_versions (id, file_id, version, is_head, blob_version_id, file_size, mime_type, created_by) \
+         VALUES ($1, $1, 1, true, $1, $2, $3, 'user')",
+    )
+    .bind(file_id).bind(file_size).bind(mime)
+    .execute(&mut *tx).await.unwrap();
+    tx.commit().await.unwrap();
+}
+
 // ─── upsert_builtin_server ──────────────────────────────────────────
 
 #[tokio::test]
@@ -192,15 +232,7 @@ async fn get_file_by_id_denies_foreign_user() {
     .unwrap();
 
     let file_id = Uuid::new_v4();
-    sqlx::query(
-        r#"INSERT INTO files (id, user_id, filename, file_size, mime_type)
-           VALUES ($1, $2, 'a.txt', 10, 'text/plain')"#,
-    )
-    .bind(file_id)
-    .bind(user_a)
-    .execute(pool)
-    .await
-    .unwrap();
+    seed_file(pool, file_id, user_a, "a.txt", 10, "text/plain", None).await;
 
     // Owner can fetch.
     let got_a = repo
@@ -372,15 +404,7 @@ async fn get_conversation_files_surfaces_project_knowledge_file() {
     .execute(pool)
     .await
     .unwrap();
-    sqlx::query(
-        r#"INSERT INTO files (id, user_id, filename, file_size, mime_type)
-           VALUES ($1, $2, 'knowledge.csv', 20, 'text/csv')"#,
-    )
-    .bind(file_id)
-    .bind(user_id)
-    .execute(pool)
-    .await
-    .unwrap();
+    seed_file(pool, file_id, user_id, "knowledge.csv", 20, "text/csv", None).await;
     sqlx::query(
         r#"INSERT INTO project_files (project_id, file_id)
            VALUES ($1, $2)"#,
@@ -467,15 +491,7 @@ async fn get_conversation_files_dedups_project_and_attachment_overlap() {
         .execute(pool)
         .await
         .unwrap();
-    sqlx::query(
-        r#"INSERT INTO files (id, user_id, filename, file_size, mime_type)
-           VALUES ($1, $2, 'shared.txt', 10, 'text/plain')"#,
-    )
-    .bind(file_id)
-    .bind(user_id)
-    .execute(pool)
-    .await
-    .unwrap();
+    seed_file(pool, file_id, user_id, "shared.txt", 10, "text/plain", None).await;
     // Path 1: project knowledge file.
     sqlx::query("INSERT INTO project_files (project_id, file_id) VALUES ($1, $2)")
         .bind(project_id)
@@ -579,17 +595,8 @@ async fn get_conversation_files_orders_ties_by_file_id() {
     .unwrap();
     // BOTH files pinned to the EXACT same created_at so only the
     // `f.id` tiebreaker decides order.
-    sqlx::query(
-        r#"INSERT INTO files (id, user_id, filename, file_size, mime_type, created_at)
-           VALUES ($1, $3, 'lo.txt', 10, 'text/plain', TIMESTAMPTZ '2020-01-01 00:00:00+00'),
-                  ($2, $3, 'hi.txt', 10, 'text/plain', TIMESTAMPTZ '2020-01-01 00:00:00+00')"#,
-    )
-    .bind(lo)
-    .bind(hi)
-    .bind(user_id)
-    .execute(pool)
-    .await
-    .unwrap();
+    seed_file(pool, lo, user_id, "lo.txt", 10, "text/plain", Some("2020-01-01 00:00:00+00")).await;
+    seed_file(pool, hi, user_id, "hi.txt", 10, "text/plain", Some("2020-01-01 00:00:00+00")).await;
     sqlx::query(
         r#"INSERT INTO project_files (project_id, file_id)
            VALUES ($1, $2), ($1, $3)"#,
@@ -672,15 +679,7 @@ async fn get_conversation_files_project_path_has_no_user_id_predicate() {
     .unwrap();
     // A file owned by user B, inserted directly via SQL — bypassing the
     // attach-handler 404 guard that would normally reject a foreign file.
-    sqlx::query(
-        r#"INSERT INTO files (id, user_id, filename, file_size, mime_type)
-           VALUES ($1, $2, 'foreign.txt', 10, 'text/plain')"#,
-    )
-    .bind(foreign_file)
-    .bind(user_b)
-    .execute(pool)
-    .await
-    .unwrap();
+    seed_file(pool, foreign_file, user_b, "foreign.txt", 10, "text/plain", None).await;
     // Simulate a future bug breaking the handler invariant: B's file is
     // in A's project_files.
     sqlx::query("INSERT INTO project_files (project_id, file_id) VALUES ($1, $2)")

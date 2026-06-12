@@ -43,6 +43,12 @@ pub enum SyncEntity {
     /// the conversation's messages. Live assistant TOKENS do NOT ride this
     /// stream; they go over the dedicated `chat/stream` token channel.
     Conversation,
+    /// A user-owned file whose version set / head changed — via a REST restore,
+    /// the built-in `files_mcp` write tools (create_file / edit_file /
+    /// edit_file_lines / rewrite_file), or a code-sandbox version-back. `id` is
+    /// the stable file_id; the recipient refetches the file + its versions (if
+    /// open in a panel).
+    File,
 
     // --- Admin-permission-scoped (delivered to holders of the read perm) ---
     /// Admin view of an LLM provider (full admin provider table).

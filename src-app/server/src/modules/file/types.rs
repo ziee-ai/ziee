@@ -60,6 +60,15 @@ pub struct DownloadTokenQuery {
     pub token: String,
 }
 
+/// Query for minting a download token. Optionally pin a specific version so the
+/// resulting token downloads that exact version's bytes (the version number is
+/// baked into the SIGNED claims — a head token can't be repurposed to fetch
+/// other versions).
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct DownloadTokenGenQuery {
+    pub version: Option<i32>,
+}
+
 /// JWT claims for download tokens.
 ///
 /// Carries `iss` / `aud` so a download token can NOT be cross-used as
@@ -70,6 +79,11 @@ pub struct DownloadTokenQuery {
 pub struct DownloadTokenClaims {
     pub file_id: String,
     pub user_id: String,
+    /// Optional pinned version number. `None`/absent → serve the current head
+    /// (back-compat with tokens minted before versioning). Baked into the
+    /// signed claims so it can't be forged via a query param.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<i32>,
     pub exp: usize,
     pub iat: usize,
     /// Issuer — same value as the access-token issuer for now; can

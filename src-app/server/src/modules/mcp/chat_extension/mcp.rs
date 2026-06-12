@@ -414,7 +414,9 @@ impl McpChatExtension {
             // so the browser inline preview can fetch via the authenticated,
             // same-origin /api/files/{id}/... path (the tool-emitted absolute
             // loopback URI is unreachable from the browser).
-            let mut artifact_file_ids: Vec<(usize, Uuid)> = Vec::new();
+            // (link_idx, file_id, version, version_id) — version/version_id pin
+            // the inline preview's resource_link to the exact artifact version.
+            let mut artifact_file_ids: Vec<(usize, Uuid, i32, Uuid)> = Vec::new();
             if let McpContentData::ToolResult { ref resource_links, is_error, .. } = result
                 && !is_error.unwrap_or(false)
                     && let Some(links) = resource_links {
@@ -488,11 +490,12 @@ impl McpChatExtension {
                                                 let bytes = bytes.to_vec();
                                                 let display_name =
                                                     link.name.as_deref().unwrap_or("file");
-                                                let ext = std::path::Path::new(display_name)
-                                                    .extension()
-                                                    .and_then(|e| e.to_str())
-                                                    .map(str::to_lowercase)
-                                                    .unwrap_or_else(|| "bin".to_string());
+                                                // Canonical extension (rsplit + lowercase) — MUST match how
+                                                // the download/read paths derive the blob key. Path::extension
+                                                // would save dotfiles / no-extension names (`.bashrc`,
+                                                // `Makefile`) as `…​.bin` but load them as `…​.bashrc` → 404.
+                                                let ext =
+                                                    crate::modules::file::utils::extension_of(display_name);
                                                 let mime_type = content_type_mime.or_else(|| {
                                                     mime_guess::from_ext(&ext)
                                                         .first()
@@ -565,6 +568,12 @@ impl McpChatExtension {
                                                         }
 
                                                         let file_size = bytes.len() as i64;
+                                                        // Real checksum: version-back's no-op check compares the
+                                                        // workspace bytes' checksum to the base version's. A `None`
+                                                        // base never matches → every staged artifact would spuriously
+                                                        // version-back even when unchanged.
+                                                        let checksum =
+                                                            storage.calculate_checksum(&bytes);
                                                         match Repos
                                                             .file
                                                             .create(FileCreateData {
@@ -574,7 +583,7 @@ impl McpChatExtension {
                                                                     .to_string(),
                                                                 file_size,
                                                                 mime_type: mime_type.clone(),
-                                                                checksum: None,
+                                                                checksum: Some(checksum),
                                                                 has_thumbnail:
                                                                     !processing_result
                                                                         .thumbnails
@@ -595,11 +604,13 @@ impl McpChatExtension {
                                                                             .metadata,
                                                                     )
                                                                     .unwrap_or_default(),
+                                                                source_message_id:
+                                                                    context.message_id,
                                                                 created_by: "mcp".to_string(),
                                                             })
                                                             .await
                                                         {
-                                                            Ok(_) => {
+                                                            Ok(file) => {
                                                                 helpers::send_artifact_created_event(
                                                                     tx,
                                                                     &tool_use_id,
@@ -610,11 +621,25 @@ impl McpChatExtension {
                                                                 )
                                                                 .await;
 
+                                                                // Notify the user's OTHER devices a new file exists
+                                                                // (cross-device sync), mirroring files_mcp's create
+                                                                // path — send_artifact_created_event above only reaches
+                                                                // THIS conversation's SSE stream.
+                                                                crate::modules::file::sync::publish_file_changed(
+                                                                    context.user_id,
+                                                                    artifact_id,
+                                                                );
+
                                                                 // No FileAttachment block is emitted for artifacts: the
-                                                                // inline preview (resource_link with file_id, stamped
-                                                                // after the loop) is the single UI view. Record the
-                                                                // index→artifact_id mapping to apply below.
-                                                                artifact_file_ids.push((link_idx, artifact_id));
+                                                                // inline preview (resource_link, stamped after the loop)
+                                                                // is the single UI view. Record index→(file_id, version,
+                                                                // version_id) so it can pin the exact version created here.
+                                                                artifact_file_ids.push((
+                                                                    link_idx,
+                                                                    artifact_id,
+                                                                    file.version,
+                                                                    file.current_version_id,
+                                                                ));
 
                                                                 tracing::info!(
                                                                     "Artifact saved from resource_link: file_id={}, filename={}",
@@ -627,6 +652,7 @@ impl McpChatExtension {
                                                                     let claims = DownloadTokenClaims {
                                                                         file_id: artifact_id.to_string(),
                                                                         user_id: context.user_id.to_string(),
+                                                                        version: None,
                                                                         exp: now + 3600,
                                                                         iat: now,
                                                                         iss: self.config.jwt.issuer.clone(),
@@ -716,9 +742,11 @@ impl McpChatExtension {
                     // /api/files/{id}/... path instead of the unreachable absolute
                     // loopback URI emitted by the tool.
                     if let Some(links) = resource_links {
-                        for (idx, fid) in &artifact_file_ids {
+                        for (idx, fid, ver, ver_id) in &artifact_file_ids {
                             if let Some(l) = links.get_mut(*idx) {
                                 l.file_id = Some(*fid);
+                                l.version = Some(*ver);
+                                l.version_id = Some(*ver_id);
                             }
                         }
                     }
@@ -2291,7 +2319,9 @@ impl ChatExtension for McpChatExtension {
             // so the browser inline preview can fetch via the authenticated,
             // same-origin /api/files/{id}/... path (the tool-emitted absolute
             // loopback URI is unreachable from the browser).
-            let mut artifact_file_ids: Vec<(usize, Uuid)> = Vec::new();
+            // (link_idx, file_id, version, version_id) — version/version_id pin
+            // the inline preview's resource_link to the exact artifact version.
+            let mut artifact_file_ids: Vec<(usize, Uuid, i32, Uuid)> = Vec::new();
             if let McpContentData::ToolResult { ref resource_links, is_error, .. } = result
                 && !is_error.unwrap_or(false)
                     && let Some(links) = resource_links {
@@ -2365,11 +2395,12 @@ impl ChatExtension for McpChatExtension {
                                                 let bytes = bytes.to_vec();
                                                 let display_name =
                                                     link.name.as_deref().unwrap_or("file");
-                                                let ext = std::path::Path::new(display_name)
-                                                    .extension()
-                                                    .and_then(|e| e.to_str())
-                                                    .map(str::to_lowercase)
-                                                    .unwrap_or_else(|| "bin".to_string());
+                                                // Canonical extension (rsplit + lowercase) — MUST match how
+                                                // the download/read paths derive the blob key. Path::extension
+                                                // would save dotfiles / no-extension names (`.bashrc`,
+                                                // `Makefile`) as `…​.bin` but load them as `…​.bashrc` → 404.
+                                                let ext =
+                                                    crate::modules::file::utils::extension_of(display_name);
                                                 let mime_type = content_type_mime.or_else(|| {
                                                     mime_guess::from_ext(&ext)
                                                         .first()
@@ -2442,6 +2473,12 @@ impl ChatExtension for McpChatExtension {
                                                         }
 
                                                         let file_size = bytes.len() as i64;
+                                                        // Real checksum: version-back's no-op check compares the
+                                                        // workspace bytes' checksum to the base version's. A `None`
+                                                        // base never matches → every staged artifact would spuriously
+                                                        // version-back even when unchanged.
+                                                        let checksum =
+                                                            storage.calculate_checksum(&bytes);
                                                         match Repos
                                                             .file
                                                             .create(FileCreateData {
@@ -2451,7 +2488,7 @@ impl ChatExtension for McpChatExtension {
                                                                     .to_string(),
                                                                 file_size,
                                                                 mime_type: mime_type.clone(),
-                                                                checksum: None,
+                                                                checksum: Some(checksum),
                                                                 has_thumbnail:
                                                                     !processing_result
                                                                         .thumbnails
@@ -2472,11 +2509,13 @@ impl ChatExtension for McpChatExtension {
                                                                             .metadata,
                                                                     )
                                                                     .unwrap_or_default(),
+                                                                source_message_id:
+                                                                    context.message_id,
                                                                 created_by: "mcp".to_string(),
                                                             })
                                                             .await
                                                         {
-                                                            Ok(_) => {
+                                                            Ok(file) => {
                                                                 helpers::send_artifact_created_event(
                                                                     tx,
                                                                     &tool_use_id,
@@ -2487,11 +2526,25 @@ impl ChatExtension for McpChatExtension {
                                                                 )
                                                                 .await;
 
+                                                                // Notify the user's OTHER devices a new file exists
+                                                                // (cross-device sync), mirroring files_mcp's create
+                                                                // path — send_artifact_created_event above only reaches
+                                                                // THIS conversation's SSE stream.
+                                                                crate::modules::file::sync::publish_file_changed(
+                                                                    context.user_id,
+                                                                    artifact_id,
+                                                                );
+
                                                                 // No FileAttachment block is emitted for artifacts: the
-                                                                // inline preview (resource_link with file_id, stamped
-                                                                // after the loop) is the single UI view. Record the
-                                                                // index→artifact_id mapping to apply below.
-                                                                artifact_file_ids.push((link_idx, artifact_id));
+                                                                // inline preview (resource_link, stamped after the loop)
+                                                                // is the single UI view. Record index→(file_id, version,
+                                                                // version_id) so it can pin the exact version created here.
+                                                                artifact_file_ids.push((
+                                                                    link_idx,
+                                                                    artifact_id,
+                                                                    file.version,
+                                                                    file.current_version_id,
+                                                                ));
 
                                                                 tracing::info!(
                                                                     "Artifact saved from resource_link: file_id={}, filename={}",
@@ -2504,6 +2557,7 @@ impl ChatExtension for McpChatExtension {
                                                                     let claims = DownloadTokenClaims {
                                                                         file_id: artifact_id.to_string(),
                                                                         user_id: context.user_id.to_string(),
+                                                                        version: None,
                                                                         exp: now + 3600,
                                                                         iat: now,
                                                                         iss: self.config.jwt.issuer.clone(),
@@ -2593,9 +2647,11 @@ impl ChatExtension for McpChatExtension {
                     // /api/files/{id}/... path instead of the unreachable absolute
                     // loopback URI emitted by the tool.
                     if let Some(links) = resource_links {
-                        for (idx, fid) in &artifact_file_ids {
+                        for (idx, fid, ver, ver_id) in &artifact_file_ids {
                             if let Some(l) = links.get_mut(*idx) {
                                 l.file_id = Some(*fid);
+                                l.version = Some(*ver);
+                                l.version_id = Some(*ver_id);
                             }
                         }
                     }

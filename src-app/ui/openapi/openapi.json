@@ -3095,7 +3095,7 @@
             }
           },
           "201": {
-            "description": "File entity",
+            "description": "File entity — the **head view** of a versioned file. The per-version columns\n (`file_size`, `mime_type`, …) reflect the current head version: `files`\n keeps them as a denormalized mirror that `append_version`/`restore_version`\n update in lock-step, so every existing reader of `files.*` transparently\n sees the latest version.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3487,6 +3487,425 @@
         }
       }
     },
+    "/api/files/{file_id}/versions": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "List file versions",
+        "description": "\n\n**Required Permission:** `files::read`\n\nView file metadata and list files",
+        "operationId": "File.listVersions",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View file metadata and list files",
+                        "name": "FilesRead",
+                        "value": "files::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: files::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FileVersion"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "File not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/files/{file_id}/head": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Get the head version",
+        "description": "\n\n**Required Permission:** `files::read`\n\nView file metadata and list files",
+        "operationId": "File.getHeadVersion",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View file metadata and list files",
+                        "name": "FilesRead",
+                        "value": "files::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: files::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One immutable version of a file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileVersion"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "File not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/files/{file_id}/versions/{version}": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Get a specific file version",
+        "description": "\n\n**Required Permission:** `files::read`\n\nView file metadata and list files",
+        "operationId": "File.getVersion",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View file metadata and list files",
+                        "name": "FilesRead",
+                        "value": "files::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: files::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One immutable version of a file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileVersion"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "File or version not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/files/{file_id}/versions/{version}/download": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Download a specific version's bytes",
+        "description": "\n\n**Required Permission:** `files::download`\n\nDownload file content",
+        "operationId": "File.downloadVersion",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Download file content",
+                        "name": "FilesDownload",
+                        "value": "files::download"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: files::download",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Helper type for documenting binary responses in OpenAPI",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlobType"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "File or version not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/files/{file_id}/versions/{version}/preview": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Preview a specific version",
+        "description": "\n\n**Required Permission:** `files::preview`\n\nView file thumbnails and previews",
+        "operationId": "File.previewVersion",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "format": "uint32",
+              "default": 1,
+              "minimum": 0
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View file thumbnails and previews",
+                        "name": "FilesPreview",
+                        "value": "files::preview"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: files::preview",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Helper type for documenting binary responses in OpenAPI",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlobType"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "File or version not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/files/{file_id}/versions/{version}/text": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Get a specific version's extracted text",
+        "description": "\n\n**Required Permission:** `files::read`\n\nView file metadata and list files",
+        "operationId": "File.textVersion",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint32",
+              "minimum": 0
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View file metadata and list files",
+                        "name": "FilesRead",
+                        "value": "files::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: files::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Helper type for documenting binary responses in OpenAPI",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlobType"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "File or version not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/files/{file_id}/restore": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Restore a prior version (append-only)",
+        "description": "\n\n**Required Permission:** `files::upload`\n\nUpload new files",
+        "operationId": "File.restore",
+        "requestBody": {
+          "description": "Body for `POST /files/{id}/restore`.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Upload new files",
+                        "name": "FilesUpload",
+                        "value": "files::upload"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: files::upload",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "File entity — the **head view** of a versioned file. The per-version columns\n (`file_size`, `mime_type`, …) reflect the current head version: `files`\n keeps them as a denormalized mirror that `append_version`/`restore_version`\n update in lock-step, so every existing reader of `files.*` transparently\n sees the latest version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/File"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid version"
+          },
+          "404": {
+            "description": "File not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/files/{file_id}": {
       "get": {
         "tags": [
@@ -3520,7 +3939,7 @@
             }
           },
           "200": {
-            "description": "File entity",
+            "description": "File entity — the **head view** of a versioned file. The per-version columns\n (`file_size`, `mime_type`, …) reflect the current head version: `files`\n keeps them as a denormalized mirror that `append_version`/`restore_version`\n update in lock-step, so every existing reader of `files.*` transparently\n sees the latest version.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3598,6 +4017,20 @@
         "summary": "Generate download token",
         "description": "Generate a time-limited token for downloading a file without authentication",
         "operationId": "File.generateDownloadToken",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "version",
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32"
+            },
+            "style": "form"
+          }
+        ],
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -6910,7 +7343,7 @@
             }
           },
           "201": {
-            "description": "File entity",
+            "description": "File entity — the **head view** of a versioned file. The per-version columns\n (`file_size`, `mime_type`, …) reflect the current head version: `files`\n keeps them as a denormalized mirror that `append_version`/`restore_version`\n update in lock-step, so every existing reader of `files.*` transparently\n sees the latest version.",
             "content": {
               "application/json": {
                 "schema": {
@@ -16719,6 +17152,19 @@
           "cancelled"
         ]
       },
+      "DownloadTokenGenQuery": {
+        "description": "Query for minting a download token. Optionally pin a specific version so the\n resulting token downloads that exact version's bytes (the version number is\n baked into the SIGNED claims — a head token can't be repurposed to fetch\n other versions).",
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "DownloadTokenQuery": {
         "description": "Download token query params",
         "type": "object",
@@ -16991,9 +17437,14 @@
         ]
       },
       "File": {
-        "description": "File entity",
+        "description": "File entity — the **head view** of a versioned file. The per-version columns\n (`file_size`, `mime_type`, …) reflect the current head version: `files`\n keeps them as a denormalized mirror that `append_version`/`restore_version`\n update in lock-step, so every existing reader of `files.*` transparently\n sees the latest version.",
         "type": "object",
         "properties": {
+          "blob_version_id": {
+            "description": "Storage key for the head version's bytes — equals `current_version_id`\n for a normal head, or the restored target for a restored head. Internal\n resolution detail (callers load blobs by this id).",
+            "type": "string",
+            "format": "uuid"
+          },
           "checksum": {
             "type": [
               "string",
@@ -17006,6 +17457,11 @@
           },
           "created_by": {
             "type": "string"
+          },
+          "current_version_id": {
+            "description": "FK to the head `file_versions` row.",
+            "type": "string",
+            "format": "uuid"
           },
           "file_size": {
             "type": "integer",
@@ -17043,6 +17499,11 @@
           "user_id": {
             "type": "string",
             "format": "uuid"
+          },
+          "version": {
+            "description": "Head version number (1-based).",
+            "type": "integer",
+            "format": "int32"
           }
         },
         "required": [
@@ -17056,7 +17517,10 @@
           "processing_metadata",
           "created_by",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "version",
+          "current_version_id",
+          "blob_version_id"
         ]
       },
       "FileFormat": {
@@ -17104,6 +17568,89 @@
           "total",
           "page",
           "per_page"
+        ]
+      },
+      "FileVersion": {
+        "description": "One immutable version of a file.",
+        "type": "object",
+        "properties": {
+          "blob_version_id": {
+            "description": "Storage key for this version's bytes (= `id`, or the restored target).",
+            "type": "string",
+            "format": "uuid"
+          },
+          "checksum": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "file_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "file_size": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "has_thumbnail": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_head": {
+            "type": "boolean"
+          },
+          "mime_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "preview_page_count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "processing_metadata": true,
+          "source_message_id": {
+            "description": "The chat turn / tool-call that produced this version (provenance).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "text_page_count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "required": [
+          "id",
+          "file_id",
+          "version",
+          "is_head",
+          "blob_version_id",
+          "file_size",
+          "has_thumbnail",
+          "preview_page_count",
+          "text_page_count",
+          "processing_metadata",
+          "created_by",
+          "created_at"
         ]
       },
       "GPUComputeCapabilities": {
@@ -20723,6 +21270,22 @@
                   "string",
                   "null"
                 ]
+              },
+              "version": {
+                "description": "Denormalized version number for display (\"v2\").",
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32"
+              },
+              "version_id": {
+                "description": "The exact version this block pins (the head at send time). `None` on\n legacy blocks → the renderer follows the current head.",
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
               }
             },
             "required": [
@@ -22465,6 +23028,22 @@
           "uri": {
             "description": "URI of the resource (e.g. `/api/files/{file_id}`)",
             "type": "string"
+          },
+          "version": {
+            "description": "Denormalized version number for display.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "version_id": {
+            "description": "The exact `file_versions.id` this link pins, when the backing File is\n versioned (e.g. a sandbox version-back). Lets the UI render the precise\n version produced this turn. `None` → follow head.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           }
         },
         "required": [
@@ -22497,6 +23076,20 @@
         },
         "required": [
           "success"
+        ]
+      },
+      "RestoreVersionRequest": {
+        "description": "Body for `POST /files/{id}/restore`.",
+        "type": "object",
+        "properties": {
+          "version": {
+            "description": "The version number to restore (a new head is appended with its bytes).",
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "required": [
+          "version"
         ]
       },
       "RichFile": {
@@ -24126,6 +24719,11 @@
             "description": "A chat conversation owned by the user. `id` is the conversation id.\n Emitted on create/rename/delete, on each completed message turn, and on\n branch/message edits — the recipient refetches the list and (if open)\n the conversation's messages. Live assistant TOKENS do NOT ride this\n stream; they go over the dedicated `chat/stream` token channel.",
             "type": "string",
             "const": "conversation"
+          },
+          {
+            "description": "A user-owned file whose version set / head changed (a restore, an MCP\n edit, or a sandbox version-back). `id` is the stable file_id; the\n recipient refetches the file + its versions (if open in a panel).",
+            "type": "string",
+            "const": "file"
           },
           {
             "description": "Admin view of an LLM provider (full admin provider table).",

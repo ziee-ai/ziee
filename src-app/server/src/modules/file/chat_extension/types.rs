@@ -28,5 +28,9 @@ define_extension_content! {
         #[serde(skip_serializing_if = "Option::is_none")]
         mime_type: Option<String>,
         file_size: i64,
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        version_id: Option<Uuid>,
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        version: Option<i32>,
     } => "file_attachment",
 }

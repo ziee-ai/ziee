@@ -82,6 +82,11 @@ pub struct AvailableFile {
     /// sha256 (when known) — the content-dedup key. Not surfaced to the model.
     #[serde(skip)]
     pub checksum: Option<String>,
+    /// Storage key for the HEAD version's bytes (= file_id for an un-versioned
+    /// file, else the head version's blob). Reads must load by this, not `id`,
+    /// so a versioned file serves its latest content. Internal.
+    #[serde(skip)]
+    pub blob_version_id: Uuid,
 }
 
 impl AvailableFile {
@@ -110,6 +115,7 @@ impl AvailableFile {
             source: vec![source],
             uploaded_at: f.created_at,
             checksum: f.checksum.clone(),
+            blob_version_id: f.blob_version_id,
         }
     }
 
@@ -573,6 +579,7 @@ mod tests {
             source: vec![src],
             uploaded_at: Utc::now(),
             checksum: checksum.map(|s| s.to_string()),
+            blob_version_id: id,
         }
     }
 

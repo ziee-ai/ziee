@@ -798,12 +798,73 @@ async fn build_context(
     // reads via the storage trait directly) if a bind fails.
     stage_attachments(state, &files).await;
 
+    // Editable TEXT files are copied READ-WRITE into the workspace (not RO-bound)
+    // with a provenance row, so in-sandbox edits version-back to the same file at
+    // turn end. `build_bwrap_argv` skips RO-binding any attachment that has a
+    // workspace copy, so the RW copy is the one the model sees.
+    stage_editable_files(state, conversation_id, &files).await;
+
     Ok(SandboxContext {
         conversation_id,
         user_id,
         workspace,
         files: Arc::new(files),
     })
+}
+
+/// Max size for copying an editable text file into the workspace (above this we
+/// leave it as a read-only bind to avoid copying large files in every turn).
+pub const WORKSPACE_COPYIN_MAX_BYTES: i64 = 5 * 1024 * 1024;
+
+/// Copy editable text files into the per-conversation workspace (RW) and record
+/// provenance. Idempotent: skips a file whose workspace copy already exists
+/// (preserving the model's in-progress edits across turns).
+async fn stage_editable_files(
+    state: &CodeSandboxState,
+    conversation_id: Uuid,
+    files: &[crate::modules::code_sandbox::models::ConversationFile],
+) {
+    use crate::modules::file::available_files::is_text_like;
+    let workspace = workspace_for(state, conversation_id);
+    let storage = crate::modules::file::storage::manager::get_file_storage();
+    for f in files {
+        let mime = f.mime_type.as_deref().unwrap_or("");
+        if !is_text_like(mime) || f.filename.contains('/') || f.filename.contains('\0') {
+            continue;
+        }
+        let dest = workspace.join(&f.filename);
+        if tokio::fs::try_exists(&dest).await.unwrap_or(false) {
+            continue; // already copied in a prior turn; don't clobber edits
+        }
+        let head = match Repos.file.get_head(f.file_id, f.user_id).await {
+            Ok(Some(h)) => h,
+            _ => continue,
+        };
+        if head.file_size > WORKSPACE_COPYIN_MAX_BYTES {
+            continue;
+        }
+        // Use the canonical (lowercasing) extension helper — the same one the
+        // version save path uses — so the copy-in resolves the head blob
+        // regardless of the filename's extension case.
+        let ext = crate::modules::file::utils::extension_of(&f.filename);
+        let bytes = match storage.load_original(f.user_id, head.blob_version_id, &ext).await {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+        let tmp = workspace.join(format!(".{}.copyin.{}", f.file_id, std::process::id()));
+        if tokio::fs::write(&tmp, &bytes).await.is_err() {
+            let _ = tokio::fs::remove_file(&tmp).await;
+            continue;
+        }
+        if tokio::fs::rename(&tmp, &dest).await.is_err() {
+            let _ = tokio::fs::remove_file(&tmp).await;
+            continue;
+        }
+        let _ = Repos
+            .code_sandbox
+            .upsert_workspace_provenance(conversation_id, &f.filename, f.file_id, head.id)
+            .await;
+    }
 }
 
 /// Per-file size cap. Files larger than this are skipped (logged) so
@@ -873,8 +934,15 @@ async fn stage_attachments_with(
             staged_count += 1;
             continue;
         }
-        let ext = attachment_extension(&f.filename);
-        let bytes = match storage.load_original(f.user_id, f.file_id, ext).await {
+        // Canonical `extension_of` (rsplit + lowercase) — MUST match how
+        // `upload.rs` derives the blob extension when it saves, otherwise
+        // `load_original` looks for the wrong key. `Path::extension`-style
+        // logic disagrees for no-extension files (`Makefile` → blob
+        // `…​.makefile`, not `…​.bin`) and dotfiles (`.bashrc`).
+        let ext = crate::modules::file::utils::extension_of(&f.filename);
+        // Load the HEAD version's blob — `blob_version_id`, NOT `file_id`
+        // (which keys v1 and would stage stale bytes for an edited file).
+        let bytes = match storage.load_original(f.user_id, f.blob_version_id, &ext).await {
             Ok(b) => b,
             Err(e) => {
                 tracing::warn!(
@@ -938,16 +1006,6 @@ async fn stage_attachments_with(
         total_staged_bytes = total_staged_bytes.saturating_add(bytes.len() as u64);
         staged_count += 1;
     }
-}
-
-/// Extract the extension a `FileStorage::load_original` call expects
-/// for the given filename. Returns `"bin"` for files without an
-/// extension (storage manager's fallback convention).
-fn attachment_extension(filename: &str) -> &str {
-    std::path::Path::new(filename)
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("bin")
 }
 
 fn workspace_for(state: &CodeSandboxState, conversation_id: Uuid) -> std::path::PathBuf {
@@ -1434,34 +1492,6 @@ mod tests {
         assert_eq!(out, "foo.txt");
     }
 
-    // ─── attachment_extension ───────────────────────────────────────
-
-    #[test]
-    fn attachment_extension_extracts_simple() {
-        assert_eq!(super::attachment_extension("data.csv"), "csv");
-        assert_eq!(super::attachment_extension("foo.tar.gz"), "gz");
-        assert_eq!(super::attachment_extension("IMG.PNG"), "PNG");
-    }
-
-    #[test]
-    fn attachment_extension_falls_back_to_bin_for_no_extension() {
-        // Must NOT return the whole filename (the naive
-        // `rsplit('.').next().unwrap_or("bin")` pattern gets this wrong
-        // — it returns "Makefile" for "Makefile" instead of "bin").
-        assert_eq!(super::attachment_extension("Makefile"), "bin");
-        assert_eq!(super::attachment_extension("README"), "bin");
-        assert_eq!(super::attachment_extension(""), "bin");
-    }
-
-    #[test]
-    fn attachment_extension_handles_dotfiles() {
-        // ".bashrc" has no real extension — Path::extension returns
-        // None for files whose name starts with a single dot.
-        assert_eq!(super::attachment_extension(".bashrc"), "bin");
-        // ".config.json" has extension "json".
-        assert_eq!(super::attachment_extension(".config.json"), "json");
-    }
-
     // ─── stage_attachments caps (DoS regressions) ───────────────────
     //
     // Each test builds a temp-dir FilesystemStorage, populates it with
@@ -1517,6 +1547,11 @@ mod tests {
     fn conv_file(file_id: Uuid, user_id: Uuid, filename: &str) -> ConversationFile {
         ConversationFile {
             file_id,
+            // v1 semantics: blob_version_id == version_id == file_id (matches
+            // how `seed_attachment` keys the on-disk blob).
+            blob_version_id: file_id,
+            version: 1,
+            version_id: file_id,
             filename: filename.to_string(),
             user_id,
             mime_type: None,

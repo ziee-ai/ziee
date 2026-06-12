@@ -550,6 +550,10 @@ export interface DownloadSnapshot {
 
 export type DownloadStatus = 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled'
 
+export interface DownloadTokenGenQuery {
+  version?: number
+}
+
 export interface DownloadTokenQuery {
   token: string
 }
@@ -621,9 +625,11 @@ export interface EnvironmentInfo {
 }
 
 export interface File {
+  blob_version_id: string
   checksum?: string
   created_at: string
   created_by: string
+  current_version_id: string
   file_size: number
   filename: string
   has_thumbnail: boolean
@@ -634,6 +640,7 @@ export interface File {
   text_page_count: number
   updated_at: string
   user_id: string
+  version: number
 }
 
 export type FileFormat = 'safetensors' | 'pytorch' | 'gguf'
@@ -645,6 +652,24 @@ export interface FileListResponse {
   page: number
   per_page: number
   total: number
+}
+
+export interface FileVersion {
+  blob_version_id: string
+  checksum?: string
+  created_at: string
+  created_by: string
+  file_id: string
+  file_size: number
+  has_thumbnail: boolean
+  id: string
+  is_head: boolean
+  mime_type?: string
+  preview_page_count: number
+  processing_metadata: any
+  source_message_id?: string
+  text_page_count: number
+  version: number
 }
 
 export interface GPUComputeCapabilities {
@@ -1430,6 +1455,8 @@ export interface MessageContentDataFileAttachment {
   file_size: number
   filename: string
   mime_type?: string | null
+  version?: number | null
+  version_id?: string | null
 }
 export interface MessageContentDataToolUse {
   type: 'tool_use'
@@ -1808,6 +1835,8 @@ export interface ResourceLink {
   name?: string
   size?: number
   uri: string
+  version?: number
+  version_id?: string
 }
 
 export interface RespondToElicitationRequest {
@@ -1817,6 +1846,10 @@ export interface RespondToElicitationRequest {
 
 export interface RespondToElicitationResponse {
   success: boolean
+}
+
+export interface RestoreVersionRequest {
+  version: number
 }
 
 export interface RichFile {
@@ -2157,7 +2190,7 @@ export interface SyncConnectedData {
   connection_id: string
 }
 
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'user_llm_provider' | 'user_mcp_server' | 'session'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'file' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'user_llm_provider' | 'user_mcp_server' | 'session'
 
 export interface SyncEvent {
   action: SyncAction
@@ -2850,13 +2883,20 @@ export const ApiEndpoints = {
   'CoreMemory.upsert': 'PUT /api/assistants/core-memory',
   'File.delete': 'DELETE /api/files/{file_id}',
   'File.download': 'GET /api/files/{file_id}/download',
+  'File.downloadVersion': 'GET /api/files/{file_id}/versions/{version}/download',
   'File.downloadWithToken': 'GET /api/files/{file_id}/download-with-token',
   'File.generateDownloadToken': 'POST /api/files/{file_id}/download-token',
   'File.get': 'GET /api/files/{file_id}',
+  'File.getHeadVersion': 'GET /api/files/{file_id}/head',
   'File.getPreview': 'GET /api/files/{file_id}/preview',
   'File.getTextContent': 'GET /api/files/{file_id}/text',
   'File.getThumbnail': 'GET /api/files/{file_id}/thumbnail',
+  'File.getVersion': 'GET /api/files/{file_id}/versions/{version}',
   'File.list': 'GET /api/files',
+  'File.listVersions': 'GET /api/files/{file_id}/versions',
+  'File.previewVersion': 'GET /api/files/{file_id}/versions/{version}/preview',
+  'File.restore': 'POST /api/files/{file_id}/restore',
+  'File.textVersion': 'GET /api/files/{file_id}/versions/{version}/text',
   'File.upload': 'POST /api/files/upload',
   'Group.getProviders': 'GET /api/groups/{group_id}/providers',
   'Group.getSystemServers': 'GET /api/groups/{group_id}/system-servers',
@@ -3101,13 +3141,20 @@ export type ApiEndpointParameters = {
   'CoreMemory.upsert': UpsertCoreMemoryBlockRequest
   'File.delete': { file_id: string }
   'File.download': { file_id: string }
+  'File.downloadVersion': { file_id: string; version: string }
   'File.downloadWithToken': { file_id: string; token: string }
-  'File.generateDownloadToken': { file_id: string }
+  'File.generateDownloadToken': { file_id: string; version?: number }
   'File.get': { file_id: string }
+  'File.getHeadVersion': { file_id: string }
   'File.getPreview': { file_id: string; page?: number }
   'File.getTextContent': { file_id: string; page?: number }
   'File.getThumbnail': { file_id: string }
+  'File.getVersion': { file_id: string; version: string }
   'File.list': PaginationQuery
+  'File.listVersions': { file_id: string }
+  'File.previewVersion': { file_id: string; version: string; page?: number }
+  'File.restore': { file_id: string } & RestoreVersionRequest
+  'File.textVersion': { file_id: string; version: string; page?: number }
   'File.upload': FormData
   'Group.getProviders': { group_id: string }
   'Group.getSystemServers': { group_id: string }
@@ -3352,13 +3399,20 @@ export type ApiEndpointResponses = {
   'CoreMemory.upsert': CoreMemoryBlock
   'File.delete': void
   'File.download': Blob
+  'File.downloadVersion': Blob
   'File.downloadWithToken': Blob
   'File.generateDownloadToken': DownloadTokenResponse
   'File.get': File
+  'File.getHeadVersion': FileVersion
   'File.getPreview': Blob
   'File.getTextContent': Blob
   'File.getThumbnail': Blob
+  'File.getVersion': FileVersion
   'File.list': FileListResponse
+  'File.listVersions': FileVersion[]
+  'File.previewVersion': Blob
+  'File.restore': File
+  'File.textVersion': Blob
   'File.upload': File
   'Group.getProviders': GroupProvidersResponse
   'Group.getSystemServers': GroupSystemServersResponse

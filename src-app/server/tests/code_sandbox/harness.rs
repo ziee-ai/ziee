@@ -578,18 +578,35 @@ pub async fn create_test_file(
         .first_or_octet_stream()
         .essence_str()
         .to_string();
+    // `files` needs a v1 `file_versions` head (current_version_id NOT NULL since
+    // the versioning migration); the two FKs are circular so both rows go in one
+    // deferred-FK transaction (current_version_id FK is DEFERRABLE INITIALLY
+    // DEFERRED). The blob below is keyed by file_id, which IS v1's blob_version_id.
+    let size = bytes.len() as i64;
+    let mut tx = pool.begin().await.expect("begin tx");
     sqlx::query(
-        r#"INSERT INTO files (id, user_id, filename, mime_type, size_bytes, created_at)
-           VALUES ($1, $2, $3, $4, $5, NOW())"#,
+        r#"INSERT INTO files (id, user_id, filename, mime_type, file_size, current_version_id, created_at)
+           VALUES ($1, $2, $3, $4, $5, $1, NOW())"#,
     )
     .bind(file_id)
     .bind(user_id)
     .bind(filename)
     .bind(&mime)
-    .bind(bytes.len() as i64)
-    .execute(pool)
+    .bind(size)
+    .execute(&mut *tx)
     .await
     .expect("insert file");
+    sqlx::query(
+        r#"INSERT INTO file_versions (id, file_id, version, is_head, blob_version_id, file_size, mime_type, created_by)
+           VALUES ($1, $1, 1, true, $1, $2, $3, 'user')"#,
+    )
+    .bind(file_id)
+    .bind(size)
+    .bind(&mime)
+    .execute(&mut *tx)
+    .await
+    .expect("insert file v1");
+    tx.commit().await.expect("commit tx");
     // Write the bytes to the server's filesystem storage at the path
     // the FileStorage trait expects (originals/<user>/<file>.<ext>).
     let dest = server_data_dir

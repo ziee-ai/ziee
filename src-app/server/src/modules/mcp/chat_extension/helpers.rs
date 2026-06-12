@@ -201,6 +201,10 @@ pub async fn execute_tool(
                                 file_id: item.content.get("file_id")
                                     .and_then(|v| v.as_str())
                                     .and_then(|s| uuid::Uuid::parse_str(s).ok()),
+                                version_id: item.content.get("version_id")
+                                    .and_then(|v| v.as_str())
+                                    .and_then(|s| uuid::Uuid::parse_str(s).ok()),
+                                version: item.content.get("version").and_then(|v| v.as_i64()).map(|n| n as i32),
                             });
                             // Provide the LLM with a readable confirmation so it doesn't retry
                             text_parts.push(format!("resource_link available — name: {}, uri: {}", name, uri));

@@ -50,7 +50,7 @@ pub const FILE_CONTENT_CACHE_CONTROL: &str = "private, max-age=3600";
 ///   - filename*=UTF-8''<percent-encoded>: RFC 5987 form. Carries the
 ///     real (multibyte) filename. Percent-encoding makes CRLF / quote
 ///     injection impossible.
-fn content_disposition(filename: &str) -> String {
+pub(crate) fn content_disposition(filename: &str) -> String {
     let ascii: String = filename
         .chars()
         .map(|c| {
@@ -101,10 +101,10 @@ pub async fn download_file(
         .unwrap_or("bin")
         .to_lowercase();
 
-    // Load file data
+    // Load head version's bytes (keyed by the head's blob_version_id).
     let storage = get_file_storage();
     let file_data = storage
-        .load_original(user_id, file_id, &extension)
+        .load_original(user_id, file.blob_version_id, &extension)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
@@ -135,6 +135,7 @@ pub async fn download_file(
 pub async fn generate_download_token(
     auth: RequirePermissions<(FilesGenerateToken,)>,
     Path(file_id): Path<Uuid>,
+    Query(gen_q): Query<crate::modules::file::types::DownloadTokenGenQuery>,
 ) -> ApiResult<Json<DownloadTokenResponse>> {
     let user_id = auth.user.id;
 
@@ -144,6 +145,14 @@ pub async fn generate_download_token(
         .await?
         .ok_or_else(|| AppError::not_found("File"))?;
 
+    // If a version was requested, verify it exists (and is owned) before
+    // baking it into the signed claims.
+    if let Some(v) = gen_q.version
+        && Repos.file.get_version(file_id, v, user_id).await?.is_none()
+    {
+        return Err(AppError::bad_request("INVALID_VERSION", format!("version {v} does not exist")).into());
+    }
+
     // Generate JWT token. Sets iss + aud (audience=ziee-download)
     // so the validator below can refuse cross-audience replay against
     // the access-token validator. Closes 02-permissions F-03.
@@ -152,6 +161,7 @@ pub async fn generate_download_token(
     let claims = DownloadTokenClaims {
         file_id: file_id.to_string(),
         user_id: user_id.to_string(),
+        version: gen_q.version,
         exp: now + TOKEN_EXPIRY as usize,
         iat: now,
         iss: jwt_config.issuer.clone(),
@@ -246,7 +256,7 @@ pub async fn download_with_token(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    // Extract extension
+    // Extract extension (filename is on the parent — stable across versions)
     let extension = file
         .filename
         .rsplit('.')
@@ -254,10 +264,25 @@ pub async fn download_with_token(
         .unwrap_or("bin")
         .to_lowercase();
 
-    // Load file data
+    // Resolve which version's blob to serve: the pinned version from the SIGNED
+    // claims, else the current head.
+    let (blob_version_id, mime_type) = match claims.version {
+        Some(v) => {
+            let ver = Repos
+                .file
+                .get_version(file_id, v, user_id)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+                .ok_or(StatusCode::NOT_FOUND)?;
+            (ver.blob_version_id, ver.mime_type)
+        }
+        None => (file.blob_version_id, file.mime_type.clone()),
+    };
+
+    // Load that version's bytes (keyed by its blob_version_id).
     let storage = get_file_storage();
     let file_data = storage
-        .load_original(user_id, file_id, &extension)
+        .load_original(user_id, blob_version_id, &extension)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
@@ -265,7 +290,7 @@ pub async fn download_with_token(
     let headers = [
         (
             header::CONTENT_TYPE,
-            file.mime_type
+            mime_type
                 .as_deref()
                 .unwrap_or("application/octet-stream")
                 .to_string(),

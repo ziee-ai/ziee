@@ -22,8 +22,12 @@ use crate::modules::code_sandbox::types::{
     ConversationIdHeader, JsonRpcError, JsonRpcRequest, JsonRpcResponse,
 };
 use crate::modules::file::available_files::{AvailableFile, FileType, resolve_available_files};
+use crate::modules::file::models::{File, FileCreateData};
 use crate::modules::file::permissions::FilesRead;
+use crate::modules::file::processing::ProcessingManager;
 use crate::modules::file::storage::manager::get_file_storage;
+use crate::modules::file::utils::extension_of;
+use crate::modules::files_mcp::edits::{EditOutcome, apply_line_range, str_replace};
 use crate::modules::permissions::RequirePermissions;
 
 const DEFAULT_PAGE_LIMIT: usize = 10;
@@ -38,6 +42,7 @@ const GREP_MAX_SCAN_BYTES: usize = 16 * 1024 * 1024;
 pub async fn jsonrpc_handler(
     auth: RequirePermissions<(FilesRead,)>,
     ConversationIdHeader(conversation_id): ConversationIdHeader,
+    headers: axum::http::HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
     let raw: Value = match serde_json::from_slice(&body) {
@@ -90,7 +95,22 @@ pub async fn jsonrpc_handler(
                     ),
                 );
             };
-            match dispatch_tool_call(user_id, conversation_id, &req.params).await {
+            // Provenance: the assistant turn id (injected by the MCP client).
+            let message_id = headers
+                .get("x-message-id")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| Uuid::parse_str(s).ok());
+            // Write tools require files::upload (the server itself only gates on
+            // files::read for reads). Admins short-circuit.
+            let can_write = auth.user.is_admin
+                || crate::modules::permissions::checker::check_permission_union(
+                    &auth.user,
+                    &auth.groups,
+                    "files::upload",
+                );
+            match dispatch_tool_call(user_id, conversation_id, message_id, can_write, &req.params)
+                .await
+            {
                 Ok(value) => ok_response(id, value),
                 Err(e) => error_response(id, StatusCode::OK, app_error_to_jsonrpc(&e)),
             }
@@ -155,6 +175,8 @@ struct ToolCallParams {
 async fn dispatch_tool_call(
     user_id: Uuid,
     conversation_id: Uuid,
+    message_id: Option<Uuid>,
+    can_write: bool,
     params: &Value,
 ) -> Result<Value, AppError> {
     assert_owns_conversation(conversation_id, user_id).await?;
@@ -163,10 +185,37 @@ async fn dispatch_tool_call(
 
     let files = resolve_available_files(conversation_id, user_id).await?;
 
+    let require_write = |name: &str| -> Result<(), AppError> {
+        if can_write {
+            Ok(())
+        } else {
+            Err(AppError::bad_request(
+                "PERMISSION_DENIED",
+                format!("files::upload permission is required to call {name}"),
+            ))
+        }
+    };
+
     match call.name.as_str() {
         "list_files" => list_files(&files),
         "read_file" => read_file(user_id, &files, &call.arguments).await,
         "grep_files" => grep_files(user_id, &files, &call.arguments).await,
+        "create_file" => {
+            require_write("create_file")?;
+            create_file(user_id, message_id, &call.arguments).await
+        }
+        "edit_file" => {
+            require_write("edit_file")?;
+            edit_file_str(user_id, &files, message_id, &call.arguments).await
+        }
+        "edit_file_lines" => {
+            require_write("edit_file_lines")?;
+            edit_file_lines(user_id, &files, message_id, &call.arguments).await
+        }
+        "rewrite_file" => {
+            require_write("rewrite_file")?;
+            rewrite_file(user_id, &files, message_id, &call.arguments).await
+        }
         other => Err(AppError::bad_request(
             "UNKNOWN_TOOL",
             format!("files tool: {other}"),
@@ -261,7 +310,7 @@ async fn read_file(
             // whose tool results are text-only get this base64 image; the chat
             // layer can fall back to native re-injection there.
             let ext = extension_of(&file.name);
-            let bytes = storage.load_original(user_id, file.id, ext).await?;
+            let bytes = storage.load_original(user_id, file.blob_version_id, &ext).await?;
             use base64::Engine;
             let data = base64::engine::general_purpose::STANDARD.encode(&bytes);
             let mime = file
@@ -324,7 +373,7 @@ async fn read_paginated(
     for page in start..end {
         // pages are stored 1-indexed.
         let page_num = (page + 1) as u32;
-        match storage.load_text_page(user_id, file.id, page_num).await {
+        match storage.load_text_page(user_id, file.blob_version_id, page_num).await {
             Ok(text) => {
                 out.push_str(&format!("\n--- {} · page {} ---\n", file.name, page + 1));
                 out.push_str(&text);
@@ -372,7 +421,7 @@ async fn read_text_lines(
     limit: Option<usize>,
 ) -> Result<Value, AppError> {
     let ext = extension_of(&file.name);
-    let bytes = storage.load_original(user_id, file.id, ext).await?;
+    let bytes = storage.load_original(user_id, file.blob_version_id, &ext).await?;
     let content = String::from_utf8_lossy(&bytes);
     let lines: Vec<&str> = content.lines().collect();
     let total = lines.len();
@@ -458,7 +507,7 @@ async fn grep_files(
         for page in 0..pages {
             let text = if file.pages > 0 {
                 match storage
-                    .load_text_page(user_id, file.id, (page + 1) as u32)
+                    .load_text_page(user_id, file.blob_version_id, (page + 1) as u32)
                     .await
                 {
                     Ok(t) => t,
@@ -475,7 +524,7 @@ async fn grep_files(
                 }
             } else {
                 let ext = extension_of(&file.name);
-                match storage.load_original(user_id, file.id, ext).await {
+                match storage.load_original(user_id, file.blob_version_id, &ext).await {
                     Ok(b) => String::from_utf8_lossy(&b).into_owned(),
                     Err(_) => {
                         missing.push(json!({
@@ -557,14 +606,273 @@ async fn grep_files(
     ))
 }
 
-/// Derive the on-disk extension the SAME way the upload path does
-/// (`upload.rs`: `filename.rsplit('.').next()...`). `Path::extension()`
-/// returns `None` for a dot-less name (e.g. `photo`), which would look
-/// for `{id}.bin` and 404 even though upload stored it as `{id}.photo`.
-fn extension_of(filename: &str) -> &str {
-    filename
-        .rsplit('.')
-        .next()
-        .filter(|s| !s.is_empty())
-        .unwrap_or("bin")
+// ── write tools (append a version) ───────────────────────────────────────────
+
+/// Processed blob metadata after saving a new version/file's bytes to storage.
+struct SavedBlob {
+    file_size: i64,
+    mime_type: Option<String>,
+    checksum: String,
+    has_thumbnail: bool,
+    preview_page_count: i32,
+    text_page_count: i32,
+    processing_metadata: Value,
 }
+
+/// Process bytes (text extraction / thumbnails) and save every blob keyed by
+/// `blob_id`. Shared by create (blob_id = new file_id) and edit/rewrite
+/// (blob_id = new version id).
+async fn process_and_save(
+    user_id: Uuid,
+    blob_id: Uuid,
+    filename: &str,
+    mime_hint: Option<&str>,
+    bytes: &[u8],
+) -> Result<SavedBlob, AppError> {
+    let ext = extension_of(filename);
+    let mime = mime_hint
+        .map(|s| s.to_string())
+        .or_else(|| mime_guess::from_ext(&ext).first().map(|m| m.to_string()))
+        .unwrap_or_else(|| "text/plain".to_string());
+    let storage = get_file_storage();
+    let checksum = storage.calculate_checksum(bytes);
+    let processing = ProcessingManager::new()
+        .process_file(bytes, &mime)
+        .await
+        .unwrap_or_default();
+
+    storage.save_original(user_id, blob_id, &ext, bytes).await?;
+    for (i, text) in processing.text_pages.iter().enumerate() {
+        storage
+            .save_text_page(user_id, blob_id, (i + 1) as u32, text)
+            .await?;
+    }
+    if let Some(thumb) = processing.thumbnails.first() {
+        storage.save_image(user_id, blob_id, 1, true, thumb).await?;
+    }
+    for (i, img) in processing.images.iter().enumerate() {
+        storage
+            .save_image(user_id, blob_id, (i + 1) as u32, false, img)
+            .await?;
+    }
+    Ok(SavedBlob {
+        file_size: bytes.len() as i64,
+        mime_type: Some(mime),
+        checksum,
+        has_thumbnail: !processing.thumbnails.is_empty(),
+        preview_page_count: processing.images.len() as i32,
+        text_page_count: processing.text_pages.len() as i32,
+        processing_metadata: serde_json::to_value(&processing.metadata).unwrap_or_default(),
+    })
+}
+
+/// Resolve the write target: by `id` (any file the user OWNS — `files::upload`
+/// authorizes editing one's own files regardless of whether they're in this
+/// conversation's manifest; ownership is enforced by `get_by_id_and_user`) or by
+/// `name` (conversation-scoped, must be unambiguous — reuses the read ambiguity
+/// guard). By-id is deliberately broader than the read tools (which are strictly
+/// conversation-scoped) so the model can edit a file it just created this turn.
+async fn resolve_write_target(
+    user_id: Uuid,
+    files: &[AvailableFile],
+    id: Option<Uuid>,
+    name: Option<&str>,
+) -> Result<File, AppError> {
+    let target_id = if let Some(id) = id {
+        id
+    } else if let Some(name) = name {
+        resolve_target(files, None, Some(name))?.id
+    } else {
+        return Err(AppError::bad_request(
+            "MISSING_TARGET",
+            "edit requires `id` or `name`",
+        ));
+    };
+    Repos
+        .file
+        .get_by_id_and_user(target_id, user_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("File"))
+}
+
+/// Load the head version's bytes as UTF-8 text; rejects binary files.
+async fn load_head_text(user_id: Uuid, file: &File) -> Result<String, AppError> {
+    let storage = get_file_storage();
+    let ext = extension_of(&file.filename);
+    let bytes = storage
+        .load_original(user_id, file.blob_version_id, &ext)
+        .await?;
+    String::from_utf8(bytes).map_err(|_| {
+        AppError::bad_request(
+            "NOT_TEXT",
+            "file is not UTF-8 text and cannot be edited as text (use a binary re-upload instead)",
+        )
+    })
+}
+
+fn unchanged_result(file: &File) -> Value {
+    text_result(
+        format!(
+            "No change — '{}' already matches (still v{}).",
+            file.filename, file.version
+        ),
+        Some(json!({ "file_id": file.id, "version": file.version, "unchanged": true })),
+    )
+}
+
+/// Commit edited text as a new version (no-op when the bytes are unchanged).
+async fn commit_text_version(
+    user_id: Uuid,
+    file: &File,
+    new_content: String,
+    message_id: Option<Uuid>,
+) -> Result<Value, AppError> {
+    match crate::modules::file::versioning::commit_new_version(
+        user_id,
+        file,
+        new_content.into_bytes(),
+        "mcp",
+        message_id,
+    )
+    .await?
+    {
+        None => Ok(unchanged_result(file)),
+        Some(version) => Ok(text_result(
+            format!("Updated '{}' → v{}.", file.filename, version.version),
+            Some(json!({ "file_id": file.id, "version": version.version, "version_id": version.id })),
+        )),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateArgs {
+    filename: String,
+    content: String,
+}
+
+async fn create_file(
+    user_id: Uuid,
+    message_id: Option<Uuid>,
+    args: &Value,
+) -> Result<Value, AppError> {
+    let a: CreateArgs = serde_json::from_value(args.clone())
+        .map_err(|e| AppError::bad_request("INVALID_ARGS", e.to_string()))?;
+    if a.filename.trim().is_empty() {
+        return Err(AppError::bad_request("INVALID_ARGS", "filename must not be empty"));
+    }
+    let bytes = a.content.into_bytes();
+    let file_id = Uuid::new_v4();
+    let saved = process_and_save(user_id, file_id, &a.filename, None, &bytes).await?;
+    let file = Repos
+        .file
+        .create(FileCreateData {
+            id: file_id,
+            user_id,
+            filename: a.filename,
+            file_size: saved.file_size,
+            mime_type: saved.mime_type,
+            checksum: Some(saved.checksum),
+            has_thumbnail: saved.has_thumbnail,
+            preview_page_count: saved.preview_page_count,
+            text_page_count: saved.text_page_count,
+            processing_metadata: saved.processing_metadata,
+            source_message_id: message_id,
+            created_by: "mcp".to_string(),
+        })
+        .await?;
+    crate::modules::file::sync::publish_file_changed(user_id, file.id);
+    Ok(text_result(
+        format!("Created '{}' (id {}).", file.filename, file.id),
+        Some(json!({
+            "file_id": file.id,
+            "version": file.version,
+            "content": [{
+                "type": "resource_link",
+                "uri": format!("/api/files/{}", file.id),
+                "name": file.filename,
+                "mimeType": file.mime_type,
+                "is_saved": true,
+                "file_id": file.id,
+                "version_id": file.current_version_id,
+                "version": file.version,
+            }],
+        })),
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+struct EditStrArgs {
+    #[serde(default)]
+    id: Option<Uuid>,
+    #[serde(default)]
+    name: Option<String>,
+    old_str: String,
+    new_str: String,
+}
+
+async fn edit_file_str(
+    user_id: Uuid,
+    files: &[AvailableFile],
+    message_id: Option<Uuid>,
+    args: &Value,
+) -> Result<Value, AppError> {
+    let a: EditStrArgs = serde_json::from_value(args.clone())
+        .map_err(|e| AppError::bad_request("INVALID_ARGS", e.to_string()))?;
+    let file = resolve_write_target(user_id, files, a.id, a.name.as_deref()).await?;
+    let content = load_head_text(user_id, &file).await?;
+    match str_replace(&content, &a.old_str, &a.new_str)? {
+        EditOutcome::Unchanged => Ok(unchanged_result(&file)),
+        EditOutcome::Changed(new) => commit_text_version(user_id, &file, new, message_id).await,
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct EditLinesArgs {
+    #[serde(default)]
+    id: Option<Uuid>,
+    #[serde(default)]
+    name: Option<String>,
+    start_line: usize,
+    end_line: usize,
+    new_content: String,
+}
+
+async fn edit_file_lines(
+    user_id: Uuid,
+    files: &[AvailableFile],
+    message_id: Option<Uuid>,
+    args: &Value,
+) -> Result<Value, AppError> {
+    let a: EditLinesArgs = serde_json::from_value(args.clone())
+        .map_err(|e| AppError::bad_request("INVALID_ARGS", e.to_string()))?;
+    let file = resolve_write_target(user_id, files, a.id, a.name.as_deref()).await?;
+    let content = load_head_text(user_id, &file).await?;
+    match apply_line_range(&content, a.start_line, a.end_line, &a.new_content)? {
+        EditOutcome::Unchanged => Ok(unchanged_result(&file)),
+        EditOutcome::Changed(new) => commit_text_version(user_id, &file, new, message_id).await,
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct RewriteArgs {
+    #[serde(default)]
+    id: Option<Uuid>,
+    #[serde(default)]
+    name: Option<String>,
+    content: String,
+}
+
+async fn rewrite_file(
+    user_id: Uuid,
+    files: &[AvailableFile],
+    message_id: Option<Uuid>,
+    args: &Value,
+) -> Result<Value, AppError> {
+    let a: RewriteArgs = serde_json::from_value(args.clone())
+        .map_err(|e| AppError::bad_request("INVALID_ARGS", e.to_string()))?;
+    let file = resolve_write_target(user_id, files, a.id, a.name.as_deref()).await?;
+    // Ensure the target is text-editable (rejects binary).
+    let _ = load_head_text(user_id, &file).await?;
+    commit_text_version(user_id, &file, a.content, message_id).await
+}
+

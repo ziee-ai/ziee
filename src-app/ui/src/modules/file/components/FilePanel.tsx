@@ -1,8 +1,11 @@
-import { Typography, theme, Empty } from 'antd'
+import { useState, useEffect } from 'react'
+import { Typography, theme, Empty, Spin } from 'antd'
 import { FileUnknownOutlined, WarningOutlined } from '@ant-design/icons'
 import type { File as FileEntity } from '@/api-client/types'
 import { getViewer } from '@/modules/file/registry/fileViewerRegistry'
 import { DownloadButton } from '@/modules/file/viewers/shared/chrome'
+import { FileVersionBar } from '@/modules/file/components/FileVersionBar'
+import { Stores } from '@/core/stores'
 
 const { Title, Text } = Typography
 
@@ -30,6 +33,10 @@ interface FilePanelProps {
    *  slot instead. Defaults to false so chat's right-panel surface
    *  keeps the existing title bar. */
   hideHeader?: boolean
+  /** Open the panel pinned to a specific version (e.g. a message attachment
+   *  pinned to the version that existed when it was sent). `undefined`/head =
+   *  show the latest. */
+  initialVersion?: number
 }
 
 /**
@@ -50,11 +57,34 @@ export function FilePanelHeaderActions({ file }: { file: FileEntity }) {
  * inside the panel body (and the action area to the right of the title) to
  * the matching viewer's `body` and optional `headerActions` slot components.
  */
-export function FilePanel({ file, hideHeader = false }: FilePanelProps) {
+export function FilePanel({ file, hideHeader = false, initialVersion }: FilePanelProps) {
   const { token } = theme.useToken()
   const handler = getViewer(file.filename, file.mime_type ?? undefined)
   const Body = handler?.body
   const tooLarge = file.file_size > PREVIEW_SIZE_LIMIT_BYTES
+
+  // Version-viewing state: null = head (normal viewer body); a number = view
+  // that version's content read-only.
+  const [selectedVersion, setSelectedVersion] = useState<number | null>(
+    initialVersion && initialVersion !== file.version ? initialVersion : null,
+  )
+  // Re-sync when the panel is reused for a different pinned version / file (the
+  // right-panel keys tabs by file id, so the same tab can be reopened pinned to
+  // a different version). useState's initializer only runs on first mount.
+  useEffect(() => {
+    setSelectedVersion(
+      initialVersion && initialVersion !== file.version ? initialVersion : null,
+    )
+  }, [initialVersion, file.version, file.id])
+  const isViewingOld = selectedVersion !== null && selectedVersion !== file.version
+  // Read versionTextCache REACTIVELY so the body re-renders when the async text
+  // load lands. getVersionText() reads via getState() + kicks off the load but
+  // does NOT subscribe (same reason FileVersionBar reads versionsByFile).
+  const versionTextCache = Stores.FileVersions.versionTextCache
+  const oldVersionText = isViewingOld
+    ? versionTextCache.get(`${file.id}:${selectedVersion}`) ??
+      Stores.FileVersions.getVersionText(file.id, selectedVersion as number)
+    : null
 
   return (
     <div className="flex flex-col h-full w-full" style={{ backgroundColor: token.colorBgLayout }}>
@@ -77,12 +107,36 @@ export function FilePanel({ file, hideHeader = false }: FilePanelProps) {
         </div>
       )}
 
+      {/* Version history + restore — only shown once a file has >1 version. */}
+      <FileVersionBar
+        file={file}
+        selectedVersion={selectedVersion}
+        onSelectVersion={setSelectedVersion}
+      />
+
       {/* Body — fully owned by the viewer unless the file exceeds the
           preview-size cap (we skip loading entirely) or no viewer
-          matches. Both fallbacks show explicit empty states instead of
-          returning null. */}
+          matches. When viewing a non-head version, render that version's
+          text read-only instead (the viewers are head-bound). */}
       <div className="flex-1 overflow-hidden" style={{ backgroundColor: token.colorBgContainer }}>
-        {tooLarge
+        {isViewingOld
+          ? (
+            oldVersionText === null
+              ? (
+                <div className="flex items-center justify-center h-full">
+                  <Spin />
+                </div>
+              )
+              : (
+                <pre
+                  className="h-full w-full overflow-auto m-0 p-3 text-xs whitespace-pre-wrap break-words"
+                  data-testid="file-version-readonly-body"
+                >
+                  {oldVersionText}
+                </pre>
+              )
+          )
+          : tooLarge
           ? (
             <div
               className="flex flex-col items-center justify-center h-full p-6"

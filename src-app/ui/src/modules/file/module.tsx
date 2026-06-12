@@ -2,6 +2,7 @@ import { createModule } from '@/core'
 import { Stores } from '@/core/stores'
 import { useFileStore } from './stores/File.store'
 import { useFilePreviewDrawerStore } from './stores/FilePreviewDrawer.store'
+import { useFileVersionsStore } from './stores/FileVersions.store'
 import { useProjectFilesStore } from './project-extension/stores/ProjectFiles.store'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
@@ -42,6 +43,7 @@ export default createModule({
   stores: [
     { name: 'File', store: useFileStore },
     { name: 'FilePreviewDrawer', store: useFilePreviewDrawerStore },
+    { name: 'FileVersions', store: useFileVersionsStore },
     { name: 'ProjectFiles', store: useProjectFilesStore },
   ],
   components: [

@@ -68,12 +68,15 @@ impl ChatExtension for FileExtension {
                 ));
             }
 
-            // Create FileAttachment using FileContent enum
+            // Create FileAttachment using FileContent enum, pinning the head
+            // version at send time so re-rendering this turn stays reproducible.
             let file_content = FileContent::FileAttachment {
                 file_id: *file_id,
                 filename: file.filename,
                 mime_type: file.mime_type,
                 file_size: file.file_size,
+                version_id: Some(file.current_version_id),
+                version: Some(file.version),
             };
 
             // Convert to MessageContentData::Extension

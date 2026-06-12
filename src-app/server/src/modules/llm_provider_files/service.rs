@@ -79,8 +79,10 @@ pub async fn get_or_upload_provider_file(
         .ok_or_else(|| AppError::not_found("File"))?;
 
     let extension = get_extension(&file.filename);
+    // Load the HEAD version's blob (`blob_version_id`), NOT `file_id` (= v1's
+    // blob) — else a provider upload sends the stale original of an edited file.
     let file_data = file_storage
-        .load_original(file.user_id, file_id, &extension)
+        .load_original(file.user_id, file.blob_version_id, &extension)
         .await?;
 
     // Create upload request
@@ -160,13 +162,12 @@ async fn save_upload_response(
     Ok(upload_response.provider_file_id)
 }
 
-/// Helper function to extract file extension
+/// Helper function to extract file extension. Delegates to the canonical
+/// `extension_of` (rsplit + lowercase) so the load key matches how `upload.rs`
+/// named the blob — `Path::extension` disagrees for dotfiles / no-extension
+/// names and would 404 the load.
 fn get_extension(filename: &str) -> String {
-    std::path::Path::new(filename)
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("")
-        .to_string()
+    crate::modules::file::utils::extension_of(filename)
 }
 
 #[cfg(test)]

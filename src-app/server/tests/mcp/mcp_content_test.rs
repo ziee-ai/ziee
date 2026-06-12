@@ -191,6 +191,8 @@ fn test_resource_link_file_id_roundtrip() {
             size: Some(42),
             is_saved: Some(false),
             file_id: Some(file_id),
+            version_id: None,
+            version: None,
         }]),
     };
 
@@ -224,10 +226,55 @@ fn test_resource_link_file_id_omitted_when_absent() {
         size: None,
         is_saved: None,
         file_id: None,
+        version_id: None,
+        version: None,
     };
     let json = serde_json::to_value(&link).expect("Should serialize");
     assert!(
         json.get("file_id").is_none(),
         "file_id should be omitted when None, got: {json}"
     );
+}
+
+#[test]
+fn test_resource_link_version_pinning_roundtrip() {
+    // A versioned backing File (e.g. a sandbox version-back) pins version_id +
+    // version on the resource_link so the UI renders the exact version produced.
+    let version_id = uuid::Uuid::new_v4();
+    let link = ResourceLink {
+        uri: "/api/files/abc".to_string(),
+        name: Some("report.md".to_string()),
+        mime_type: Some("text/markdown".to_string()),
+        size: Some(10),
+        is_saved: Some(true),
+        file_id: Some(uuid::Uuid::new_v4()),
+        version_id: Some(version_id),
+        version: Some(3),
+    };
+    let json = serde_json::to_value(&link).expect("serialize");
+    assert_eq!(json["version_id"], serde_json::json!(version_id.to_string()));
+    assert_eq!(json["version"], serde_json::json!(3));
+
+    let back: ResourceLink = serde_json::from_value(json).expect("deserialize");
+    assert_eq!(back.version_id, Some(version_id));
+    assert_eq!(back.version, Some(3));
+}
+
+#[test]
+fn test_resource_link_version_omitted_when_none() {
+    // A non-versioned / legacy link omits the version fields entirely so old
+    // blocks (and external MCP links) deserialize unchanged.
+    let link = ResourceLink {
+        uri: "/api/files/abc".to_string(),
+        name: None,
+        mime_type: None,
+        size: None,
+        is_saved: None,
+        file_id: None,
+        version_id: None,
+        version: None,
+    };
+    let json = serde_json::to_value(&link).expect("serialize");
+    assert!(json.get("version_id").is_none(), "version_id omitted when None: {json}");
+    assert!(json.get("version").is_none(), "version omitted when None: {json}");
 }

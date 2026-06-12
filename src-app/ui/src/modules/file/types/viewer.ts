@@ -47,6 +47,10 @@ export interface InlineFileSource {
    *  panel) and can open that file in the side panel. Absent for external
    *  MCP links with no backing File. */
   fileId?: string
+  /** The exact `file_versions.id` this link pins (versioned backing File). */
+  versionId?: string
+  /** Denormalized version number for display. */
+  version?: number
 }
 
 /**

@@ -208,18 +208,17 @@ async fn load_file_content(ctx: &SandboxContext, filename: &str) -> Result<Strin
                 ));
             }
             if let Some(att) = matches.into_iter().next() {
-                // Match the storage manager's "no extension → bin"
-                // convention used in handlers::stage_attachments.
-                // Naïve `rsplit('.').next()` returns the whole name for
-                // files without a dot ("Makefile" → "Makefile"), so use
-                // Path::extension which returns None in that case.
-                let ext = std::path::Path::new(filename)
-                    .extension()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("bin");
+                // Use the SAME canonical `extension_of` that `upload.rs`
+                // and `handlers::stage_attachments` use to NAME the blob on
+                // disk — otherwise the key we load won't match the key it
+                // was saved under. `Path::extension` semantics disagree for
+                // no-extension files (`Makefile` → blob `…​.makefile`, not
+                // `…​.bin`) and dotfiles (`.bashrc`), 404-ing those loads.
+                let ext = crate::modules::file::utils::extension_of(filename);
                 let storage = crate::modules::file::storage::manager::get_file_storage();
+                // HEAD blob key (`blob_version_id`), NOT `file_id` (= v1's blob).
                 let bytes = storage
-                    .load_original(ctx.user_id, att.file_id, ext)
+                    .load_original(ctx.user_id, att.blob_version_id, &ext)
                     .await
                     .map_err(|le| {
                         io_err(format!("load attachment {filename}: {le:?}"))
@@ -442,8 +441,12 @@ pub async fn get_resource_link(
             "description": "User-uploaded attachment (signed URL, expires shortly)",
             "is_saved": true,
             // File id so the UI inline preview fetches via the authenticated
-            // /api/files/{id}/... path (same as the right-side panel).
+            // /api/files/{id}/... path (same as the right-side panel). version +
+            // version_id pin the exact head version (an edited attachment has
+            // several) so the preview opens the right bytes.
             "file_id": att.file_id,
+            "version": att.version,
+            "version_id": att.version_id,
         }));
     }
 
@@ -499,6 +502,7 @@ fn sign_download_token(file_id: Uuid, user_id: Uuid) -> Result<String, AppError>
     let claims = DownloadTokenClaims {
         file_id: file_id.to_string(),
         user_id: user_id.to_string(),
+        version: None,
         exp,
         iat: now.timestamp() as usize,
         iss: jwt_cfg.issuer.clone(),
@@ -746,6 +750,9 @@ mod tests {
             files: Arc::new(vec![
                 ConversationFile {
                     file_id: Uuid::new_v4(),
+                    blob_version_id: Uuid::new_v4(),
+                    version: 1,
+                    version_id: Uuid::new_v4(),
                     filename: "data.csv".to_string(),
                     user_id,
                     mime_type: Some("text/csv".to_string()),
@@ -753,6 +760,9 @@ mod tests {
                 },
                 ConversationFile {
                     file_id: Uuid::new_v4(),
+                    blob_version_id: Uuid::new_v4(),
+                    version: 1,
+                    version_id: Uuid::new_v4(),
                     filename: "data.csv".to_string(),
                     user_id,
                     mime_type: Some("text/csv".to_string()),
