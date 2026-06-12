@@ -647,6 +647,8 @@ export interface FileListResponse {
   total: number
 }
 
+export type FileRole = 'weight' | 'index' | 'config' | 'tokenizer' | 'vocab' | 'other'
+
 export interface GPUComputeCapabilities {
   cuda_support: boolean
   cuda_version?: string
@@ -1563,6 +1565,8 @@ export interface ModelParameters {
   top_p?: number
 }
 
+export type ModelShape = 'gguf' | 'safetensors' | 'pickle' | 'unknown'
+
 export interface ModelUsageInfo {
   display_name: string
   engine: string
@@ -1788,6 +1792,29 @@ export interface RepositoryAuthConfig {
   token?: string
   username?: string
 }
+
+export interface RepositoryFile {
+  file_format?: string
+  file_role: FileRole
+  path: string
+  size_bytes: number
+}
+
+export interface RepositoryFileListResponse {
+  files: RepositoryFile[]
+  shape: ModelShape
+  source: RepositorySource
+  suggested_main_filename?: string
+  truncated: boolean
+}
+
+export interface RepositoryFilesQuery {
+  branch?: string
+  path: string
+  repository_id: string
+}
+
+export type RepositorySource = 'huggingface' | 'github' | 'unknown'
 
 export interface ResetPasswordRequest {
   new_password: string
@@ -2898,6 +2925,7 @@ export const ApiEndpoints = {
   'LlmModel.getDownload': 'GET /api/llm-models/downloads/{download_id}',
   'LlmModel.list': 'GET /api/llm-models',
   'LlmModel.listDownloads': 'GET /api/llm-models/downloads',
+  'LlmModel.listRepositoryFiles': 'GET /api/llm-models/repository-files',
   'LlmModel.subscribeDownloadProgress': 'GET /api/llm-models/downloads/subscribe',
   'LlmModel.update': 'POST /api/llm-models/{model_id}',
   'LlmModel.upload': 'POST /api/llm-models/upload',
@@ -3149,6 +3177,7 @@ export type ApiEndpointParameters = {
   'LlmModel.getDownload': { download_id: string }
   'LlmModel.list': { capability?: string; page?: number; perPage?: number; providerId?: string }
   'LlmModel.listDownloads': { page?: number; per_page?: number; status?: string }
+  'LlmModel.listRepositoryFiles': { branch?: string; path: string; repository_id: string }
   'LlmModel.subscribeDownloadProgress': void
   'LlmModel.update': { model_id: string } & UpdateLlmModelRequest
   'LlmModel.upload': FormData
@@ -3400,6 +3429,7 @@ export type ApiEndpointResponses = {
   'LlmModel.getDownload': DownloadInstance
   'LlmModel.list': LlmModelListResponse
   'LlmModel.listDownloads': DownloadInstanceListResponse
+  'LlmModel.listRepositoryFiles': RepositoryFileListResponse
   'LlmModel.subscribeDownloadProgress': SSEDownloadProgressEvent
   'LlmModel.update': LlmModel
   'LlmModel.upload': LlmModel

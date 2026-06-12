@@ -714,3 +714,85 @@ test.describe('LLM Models - Local Download - Multiple Downloads', () => {
     await expect(downloadingSection.locator(`text=${model2Name}`)).toBeVisible({ timeout: 5000 })
   })
 })
+
+test.describe('LLM Models - Local Download - Auto-detect files', () => {
+  let testProvider: string
+
+  test.beforeEach(async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    testProvider = `test-download-detect-${Date.now()}`
+
+    await loginAsAdmin(page, baseURL)
+    // Configure the HuggingFace API key so detection isn't rate-limited.
+    await configureHuggingFaceAuth(page, baseURL)
+    await createLocalProvider(page, baseURL, testProvider, 'Detect files test provider')
+    await clickProviderCard(page, testProvider)
+  })
+
+  test('Detect files auto-fills a GGUF quant from the live API', async ({
+    page,
+  }) => {
+    await openAddModelDropdown(page)
+    await selectAddModelOption(page, 'download')
+
+    const drawer = page.locator(
+      '.ant-drawer.ant-drawer-open:has(.ant-drawer-title:has-text("Download from Repository"))',
+    )
+
+    const repositorySelect = page.locator(
+      '.ant-select:has(input#llm-model-download_repository_id)',
+    )
+    await repositorySelect.click()
+    await page.click('.ant-select-item:has-text("Hugging Face Hub")')
+    await page.fill(
+      '#llm-model-download_repository_path',
+      'Qwen/Qwen2.5-0.5B-Instruct-GGUF',
+    )
+
+    await drawer.locator('button:has-text("Detect files")').click()
+    await page.waitForSelector('text=/Detected \\d+\\+? files/', { timeout: 30000 })
+
+    // The main filename is auto-filled with a detected .gguf quant — this
+    // is the assertion that proves GGUF detection populated the picker.
+    // (We don't re-open the AutoComplete dropdown to inspect options:
+    // reopening a value-holding antd AutoComplete is build-fragile.)
+    const mainInput = page.locator('#llm-model-download_main_filename')
+    await expect(mainInput).toHaveValue(/\.gguf$/i, { timeout: 5000 })
+
+    await drawer.locator('button:has-text("Cancel")').click()
+  })
+
+  test('Detect files auto-selects the whole safetensors set', async ({
+    page,
+  }) => {
+    await openAddModelDropdown(page)
+    await selectAddModelOption(page, 'download')
+
+    const drawer = page.locator(
+      '.ant-drawer.ant-drawer-open:has(.ant-drawer-title:has-text("Download from Repository"))',
+    )
+
+    const repositorySelect = page.locator(
+      '.ant-select:has(input#llm-model-download_repository_id)',
+    )
+    await repositorySelect.click()
+    await page.click('.ant-select-item:has-text("Hugging Face Hub")')
+    await page.fill(
+      '#llm-model-download_repository_path',
+      'hf-internal-testing/tiny-random-gpt2',
+    )
+
+    await drawer.locator('button:has-text("Detect files")').click()
+    await page.waitForSelector('text=/Detected \\d+\\+? files/', { timeout: 30000 })
+
+    const mainInput = page.locator('#llm-model-download_main_filename')
+    await expect(mainInput).toHaveValue(/safetensors/i, { timeout: 5000 })
+
+    // The help text tells the user shards are pulled automatically.
+    await expect(
+      drawer.locator('text=/full weight set downloads automatically/i'),
+    ).toBeVisible()
+
+    await drawer.locator('button:has-text("Cancel")').click()
+  })
+})

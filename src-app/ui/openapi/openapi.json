@@ -5628,6 +5628,81 @@
         ]
       }
     },
+    "/api/llm-models/repository-files": {
+      "get": {
+        "tags": [
+          "LLM Models"
+        ],
+        "summary": "List model files in a repository",
+        "description": "Detect the model files available at a Hugging Face or GitHub repo path before downloading, classified the same way the engine loads them.",
+        "operationId": "LlmModel.listRepositoryFiles",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "branch",
+            "description": "Branch / revision (defaults to \"main\").",
+            "schema": {
+              "description": "Branch / revision (defaults to \"main\").",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "description": "Repo path within the source, e.g. \"meta-llama/Llama-3.1-8B-Instruct\".",
+            "required": true,
+            "schema": {
+              "description": "Repo path within the source, e.g. \"meta-llama/Llama-3.1-8B-Instruct\".",
+              "type": "string"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "repository_id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Upstream rejected the request (auth required or rate-limited)"
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepositoryFileListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid repository path or branch"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Repository or path not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/llm-models/downloads": {
       "get": {
         "tags": [
@@ -17106,6 +17181,18 @@
           "per_page"
         ]
       },
+      "FileRole": {
+        "description": "Coarse role of a single file, surfaced to the UI for grouping.",
+        "type": "string",
+        "enum": [
+          "weight",
+          "index",
+          "config",
+          "tokenizer",
+          "vocab",
+          "other"
+        ]
+      },
       "GPUComputeCapabilities": {
         "type": "object",
         "properties": {
@@ -21483,6 +21570,16 @@
           }
         }
       },
+      "ModelShape": {
+        "description": "The kind of weight container a repo holds. Priority gguf > safetensors >\n pickle mirrors how the engine decides what to load.",
+        "type": "string",
+        "enum": [
+          "gguf",
+          "safetensors",
+          "pickle",
+          "unknown"
+        ]
+      },
       "ModelUsageInfo": {
         "description": "A local model and how it relates to a given engine version.",
         "type": "object",
@@ -22377,6 +22474,99 @@
             ]
           }
         }
+      },
+      "RepositoryFile": {
+        "type": "object",
+        "properties": {
+          "file_format": {
+            "description": "\"safetensors\" | \"pytorch\" | \"gguf\" for weight files, else null.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "file_role": {
+            "$ref": "#/components/schemas/FileRole"
+          },
+          "path": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "path",
+          "size_bytes",
+          "file_role"
+        ]
+      },
+      "RepositoryFileListResponse": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RepositoryFile"
+            }
+          },
+          "shape": {
+            "$ref": "#/components/schemas/ModelShape"
+          },
+          "source": {
+            "$ref": "#/components/schemas/RepositorySource"
+          },
+          "suggested_main_filename": {
+            "description": "A sensible default to pre-fill the download form's main filename.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "truncated": {
+            "description": "True when the upstream listing was capped (very large GitHub trees).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "source",
+          "shape",
+          "files",
+          "truncated"
+        ]
+      },
+      "RepositoryFilesQuery": {
+        "type": "object",
+        "properties": {
+          "branch": {
+            "description": "Branch / revision (defaults to \"main\").",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "description": "Repo path within the source, e.g. \"meta-llama/Llama-3.1-8B-Instruct\".",
+            "type": "string"
+          },
+          "repository_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "repository_id",
+          "path"
+        ]
+      },
+      "RepositorySource": {
+        "type": "string",
+        "enum": [
+          "huggingface",
+          "github",
+          "unknown"
+        ]
       },
       "ResetPasswordRequest": {
         "type": "object",

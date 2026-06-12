@@ -564,3 +564,79 @@ async fn test_upload_missing_fields_fails() {
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
+
+/// Gap-A regression (the headline of the mistral.rs-parity hardening): a
+/// SHARDED safetensors model with NO `*.index.json` must keep EVERY shard.
+/// determine_files_to_copy -> model_files::select_download_files now grabs
+/// the whole safetensors set regardless of an index. Synthetic shards, so no
+/// network is needed and the test always runs.
+#[tokio::test]
+async fn test_upload_sharded_safetensors_without_index_keeps_all_shards() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "uploader",
+        &[
+            "llm_models::create",
+            "llm_models::read",
+            "llm_providers::read",
+            "llm_providers::create",
+        ],
+    )
+    .await;
+    let provider = get_local_provider(&server, &user.token).await;
+    let provider_id = provider["id"].as_str().unwrap();
+
+    let part = |name: &str, bytes: Vec<u8>| {
+        Part::bytes(bytes)
+            .file_name(name.to_string())
+            .mime_str("application/octet-stream")
+            .unwrap()
+    };
+
+    // Two distinct-size shards (>=1KB each to pass the weight-size check),
+    // config + tokenizer, and crucially NO `*.index.json`.
+    let form = Form::new()
+        .text("provider_id", provider_id.to_string())
+        .text("name", "sharded-noindex-test")
+        .text("display_name", "Sharded (no index)")
+        .text("file_format", "safetensors")
+        .text("main_filename", "model-00001-of-00002.safetensors")
+        .part("files", part("model-00001-of-00002.safetensors", vec![1u8; 2048]))
+        .part("files", part("model-00002-of-00002.safetensors", vec![2u8; 3072]))
+        .part("files", part("config.json", b"{}".to_vec()))
+        .part("files", part("tokenizer.json", b"{}".to_vec()));
+
+    let response = reqwest::Client::new()
+        .post(server.api_url("/llm-models/upload"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .multipart(form)
+        .send()
+        .await
+        .unwrap();
+
+    let status = response.status();
+    let model: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(status, StatusCode::OK, "upload failed: {model}");
+    let model_id = model["id"].as_str().unwrap();
+
+    // Verify BOTH shards landed on disk. (`file_size_bytes` on the response is
+    // None at create time — it's populated later by Tier-2 validation — so we
+    // check the storage dir directly.) If only the single main shard were kept
+    // (the OLD index-dependent behavior), shard 2 would be missing.
+    let model_dir = crate::common::shared_test_app_data_dir()
+        .join("models")
+        .join(provider_id)
+        .join(model_id);
+    let shard_size = |name: &str| {
+        std::fs::metadata(model_dir.join(name))
+            .map(|m| m.len())
+            .unwrap_or(0)
+    };
+    let s1 = shard_size("model-00001-of-00002.safetensors");
+    let s2 = shard_size("model-00002-of-00002.safetensors");
+    assert!(
+        s1 >= 2048 && s2 >= 3072,
+        "both shards must be copied (gap-A); shard1={s1} shard2={s2} dir={model_dir:?}"
+    );
+}
