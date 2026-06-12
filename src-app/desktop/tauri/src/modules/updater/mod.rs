@@ -8,7 +8,7 @@ mod routes;
 use crate::module_api::DesktopModule;
 use anyhow::Result;
 use tauri::App;
-use ziee::Router;
+use ziee::ApiRouter;
 
 pub struct UpdaterModule;
 
@@ -32,8 +32,8 @@ impl DesktopModule for UpdaterModule {
         Ok(())
     }
 
-    fn register_routes(&self, router: Router) -> Router {
-        tracing::info!("Registering updater routes");
-        router.merge(routes::updater_routes())
+    fn register_api_routes(&self, router: ApiRouter) -> ApiRouter {
+        tracing::info!("Registering updater API routes");
+        router.merge(routes::updater_api_routes())
     }
 }

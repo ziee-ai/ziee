@@ -2226,6 +2226,11 @@ export interface SetupStatusResponse {
   needs_setup: boolean
 }
 
+export interface SimpleResponse {
+  message: string
+  success: boolean
+}
+
 export type StartInstanceRequest = any
 
 export interface StreamError {
@@ -2420,6 +2425,12 @@ export interface UpdateAuthProviderRequest {
   name?: string
 }
 
+export interface UpdateCheckResponse {
+  available: boolean
+  notes?: string
+  version?: string
+}
+
 export interface UpdateCodeSandboxResourceLimits {
   address_space_bytes?: number
   cpu_max?: string
@@ -2563,6 +2574,21 @@ export interface UpdateRuntimeSettingsRequest {
   auto_start_timeout_secs?: number
   drain_timeout_secs?: number
   idle_unload_secs?: number
+}
+
+export interface UpdateState {
+  available: boolean
+  checking: boolean
+  downloading: boolean
+  error?: string
+  notes?: string
+  progress?: number
+  ready_to_install: boolean
+  version?: string
+}
+
+export interface UpdateStatusResponse {
+  status: UpdateState
 }
 
 export interface UpdateSummarizationAdminSettingsRequest {
@@ -3205,6 +3231,10 @@ export const ApiEndpoints = {
   'SummarizationAdmin.update': 'PUT /api/summarization/settings',
   'SummarizationTest.refresh': 'POST /api/_test/summarization/refresh',
   'Sync.subscribe': 'GET /api/sync/subscribe',
+  'Updater.check': 'POST /api/desktop/updater/check',
+  'Updater.download': 'POST /api/desktop/updater/download',
+  'Updater.install': 'POST /api/desktop/updater/install',
+  'Updater.status': 'GET /api/desktop/updater/status',
   'User.create': 'POST /api/users',
   'User.delete': 'DELETE /api/users/{user_id}',
   'User.get': 'GET /api/users/{user_id}',
@@ -3479,6 +3509,10 @@ export type ApiEndpointParameters = {
   'SummarizationAdmin.update': UpdateSummarizationAdminSettingsRequest
   'SummarizationTest.refresh': TestRefreshRequest
   'Sync.subscribe': void
+  'Updater.check': void
+  'Updater.download': void
+  'Updater.install': void
+  'Updater.status': void
   'User.create': CreateUserRequest
   'User.delete': { user_id: string }
   'User.get': { user_id: string }
@@ -3753,6 +3787,10 @@ export type ApiEndpointResponses = {
   'SummarizationAdmin.update': SummarizationAdminSettings
   'SummarizationTest.refresh': any
   'Sync.subscribe': SyncSseEvent
+  'Updater.check': UpdateCheckResponse
+  'Updater.download': SimpleResponse
+  'Updater.install': SimpleResponse
+  'Updater.status': UpdateStatusResponse
   'User.create': User
   'User.delete': void
   'User.get': User

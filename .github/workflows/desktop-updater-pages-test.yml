@@ -1,0 +1,91 @@
+name: Desktop Updater Pages Test
+
+# CI test for the updater manifest + gh-pages publish logic. Runs the SAME
+# scripts the production release workflow uses (scripts/updater/*), against
+# fixture artifacts and a local bare git repo standing in for the gh-pages
+# remote — so it needs no signing key, no GitHub release, and no heavy build.
+#
+# Intended to be run locally via `act` (see `just check-updater-ci`). It is
+# `workflow_dispatch`-only so it never fires on push/tag in real CI.
+#
+# This job is SELF-ASSERTING: its final step fails the run if the published
+# latest.json is missing any platform or the expected version, so `act`'s exit
+# code is the pass/fail signal.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Manifest version to assert
+        default: '9.9.9'
+      base_url:
+        description: Base URL for artifact links
+        default: 'https://example.invalid/releases/download/v9.9.9'
+
+jobs:
+  manifest-and-publish:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.event.inputs.version || '9.9.9' }}
+      BASE_URL: ${{ github.event.inputs.base_url || 'https://example.invalid/releases/download/v9.9.9' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create fixture signed artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/artifacts"
+          for key in darwin-aarch64 darwin-x86_64 linux-x86_64 windows-x86_64; do
+            name="ziee_${VERSION}_${key}.bin"
+            echo "dummy-bundle-$key" > "$RUNNER_TEMP/artifacts/$name"
+            # Placeholder base64 signature (crypto is covered by the Rust
+            # Tier-3 signing test, not here).
+            printf '%s' "$(printf 'sig-%s' "$key" | base64)" > "$RUNNER_TEMP/artifacts/${name}.sig"
+          done
+          ls -la "$RUNNER_TEMP/artifacts"
+
+      - name: Build latest.json (shared production script)
+        run: |
+          set -euo pipefail
+          node scripts/updater/build-latest-json.mjs \
+            --artifacts-dir "$RUNNER_TEMP/artifacts" \
+            --base-url "$BASE_URL" \
+            --version "$VERSION" \
+            --notes "act test build" \
+            --pub-date "2026-01-01T00:00:00.000Z" \
+            --out "$RUNNER_TEMP/latest.json"
+          echo "--- generated latest.json ---"
+          cat "$RUNNER_TEMP/latest.json"
+
+      - name: Publish to a local bare repo (shared production script)
+        env:
+          GH_PAGES_REMOTE: ${{ runner.temp }}/pages.git
+        run: |
+          set -euo pipefail
+          git init --bare --quiet "$RUNNER_TEMP/pages.git"
+          # Run twice: first creates the orphan gh-pages branch, second must no-op.
+          bash scripts/updater/publish-pages.sh "$RUNNER_TEMP/latest.json"
+          bash scripts/updater/publish-pages.sh "$RUNNER_TEMP/latest.json"
+
+      - name: Assert published manifest is correct
+        run: |
+          set -euo pipefail
+          git clone --quiet --branch gh-pages "$RUNNER_TEMP/pages.git" "$RUNNER_TEMP/verify"
+          node -e '
+            const fs = require("fs");
+            const m = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/verify/latest.json", "utf8"));
+            const want = ["darwin-aarch64","darwin-x86_64","linux-x86_64","windows-x86_64"].sort();
+            const got = Object.keys(m.platforms).sort();
+            const fail = (msg) => { console.error("ASSERT FAIL: " + msg); process.exit(1); };
+            if (m.version !== process.env.VERSION) fail("version " + m.version + " != " + process.env.VERSION);
+            if (JSON.stringify(got) !== JSON.stringify(want)) fail("platforms " + got + " != " + want);
+            for (const k of want) {
+              if (!m.platforms[k].signature) fail("missing signature for " + k);
+              if (!m.platforms[k].url.startsWith(process.env.BASE_URL)) fail("bad url for " + k + ": " + m.platforms[k].url);
+            }
+            console.log("OK: latest.json has version " + m.version + " and platforms " + got.join(","));
+          '
+          # Also expose the result on the workspace for host-side inspection
+          # when act is run with --bind.
+          mkdir -p .updater-test-out
+          cp "$RUNNER_TEMP/verify/latest.json" .updater-test-out/published-latest.json
