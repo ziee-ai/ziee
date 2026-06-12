@@ -510,3 +510,31 @@ check-updater-ci:
 check-updater-all: check-updater check-updater-ci
     @echo "✓ updater: all locally-runnable tiers green"
 
+# ─── Server distribution + update notification ───────────────────────
+
+# Always-on server-update tests:
+#   - backend unit (semver / config default / release-JSON parse)
+#   - install.sh shellcheck + --dry-run URL/method/arch asserts; the install
+#     test's Part B additionally checks distro detection inside ubuntu/fedora/
+#     alpine containers when Docker is up.
+# Needs the build DB on :54321 to compile the server (like every cargo recipe).
+check-server-update: workspace-cargo-pin-sqlx
+    cd src-app && cargo test -p ziee --lib server_update::
+    docker run --rm -v "{{justfile_directory()}}":/mnt -w /mnt koalaman/shellcheck:stable \
+        scripts/install.sh scripts/install.test.sh packaging/postinstall.sh packaging/preremove.sh
+    sh scripts/install.test.sh
+    @echo "✓ server-update: backend unit + install.sh (shellcheck + dry-run + distro) green"
+
+# Server-update HTTP integration test: mock GitHub via SERVER_UPDATE_API_MIRROR,
+# assert auth-gate + the update-available path through /api/server-update/status.
+# Needs the build/test DB on :54321.
+check-server-update-int:
+    cd src-app/server && cargo test --test integration_tests server_update:: -- --test-threads=1
+    @echo "✓ server-update integration green"
+
+# Lint the server release workflow (dockerized actionlint).
+check-server-release-ci:
+    docker run --rm -v "{{justfile_directory()}}":/repo --workdir /repo \
+        rhysd/actionlint:latest -color .github/workflows/server-release.yml
+    @echo "✓ server-release.yml lint clean"
+

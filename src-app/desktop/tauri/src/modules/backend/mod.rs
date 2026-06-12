@@ -78,6 +78,12 @@ impl DesktopModule for BackendModule {
             create_desktop_config(&data_dir, port)?
         };
 
+        // The desktop app has its own auto-updater (tauri-plugin-updater), so
+        // the embedded server's self-update notification must stay OFF — no
+        // GitHub polling, no admin update banner. (The matching web UI module
+        // is dropped from the desktop bundle via CORE_MODULE_BLOCKLIST.)
+        config.update_check.enabled = false;
+
         // Desktop runs an embedded server reachable from three
         // origins: (a) `tauri://localhost` — the Tauri webview's
         // custom protocol, (b) `http://localhost:<port>` /
@@ -584,6 +590,11 @@ logging:
     // "<field> filled by Config::resolve_paths".
     config.resolve_paths();
 
+    // The desktop has its own auto-updater; the embedded server must never run
+    // the server self-update notification. (init() also force-disables this for
+    // file-loaded configs — this keeps the default-built config correct too.)
+    config.update_check.enabled = false;
+
     Ok(config)
 }
 
@@ -713,6 +724,21 @@ mod tests {
             storage_key.len() >= 32,
             "storage_key must be at least 32 chars (pgcrypto requirement); got {}",
             storage_key.len()
+        );
+    }
+
+    #[test]
+    fn create_desktop_config_disables_server_update_check() {
+        // The desktop has its own auto-updater; the embedded server must NOT run
+        // the server self-update notification (no GitHub poll, no admin banner).
+        let tmp = TempDir::new().unwrap();
+        let config = create_desktop_config(tmp.path(), 8080)
+            .expect("desktop config should build");
+        assert!(
+            !config.update_check.enabled,
+            "embedded desktop server MUST have update_check disabled — the desktop \
+             uses tauri-plugin-updater. See modules/backend/mod.rs + the web \
+             server-update CORE_MODULE_BLOCKLIST entry."
         );
     }
 

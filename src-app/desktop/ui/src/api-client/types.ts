@@ -2522,6 +2522,16 @@ export interface UpdateRuntimeSettingsRequest {
   idle_unload_secs?: number
 }
 
+export interface UpdateStatusResponse {
+  checked_at?: string
+  current_version: string
+  enabled: boolean
+  latest_version?: string
+  notes?: string
+  release_url?: string
+  update_available: boolean
+}
+
 export interface UpdateSummarizationAdminSettingsRequest {
   default_summarization_model_id?: string
   enabled?: boolean
@@ -2778,6 +2788,7 @@ export enum Permissions {
   RuntimeVersionDelete = 'llm_local_runtime::delete',
   RuntimeVersionRead = 'llm_local_runtime::versions_read',
   RuntimeVersionUpdate = 'llm_local_runtime::update',
+  ServerUpdateRead = 'server_update::read',
   SummarizationSettingsManage = 'summarization::settings::manage',
   SummarizationSettingsRead = 'summarization::settings::read',
   UserLlmProvidersRead = 'user_llm_providers::read',
@@ -2885,6 +2896,7 @@ export const PermissionDescriptions: Record<string, string> = {
   RuntimeVersionDelete: 'Delete runtime versions',
   RuntimeVersionRead: 'View runtime versions and check for updates',
   RuntimeVersionUpdate: 'Update runtime version settings and defaults',
+  ServerUpdateRead: 'View the cached server update-availability status.',
   SummarizationSettingsManage: 'Update deployment-wide summarization settings (enable, model, thresholds, prompts).',
   SummarizationSettingsRead: 'Read deployment-wide summarization settings (model + thresholds + prompt overrides).',
   UserLlmProvidersRead: 'View available LLM providers and models',
@@ -3135,6 +3147,7 @@ export const ApiEndpoints = {
   'RuntimeVersion.subscribeDownloadEvents': 'GET /api/local-runtime/versions/downloads/{key}/events',
   'RuntimeVersion.syncCache': 'POST /api/local-runtime/versions/sync-cache',
   'RuntimeVersion.usage': 'GET /api/local-runtime/version-usage',
+  'ServerUpdate.getStatus': 'GET /api/server-update/status',
   'Summarization.getConversationSummary': 'GET /api/conversations/{id}/summary',
   'SummarizationAdmin.get': 'GET /api/summarization/settings',
   'SummarizationAdmin.update': 'PUT /api/summarization/settings',
@@ -3392,6 +3405,7 @@ export type ApiEndpointParameters = {
   'RuntimeVersion.subscribeDownloadEvents': { key: string }
   'RuntimeVersion.syncCache': void
   'RuntimeVersion.usage': { engine?: string }
+  'ServerUpdate.getStatus': void
   'Summarization.getConversationSummary': { id: string }
   'SummarizationAdmin.get': void
   'SummarizationAdmin.update': UpdateSummarizationAdminSettingsRequest
@@ -3649,6 +3663,7 @@ export type ApiEndpointResponses = {
   'RuntimeVersion.subscribeDownloadEvents': SSEEngineDownloadEvent
   'RuntimeVersion.syncCache': SyncCacheResponse
   'RuntimeVersion.usage': VersionUsageResponse
+  'ServerUpdate.getStatus': UpdateStatusResponse
   'Summarization.getConversationSummary': ConversationSummary | null
   'SummarizationAdmin.get': SummarizationAdminSettings
   'SummarizationAdmin.update': SummarizationAdminSettings
