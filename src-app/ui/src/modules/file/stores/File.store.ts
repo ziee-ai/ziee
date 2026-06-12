@@ -3,6 +3,7 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { enableMapSet } from 'immer'
 import { ApiClient } from '@/api-client'
+import { Stores } from '@/core/stores'
 import type { File as FileEntity } from '@/api-client/types'
 
 // Enable Map + Set support in Immer (the store uses Map/Set extensively
@@ -178,6 +179,9 @@ interface FileExtensionStore {
    * same-origin `download-with-token` URL. Throws on failure.
    */
   openFileInNewTab: (fileId: string) => Promise<void>
+
+  __init__: { __store__: () => void }
+  __destroy__: () => void
 }
 
 /**
@@ -319,28 +323,35 @@ export const useFileStore = create<FileExtensionStore>()(
     // Remove a selected file
     removeFile: (fileId: string) => {
       const isRestored = get().restoredFileIds.has(fileId)
-      // Revoke thumbnail blob URL if present
-      const thumbnailUrl = get().thumbnailUrls.get(fileId)
-      if (thumbnailUrl) URL.revokeObjectURL(thumbnailUrl)
-      // Revoke preview page blob URLs if present
-      const pageUrls = get().previewPageUrls.get(fileId)
-      if (pageUrls) pageUrls.forEach(url => url && URL.revokeObjectURL(url))
+      // Revoke + evict the thumbnail/preview blob URLs ONLY for files uploaded
+      // in THIS session. A RESTORED file's thumbnails belong to the persistent
+      // message-display cache (the same Map feeds the message bubble's image) —
+      // revoking/evicting them would break / force-refetch the image still shown
+      // in that message. Restored files keep their cached URLs.
+      if (!isRestored) {
+        const thumbnailUrl = get().thumbnailUrls.get(fileId)
+        if (thumbnailUrl) URL.revokeObjectURL(thumbnailUrl)
+        const pageUrls = get().previewPageUrls.get(fileId)
+        if (pageUrls) pageUrls.forEach(url => url && URL.revokeObjectURL(url))
+      }
       set((state) => {
         const newSelected = new Map(state.selectedFiles)
         newSelected.delete(fileId)
-        const newThumbnails = new Map(state.thumbnailUrls)
-        newThumbnails.delete(fileId)
-        const newLoadingSet = new Set(state.thumbnailLoadingSet)
-        newLoadingSet.delete(fileId)
-        const newPageUrls = new Map(state.previewPageUrls)
-        newPageUrls.delete(fileId)
-        const newPageLoadingSet = new Set(state.previewPageLoadingSet)
-        newPageLoadingSet.delete(fileId)
         state.selectedFiles = newSelected
-        state.thumbnailUrls = newThumbnails
-        state.thumbnailLoadingSet = newLoadingSet
-        state.previewPageUrls = newPageUrls
-        state.previewPageLoadingSet = newPageLoadingSet
+        if (!isRestored) {
+          const newThumbnails = new Map(state.thumbnailUrls)
+          newThumbnails.delete(fileId)
+          const newLoadingSet = new Set(state.thumbnailLoadingSet)
+          newLoadingSet.delete(fileId)
+          const newPageUrls = new Map(state.previewPageUrls)
+          newPageUrls.delete(fileId)
+          const newPageLoadingSet = new Set(state.previewPageLoadingSet)
+          newPageLoadingSet.delete(fileId)
+          state.thumbnailUrls = newThumbnails
+          state.thumbnailLoadingSet = newLoadingSet
+          state.previewPageUrls = newPageUrls
+          state.previewPageLoadingSet = newPageLoadingSet
+        }
       })
       // Only delete from server if the file was uploaded in this session,
       // not if it was restored from an existing message
@@ -372,27 +383,29 @@ export const useFileStore = create<FileExtensionStore>()(
         // Server deletion for session-uploaded files would go here
         console.log('[FileStore] Session files cleared (server deletion if applicable):', sessionFileIds)
       }
-      // Revoke thumbnail blob URLs for all selected files
+      // Revoke + evict thumbnail/preview blob URLs ONLY for session-uploaded
+      // files. RESTORED files' thumbnails belong to the persistent
+      // message-display cache (shared Map) — revoking/evicting them would
+      // break / force-refetch the image still shown in that message bubble.
       const thumbnailUrls = get().thumbnailUrls
-      for (const fileId of selectedIds) {
+      for (const fileId of sessionFileIds) {
         const url = thumbnailUrls.get(fileId)
         if (url) URL.revokeObjectURL(url)
       }
-      // Revoke preview page blob URLs for all selected files
       const previewPageUrls = get().previewPageUrls
-      for (const fileId of selectedIds) {
+      for (const fileId of sessionFileIds) {
         const pages = previewPageUrls.get(fileId)
         if (pages) pages.forEach(url => url && URL.revokeObjectURL(url))
       }
       set((state) => {
         const newThumbnails = new Map(state.thumbnailUrls)
-        for (const fileId of selectedIds) newThumbnails.delete(fileId)
+        for (const fileId of sessionFileIds) newThumbnails.delete(fileId)
         const newLoadingSet = new Set(state.thumbnailLoadingSet)
-        for (const fileId of selectedIds) newLoadingSet.delete(fileId)
+        for (const fileId of sessionFileIds) newLoadingSet.delete(fileId)
         const newPageUrls = new Map(state.previewPageUrls)
-        for (const fileId of selectedIds) newPageUrls.delete(fileId)
+        for (const fileId of sessionFileIds) newPageUrls.delete(fileId)
         const newPageLoadingSet = new Set(state.previewPageLoadingSet)
-        for (const fileId of selectedIds) newPageLoadingSet.delete(fileId)
+        for (const fileId of sessionFileIds) newPageLoadingSet.delete(fileId)
         state.selectedFiles = new Map()
         state.uploadingFiles = new Map()
         state.restoredFileIds = new Set()
@@ -408,8 +421,18 @@ export const useFileStore = create<FileExtensionStore>()(
     restoreFilesFromEdit: (files: FileEntity[]) => {
       set((state) => {
         const newSelected = new Map(state.selectedFiles)
-        const newRestoredIds = new Set<string>()
+        // MERGE into the existing restored set (symmetric with `newSelected`).
+        // The two-phase edit-restore flow calls this twice: Phase 1 with all
+        // stubs, then Phase 2 with only the successfully-fetched `validFiles`
+        // (filtered). Replacing here would drop protection for any file whose
+        // Phase-2 fetch failed, exposing it to server deletion. A fresh edit
+        // session resets the set via `clearFiles()`.
+        const newRestoredIds = new Set(state.restoredFileIds)
         for (const file of files) {
+          // The composer always holds the HEAD entity (version ==
+          // current_version_id). It shows/sends the file's current state;
+          // version PINNING is a property of already-SENT message blocks
+          // (rendered by FileAttachmentRenderer), not the composer.
           newSelected.set(file.id, file)
           newRestoredIds.add(file.id)
         }
@@ -769,6 +792,72 @@ export const useFileStore = create<FileExtensionStore>()(
       const { token } = await ApiClient.File.generateDownloadToken({ file_id: fileId })
       const url = `/api/files/${fileId}/download-with-token?token=${encodeURIComponent(token)}`
       window.open(url, '_blank', 'noopener,noreferrer')
+    },
+
+    __init__: {
+      __store__: () => {
+        const eventBus = Stores.EventBus
+        const GROUP = 'FileStore'
+        // A file's HEAD changed (restore / MCP edit / sandbox version-back),
+        // possibly on another device. The content caches below are keyed by
+        // fileId with NO version, so the cached bytes are now stale — drop the
+        // affected file's entries so the next viewer render refetches the new
+        // HEAD. (Versioning made a fileId's bytes mutable; pre-versioning they
+        // were immutable, so caching forever used to be safe.)
+        const onFileSync = (event: { data?: { id?: string } }) => {
+          const fileId = event?.data?.id
+          if (!fileId) return
+          const trackHead = get().messageFilesCache.has(fileId)
+          const trackSelected = get().selectedFiles.has(fileId)
+          set((s) => {
+            const t = new Map(s.fileTextContents)
+            t.delete(fileId)
+            s.fileTextContents = t
+            const b = new Map(s.fileBinaryContents)
+            b.delete(fileId)
+            s.fileBinaryContents = b
+            const v = new Map(s.fileViewModes)
+            v.delete(fileId)
+            s.fileViewModes = v
+          })
+          // Refresh the cached HEAD entity (version/metadata) so open panels
+          // re-render against the new head. Async action → outside set().
+          if (trackHead) void get().loadMessageFile(fileId)
+          // Keep the composer's entry fresh too — selectedFiles always mirrors
+          // head, so an edit/restore on another device must update its metadata
+          // (not just the content caches cleared above).
+          if (trackSelected) {
+            void (async () => {
+              try {
+                const updated = await ApiClient.File.get({ file_id: fileId })
+                set((s) => {
+                  if (!s.selectedFiles.has(fileId)) return // removed meanwhile
+                  const m = new Map(s.selectedFiles)
+                  m.set(fileId, updated)
+                  s.selectedFiles = m
+                })
+              } catch {
+                /* best-effort; content caches were already cleared above */
+              }
+            })()
+          }
+        }
+        // Reconnect may have dropped events — clear ALL content caches so every
+        // open viewer refetches.
+        const onReconnect = () => {
+          set((s) => {
+            s.fileTextContents = new Map()
+            s.fileBinaryContents = new Map()
+            s.fileViewModes = new Map()
+          })
+        }
+        eventBus.on('sync:file', onFileSync, GROUP)
+        eventBus.on('sync:reconnect', onReconnect, GROUP)
+      },
+    },
+
+    __destroy__: () => {
+      Stores.EventBus.removeGroupListeners('FileStore')
     },
   })),
   ),

@@ -19,7 +19,7 @@ import type { File as FileEntity, MessageContent, MessageContentDataFileAttachme
 // data: ... })` and `registerPanelRenderer('file', ...)` are type-checked.
 declare module '@/modules/chat/core/stores/Chat.store' {
   interface PanelRendererMap {
-    file: { fileId: string }
+    file: { fileId: string; version?: number }
   }
 }
 
@@ -47,6 +47,9 @@ function FileAttachmentRenderer({ content: data, isUser }: ContentRendererProps)
     created_by: '',
     processing_metadata: null,
     text_page_count: 0,
+    version: fileData.version ?? 1,
+    current_version_id: fileData.version_id ?? '',
+    blob_version_id: fileData.version_id ?? fileData.file_id,
   }
 
   // Reactive subscription to messageFilesCache — re-renders when the file entity is loaded
@@ -60,11 +63,15 @@ function FileAttachmentRenderer({ content: data, isUser }: ContentRendererProps)
   // is mounted inside ConversationPage). Without this explicit onClick,
   // FileCard's default falls back to opening the global preview drawer.
   const openInRightPanel = () => {
-    Stores.Chat.displayInRightPanel({
+    // `__state` (not the render-only `Stores.X` proxy) for store access inside an
+    // event handler — the proxy fires React hooks on access (Rules-of-Hooks).
+    Stores.Chat.__state.displayInRightPanel({
       id: file.id,
       title: file.filename,
       type: 'file',
-      data: { fileId: file.id },
+      // Pin the panel to the version this message referenced (if any), so an
+      // old message opens the file as it was when sent.
+      data: { fileId: file.id, version: fileData.version ?? undefined },
     })
   }
 
@@ -108,11 +115,11 @@ const fileExtension: ChatExtension = createExtension({
 
     registerPanelRenderer('file', {
       icon: <FileOutlinedIcon />,
-      component: ({ fileId }) => {
+      component: ({ fileId, version }) => {
         const { selectedFiles, messageFilesCache } = StoresRef.File
         const file = selectedFiles.get(fileId) ?? messageFilesCache.get(fileId) ?? null
         if (!file) return <SpinComponent />
-        return <FilePanelComponent file={file} />
+        return <FilePanelComponent file={file} initialVersion={version} />
       },
     })
 
@@ -161,6 +168,9 @@ const fileExtension: ChatExtension = createExtension({
                 created_by: '',
                 processing_metadata: null,
                 text_page_count: 0,
+                version: data.version ?? 1,
+                current_version_id: data.version_id ?? '',
+                blob_version_id: data.version_id ?? data.file_id,
               }
             })
             fileStore.restoreFilesFromEdit(stubs)
@@ -214,6 +224,10 @@ const fileExtension: ChatExtension = createExtension({
         filename: file.filename,
         file_size: file.file_size,
         mime_type: file.mime_type ?? undefined,
+        // Stamp the head version pin so the optimistic temp block matches the
+        // server-persisted block (which pins head) — no flicker on replace.
+        version: file.version,
+        version_id: file.current_version_id,
       } as MessageContentDataFileAttachment,
       sequence_order: index + 1, // text block is at sequence_order 0
       created_at: now,
@@ -259,6 +273,9 @@ const fileExtension: ChatExtension = createExtension({
         created_by: '',
         processing_metadata: null,
         text_page_count: 0,
+        version: data.version ?? 1,
+        current_version_id: data.version_id ?? '',
+        blob_version_id: data.version_id ?? data.file_id,
       }
     })
     fileStore.restoreFilesFromEdit(stubs)

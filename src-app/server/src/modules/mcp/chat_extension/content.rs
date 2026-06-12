@@ -47,6 +47,14 @@ pub struct ResourceLink {
     /// backing File.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_id: Option<Uuid>,
+    /// The exact `file_versions.id` this link pins, when the backing File is
+    /// versioned (e.g. a sandbox version-back). Lets the UI render the precise
+    /// version produced this turn. `None` → follow head.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version_id: Option<Uuid>,
+    /// Denormalized version number for display.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<i32>,
 }
 
 /// MCP-specific content data types

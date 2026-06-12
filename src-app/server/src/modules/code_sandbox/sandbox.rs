@@ -614,6 +614,11 @@ pub(crate) fn build_bwrap_argv(
         .files
         .iter()
         .filter(|f| !f.filename.contains('/') && !f.filename.contains('\0'))
+        // Skip RO-binding any attachment that has a READ-WRITE workspace copy
+        // (editable text files copied in by `stage_editable_files`). The bind
+        // would otherwise shadow the editable copy, so in-sandbox edits would
+        // silently hit a read-only mount and never version-back.
+        .filter(|f| !ctx.workspace.join(&f.filename).is_file())
         .map(|f| {
             let host_path = workspace_attachment_path(workspace_root, f.file_id);
             let dest_name = if seen.insert(f.filename.clone()) {
@@ -1286,8 +1291,12 @@ mod tests {
     /// One `ConversationFile` with the given filename. file_id is fresh
     /// (the collision-suffixing keys on filename, not file_id).
     fn cfile(filename: &str) -> ConversationFile {
+        let id = Uuid::new_v4();
         ConversationFile {
-            file_id: Uuid::new_v4(),
+            file_id: id,
+            blob_version_id: id,
+            version: 1,
+            version_id: id,
             filename: filename.to_string(),
             user_id: Uuid::nil(),
             mime_type: None,

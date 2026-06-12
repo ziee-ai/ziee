@@ -20,13 +20,19 @@ async fn create_test_file(
 ) -> Uuid {
     let file_id = Uuid::new_v4();
 
+    // A `files` row needs a v1 `file_versions` head (current_version_id is NOT
+    // NULL since the versioning migration). The two FKs are circular, so insert
+    // both in one transaction — the current_version_id FK is DEFERRABLE INITIALLY
+    // DEFERRED, checked at COMMIT once both rows exist. Mirrors Repos.file.create.
+    let mut tx = pool.begin().await.expect("begin tx");
     sqlx::query!(
         r#"
         INSERT INTO files (
             id, user_id, filename, file_size, mime_type, checksum,
-            has_thumbnail, preview_page_count, text_page_count, processing_metadata
+            has_thumbnail, preview_page_count, text_page_count, processing_metadata,
+            current_version_id
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $1)
         "#,
         file_id,
         user_id,
@@ -39,9 +45,31 @@ async fn create_test_file(
         1i32,  // text_page_count is NOT NULL
         json!({})
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .expect("Failed to create test file");
+    sqlx::query!(
+        r#"
+        INSERT INTO file_versions (
+            id, file_id, version, is_head, blob_version_id, file_size, mime_type,
+            checksum, has_thumbnail, preview_page_count, text_page_count,
+            processing_metadata, source_message_id, created_by
+        )
+        VALUES ($1, $1, 1, true, $1, $2, $3, $4, $5, $6, $7, $8, NULL, 'user')
+        "#,
+        file_id,
+        1024i64,
+        Some("text/plain"),
+        "test_checksum",
+        false,
+        0i32,
+        1i32,
+        json!({})
+    )
+    .execute(&mut *tx)
+    .await
+    .expect("Failed to create test file v1 version");
+    tx.commit().await.expect("commit tx");
 
     file_id
 }

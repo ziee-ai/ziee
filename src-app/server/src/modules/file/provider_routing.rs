@@ -92,7 +92,7 @@ pub async fn process_file_blocks(
         && !crate::modules::file::available_files::is_text_like(mime)
     {
         return inline_extracted_text(
-            file_id,
+            file.blob_version_id,
             &file.filename,
             file.text_page_count as u32,
             user_id,
@@ -100,7 +100,7 @@ pub async fn process_file_blocks(
         .await;
     }
 
-    process_via_base64(file_id, &file.filename, mime, user_id).await
+    process_via_base64(file.blob_version_id, &file.filename, mime, user_id).await
 }
 
 async fn process_via_provider_api(
@@ -163,7 +163,7 @@ async fn process_via_provider_api(
 /// for office docs and (non-native) PDFs so their content reaches the model
 /// instead of a `[File: x]` placeholder.
 async fn inline_extracted_text(
-    file_id: Uuid,
+    blob_version_id: Uuid,
     filename: &str,
     pages: u32,
     user_id: Uuid,
@@ -171,7 +171,8 @@ async fn inline_extracted_text(
     let storage = get_file_storage();
     let mut text = format!("[File: {filename}]\n");
     for p in 1..=pages {
-        if let Ok(page) = storage.load_text_page(user_id, file_id, p).await {
+        // HEAD blob key — file_id keys v1's text pages (stale for edited files).
+        if let Ok(page) = storage.load_text_page(user_id, blob_version_id, p).await {
             text.push_str(&page);
             if !page.ends_with('\n') {
                 text.push('\n');
@@ -182,19 +183,17 @@ async fn inline_extracted_text(
 }
 
 async fn process_via_base64(
-    file_id: Uuid,
+    blob_version_id: Uuid,
     filename: &str,
     mime_type: &str,
     user_id: Uuid,
 ) -> Result<Vec<ContentBlock>, AppError> {
     let file_storage = get_file_storage();
-    let extension = std::path::Path::new(filename)
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("")
-        .to_string();
+    // Canonical extension (matches upload's blob naming); blob_version_id is the
+    // HEAD blob key — file_id would load v1's stale bytes for an edited file.
+    let extension = crate::modules::file::utils::extension_of(filename);
     let file_data = file_storage
-        .load_original(user_id, file_id, &extension)
+        .load_original(user_id, blob_version_id, &extension)
         .await?;
 
     if mime_type.starts_with("image/") {

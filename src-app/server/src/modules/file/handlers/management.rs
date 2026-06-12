@@ -62,8 +62,8 @@ pub async fn get_preview(
 ) -> Result<Response, StatusCode> {
     let user_id = auth.user.id;
 
-    // Verify file ownership
-    Repos.file
+    // Verify file ownership + resolve head blob.
+    let file = Repos.file
         .get_by_id_and_user(file_id, user_id)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
@@ -72,7 +72,7 @@ pub async fn get_preview(
     // Load high-quality preview image
     let storage = get_file_storage();
     let image_data = storage
-        .load_preview(user_id, file_id, query.page)
+        .load_preview(user_id, file.blob_version_id, query.page)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -95,8 +95,8 @@ pub async fn get_thumbnail(
 ) -> Result<Response, StatusCode> {
     let user_id = auth.user.id;
 
-    // Verify file ownership
-    Repos.file
+    // Verify file ownership + resolve head blob.
+    let file = Repos.file
         .get_by_id_and_user(file_id, user_id)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
@@ -105,7 +105,7 @@ pub async fn get_thumbnail(
     // Load thumbnail
     let storage = get_file_storage();
     let thumbnail_data = storage
-        .load_thumbnail(user_id, file_id)
+        .load_thumbnail(user_id, file.blob_version_id)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -143,7 +143,7 @@ pub async fn get_text_content(
                 return Err(StatusCode::BAD_REQUEST);
             }
             storage
-                .load_text_page(user_id, file_id, page_num)
+                .load_text_page(user_id, file.blob_version_id, page_num)
                 .await
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         }
@@ -152,7 +152,7 @@ pub async fn get_text_content(
             let mut text_content = String::new();
             for page_num in 1..=file.text_page_count {
                 let page_text = storage
-                    .load_text_page(user_id, file_id, page_num as u32)
+                    .load_text_page(user_id, file.blob_version_id, page_num as u32)
                     .await
                     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
                 if page_num > 1 {
@@ -184,12 +184,15 @@ pub async fn delete_file(
 ) -> ApiResult<StatusCode> {
     let user_id = auth.user.id;
 
-    // Delete from database
-    Repos.file.delete(file_id, user_id).await?;
+    // Delete from database (returns the DISTINCT blob_version_ids to purge).
+    let blob_ids = Repos.file.delete(file_id, user_id).await?;
 
-    // Delete from storage
+    // Delete each distinct version blob from storage. Restored versions share a
+    // blob, so the repo already deduped — no double-delete / missing-blob.
     let storage = get_file_storage();
-    storage.delete_all(user_id, file_id).await?;
+    for blob_id in blob_ids {
+        storage.delete_all(user_id, blob_id).await?;
+    }
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }

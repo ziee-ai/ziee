@@ -53,6 +53,13 @@ pub enum MessageContentDataVariants {
         #[serde(skip_serializing_if = "Option::is_none")]
         mime_type: Option<String>,
         file_size: i64,
+        /// The exact version this block pins (the head at send time). `None` on
+        /// legacy blocks → the renderer follows the current head.
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        version_id: Option<Uuid>,
+        /// Denormalized version number for display ("v2").
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        version: Option<i32>,
     },
 }
 

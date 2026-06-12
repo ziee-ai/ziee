@@ -179,9 +179,11 @@ impl ProjectFilesRepository {
                 f.mime_type, f.checksum, f.has_thumbnail,
                 f.preview_page_count, f.text_page_count,
                 f.processing_metadata, f.created_by,
-                f.created_at, f.updated_at
+                f.created_at, f.updated_at,
+                fv.version, f.current_version_id, fv.blob_version_id
             FROM project_files pf
             JOIN files f ON f.id = pf.file_id
+            JOIN file_versions fv ON fv.id = f.current_version_id
             WHERE pf.project_id = $1
             ORDER BY pf.added_at DESC
             "#,
@@ -210,6 +212,9 @@ impl ProjectFilesRepository {
                     .unwrap(),
                 updated_at: chrono::DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0)
                     .unwrap(),
+                version: r.version,
+                current_version_id: r.current_version_id,
+                blob_version_id: r.blob_version_id,
             })
             .collect();
 

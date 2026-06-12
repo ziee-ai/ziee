@@ -21,6 +21,7 @@ use uuid::Uuid;
 
 use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleContext, ModuleEntry};
 
+pub mod edits;
 pub mod handlers;
 pub mod repository;
 pub mod routes;
@@ -37,8 +38,10 @@ pub fn files_mcp_server_id() -> Uuid {
 #[distributed_slice(MODULE_ENTRIES)]
 static FILES_MCP_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {
     name: "files_mcp",
-    // After mcp (65) so mcp_servers exists, and after file (initialized early)
-    // + project so the resolver's dependencies are live.
+    // After file (order 31, so storage is initialized), mcp (65, so the
+    // mcp_servers table + client exist) and project, so all of the
+    // available-files resolver's dependencies are live before we upsert the
+    // built-in server row.
     order: 86,
     description: "Built-in MCP server exposing agentic file tools (list/read/grep)",
     constructor: || Box::new(FilesMcpModule::new()),

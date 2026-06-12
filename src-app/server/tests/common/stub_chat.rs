@@ -325,6 +325,57 @@ fn script(
             }
             (Some("Got it — I'll remember that.".into()), None)
         }
+        // Emit a code_sandbox `write_file` overwriting `STUB_FILE` with
+        // `STUB_CONTENT`. Used by the sandbox version-back round-trip test: the
+        // write overwrites the copied-in editable file so the per-turn
+        // version-back commits a new version of the backing file.
+        "sandbox_write_file" => {
+            if let (false, Some(wire)) =
+                (had_tool_result, resolve_wire_name(tool_names, "write_file"))
+            {
+                let filename = parse_token(last_user, "STUB_FILE=")
+                    .filter(|c| !c.trim().is_empty())
+                    .unwrap_or_else(|| "notes.txt".into());
+                let content = parse_token(last_user, "STUB_CONTENT=")
+                    .filter(|c| !c.trim().is_empty())
+                    .unwrap_or_else(|| "changed by sandbox".into());
+                return (
+                    None,
+                    Some((wire.to_string(), json!({ "filename": filename, "content": content }))),
+                );
+            }
+            (Some("Wrote the file.".into()), None)
+        }
+        // Two write_file calls to the SAME file within ONE turn — the MCP tool
+        // loop iterates, so this drives write #1 then (on the continuation that
+        // carries the first tool result) write #2. The end-of-turn version-back
+        // must COALESCE both into a SINGLE new version holding the final content
+        // (STUB_CONTENT2), never two. STUB_CONTENT1/STUB_CONTENT2 set the bodies.
+        "sandbox_write_file_twice" => {
+            let wire = resolve_wire_name(tool_names, "write_file");
+            let filename = parse_token(last_user, "STUB_FILE=")
+                .filter(|c| !c.trim().is_empty())
+                .unwrap_or_else(|| "notes.txt".into());
+            let tool_results = messages
+                .iter()
+                .filter(|m| m.get("role").and_then(|r| r.as_str()) == Some("tool"))
+                .count();
+            match (tool_results, wire) {
+                (0, Some(w)) => {
+                    let c = parse_token(last_user, "STUB_CONTENT1=")
+                        .filter(|c| !c.trim().is_empty())
+                        .unwrap_or_else(|| "first".into());
+                    (None, Some((w.to_string(), json!({ "filename": filename, "content": c }))))
+                }
+                (1, Some(w)) => {
+                    let c = parse_token(last_user, "STUB_CONTENT2=")
+                        .filter(|c| !c.trim().is_empty())
+                        .unwrap_or_else(|| "final".into());
+                    (None, Some((w.to_string(), json!({ "filename": filename, "content": c }))))
+                }
+                _ => (Some("Done — wrote the file twice.".into()), None),
+            }
+        }
         // "text" and any unknown plan → a plain answer.
         _ => (Some("Hello from the stub model.".into()), None),
     }

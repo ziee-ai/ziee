@@ -45,6 +45,8 @@ function toInlineSource(link: ResourceLink): InlineFileSource {
     mimeType: link.mime_type ?? undefined,
     size: link.size ?? undefined,
     fileId: link.file_id ?? undefined,
+    versionId: link.version_id ?? undefined,
+    version: link.version ?? undefined,
   }
 }
 
@@ -68,6 +70,9 @@ function buildFallbackFile(fileId: string, source: InlineFileSource): FileEntity
     created_by: '',
     processing_metadata: null,
     text_page_count: 0,
+    version: source.version ?? 1,
+    current_version_id: source.versionId ?? '',
+    blob_version_id: source.versionId ?? fileId,
   }
 }
 

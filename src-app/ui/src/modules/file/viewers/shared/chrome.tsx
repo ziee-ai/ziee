@@ -68,12 +68,15 @@ export function CopyButton({ file }: { file: FileEntity }) {
     // to driving the load ourselves if the cache is cold, so Copy
     // works even when the user clicks before the body finishes its
     // async fetch.
+    // `undefined` = not loaded, or a prior load FAILED — File.store doesn't
+    // cache an error sentinel, it just leaves the entry absent. So a cold/failed
+    // read drives the load itself and re-reads (a retry on each click).
     let text = Stores.File.__state.fileTextContents.get(file.id)
-    if (text === undefined || text === '__error__') {
+    if (text === undefined) {
       await Stores.File.__state.loadFileTextContent(file.id, file)
       text = Stores.File.__state.fileTextContents.get(file.id)
     }
-    if (text === undefined || text === '__error__' || text === '') {
+    if (text === undefined || text === '') {
       message.error('Failed to load file content')
       return
     }

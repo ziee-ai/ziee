@@ -38,6 +38,12 @@ mod tier4_seccomp;
 // bwrap installed (the harness::enabled_test_server() helper skips
 // cleanly when either is missing).
 mod tier6_http_e2e;
+
+// Tier 6 — sandbox round-trip version-back: a chat turn drives the stub model
+// to write_file inside the sandbox, overwriting a copied-in editable file; the
+// per-turn version-back must commit a new version of the backing file. Gated by
+// enabled_test_server() (skips cleanly without rootfs/bwrap — NOT #[ignore]).
+mod tier6_sandbox_version_back;
 mod tier6_mcp_sandbox_e2e;
 mod tier6_security_regression;
 mod tier6_hardening;

@@ -222,9 +222,16 @@ pub async fn upload_file_inner(
             preview_page_count: processing_result.images.len() as i32,
             text_page_count: processing_result.text_pages.len() as i32,
             processing_metadata,
+            source_message_id: None,
             created_by: "user".to_string(),
         })
         .await?;
+
+    // Notify the owner's other devices a new file exists (I3). Emitted from the
+    // shared core so BOTH the direct `/files/upload` and the project
+    // `upload+attach` paths sync. No origin → the uploading device does one
+    // redundant (harmless) refetch.
+    crate::modules::file::sync::publish_file_changed(user_id, file.id);
 
     Ok(file)
 }

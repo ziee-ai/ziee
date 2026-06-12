@@ -3,7 +3,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::common::AppError;
-use crate::modules::code_sandbox::models::ConversationFile;
+use crate::modules::code_sandbox::models::{ConversationFile, SandboxWorkspaceFile};
 
 /// Repository for the code_sandbox module.
 ///
@@ -37,6 +37,89 @@ impl CodeSandboxRepository {
             "DATABASE_ERROR",
             "database error",
         )
+    }
+
+    /// Record (or refresh) the provenance for a workspace copy of an editable
+    /// file. Idempotent on (conversation_id, workspace_relpath).
+    pub async fn upsert_workspace_provenance(
+        &self,
+        conversation_id: Uuid,
+        workspace_relpath: &str,
+        file_id: Uuid,
+        base_version_id: Uuid,
+    ) -> Result<(), AppError> {
+        sqlx::query!(
+            r#"INSERT INTO sandbox_workspace_files
+                   (conversation_id, workspace_relpath, file_id, base_version_id)
+               VALUES ($1, $2, $3, $4)
+               ON CONFLICT (conversation_id, workspace_relpath)
+               DO UPDATE SET file_id = EXCLUDED.file_id,
+                             base_version_id = EXCLUDED.base_version_id"#,
+            conversation_id,
+            workspace_relpath,
+            file_id,
+            base_version_id,
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(Self::db_err)?;
+        Ok(())
+    }
+
+    /// List all provenance rows for a conversation (for the per-turn version-back).
+    pub async fn list_workspace_provenance(
+        &self,
+        conversation_id: Uuid,
+    ) -> Result<Vec<SandboxWorkspaceFile>, AppError> {
+        let rows = sqlx::query_as!(
+            SandboxWorkspaceFile,
+            r#"SELECT conversation_id, workspace_relpath, file_id, base_version_id
+               FROM sandbox_workspace_files WHERE conversation_id = $1"#,
+            conversation_id,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(Self::db_err)?;
+        Ok(rows)
+    }
+
+    /// True when the conversation already has a provenance row for this path
+    /// (so staging can skip re-copying / re-seeding).
+    pub async fn workspace_provenance_exists(
+        &self,
+        conversation_id: Uuid,
+        workspace_relpath: &str,
+    ) -> Result<bool, AppError> {
+        let row = sqlx::query_scalar!(
+            r#"SELECT 1 FROM sandbox_workspace_files
+               WHERE conversation_id = $1 AND workspace_relpath = $2"#,
+            conversation_id,
+            workspace_relpath,
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(Self::db_err)?;
+        Ok(row.is_some())
+    }
+
+    /// Advance the base version after a successful version-back commit.
+    pub async fn update_workspace_base(
+        &self,
+        conversation_id: Uuid,
+        workspace_relpath: &str,
+        new_base_version_id: Uuid,
+    ) -> Result<(), AppError> {
+        sqlx::query!(
+            r#"UPDATE sandbox_workspace_files SET base_version_id = $3
+               WHERE conversation_id = $1 AND workspace_relpath = $2"#,
+            conversation_id,
+            workspace_relpath,
+            new_base_version_id,
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(Self::db_err)?;
+        Ok(())
     }
 
     /// Resolve the user who owns the given conversation.
@@ -124,11 +207,15 @@ impl CodeSandboxRepository {
             )
             SELECT DISTINCT
                 f.id AS file_id,
+                fv.blob_version_id,
+                fv.version,
+                fv.id AS version_id,
                 f.filename,
                 f.user_id,
                 f.mime_type,
                 f.created_at
             FROM files f
+            JOIN file_versions fv ON fv.id = f.current_version_id
             JOIN file_refs fr ON fr.file_id = f.id
             -- `f.id` tiebreaker keeps the order (and therefore the collision
             -- suffixing in build_bwrap_argv) deterministic + stable across calls
@@ -152,9 +239,15 @@ impl CodeSandboxRepository {
     ) -> Result<Option<ConversationFile>, AppError> {
         let row: Option<ConversationFile> = sqlx::query_as::<_, ConversationFile>(
             r#"
-            SELECT id AS file_id, filename, user_id, mime_type, created_at
-            FROM files
-            WHERE id = $1 AND user_id = $2
+            SELECT
+                f.id AS file_id,
+                fv.blob_version_id,
+                fv.version,
+                fv.id AS version_id,
+                f.filename, f.user_id, f.mime_type, f.created_at
+            FROM files f
+            JOIN file_versions fv ON fv.id = f.current_version_id
+            WHERE f.id = $1 AND f.user_id = $2
             "#,
         )
         .bind(file_id)

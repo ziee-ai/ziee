@@ -23,6 +23,11 @@ use uuid::Uuid;
 use crate::common::TestServer;
 use crate::common::test_helpers::{TestUser, create_user_with_permissions};
 
+// File-versioning tests (edit tools → versions, restore, reproducibility,
+// version-pinned reads) live in a submodule so they can reuse the private
+// helpers in this module via `super::`.
+mod versioning_test;
+
 // ── small inline helpers (replicated from agentic_chat::mod, which keeps its
 //    helpers private) ─────────────────────────────────────────────────────────
 
@@ -221,7 +226,7 @@ async fn test_initialize_returns_server_info() {
 }
 
 #[tokio::test]
-async fn test_tools_list_returns_three_read_tools() {
+async fn test_tools_list_returns_read_and_write_tools() {
     let server = crate::common::TestServer::start().await;
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
@@ -237,10 +242,19 @@ async fn test_tools_list_returns_three_read_tools() {
     let body: Value = res.json().await.unwrap();
     let tools = body["result"]["tools"].as_array().expect("tools array");
     let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
-    assert_eq!(names.len(), 3, "exactly 3 read-only tools");
-    assert!(names.contains(&"list_files"));
-    assert!(names.contains(&"read_file"));
-    assert!(names.contains(&"grep_files"));
+    // 3 read tools + 4 write tools (the read-write upgrade).
+    assert_eq!(names.len(), 7, "3 read + 4 write tools: {names:?}");
+    for t in [
+        "list_files",
+        "read_file",
+        "grep_files",
+        "create_file",
+        "edit_file",
+        "edit_file_lines",
+        "rewrite_file",
+    ] {
+        assert!(names.contains(&t), "missing tool {t}; got {names:?}");
+    }
 }
 
 #[tokio::test]

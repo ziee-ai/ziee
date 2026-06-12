@@ -36,6 +36,60 @@ pub fn tool_list() -> Value {
                     },
                     "required": ["pattern"]
                 }
+            },
+            {
+                "name": "create_file",
+                "description": "Create a new TEXT file (markdown, code, csv, json, …) with the given content. Returns its id and a resource_link. Edit it later with edit_file / rewrite_file. Use this to author a document the user can view and that you can revise across turns.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "filename": { "type": "string", "description": "Name including extension, e.g. report.md or analysis.py." },
+                        "content": { "type": "string", "description": "Full file contents." }
+                    },
+                    "required": ["filename", "content"]
+                }
+            },
+            {
+                "name": "edit_file",
+                "description": "Edit a TEXT file by replacing the UNIQUE occurrence of `old_str` with `new_str` (a new version is appended; prior versions are kept and restorable). `old_str` must match exactly once — include enough surrounding context to be unique, or the call is rejected. Address the file by `id` (preferred) or unambiguous `name`.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "id": { "type": "string", "format": "uuid", "description": "File id (preferred)." },
+                        "name": { "type": "string", "description": "Filename — only when it resolves to exactly one file." },
+                        "old_str": { "type": "string", "description": "The exact text to replace (must occur exactly once)." },
+                        "new_str": { "type": "string", "description": "Replacement text." }
+                    },
+                    "required": ["old_str", "new_str"]
+                }
+            },
+            {
+                "name": "edit_file_lines",
+                "description": "Edit a TEXT file by replacing the 1-indexed inclusive line range [start_line, end_line] with `new_content` (appends a new version). Set start_line = (line count + 1) to append. Address by `id` (preferred) or unambiguous `name`.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "name": { "type": "string" },
+                        "start_line": { "type": "integer", "minimum": 1 },
+                        "end_line": { "type": "integer", "minimum": 0 },
+                        "new_content": { "type": "string" }
+                    },
+                    "required": ["start_line", "end_line", "new_content"]
+                }
+            },
+            {
+                "name": "rewrite_file",
+                "description": "Replace a TEXT file's ENTIRE contents with `content` (appends a new version). Use for large rewrites; prefer edit_file for targeted changes. Address by `id` (preferred) or unambiguous `name`.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "name": { "type": "string" },
+                        "content": { "type": "string", "description": "New full file contents." }
+                    },
+                    "required": ["content"]
+                }
             }
         ]
     })
