@@ -26,11 +26,11 @@ export const useMcpServerDetailsDrawerStore =
         // authoritative current/ manifest via /api/hub/manifest.
         open: (server: HubMCPServer) => {
           set({ isOpen: true, selectedServer: server, loading: true })
-          ApiClient.Hub.getManifest({ id: server.id, category: 'mcp-server' })
+          ApiClient.Hub.getManifest({ id: server.name, category: 'mcp-server' })
             .then(manifest => {
               if (
                 get().isOpen &&
-                get().selectedServer?.id === server.id &&
+                get().selectedServer?.name === server.name &&
                 manifest.mcp_server
               ) {
                 set({ selectedServer: manifest.mcp_server, loading: false })

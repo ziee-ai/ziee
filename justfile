@@ -388,3 +388,89 @@ check-remote-access-real-ngrok:
 check-remote-access-all: check-remote-access-unit check-remote-access-e2e
     @echo "✓ remote-access: unit + integration + e2e all green"
 
+# ─── Hub Registry (Feature: hub v2 install-from-hub flows) ──────────
+#
+# Recipes for the `feat/hub-registry` work. All recipes hard-fail if
+# their prerequisites (Postgres on 54321, tests/.env.test, etc.) are
+# missing — no interactive prompts. Names are `hub-`-prefixed (or end
+# in `-hub`) to avoid collision with the existing sandbox recipes
+# (`check`, `test`).
+
+# Postgres connection string for the dedicated hub build DB. Kept
+# separate from the docker-compose-managed `postgres` DB so sqlx's
+# in-process migrations (run by build.rs) can wipe + recreate schema
+# without touching the other crates' build DB.
+HUB_DB_URL := "postgresql://postgres:password@127.0.0.1:54321/hubreg_build"
+
+# Verify the dedicated build DB exists; create it if not. Hard-fails
+# if Postgres on 127.0.0.1:54321 isn't reachable.
+ensure-build-db:
+    @bash -c 'set -euo pipefail; \
+        if ! PGPASSWORD=password psql -h 127.0.0.1 -p 54321 -U postgres -tAc "SELECT 1" >/dev/null 2>&1; then \
+            echo "ERROR: Postgres not reachable on 127.0.0.1:54321. Start docker-compose first:" >&2; \
+            echo "  cd src-app && docker compose up -d" >&2; \
+            exit 1; \
+        fi; \
+        if ! PGPASSWORD=password psql -h 127.0.0.1 -p 54321 -U postgres -tAc \
+                "SELECT 1 FROM pg_database WHERE datname='\''hubreg_build'\''" | grep -q 1; then \
+            echo "==> creating hubreg_build database"; \
+            PGPASSWORD=password psql -h 127.0.0.1 -p 54321 -U postgres -c "CREATE DATABASE hubreg_build;" >/dev/null; \
+        fi; \
+        echo "✓ build DB ready: hubreg_build"'
+
+# Compile the server workspace + tests against the isolated build DB.
+# Build.rs wipes + re-runs migrations on every cargo build, so this
+# also validates that all migrations apply cleanly.
+check-hub: ensure-build-db
+    @cd src-app && DATABASE_URL="{{HUB_DB_URL}}" cargo check -p ziee --all-targets
+
+# Run `tsc --noEmit` against both UI workspaces (core + desktop).
+# Hard-fails on the first error; second workspace runs only if the
+# first compiled. Caller can run `npm install` from the repo root if
+# the workspace's node_modules are missing.
+tsc:
+    @cd src-app/ui && npx tsc --noEmit
+    @cd src-app/desktop/ui && npx tsc --noEmit
+
+# Run the FULL hub-related integration test suite end-to-end. Saves
+# the log per CLAUDE.md memory ("ALWAYS Save Full Test Logs").
+# Hard-fails (exit non-zero) if tests/.env.test is missing — the test
+# harness reads HUGGINGFACE_API_KEY from it.
+test-hub: ensure-build-db
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd src-app/server
+    if [ ! -f tests/.env.test ]; then
+        echo "ERROR: src-app/server/tests/.env.test is missing." >&2
+        echo "       Copy from tests/.env.test.example and fill in real values:" >&2
+        echo "         cp tests/.env.test.example tests/.env.test" >&2
+        echo "       (HUGGINGFACE_API_KEY is required for the model download tests)." >&2
+        exit 1
+    fi
+    log="hub-strict-int-$(date +%Y%m%d-%H%M%S).log"
+    echo "Writing log to src-app/server/$log"
+    source tests/.env.test
+    # cargo test only takes one positional filter — pass the OR-set
+    # via `--` so the runner does the matching.
+    DATABASE_URL="{{HUB_DB_URL}}" \
+        cargo test --test integration_tests -- \
+            --test-threads=1 \
+            hub:: assistant:: mcp:: llm_model:: \
+            2>&1 | tee "$log"
+
+# OpenAPI two-step regen: server emits openapi.json into the core UI
+# workspace, then we copy it across to the desktop UI workspace and
+# run each workspace's generate-openapi script (which rewrites
+# `src/api-client/types.ts` from openapi.json). The whole pair is the
+# single source-of-truth flow for API types.
+openapi-regen: check-hub
+    @cd src-app && DATABASE_URL="{{HUB_DB_URL}}" CONFIG_FILE=server/config/openapi-gen.yaml \
+        cargo run --bin ziee -- --generate-openapi ui/openapi
+    @cp -f src-app/ui/openapi/openapi.json src-app/desktop/ui/openapi/openapi.json
+    @cd src-app/ui && npm run generate-openapi
+    @cd src-app/desktop/ui && npm run generate-openapi
+
+# The "all green" hub compile gate — check + tsc + openapi-regen, but
+# NOT test-hub (slow, needs creds, separate recipe).
+ci-hub: check-hub tsc openapi-regen
+    @echo "✓ hub: compile + tsc + openapi-regen all green"

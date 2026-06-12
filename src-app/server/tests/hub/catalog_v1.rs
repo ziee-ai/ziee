@@ -1,15 +1,18 @@
-//! Phase 1 — integration coverage for the unified hub catalog endpoints.
+//! Phase 1 — integration coverage for the unified hub catalog endpoints
+//! against the embedded v2 seed catalog.
 //!
-//! Exercises the 5 new endpoints added in Phase 1:
+//! Exercises the surviving Hub v2 endpoints (v1's `/hub/releases` +
+//! `/hub/activate` are gone — pinning was retired with the Pages
+//! migration):
 //!   - GET    /api/hub/index
 //!   - GET    /api/hub/version
 //!   - POST   /api/hub/refresh    (admin)
 //!   - GET    /api/hub/installed  (any auth; admin sees system rows too)
 //!   - GET    /api/hub/manifest/:id?category=...
 //!
-//! The seed catalog (v0.0.1-alpha) is install-on-boot via include_dir!,
-//! so every test starts with a populated catalog and doesn't need to
-//! hit GitHub.
+//! The v2 seed (hub_version `2.0.0`, 5 entries — 2 models, 1 assistant,
+//! 2 MCP servers) is install-on-boot via `include_dir!`, so every test
+//! starts with a populated catalog and doesn't need to hit GitHub.
 
 use serde_json::Value as Json;
 use sqlx::postgres::PgPoolOptions;
@@ -17,6 +20,15 @@ use uuid::Uuid;
 
 use crate::common::TestServer;
 use crate::common::test_helpers::{create_user_with_no_permissions, create_user_with_permissions};
+
+/// Hub-version constant of the embedded v2 seed (mirrors
+/// `resources/hub-seed/index.json::hub_version`). Hard-coded rather
+/// than loaded dynamically so a bumped seed forces test review.
+const SEED_VERSION: &str = "2.0.0";
+// The seed mirrors ziee-ai/hub's published `dist/` — 7 models +
+// 5 assistants + 6 mcp-servers = 18 entries. Bump when the seed
+// snapshot is refreshed.
+const SEED_ITEM_COUNT: usize = 18;
 
 // =====================================================================
 // /hub/version + /hub/index — anyone with read can call
@@ -35,7 +47,7 @@ async fn version_endpoint_returns_seed_catalog_metadata() {
         .expect("send /hub/version");
     assert_eq!(response.status(), 200, "expected 200 for /hub/version");
     let body: Json = response.json().await.expect("parse json");
-    assert_eq!(body["hub_version"], "0.0.3-alpha");
+    assert_eq!(body["hub_version"], SEED_VERSION);
     let server_version = body["server_version"]
         .as_str()
         .expect("server_version is a string");
@@ -62,18 +74,35 @@ async fn index_endpoint_lists_seed_items() {
         .expect("send /hub/index");
     assert_eq!(response.status(), 200);
     let catalog: Json = response.json().await.expect("parse json");
-    assert_eq!(catalog["schema_version"], 1);
-    assert_eq!(catalog["hub_version"], "0.0.3-alpha");
+    // schema_version is `2` under Hub v2. v1 callers were `1`; existing
+    // v1-shaped JSON still deserializes because IndexItem has serde
+    // defaults on the v2 envelope fields (qualified_name, version,
+    // _meta), but the seed itself is freshly authored as v2 = 2.
+    assert_eq!(catalog["schema_version"], 2);
+    assert_eq!(catalog["hub_version"], SEED_VERSION);
     let items = catalog["items"]
         .as_array()
         .expect("items should be an array");
-    assert_eq!(items.len(), 18, "seed catalog has 18 items");
+    assert_eq!(
+        items.len(),
+        SEED_ITEM_COUNT,
+        "seed catalog has {SEED_ITEM_COUNT} items"
+    );
 
-    // Spot-check known ids — the seed staging is fixed at v0.0.3-alpha.
-    let ids: Vec<&str> = items.iter().filter_map(|i| i["id"].as_str()).collect();
-    assert!(ids.contains(&"code-reviewer"), "missing code-reviewer in {ids:?}");
-    assert!(ids.contains(&"llama-3-1-8b-instruct"));
-    assert!(ids.contains(&"github-mcp"));
+    // Spot-check known ids — the seed is fixed at v2.0.0.
+    // v2 IndexItem uses `name` (reverse-DNS) — `id` was dropped.
+    let ids: Vec<&str> = items.iter().filter_map(|i| i["name"].as_str()).collect();
+    assert!(ids.contains(&"io.github.phibya/code-reviewer"), "missing code-reviewer in {ids:?}");
+    assert!(ids.contains(&"io.github.phibya/llama-3-1-8b-instruct"));
+    assert!(ids.contains(&"io.github.github/mcp"));
+
+    // v2 envelope additions: every seeded item ships a per-entry
+    // `version` string (the source of truth for the per-row
+    // `current_version` on `/hub/installed`).
+    for item in items {
+        let v = item["version"].as_str().expect("v2 items have a version");
+        assert!(!v.is_empty(), "non-empty per-entry version: {item}");
+    }
 }
 
 #[tokio::test]
@@ -94,15 +123,18 @@ async fn index_endpoint_requires_auth() {
 }
 
 // =====================================================================
-// /hub/manifest/:id?category=... — per-id YAML reads
+// /hub/manifest/:id?category=... — per-id JSON manifest reads
 // =====================================================================
 
 #[tokio::test]
-async fn manifest_endpoint_returns_model_yaml() {
+async fn manifest_endpoint_returns_model_json() {
     let server = TestServer::start().await;
     let user = create_user_with_permissions(&server, "reader", &["hub::models::read"]).await;
+    // v2 manifest lookup is by reverse-DNS `name` (URL-encoded `/`).
     let response = reqwest::Client::new()
-        .get(server.api_url("/hub/manifest/llama-3-1-8b-instruct?category=model"))
+        .get(server.api_url(
+            "/hub/manifest/io.github.phibya%2Fllama-3-1-8b-instruct?category=model",
+        ))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -111,8 +143,9 @@ async fn manifest_endpoint_returns_model_yaml() {
     let payload: Json = response.json().await.expect("parse json");
     // HubManifest is a typed struct: { category, model?, assistant?, mcp_server? }.
     assert_eq!(payload["category"], "model");
-    assert_eq!(payload["model"]["id"], "llama-3-1-8b-instruct");
-    assert_eq!(payload["model"]["file_format"], "safetensors");
+    assert_eq!(payload["model"]["name"], "io.github.phibya/llama-3-1-8b-instruct");
+    // v2 Phase 7 dropped the model-wide `file_format`; check the first source.
+    assert_eq!(payload["model"]["sources"][0]["fileFormat"], "safetensors");
     assert!(
         payload["assistant"].is_null() && payload["mcp_server"].is_null(),
         "only the model variant should be populated: {payload}"
@@ -133,9 +166,11 @@ async fn index_endpoint_401_without_token() {
 }
 
 #[tokio::test]
-async fn catalog_read_cannot_activate() {
+async fn catalog_read_cannot_refresh() {
     // The read/manage split: a user with only hub::catalog::read can
-    // list releases + updates but NOT refresh/activate (manage).
+    // view installed + manifest endpoints but NOT refresh (manage).
+    // v1's `/hub/activate` is gone — the manage-perm check is now only
+    // gating `/hub/refresh`.
     let server = TestServer::start().await;
     let reader =
         create_user_with_permissions(&server, "catreader", &["hub::catalog::read"]).await;
@@ -143,15 +178,15 @@ async fn catalog_read_cannot_activate() {
 
     // read endpoints OK — /hub/installed is per-user; an admin who
     // can read the catalog also sees system-wide installs.
-    let releases = client
+    let installed = client
         .get(server.api_url("/hub/installed"))
         .header("Authorization", format!("Bearer {}", reader.token))
         .send()
         .await
         .expect("installed");
-    assert_eq!(releases.status(), 200, "catalog::read may view installed list");
+    assert_eq!(installed.status(), 200, "catalog::read may view installed list");
 
-    // manage endpoints forbidden
+    // manage endpoint forbidden
     let refresh = client
         .post(server.api_url("/hub/refresh"))
         .header("Authorization", format!("Bearer {}", reader.token))
@@ -159,23 +194,20 @@ async fn catalog_read_cannot_activate() {
         .await
         .expect("refresh");
     assert_eq!(refresh.status(), 403, "catalog::read may NOT refresh");
-
-    let activate = client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", reader.token))
-        .json(&serde_json::json!({ "version": "0.0.1-alpha" }))
-        .send()
-        .await
-        .expect("activate");
-    assert_eq!(activate.status(), 403, "catalog::read may NOT activate");
 }
 
 #[tokio::test]
 async fn manifest_endpoint_404s_unknown_id() {
     let server = TestServer::start().await;
     let user = create_user_with_permissions(&server, "reader", &["hub::models::read"]).await;
+    // v2 manifest lookup is by reverse-DNS `name`. A well-formed-but-
+    // unknown name should return 404; the bare slug `does-not-exist`
+    // would be rejected by `is_safe_name` as 400 (covered by
+    // `manifest_endpoint_400s_unsafe_id` below).
     let response = reqwest::Client::new()
-        .get(server.api_url("/hub/manifest/does-not-exist?category=model"))
+        .get(server.api_url(
+            "/hub/manifest/io.github.test%2Fdoes-not-exist?category=model",
+        ))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -260,7 +292,7 @@ async fn installed_endpoint_empty_when_no_installs() {
         .expect("send installed as admin");
     assert_eq!(response.status(), 200);
     let body: Json = response.json().await.expect("parse json");
-    assert_eq!(body["catalog_version"], "0.0.3-alpha");
+    assert_eq!(body["catalog_version"], SEED_VERSION);
     let items = body["items"].as_array().expect("items array");
     assert!(items.is_empty(), "no installs yet → empty list: {items:?}");
 }
@@ -274,15 +306,22 @@ async fn installed_endpoint_lists_all_tracked_entities() {
     // with an OLD hub_version. /hub/installed lists it regardless of
     // whether it matches the catalog; the row's `installed_version` vs
     // `current_version` is what the UI compares to flag staleness.
+    //
+    // Under v2 `current_version` is derived per-row from the catalog
+    // ITEM's `version` field (1.0.0 for every seeded entry), not from
+    // the catalog-wide `hub_version` (2.0.0). See `IndexItem.version`
+    // + the per-entry stamping in `/hub/installed`'s handler.
     let pool = PgPoolOptions::new()
         .max_connections(1)
         .connect(&server.database_url)
         .await
         .expect("connect test db");
     let entity_id = Uuid::new_v4();
+    // v2: hub_id is reverse-DNS, not slug. The §13.6 migration converts
+    // pre-§12 slug rows; new test inserts use the v2 form directly.
     sqlx::query(
         "INSERT INTO hub_entities (id, entity_type, entity_id, hub_id, hub_category, hub_version)
-         VALUES ($1, 'assistant', $2, 'code-reviewer', 'assistant', '0.0.0-test')",
+         VALUES ($1, 'assistant', $2, 'io.github.phibya/code-reviewer', 'assistant', '0.0.0-test')",
     )
     .bind(Uuid::new_v4())
     .bind(entity_id)
@@ -301,9 +340,11 @@ async fn installed_endpoint_lists_all_tracked_entities() {
     let body: Json = response.json().await.expect("parse json");
     let items = body["items"].as_array().expect("items array");
     assert_eq!(items.len(), 1, "expected exactly one installed row, got {items:?}");
-    assert_eq!(items[0]["hub_id"], "code-reviewer");
+    assert_eq!(items[0]["hub_id"], "io.github.phibya/code-reviewer");
     assert_eq!(items[0]["installed_version"], "0.0.0-test");
-    assert_eq!(items[0]["current_version"], "0.0.3-alpha");
+    // Per-entry version stamp: code-reviewer ships at 1.0.0 in the seed
+    // (NOT the catalog-wide hub_version 2.0.0).
+    assert_eq!(items[0]["current_version"], "1.0.0");
     assert_eq!(items[0]["is_system"], true, "created_by NULL → is_system: {body}");
     assert!(items[0]["installed_at"].is_string(), "installed_at must be serialized: {body}");
 }
@@ -323,7 +364,7 @@ async fn installed_endpoint_surfaces_null_version_rows() {
         .expect("connect test db");
     sqlx::query(
         "INSERT INTO hub_entities (id, entity_type, entity_id, hub_id, hub_category)
-         VALUES ($1, 'mcp_server', $2, 'github-mcp', 'mcp_server')",
+         VALUES ($1, 'mcp_server', $2, 'github', 'mcp_server')",
     )
     .bind(Uuid::new_v4())
     .bind(Uuid::new_v4())
@@ -347,170 +388,10 @@ async fn installed_endpoint_surfaces_null_version_rows() {
     );
 }
 
-// =====================================================================
-// /hub/releases + /hub/activate — admin version pinning
-// =====================================================================
-
-#[tokio::test]
-async fn releases_endpoint_requires_admin() {
-    let server = TestServer::start().await;
-    let reader = create_user_with_permissions(&server, "reader", &["hub::models::read"]).await;
-    let response = reqwest::Client::new()
-        .get(server.api_url("/hub/releases"))
-        .header("Authorization", format!("Bearer {}", reader.token))
-        .send()
-        .await
-        .expect("send releases");
-    assert_eq!(
-        response.status(),
-        403,
-        "non-admin user should be 403'd from /hub/releases"
-    );
-}
-
-#[tokio::test]
-async fn activate_endpoint_requires_admin() {
-    let server = TestServer::start().await;
-    let reader = create_user_with_permissions(&server, "reader", &["hub::models::read"]).await;
-    let response = reqwest::Client::new()
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", reader.token))
-        .json(&serde_json::json!({ "version": "0.0.1-alpha" }))
-        .send()
-        .await
-        .expect("send activate");
-    assert_eq!(
-        response.status(),
-        403,
-        "non-admin user should be 403'd from /hub/activate"
-    );
-}
-
-#[tokio::test]
-async fn activate_rejects_unsafe_version() {
-    let server = TestServer::start().await;
-    let admin = create_user_with_permissions(&server, "admin", &["hub::catalog::read", "hub::catalog::manage"]).await;
-    // Path-traversal-ish version string must be rejected before any
-    // network fetch (400, not 500).
-    let response = reqwest::Client::new()
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&serde_json::json!({ "version": "../../etc/passwd" }))
-        .send()
-        .await
-        .expect("send activate unsafe");
-    assert_eq!(
-        response.status(),
-        400,
-        "unsafe version should be 400, got {}",
-        response.status()
-    );
-}
-
-// The following two hit the real ziee-ai/hub GitHub Releases. They
-// assert the full pin → fetch → REAL cosign verify → rotate path across
-// the published alpha versions — the one thing the hermetic mock can't
-// cover (it skips cosign). #[ignore]'d so the default run stays
-// network-free; run explicitly with `--ignored` to smoke the real
-// signed releases.
-
-#[tokio::test]
-async fn releases_endpoint_lists_published_versions() {
-    let server = TestServer::start().await;
-    let admin = create_user_with_permissions(&server, "admin", &["hub::catalog::read", "hub::catalog::manage"]).await;
-    let response = reqwest::Client::new()
-        .get(server.api_url("/hub/releases"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .send()
-        .await
-        .expect("send releases");
-    assert_eq!(response.status(), 200, "releases should 200 for admin");
-    let body: Json = response.json().await.expect("parse json");
-    // active_version is the seeded catalog until a refresh happens.
-    assert_eq!(body["active_version"], "0.0.1-alpha");
-    assert!(body["pinned_version"].is_null(), "no pin by default: {body}");
-    let versions: Vec<&str> = body["releases"]
-        .as_array()
-        .expect("releases array")
-        .iter()
-        .filter_map(|r| r["version"].as_str())
-        .collect();
-    assert!(
-        versions.contains(&"0.0.1-alpha") && versions.contains(&"0.0.2-alpha"),
-        "expected both alpha versions, got {versions:?}"
-    );
-}
-
-#[tokio::test]
-async fn activate_switches_catalog_server_wide() {
-    let server = TestServer::start().await;
-    let admin = create_user_with_permissions(&server, "admin", &["hub::catalog::read", "hub::catalog::manage"]).await;
-    let client = reqwest::Client::new();
-
-    // Seed install is v0.0.1-alpha (13 items). Activate v0.0.2-alpha.
-    let resp = client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&serde_json::json!({ "version": "0.0.2-alpha" }))
-        .send()
-        .await
-        .expect("activate 0.0.2");
-    assert_eq!(
-        resp.status(),
-        200,
-        "activate 0.0.2-alpha should succeed (cosign verified): {}",
-        resp.text().await.unwrap_or_default()
-    );
-    let body: Json = resp.json().await.expect("parse activate json");
-    assert_eq!(body["new_version"], "0.0.2-alpha");
-    assert_eq!(body["cosign_verified"], true);
-
-    // Catalog is now server-wide v0.0.2-alpha (18 items). A plain
-    // reader sees it too.
-    let reader = create_user_with_permissions(&server, "reader", &["hub::models::read"]).await;
-    let idx: Json = client
-        .get(server.api_url("/hub/index"))
-        .header("Authorization", format!("Bearer {}", reader.token))
-        .send()
-        .await
-        .expect("send index")
-        .json()
-        .await
-        .expect("parse index");
-    assert_eq!(idx["hub_version"], "0.0.2-alpha");
-    assert_eq!(idx["items"].as_array().map(|a| a.len()), Some(18));
-
-    // The pin is persisted + reflected in /releases.
-    let rel: Json = client
-        .get(server.api_url("/hub/releases"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .send()
-        .await
-        .expect("send releases")
-        .json()
-        .await
-        .expect("parse releases");
-    assert_eq!(rel["pinned_version"], "0.0.2-alpha");
-    assert_eq!(rel["active_version"], "0.0.2-alpha");
-
-    // Activate back to v0.0.1-alpha — catalog shrinks to 13 items.
-    let resp = client
-        .post(server.api_url("/hub/activate"))
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&serde_json::json!({ "version": "0.0.1-alpha" }))
-        .send()
-        .await
-        .expect("activate 0.0.1");
-    assert_eq!(resp.status(), 200);
-    let idx: Json = client
-        .get(server.api_url("/hub/index"))
-        .header("Authorization", format!("Bearer {}", reader.token))
-        .send()
-        .await
-        .expect("send index 2")
-        .json()
-        .await
-        .expect("parse index 2");
-    assert_eq!(idx["hub_version"], "0.0.1-alpha");
-    assert_eq!(idx["items"].as_array().map(|a| a.len()), Some(13));
-}
+// v1's `/hub/releases` + `/hub/activate` tests have been removed:
+// the endpoints are gone. The catalog is now refreshed in place from
+// Pages by `/hub/refresh` (the read/manage perm split survives —
+// covered by `catalog_read_cannot_refresh` above). The full
+// publisher-switches-catalog flow is exercised hermetically in
+// `catalog_hermetic.rs` via the mock Pages server's
+// `MockHub::switch_to`.

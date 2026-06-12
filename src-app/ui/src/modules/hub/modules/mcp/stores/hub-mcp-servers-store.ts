@@ -109,7 +109,7 @@ export const useHubMcpServersStore = create<HubMcpServersState>()(
           // the OLD (now-deleted) row and clicking it 404s.
           const displacedIds: string[] = request.replace_existing
             ? get()
-                .servers.find(s => s.id === request.hub_id)
+                .servers.find(s => s.name === request.hub_id)
                 ?.created_ids?.slice() ?? []
             : []
           try {
@@ -121,7 +121,7 @@ export const useHubMcpServersStore = create<HubMcpServersState>()(
             // install + the events emitted below propagate the deletion to
             // other stores.
             set(state => {
-              const server = state.servers.find(s => s.id === request.hub_id)
+              const server = state.servers.find(s => s.name === request.hub_id)
               if (server) {
                 if (request.replace_existing) {
                   server.created_ids = [response.hub_tracking.entity_id]
@@ -179,7 +179,7 @@ export const useHubMcpServersStore = create<HubMcpServersState>()(
           // (now-deleted) row and clicking it 404s.
           const displacedIds: string[] = request.replace_existing
             ? get()
-                .servers.find(s => s.id === request.hub_id)
+                .servers.find(s => s.name === request.hub_id)
                 ?.created_system_ids?.slice() ?? []
             : []
           try {
@@ -193,7 +193,7 @@ export const useHubMcpServersStore = create<HubMcpServersState>()(
             // backend deletes the old server + the events emitted
             // below propagate the deletion to other stores.
             set(state => {
-              const server = state.servers.find(s => s.id === request.hub_id)
+              const server = state.servers.find(s => s.name === request.hub_id)
               if (server) {
                 if (request.replace_existing) {
                   server.created_system_ids = [

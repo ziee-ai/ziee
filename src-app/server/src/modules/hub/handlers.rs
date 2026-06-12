@@ -24,8 +24,47 @@ use super::{
     types::*,
 };
 use axum::extract::Path as AxumPath;
-// HubReleaseInfo is re-exported through `types::*` below; the response
-// wrappers (HubReleasesResponse, ActivateHubVersionRequest) live in types.rs.
+
+/// Resolve the per-entry semver for one catalog item, used to stamp
+/// `hub_entities.hub_version` on install. Returns `None` if the entry
+/// is missing or has no `version` field set (legacy seed entries).
+/// Falls back to the catalog build-marker `hub_version` so older
+/// entries that haven't been re-published with the v2 envelope still
+/// surface SOMETHING in the Installed view rather than blank.
+async fn resolve_entry_version(
+    hub_manager: &HubManager,
+    category: HubCategory,
+    name: &str,
+) -> Option<String> {
+    let catalog = hub_manager.catalog().await.ok()?;
+    let item = catalog
+        .items
+        .iter()
+        .find(|it| it.category == category && it.name == name)?;
+    item.version.clone().or_else(|| Some(catalog.hub_version.clone()))
+}
+
+/// Look up the human display title for a hub item via the catalog's
+/// IndexItem. Used as the fallback when an install request doesn't
+/// provide a `display_name`. Falls back to the leaf of the reverse-DNS
+/// `name` if the catalog has no title set.
+async fn resolve_entry_title(
+    hub_manager: &HubManager,
+    category: HubCategory,
+    name: &str,
+) -> String {
+    if let Ok(catalog) = hub_manager.catalog().await
+        && let Some(item) = catalog
+            .items
+            .iter()
+            .find(|it| it.category == category && it.name == name)
+        && let Some(t) = item.title.as_deref()
+    {
+        return t.to_string();
+    }
+    // Fallback: leaf of the reverse-DNS string.
+    name.rsplit('/').next().unwrap_or(name).to_string()
+}
 
 // =====================================================
 // Route Handlers
@@ -57,17 +96,64 @@ pub async fn get_hub_models(
         .into_iter()
         .collect();
 
-    // Merge created_ids + source_auth_configured into models
+    // Merge created_ids + source_auth_configured into models. v2:
+    // catalog identity is the reverse-DNS `name`, which matches the
+    // value stored in `hub_entities.hub_id`.
+    //
+    // `source_auth_configured` is computed PER MODEL but driven off
+    // PER SOURCE env vars. For each source with at least one
+    // `is_required + is_secret` env var, derive the matching
+    // `llm_repositories.url` from the source's `registry_type`
+    // (`huggingface` → `https://huggingface.co`, `s3` →
+    // `https://s3.amazonaws.com`, `url` → the source identifier itself)
+    // and check whether that repo has a credential present. The flag
+    // is `true` if AT LEAST ONE source's required-secret credential is
+    // configured — multi-source models work as soon as a single source
+    // is usable.
+    //
+    // Sources without any required-secret env var (no auth needed)
+    // count as auth-satisfied: a public HuggingFace mirror doesn't
+    // need a token, so a model whose only source is that mirror has
+    // `source_auth_configured = true`.
     let mut models = hub_data.models;
     for model in &mut models {
-        model.created_ids = created_map.get(&model.id).cloned().unwrap_or_default();
-        model.source_auth_configured = cred_by_url
-            .get(&model.repository_url)
-            .copied()
-            .unwrap_or(false);
+        model.created_ids = created_map.get(&model.name).cloned().unwrap_or_default();
+        let configured = if model.sources.is_empty() {
+            false
+        } else {
+            model.sources.iter().any(|source| {
+                let needs_auth = source
+                    .environment_variables
+                    .iter()
+                    .any(|e| e.is_required.unwrap_or(false) && e.is_secret);
+                if !needs_auth {
+                    return true;
+                }
+                let repo_url = match derive_registry_url(source) {
+                    Some(u) => u,
+                    None => return false,
+                };
+                cred_by_url.get(&repo_url).copied().unwrap_or(false)
+            })
+        };
+        model.source_auth_configured = configured;
     }
 
     Ok((StatusCode::OK, Json(models)))
+}
+
+/// Derive the `llm_repositories.url` for one `ModelSource` based on its
+/// `registry_type`. Mirrors the same mapping used by `create_model_from_hub`
+/// to look up the repo row at install time — the two MUST agree, else a
+/// model would surface `source_auth_configured = true` but fail at the
+/// download gate (or vice versa).
+fn derive_registry_url(source: &super::models::ModelSource) -> Option<String> {
+    match source.registry_type.as_str() {
+        "huggingface" => Some("https://huggingface.co".to_string()),
+        "s3" => Some("https://s3.amazonaws.com".to_string()),
+        "url" => Some(source.identifier.clone()),
+        _ => None,
+    }
 }
 
 /// Get hub assistants with locale support and created_ids for current user
@@ -88,12 +174,16 @@ pub async fn get_hub_assistants(
     // admins don't accidentally create duplicates).
     let template_map = Repos.hub.get_template_install_ids().await?;
 
-    // Merge created_ids + created_template_ids into assistants
+    // Merge created_ids + created_template_ids into assistants. v2:
+    // hub_entities.hub_id stores the reverse-DNS `name`.
     let mut assistants = hub_data.assistants;
     for assistant in &mut assistants {
-        assistant.created_ids = created_map.get(&assistant.id).cloned().unwrap_or_default();
+        assistant.created_ids = created_map
+            .get(&assistant.name)
+            .cloned()
+            .unwrap_or_default();
         assistant.created_template_ids = template_map
-            .get(&assistant.id)
+            .get(&assistant.name)
             .cloned()
             .unwrap_or_default();
     }
@@ -119,12 +209,13 @@ pub async fn get_hub_mcp_servers(
     // don't accidentally create duplicates).
     let system_map = Repos.hub.get_system_mcp_install_ids().await?;
 
-    // Merge created_ids + created_system_ids into servers
+    // Merge created_ids + created_system_ids into servers. v2:
+    // hub_entities.hub_id stores the reverse-DNS `name`.
     let mut mcp_servers = hub_data.mcp_servers;
     for server in &mut mcp_servers {
-        server.created_ids = created_map.get(&server.id).cloned().unwrap_or_default();
+        server.created_ids = created_map.get(&server.name).cloned().unwrap_or_default();
         server.created_system_ids = system_map
-            .get(&server.id)
+            .get(&server.name)
             .cloned()
             .unwrap_or_default();
     }
@@ -196,10 +287,8 @@ pub async fn refresh_hub_models(
     let hub_manager = HubManager::new(app_data_dir)?;
 
     let old_version = hub_manager.current_version().await?;
-    // Honor the admin pin (same as POST /hub/refresh) — the legacy
-    // per-category endpoints still drive a full unified refresh.
-    let pinned = Repos.hub.get_pinned_version().await?;
-    hub_manager.refresh(pinned).await?;
+    // v2: refresh is index-only + per-entry versioning, no admin pin.
+    hub_manager.refresh().await?;
     let new_version = hub_manager.current_version().await?;
 
     // Emit event if version changed
@@ -228,8 +317,7 @@ pub async fn refresh_hub_assistants(
     let hub_manager = HubManager::new(app_data_dir)?;
 
     let old_version = hub_manager.current_version().await?;
-    let pinned = Repos.hub.get_pinned_version().await?;
-    hub_manager.refresh(pinned).await?;
+    hub_manager.refresh().await?;
     let new_version = hub_manager.current_version().await?;
 
     // Emit event if version changed
@@ -258,8 +346,7 @@ pub async fn refresh_hub_mcp_servers(
     let hub_manager = HubManager::new(app_data_dir)?;
 
     let old_version = hub_manager.current_version().await?;
-    let pinned = Repos.hub.get_pinned_version().await?;
-    hub_manager.refresh(pinned).await?;
+    hub_manager.refresh().await?;
     let new_version = hub_manager.current_version().await?;
 
     // Emit event if version changed
@@ -304,15 +391,17 @@ async fn build_assistant_create_from_hub(
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
     let hub_data = hub_manager.load_hub_data_with_locale("en").await?;
-    // Capture the catalog version up front so the same version stamps
-    // the `hub_entities` row downstream — guards against a concurrent
-    // /hub/activate swap between this lookup and the tracking insert.
-    let hub_version = hub_manager.current_version().await.ok();
+    // v2: stamp the *per-entry* version into `hub_entities.hub_version`
+    // (not the catalog-wide build marker). Resolved once here so a
+    // concurrent refresh between this lookup and the tracking insert
+    // can't drift the stamp.
+    let hub_version =
+        resolve_entry_version(&hub_manager, HubCategory::Assistant, &request.hub_id).await;
 
     let hub_assistant = hub_data
         .assistants
         .into_iter()
-        .find(|a| a.id == request.hub_id)
+        .find(|a| a.name == request.hub_id)
         .ok_or_else(|| AppError::not_found(&format!("Hub assistant '{}'", request.hub_id)))?;
 
     // Defense-in-depth: reject incompatible items (min_ziee_version >
@@ -601,15 +690,14 @@ async fn build_mcp_server_create_from_hub(
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
     let hub_data = hub_manager.load_hub_data_with_locale("en").await?;
-    // Capture the catalog version up front so the same version stamps
-    // the `hub_entities` row downstream — guards against a concurrent
-    // /hub/activate swap between this lookup and the tracking insert.
-    let hub_version = hub_manager.current_version().await.ok();
+    // v2 per-entry version stamping (see resolve_entry_version above).
+    let hub_version =
+        resolve_entry_version(&hub_manager, HubCategory::McpServer, &request.hub_id).await;
 
     let hub_server = hub_data
         .mcp_servers
         .into_iter()
-        .find(|s| s.id == request.hub_id)
+        .find(|s| s.name == request.hub_id)
         .ok_or_else(|| AppError::not_found(&format!("Hub MCP server '{}'", request.hub_id)))?;
 
     // Defense-in-depth: reject incompatible items (min_ziee_version >
@@ -619,125 +707,107 @@ async fn build_mcp_server_create_from_hub(
         .ensure_installable(HubCategory::McpServer, &request.hub_id)
         .await?;
 
-    let transport_type = hub_server
-        .transport_type
-        .as_ref()
-        .and_then(|t| match t.as_str() {
-            "stdio" => Some(crate::modules::mcp::TransportType::Stdio),
-            "sse" => Some(crate::modules::mcp::TransportType::Sse),
-            "http" => Some(crate::modules::mcp::TransportType::Http),
-            _ => None,
-        })
-        .unwrap_or(crate::modules::mcp::TransportType::Stdio);
-
-    // Seed env + header maps from the catalog values, then merge
-    // `required_*` placeholders for any key the catalog left empty.
-    // This is the whole point of the schema addition: without the
-    // merge, an empty `GITHUB_TOKEN: ""` in the manifest would land
-    // verbatim in the user's MCP row and they'd have no signal that
-    // configuration is needed. With the merge, the user sees
-    // `GITHUB_TOKEN: ghp_xxxxxxxx...` (the placeholder) and knows
-    // exactly what to replace.
+    // v2 server.json mapping. Strict — drive everything off `remotes[]`
+    // / `packages[]`, no v1 flat fallback. Precedence:
+    //   1. remotes[0] (streamable-http / sse) → Http / Sse + url + headers
+    //   2. packages[0] (npm/pypi stdio)       → Stdio + npx/uvx argv
     //
-    // Per-entry `is_secret` is propagated from the `HubRequiredInput`
-    // declaration so credential-bearing inputs land in the new
-    // `*_encrypted` storage columns on insert.
-    //
-    // `.entry().or_insert_with(...)` skips keys the catalog already
-    // pre-filled with a concrete example (e.g. postgres-mcp ships a
-    // sample connection string) and keys the user already supplied
-    // via the request override path (future extension).
-    let catalog_env: std::collections::HashMap<String, String> = hub_server
-        .environment_variables
-        .as_ref()
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
-        .unwrap_or_default();
-    let required_env_secret: std::collections::HashMap<&str, bool> = hub_server
-        .required_env
-        .iter()
-        .map(|r| (r.name.as_str(), r.is_secret))
-        .collect();
-    let mut env_map: std::collections::BTreeMap<String, (String, bool)> = catalog_env
-        .into_iter()
-        .map(|(k, v)| {
-            let is_secret = required_env_secret.get(k.as_str()).copied().unwrap_or(false);
-            (k, (v, is_secret))
-        })
-        .collect();
-    for req in &hub_server.required_env {
-        let placeholder = req.placeholder.clone().unwrap_or_default();
-        env_map
-            .entry(req.name.clone())
-            .and_modify(|existing| {
-                // Treat empty-string entries (the legacy "this is
-                // required" convention) as also needing the seed —
-                // otherwise the new schema's placeholder wouldn't
-                // surface until the manifest also drops the empty
-                // string. Non-empty existing values are respected
-                // (e.g. postgres-mcp's example connection string).
-                if existing.0.is_empty() {
-                    existing.0 = placeholder.clone();
-                }
-                existing.1 = req.is_secret;
-            })
-            .or_insert_with(|| (placeholder, req.is_secret));
-    }
-    let env_entries: Vec<crate::modules::mcp::EnvVarEntry> = env_map
-        .into_iter()
-        .map(|(k, (v, is_secret))| crate::modules::mcp::EnvVarEntry {
-            key: k,
-            value: Some(v),
-            is_secret,
-        })
-        .collect();
+    // The publisher filters packages to npm/pypi + npx/uvx at build, so
+    // the consumer only sees launchable ones. Manifests with neither
+    // populated are a publisher error — surface as 422.
+    let transport_type;
+    let derived_command: Option<String>;
+    let derived_args: Option<Vec<String>>;
+    let derived_url: Option<String>;
+    let mut env_entries: Vec<crate::modules::mcp::EnvVarEntry> = Vec::new();
+    let mut header_entries: Vec<crate::modules::mcp::HeaderEntry> = Vec::new();
 
-    let catalog_headers: std::collections::HashMap<String, String> = hub_server
-        .headers
-        .as_ref()
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
-        .unwrap_or_default();
-    let required_header_secret: std::collections::HashMap<&str, bool> = hub_server
-        .required_headers
-        .iter()
-        .map(|r| (r.name.as_str(), r.is_secret))
-        .collect();
-    let mut header_map: std::collections::BTreeMap<String, (String, bool)> = catalog_headers
-        .into_iter()
-        .map(|(k, v)| {
-            let is_secret = required_header_secret
-                .get(k.as_str())
-                .copied()
-                .unwrap_or(false);
-            (k, (v, is_secret))
-        })
-        .collect();
-    for req in &hub_server.required_headers {
-        let placeholder = req.placeholder.clone().unwrap_or_default();
-        header_map
-            .entry(req.name.clone())
-            .and_modify(|existing| {
-                if existing.0.is_empty() {
-                    existing.0 = placeholder.clone();
-                }
-                existing.1 = req.is_secret;
-            })
-            .or_insert_with(|| (placeholder, req.is_secret));
+    if let Some(remote) = hub_server.remotes.as_ref().and_then(|r| r.first()) {
+        // Official spelling is `"streamable-http"` (kebab-case) | `"sse"`.
+        // Map anything else as Http (forward compat for new variants).
+        transport_type = match remote.transport_kind.as_str() {
+            "sse" => crate::modules::mcp::TransportType::Sse,
+            _ => crate::modules::mcp::TransportType::Http,
+        };
+        derived_url = Some(remote.url.clone());
+        derived_command = None;
+        derived_args = None;
+        for h in &remote.headers {
+            header_entries.push(crate::modules::mcp::HeaderEntry {
+                key: h.name.clone(),
+                value: h.value.clone(),
+                is_secret: h.is_secret,
+            });
+        }
+    } else if let Some(pkg) = hub_server.packages.as_ref().and_then(|p| p.first()) {
+        // Build argv: runtimeArguments ++ [identifier@version] ++
+        // packageArguments. The runtime command is `runtimeHint`; the
+        // npx + uvx commands are already in `HOST_ALLOWED_COMMANDS`.
+        transport_type = crate::modules::mcp::TransportType::Stdio;
+        derived_command = pkg.runtime_hint.clone();
+        let mut argv: Vec<String> = Vec::new();
+        for a in &pkg.runtime_arguments {
+            if let Some(v) = &a.value {
+                argv.push(v.clone());
+            }
+        }
+        // Package spec — npm uses `<name>@<version>`; pypi via uvx
+        // accepts the same form (or bare `<name>`). Prefer the npm
+        // shape since it covers the common npx case; uvx tolerates
+        // a leading positional with no version.
+        let spec = if pkg.version.is_empty() {
+            pkg.identifier.clone()
+        } else {
+            format!("{}@{}", pkg.identifier, pkg.version)
+        };
+        argv.push(spec);
+        for a in &pkg.package_arguments {
+            if let Some(v) = &a.value {
+                argv.push(v.clone());
+            }
+        }
+        derived_args = Some(argv);
+        derived_url = None;
+        for ev in &pkg.environment_variables {
+            env_entries.push(crate::modules::mcp::EnvVarEntry {
+                key: ev.name.clone(),
+                value: ev.value.clone().or_else(|| ev.default.clone()),
+                is_secret: ev.is_secret,
+            });
+        }
+    } else {
+        return Err(AppError::unprocessable_entity(
+            "HUB_MCP_NO_TRANSPORT",
+            format!(
+                "Hub MCP server '{}' has neither packages[] nor remotes[]",
+                hub_server.name
+            ),
+        ));
     }
-    let header_entries: Vec<crate::modules::mcp::HeaderEntry> = header_map
-        .into_iter()
-        .map(|(k, (v, is_secret))| crate::modules::mcp::HeaderEntry {
-            key: k,
-            value: Some(v),
-            is_secret,
-        })
-        .collect();
+
+    // Resolve the user-facing slug (the `mcp_servers.name` row value:
+    // `^[a-z0-9-]+$`) from the reverse-DNS `hub_server.name` (leaf
+    // after the first `/`, normalized).
+    let derived_slug = super::hub_manager::derive_mcp_slug(&hub_server.name);
+    // Resolve the human display fallback from the catalog's IndexItem
+    // title (set by the publisher's `_hub_curation.title`). Falls back
+    // to the slug if the catalog has no title.
+    let display_fallback = resolve_entry_title(
+        &hub_manager,
+        HubCategory::McpServer,
+        &hub_server.name,
+    )
+    .await;
 
     let create_request = crate::modules::mcp::CreateMcpServerRequest {
-        name: request.name.clone().unwrap_or(hub_server.name.clone()),
+        // Server slug — must match `^[a-z0-9-]+$`; derived from the
+        // reverse-DNS leaf. Request override (manual rename at install
+        // time) wins if provided.
+        name: request.name.clone().unwrap_or(derived_slug),
         display_name: request
             .display_name
             .clone()
-            .unwrap_or(hub_server.display_name.clone()),
+            .unwrap_or(display_fallback),
         description: hub_server.description.clone(),
         // Hub installs ALWAYS land disabled — most hub servers ship
         // with placeholder secrets the user has to configure before
@@ -749,13 +819,16 @@ async fn build_mcp_server_create_from_hub(
         // `request.enabled` is ignored here for the same reason.
         enabled: Some(false),
         transport_type,
-        command: hub_server.command.clone(),
-        args: hub_server.args.clone(),
+        command: derived_command,
+        args: derived_args,
         environment_variables_entries: Some(env_entries),
-        url: hub_server.url.clone(),
+        url: derived_url,
         headers_entries: Some(header_entries),
-        timeout_seconds: Some(if hub_server.supports_sampling == Some(true) { 300 } else { 30 }),
-        supports_sampling: hub_server.supports_sampling,
+        // v2 dropped the `supports_sampling` flag at the manifest
+        // level. Default to 30s; admins can raise this in the
+        // settings drawer.
+        timeout_seconds: Some(30),
+        supports_sampling: None,
         usage_mode: None,
         max_concurrent_sessions: None,
         // Hub installs don't surface the sandbox option in the UI;
@@ -768,11 +841,10 @@ async fn build_mcp_server_create_from_hub(
         // hub installs route through `create_user_server` which
         // force-applies the active policy flavor regardless.
         sandbox_flavor: None,
-        // Hub-scope tracking: the regular create handler records the
-        // install in `hub_entities` when `hub_id` is set on the
-        // request body — same bookkeeping the dedicated
-        // `/hub/mcp-servers/create*` endpoints do.
-        hub_id: Some(hub_server.id),
+        // Hub-scope tracking: store the reverse-DNS `name` in
+        // `hub_entities.hub_id` so the Updates view + cleanup can
+        // resolve back to the catalog entry.
+        hub_id: Some(hub_server.name.clone()),
     };
 
     // Validation MUST run before any DB write so the `replace_existing`
@@ -1209,7 +1281,7 @@ pub async fn create_model_from_hub(
     let hub_model = hub_data
         .models
         .into_iter()
-        .find(|m| m.id == request.hub_id)
+        .find(|m| m.name == request.hub_id)
         .ok_or_else(|| AppError::not_found(&format!("Hub model '{}'", request.hub_id)))?;
 
     // 1b. Reject incompatible items (min_ziee_version > server).
@@ -1217,10 +1289,94 @@ pub async fn create_model_from_hub(
         .ensure_installable(HubCategory::Model, &request.hub_id)
         .await?;
 
-    // 2. Find repository by URL
+    // 2. Resolve the source + quantization the user picked (Phase 7
+    // body shape — v1's flat `repository_url` / `repository_path` /
+    // `main_filename` / `file_format` are now per-source).
+    if hub_model.sources.is_empty() {
+        return Err(AppError::unprocessable_entity(
+            "HUB_MODEL_NO_SOURCES",
+            format!(
+                "Hub model '{}' has no sources[] — publisher error.",
+                hub_model.name
+            ),
+        )
+        .into());
+    }
+    let source_index = request.source_index.unwrap_or(0);
+    let source = hub_model.sources.get(source_index).ok_or_else(|| {
+        AppError::bad_request(
+            "HUB_MODEL_SOURCE_OUT_OF_RANGE",
+            format!(
+                "source_index {} out of range for hub model '{}' ({} sources)",
+                source_index,
+                hub_model.name,
+                hub_model.sources.len()
+            ),
+        )
+    })?;
+    if source.quantizations.is_empty() {
+        return Err(AppError::unprocessable_entity(
+            "HUB_MODEL_NO_QUANTIZATIONS",
+            format!(
+                "Hub model '{}' source {} has no quantizations[] — publisher error.",
+                hub_model.name, source_index
+            ),
+        )
+        .into());
+    }
+    let quantization = if let Some(ref name) = request.quantization_name {
+        source
+            .quantizations
+            .iter()
+            .find(|q| &q.name == name)
+            .ok_or_else(|| {
+                AppError::bad_request(
+                    "HUB_MODEL_QUANTIZATION_NOT_FOUND",
+                    format!(
+                        "Quantization '{}' not found in source {} of '{}'",
+                        name, source_index, hub_model.name
+                    ),
+                )
+            })?
+    } else {
+        source
+            .quantizations
+            .iter()
+            .find(|q| q.is_default)
+            .unwrap_or(&source.quantizations[0])
+    };
+
+    // 3. Derive (registry_url, repository_path) from the source's
+    // `registry_type`. Same mapping as `derive_registry_url()` above
+    // in `get_hub_models` — keeping them in lockstep avoids the
+    // surprise of `source_auth_configured` saying true while the
+    // install path 404s on the lookup, or vice versa.
+    let (registry_url, repository_path) = match source.registry_type.as_str() {
+        "huggingface" => (
+            "https://huggingface.co".to_string(),
+            source.identifier.clone(),
+        ),
+        "s3" => (
+            "https://s3.amazonaws.com".to_string(),
+            source.identifier.clone(),
+        ),
+        "url" => (source.identifier.clone(), source.identifier.clone()),
+        other => {
+            return Err(AppError::unprocessable_entity(
+                "HUB_MODEL_REGISTRY_UNSUPPORTED",
+                format!(
+                    "Unsupported registry_type '{}' on hub model '{}'",
+                    other, hub_model.name
+                ),
+            )
+            .into());
+        }
+    };
+
+    // 4. Find the matching `llm_repositories` row by URL.
     let repository = Repos
         .llm_repository
-        .find_by_url(&hub_model.repository_url)
+        .find_by_url(&registry_url)
         .await
         .map_err(|e| {
             (
@@ -1231,11 +1387,11 @@ pub async fn create_model_from_hub(
         .ok_or_else(|| {
             AppError::not_found(&format!(
                 "Repository with URL '{}' not found",
-                hub_model.repository_url
+                registry_url
             ))
         })?;
 
-    // 2a. Block when the source repository is disabled. Mirrors the
+    // 4a. Block when the source repository is disabled. Mirrors the
     // auth gate just below — without this, a download against a
     // disabled repo would either fail later in the background (when
     // the git/HF client tries to clone) or, worse, silently succeed
@@ -1262,11 +1418,17 @@ pub async fn create_model_from_hub(
         ));
     }
 
-    // 2b. Block early with clear guidance when this model needs auth but the
-    // source repository has no credential configured. Without this the download
-    // is spawned and only fails later in the background with an opaque git auth
-    // error. Enforced server-side; the UI mirrors it via `source_auth_configured`.
-    if hub_model.auth_required && !repository.has_credential() {
+    // 4b. Block early with clear guidance when this source needs auth
+    // (an env var marked `is_required + is_secret`) but the matching
+    // repository has no credential configured. Without this the download
+    // is spawned and only fails later in the background with an opaque
+    // git auth error. Enforced server-side; the UI mirrors it via
+    // `source_auth_configured`.
+    let needs_auth = source
+        .environment_variables
+        .iter()
+        .any(|ev| ev.is_required.unwrap_or(false) && ev.is_secret);
+    if needs_auth && !repository.has_credential() {
         return Err((
             StatusCode::UNPROCESSABLE_ENTITY,
             AppError::unprocessable_entity(
@@ -1285,29 +1447,14 @@ pub async fn create_model_from_hub(
         ));
     }
 
-    // 3. Select quantization option if specified
-    let main_filename = if let Some(ref quant_name) = request.quantization_name {
-        hub_model
-            .quantization_options
-            .as_ref()
-            .and_then(|opts| {
-                opts.iter()
-                    .find(|o| &o.name == quant_name)
-                    .map(|opt| opt.main_filename.clone())
-            })
-            .unwrap_or_else(|| hub_model.main_filename.clone())
-    } else {
-        hub_model.main_filename.clone()
-    };
-
-    // 4. Convert FileFormat from hub to llm_model
-    let file_format = match hub_model.file_format {
+    // 5. Convert FileFormat from hub to llm_model
+    let file_format = match source.file_format {
         super::models::FileFormat::GGUF => LlmFileFormat::Gguf,
         super::models::FileFormat::SafeTensors => LlmFileFormat::Safetensors,
         super::models::FileFormat::PyTorch => LlmFileFormat::Pytorch,
     };
 
-    // 5. Convert capabilities from hub to llm_model format
+    // 6. Convert capabilities from hub to llm_model format
     let capabilities = hub_model.capabilities.map(|hub_caps| {
         crate::modules::llm_model::models::ModelCapabilities {
             vision: Some(hub_caps.vision),
@@ -1317,36 +1464,44 @@ pub async fn create_model_from_hub(
             chat: Some(hub_caps.chat),
             text_embedding: Some(hub_caps.text_embedding),
             image_generator: Some(hub_caps.image_generator),
-            context_length: None,
+            context_length: source.context_length.and_then(|n| u32::try_from(n).ok()),
         }
     });
 
-    // 6. Build download request for initiate_repository_download
+    // 7. Build download request for initiate_repository_download.
+    //    `main_filename` comes from the selected quantization; the
+    //    `repository_branch` is the source's version pin (branch /
+    //    commit / tag). Engine fields are dropped from the v2 manifest
+    //    — the install path no longer carries `recommended_engine` /
+    //    `recommended_engine_settings`.
     let download_request = crate::modules::llm_model::handlers::uploads::DownloadFromRepositoryRequest {
         provider_id: request.provider_id,
         repository_id: repository.id,
-        repository_path: hub_model.repository_path.clone(),
-        repository_branch: None,
+        repository_path,
+        repository_branch: if source.version.is_empty() {
+            None
+        } else {
+            Some(source.version.clone())
+        },
         name: hub_model.name.clone(),
         display_name: request
             .display_name
             .unwrap_or_else(|| hub_model.display_name.clone()),
         description: hub_model.description.clone(),
         file_format,
-        main_filename,
+        main_filename: quantization.main_file.clone(),
         capabilities,
         parameters: hub_model
             .recommended_parameters
             .and_then(|p| serde_json::from_value(p).ok()),
-        engine_type: hub_model
-            .recommended_engine
-            .and_then(|e| crate::modules::llm_model::models::EngineType::from_str(&e)),
-        engine_settings: hub_model
-            .recommended_engine_settings
-            .and_then(|s| serde_json::from_value(s).ok()),
+        // Phase 7 dropped model-wide engine hints. `runtime_hint` lives
+        // on the source but is purely informational today — the engine
+        // is picked downstream from the file format.
+        engine_type: None,
+        engine_settings: None,
     };
 
-    // 7. Initiate the actual download (this creates the download instance AND spawns the background task)
+    // 8. Initiate the actual download (this creates the download instance AND spawns the background task)
     let download = crate::modules::llm_model::handlers::uploads::initiate_repository_download_internal(
         download_request,
     )
@@ -1358,8 +1513,10 @@ pub async fn create_model_from_hub(
         )
     })?;
 
-    // 8. Track in hub_entities (stamp the installed catalog version).
-    let hub_version = hub_manager.current_version().await.ok();
+    // 9. Track in hub_entities (stamp the entry's per-entry version
+    //    under v2 — see resolve_entry_version above).
+    let hub_version =
+        resolve_entry_version(&hub_manager, HubCategory::Model, &request.hub_id).await;
     let hub_tracking = Repos
         .hub
         .track_hub_entity(
@@ -1372,12 +1529,12 @@ pub async fn create_model_from_hub(
         )
         .await?;
 
-    // 9. Emit event
+    // 10. Emit event
     event_bus.emit_async(
         HubEvent::model_download_started_from_hub(download.id, request.hub_id.clone()).into(),
     );
 
-    // 10. Return response
+    // 11. Return response
     Ok((
         StatusCode::CREATED,
         Json(ModelFromHubResponse {
@@ -1691,10 +1848,10 @@ pub fn get_hub_catalog_version_docs(op: TransformOperation) -> TransformOperatio
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
 }
 
-/// POST /api/hub/refresh — admin-only force fetch from GitHub.
-/// Respects the admin-pinned version (hub_settings.pinned_version):
-/// pinned → re-fetch that exact version; unpinned → fetch latest.
-/// Cosign + sha256 failure leaves the previous catalog in place.
+/// POST /api/hub/refresh — admin-only force fetch from the Pages
+/// catalog. v2 is index-only: per-entry manifests are fetched lazily
+/// by `manifest()`. Network failure leaves the previous index in
+/// place (the tmp/rename swap is atomic).
 #[debug_handler]
 pub async fn refresh_hub_catalog(
     _auth: RequirePermissions<(HubCatalogManage,)>,
@@ -1703,8 +1860,7 @@ pub async fn refresh_hub_catalog(
 ) -> ApiResult<Json<HubCatalogRefreshResponse>> {
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
-    let pinned = Repos.hub.get_pinned_version().await?;
-    let outcome = hub_manager.refresh(pinned).await?;
+    let outcome = hub_manager.refresh().await?;
 
     if outcome.updated {
         // Reuse the existing per-category events so any listener wired
@@ -1730,7 +1886,6 @@ pub async fn refresh_hub_catalog(
             updated: outcome.updated,
             previous_version: outcome.previous_version,
             new_version: outcome.new_version,
-            cosign_verified: outcome.cosign_verified,
         }),
     ))
 }
@@ -1786,24 +1941,48 @@ pub async fn get_hub_installed(
         .list_installed_entities(Some(user_id), is_admin_view)
         .await?;
 
+    // v2: build a `(category, id) -> version` lookup from the catalog
+    // so each installed row reports its OWN current version rather
+    // than the catalog-wide build marker. Falls back to
+    // `catalog.hub_version` for entries that haven't been republished
+    // with a per-entry `version` envelope yet.
+    let entry_versions: std::collections::HashMap<(String, String), String> = catalog
+        .items
+        .iter()
+        .map(|it| {
+            (
+                (it.category.as_str().to_string(), it.name.clone()),
+                it.version
+                    .clone()
+                    .unwrap_or_else(|| catalog.hub_version.clone()),
+            )
+        })
+        .collect();
+
     Ok((
         StatusCode::OK,
         Json(HubInstalledResponse {
             catalog_version: catalog.hub_version.clone(),
             items: rows
                 .into_iter()
-                .map(|r| HubInstalledRow {
-                    hub_id: r.hub_id,
-                    hub_category: r.hub_category,
-                    entity_type: r.entity_type,
-                    entity_id: r.entity_id,
-                    name: r.name,
-                    installed_version: r.installed_version,
-                    current_version: catalog.hub_version.clone(),
-                    installed_at: r.installed_at,
-                    is_system: r.is_system,
-                    is_template_install: r.is_template_install,
-                    is_system_mcp_install: r.is_system_mcp_install,
+                .map(|r| {
+                    let current_version = entry_versions
+                        .get(&(r.hub_category.clone(), r.hub_id.clone()))
+                        .cloned()
+                        .unwrap_or_else(|| catalog.hub_version.clone());
+                    HubInstalledRow {
+                        hub_id: r.hub_id,
+                        hub_category: r.hub_category,
+                        entity_type: r.entity_type,
+                        entity_id: r.entity_id,
+                        name: r.name,
+                        installed_version: r.installed_version,
+                        current_version,
+                        installed_at: r.installed_at,
+                        is_system: r.is_system,
+                        is_template_install: r.is_template_install,
+                        is_system_mcp_install: r.is_system_mcp_install,
+                    }
                 })
                 .collect(),
         }),
@@ -1844,97 +2023,7 @@ pub fn get_hub_manifest_docs(op: TransformOperation) -> TransformOperation {
         .response_with::<404, (), _>(|res| res.description("Manifest not found in catalog"))
 }
 
-/// GET /api/hub/releases — admin-only. Lists catalog versions published
-/// on GitHub Releases (newest first), marking the active (currently
-/// installed) one + the admin's pin.
-#[debug_handler]
-pub async fn get_hub_releases(
-    _auth: RequirePermissions<(HubCatalogRead,)>,
-) -> ApiResult<Json<HubReleasesResponse>> {
-    let app_data_dir = crate::core::get_app_data_dir();
-    let hub_manager = HubManager::new(app_data_dir)?;
-    let releases = hub_manager.list_releases().await?;
-    let active_version = hub_manager.catalog().await.ok().map(|c| c.hub_version);
-    let pinned_version = Repos.hub.get_pinned_version().await?;
-    Ok((
-        StatusCode::OK,
-        Json(HubReleasesResponse {
-            active_version,
-            pinned_version,
-            releases,
-        }),
-    ))
-}
-
-pub fn get_hub_releases_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(HubCatalogRead,)>(op)
-        .id("Hub.getReleases")
-        .tag("Hub")
-        .summary("List catalog versions published on GitHub (admin only)")
-        .response::<200, Json<HubReleasesResponse>>()
-        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
-        .response_with::<500, (), _>(|res| res.description("GitHub unreachable"))
-}
-
-/// POST /api/hub/activate — admin-only. Pin a specific catalog version
-/// (or clear the pin to track latest, by sending `version: null`),
-/// then fetch + verify + rotate `current/` to it. Server-wide: every
-/// user sees the activated version. Cosign / sha256 failure leaves the
-/// previous catalog in place AND does not persist the pin.
-#[debug_handler]
-pub async fn activate_hub_version(
-    _auth: RequirePermissions<(HubCatalogManage,)>,
-    Extension(event_bus): Extension<Arc<EventBus>>,
-    origin: SyncOrigin,
-    Json(request): Json<ActivateHubVersionRequest>,
-) -> ApiResult<Json<HubCatalogRefreshResponse>> {
-    let app_data_dir = crate::core::get_app_data_dir();
-    let hub_manager = HubManager::new(app_data_dir)?;
-
-    // Fetch + verify + rotate FIRST. Only persist the pin if it
-    // succeeds — otherwise an admin could pin a bad/yanked version and
-    // brick every subsequent refresh.
-    let outcome = hub_manager.refresh(request.version.clone()).await?;
-    Repos
-        .hub
-        .set_pinned_version(request.version.as_deref())
-        .await?;
-
-    if outcome.updated {
-        let prev = outcome.previous_version.clone().unwrap_or_default();
-        event_bus.emit_async(
-            HubEvent::models_refreshed(prev.clone(), outcome.new_version.clone()).into(),
-        );
-        event_bus.emit_async(
-            HubEvent::assistants_refreshed(prev.clone(), outcome.new_version.clone()).into(),
-        );
-        event_bus.emit_async(
-            HubEvent::mcp_servers_refreshed(prev, outcome.new_version.clone()).into(),
-        );
-    }
-
-    sync_publish(SyncEntity::HubSettings, SyncAction::Update, uuid::Uuid::nil(), Audience::perm::<HubCatalogRead>(), origin.0);
-
-    Ok((
-        StatusCode::OK,
-        Json(HubCatalogRefreshResponse {
-            updated: outcome.updated,
-            previous_version: outcome.previous_version,
-            new_version: outcome.new_version,
-            cosign_verified: outcome.cosign_verified,
-        }),
-    ))
-}
-
-pub fn activate_hub_version_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(HubCatalogManage,)>(op)
-        .id("Hub.activateVersion")
-        .tag("Hub")
-        .summary("Pin + activate a catalog version server-wide (admin only)")
-        .response::<200, Json<HubCatalogRefreshResponse>>()
-        .response_with::<400, (), _>(|res| res.description("Invalid version string"))
-        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
-        .response_with::<500, (), _>(|res| {
-            res.description("Fetch / verify failure — pin not persisted, previous catalog kept")
-        })
-}
+// v2 dropped GET /hub/releases + POST /hub/activate. Pages doesn't
+// publish multiple addressable catalog versions (the gh-pages branch
+// is the latest, period), and per-entry semver on each IndexItem
+// replaces the role of a catalog-wide version picker.

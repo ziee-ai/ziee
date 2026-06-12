@@ -1,0 +1,83 @@
+{
+  "$schema": "/schemas/v2/model.schema.json",
+  "name": "io.github.phibya/nomic-embed-text-v1-5-gguf",
+  "version": "1.0.0",
+  "display_name": "Nomic Embed Text v1.5",
+  "description": "High-quality general-purpose English embedding model (768-dim) packaged as GGUF for llama.cpp. Recommended default for the Memory module.",
+  "repository": {
+    "url": "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF",
+    "source": "huggingface",
+    "id": "nomic-ai/nomic-embed-text-v1.5-GGUF"
+  },
+  "sources": [
+    {
+      "registryType": "huggingface",
+      "identifier": "nomic-ai/nomic-embed-text-v1.5-GGUF",
+      "version": "main",
+      "fileFormat": "gguf",
+      "runtimeHint": "llamacpp",
+      "contextLength": 8192,
+      "environmentVariables": [
+        {
+          "name": "HUGGINGFACE_API_KEY",
+          "description": "Hugging Face access token with download access to this gated model.",
+          "isSecret": true,
+          "isRequired": true
+        }
+      ],
+      "quantizations": [
+        {
+          "name": "q4_k_m",
+          "mainFile": "nomic-embed-text-v1.5.Q4_K_M.gguf",
+          "sizeGb": 0.08,
+          "isDefault": true
+        },
+        {
+          "name": "q5_k_m",
+          "mainFile": "nomic-embed-text-v1.5.Q5_K_M.gguf",
+          "isDefault": false
+        },
+        {
+          "name": "q8_0",
+          "mainFile": "nomic-embed-text-v1.5.Q8_0.gguf",
+          "isDefault": false
+        },
+        {
+          "name": "fp16",
+          "mainFile": "nomic-embed-text-v1.5.F16.gguf",
+          "isDefault": false
+        }
+      ]
+    }
+  ],
+  "dependencies": [],
+  "capabilities": {
+    "chat": false,
+    "tools": false,
+    "vision": false,
+    "audio": false,
+    "text_embedding": true,
+    "image_generator": false,
+    "code_interpreter": false
+  },
+  "tags": [
+    "embedding",
+    "english",
+    "retrieval",
+    "rag",
+    "text-similarity",
+    "gguf",
+    "memory-recommended"
+  ],
+  "recommended_parameters": {
+    "temperature": null,
+    "top_p": null,
+    "top_k": null,
+    "repeat_penalty": null,
+    "context_size": 8192
+  },
+  "language_support": [
+    "en"
+  ],
+  "license": "Apache-2.0"
+}

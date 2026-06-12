@@ -101,16 +101,22 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
           <div className="space-y-2 mb-4">
             {hubServers.slice(0, 10).map(server => {
               const alreadyInstalled = installedNames.has(server.name)
-              const isSelected = selectedMcpServerIds.includes(server.id)
+              const isSelected = selectedMcpServerIds.includes(server.name)
+              // v2: derive display label from the reverse-DNS leaf (the
+              // strict server.json shape no longer carries display_name).
+              const leaf = (() => {
+                const slash = server.name.indexOf('/')
+                return slash >= 0 ? server.name.slice(slash + 1) : server.name
+              })()
               return (
                 <div
-                  key={server.id}
+                  key={server.name}
                   className={`flex items-start gap-3 border rounded-lg p-3 ${
                     alreadyInstalled
                       ? 'opacity-50 cursor-not-allowed'
                       : 'cursor-pointer hover:bg-gray-50'
                   }`}
-                  onClick={alreadyInstalled ? undefined : () => Stores.McpServersStep.toggleMcpServer(server.id)}
+                  onClick={alreadyInstalled ? undefined : () => Stores.McpServersStep.toggleMcpServer(server.name)}
                 >
                   <Checkbox
                     checked={isSelected}
@@ -119,14 +125,8 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
                   />
                   <div>
                     <div className="flex items-center gap-2">
-                      <Text strong>{server.display_name || server.name}</Text>
-                      {alreadyInstalled ? (
-                        <Tag>Already installed</Tag>
-                      ) : (
-                        server.category && (
-                          <Tag color="blue">{server.category}</Tag>
-                        )
-                      )}
+                      <Text strong>{leaf}</Text>
+                      {alreadyInstalled && <Tag>Already installed</Tag>}
                     </div>
                     {server.description && (
                       <Text type="secondary" className="block text-sm">

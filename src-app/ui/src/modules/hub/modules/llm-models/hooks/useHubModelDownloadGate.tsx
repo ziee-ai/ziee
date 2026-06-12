@@ -149,7 +149,7 @@ export function useHubModelDownloadGate() {
       repository,
     )
 
-  const showRepoNotConfiguredModal = (model: HubModel) => {
+  const showRepoNotConfiguredModal = (_model: HubModel, registryUrl: string) => {
     if (gateModalOpen) return
     gateModalOpen = true
     const m = modal.info({
@@ -164,7 +164,7 @@ export function useHubModelDownloadGate() {
         <div className="flex flex-col gap-2">
           <Text>
             No installed repository matches the source URL{' '}
-            <Text code>{model.repository_url}</Text>. Add it in Settings → LLM
+            <Text code>{registryUrl}</Text>. Add it in Settings → LLM
             Repositories before downloading.
           </Text>
           <Flex className={'gap-2 w-full justify-end'}>
@@ -197,13 +197,32 @@ export function useHubModelDownloadGate() {
     const { repositories } = Stores.LlmRepository.__state
 
     // ── Resolve repo ────────────────────────────────────────────────
-    const repository = repositories.find(
-      r => r.url === model.repository_url,
-    )
-    if (!repository) {
-      showRepoNotConfiguredModal(model)
+    // v2 Phase 7: derive the registry URL from sources[0] rather than
+    // the dropped model-wide `repository_url`. Keep in lockstep with
+    // the backend's `derive_registry_url` in `hub/handlers.rs` —
+    // otherwise the FE gate could pass while the backend lookup 404s
+    // (or vice versa).
+    const selectedSource = model.sources?.[0]
+    const registryUrl =
+      selectedSource?.registryType === 'huggingface'
+        ? 'https://huggingface.co'
+        : selectedSource?.registryType === 's3'
+          ? 'https://s3.amazonaws.com'
+          : selectedSource?.registryType === 'url'
+            ? selectedSource.identifier
+            : null
+    if (!registryUrl) {
+      showRepoNotConfiguredModal(model, model.repository?.url ?? '(unknown)')
       return { ok: false }
     }
+    const repository = repositories.find(r => r.url === registryUrl)
+    if (!repository) {
+      showRepoNotConfiguredModal(model, registryUrl)
+      return { ok: false }
+    }
+    const needsAuth = !!selectedSource?.environmentVariables?.find(
+      e => e.isRequired && e.isSecret,
+    )
 
     // ── Gate 1: enabled ────────────────────────────────────────────
     if (!repository.enabled) {
@@ -259,7 +278,7 @@ export function useHubModelDownloadGate() {
     }
 
     if (!probeResult.success) {
-      if (model.auth_required && !model.source_auth_configured) {
+      if (needsAuth && !model.source_auth_configured) {
         showAuthRequiredModal(model, repository)
       } else {
         showCannotConnectModal(model, repository, probeResult.message)

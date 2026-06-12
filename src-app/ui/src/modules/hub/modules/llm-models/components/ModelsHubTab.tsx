@@ -16,12 +16,15 @@ export function ModelsHubTab() {
   const serverVersion = Stores.HubCatalog.serverVersion
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedTags, setSelectedTags] = useState<string[]>([])
-  const [sortBy, setSortBy] = useState('popular')
+  // v2 Phase 7 dropped `popularity_score` + the model-wide `size_gb`,
+  // so the sort options are reduced to name. A future revision could
+  // sort by the default quantization's `sizeGb` across all sources.
+  const [sortBy, setSortBy] = useState('name')
 
   const clearAllFilters = () => {
     setSearchTerm('')
     setSelectedTags([])
-    setSortBy('popular')
+    setSortBy('name')
   }
 
   // Extract unique tags
@@ -55,13 +58,14 @@ export function ModelsHubTab() {
       )
     }
 
-    // Sort (create a copy to avoid mutating read-only array from store)
+    // Sort (create a copy to avoid mutating read-only array from store).
+    // v2 Phase 7: `popularity_score` + `size_gb` are gone; sort by
+    // name (canonical reverse-DNS) or display_name only.
     const sorted = [...filtered].sort((a, b) => {
-      if (sortBy === 'popular')
-        return (b.popularity_score || 0) - (a.popularity_score || 0)
-      if (sortBy === 'name') return a.name.localeCompare(b.name)
-      if (sortBy === 'size') return (a.size_gb || 0) - (b.size_gb || 0)
-      return 0
+      if (sortBy === 'display_name')
+        return a.display_name.localeCompare(b.display_name)
+      // fall-through: 'name'
+      return a.name.localeCompare(b.name)
     })
 
     return sorted
@@ -124,9 +128,8 @@ export function ModelsHubTab() {
             onChange={setSortBy}
             className="flex-1"
             options={[
-              { value: 'popular', label: 'Popular' },
-              { value: 'name', label: 'Name' },
-              { value: 'size', label: 'Size' },
+              { value: 'name', label: 'ID' },
+              { value: 'display_name', label: 'Display name' },
             ]}
             popupMatchSelectWidth={false}
             aria-label="Sort models"
@@ -164,19 +167,19 @@ export function ModelsHubTab() {
           const indexById = new Map(
             (catalog?.items ?? [])
               .filter(it => it.category === 'model')
-              .map(it => [it.id, it]),
+              .map(it => [it.name, it]),
           )
           // Show items that are compatible OR not in the catalog index
           // (orphans / dev models are never hidden).
           const visibleModels = filteredModels.filter(m => {
-            const ix = indexById.get(m.id)
+            const ix = indexById.get(m.name)
             return !ix || compatOf(ix, serverVersion).status === 'ok'
           })
           return (
             <>
               <div className="flex flex-col gap-3">
                 {visibleModels.map(model => (
-                  <ModelHubCard key={model.id} model={model} />
+                  <ModelHubCard key={model.name} model={model} />
                 ))}
               </div>
               {visibleModels.length === 0 && (

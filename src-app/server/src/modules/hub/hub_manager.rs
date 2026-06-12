@@ -1,24 +1,30 @@
-//! HubManager — GitHub-Releases-backed catalog of models, assistants, MCP servers.
+//! HubManager — Pages-backed catalog of models, assistants, MCP servers.
 //!
-//! Source of truth: `ziee-ai/hub` repo, tagged + signed releases. At
-//! `tag → release.yml → ziee-ai/hub` produces `hub.tar.gz` (flat bundle of
-//! manifests + schemas + index) plus `hub.index.json`, each with a
-//! `.sha256` and a keyless cosign `.cosign.bundle` sidecar.
+//! Source of truth: the `gh-pages` branch of `ziee-ai/hub`, served as a
+//! static site at `https://ziee-ai.github.io/hub/`. Layout:
 //!
-//! On boot the server installs an embedded seed catalog (compiled via
-//! `include_dir!` from `binaries/hub-seed/`, which `build_helper/hub_seed.rs`
-//! populates at build time from the latest ziee-ai/hub release —
-//! verified with the same sha256 + cosign chain the runtime refresh
-//! uses) so the hub UI renders read-only even when GitHub is
-//! unreachable post-install. `SEED_HUB_VERSION` is set by the build
-//! helper from the resolved tag; keeping the seed + version in
-//! lockstep is the build's responsibility, not the maintainer's.
+//! ```
+//!   /index.json                                  # the Catalog
+//!   /schemas/v2/*.schema.json                    # versioned schemas
+//!   /<type>/<id>/<version>.json                  # full manifest
+//! ```
 //!
-//! Refresh path: download both files into a staging dir, sha256-check
-//! both, sigstore-verify both against the expected keyless OIDC
-//! identity, unpack the tarball, atomically rotate
-//! `<app_data>/hub/current/` to point at the new version. Failure at any
-//! step leaves the previous `current/` untouched.
+//! `refresh()` only fetches `index.json` (the lightweight envelope
+//! list — every list/card view reads from this); full manifests are
+//! pulled lazily by `manifest()` only when an entry is opened or
+//! installed, and cached on disk version-addressed so multiple
+//! versions can coexist.
+//!
+//! Boot fallback: an embedded seed under `binaries/hub-seed/` (mirror
+//! of `resources/hub-seed/` — copied verbatim by
+//! `build_helper/hub_seed.rs` at compile time) is installed on first
+//! run so the hub UI works fully offline. The seed is the only
+//! pre-network state; `current/` is then either re-seeded on upgrade
+//! or replaced by a `refresh()` from Pages.
+//!
+//! Trust model: HTTPS to GitHub Pages is the boundary. No cosign / no
+//! sha256 sidecars. JSON Schema validation + per-fetch size cap are
+//! the only payload safety checks (see `MAX_HUB_ARTIFACT_BYTES`).
 
 use chrono::{DateTime, Utc};
 use include_dir::{Dir, include_dir};
@@ -36,59 +42,44 @@ use crate::common::AppError;
 // Configuration
 // =====================================================================
 
-pub const HUB_REPO_OWNER: &str = "ziee-ai";
-pub const HUB_REPO_NAME: &str = "hub";
+/// Default base URL the Pages branch is served from. Overridable in
+/// debug builds (only) via `ZIEE_HUB_PAGES_BASE`.
+pub const DEFAULT_PAGES_BASE: &str = "https://ziee-ai.github.io/hub";
 
-/// Cosign keyless OIDC identity that release.yml signs as. Verified
-/// in-process via the sigstore crate — see `verify_cosign_bundle`.
-pub fn cosign_expected_identity(tag: &str) -> String {
-    format!(
-        "https://github.com/{}/{}/.github/workflows/release.yml@refs/tags/{}",
-        HUB_REPO_OWNER, HUB_REPO_NAME, tag
-    )
-}
+/// Hard cap on any single fetched JSON. The catalog ships ~10 KB at
+/// v2.0.0 (5 entries) and grows linearly with item count; 32 MiB
+/// leaves headroom for thousands of entries while preventing a
+/// redirect from filling memory via `.bytes().await`.
+const MAX_HUB_ARTIFACT_BYTES: u64 = 32 * 1024 * 1024;
 
-pub const COSIGN_OIDC_ISSUER: &str = "https://token.actions.githubusercontent.com";
+/// HTTP timeout for any single Pages fetch.
+const HTTP_TIMEOUT: Duration = Duration::from_secs(30);
 
 // =====================================================================
 // Dev/test overrides — physically compiled OUT of release builds via
-// `cfg!(debug_assertions)`, mirroring code_sandbox's dev-mirror pattern.
-// They let the integration suite point the fetcher at a local mock
-// release server (no network, no real cosign signature) without any
-// risk of the mechanism being reachable in a shipped binary.
+// `cfg!(debug_assertions)`, same pattern code_sandbox's dev-mirror
+// uses. Let the integration suite point the fetcher at a local mock
+// Pages server (no network) without any risk in shipped binaries.
 // =====================================================================
 
-/// Base for the GitHub REST API (releases list). Override in debug via
-/// `ZIEE_HUB_API_BASE_OVERRIDE` (e.g. `http://127.0.0.1:PORT`).
-fn hub_api_base() -> String {
+/// Pages site base. Override in debug via `ZIEE_HUB_PAGES_BASE`
+/// (e.g. `http://127.0.0.1:PORT`).
+fn hub_pages_base() -> String {
     if cfg!(debug_assertions)
-        && let Ok(v) = std::env::var("ZIEE_HUB_API_BASE_OVERRIDE")
+        && let Ok(v) = std::env::var("ZIEE_HUB_PAGES_BASE")
         && !v.is_empty()
     {
         return v;
     }
-    "https://api.github.com".to_string()
+    DEFAULT_PAGES_BASE.to_string()
 }
 
-/// Base for release asset downloads. Override in debug via
-/// `ZIEE_HUB_DOWNLOAD_BASE_OVERRIDE`.
-fn hub_download_base() -> String {
-    if cfg!(debug_assertions)
-        && let Ok(v) = std::env::var("ZIEE_HUB_DOWNLOAD_BASE_OVERRIDE")
-        && !v.is_empty()
-    {
-        return v;
-    }
-    "https://github.com".to_string()
-}
-
-/// On-disk root of the hub catalog (`current/`, `.staging/`,
-/// `.previous/`). Debug builds honor `ZIEE_HUB_DATA_DIR_OVERRIDE` so
-/// the integration suite can give each test an isolated catalog dir —
-/// the catalog is per-deployment global mutable state, so without
-/// isolation a mutating test (refresh/activate) contaminates every
-/// other test sharing the same app_data dir. Always `app_data/hub` in
-/// release.
+/// On-disk root of the hub catalog (`current/`, `.staging/`). Debug
+/// builds honor `ZIEE_HUB_DATA_DIR_OVERRIDE` so the integration suite
+/// can give each test an isolated catalog dir — the catalog is
+/// per-deployment global mutable state, so without isolation a
+/// mutating test contaminates every other test sharing the same
+/// app_data dir. Always `app_data/hub` in release.
 fn hub_root_for(app_data: &Path) -> PathBuf {
     if cfg!(debug_assertions)
         && let Ok(d) = std::env::var("ZIEE_HUB_DATA_DIR_OVERRIDE")
@@ -99,23 +90,6 @@ fn hub_root_for(app_data: &Path) -> PathBuf {
     app_data.join("hub")
 }
 
-/// When set in a debug build, the cosign keyless verification step is
-/// skipped (the mock release server can't mint a real Sigstore bundle).
-/// Always false in release — there is no way to disable cosign in a
-/// shipped binary.
-fn allow_unsigned() -> bool {
-    cfg!(debug_assertions)
-        && std::env::var("ZIEE_HUB_ALLOW_UNSIGNED")
-            .map(|v| v == "1")
-            .unwrap_or(false)
-}
-
-/// Hard cap on any single hub artifact. The bundle is ~10 KB at v0.0.1
-/// (13 manifests) and grows linearly with catalog size; 32 MiB leaves
-/// headroom for thousands of items while preventing an upstream
-/// redirect from filling memory via `.bytes().await`.
-const MAX_HUB_ARTIFACT_BYTES: u64 = 32 * 1024 * 1024;
-
 /// Server semver. The `compat()` helper compares this against each
 /// IndexItem's `min_ziee_version` to partition the catalog into
 /// installable vs incompatible.
@@ -124,34 +98,25 @@ pub fn server_version() -> &'static str {
 }
 
 // =====================================================================
-// Embedded seed (build-time fetched from ziee-ai/hub releases)
+// Embedded seed (compile-time copy of `resources/hub-seed/`)
 // =====================================================================
-//
-// `build_helper/hub_seed.rs` runs at compile time, downloads the
-// latest non-prerelease tag from github.com/ziee-ai/hub (or honors
-// `HUB_RELEASE_TAG` for pinned builds), sha256 + cosign verifies,
-// and stages the catalog into `binaries/hub-seed/`. The macro below
-// then bakes that staged directory into the binary. The build fails
-// loudly if the fetch fails — offline / air-gapped operators must
-// pin a tag + manually stage the dir before building.
 
 static HUB_SEED: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/binaries/hub-seed");
 
 /// Seed catalog version. Written by `build_helper/hub_seed.rs` from
-/// the resolved tag (with the leading `v` stripped) to keep this
-/// const in lockstep with whatever `binaries/hub-seed/` actually
-/// contains. The pre-build-fetch-era code hardcoded this string and
-/// drifted whenever someone forgot to bump it.
+/// the tracked seed's `index.json` `hub_version` field, so this const
+/// stays in lockstep with whatever `binaries/hub-seed/` actually
+/// contains.
 pub const SEED_HUB_VERSION: &str =
     include_str!(concat!(env!("OUT_DIR"), "/hub_seed_version.txt"));
 
-/// Marker file dropped into `current/` when the active catalog is the
-/// embedded seed (never fetched + verified from GitHub). A successful
-/// refresh rotates in a fresh dir that lacks it.
+/// Marker file in `current/` indicating the active catalog is the
+/// embedded seed (never fetched from Pages). A successful refresh
+/// removes this marker.
 const SEED_MARKER: &str = ".seed";
 
-/// Process-wide lock serializing catalog refresh/activate so concurrent
-/// callers don't clobber the shared `.staging` / `.previous` dirs.
+/// Process-wide lock serializing catalog refresh so concurrent
+/// callers don't clobber the index swap.
 static HUB_REFRESH_LOCK: once_cell::sync::Lazy<tokio::sync::Mutex<()>> =
     once_cell::sync::Lazy::new(|| tokio::sync::Mutex::new(()));
 
@@ -162,8 +127,9 @@ pub enum CatalogProvenance {
     /// Embedded seed (boot fallback / air-gapped). Trusted (compiled
     /// into the binary) and installable, but not a live fetch.
     Seed,
-    /// Downloaded + sha256 + cosign-verified from ziee-ai/hub.
-    Github,
+    /// Fetched from the Pages branch at `hub_pages_base()`. HTTPS-only
+    /// trust — no cosign / sha256.
+    Pages,
 }
 
 // =====================================================================
@@ -173,6 +139,9 @@ pub enum CatalogProvenance {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Catalog {
     pub schema_version: u32,
+    /// Build marker stamped by the publisher. Under v2 this is NOT the
+    /// per-entry update signal — per-entry `IndexItem.version` is the
+    /// truth. Kept for diagnostics + the seed-version test guard.
     pub hub_version: String,
     #[serde(default)]
     pub generated_at: Option<String>,
@@ -181,9 +150,18 @@ pub struct Catalog {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct IndexItem {
-    pub id: String,
-    pub category: HubCategory,
+    /// v2 envelope — reverse-DNS canonical name, unique across sources.
+    /// ziee-native entries use `io.github.<contributor>/<slug>`; ingested
+    /// MCP entries keep their official `name`. Matches the per-entry
+    /// manifest's top-level `name` field; used as the lookup key for
+    /// `manifest()` / `ensure_installable()` / install requests
+    /// (the `hub_id` field on `/hub/*/create` is this value).
     pub name: String,
+    pub category: HubCategory,
+    /// Human display label (replaces v1 `IndexItem.name`). Optional —
+    /// cards fall back to the slug portion of `name` when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     pub summary: String,
     #[serde(default)]
     pub tags: Vec<String>,
@@ -191,15 +169,22 @@ pub struct IndexItem {
     pub verified: bool,
     pub added_at: Option<String>,
     pub min_ziee_version: Option<String>,
+    /// Pages-relative path to the full manifest, e.g.
+    /// `"models/io.github.ziee-ai/llama-3-8b-instruct/1.0.0.json"`.
+    /// Used as both the HTTP fetch suffix and the on-disk cache path.
+    /// Validated by `is_safe_manifest_path` before any file or URL use.
     pub manifest_path: String,
+    /// v2 envelope — per-entry semver. Replaces the role of the
+    /// monolithic `Catalog.hub_version` as the update signal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    /// v2 envelope — namespaced extras (e.g.
+    /// `io.modelcontextprotocol.registry/*` on ingested entries).
+    #[serde(default, rename = "_meta", skip_serializing_if = "Option::is_none")]
+    pub meta: Option<serde_json::Value>,
 }
 
 /// Full manifest for one hub item, returned by `GET /api/hub/manifest/:id`.
-///
-/// A struct (not a `#[serde(tag)]` enum) because the tagged-enum +
-/// `Box<Struct>` form produces an empty OpenAPI schema — clients
-/// couldn't see the payload fields. Exactly one of `model` /
-/// `assistant` / `mcp_server` is populated, matching `category`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct HubManifest {
     pub category: HubCategory,
@@ -242,9 +227,7 @@ impl HubManifest {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum Compat {
-    /// No `min_ziee_version` set, or server version >= required.
     Ok,
-    /// Server version is older than the manifest's `min_ziee_version`.
     TooOld { required: String },
 }
 
@@ -255,26 +238,14 @@ impl Compat {
 }
 
 /// Returned from `refresh()` so handlers can surface "no change" vs
-/// "advanced to v0.X.Y" in toasts.
+/// "advanced to v0.X.Y" in toasts. v1 carried a `cosign_verified`
+/// field; v2 dropped it (HTTPS-only trust).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct RefreshOutcome {
     pub previous_version: Option<String>,
     pub new_version: String,
     pub updated: bool,
-    pub cosign_verified: bool,
     pub refreshed_at: DateTime<Utc>,
-}
-
-/// One published catalog version on GitHub Releases. Surfaced by
-/// `list_releases()` for the admin version picker.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct HubReleaseInfo {
-    /// Version without the leading `v` (e.g. `0.0.2-alpha`).
-    pub version: String,
-    /// Full git tag (e.g. `v0.0.2-alpha`).
-    pub tag: String,
-    pub prerelease: bool,
-    pub published_at: Option<String>,
 }
 
 // =====================================================================
@@ -300,28 +271,14 @@ impl HubManager {
         self.hub_root().join("current")
     }
 
-    fn staging_dir(&self) -> PathBuf {
-        self.hub_root().join(".staging")
-    }
-
     /// On boot: install the embedded seed catalog into
-    /// `<app_data>/hub/current/` if it doesn't already exist.
+    /// `<app_data>/hub/current/` if it doesn't already exist; also
+    /// upgrade a stale seed-provenance cache when the binary embeds a
+    /// newer `SEED_HUB_VERSION`.
     ///
-    /// Also UPGRADES a stale seed-provenance cache when the binary
-    /// embeds a newer `SEED_HUB_VERSION`. Without this, a long-lived
-    /// data-dir keeps serving the catalog version it was first seeded
-    /// with, even after the user upgrades the binary — admins see
-    /// "installed v2, current v3" in the Updates tab and Re-install
-    /// silently re-stamps the row with the SAME stale catalog version
-    /// (the cache the runtime is reading from), so the row never
-    /// drops off the Updates list.
-    ///
-    /// A GitHub-fetched cache (`provenance == Github`) is NEVER
-    /// auto-replaced — it's been cosign-verified and may legitimately
-    /// be newer than the embedded seed (the seed is bumped on the
-    /// release-engineering cadence; a fetch is on the operator's
-    /// schedule). Operators who want to roll a verified cache forward
-    /// or back go through `/api/hub/refresh` or `/api/hub/activate`.
+    /// A Pages-fetched cache (provenance == Pages) is NEVER auto-
+    /// replaced — it's been pulled by an operator action and may
+    /// legitimately be newer than the embedded seed.
     pub fn initialize(&self) -> Result<(), AppError> {
         let current = self.current_dir();
         let index_path = current.join("index.json");
@@ -329,15 +286,9 @@ impl HubManager {
         if !index_path.exists() {
             // Fresh install — fall through to install the seed.
         } else {
-            // Cache already exists. Replace it ONLY when:
-            //   1. it was seeded by a prior boot (has `.seed` marker), AND
-            //   2. the embedded `SEED_HUB_VERSION` is strictly newer
-            //      than the cached `hub_version` (semver compare).
-            // Anything else (GitHub-fetched cache, same-version seed,
-            // unreadable / malformed cache) is left alone.
             let is_seed = current.join(SEED_MARKER).exists();
             if !is_seed {
-                // GitHub-fetched cache — operator's source of truth.
+                // Pages-fetched cache — operator's source of truth.
                 return Ok(());
             }
             let cached_version = match fs::read(&index_path)
@@ -346,8 +297,6 @@ impl HubManager {
             {
                 Some(cat) => cat.hub_version,
                 None => {
-                    // Marker says seed but the index is unreadable —
-                    // treat as a corrupt cache and reseed.
                     tracing::warn!(
                         "hub: seed cache at {} is unreadable; reseeding",
                         index_path.display()
@@ -357,8 +306,6 @@ impl HubManager {
                 }
             };
 
-            // Semver compare; trim the seed-version trailing newline
-            // (`include_str!` keeps the file's terminating `\n`).
             let seed_ver_str = SEED_HUB_VERSION.trim();
             let cached_ver = match semver::Version::parse(&cached_version) {
                 Ok(v) => v,
@@ -373,9 +320,6 @@ impl HubManager {
             let seed_ver = match semver::Version::parse(seed_ver_str) {
                 Ok(v) => v,
                 Err(e) => {
-                    // Build-time invariant guarantees SEED_HUB_VERSION
-                    // is semver — log + bail rather than corrupting the
-                    // cache.
                     tracing::error!(
                         "hub: embedded SEED_HUB_VERSION '{}' is not valid semver: {} — leaving cache as-is",
                         seed_ver_str,
@@ -405,11 +349,6 @@ impl HubManager {
             ))
         })?;
         Self::dump_dir(&HUB_SEED, &current)?;
-        // Mark provenance: this catalog is the embedded seed, not a
-        // verified GitHub fetch. A successful refresh removes this
-        // marker (the rotated dir never contains it). Surfaced via
-        // CatalogProvenance so the UI can show an "offline / built-in"
-        // indicator.
         let _ = fs::write(current.join(SEED_MARKER), b"seed\n");
         tracing::info!(
             "hub: installed embedded seed catalog v{} into {}",
@@ -419,14 +358,8 @@ impl HubManager {
         Ok(())
     }
 
-    /// Wipe the current/ directory and re-dump the embedded seed. Used
-    /// for both first-install and the seed-version-upgrade path so the
-    /// disk shape (.seed marker, dumped files, mtimes) is identical.
+    /// Wipe the current/ directory and re-dump the embedded seed.
     fn overwrite_with_seed(current: &std::path::Path) -> Result<(), AppError> {
-        // Remove every entry under current/ but keep current/ itself —
-        // mirrors the dir's semantics (current dir is referenced by
-        // `hub_root().join("current")` and may have been opened by
-        // other paths).
         if current.exists() {
             for entry in fs::read_dir(current).map_err(|e| {
                 AppError::internal_error(format!(
@@ -470,28 +403,23 @@ impl HubManager {
         Ok(())
     }
 
-    /// Where the active catalog came from: the embedded seed (boot
-    /// fallback / air-gapped) or a cosign-verified GitHub fetch.
+    /// Where the active catalog came from.
     pub fn provenance(&self) -> CatalogProvenance {
         if self.current_dir().join(SEED_MARKER).exists() {
             CatalogProvenance::Seed
         } else {
-            CatalogProvenance::Github
+            CatalogProvenance::Pages
         }
     }
 
-    /// Wall-clock time the active catalog was installed — the mtime of
-    /// `current/index.json` (written on seed install + on every fetch
-    /// rotate). None if unreadable.
+    /// Wall-clock time the active catalog was installed.
     pub fn last_refreshed(&self) -> Option<DateTime<Utc>> {
         let meta = fs::metadata(self.current_dir().join("index.json")).ok()?;
         let modified = meta.modified().ok()?;
         Some(DateTime::<Utc>::from(modified))
     }
 
-    /// Read the on-disk `index.json`. Errors are surfaced as
-    /// `internal_error` — the seed install on boot guarantees the file
-    /// exists in a healthy install.
+    /// Read the on-disk `index.json`.
     pub async fn catalog(&self) -> Result<Catalog, AppError> {
         let path = self.current_dir().join("index.json");
         let bytes = tokio::fs::read(&path).await.map_err(|e| {
@@ -506,58 +434,102 @@ impl HubManager {
         })
     }
 
-    /// Read a per-id manifest YAML from the on-disk catalog. The
-    /// category narrows the search — same id may not exist in multiple
-    /// categories (validator enforces global uniqueness), but resolving
-    /// by `(category, id)` keeps the path lookup deterministic.
+    /// Read the per-entry manifest. The path is resolved from the
+    /// catalog's `manifest_path` for the matching `(category, name)`
+    /// IndexItem, so per-version layout
+    /// (`<folder>/<namespace>/<leaf>/<version>.json`) is the publisher's
+    /// choice — the consumer just follows the link.
+    ///
+    /// `name` is the reverse-DNS canonical name (e.g.
+    /// `io.github.modelcontextprotocol/filesystem`); validated via
+    /// `is_safe_name` before lookup.
+    ///
+    /// Lazy: if the cache file is missing AND the catalog reports a
+    /// Pages provenance for the running cache, the per-entry manifest
+    /// is fetched from `<base>/<manifest_path>` and written into the
+    /// cache version-addressed before returning.
     pub async fn manifest(
         &self,
         category: HubCategory,
-        id: &str,
+        name: &str,
     ) -> Result<HubManifest, AppError> {
-        if !is_safe_id(id) {
+        if !is_safe_name(name) {
             return Err(AppError::bad_request(
                 "HUB_INVALID_ID",
-                "hub item id contains characters outside the allowed set [a-z0-9._-]",
+                "hub item name contains characters outside the allowed reverse-DNS set",
             ));
         }
-        let folder = category_folder(category);
-        let path = self
-            .current_dir()
-            .join(folder)
-            .join(format!("{}.yaml", id));
-        let bytes = tokio::fs::read(&path).await.map_err(|e| {
-            if e.kind() == io::ErrorKind::NotFound {
-                AppError::not_found(&format!("hub manifest {}/{}", folder, id))
-            } else {
-                AppError::internal_error(format!(
-                    "hub: read manifest {}: {}",
-                    path.display(),
-                    e
+
+        // Resolve the IndexItem so we know which `manifest_path` to
+        // read. Per-entry version + the on-disk filename are the
+        // publisher's call; we just look it up.
+        let catalog = self.catalog().await?;
+        let item = catalog
+            .items
+            .iter()
+            .find(|it| it.category == category && it.name == name)
+            .ok_or_else(|| {
+                AppError::not_found(&format!(
+                    "hub manifest {}/{}",
+                    category_folder(category),
+                    name
                 ))
+            })?;
+
+        let rel = &item.manifest_path;
+        if !is_safe_manifest_path(rel) {
+            return Err(AppError::internal_error(format!(
+                "hub: index entry {}/{} has unsafe manifest_path {:?}",
+                category_folder(category),
+                name,
+                rel
+            )));
+        }
+
+        let cache_path = self.current_dir().join(rel);
+        let bytes = match tokio::fs::read(&cache_path).await {
+            Ok(b) => b,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                // Lazy fetch — pull just this manifest from Pages and
+                // cache it version-addressed. Seed-provenance caches
+                // SHOULD already carry every entry (the seed ships all
+                // of them), so a miss here generally means a
+                // Pages-fetched cache that hasn't pulled this entry
+                // yet. Fail back to seed lookup if the cache is the
+                // seed, in case the seed has the file at a different
+                // disk layout than the publisher claims.
+                self.fetch_and_cache_manifest(rel).await?
             }
-        })?;
+            Err(e) => {
+                return Err(AppError::internal_error(format!(
+                    "hub: read manifest {}: {}",
+                    cache_path.display(),
+                    e
+                )));
+            }
+        };
+
         match category {
             HubCategory::Model => {
-                let m: HubModel = serde_yaml::from_slice(&bytes).map_err(|e| {
-                    AppError::internal_error(format!("hub: parse model {}: {}", id, e))
+                let m: HubModel = serde_json::from_slice(&bytes).map_err(|e| {
+                    AppError::internal_error(format!("hub: parse model {}: {}", name, e))
                 })?;
                 Ok(HubManifest::model(m))
             }
             HubCategory::Assistant => {
-                let a: HubAssistant = serde_yaml::from_slice(&bytes).map_err(|e| {
+                let a: HubAssistant = serde_json::from_slice(&bytes).map_err(|e| {
                     AppError::internal_error(format!(
                         "hub: parse assistant {}: {}",
-                        id, e
+                        name, e
                     ))
                 })?;
                 Ok(HubManifest::assistant(a))
             }
             HubCategory::McpServer => {
-                let s: HubMCPServer = serde_yaml::from_slice(&bytes).map_err(|e| {
+                let s: HubMCPServer = serde_json::from_slice(&bytes).map_err(|e| {
                     AppError::internal_error(format!(
                         "hub: parse mcp-server {}: {}",
-                        id, e
+                        name, e
                     ))
                 })?;
                 Ok(HubManifest::mcp_server(s))
@@ -565,14 +537,16 @@ impl HubManager {
         }
     }
 
-    /// Convenience: load every item in a category. Backs the existing
-    /// `/api/hub/{models,assistants,mcp-servers}` endpoints. Reads
-    /// O(items-in-category) files (~5 at v0.0.1) — negligible at v1 scale.
+    /// Convenience: load every item in a category.
     pub async fn list_models(&self) -> Result<Vec<HubModel>, AppError> {
         let catalog = self.catalog().await?;
         let mut out = Vec::new();
-        for item in catalog.items.iter().filter(|i| matches!(i.category, HubCategory::Model)) {
-            if let Some(m) = self.manifest(item.category, &item.id).await?.model {
+        for item in catalog
+            .items
+            .iter()
+            .filter(|i| matches!(i.category, HubCategory::Model))
+        {
+            if let Some(m) = self.manifest(item.category, &item.name).await?.model {
                 out.push(*m);
             }
         }
@@ -582,8 +556,12 @@ impl HubManager {
     pub async fn list_assistants(&self) -> Result<Vec<HubAssistant>, AppError> {
         let catalog = self.catalog().await?;
         let mut out = Vec::new();
-        for item in catalog.items.iter().filter(|i| matches!(i.category, HubCategory::Assistant)) {
-            if let Some(a) = self.manifest(item.category, &item.id).await?.assistant {
+        for item in catalog
+            .items
+            .iter()
+            .filter(|i| matches!(i.category, HubCategory::Assistant))
+        {
+            if let Some(a) = self.manifest(item.category, &item.name).await?.assistant {
                 out.push(*a);
             }
         }
@@ -593,18 +571,21 @@ impl HubManager {
     pub async fn list_mcp_servers(&self) -> Result<Vec<HubMCPServer>, AppError> {
         let catalog = self.catalog().await?;
         let mut out = Vec::new();
-        for item in catalog.items.iter().filter(|i| matches!(i.category, HubCategory::McpServer)) {
-            if let Some(s) = self.manifest(item.category, &item.id).await?.mcp_server {
+        for item in catalog
+            .items
+            .iter()
+            .filter(|i| matches!(i.category, HubCategory::McpServer))
+        {
+            if let Some(s) = self.manifest(item.category, &item.name).await?.mcp_server {
                 out.push(*s);
             }
         }
         Ok(out)
     }
 
-    /// Combined load — backs the old `load_hub_data_with_locale` callers
-    /// that read everything in one shot. The `_locale` arg is accepted
-    /// for source-compat with the prior shape but ignored: the new
-    /// catalog ships English-only at v1; localization is deferred.
+    /// Combined load — backs the old `load_hub_data_with_locale`
+    /// callers that read everything in one shot. The `_locale` arg
+    /// is accepted for source-compat but ignored.
     pub async fn load_hub_data_with_locale(
         &self,
         _locale: &str,
@@ -621,27 +602,28 @@ impl HubManager {
         })
     }
 
-    /// The active catalog's `hub_version`.
+    /// The active catalog's build-marker `hub_version`. Under v2 this
+    /// is rarely the right value to stamp on installs (use the
+    /// per-entry `IndexItem.version` for that — handlers do this
+    /// directly via `catalog().items.find(...).version`).
     pub async fn current_version(&self) -> Result<String, AppError> {
         let catalog = self.catalog().await?;
         Ok(catalog.hub_version)
     }
 
-    /// Reject installing a hub item whose `min_ziee_version` exceeds the
-    /// running server. Defense-in-depth behind the UI's hiding of
-    /// incompatible items — an API client (or a stale UI) must not be
-    /// able to install one. Items absent from the index (orphans /
-    /// dev) are treated as installable.
+    /// Reject installing a hub item whose `min_ziee_version` exceeds
+    /// the running server. `name` is the reverse-DNS canonical name
+    /// (matches `IndexItem.name`).
     pub async fn ensure_installable(
         &self,
         category: HubCategory,
-        id: &str,
+        name: &str,
     ) -> Result<(), AppError> {
         let catalog = self.catalog().await?;
         let Some(item) = catalog
             .items
             .iter()
-            .find(|it| it.category == category && it.id == id)
+            .find(|it| it.category == category && it.name == name)
         else {
             return Ok(());
         };
@@ -651,7 +633,7 @@ impl HubManager {
                 "HUB_INCOMPATIBLE",
                 format!(
                     "hub item '{}' requires ziee >= {} but this server is {}",
-                    id,
+                    name,
                     required,
                     server_version()
                 ),
@@ -664,23 +646,20 @@ impl HubManager {
         Self::compat_for_server(item, server_version())
     }
 
-    /// Same as `compat` but explicit server version (used in tests so
-    /// older or newer fixtures can be exercised against a fixed
-    /// `min_ziee_version`).
     pub fn compat_for_server(item: &IndexItem, server_ver: &str) -> Compat {
         let Some(required) = item.min_ziee_version.as_deref() else {
             return Compat::Ok;
         };
         let server = match semver::Version::parse(server_ver) {
             Ok(v) => v,
-            Err(_) => return Compat::Ok, // garbled server version → don't block; logged elsewhere
+            Err(_) => return Compat::Ok,
         };
         let req = match semver::Version::parse(required) {
             Ok(v) => v,
             Err(e) => {
                 tracing::warn!(
                     "hub: item {:?} has malformed min_ziee_version {:?}: {}",
-                    item.id,
+                    item.name,
                     required,
                     e
                 );
@@ -696,61 +675,110 @@ impl HubManager {
         }
     }
 
-    /// Force-refresh the catalog from GitHub Releases.
+    /// Refresh the catalog index from Pages.
     ///
-    /// `target`:
-    ///   - `None` → fetch the latest release (newest stable, else newest
-    ///     prerelease). This is "track latest".
-    ///   - `Some("0.0.2-alpha")` → fetch exactly that version (the tag is
-    ///     `v` + version). This is the admin-pinned path.
-    ///
-    /// Returns the previous + new version. Cosign + sha256 failure
-    /// aborts; the previous `current/` is left untouched.
-    pub async fn refresh(&self, target: Option<String>) -> Result<RefreshOutcome, AppError> {
-        // Serialize refreshes process-wide: concurrent refresh/activate
-        // calls share the `.staging` / `.previous` dirs and would clobber
-        // each other's `remove_dir_all` + `rename`. (activate() calls
-        // refresh(), so this guard covers both.)
+    /// v2 is index-only: per-entry manifests are fetched lazily on
+    /// demand (see `manifest()`), so refresh just GETs `index.json`,
+    /// validates it parses, and atomically replaces
+    /// `current/index.json`. The seed marker is cleared on success,
+    /// flipping the provenance to `Pages`.
+    pub async fn refresh(&self) -> Result<RefreshOutcome, AppError> {
         let _guard = HUB_REFRESH_LOCK.lock().await;
 
         let previous_version = self.catalog().await.ok().map(|c| c.hub_version);
 
-        let app_data = self.app_data_dir.clone();
-        let outcome = tokio::task::spawn_blocking(move || refresh_blocking(&app_data, target))
+        let base = hub_pages_base();
+        let url = format!("{}/index.json", base.trim_end_matches('/'));
+        let bytes = tokio::task::spawn_blocking(move || download_json(&url))
             .await
             .map_err(|e| AppError::internal_error(format!("hub: refresh join: {}", e)))??;
 
+        let catalog: Catalog = serde_json::from_slice(&bytes).map_err(|e| {
+            AppError::internal_error(format!("hub: parse fetched index.json: {}", e))
+        })?;
+
+        // Atomic-ish swap: write tmp, fs::rename over current/index.json,
+        // then drop the seed marker (if any) since we're now Pages-backed.
+        let current = self.current_dir();
+        fs::create_dir_all(&current).map_err(|e| {
+            AppError::internal_error(format!(
+                "hub: create {}: {}",
+                current.display(),
+                e
+            ))
+        })?;
+        let tmp_path = current.join("index.json.tmp");
+        let final_path = current.join("index.json");
+        fs::write(&tmp_path, &bytes).map_err(|e| {
+            AppError::internal_error(format!(
+                "hub: write tmp index.json: {}",
+                e
+            ))
+        })?;
+        fs::rename(&tmp_path, &final_path).map_err(|e| {
+            AppError::internal_error(format!(
+                "hub: promote tmp index.json: {}",
+                e
+            ))
+        })?;
+        let _ = fs::remove_file(current.join(SEED_MARKER));
+
+        let new_version = catalog.hub_version;
         Ok(RefreshOutcome {
-            updated: previous_version.as_deref() != Some(outcome.new_version.as_str()),
+            updated: previous_version.as_deref() != Some(new_version.as_str()),
             previous_version,
-            new_version: outcome.new_version,
-            cosign_verified: outcome.cosign_verified,
+            new_version,
             refreshed_at: Utc::now(),
         })
     }
 
-    /// List the catalog versions published on GitHub Releases. Newest
-    /// first. Used by the admin version picker.
-    pub async fn list_releases(&self) -> Result<Vec<HubReleaseInfo>, AppError> {
-        let releases = tokio::task::spawn_blocking(list_releases_blocking)
+    /// Fetch one per-entry manifest from Pages and cache it on disk
+    /// at `current/<rel>`. Caller has already validated `rel`.
+    async fn fetch_and_cache_manifest(&self, rel: &str) -> Result<Vec<u8>, AppError> {
+        let base = hub_pages_base();
+        let url = format!(
+            "{}/{}",
+            base.trim_end_matches('/'),
+            rel.trim_start_matches('/')
+        );
+        let url_owned = url.clone();
+        let bytes = tokio::task::spawn_blocking(move || download_json(&url_owned))
             .await
-            .map_err(|e| AppError::internal_error(format!("hub: list-releases join: {}", e)))??;
-        Ok(releases
-            .into_iter()
-            .map(|r| HubReleaseInfo {
-                version: r.tag_name.trim_start_matches('v').to_string(),
-                tag: r.tag_name,
-                prerelease: r.prerelease,
-                published_at: r.published_at,
-            })
-            .collect())
+            .map_err(|e| {
+                AppError::internal_error(format!("hub: fetch-manifest join: {}", e))
+            })??;
+
+        let cache_path = self.current_dir().join(rel);
+        if let Some(parent) = cache_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| {
+                AppError::internal_error(format!(
+                    "hub: create cache dir {}: {}",
+                    parent.display(),
+                    e
+                ))
+            })?;
+        }
+        let tmp_path = cache_path.with_extension("json.tmp");
+        fs::write(&tmp_path, &bytes).map_err(|e| {
+            AppError::internal_error(format!(
+                "hub: write tmp manifest {}: {}",
+                tmp_path.display(),
+                e
+            ))
+        })?;
+        fs::rename(&tmp_path, &cache_path).map_err(|e| {
+            AppError::internal_error(format!(
+                "hub: promote tmp manifest {}: {}",
+                cache_path.display(),
+                e
+            ))
+        })?;
+        Ok(bytes)
     }
 
     // ----- helpers -----
 
-    /// Copy an `include_dir::Dir` recursively onto disk, overwriting on
-    /// hit. Used by both `initialize()` (seed install) and never the
-    /// fetch path (that's `tar::Archive` directly).
+    /// Copy an `include_dir::Dir` recursively onto disk.
     fn dump_dir(dir: &Dir<'_>, target: &Path) -> Result<(), AppError> {
         fs::create_dir_all(target).map_err(|e| {
             AppError::internal_error(format!(
@@ -795,512 +823,52 @@ impl HubManager {
 }
 
 // =====================================================================
-// Refresh path (blocking — runs on spawn_blocking worker thread)
+// HTTP helpers (blocking — used inside spawn_blocking)
 // =====================================================================
 
-struct BlockingOutcome {
-    new_version: String,
-    cosign_verified: bool,
-}
-
-fn refresh_blocking(app_data: &Path, target: Option<String>) -> Result<BlockingOutcome, AppError> {
+/// Synchronously GET a JSON payload from `url` with size + timeout
+/// caps. Returns the body bytes on success. The size cap protects
+/// against an upstream redirect that fills memory; the timeout
+/// protects against a hung server.
+fn download_json(url: &str) -> Result<Vec<u8>, AppError> {
     let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(60))
+        .timeout(HTTP_TIMEOUT)
         .user_agent(concat!("ziee/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|e| AppError::internal_error(format!("hub: http client: {}", e)))?;
 
-    // Resolve the tag to fetch. A pinned target maps to `v<version>`;
-    // None tracks the latest release.
-    let tag = match target {
-        Some(version) => {
-            let v = version.trim_start_matches('v');
-            if !is_safe_version(v) {
-                return Err(AppError::bad_request(
-                    "HUB_INVALID_VERSION",
-                    "pinned hub version is not a safe semver-ish string",
-                ));
-            }
-            format!("v{}", v)
-        }
-        None => resolve_latest_release(&client)?.tag_name,
-    };
-
-    let hub_root = hub_root_for(app_data);
-    let staging = hub_root.join(".staging");
-    if staging.exists() {
-        let _ = fs::remove_dir_all(&staging);
-    }
-    fs::create_dir_all(&staging).map_err(|e| {
-        AppError::internal_error(format!(
-            "hub: create staging {}: {}",
-            staging.display(),
-            e
-        ))
-    })?;
-
-    let assets = [
-        "hub.tar.gz",
-        "hub.tar.gz.sha256",
-        "hub.tar.gz.cosign.bundle",
-        "hub.index.json",
-        "hub.index.json.sha256",
-        "hub.index.json.cosign.bundle",
-    ];
-    // In a debug build with ZIEE_HUB_ALLOW_UNSIGNED=1 the mock server
-    // only publishes the tarball + index + their sha256 (no cosign
-    // bundles). Skip downloading bundles we won't verify.
-    let unsigned = allow_unsigned();
-    for asset in assets {
-        if unsigned && asset.ends_with(".cosign.bundle") {
-            continue;
-        }
-        let url = format!(
-            "{}/{}/{}/releases/download/{}/{}",
-            hub_download_base(),
-            HUB_REPO_OWNER,
-            HUB_REPO_NAME,
-            tag,
-            asset
-        );
-        download_to_file(&client, &url, &staging.join(asset))?;
-    }
-
-    let tar_path = staging.join("hub.tar.gz");
-    let index_path = staging.join("hub.index.json");
-
-    // sha256 both.
-    verify_sha256_sidecar(&tar_path, &staging.join("hub.tar.gz.sha256"))?;
-    verify_sha256_sidecar(&index_path, &staging.join("hub.index.json.sha256"))?;
-
-    // cosign keyless both, fail-closed (no signed=false fallback in
-    // release). In a debug build with ZIEE_HUB_ALLOW_UNSIGNED=1 (mock
-    // release server), skip — the mock can't mint a real Sigstore bundle.
-    if unsigned {
-        tracing::warn!(
-            "hub: ZIEE_HUB_ALLOW_UNSIGNED set (debug) — skipping cosign verify for {}",
-            tag
-        );
-    }
-    let identity = cosign_expected_identity(&tag);
-    let cosign_verified = if unsigned {
-        false
-    } else {
-        match (
-        verify_cosign_bundle(
-            &staging.join("hub.tar.gz.cosign.bundle"),
-            &tar_path,
-            &identity,
-            COSIGN_OIDC_ISSUER,
-        ),
-        verify_cosign_bundle(
-            &staging.join("hub.index.json.cosign.bundle"),
-            &index_path,
-            &identity,
-            COSIGN_OIDC_ISSUER,
-        ),
-    ) {
-        (Ok(()), Ok(())) => true,
-        (Err(e), _) | (_, Err(e)) => {
-            tracing::error!(
-                "hub.catalog_rejected: cosign verification failed for tag {}: {}",
-                tag, e
-            );
-            return Err(AppError::internal_error(format!(
-                "hub: cosign verify failed for {}: {}",
-                tag, e
-            )));
-        }
-        }
-    };
-
-    // Parse the verified index to confirm the tag matches what release.yml
-    // claimed inside the payload. Mismatch isn't a security failure
-    // (cosign signed both files together), but it indicates a tagging
-    // bug worth surfacing.
-    let index_bytes = fs::read(&index_path).map_err(|e| {
-        AppError::internal_error(format!("hub: read verified index: {}", e))
-    })?;
-    let catalog: Catalog = serde_json::from_slice(&index_bytes)
-        .map_err(|e| AppError::internal_error(format!("hub: parse verified index: {}", e)))?;
-    let expected_version = tag.trim_start_matches('v');
-    if catalog.hub_version != expected_version {
-        tracing::warn!(
-            "hub: tag {} but bundle reports hub_version {}; using tag as authoritative",
-            tag, catalog.hub_version
-        );
-    }
-
-    // Unpack tarball into staging/contents/.
-    let contents = staging.join("contents");
-    fs::create_dir_all(&contents).map_err(|e| {
-        AppError::internal_error(format!(
-            "hub: create unpack dir {}: {}",
-            contents.display(),
-            e
-        ))
-    })?;
-    unpack_safely(&tar_path, &contents)?;
-
-    // Drop the verified index.json into the unpacked contents (the
-    // tarball already contains it at the root, but re-writing the
-    // verified copy guarantees we never serve content that diverged
-    // from the signed file).
-    fs::copy(&index_path, contents.join("index.json")).map_err(|e| {
-        AppError::internal_error(format!("hub: copy verified index: {}", e))
-    })?;
-
-    // Atomically rotate current/.
-    let current = hub_root.join("current");
-    let backup = hub_root.join(".previous");
-    if backup.exists() {
-        let _ = fs::remove_dir_all(&backup);
-    }
-    if current.exists() {
-        fs::rename(&current, &backup).map_err(|e| {
-            AppError::internal_error(format!("hub: stash current: {}", e))
-        })?;
-    }
-    if let Err(e) = fs::rename(&contents, &current) {
-        // Roll back.
-        if backup.exists() {
-            let _ = fs::rename(&backup, &current);
-        }
-        return Err(AppError::internal_error(format!(
-            "hub: promote staging → current: {}",
-            e
-        )));
-    }
-    // Clean up.
-    let _ = fs::remove_dir_all(&backup);
-    let _ = fs::remove_dir_all(&staging);
-
-    tracing::info!(
-        "hub: refreshed catalog to {} (cosign_verified={})",
-        tag, cosign_verified
-    );
-    Ok(BlockingOutcome {
-        new_version: expected_version.to_string(),
-        cosign_verified,
-    })
-}
-
-// =====================================================================
-// Verify helpers (ported from code_sandbox/runtime_fetch.rs)
-// =====================================================================
-
-#[derive(Debug, Clone, Deserialize)]
-struct GhRelease {
-    tag_name: String,
-    #[serde(default)]
-    prerelease: bool,
-    #[serde(default)]
-    draft: bool,
-    #[serde(default)]
-    published_at: Option<String>,
-}
-
-/// Fetch the repo's releases (newest first per the GitHub API), drafts
-/// filtered out. Shared by `resolve_latest_release` + `list_releases`.
-fn fetch_releases(client: &reqwest::blocking::Client) -> Result<Vec<GhRelease>, AppError> {
-    let url = format!(
-        "{}/repos/{}/{}/releases?per_page=50",
-        hub_api_base(),
-        HUB_REPO_OWNER,
-        HUB_REPO_NAME
-    );
-    let releases: Vec<GhRelease> = client
-        .get(&url)
-        .header("Accept", "application/vnd.github+json")
+    let resp = client
+        .get(url)
+        .header("Accept", "application/json")
         .send()
-        .map_err(|e| AppError::internal_error(format!("hub: list releases: {}", e)))?
+        .map_err(|e| AppError::internal_error(format!("hub: GET {}: {}", url, e)))?
         .error_for_status()
-        .map_err(|e| AppError::internal_error(format!("hub: list releases: {}", e)))?
-        .json()
-        .map_err(|e| AppError::internal_error(format!("hub: parse releases: {}", e)))?;
-    Ok(releases.into_iter().filter(|r| !r.draft).collect())
-}
+        .map_err(|e| AppError::internal_error(format!("hub: GET {}: {}", url, e)))?;
 
-fn list_releases_blocking() -> Result<Vec<GhRelease>, AppError> {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .user_agent(concat!("ziee/", env!("CARGO_PKG_VERSION")))
-        .build()
-        .map_err(|e| AppError::internal_error(format!("hub: http client: {}", e)))?;
-    fetch_releases(&client)
-}
-
-fn resolve_latest_release(client: &reqwest::blocking::Client) -> Result<GhRelease, AppError> {
-    // `/releases/latest` skips prereleases by definition, but we still
-    // need to surface them when stable hasn't shipped yet (e.g. during
-    // the v0.0.x-alpha window). Strategy: prefer the most recent
-    // non-prerelease tag; fall back to the newest prerelease if no
-    // stable exists.
-    let releases = fetch_releases(client)?;
-    if let Some(stable) = releases.iter().find(|r| !r.prerelease) {
-        return Ok(stable.clone());
+    if let Some(len) = resp.content_length()
+        && len > MAX_HUB_ARTIFACT_BYTES
+    {
+        return Err(AppError::internal_error(format!(
+            "hub: {} declares {} bytes (cap {})",
+            url, len, MAX_HUB_ARTIFACT_BYTES
+        )));
     }
-    releases
-        .into_iter()
-        .next()
-        .ok_or_else(|| AppError::internal_error("hub: no releases found on GitHub"))
-}
 
-fn download_to_file(
-    client: &reqwest::blocking::Client,
-    url: &str,
-    dest: &Path,
-) -> Result<u64, AppError> {
-    let mut last_err = String::new();
-    for attempt in 1..=3u32 {
-        match client.get(url).send() {
-            Ok(resp) => {
-                let status = resp.status();
-                if !status.is_success() {
-                    last_err = format!("HTTP {}", status);
-                    if status.is_server_error() && attempt < 3 {
-                        std::thread::sleep(Duration::from_secs(2));
-                        continue;
-                    }
-                    return Err(AppError::internal_error(format!(
-                        "hub: download {} failed: {}",
-                        url, last_err
-                    )));
-                }
-                if let Some(len) = resp.content_length()
-                    && len > MAX_HUB_ARTIFACT_BYTES
-                {
-                    return Err(AppError::internal_error(format!(
-                        "hub: {} declares {} bytes (cap {})",
-                        url, len, MAX_HUB_ARTIFACT_BYTES
-                    )));
-                }
-                let mut file = fs::File::create(dest).map_err(|e| {
-                    AppError::internal_error(format!(
-                        "hub: create {}: {}",
-                        dest.display(),
-                        e
-                    ))
-                })?;
-                let mut resp = resp;
-                match resp.copy_to(&mut file) {
-                    Ok(n) => return Ok(n),
-                    Err(e) => {
-                        last_err = format!("stream-to-file: {}", e);
-                        let _ = fs::remove_file(dest);
-                        if attempt < 3 {
-                            std::thread::sleep(Duration::from_secs(2));
-                            continue;
-                        }
-                        return Err(AppError::internal_error(format!(
-                            "hub: download {}: {}",
-                            url, last_err
-                        )));
-                    }
-                }
-            }
-            Err(e) => {
-                last_err = format!("send: {}", e);
-                if attempt < 3 {
-                    std::thread::sleep(Duration::from_secs(2));
-                    continue;
-                }
-                return Err(AppError::internal_error(format!(
-                    "hub: download {}: {}",
-                    url, last_err
-                )));
-            }
-        }
-    }
-    Err(AppError::internal_error(format!(
-        "hub: download {}: {}",
-        url, last_err
-    )))
-}
-
-fn sha256_file(path: &Path) -> std::io::Result<String> {
-    use sha2::{Digest, Sha256};
+    // Read with a cap — even if Content-Length is absent or lies, we
+    // stop reading at the cap.
     use std::io::Read;
-    let mut f = fs::File::open(path)?;
-    let mut h = Sha256::new();
-    let mut buf = vec![0u8; 64 * 1024];
-    loop {
-        let n = f.read(&mut buf)?;
-        if n == 0 {
-            break;
-        }
-        h.update(&buf[..n]);
-    }
-    Ok(format!("{:x}", h.finalize()))
-}
-
-fn verify_sha256_sidecar(blob: &Path, sidecar: &Path) -> Result<(), AppError> {
-    let sidecar_text = fs::read_to_string(sidecar).map_err(|e| {
-        AppError::internal_error(format!(
-            "hub: read sha256 sidecar {}: {}",
-            sidecar.display(),
-            e
-        ))
-    })?;
-    // sha256sum sidecar shape: "<hex>  <filename>"
-    let expected_hex = sidecar_text
-        .split_whitespace()
-        .next()
-        .ok_or_else(|| AppError::internal_error("hub: empty sha256 sidecar"))?
-        .to_lowercase();
-    // Validate the format up front (matches runtime_fetch.rs). A
-    // malformed sidecar would never match the 64-char hex digest below
-    // anyway, but failing fast with a clear message beats a confusing
-    // mismatch error.
-    if expected_hex.len() != 64 || !expected_hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+    let mut reader = resp.take(MAX_HUB_ARTIFACT_BYTES + 1);
+    let mut buf = Vec::with_capacity(64 * 1024);
+    reader
+        .read_to_end(&mut buf)
+        .map_err(|e| AppError::internal_error(format!("hub: read {}: {}", url, e)))?;
+    if buf.len() as u64 > MAX_HUB_ARTIFACT_BYTES {
         return Err(AppError::internal_error(format!(
-            "hub: malformed sha256 in sidecar {}",
-            sidecar.display()
+            "hub: {} exceeded {} bytes",
+            url, MAX_HUB_ARTIFACT_BYTES
         )));
     }
-    let actual_hex = sha256_file(blob).map_err(|e| {
-        AppError::internal_error(format!(
-            "hub: hash blob {}: {}",
-            blob.display(),
-            e
-        ))
-    })?;
-    if actual_hex != expected_hex {
-        return Err(AppError::internal_error(format!(
-            "hub: sha256 mismatch for {}: expected {} got {}",
-            blob.display(),
-            expected_hex,
-            actual_hex
-        )));
-    }
-    Ok(())
-}
-
-fn verify_cosign_bundle(
-    bundle_path: &Path,
-    blob_path: &Path,
-    identity: &str,
-    issuer: &str,
-) -> Result<(), String> {
-    use sigstore::bundle::Bundle;
-    use sigstore::bundle::verify::blocking::Verifier;
-    use sigstore::bundle::verify::policy::Identity;
-
-    let bundle_json =
-        fs::read_to_string(bundle_path).map_err(|e| format!("read bundle: {}", e))?;
-    let bundle: Bundle =
-        serde_json::from_str(&bundle_json).map_err(|e| format!("parse bundle: {}", e))?;
-    let blob = fs::File::open(blob_path).map_err(|e| format!("open blob: {}", e))?;
-    let verifier = Verifier::production().map_err(|e| format!("trust root init: {}", e))?;
-    let policy = Identity::new(identity, issuer);
-    verifier
-        .verify(blob, bundle, &policy, false)
-        .map_err(|e| format!("signature verification: {}", e))?;
-    Ok(())
-}
-
-/// Tarball unpack with traversal protection. Refuses entries whose
-/// normalized path starts with `..` or contains absolute components.
-fn unpack_safely(tar_gz: &Path, dest: &Path) -> Result<(), AppError> {
-    let f = fs::File::open(tar_gz).map_err(|e| {
-        AppError::internal_error(format!("hub: open {}: {}", tar_gz.display(), e))
-    })?;
-    let gz = flate2::read::GzDecoder::new(f);
-    let mut archive = tar::Archive::new(gz);
-    // Decompression-bomb guards: the 32 MiB cap on `download_to_file`
-    // only bounds the COMPRESSED tarball; gzip can expand by orders of
-    // magnitude. Bound the cumulative uncompressed size + entry count
-    // so a malicious/buggy release can't fill the disk.
-    const MAX_UNPACKED_BYTES: u64 = 256 * 1024 * 1024;
-    const MAX_ENTRIES: usize = 100_000;
-    let mut total_unpacked: u64 = 0;
-    let mut entry_count: usize = 0;
-
-    for entry in archive.entries().map_err(|e| {
-        AppError::internal_error(format!("hub: read archive: {}", e))
-    })? {
-        let mut entry = entry.map_err(|e| {
-            AppError::internal_error(format!("hub: read entry: {}", e))
-        })?;
-
-        entry_count += 1;
-        if entry_count > MAX_ENTRIES {
-            return Err(AppError::internal_error(
-                "hub: archive exceeds entry-count cap".to_string(),
-            ));
-        }
-        total_unpacked = total_unpacked.saturating_add(entry.header().size().unwrap_or(0));
-        if total_unpacked > MAX_UNPACKED_BYTES {
-            return Err(AppError::internal_error(
-                "hub: archive exceeds uncompressed-size cap".to_string(),
-            ));
-        }
-
-        // Manifests + schemas + index are all regular files. Reject
-        // symlinks/hardlinks outright — a `link -> /etc` entry followed
-        // by writes through it is the classic tar symlink escape, and
-        // the catalog never legitimately contains links.
-        let kind = entry.header().entry_type();
-        if !(kind.is_file() || kind.is_dir()) {
-            return Err(AppError::internal_error(format!(
-                "hub: refusing non-regular archive entry ({:?})",
-                kind
-            )));
-        }
-
-        let path = entry
-            .path()
-            .map_err(|e| AppError::internal_error(format!("hub: entry path: {}", e)))?
-            .into_owned();
-        // Reject absolute paths and any `..` traversal component.
-        if path.is_absolute() {
-            return Err(AppError::internal_error(format!(
-                "hub: refusing absolute path inside archive: {}",
-                path.display()
-            )));
-        }
-        // Reject `..` AND Windows-style `C:\...` prefix / root
-        // components — `Path::is_absolute()` on Linux returns
-        // `false` for `C:\evil`, so a tarball produced on Windows
-        // could otherwise sneak a root-anchored path through.
-        for component in path.components() {
-            match component {
-                std::path::Component::ParentDir => {
-                    return Err(AppError::internal_error(format!(
-                        "hub: refusing parent-dir component in archive: {}",
-                        path.display()
-                    )));
-                }
-                std::path::Component::RootDir => {
-                    return Err(AppError::internal_error(format!(
-                        "hub: refusing root-dir component in archive: {}",
-                        path.display()
-                    )));
-                }
-                std::path::Component::Prefix(_) => {
-                    return Err(AppError::internal_error(format!(
-                        "hub: refusing windows-prefix component in archive: {}",
-                        path.display()
-                    )));
-                }
-                std::path::Component::CurDir => {
-                    return Err(AppError::internal_error(format!(
-                        "hub: refusing cur-dir component in archive: {}",
-                        path.display()
-                    )));
-                }
-                _ => {}
-            }
-        }
-        entry.unpack_in(dest).map_err(|e| {
-            AppError::internal_error(format!(
-                "hub: unpack {}: {}",
-                path.display(),
-                e
-            ))
-        })?;
-    }
-    Ok(())
+    Ok(buf)
 }
 
 // =====================================================================
@@ -1315,20 +883,124 @@ fn category_folder(category: HubCategory) -> &'static str {
     }
 }
 
-fn is_safe_id(id: &str) -> bool {
-    !id.is_empty()
-        && id.len() <= 64
-        && id.bytes().all(|b| {
-            b.is_ascii_alphanumeric() || b == b'.' || b == b'-' || b == b'_'
-        })
-        && !id.starts_with('.')
+/// Validate a hub entry's reverse-DNS `name` before any catalog
+/// lookup. Reverse-DNS strings have the shape `<namespace>/<leaf>`
+/// where the namespace contains dots (`io.github.modelcontextprotocol`)
+/// and the leaf is a lowercase slug. Must have exactly one `/`.
+/// Conservative on length (128 chars) and rejects `..` / leading
+/// dot / non-ASCII so the value is safe to log + use as a HashMap key
+/// without further escaping. The on-disk path safety check is still
+/// `is_safe_manifest_path` against the IndexItem's `manifest_path`.
+pub(crate) fn is_safe_name(name: &str) -> bool {
+    if name.is_empty() || name.len() > 128 {
+        return false;
+    }
+    if name.contains("..") {
+        return false;
+    }
+    let slash_count = name.bytes().filter(|&b| b == b'/').count();
+    if slash_count != 1 {
+        return false;
+    }
+    let (ns, leaf) = match name.split_once('/') {
+        Some(p) => p,
+        None => return false,
+    };
+    let ns_ok = !ns.is_empty()
+        && !ns.starts_with('.')
+        && !ns.ends_with('.')
+        && ns.bytes().all(|b| {
+            b.is_ascii_lowercase()
+                || b.is_ascii_digit()
+                || b == b'.'
+                || b == b'-'
+        });
+    let leaf_ok = !leaf.is_empty()
+        && !leaf.starts_with('.')
+        && leaf.bytes().all(|b| {
+            b.is_ascii_lowercase()
+                || b.is_ascii_digit()
+                || b == b'.'
+                || b == b'-'
+                || b == b'_'
+        });
+    ns_ok && leaf_ok
 }
 
-/// Guard a pinned version string before it's interpolated into a
-/// GitHub Releases download URL (`releases/download/v<version>/...`).
-/// Rejects anything that could break out of the path or smuggle URL
-/// syntax — must look like `0.0.2` / `1.2.3-alpha.1`.
-fn is_safe_version(v: &str) -> bool {
+/// Derive the slug we use for the user's installed
+/// `mcp_servers.name` row from a reverse-DNS `name` like
+/// `io.github.modelcontextprotocol/filesystem`. Returns the leaf
+/// after the FIRST `/`, lowercased, with any non-`[a-z0-9-]`
+/// character collapsed to `-` and consecutive `-` runs collapsed.
+/// Max 63 chars. Empty input or empty leaf returns the empty
+/// string (caller treats that as a fall back to the full name).
+///
+/// Examples:
+/// - `io.github.modelcontextprotocol/filesystem` → `filesystem`
+/// - `io.github.modelcontextprotocol/server-postgres` → `server-postgres`
+/// - `com.example/MyServer.v2` → `myserver-v2`
+pub fn derive_mcp_slug(name: &str) -> String {
+    let leaf = match name.split_once('/') {
+        Some((_, after)) => after,
+        None => name,
+    };
+    let mut out = String::with_capacity(leaf.len());
+    let mut last_was_dash = false;
+    for c in leaf.chars() {
+        let cl = c.to_ascii_lowercase();
+        if cl.is_ascii_lowercase() || cl.is_ascii_digit() {
+            out.push(cl);
+            last_was_dash = false;
+        } else if !last_was_dash {
+            out.push('-');
+            last_was_dash = true;
+        }
+    }
+    let trimmed = out.trim_matches('-');
+    let limited = if trimmed.len() > 63 {
+        &trimmed[..63]
+    } else {
+        trimmed
+    };
+    limited.trim_matches('-').to_string()
+}
+
+/// Validate a per-entry manifest_path before it's used as either an
+/// HTTP suffix or a filesystem path under `current/`. Reject anything
+/// containing `..`, an absolute prefix, a Windows root, or characters
+/// outside the safe charset. Must end with `.json`. Must start with
+/// one of the known category folders so a poisoned index can't read
+/// arbitrary cache subtrees.
+pub(crate) fn is_safe_manifest_path(rel: &str) -> bool {
+    if rel.is_empty() || rel.len() > 256 {
+        return false;
+    }
+    if !rel.ends_with(".json") {
+        return false;
+    }
+    // No absolute / parent-dir / Windows-root.
+    let path = std::path::Path::new(rel);
+    if path.is_absolute() {
+        return false;
+    }
+    for c in path.components() {
+        match c {
+            std::path::Component::Normal(_) => {}
+            _ => return false,
+        }
+    }
+    // Must start with a known category folder so a poisoned index
+    // can't make us cache `..weird/path.json` somewhere outside the
+    // expected subtree.
+    rel.starts_with("models/")
+        || rel.starts_with("assistants/")
+        || rel.starts_with("mcp-servers/")
+}
+
+/// Guard a semver-shaped string. Kept from v1 for handlers that read
+/// per-entry `version` fields from the catalog before using them in
+/// a path or downstream identifier.
+pub(crate) fn is_safe_version(v: &str) -> bool {
     !v.is_empty()
         && v.len() <= 32
         && v.bytes()
@@ -1346,17 +1018,22 @@ fn is_safe_version(v: &str) -> bool {
 mod tests {
     use super::*;
 
-    fn ix(id: &str, min: Option<&str>) -> IndexItem {
+    fn ix(name: &str, min: Option<&str>) -> IndexItem {
+        // `name` may be a bare slug (used for compat tests) or a
+        // reverse-DNS string. The manifest_path is built from it
+        // verbatim — these unit tests don't actually open files.
         IndexItem {
-            id: id.to_string(),
+            name: name.to_string(),
             category: HubCategory::Model,
-            name: id.to_string(),
+            title: None,
             summary: String::new(),
             tags: vec![],
             verified: false,
             added_at: None,
             min_ziee_version: min.map(String::from),
-            manifest_path: format!("models/{id}.yaml"),
+            manifest_path: format!("models/{name}/1.0.0.json"),
+            version: None,
+            meta: None,
         }
     }
 
@@ -1399,7 +1076,6 @@ mod tests {
 
     #[test]
     fn compat_ok_when_min_version_is_garbage() {
-        // Don't block on contributor mistakes — log + treat as compatible.
         assert_eq!(
             HubManager::compat_for_server(&ix("foo", Some("not-a-version")), "0.1.0"),
             Compat::Ok
@@ -1407,15 +1083,38 @@ mod tests {
     }
 
     #[test]
-    fn is_safe_id_rejects_path_traversal() {
-        assert!(is_safe_id("llama-3-1-8b-instruct"));
-        assert!(is_safe_id("foo.bar"));
-        assert!(is_safe_id("foo_bar"));
-        assert!(!is_safe_id("../etc/passwd"));
-        assert!(!is_safe_id("foo/bar"));
-        assert!(!is_safe_id(".hidden"));
-        assert!(!is_safe_id(""));
-        assert!(!is_safe_id(&"a".repeat(65)));
+    fn is_safe_name_accepts_reverse_dns_rejects_traversal() {
+        // Valid reverse-DNS shapes (namespace `/` leaf).
+        assert!(is_safe_name("io.github.modelcontextprotocol/filesystem"));
+        assert!(is_safe_name("io.github.phibya/llama-3-1-8b-instruct"));
+        assert!(is_safe_name("com.example/foo_bar"));
+        // Bare slugs (no `/`) are not valid reverse-DNS names.
+        assert!(!is_safe_name("llama-3-1-8b-instruct"));
+        assert!(!is_safe_name("foo.bar"));
+        // Multiple slashes are not allowed.
+        assert!(!is_safe_name("a/b/c"));
+        // Parent-dir component is rejected.
+        assert!(!is_safe_name("io.github.foo/../etc/passwd"));
+        // Hidden leaf / empty / too long.
+        assert!(!is_safe_name("io.github.foo/.hidden"));
+        assert!(!is_safe_name(""));
+        assert!(!is_safe_name(&"a".repeat(129)));
+    }
+
+    #[test]
+    fn derive_mcp_slug_normalizes() {
+        assert_eq!(
+            derive_mcp_slug("io.github.modelcontextprotocol/filesystem"),
+            "filesystem"
+        );
+        assert_eq!(
+            derive_mcp_slug("io.github.modelcontextprotocol/server-postgres"),
+            "server-postgres"
+        );
+        assert_eq!(derive_mcp_slug("com.example/MyServer.v2"), "myserver-v2");
+        assert_eq!(derive_mcp_slug("io.github.foo/A_B C"), "a-b-c");
+        // No `/` → take input as-is + normalize.
+        assert_eq!(derive_mcp_slug("Just A Slug"), "just-a-slug");
     }
 
     #[test]
@@ -1423,7 +1122,6 @@ mod tests {
         assert!(is_safe_version("0.0.2"));
         assert!(is_safe_version("1.2.3-alpha.1"));
         assert!(is_safe_version("0.0.1-alpha"));
-        // leading-v stripped by callers, but bare v must fail the digit gate
         assert!(!is_safe_version("v0.0.2"));
         assert!(!is_safe_version("../../etc"));
         assert!(!is_safe_version("0.0.2/../../x"));
@@ -1435,6 +1133,26 @@ mod tests {
     }
 
     #[test]
+    fn is_safe_manifest_path_validation() {
+        assert!(is_safe_manifest_path("models/llama/1.0.0.json"));
+        assert!(is_safe_manifest_path("assistants/foo/1.0.0.json"));
+        assert!(is_safe_manifest_path("mcp-servers/bar/2.3.4.json"));
+        // Wrong extension.
+        assert!(!is_safe_manifest_path("models/foo/1.0.0.yaml"));
+        // Parent-dir.
+        assert!(!is_safe_manifest_path("models/../etc/passwd.json"));
+        // Absolute.
+        assert!(!is_safe_manifest_path("/models/foo/1.0.0.json"));
+        // Unknown category folder.
+        assert!(!is_safe_manifest_path("evil/foo/1.0.0.json"));
+        // Empty.
+        assert!(!is_safe_manifest_path(""));
+        // Too long.
+        let huge = format!("models/{}/1.0.0.json", "a".repeat(300));
+        assert!(!is_safe_manifest_path(&huge));
+    }
+
+    #[test]
     fn category_folder_is_stable() {
         assert_eq!(category_folder(HubCategory::Model), "models");
         assert_eq!(category_folder(HubCategory::Assistant), "assistants");
@@ -1443,84 +1161,53 @@ mod tests {
 
     #[test]
     fn server_version_matches_pkg_version() {
-        // sanity: env! works and returns a parseable semver
         assert!(semver::Version::parse(server_version()).is_ok());
     }
 
     #[test]
-    fn cosign_expected_identity_includes_tag() {
-        let s = cosign_expected_identity("v0.0.1-alpha");
-        assert!(s.contains("ziee-ai/hub"));
-        assert!(s.contains("release.yml"));
-        assert!(s.ends_with("@refs/tags/v0.0.1-alpha"));
-    }
-
-    #[test]
-    fn seed_manifest_yaml_round_trips_into_structs() {
+    fn seed_manifest_json_round_trips_into_structs() {
         // Pull a real manifest out of the embedded seed and parse it
-        // into the typed struct — guards the YAML field mapping (the
-        // manifests are authored in the hub repo, consumed here).
-        let model_yaml = HUB_SEED
-            .get_file("models/llama-3-1-8b-instruct.yaml")
+        // into the typed struct — guards the JSON field mapping (the
+        // manifests are authored in resources/hub-seed/, consumed here).
+        // v2 path layout: `<category>/<namespace>/<leaf>/<version>.json`.
+        // The seed is a snapshot of ziee-ai/hub's build output, which
+        // uses the `io.github.phibya/...` namespace for ziee-native
+        // entries.
+        let model_json = HUB_SEED
+            .get_file("models/io.github.phibya/llama-3-1-8b-instruct/1.0.0.json")
             .expect("seed has llama model");
         let model: HubModel =
-            serde_yaml::from_slice(model_yaml.contents()).expect("parse model yaml");
-        assert_eq!(model.id, "llama-3-1-8b-instruct");
-        assert!(matches!(model.file_format, super::super::models::FileFormat::SafeTensors));
+            serde_json::from_slice(model_json.contents()).expect("parse model json");
+        assert_eq!(model.name, "io.github.phibya/llama-3-1-8b-instruct");
 
-        let asst_yaml = HUB_SEED
-            .get_file("assistants/code-reviewer.yaml")
+        let asst_json = HUB_SEED
+            .get_file("assistants/io.github.phibya/code-reviewer/1.0.0.json")
             .expect("seed has code-reviewer");
-        let asst: HubAssistant =
-            serde_yaml::from_slice(asst_yaml.contents()).expect("parse assistant yaml");
-        assert_eq!(asst.id, "code-reviewer");
+        let asst: HubAssistant = serde_json::from_slice(asst_json.contents())
+            .expect("parse assistant json");
+        assert_eq!(asst.name, "io.github.phibya/code-reviewer");
 
-        let mcp_yaml = HUB_SEED
-            .get_file("mcp-servers/github-mcp.yaml")
-            .expect("seed has github-mcp");
+        let mcp_json = HUB_SEED
+            .get_file("mcp-servers/io.github.github/mcp/1.0.0.json")
+            .expect("seed has github mcp");
         let mcp: HubMCPServer =
-            serde_yaml::from_slice(mcp_yaml.contents()).expect("parse mcp yaml");
-        assert_eq!(mcp.id, "github-mcp");
-        assert_eq!(mcp.transport_type.as_deref(), Some("http"));
-    }
-
-    #[test]
-    fn sha256_file_and_sidecar_verify() {
-        use std::io::Write;
-        let dir = std::env::temp_dir().join(format!("hub-sha-{}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
-        let blob = dir.join("blob.bin");
-        let mut f = fs::File::create(&blob).unwrap();
-        f.write_all(b"ziee hub test payload").unwrap();
-        drop(f);
-
-        // Known sha256 of the payload above.
-        let hex = sha256_file(&blob).unwrap();
-        assert_eq!(hex.len(), 64);
-
-        // A matching sidecar verifies; a tampered one fails.
-        let sidecar = dir.join("blob.bin.sha256");
-        fs::write(&sidecar, format!("{}  blob.bin\n", hex)).unwrap();
-        assert!(verify_sha256_sidecar(&blob, &sidecar).is_ok());
-
-        fs::write(&sidecar, format!("{}  blob.bin\n", "0".repeat(64))).unwrap();
-        assert!(verify_sha256_sidecar(&blob, &sidecar).is_err());
-
-        let _ = fs::remove_dir_all(&dir);
+            serde_json::from_slice(mcp_json.contents()).expect("parse mcp json");
+        assert_eq!(mcp.name, "io.github.github/mcp");
+        // The github seed entry uses remotes[] (streamable-http).
+        assert!(mcp.remotes.as_ref().is_some_and(|r| !r.is_empty()));
     }
 
     #[test]
     fn seed_directory_carries_index_and_categories() {
-        // Compile-time check that the seed was staged correctly. If
-        // resources/hub-seed/ is missing or empty the build would have
-        // failed at include_dir!, but this test catches a partial seed
-        // (e.g. missing categories) at unit test time.
         let names: Vec<_> = HUB_SEED
             .entries()
             .iter()
             .filter_map(|e| e.path().file_name().and_then(|s| s.to_str()))
             .collect();
-        assert!(names.contains(&"index.json"), "seed missing index.json: {names:?}");
+        assert!(
+            names.contains(&"index.json"),
+            "seed missing index.json: {names:?}"
+        );
         assert!(names.contains(&"models"));
         assert!(names.contains(&"assistants"));
         assert!(names.contains(&"mcp-servers"));
@@ -1530,27 +1217,19 @@ mod tests {
     // initialize() — seed-upgrade-on-boot matrix
     // ─────────────────────────────────────────────────────────────────
 
-    /// Build a temp app-data-dir whose `hub/current/` already has a
-    /// hand-rolled `index.json` at an arbitrary `hub_version`, with
-    /// the `.seed` marker present iff `seed_provenance` is true.
-    /// Returns the data dir (auto-cleaned by the caller).
     fn fixture_with_existing_catalog(version: &str, seed_provenance: bool) -> PathBuf {
         let unique = format!(
             "hub-init-{}-{}",
             std::process::id(),
-            // Use the version string + provenance as a stable suffix —
-            // tests don't run in parallel here (each writes its own
-            // tempdir) but avoid Date::now() per CLAUDE.md.
             version.replace('.', "_"),
         );
         let data_dir = std::env::temp_dir().join(format!("{unique}-{seed_provenance}"));
         let current = data_dir.join("hub").join("current");
         fs::create_dir_all(&current).unwrap();
-        // Minimal valid Catalog shape (matches struct field set).
         let body = serde_json::json!({
             "hub_version": version,
             "generated_at": "1970-01-01T00:00:00Z",
-            "schema_version": 1,
+            "schema_version": 2,
             "items": [],
         });
         fs::write(
@@ -1573,14 +1252,6 @@ mod tests {
 
     #[test]
     fn initialize_upgrades_stale_seed_cache_to_embedded_seed_version() {
-        // Cache is from a previous boot that seeded v0.0.0-alpha; the
-        // current binary embeds something newer (whatever
-        // SEED_HUB_VERSION resolves to). The upgrade path MUST replace
-        // the on-disk catalog with the embedded seed.
-        //
-        // 0.0.0-alpha is always strictly less than any real published
-        // seed (releases start at 0.0.1-alpha), so this assertion is
-        // version-independent.
         let dir = fixture_with_existing_catalog("0.0.0-alpha", true);
         let mgr = HubManager::new(&dir).unwrap();
         mgr.initialize().unwrap();
@@ -1590,7 +1261,6 @@ mod tests {
             SEED_HUB_VERSION.trim(),
             "stale seed cache should be upgraded to the embedded seed version"
         );
-        // Marker preserved — still a seed install.
         assert!(dir.join("hub").join("current").join(SEED_MARKER).exists());
 
         let _ = fs::remove_dir_all(&dir);
@@ -1598,9 +1268,6 @@ mod tests {
 
     #[test]
     fn initialize_leaves_same_version_seed_cache_alone() {
-        // Cache version == seed version → no-op (no churn on every
-        // boot). Use SEED_HUB_VERSION verbatim so the test stays
-        // correct across version bumps.
         let v = SEED_HUB_VERSION.trim();
         let dir = fixture_with_existing_catalog(v, true);
         let mgr = HubManager::new(&dir).unwrap();
@@ -1611,10 +1278,9 @@ mod tests {
     }
 
     #[test]
-    fn initialize_leaves_github_fetched_cache_alone_even_when_older() {
-        // No `.seed` marker → provenance is Github. Operator-managed
-        // catalog (possibly intentionally older for compat) must NEVER
-        // be auto-replaced by the embedded seed.
+    fn initialize_leaves_pages_fetched_cache_alone_even_when_older() {
+        // No `.seed` marker → provenance is Pages. Operator-managed
+        // catalog must NEVER be auto-replaced by the embedded seed.
         let dir = fixture_with_existing_catalog("0.0.0-alpha", /* seed */ false);
         let mgr = HubManager::new(&dir).unwrap();
         mgr.initialize().unwrap();
@@ -1622,9 +1288,8 @@ mod tests {
         assert_eq!(
             cached_version(&dir),
             "0.0.0-alpha",
-            "GitHub-fetched cache must not be silently rewritten by the seed"
+            "Pages-fetched cache must not be silently rewritten by the seed"
         );
-        // Still no marker — provenance preserved.
         assert!(!dir.join("hub").join("current").join(SEED_MARKER).exists());
         let _ = fs::remove_dir_all(&dir);
     }
@@ -1643,19 +1308,17 @@ mod tests {
 
     #[test]
     fn seed_index_version_matches_const() {
-        // SEED_HUB_VERSION is hand-maintained; the embedded index.json
-        // is generated from the hub repo. If they drift, /version +
-        // provenance logic would report the wrong version. Fail the
-        // build on mismatch.
         let index = HUB_SEED
             .get_file("index.json")
             .expect("seed has index.json");
         let catalog: Catalog =
             serde_json::from_slice(index.contents()).expect("parse seed index.json");
         assert_eq!(
-            catalog.hub_version, SEED_HUB_VERSION,
+            catalog.hub_version,
+            SEED_HUB_VERSION.trim(),
             "resources/hub-seed/index.json hub_version ({}) != SEED_HUB_VERSION const ({})",
-            catalog.hub_version, SEED_HUB_VERSION
+            catalog.hub_version,
+            SEED_HUB_VERSION
         );
     }
 }

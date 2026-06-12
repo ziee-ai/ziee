@@ -109,7 +109,7 @@ export const useHubAssistantsStore = create<HubAssistantsState>()(
           // `assistant.deleted` for them after the new row exists.
           const displacedIds: string[] = request.replace_existing
             ? get()
-                .assistants.find(a => a.id === request.hub_id)
+                .assistants.find(a => a.name === request.hub_id)
                 ?.created_ids?.slice() ?? []
             : []
           try {
@@ -117,7 +117,7 @@ export const useHubAssistantsStore = create<HubAssistantsState>()(
 
             set(state => {
               const assistant = state.assistants.find(
-                a => a.id === request.hub_id,
+                a => a.name === request.hub_id,
               )
               if (assistant) {
                 if (request.replace_existing) {
@@ -175,7 +175,7 @@ export const useHubAssistantsStore = create<HubAssistantsState>()(
           // OLD (now-deleted) row and clicking it 404s.
           const displacedIds: string[] = request.replace_existing
             ? get()
-                .assistants.find(a => a.id === request.hub_id)
+                .assistants.find(a => a.name === request.hub_id)
                 ?.created_template_ids?.slice() ?? []
             : []
           try {
@@ -190,7 +190,7 @@ export const useHubAssistantsStore = create<HubAssistantsState>()(
             // below propagate the deletion to other stores.
             set(state => {
               const assistant = state.assistants.find(
-                a => a.id === request.hub_id,
+                a => a.name === request.hub_id,
               )
               if (assistant) {
                 if (request.replace_existing) {

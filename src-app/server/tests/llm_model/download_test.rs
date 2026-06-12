@@ -567,27 +567,50 @@ async fn first_auth_required_hf_model(
         .json()
         .await
         .unwrap();
-    // IDs that the bundled hub seed deliberately pins to a future ziee
+    // Names that the bundled hub seed deliberately pins to a future ziee
     // version (`min_ziee_version: 99.0.0`) — they exist to exercise the
     // HUB_INCOMPATIBLE gate, but THIS test wants a "normal" model so it
     // can reach the disabled-repo / auth-not-configured gates the test
     // is actually about. The `/hub/models` response shape does not
     // surface `min_ziee_version`, so the skip list lives here as a
     // hard-coded fixture exclusion. Update when the seed changes.
-    const INCOMPATIBLE_FIXTURE_IDS: &[&str] = &["deepseek-r1-70b"];
+    // v2: matches the reverse-DNS `name` field (was `id` in v1).
+    const INCOMPATIBLE_FIXTURE_NAMES: &[&str] = &["io.github.phibya/deepseek-r1-70b"];
 
+    // v2 Phase 7: auth + source-registry live on
+    // `sources[].environmentVariables[]` (isRequired+isSecret) and
+    // `sources[].registryType`, not v1's model-wide flat fields.
     models
         .as_array()
         .unwrap()
         .iter()
         .find(|m| {
-            let id = m["id"].as_str().unwrap_or("");
-            !INCOMPATIBLE_FIXTURE_IDS.contains(&id)
-                && m["auth_required"].as_bool() == Some(true)
-                && m["repository_url"].as_str() == Some("https://huggingface.co")
+            let name = m["name"].as_str().unwrap_or("");
+            if INCOMPATIBLE_FIXTURE_NAMES.contains(&name) {
+                return false;
+            }
+            let sources = match m.get("sources").and_then(|s| s.as_array()) {
+                Some(s) => s,
+                None => return false,
+            };
+            sources.iter().any(|src| {
+                let is_hf = src.get("registryType").and_then(|v| v.as_str())
+                    == Some("huggingface");
+                let needs_auth = src
+                    .get("environmentVariables")
+                    .and_then(|e| e.as_array())
+                    .map(|envs| {
+                        envs.iter().any(|ev| {
+                            ev.get("isRequired").and_then(|v| v.as_bool()) == Some(true)
+                                && ev.get("isSecret").and_then(|v| v.as_bool()) == Some(true)
+                        })
+                    })
+                    .unwrap_or(false);
+                is_hf && needs_auth
+            })
         })
         .cloned()
-        .expect("bundled catalog should contain an auth_required HF model not in INCOMPATIBLE_FIXTURE_IDS")
+        .expect("bundled catalog should contain an HF model with a required+secret env var not in INCOMPATIBLE_FIXTURE_NAMES")
 }
 
 /// The hub download endpoint must BLOCK with a 422 + actionable guidance when the
@@ -619,7 +642,7 @@ async fn test_hub_download_blocked_when_repo_auth_not_configured() {
     let provider_id = provider["id"].as_str().unwrap();
 
     let model = first_auth_required_hf_model(&server, &user.token).await;
-    let hub_id = model["id"].as_str().unwrap();
+    let hub_id = model["name"].as_str().unwrap();
 
     // The computed flag should agree that auth is NOT configured.
     assert_eq!(
@@ -710,7 +733,7 @@ async fn test_hub_download_blocked_when_repo_is_disabled() {
     // gate runs BEFORE the auth gate, so an auth-required model
     // still trips this first.
     let model = first_auth_required_hf_model(&server, &user.token).await;
-    let hub_id = model["id"].as_str().unwrap();
+    let hub_id = model["name"].as_str().unwrap();
 
     let response = reqwest::Client::new()
         .post(server.api_url("/hub/models/download"))
@@ -809,7 +832,7 @@ async fn test_hub_download_proceeds_when_repo_auth_configured() {
     let provider_id = provider["id"].as_str().unwrap();
 
     let model = first_auth_required_hf_model(&server, &user.token).await;
-    let hub_id = model["id"].as_str().unwrap();
+    let hub_id = model["name"].as_str().unwrap();
     // The flag now reports configured.
     assert_eq!(model["source_auth_configured"].as_bool(), Some(true));
 
