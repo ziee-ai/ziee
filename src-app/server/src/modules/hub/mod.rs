@@ -10,6 +10,7 @@ use std::sync::Arc;
 use crate::core::EventHandler;
 use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleContext, ModuleEntry};
 
+pub mod bundle;
 pub mod event_handlers;
 pub mod events;
 pub mod handlers;

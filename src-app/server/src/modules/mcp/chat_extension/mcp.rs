@@ -1503,10 +1503,17 @@ impl ChatExtension for McpChatExtension {
                     .collect()
             };
 
-            // Convert and add tools (using server_id for unique tool naming)
+            // Convert and add tools (using server_id for unique tool naming).
+            // `convert_mcp_tool_to_ai_tool` returns None for tools whose
+            // composed `<server_id>__<tool_name>` would fail Anthropic's
+            // `^[a-zA-Z0-9_-]{1,128}$` constraint — drop them from the
+            // list_tools output (a silent rename would break dispatch on
+            // the return path; the warning log captures the (server, tool)
+            // pair).
             for mcp_tool in tools_to_add {
-                let ai_tool = helpers::convert_mcp_tool_to_ai_tool(server.id, &mcp_tool);
-                all_tools.push(ai_tool);
+                if let Some(ai_tool) = helpers::convert_mcp_tool_to_ai_tool(server.id, &mcp_tool) {
+                    all_tools.push(ai_tool);
+                }
             }
         }
 

@@ -22,8 +22,10 @@ pub mod onboarding;
 pub mod permissions;
 pub mod project;
 pub mod server_update;
+pub mod skill;
 pub mod summarization;
 pub mod sync;
 pub mod user;
+pub mod workflow;
 
 // Re-export modules

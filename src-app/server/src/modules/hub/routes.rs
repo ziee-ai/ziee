@@ -77,6 +77,29 @@ pub fn hub_router() -> ApiRouter {
             "/hub/models/local-providers",
             get_with(get_hub_local_providers, get_hub_local_providers_docs),
         )
+        // Skills + workflows install (Phase 8 B2)
+        .api_route(
+            "/hub/skills/create",
+            post_with(create_skill_from_hub, create_skill_from_hub_docs),
+        )
+        .api_route(
+            "/hub/skills/create-system",
+            post_with(
+                create_system_skill_from_hub,
+                create_system_skill_from_hub_docs,
+            ),
+        )
+        .api_route(
+            "/hub/workflows/create",
+            post_with(create_workflow_from_hub, create_workflow_from_hub_docs),
+        )
+        .api_route(
+            "/hub/workflows/create-system",
+            post_with(
+                create_system_workflow_from_hub,
+                create_system_workflow_from_hub_docs,
+            ),
+        )
         // Unified catalog endpoints (Phase 1)
         .api_route("/hub/index", get_with(get_hub_catalog, get_hub_catalog_docs))
         .api_route(

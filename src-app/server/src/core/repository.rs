@@ -205,4 +205,6 @@ declare_repositories! {
     assistant_core_memory: AssistantCoreMemoryRepository => crate::modules::assistant_core_memory,
     project: ProjectRepository => crate::modules::project,
     onboarding: OnboardingRepository => crate::modules::onboarding,
+    skill: SkillRepository => crate::modules::skill,
+    workflow: WorkflowRepository => crate::modules::workflow,
 }

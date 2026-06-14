@@ -10,7 +10,17 @@ use crate::{
         llm_model::{ModelParameters, permissions::LlmModelsCreate},
         mcp::McpServersAdminCreate,
         permissions::{RequirePermissions, with_permission},
+        skill::{
+            self,
+            models::CreateSkill,
+            permissions::{SkillsInstall, SkillsManageSystem},
+        },
         sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
+        workflow::{
+            self,
+            models::CreateWorkflow,
+            permissions::{WorkflowsInstall, WorkflowsManageSystem},
+        },
     },
 };
 use std::sync::Arc;
@@ -22,6 +32,12 @@ use super::{
     models::{HubCategory, HubEntityType},
     permissions::*,
     types::*,
+};
+use crate::modules::skill::types::{
+    CreateSkillFromHubRequest, CreateSystemSkillFromHubRequest, SkillFromHubResponse,
+};
+use crate::modules::workflow::types::{
+    CreateSystemWorkflowFromHubRequest, CreateWorkflowFromHubRequest, WorkflowFromHubResponse,
 };
 use axum::extract::Path as AxumPath;
 
@@ -1545,6 +1561,450 @@ pub async fn create_model_from_hub(
 }
 
 // =====================================================
+// SKILL FROM HUB
+// =====================================================
+
+/// Shared lookup + bundle-extract + frontmatter parse for both skill
+/// install paths (user / system). Mirrors `build_assistant_create_from_hub`
+/// but for the directory-bundle shape.
+struct HubSkillCreatePlan {
+    create_request: CreateSkill,
+    hub_version: Option<String>,
+    extracted_path: std::path::PathBuf,
+}
+
+async fn build_skill_create_from_hub(
+    hub_id: &str,
+    scope: &str,
+    owner_user_id: Option<Uuid>,
+    created_by: Option<Uuid>,
+) -> Result<HubSkillCreatePlan, AppError> {
+    let app_data_dir = crate::core::get_app_data_dir();
+    let hub_manager = HubManager::new(app_data_dir.clone())?;
+
+    hub_manager
+        .ensure_installable(HubCategory::Skill, hub_id)
+        .await?;
+
+    let hub_version =
+        resolve_entry_version(&hub_manager, HubCategory::Skill, hub_id).await;
+
+    let manifest = hub_manager.manifest(HubCategory::Skill, hub_id).await?;
+    let hub_skill = manifest
+        .skill
+        .ok_or_else(|| {
+            AppError::internal_error(format!(
+                "hub: manifest for '{hub_id}' is not a skill"
+            ))
+        })?;
+
+    // Target on-disk layout: <app_data>/skills/<reverse-dns>/<version>/.
+    // The reverse-DNS path safety is enforced by `is_safe_name` inside
+    // hub_manager::manifest; defense-in-depth here against `..`/`/`.
+    let version_seg = hub_skill
+        .version
+        .clone()
+        .unwrap_or_else(|| "unversioned".to_string());
+    let target_dir = app_data_dir
+        .join("skills")
+        .join(&hub_skill.name)
+        .join(&version_seg);
+
+    let extraction = super::bundle::fetch_and_extract(
+        &hub_manager,
+        &hub_skill.bundle,
+        &target_dir,
+        super::bundle::BundleKind::Skill,
+    )
+    .await?;
+
+    // Parse SKILL.md frontmatter from the extracted bundle. Entry point
+    // defaults to "SKILL.md" — honor whatever the manifest specifies in
+    // case the publisher evolves the convention.
+    let skill_md_path = extraction.extracted_path.join(&hub_skill.bundle.entry_point);
+    let content = tokio::fs::read_to_string(&skill_md_path).await.map_err(|e| {
+        AppError::internal_error(format!(
+            "hub: read SKILL.md at {}: {}",
+            skill_md_path.display(),
+            e
+        ))
+    })?;
+    let (frontmatter_json, _body) =
+        skill::frontmatter::parse_skill_md_frontmatter(&content)?;
+
+    let display_name = frontmatter_json
+        .get("name")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let description = frontmatter_json
+        .get("description")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .or_else(|| hub_skill.description.clone());
+    let when_to_use = frontmatter_json
+        .get("when_to_use")
+        .or_else(|| frontmatter_json.get("when-to-use"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+
+    let create_request = CreateSkill {
+        name: hub_skill.name.clone(),
+        version: hub_skill.version.clone(),
+        display_name,
+        description,
+        when_to_use,
+        extracted_path: extraction.extracted_path.display().to_string(),
+        bundle_sha256: extraction.sha256_hex.clone(),
+        bundle_size_bytes: extraction.total_bytes as i64,
+        file_count: extraction.file_count as i32,
+        entry_point: hub_skill.bundle.entry_point.clone(),
+        frontmatter_json,
+        tags: serde_json::Value::Array(
+            hub_skill
+                .tags
+                .iter()
+                .cloned()
+                .map(serde_json::Value::String)
+                .collect(),
+        ),
+        scope: scope.to_string(),
+        owner_user_id,
+        created_by,
+        enabled: true,
+        is_dev: false,
+    };
+
+    Ok(HubSkillCreatePlan {
+        create_request,
+        hub_version,
+        extracted_path: extraction.extracted_path,
+    })
+}
+
+/// User-scoped skill install. Permission: `skills::install` (any
+/// authenticated user by default).
+#[debug_handler]
+pub async fn create_skill_from_hub(
+    auth: RequirePermissions<(SkillsInstall,)>,
+    Extension(_event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
+    Json(request): Json<CreateSkillFromHubRequest>,
+) -> ApiResult<Json<SkillFromHubResponse>> {
+    let plan = build_skill_create_from_hub(
+        &request.hub_id,
+        "user",
+        Some(auth.user.id),
+        Some(auth.user.id),
+    )
+    .await?;
+
+    let skill = match Repos.skill.insert(plan.create_request).await {
+        Ok(s) => s,
+        Err(e) => {
+            // Best-effort cleanup of the extracted bundle on insert
+            // failure (e.g. unique-violation on re-install) so we
+            // don't leak disk.
+            let _ = std::fs::remove_dir_all(&plan.extracted_path);
+            return Err(e.into());
+        }
+    };
+
+    let hub_tracking = Repos
+        .hub
+        .track_hub_entity(
+            HubEntityType::Skill,
+            skill.id,
+            &request.hub_id,
+            HubCategory::Skill,
+            Some(auth.user.id),
+            plan.hub_version.as_deref(),
+        )
+        .await?;
+
+    skill::events::emit_user_skill(SyncAction::Create, skill.id, auth.user.id, origin.0);
+
+    Ok((StatusCode::CREATED, Json(SkillFromHubResponse { skill, hub_tracking })))
+}
+
+/// System-scope skill install. Permission: `skills::manage_system`.
+/// Optional `groups: [...]` body field assigns the new system-scope
+/// skill to specific groups in the same TX as the install.
+#[debug_handler]
+pub async fn create_system_skill_from_hub(
+    auth: RequirePermissions<(SkillsManageSystem,)>,
+    Extension(_event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
+    Json(request): Json<CreateSystemSkillFromHubRequest>,
+) -> ApiResult<Json<SkillFromHubResponse>> {
+    let plan = build_skill_create_from_hub(
+        &request.hub_id,
+        "system",
+        None,
+        Some(auth.user.id),
+    )
+    .await?;
+
+    let skill = match Repos.skill.insert(plan.create_request).await {
+        Ok(s) => s,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&plan.extracted_path);
+            return Err(e.into());
+        }
+    };
+
+    // Group assignments — only system-scope items may be inserted into
+    // group_skills (the table has a trigger guard).
+    if !request.groups.is_empty() {
+        let pool = Repos.pool();
+        for group_id in &request.groups {
+            sqlx::query!(
+                r#"
+                INSERT INTO group_skills (group_id, skill_id)
+                VALUES ($1, $2)
+                ON CONFLICT DO NOTHING
+                "#,
+                group_id,
+                skill.id,
+            )
+            .execute(pool)
+            .await
+            .map_err(AppError::database_error)?;
+        }
+    }
+
+    let hub_tracking = Repos
+        .hub
+        .track_hub_entity(
+            HubEntityType::Skill,
+            skill.id,
+            &request.hub_id,
+            HubCategory::Skill,
+            None,
+            plan.hub_version.as_deref(),
+        )
+        .await?;
+
+    skill::events::emit_system_skill(SyncAction::Create, skill.id, origin.0);
+
+    Ok((StatusCode::CREATED, Json(SkillFromHubResponse { skill, hub_tracking })))
+}
+
+// =====================================================
+// WORKFLOW FROM HUB
+// =====================================================
+
+struct HubWorkflowCreatePlan {
+    create_request: CreateWorkflow,
+    hub_version: Option<String>,
+    extracted_path: std::path::PathBuf,
+}
+
+async fn build_workflow_create_from_hub(
+    hub_id: &str,
+    scope: &str,
+    owner_user_id: Option<Uuid>,
+    created_by: Option<Uuid>,
+) -> Result<HubWorkflowCreatePlan, AppError> {
+    let app_data_dir = crate::core::get_app_data_dir();
+    let hub_manager = HubManager::new(app_data_dir.clone())?;
+
+    hub_manager
+        .ensure_installable(HubCategory::Workflow, hub_id)
+        .await?;
+
+    let hub_version =
+        resolve_entry_version(&hub_manager, HubCategory::Workflow, hub_id).await;
+
+    let manifest = hub_manager.manifest(HubCategory::Workflow, hub_id).await?;
+    let hub_workflow = manifest
+        .workflow
+        .ok_or_else(|| {
+            AppError::internal_error(format!(
+                "hub: manifest for '{hub_id}' is not a workflow"
+            ))
+        })?;
+
+    let version_seg = hub_workflow
+        .version
+        .clone()
+        .unwrap_or_else(|| "unversioned".to_string());
+    let target_dir = app_data_dir
+        .join("workflows")
+        .join(&hub_workflow.name)
+        .join(&version_seg);
+
+    let extraction = super::bundle::fetch_and_extract(
+        &hub_manager,
+        &hub_workflow.bundle,
+        &target_dir,
+        super::bundle::BundleKind::Workflow,
+    )
+    .await?;
+
+    // Parse + structurally-validate workflow.yaml. Cycle check happens
+    // inside `parse_workflow_yaml`. Layer 2/3 validators land in B4.
+    let workflow_yaml_path = extraction.extracted_path.join(&hub_workflow.bundle.entry_point);
+    let content = tokio::fs::read_to_string(&workflow_yaml_path).await.map_err(|e| {
+        AppError::internal_error(format!(
+            "hub: read workflow.yaml at {}: {}",
+            workflow_yaml_path.display(),
+            e
+        ))
+    })?;
+    let _workflow_def = workflow::validate::parse_workflow_yaml(&content)?;
+
+    let display_name = hub_workflow.name.rsplit('/').next().map(str::to_string);
+
+    let create_request = CreateWorkflow {
+        name: hub_workflow.name.clone(),
+        version: hub_workflow.version.clone(),
+        display_name,
+        description: hub_workflow.description.clone(),
+        extracted_path: extraction.extracted_path.display().to_string(),
+        bundle_sha256: extraction.sha256_hex.clone(),
+        bundle_size_bytes: extraction.total_bytes as i64,
+        file_count: extraction.file_count as i32,
+        entry_point: hub_workflow.bundle.entry_point.clone(),
+        tags: serde_json::Value::Array(
+            hub_workflow
+                .tags
+                .iter()
+                .cloned()
+                .map(serde_json::Value::String)
+                .collect(),
+        ),
+        scope: scope.to_string(),
+        owner_user_id,
+        created_by,
+        enabled: true,
+        is_dev: false,
+        // B4 fills this in via the validator's compile pass.
+        compiled_ir_json: None,
+    };
+
+    Ok(HubWorkflowCreatePlan {
+        create_request,
+        hub_version,
+        extracted_path: extraction.extracted_path,
+    })
+}
+
+#[debug_handler]
+pub async fn create_workflow_from_hub(
+    auth: RequirePermissions<(WorkflowsInstall,)>,
+    Extension(_event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
+    Json(request): Json<CreateWorkflowFromHubRequest>,
+) -> ApiResult<Json<WorkflowFromHubResponse>> {
+    let plan = build_workflow_create_from_hub(
+        &request.hub_id,
+        "user",
+        Some(auth.user.id),
+        Some(auth.user.id),
+    )
+    .await?;
+
+    let workflow = match Repos.workflow.insert(plan.create_request).await {
+        Ok(w) => w,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&plan.extracted_path);
+            return Err(e.into());
+        }
+    };
+
+    let hub_tracking = Repos
+        .hub
+        .track_hub_entity(
+            HubEntityType::Workflow,
+            workflow.id,
+            &request.hub_id,
+            HubCategory::Workflow,
+            Some(auth.user.id),
+            plan.hub_version.as_deref(),
+        )
+        .await?;
+
+    workflow::events::emit_user_workflow(
+        SyncAction::Create,
+        workflow.id,
+        auth.user.id,
+        origin.0,
+    );
+
+    Ok((
+        StatusCode::CREATED,
+        Json(WorkflowFromHubResponse {
+            workflow,
+            hub_tracking,
+        }),
+    ))
+}
+
+#[debug_handler]
+pub async fn create_system_workflow_from_hub(
+    auth: RequirePermissions<(WorkflowsManageSystem,)>,
+    Extension(_event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
+    Json(request): Json<CreateSystemWorkflowFromHubRequest>,
+) -> ApiResult<Json<WorkflowFromHubResponse>> {
+    let plan = build_workflow_create_from_hub(
+        &request.hub_id,
+        "system",
+        None,
+        Some(auth.user.id),
+    )
+    .await?;
+
+    let workflow = match Repos.workflow.insert(plan.create_request).await {
+        Ok(w) => w,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&plan.extracted_path);
+            return Err(e.into());
+        }
+    };
+
+    if !request.groups.is_empty() {
+        let pool = Repos.pool();
+        for group_id in &request.groups {
+            sqlx::query!(
+                r#"
+                INSERT INTO group_workflows (group_id, workflow_id)
+                VALUES ($1, $2)
+                ON CONFLICT DO NOTHING
+                "#,
+                group_id,
+                workflow.id,
+            )
+            .execute(pool)
+            .await
+            .map_err(AppError::database_error)?;
+        }
+    }
+
+    let hub_tracking = Repos
+        .hub
+        .track_hub_entity(
+            HubEntityType::Workflow,
+            workflow.id,
+            &request.hub_id,
+            HubCategory::Workflow,
+            None,
+            plan.hub_version.as_deref(),
+        )
+        .await?;
+
+    workflow::events::emit_system_workflow(SyncAction::Create, workflow.id, origin.0);
+
+    Ok((
+        StatusCode::CREATED,
+        Json(WorkflowFromHubResponse {
+            workflow,
+            hub_tracking,
+        }),
+    ))
+}
+
+// =====================================================
 // OpenAPI Documentation
 // =====================================================
 
@@ -1740,6 +2200,82 @@ pub fn create_model_from_hub_docs(op: TransformOperation) -> TransformOperation 
         .response_with::<404, (), _>(|res| res.description("Hub model not found"))
         .response_with::<422, (), _>(|res| {
             res.description("Hub item incompatible with this server version")
+        })
+}
+
+pub fn create_skill_from_hub_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(SkillsInstall,)>(op)
+        .id("Hub.createSkillFromHub")
+        .tag("Hub")
+        .tag("Skills")
+        .summary("Install user-scope skill from hub catalog")
+        .response::<201, Json<SkillFromHubResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("Hub skill not found"))
+        .response_with::<422, (), _>(|res| {
+            res.description(
+                "Bundle verification failed (sha256 mismatch, size cap, \
+                 path traversal, non-regular tar entry, or SKILL.md \
+                 frontmatter invalid)",
+            )
+        })
+}
+
+pub fn create_system_skill_from_hub_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(SkillsManageSystem,)>(op)
+        .id("Hub.createSystemSkillFromHub")
+        .tag("Hub")
+        .tag("Skills - System")
+        .summary("Install SYSTEM-WIDE skill from hub catalog")
+        .description(
+            "Installs a hub skill entry as a system-wide skill \
+             (`scope='system', owner_user_id=NULL`). Optional \
+             `groups: [...]` body field assigns the skill to specific \
+             groups in the same install. Requires `skills::manage_system` \
+             (admin).",
+        )
+        .response::<201, Json<SkillFromHubResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("Hub skill not found"))
+        .response_with::<422, (), _>(|res| {
+            res.description("Bundle verification or frontmatter parse failure")
+        })
+}
+
+pub fn create_workflow_from_hub_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(WorkflowsInstall,)>(op)
+        .id("Hub.createWorkflowFromHub")
+        .tag("Hub")
+        .tag("Workflows")
+        .summary("Install user-scope workflow from hub catalog")
+        .response::<201, Json<WorkflowFromHubResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("Hub workflow not found"))
+        .response_with::<422, (), _>(|res| {
+            res.description(
+                "Bundle verification failed OR workflow.yaml structurally \
+                 invalid (duplicate step id, depends_on cycle, unknown dependency)",
+            )
+        })
+}
+
+pub fn create_system_workflow_from_hub_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(WorkflowsManageSystem,)>(op)
+        .id("Hub.createSystemWorkflowFromHub")
+        .tag("Hub")
+        .tag("Workflows - System")
+        .summary("Install SYSTEM-WIDE workflow from hub catalog")
+        .description(
+            "Installs a hub workflow entry as a system-wide workflow \
+             (`scope='system', owner_user_id=NULL`). Optional `groups: [...]` \
+             body field assigns it to specific groups. Requires \
+             `workflows::manage_system`.",
+        )
+        .response::<201, Json<WorkflowFromHubResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("Hub workflow not found"))
+        .response_with::<422, (), _>(|res| {
+            res.description("Bundle verification or workflow.yaml validation failure")
         })
 }
 
