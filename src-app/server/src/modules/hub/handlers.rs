@@ -1819,12 +1819,16 @@ pub async fn get_hub_catalog_version(
         models: 0,
         assistants: 0,
         mcp_servers: 0,
+        skills: 0,
+        workflows: 0,
     };
     for item in &catalog.items {
         match item.category {
             HubCategory::Model => counts.models += 1,
             HubCategory::Assistant => counts.assistants += 1,
             HubCategory::McpServer => counts.mcp_servers += 1,
+            HubCategory::Skill => counts.skills += 1,
+            HubCategory::Workflow => counts.workflows += 1,
         }
     }
     Ok((

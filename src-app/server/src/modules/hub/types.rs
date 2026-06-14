@@ -193,6 +193,10 @@ pub struct HubCatalogCounts {
     pub models: usize,
     pub assistants: usize,
     pub mcp_servers: usize,
+    #[serde(default)]
+    pub skills: usize,
+    #[serde(default)]
+    pub workflows: usize,
 }
 
 /// Response for `GET /api/hub/version` — the catalog's current

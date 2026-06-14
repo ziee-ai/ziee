@@ -100,6 +100,22 @@ pub enum SyncEntity {
     /// permissions were edited) — the client re-bootstraps `/auth/me`. `id`
     /// is the affected user id.
     Session,
+
+    // --- Phase 8: skills + workflows (see plan §3 + §4.4) ---
+    /// A user-installed skill (user-scope). Notify-only — the client refetches
+    /// `/api/skills` (which returns the user's own + accessible system skills).
+    Skill,
+    /// Admin view of a system-scope skill (assigned via group_skills).
+    /// Emitted ALONGSIDE `Skill` when scope='system' to refresh both surfaces.
+    SkillSystem,
+    /// A user-installed workflow (user-scope). Same shape as Skill.
+    Workflow,
+    /// Admin view of a system-scope workflow.
+    WorkflowSystem,
+    /// A workflow_runs lifecycle transition (started / completed / failed /
+    /// cancelled) — NOT per-step events; those go on the dedicated per-run
+    /// SSE channel (§4.4). Notify-only so cross-device list views refresh.
+    WorkflowRun,
 }
 
 /// What happened to the entity.

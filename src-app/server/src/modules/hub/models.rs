@@ -507,6 +507,8 @@ pub enum HubEntityType {
     Assistant,
     McpServer,
     LlmModel,
+    Skill,
+    Workflow,
 }
 
 impl HubEntityType {
@@ -515,6 +517,8 @@ impl HubEntityType {
             HubEntityType::Assistant => "assistant",
             HubEntityType::McpServer => "mcp_server",
             HubEntityType::LlmModel => "llm_model",
+            HubEntityType::Skill => "skill",
+            HubEntityType::Workflow => "workflow",
         }
     }
 }
@@ -534,16 +538,22 @@ pub enum HubCategory {
     McpServer,
     #[serde(rename = "model")]
     Model,
+    #[serde(rename = "skill")]
+    Skill,
+    #[serde(rename = "workflow")]
+    Workflow,
 }
 
 impl HubCategory {
     /// Snake-case form for DB rows in `hub_entities.hub_category` —
-    /// matches migration 8's CHECK constraint.
+    /// matches migration 8's CHECK constraint (+ migration 95 for skill / workflow).
     pub fn as_str(&self) -> &'static str {
         match self {
             HubCategory::Assistant => "assistant",
             HubCategory::McpServer => "mcp_server",
             HubCategory::Model => "model",
+            HubCategory::Skill => "skill",
+            HubCategory::Workflow => "workflow",
         }
     }
 }
@@ -555,4 +565,84 @@ pub struct HubData {
     pub models: Vec<HubModel>,
     pub assistants: Vec<HubAssistant>,
     pub mcp_servers: Vec<HubMCPServer>,
+    #[serde(default)]
+    pub skills: Vec<HubSkill>,
+    #[serde(default)]
+    pub workflows: Vec<HubWorkflow>,
+}
+
+// ============================================================================
+// Skill + Workflow manifest shapes (Phase 8 — see plan §3 + §13)
+// ============================================================================
+//
+// Per-entry manifests are SMALL (envelope + bundle pointer). The actual
+// content (SKILL.md, workflow.yaml, scripts, references) lives in a tar.gz
+// bundle downloaded + extracted by `hub::bundle::fetch_and_extract` at
+// install time.
+
+/// Pointer to a tar.gz bundle served alongside the manifest on Pages.
+/// See `schemas/2026-06-12/bundle.schema.json` for the wire shape.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct HubBundle {
+    /// Bundle URL relative to the Pages base.
+    pub url: String,
+    /// Hex-encoded SHA-256 of the tar.gz bytes (lowercase, 64 chars).
+    pub sha256: String,
+    /// Bundle size in bytes (consumer pre-checks against the 10 MiB cap).
+    pub size_bytes: u64,
+    /// Number of regular files inside the bundle (cap: 256).
+    pub file_count: u32,
+    /// Conventional entry point inside the extracted bundle
+    /// (`"SKILL.md"` for skills, `"workflow.yaml"` for workflows).
+    pub entry_point: String,
+}
+
+/// Hub skill entry — Agent Skills standard bundle (see plan §1).
+///
+/// The manifest only carries the envelope + bundle pointer. The actual
+/// SKILL.md frontmatter is parsed at consumer-install time + persisted in
+/// `skills.frontmatter_json`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct HubSkill {
+    /// Reverse-DNS canonical name.
+    pub name: String,
+    /// Per-entry semver.
+    pub version: Option<String>,
+    #[serde(rename = "$schema", skip_serializing_if = "Option::is_none")]
+    pub schema_url: Option<String>,
+    #[serde(default, rename = "_meta", skip_serializing_if = "Option::is_none")]
+    pub meta: Option<serde_json::Value>,
+    pub description: Option<String>,
+    pub bundle: HubBundle,
+    #[serde(default)]
+    pub dependencies: Vec<HubDependency>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    pub license: Option<String>,
+    pub author: Option<String>,
+}
+
+/// Hub workflow entry — declarative DAG bundle (see plan §1 + §4.5).
+///
+/// The manifest carries the envelope + bundle pointer. The actual
+/// `workflow.yaml` is parsed at consumer-install time + validated via the
+/// `workflow::validate` Layer 1+2+3 pipeline.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct HubWorkflow {
+    /// Reverse-DNS canonical name.
+    pub name: String,
+    /// Per-entry semver.
+    pub version: Option<String>,
+    #[serde(rename = "$schema", skip_serializing_if = "Option::is_none")]
+    pub schema_url: Option<String>,
+    #[serde(default, rename = "_meta", skip_serializing_if = "Option::is_none")]
+    pub meta: Option<serde_json::Value>,
+    pub description: Option<String>,
+    pub bundle: HubBundle,
+    #[serde(default)]
+    pub dependencies: Vec<HubDependency>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    pub license: Option<String>,
+    pub author: Option<String>,
 }
