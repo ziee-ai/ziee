@@ -23,6 +23,7 @@ pub mod permissions;
 pub mod project;
 pub mod server_update;
 pub mod skill;
+pub mod skill_mcp;
 pub mod summarization;
 pub mod sync;
 pub mod user;

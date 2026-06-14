@@ -1,0 +1,503 @@
+//! REST handlers for the skill module.
+//!
+//! User vs admin split mirrors `src/modules/mcp/handlers/{user,system,groups}.rs`.
+//! User-scope endpoints sit under `/api/skills/*`; admin-scope under
+//! `/api/skills/system/*`. The hub-install endpoints
+//! (`POST /api/skills/install-from-hub` etc.) are thin wrappers around
+//! the existing hub handlers — same compiled function bound to the
+//! canonical user-facing path so clients don't need to know about the
+//! hub URL namespace.
+
+use crate::core::Repos;
+use aide::transform::TransformOperation;
+use axum::{
+    Json, debug_handler,
+    extract::Path,
+    http::StatusCode,
+};
+use uuid::Uuid;
+
+use crate::{
+    common::{ApiResult, AppError},
+    modules::permissions::{RequirePermissions, with_permission},
+    modules::sync::{SyncAction, SyncOrigin},
+};
+
+use super::events;
+use super::models::{Skill, UpdateSkill};
+use super::permissions::{
+    SkillsAssignToGroups, SkillsInstall, SkillsManage, SkillsManageSystem, SkillsRead,
+};
+use super::types::{
+    AvailableSkillEntry, AvailableSkillsQuery, AvailableSkillsResponse,
+    HideSkillInConversationRequest, SkillGroupsRequest, SkillListResponse,
+};
+
+// =====================================================
+// User Handlers
+// =====================================================
+
+/// List user-owned + accessible system skills.
+#[debug_handler]
+pub async fn list_user_skills(
+    auth: RequirePermissions<(SkillsRead,)>,
+) -> ApiResult<Json<SkillListResponse>> {
+    let skills = Repos.skill.list_accessible(auth.user.id).await?;
+    Ok((StatusCode::OK, Json(SkillListResponse { skills })))
+}
+
+pub fn list_user_skills_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(SkillsRead,)>(op)
+        .id("Skill.list")
+        .tag("Skills")
+        .summary("List accessible skills")
+        .description("List the caller's own user-scope skills plus any system-scope skills they can access via group assignment.")
+        .response::<200, Json<SkillListResponse>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+}
+
+/// Get one skill by id (caller must have access).
+#[debug_handler]
+pub async fn get_user_skill(
+    auth: RequirePermissions<(SkillsRead,)>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<Skill>> {
+    if !Repos.skill.user_can_read(auth.user.id, id).await? {
+        return Err(AppError::not_found("Skill").into());
+    }
+    let skill = Repos
+        .skill
+        .find_by_id(id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Skill"))?;
+    Ok((StatusCode::OK, Json(skill)))
+}
+
+pub fn get_user_skill_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(SkillsRead,)>(op)
+        .id("Skill.get")
+        .tag("Skills")
+        .summary("Get one skill")
+        .description("Read a single accessible skill by id.")
+        .response::<200, Json<Skill>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+        .response_with::<404, (), _>(|r| r.description("Skill not found"))
+}
+
+/// Edit a user-owned skill (limited fields: display_name / description /
+/// when_to_use / enabled / tags). Admin-only edits to system-scope
+/// items go through the admin endpoint.
+#[debug_handler]
+pub async fn update_user_skill(
+    auth: RequirePermissions<(SkillsManage,)>,
+    Path(id): Path<Uuid>,
+    origin: SyncOrigin,
+    Json(request): Json<UpdateSkill>,
+) -> ApiResult<Json<Skill>> {
+    let existing = Repos
+        .skill
+        .find_by_id(id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Skill"))?;
+    // Only the owner of a user-scope skill may edit via this endpoint.
+    if existing.scope != "user" || existing.owner_user_id != Some(auth.user.id) {
+        return Err(AppError::forbidden(
+            "FORBIDDEN",
+            "only the owner may edit a user-scope skill",
+        )
+        .into());
+    }
+    let updated = Repos.skill.update(id, request).await?;
+    // Drop any cached SKILL.md / reference-file content for this id so
+    // the next skill_mcp `load_skill` / `read_skill_file` re-reads from
+    // disk (mtime invalidation handles content edits; this catches
+    // metadata-only changes too).
+    crate::modules::skill_mcp::file_cache::invalidate_skill(id);
+    events::emit_user_skill(SyncAction::Update, id, auth.user.id, origin.0);
+    Ok((StatusCode::OK, Json(updated)))
+}
+
+pub fn update_user_skill_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(SkillsManage,)>(op)
+        .id("Skill.update")
+        .tag("Skills")
+        .summary("Edit a user-owned skill")
+        .description("Update the editable metadata of a user-scope skill the caller owns.")
+        .response::<200, Json<Skill>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+        .response_with::<403, (), _>(|r| r.description("Not the owner"))
+        .response_with::<404, (), _>(|r| r.description("Skill not found"))
+}
+
+/// Delete a user-owned skill. Also rms the extracted bundle dir
+/// (best-effort — the DB row is the source of truth).
+#[debug_handler]
+pub async fn delete_user_skill(
+    auth: RequirePermissions<(SkillsManage,)>,
+    Path(id): Path<Uuid>,
+    origin: SyncOrigin,
+) -> ApiResult<StatusCode> {
+    let existing = Repos
+        .skill
+        .find_by_id(id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Skill"))?;
+    if existing.scope != "user" || existing.owner_user_id != Some(auth.user.id) {
+        return Err(AppError::forbidden(
+            "FORBIDDEN",
+            "only the owner may delete a user-scope skill",
+        )
+        .into());
+    }
+    Repos.skill.delete(id).await?;
+    // Best-effort cleanup — the bundle dir is per-install, not per-run.
+    let _ = std::fs::remove_dir_all(&existing.extracted_path);
+    crate::modules::skill_mcp::file_cache::invalidate_skill(id);
+    events::emit_user_skill(SyncAction::Delete, id, auth.user.id, origin.0);
+    Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
+}
+
+pub fn delete_user_skill_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(SkillsManage,)>(op)
+        .id("Skill.delete")
+        .tag("Skills")
+        .summary("Delete a user-owned skill")
+        .description("Remove a user-scope skill and rm its extracted bundle dir.")
+        .response_with::<204, (), _>(|r| r.description("Skill deleted"))
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+        .response_with::<403, (), _>(|r| r.description("Not the owner"))
+        .response_with::<404, (), _>(|r| r.description("Skill not found"))
+}
+
+/// Hide a skill from the model in a specific conversation. The skill
+/// stays installed; it just disappears from the available-skills
+/// listing for that one conversation.
+#[debug_handler]
+pub async fn hide_skill_in_conversation(
+    auth: RequirePermissions<(SkillsRead,)>,
+    Path(id): Path<Uuid>,
+    Json(request): Json<HideSkillInConversationRequest>,
+) -> ApiResult<StatusCode> {
+    if !Repos.skill.user_can_read(auth.user.id, id).await? {
+        return Err(AppError::not_found("Skill").into());
+    }
+    // Verify the caller owns the conversation — never let user A hide a
+    // skill in user B's conversation.
+    let owner = Repos
+        .code_sandbox
+        .get_conversation_user_id(request.conversation_id)
+        .await
+        .ok()
+        .flatten();
+    if owner != Some(auth.user.id) {
+        return Err(AppError::not_found("Conversation").into());
+    }
+    Repos
+        .skill
+        .set_hidden_in_conversation(id, request.conversation_id, true)
+        .await?;
+    Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
+}
+
+pub fn hide_skill_in_conversation_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(SkillsRead,)>(op)
+        .id("Skill.hideInConversation")
+        .tag("Skills")
+        .summary("Hide a skill from a conversation")
+        .description("Insert a per-conversation override so this skill is omitted from the available-skills listing for that conversation.")
+        .response_with::<204, (), _>(|r| r.description("Skill hidden"))
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+        .response_with::<404, (), _>(|r| r.description("Skill or conversation not found"))
+}
+
+/// Remove the per-conversation hide override.
+#[debug_handler]
+pub async fn unhide_skill_in_conversation(
+    auth: RequirePermissions<(SkillsRead,)>,
+    Path((id, conversation_id)): Path<(Uuid, Uuid)>,
+) -> ApiResult<StatusCode> {
+    let owner = Repos
+        .code_sandbox
+        .get_conversation_user_id(conversation_id)
+        .await
+        .ok()
+        .flatten();
+    if owner != Some(auth.user.id) {
+        return Err(AppError::not_found("Conversation").into());
+    }
+    Repos
+        .skill
+        .clear_hidden_in_conversation(id, conversation_id)
+        .await?;
+    Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
+}
+
+pub fn unhide_skill_in_conversation_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(SkillsRead,)>(op)
+        .id("Skill.unhideInConversation")
+        .tag("Skills")
+        .summary("Remove a per-conversation hide")
+        .description("Restore the skill to the available-skills listing in this conversation.")
+        .response_with::<204, (), _>(|r| r.description("Hide cleared"))
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+        .response_with::<404, (), _>(|r| r.description("Conversation not found"))
+}
+
+/// Effective available-skills listing for a conversation. Same query
+/// the chat extension + `skill_mcp::list_tools` use.
+#[debug_handler]
+pub async fn list_available_skills(
+    auth: RequirePermissions<(SkillsRead,)>,
+    axum::extract::Query(query): axum::extract::Query<AvailableSkillsQuery>,
+) -> ApiResult<Json<AvailableSkillsResponse>> {
+    // Verify conversation ownership before exposing per-conversation
+    // visibility state (a stale conv id could leak whether OTHER users'
+    // conversations exist via the override join).
+    let owner = Repos
+        .code_sandbox
+        .get_conversation_user_id(query.conversation_id)
+        .await
+        .ok()
+        .flatten();
+    if owner != Some(auth.user.id) {
+        return Err(AppError::not_found("Conversation").into());
+    }
+    let entries = Repos
+        .skill
+        .list_available_for_conversation(auth.user.id, query.conversation_id)
+        .await?;
+    Ok((
+        StatusCode::OK,
+        Json(AvailableSkillsResponse {
+            skills: entries
+                .into_iter()
+                .map(|e| AvailableSkillEntry {
+                    id: e.id,
+                    name: e.name,
+                    description: e.description,
+                    when_to_use: e.when_to_use,
+                })
+                .collect(),
+        }),
+    ))
+}
+
+pub fn list_available_skills_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(SkillsRead,)>(op)
+        .id("Skill.listAvailable")
+        .tag("Skills")
+        .summary("List effective skills for a conversation")
+        .description("Return the same listing the chat extension and `skill_mcp::list_tools` produce: user-owned + accessible system, minus per-conversation hides.")
+        .response::<200, Json<AvailableSkillsResponse>>()
+        .response_with::<400, (), _>(|r| r.description("Missing conversation_id"))
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+        .response_with::<404, (), _>(|r| r.description("Conversation not found"))
+}
+
+/// Re-export wrapper: `POST /api/skills/install-from-hub` simply binds
+/// the existing hub handler at the canonical user-facing path. Single
+/// implementation in `hub::handlers::create_skill_from_hub`.
+pub use crate::modules::hub::handlers::{
+    create_skill_from_hub as install_from_hub,
+    create_skill_from_hub_docs as install_from_hub_docs,
+    create_system_skill_from_hub as install_system_from_hub,
+    create_system_skill_from_hub_docs as install_system_from_hub_docs,
+};
+
+// =====================================================
+// Admin Handlers
+// =====================================================
+
+/// List all system-scope skills.
+#[debug_handler]
+pub async fn list_system_skills(
+    _auth: RequirePermissions<(SkillsManageSystem,)>,
+) -> ApiResult<Json<SkillListResponse>> {
+    let skills = Repos.skill.list_system().await?;
+    Ok((StatusCode::OK, Json(SkillListResponse { skills })))
+}
+
+pub fn list_system_skills_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(SkillsManageSystem,)>(op)
+        .id("SkillSystem.list")
+        .tag("Skills - System")
+        .summary("List all system-scope skills")
+        .response::<200, Json<SkillListResponse>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+}
+
+#[debug_handler]
+pub async fn get_system_skill(
+    _auth: RequirePermissions<(SkillsManageSystem,)>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<Skill>> {
+    let skill = Repos
+        .skill
+        .find_by_id(id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Skill"))?;
+    if skill.scope != "system" {
+        return Err(AppError::not_found("Skill").into());
+    }
+    Ok((StatusCode::OK, Json(skill)))
+}
+
+pub fn get_system_skill_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(SkillsManageSystem,)>(op)
+        .id("SkillSystem.get")
+        .tag("Skills - System")
+        .summary("Get one system-scope skill")
+        .response::<200, Json<Skill>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+        .response_with::<404, (), _>(|r| r.description("Skill not found"))
+}
+
+#[debug_handler]
+pub async fn update_system_skill(
+    _auth: RequirePermissions<(SkillsManageSystem,)>,
+    Path(id): Path<Uuid>,
+    origin: SyncOrigin,
+    Json(request): Json<UpdateSkill>,
+) -> ApiResult<Json<Skill>> {
+    let existing = Repos
+        .skill
+        .find_by_id(id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Skill"))?;
+    if existing.scope != "system" {
+        return Err(AppError::not_found("Skill").into());
+    }
+    let updated = Repos.skill.update(id, request).await?;
+    crate::modules::skill_mcp::file_cache::invalidate_skill(id);
+    events::emit_system_skill(SyncAction::Update, id, origin.0);
+    Ok((StatusCode::OK, Json(updated)))
+}
+
+pub fn update_system_skill_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(SkillsManageSystem,)>(op)
+        .id("SkillSystem.update")
+        .tag("Skills - System")
+        .summary("Edit a system-scope skill")
+        .response::<200, Json<Skill>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+        .response_with::<404, (), _>(|r| r.description("Skill not found"))
+}
+
+#[debug_handler]
+pub async fn delete_system_skill(
+    _auth: RequirePermissions<(SkillsManageSystem,)>,
+    Path(id): Path<Uuid>,
+    origin: SyncOrigin,
+) -> ApiResult<StatusCode> {
+    let existing = Repos
+        .skill
+        .find_by_id(id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Skill"))?;
+    if existing.scope != "system" {
+        return Err(AppError::not_found("Skill").into());
+    }
+    Repos.skill.delete(id).await?;
+    let _ = std::fs::remove_dir_all(&existing.extracted_path);
+    crate::modules::skill_mcp::file_cache::invalidate_skill(id);
+    events::emit_system_skill(SyncAction::Delete, id, origin.0);
+    Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
+}
+
+pub fn delete_system_skill_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(SkillsManageSystem,)>(op)
+        .id("SkillSystem.delete")
+        .tag("Skills - System")
+        .summary("Delete a system-scope skill")
+        .response_with::<204, (), _>(|r| r.description("Skill deleted"))
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+        .response_with::<404, (), _>(|r| r.description("Skill not found"))
+}
+
+// ---- Group assignment ----
+
+#[debug_handler]
+pub async fn get_skill_groups(
+    _auth: RequirePermissions<(SkillsAssignToGroups,)>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<Vec<Uuid>>> {
+    let groups = Repos.skill.get_skill_groups(id).await?;
+    Ok((StatusCode::OK, Json(groups)))
+}
+
+pub fn get_skill_groups_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(SkillsAssignToGroups,)>(op)
+        .id("SkillSystem.getGroups")
+        .tag("Skills - System")
+        .summary("Get groups assigned to a skill")
+        .response::<200, Json<Vec<Uuid>>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+}
+
+#[debug_handler]
+pub async fn set_skill_groups(
+    _auth: RequirePermissions<(SkillsAssignToGroups,)>,
+    Path(id): Path<Uuid>,
+    origin: SyncOrigin,
+    Json(request): Json<SkillGroupsRequest>,
+) -> ApiResult<StatusCode> {
+    let existing = Repos
+        .skill
+        .find_by_id(id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Skill"))?;
+    if existing.scope != "system" {
+        return Err(AppError::bad_request(
+            "INVALID_SCOPE",
+            "only system-scope skills can be assigned to groups",
+        )
+        .into());
+    }
+    // Replace-all: get current, diff, apply.
+    let current: std::collections::HashSet<Uuid> = Repos
+        .skill
+        .get_skill_groups(id)
+        .await?
+        .into_iter()
+        .collect();
+    let desired: std::collections::HashSet<Uuid> = request.group_ids.into_iter().collect();
+    for gid in current.difference(&desired) {
+        Repos.skill.remove_skill_from_group(id, *gid).await?;
+    }
+    for gid in desired.difference(&current) {
+        Repos.skill.assign_skill_to_group(id, *gid).await?;
+    }
+    events::emit_system_skill(SyncAction::Update, id, origin.0);
+    Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
+}
+
+pub fn set_skill_groups_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(SkillsAssignToGroups,)>(op)
+        .id("SkillSystem.setGroups")
+        .tag("Skills - System")
+        .summary("Replace the set of groups assigned to a skill")
+        .response_with::<204, (), _>(|r| r.description("Assignments updated"))
+        .response_with::<400, (), _>(|r| r.description("Bad request — non-system scope"))
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+        .response_with::<404, (), _>(|r| r.description("Skill not found"))
+}
+
+#[debug_handler]
+pub async fn remove_skill_from_group(
+    _auth: RequirePermissions<(SkillsAssignToGroups,)>,
+    Path((id, group_id)): Path<(Uuid, Uuid)>,
+    origin: SyncOrigin,
+) -> ApiResult<StatusCode> {
+    Repos.skill.remove_skill_from_group(id, group_id).await?;
+    events::emit_system_skill(SyncAction::Update, id, origin.0);
+    Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
+}
+
+pub fn remove_skill_from_group_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(SkillsAssignToGroups,)>(op)
+        .id("SkillSystem.removeFromGroup")
+        .tag("Skills - System")
+        .summary("Remove a skill from one group")
+        .response_with::<204, (), _>(|r| r.description("Removed"))
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+}

@@ -38,9 +38,44 @@ pub struct SkillFromHubResponse {
     pub hub_tracking: crate::modules::hub::models::HubEntity,
 }
 
-/// `GET /api/skills` response shape — TODO B6 wire the visibility-query
-/// union. For now, the install handlers don't need a list type.
+/// `GET /api/skills` response shape — user-owned + accessible system
+/// skills, each tagged with its `scope`.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct SkillListResponse {
     pub skills: Vec<Skill>,
+}
+
+/// Lightweight `GET /api/skills/available` entry — what the chat
+/// extension AND `skill_mcp::list_tools` consume. Mirrors
+/// `repository::SkillAvailableEntry` but with JsonSchema for the REST
+/// surface.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct AvailableSkillEntry {
+    pub id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub when_to_use: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct AvailableSkillsResponse {
+    pub skills: Vec<AvailableSkillEntry>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct AvailableSkillsQuery {
+    pub conversation_id: Uuid,
+}
+
+/// `POST /api/skills/{id}/hide-in-conversation` body.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct HideSkillInConversationRequest {
+    pub conversation_id: Uuid,
+}
+
+/// `POST /api/skills/system/{id}/groups` body. Replaces the entire set
+/// (mirrors `mcp/handlers/groups.rs`'s `ServerGroupsRequest`).
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct SkillGroupsRequest {
+    pub group_ids: Vec<Uuid>,
 }

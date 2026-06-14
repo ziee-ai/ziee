@@ -16,11 +16,14 @@
 //! - The full user / system CRUD REST surface
 //!   (mirrors `mcp/handlers/system.rs`).
 
+pub mod chat_extension;
 pub mod events;
 pub mod frontmatter;
+pub mod handlers;
 pub mod models;
 pub mod permissions;
 pub mod repository;
+pub mod routes;
 pub mod types;
 
 pub use repository::SkillRepository;
@@ -71,7 +74,8 @@ impl AppModule for SkillModule {
     }
 
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
-        // B6 mounts `/api/skills` + `/api/skills/system` routers here.
         router
+            .merge(routes::user_routes())
+            .merge(routes::admin_routes())
     }
 }
