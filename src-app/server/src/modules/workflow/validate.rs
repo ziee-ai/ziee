@@ -1,26 +1,33 @@
-//! workflow.yaml parser + minimal validation surface for B2.
+//! workflow.yaml parser + Layer 1+2+3 validator (plan §4.1).
 //!
-//! Phase B2 deliverable: deserialize the YAML into a typed `WorkflowDef`
-//! that captures the §1 schema, and cycle-check `depends_on`. That's
-//! the minimum the install handlers need to reject malformed bundles
-//! at install time.
+//! Layer 1 (shape): structural validation via serde deserialization
+//! into the typed `WorkflowDef`. The vendored JSON-Schema file is the
+//! authoritative shape source on the publisher side; Rust serde
+//! gives the consumer the same enforcement for free (typed enums for
+//! `kind`, default values for omitted fields, mutually-exclusive
+//! `prompt`/`prompt_file` via the `#[serde(flatten)]` tagged union).
+//! A future patch may load and validate against the actual JSON
+//! Schema (jsonschema-rs is not in the workspace today; serde is the
+//! Phase-1 surface).
 //!
-//! TODO B4 — Layer 2/3 validators per plan §4.1:
-//! - Layer 1 JSON Schema (jsonschema-rs against the vendored
-//!   `workflow-definition.schema.json`) — currently subsumed by serde
-//!   deserialization; should add the schema-driven path for clearer
-//!   error messages.
-//! - Layer 2 semantic (template reference resolution, prompt vs
-//!   prompt_file mutual exclusion re-check, prompt_file path
-//!   resolution within bundle).
-//! - Layer 3 security (path traversal, flavor in `KNOWN_FLAVORS`,
-//!   reject `mock:` outside dev workflows).
-//! - The "compiled IR" pass that fills `workflows.compiled_ir_json`
-//!   (plan §4.1 pattern (d)).
+//! Layer 2 (semantic):
+//! - step IDs unique + match `^[a-z][a-z0-9_]*$`,
+//! - depends_on resolves + topo-sort succeeds (no cycles),
+//! - every `{{ X.Y }}` template reference resolves (`X` is `inputs`
+//!   with matching name, OR an earlier step in topo order),
+//! - `prompt_file` paths exist in the bundle source,
+//! - `prompt:` and `prompt_file:` mutually exclusive.
+//!
+//! Layer 3 (security):
+//! - `prompt_file:` path safety (no `..`, no absolute, no symlink
+//!   escape),
+//! - `sandbox.flavor` value in `code_sandbox::KNOWN_FLAVORS`,
+//! - reject `mock:` in non-dev workflows (called via `validate_for_install`).
 
 #![allow(dead_code)]
 
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -88,8 +95,8 @@ pub struct StepDef {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expose_logs: Option<ExposeLogs>,
     /// Dev-only canned response. Honored only when
-    /// `workflows.is_dev = true`. Publisher's `validate.py` rejects
-    /// any step carrying this field. TODO B4 — runtime gate.
+    /// `workflows.is_dev = true`. Rejected at install for non-dev
+    /// workflows (`validate_for_install` enforces).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mock: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -155,15 +162,28 @@ pub enum StepConfig {
     },
 }
 
+impl StepConfig {
+    pub fn kind_str(&self) -> &'static str {
+        match self {
+            StepConfig::Llm { .. } => "llm",
+            StepConfig::LlmMap { .. } => "llm_map",
+            StepConfig::Sandbox { .. } => "sandbox",
+            StepConfig::Elicit { .. } => "elicit",
+        }
+    }
+}
+
 fn default_max_parallel() -> u32 {
     5
 }
+pub const MAX_PARALLEL_HARD_CAP: u32 = 20;
 fn default_sandbox_timeout_ms() -> u32 {
     30_000
 }
 fn default_elicit_timeout_ms() -> u32 {
     300_000
 }
+pub const ELICIT_TIMEOUT_HARD_CAP_MS: u32 = 1_800_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(rename_all = "snake_case")]
@@ -222,110 +242,555 @@ fn default_expose_mode() -> ExposeMode {
 }
 
 // ============================================================
-// Parser + cycle check (B2 minimum)
+// Validation
 // ============================================================
 
-/// Parse + structurally-validate a `workflow.yaml` body. Returns the
-/// typed `WorkflowDef` on success.
-///
-/// B2 contract — the install handler MUST call this so a malformed
-/// bundle is rejected before the row hits the DB. The full Layer 2+3
-/// validator suite (B4) layers on top of this base structural check.
+#[derive(Debug, Clone, Serialize)]
+pub struct ValidationError {
+    pub layer: &'static str, // "schema" | "semantic" | "security"
+    pub code: &'static str,
+    pub message: String,
+    /// Optional step id / output name / inputs.foo path for FE
+    /// rendering.
+    pub location: Option<String>,
+}
+
+impl ValidationError {
+    fn err<S: Into<String>>(layer: &'static str, code: &'static str, msg: S) -> Self {
+        Self {
+            layer,
+            code,
+            message: msg.into(),
+            location: None,
+        }
+    }
+    fn at<S: Into<String>, L: Into<String>>(
+        layer: &'static str,
+        code: &'static str,
+        msg: S,
+        loc: L,
+    ) -> Self {
+        Self {
+            layer,
+            code,
+            message: msg.into(),
+            location: Some(loc.into()),
+        }
+    }
+}
+
+/// Parse YAML body. Layer 1 shape errors become AppError ("the install
+/// handler short-circuits on the first parse failure"). For the
+/// `/validate` REST surface (B6), use `validate_yaml_collecting` which
+/// returns all errors.
 pub fn parse_workflow_yaml(yaml: &str) -> Result<WorkflowDef, AppError> {
-    let workflow: WorkflowDef = serde_yaml::from_str(yaml).map_err(|e| {
+    serde_yaml::from_str::<WorkflowDef>(yaml).map_err(|e| {
         AppError::bad_request(
             "WORKFLOW_INVALID_YAML",
             format!("workflow.yaml deserialization failed: {e}"),
         )
-    })?;
-    cycle_check(&workflow)?;
-    Ok(workflow)
+    })
 }
 
-/// Toposort + reject cycles in `steps[*].depends_on`. Used by the
-/// install handler.
-pub fn cycle_check(workflow: &WorkflowDef) -> Result<(), AppError> {
-    // Build name -> step idx map; validate dep targets exist.
-    let mut step_idx: HashMap<&str, usize> = HashMap::with_capacity(workflow.steps.len());
-    for (idx, step) in workflow.steps.iter().enumerate() {
-        if step_idx.insert(step.id.as_str(), idx).is_some() {
-            return Err(AppError::bad_request(
-                "WORKFLOW_DUPLICATE_STEP_ID",
-                format!("workflow.yaml: duplicate step id '{}'", step.id),
-            ));
+/// Full validator used by the install handler. Returns Ok on success,
+/// or the first error as an AppError.
+///
+/// `bundle_root` is the extracted bundle dir (used for `prompt_file:`
+/// path resolution).
+/// `is_dev` controls whether `mock:` is allowed.
+pub fn validate_for_install(
+    workflow: &WorkflowDef,
+    bundle_root: &Path,
+    is_dev: bool,
+) -> Result<(), AppError> {
+    let errors = validate_collecting(workflow, bundle_root, is_dev);
+    if let Some(first) = errors.into_iter().next() {
+        return Err(AppError::bad_request(
+            first.code,
+            format!(
+                "[{}/{}] {}{}",
+                first.layer,
+                first.code,
+                first.location.map(|l| format!("{l}: ")).unwrap_or_default(),
+                first.message
+            ),
+        ));
+    }
+    Ok(())
+}
+
+/// Same as `validate_for_install` but returns ALL errors. Used by
+/// `/validate` REST endpoint (B6).
+pub fn validate_collecting(
+    workflow: &WorkflowDef,
+    bundle_root: &Path,
+    is_dev: bool,
+) -> Vec<ValidationError> {
+    let mut out = Vec::new();
+    // Layer 2 + 3 — semantic + security.
+    out.extend(check_steps_shape(workflow));
+    out.extend(check_dependencies(workflow));
+    out.extend(check_outputs(workflow));
+    out.extend(check_template_refs(workflow));
+    out.extend(check_prompt_files(workflow, bundle_root));
+    out.extend(check_security(workflow));
+    if !is_dev {
+        out.extend(check_no_mock(workflow));
+    }
+    out
+}
+
+/// Topo-sort + cycle check kept as a standalone fn for tests + the
+/// runner (it consumes the order at dispatch time).
+pub fn topo_sort_steps(workflow: &WorkflowDef) -> Result<Vec<usize>, AppError> {
+    let n = workflow.steps.len();
+    let mut step_idx: HashMap<&str, usize> = HashMap::with_capacity(n);
+    for (i, s) in workflow.steps.iter().enumerate() {
+        step_idx.insert(s.id.as_str(), i);
+    }
+    // Kahn's algorithm. Stable order: by appearance.
+    let mut indeg = vec![0u32; n];
+    let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
+    for (i, s) in workflow.steps.iter().enumerate() {
+        for dep in &s.depends_on {
+            let &j = step_idx.get(dep.as_str()).ok_or_else(|| {
+                AppError::bad_request(
+                    "WORKFLOW_UNKNOWN_DEPENDENCY",
+                    format!("step '{}' depends_on unknown step '{}'", s.id, dep),
+                )
+            })?;
+            adj[j].push(i);
+            indeg[i] += 1;
         }
     }
-    for step in &workflow.steps {
-        for dep in &step.depends_on {
-            if !step_idx.contains_key(dep.as_str()) {
-                return Err(AppError::bad_request(
-                    "WORKFLOW_UNKNOWN_DEPENDENCY",
+    let mut queue: std::collections::VecDeque<usize> =
+        indeg.iter().enumerate().filter(|(_, d)| **d == 0).map(|(i, _)| i).collect();
+    let mut order = Vec::with_capacity(n);
+    while let Some(i) = queue.pop_front() {
+        order.push(i);
+        for &j in &adj[i] {
+            indeg[j] -= 1;
+            if indeg[j] == 0 {
+                queue.push_back(j);
+            }
+        }
+    }
+    if order.len() != n {
+        return Err(AppError::bad_request(
+            "WORKFLOW_CYCLE",
+            "workflow.yaml: depends_on cycle detected",
+        ));
+    }
+    Ok(order)
+}
+
+// Kept for backwards-compat with the B2 install handler.
+pub fn cycle_check(workflow: &WorkflowDef) -> Result<(), AppError> {
+    topo_sort_steps(workflow).map(|_| ())
+}
+
+// --- per-check helpers ---
+
+fn check_steps_shape(workflow: &WorkflowDef) -> Vec<ValidationError> {
+    let mut out = Vec::new();
+    if workflow.steps.is_empty() {
+        out.push(ValidationError::err(
+            "schema",
+            "WORKFLOW_NO_STEPS",
+            "workflow.yaml: steps[] must contain at least one step",
+        ));
+    }
+    if workflow.steps.len() > 50 {
+        out.push(ValidationError::err(
+            "semantic",
+            "WORKFLOW_TOO_MANY_STEPS",
+            format!(
+                "workflow.yaml: {} steps exceeds Phase-1 cap of 50",
+                workflow.steps.len()
+            ),
+        ));
+    }
+    let id_re = regex::Regex::new(r"^[a-z][a-z0-9_]*$").unwrap();
+    let mut seen: HashSet<&str> = HashSet::new();
+    for s in &workflow.steps {
+        if !id_re.is_match(&s.id) {
+            out.push(ValidationError::at(
+                "schema",
+                "WORKFLOW_BAD_STEP_ID",
+                format!(
+                    "step id '{}' must match ^[a-z][a-z0-9_]*$",
+                    s.id
+                ),
+                &s.id,
+            ));
+        }
+        if !seen.insert(s.id.as_str()) {
+            out.push(ValidationError::at(
+                "semantic",
+                "WORKFLOW_DUPLICATE_STEP_ID",
+                format!("duplicate step id '{}'", s.id),
+                &s.id,
+            ));
+        }
+        // Prompt vs prompt_file mutual exclusion (defense in depth on
+        // top of #[serde(flatten)] which doesn't enforce oneOf).
+        if let StepConfig::Llm {
+            prompt, prompt_file, ..
+        }
+        | StepConfig::LlmMap {
+            prompt, prompt_file, ..
+        } = &s.config
+        {
+            let has_prompt = prompt.as_ref().filter(|s| !s.is_empty()).is_some();
+            let has_file = prompt_file.is_some();
+            if has_prompt && has_file {
+                out.push(ValidationError::at(
+                    "semantic",
+                    "WORKFLOW_PROMPT_BOTH",
+                    "step has both prompt: and prompt_file: (mutually exclusive)",
+                    &s.id,
+                ));
+            }
+            if !has_prompt && !has_file {
+                out.push(ValidationError::at(
+                    "semantic",
+                    "WORKFLOW_PROMPT_MISSING",
+                    "step has neither prompt: nor prompt_file:",
+                    &s.id,
+                ));
+            }
+        }
+        if let StepConfig::Sandbox { run, .. } = &s.config {
+            if run.is_empty() {
+                out.push(ValidationError::at(
+                    "semantic",
+                    "WORKFLOW_SANDBOX_NO_RUN",
+                    "sandbox step has empty run:",
+                    &s.id,
+                ));
+            }
+        }
+        if let StepConfig::Elicit { timeout_ms, .. } = &s.config {
+            if *timeout_ms > ELICIT_TIMEOUT_HARD_CAP_MS {
+                out.push(ValidationError::at(
+                    "semantic",
+                    "WORKFLOW_ELICIT_TIMEOUT_CAP",
                     format!(
-                        "workflow.yaml: step '{}' depends_on unknown step '{}'",
-                        step.id, dep
+                        "elicit timeout_ms={} exceeds hard cap {}",
+                        timeout_ms, ELICIT_TIMEOUT_HARD_CAP_MS
                     ),
+                    &s.id,
+                ));
+            }
+        }
+        // llm_map for_each separate check (avoid borrowing issue)
+        if let StepConfig::LlmMap {
+            max_parallel,
+            for_each,
+            item_var,
+            ..
+        } = &s.config
+        {
+            if *max_parallel > MAX_PARALLEL_HARD_CAP {
+                out.push(ValidationError::at(
+                    "semantic",
+                    "WORKFLOW_PARALLEL_CAP",
+                    format!(
+                        "llm_map max_parallel={} exceeds hard cap {}",
+                        max_parallel, MAX_PARALLEL_HARD_CAP
+                    ),
+                    &s.id,
+                ));
+            }
+            if *max_parallel == 0 {
+                out.push(ValidationError::at(
+                    "semantic",
+                    "WORKFLOW_PARALLEL_ZERO",
+                    "llm_map max_parallel must be > 0",
+                    &s.id,
+                ));
+            }
+            if for_each.is_empty() {
+                out.push(ValidationError::at(
+                    "semantic",
+                    "WORKFLOW_FOR_EACH_EMPTY",
+                    "llm_map for_each must be a template referencing an array",
+                    &s.id,
+                ));
+            }
+            if item_var.is_empty() {
+                out.push(ValidationError::at(
+                    "semantic",
+                    "WORKFLOW_ITEM_VAR_EMPTY",
+                    "llm_map item_var must be set",
+                    &s.id,
                 ));
             }
         }
     }
+    out
+}
 
-    // Iterative DFS with 3-color marking: 0 = unvisited, 1 = in-stack,
-    // 2 = done. A back-edge to an in-stack node is a cycle.
-    let n = workflow.steps.len();
-    let mut color = vec![0u8; n];
-    for start in 0..n {
-        if color[start] != 0 {
-            continue;
-        }
-        let mut stack: Vec<(usize, usize)> = vec![(start, 0)];
-        color[start] = 1;
-        while let Some((node, dep_idx)) = stack.last().copied() {
-            let step = &workflow.steps[node];
-            if dep_idx >= step.depends_on.len() {
-                color[node] = 2;
-                stack.pop();
-                continue;
+fn check_dependencies(workflow: &WorkflowDef) -> Vec<ValidationError> {
+    let mut out = Vec::new();
+    let ids: HashSet<&str> = workflow.steps.iter().map(|s| s.id.as_str()).collect();
+    for s in &workflow.steps {
+        for dep in &s.depends_on {
+            if !ids.contains(dep.as_str()) {
+                out.push(ValidationError::at(
+                    "semantic",
+                    "WORKFLOW_UNKNOWN_DEPENDENCY",
+                    format!("step '{}' depends_on unknown step '{}'", s.id, dep),
+                    &s.id,
+                ));
             }
-            // advance dep cursor on this frame
-            stack.last_mut().unwrap().1 = dep_idx + 1;
-
-            let next_name = step.depends_on[dep_idx].as_str();
-            let next = *step_idx.get(next_name).unwrap(); // validated above
-            match color[next] {
-                0 => {
-                    color[next] = 1;
-                    stack.push((next, 0));
-                }
-                1 => {
-                    return Err(AppError::bad_request(
-                        "WORKFLOW_CYCLE",
-                        format!(
-                            "workflow.yaml: depends_on cycle involving step '{}' -> '{}'",
-                            workflow.steps[node].id, workflow.steps[next].id
-                        ),
-                    ));
-                }
-                _ => {} // already done — skip
+            if dep == &s.id {
+                out.push(ValidationError::at(
+                    "semantic",
+                    "WORKFLOW_SELF_DEPENDENCY",
+                    "step depends_on itself",
+                    &s.id,
+                ));
             }
         }
     }
+    if let Err(e) = topo_sort_steps(workflow) {
+        out.push(ValidationError::err(
+            "semantic",
+            "WORKFLOW_CYCLE",
+            e.to_string(),
+        ));
+    }
+    out
+}
 
-    // Quick duplicate-output-name check (cheap; outputs are small).
-    let mut seen_out = HashSet::with_capacity(workflow.outputs.len());
-    for out in &workflow.outputs {
-        if !seen_out.insert(out.name.as_str()) {
-            return Err(AppError::bad_request(
+fn check_outputs(workflow: &WorkflowDef) -> Vec<ValidationError> {
+    let mut out = Vec::new();
+    let mut seen: HashSet<&str> = HashSet::new();
+    for o in &workflow.outputs {
+        if !seen.insert(o.name.as_str()) {
+            out.push(ValidationError::at(
+                "semantic",
                 "WORKFLOW_DUPLICATE_OUTPUT_NAME",
-                format!("workflow.yaml: duplicate output name '{}'", out.name),
+                format!("duplicate output name '{}'", o.name),
+                &o.name,
             ));
         }
     }
-    Ok(())
+    out
+}
+
+fn check_template_refs(workflow: &WorkflowDef) -> Vec<ValidationError> {
+    let mut out = Vec::new();
+    let input_names: HashSet<&str> =
+        workflow.inputs.iter().map(|i| i.name.as_str()).collect();
+    let step_ids: HashSet<&str> = workflow.steps.iter().map(|s| s.id.as_str()).collect();
+
+    let mut check = |loc: &str, body: &str| {
+        let refs = match crate::modules::workflow::template::scan_var_refs(body) {
+            Ok(r) => r,
+            Err(e) => {
+                out.push(ValidationError::at(
+                    "semantic",
+                    "WORKFLOW_TEMPLATE_SYNTAX",
+                    e.to_string(),
+                    loc.to_string(),
+                ));
+                return;
+            }
+        };
+        for (head, field) in refs {
+            match head.as_str() {
+                "inputs" => {
+                    if !input_names.contains(field.as_str()) {
+                        out.push(ValidationError::at(
+                            "semantic",
+                            "WORKFLOW_UNKNOWN_INPUT_REF",
+                            format!("template references unknown input 'inputs.{field}'"),
+                            loc.to_string(),
+                        ));
+                    }
+                }
+                step_id => {
+                    if !step_ids.contains(step_id) {
+                        out.push(ValidationError::at(
+                            "semantic",
+                            "WORKFLOW_UNKNOWN_STEP_REF",
+                            format!(
+                                "template references unknown step '{step_id}' (in '{step_id}.{field}')"
+                            ),
+                            loc.to_string(),
+                        ));
+                    } else if field != "output" && field != "path" {
+                        out.push(ValidationError::at(
+                            "semantic",
+                            "WORKFLOW_BAD_STEP_FIELD",
+                            format!(
+                                "template references unknown field '{field}' on step '{step_id}' (expected 'output' or 'path')"
+                            ),
+                            loc.to_string(),
+                        ));
+                    }
+                }
+            }
+        }
+    };
+
+    for s in &workflow.steps {
+        let bodies: Vec<(String, &str)> = match &s.config {
+            StepConfig::Llm { prompt, .. } => prompt
+                .as_deref()
+                .map(|p| vec![(format!("{}.prompt", s.id), p)])
+                .unwrap_or_default(),
+            StepConfig::LlmMap {
+                prompt, for_each, ..
+            } => {
+                let mut v: Vec<(String, &str)> =
+                    vec![(format!("{}.for_each", s.id), for_each.as_str())];
+                if let Some(p) = prompt.as_deref() {
+                    v.push((format!("{}.prompt", s.id), p));
+                }
+                v
+            }
+            StepConfig::Sandbox { run, stdin, .. } => {
+                let mut v: Vec<(String, &str)> = vec![(format!("{}.run", s.id), run.as_str())];
+                if let Some(st) = stdin.as_deref() {
+                    v.push((format!("{}.stdin", s.id), st));
+                }
+                v
+            }
+            StepConfig::Elicit { message, .. } => {
+                vec![(format!("{}.message", s.id), message.as_str())]
+            }
+        };
+        for (loc, body) in bodies {
+            check(&loc, body);
+        }
+        if let Some(msg) = s.message.as_deref() {
+            check(&format!("{}.message", s.id), msg);
+        }
+    }
+    for o in &workflow.outputs {
+        check(&format!("outputs[{}].from", o.name), &o.from);
+    }
+    out
+}
+
+fn check_prompt_files(workflow: &WorkflowDef, bundle_root: &Path) -> Vec<ValidationError> {
+    let mut out = Vec::new();
+    for s in &workflow.steps {
+        let pf = match &s.config {
+            StepConfig::Llm { prompt_file, .. } => prompt_file.as_deref(),
+            StepConfig::LlmMap { prompt_file, .. } => prompt_file.as_deref(),
+            _ => None,
+        };
+        if let Some(p) = pf {
+            if p.contains("..") || p.starts_with('/') {
+                out.push(ValidationError::at(
+                    "security",
+                    "WORKFLOW_PROMPT_FILE_UNSAFE",
+                    format!("prompt_file '{p}' must be a bundle-relative path without '..'"),
+                    &s.id,
+                ));
+                continue;
+            }
+            let resolved = bundle_root.join(p);
+            // Defense: re-canonicalize and verify it's still inside the bundle root.
+            match resolved.canonicalize() {
+                Ok(canon) => {
+                    let root_canon = bundle_root.canonicalize().unwrap_or(bundle_root.to_path_buf());
+                    if !canon.starts_with(&root_canon) {
+                        out.push(ValidationError::at(
+                            "security",
+                            "WORKFLOW_PROMPT_FILE_ESCAPE",
+                            format!("prompt_file '{p}' resolves outside bundle"),
+                            &s.id,
+                        ));
+                    }
+                }
+                Err(_) => {
+                    out.push(ValidationError::at(
+                        "semantic",
+                        "WORKFLOW_PROMPT_FILE_MISSING",
+                        format!("prompt_file '{p}' not found in bundle"),
+                        &s.id,
+                    ));
+                }
+            }
+        }
+    }
+    out
+}
+
+fn check_security(workflow: &WorkflowDef) -> Vec<ValidationError> {
+    let mut out = Vec::new();
+    // sandbox.flavor must be in KNOWN_FLAVORS.
+    if let Some(sb) = &workflow.sandbox {
+        let known: Vec<&str> = crate::modules::code_sandbox::types::KNOWN_FLAVORS
+            .iter()
+            .map(|f| f.flavor)
+            .collect();
+        if !known.contains(&sb.flavor.as_str()) {
+            out.push(ValidationError::err(
+                "security",
+                "WORKFLOW_UNKNOWN_FLAVOR",
+                format!(
+                    "sandbox.flavor '{}' is not in KNOWN_FLAVORS ({})",
+                    sb.flavor,
+                    known.join(", ")
+                ),
+            ));
+        }
+    }
+    // If any step is `kind: sandbox`, sandbox.flavor MUST be declared.
+    let has_sandbox = workflow
+        .steps
+        .iter()
+        .any(|s| matches!(s.config, StepConfig::Sandbox { .. }));
+    if has_sandbox && workflow.sandbox.is_none() {
+        out.push(ValidationError::err(
+            "semantic",
+            "WORKFLOW_SANDBOX_FLAVOR_REQUIRED",
+            "workflow has kind: sandbox steps but no top-level sandbox.flavor",
+        ));
+    }
+    // Artifact declarations: path safety.
+    for s in &workflow.steps {
+        for a in &s.artifacts {
+            if let Some(p) = a.path.as_deref()
+                && (p.contains("..") || p.starts_with('/'))
+            {
+                out.push(ValidationError::at(
+                    "security",
+                    "WORKFLOW_ARTIFACT_PATH_UNSAFE",
+                    format!("artifact path '{p}' must be relative, no '..'"),
+                    &s.id,
+                ));
+            }
+        }
+    }
+    out
+}
+
+fn check_no_mock(workflow: &WorkflowDef) -> Vec<ValidationError> {
+    let mut out = Vec::new();
+    for s in &workflow.steps {
+        if s.mock.is_some() {
+            out.push(ValidationError::at(
+                "security",
+                "WORKFLOW_MOCK_IN_PUBLISHED",
+                "step has mock: set in a non-dev workflow (only dev workflows may carry mocks)",
+                &s.id,
+            ));
+        }
+    }
+    out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
 
     #[test]
     fn parses_minimal_llm_workflow() {
@@ -342,25 +807,13 @@ outputs:
     from: "{{ gen.output }}"
 "#;
         let wf = parse_workflow_yaml(yaml).expect("parse");
-        assert_eq!(wf.steps.len(), 1);
-        assert_eq!(wf.outputs.len(), 1);
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(errs.is_empty(), "unexpected errors: {errs:?}");
     }
 
     #[test]
-    fn rejects_unknown_dependency() {
-        let yaml = r#"
-steps:
-  - id: a
-    kind: llm
-    prompt: "x"
-    depends_on: [does_not_exist]
-"#;
-        let err = parse_workflow_yaml(yaml).unwrap_err();
-        assert!(err.to_string().contains("unknown step"));
-    }
-
-    #[test]
-    fn rejects_simple_cycle() {
+    fn rejects_cycle() {
         let yaml = r#"
 steps:
   - id: a
@@ -372,36 +825,145 @@ steps:
     prompt: "y"
     depends_on: [a]
 "#;
-        let err = parse_workflow_yaml(yaml).unwrap_err();
-        assert!(err.to_string().contains("cycle"));
+        let wf = parse_workflow_yaml(yaml).unwrap();
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(
+            errs.iter().any(|e| e.code == "WORKFLOW_CYCLE"),
+            "expected WORKFLOW_CYCLE in {errs:?}"
+        );
     }
 
     #[test]
-    fn rejects_duplicate_step_id() {
+    fn rejects_unknown_input_ref() {
+        let yaml = r#"
+steps:
+  - id: g
+    kind: llm
+    prompt: "{{ inputs.missing }}"
+"#;
+        let wf = parse_workflow_yaml(yaml).unwrap();
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(errs.iter().any(|e| e.code == "WORKFLOW_UNKNOWN_INPUT_REF"));
+    }
+
+    #[test]
+    fn rejects_unknown_step_ref_in_output() {
+        let yaml = r#"
+steps:
+  - id: g
+    kind: llm
+    prompt: "x"
+outputs:
+  - name: o
+    from: "{{ nope.output }}"
+"#;
+        let wf = parse_workflow_yaml(yaml).unwrap();
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(errs.iter().any(|e| e.code == "WORKFLOW_UNKNOWN_STEP_REF"));
+    }
+
+    #[test]
+    fn rejects_prompt_and_prompt_file() {
+        let yaml = r#"
+steps:
+  - id: g
+    kind: llm
+    prompt: "inline"
+    prompt_file: "prompts/x.md"
+"#;
+        let wf = parse_workflow_yaml(yaml).unwrap();
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(errs.iter().any(|e| e.code == "WORKFLOW_PROMPT_BOTH"));
+    }
+
+    #[test]
+    fn rejects_unsafe_prompt_file() {
+        let yaml = r#"
+steps:
+  - id: g
+    kind: llm
+    prompt_file: "../../etc/passwd"
+"#;
+        let wf = parse_workflow_yaml(yaml).unwrap();
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(errs.iter().any(|e| e.code == "WORKFLOW_PROMPT_FILE_UNSAFE"));
+    }
+
+    #[test]
+    fn rejects_unknown_flavor() {
+        let yaml = r#"
+sandbox:
+  flavor: galactic
+steps:
+  - id: r
+    kind: sandbox
+    run: "echo"
+"#;
+        let wf = parse_workflow_yaml(yaml).unwrap();
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(errs.iter().any(|e| e.code == "WORKFLOW_UNKNOWN_FLAVOR"));
+    }
+
+    #[test]
+    fn sandbox_step_requires_flavor_decl() {
+        let yaml = r#"
+steps:
+  - id: r
+    kind: sandbox
+    run: "echo"
+"#;
+        let wf = parse_workflow_yaml(yaml).unwrap();
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(errs.iter().any(|e| e.code == "WORKFLOW_SANDBOX_FLAVOR_REQUIRED"));
+    }
+
+    #[test]
+    fn rejects_mock_in_non_dev() {
+        let yaml = r#"
+steps:
+  - id: g
+    kind: llm
+    prompt: "x"
+    mock: "canned response"
+"#;
+        let wf = parse_workflow_yaml(yaml).unwrap();
+        let tmp = tempdir().unwrap();
+        let errs_pub = validate_collecting(&wf, tmp.path(), false);
+        assert!(errs_pub.iter().any(|e| e.code == "WORKFLOW_MOCK_IN_PUBLISHED"));
+        // Allowed when is_dev = true.
+        let errs_dev = validate_collecting(&wf, tmp.path(), true);
+        assert!(!errs_dev.iter().any(|e| e.code == "WORKFLOW_MOCK_IN_PUBLISHED"));
+    }
+
+    #[test]
+    fn topo_sort_returns_valid_order() {
         let yaml = r#"
 steps:
   - id: a
     kind: llm
     prompt: "x"
-  - id: a
+  - id: b
     kind: llm
     prompt: "y"
+    depends_on: [a]
+  - id: c
+    kind: llm
+    prompt: "z"
+    depends_on: [b]
 "#;
-        let err = parse_workflow_yaml(yaml).unwrap_err();
-        assert!(err.to_string().contains("duplicate step id"));
-    }
-
-    #[test]
-    fn accepts_sandbox_step() {
-        let yaml = r#"
-sandbox:
-  flavor: minimal
-steps:
-  - id: build
-    kind: sandbox
-    run: "echo hello"
-"#;
-        let wf = parse_workflow_yaml(yaml).expect("parse");
-        assert!(matches!(wf.steps[0].config, StepConfig::Sandbox { .. }));
+        let wf = parse_workflow_yaml(yaml).unwrap();
+        let order = topo_sort_steps(&wf).unwrap();
+        // a must come before b before c.
+        let pos_a = order.iter().position(|&i| wf.steps[i].id == "a").unwrap();
+        let pos_b = order.iter().position(|&i| wf.steps[i].id == "b").unwrap();
+        let pos_c = order.iter().position(|&i| wf.steps[i].id == "c").unwrap();
+        assert!(pos_a < pos_b && pos_b < pos_c);
     }
 }

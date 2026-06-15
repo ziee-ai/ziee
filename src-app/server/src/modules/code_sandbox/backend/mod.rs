@@ -96,6 +96,27 @@ pub trait SandboxBackend: Send + Sync {
         flavor: &str,
     ) -> Result<SandboxRunResult, AppError>;
 
+    /// Like [`run`], but threads workflow-runner extra mounts through to
+    /// `build_bwrap_argv` (B4). Used by `workflow::dispatch::SandboxDispatcher`
+    /// to bind the per-run `workflow/` (RO) + per-step `artifacts/<step_id>/`
+    /// (RW) dirs into the bwrap mount tree. Default implementation falls
+    /// through to `run` (ignoring mounts) — the VM backends override
+    /// only when the workflow runtime grows cross-OS support; Phase 1
+    /// runs the workflow runtime Linux-only.
+    async fn run_with_mounts(
+        &self,
+        state: &CodeSandboxState,
+        ctx: &SandboxContext,
+        command: &str,
+        timeout_secs: Option<u64>,
+        flavor: &str,
+        _extra_mounts: &[crate::modules::code_sandbox::workflow_staging::StagedMount],
+    ) -> Result<SandboxRunResult, AppError> {
+        // Default: behave like `run`, ignoring extra mounts (VM backends).
+        // Linux backend overrides to actually wire the mounts.
+        self.run(state, ctx, command, timeout_secs, flavor).await
+    }
+
     /// Tear down anything this backend owns (FUSE daemons / VMs / distros).
     async fn shutdown(&self);
 

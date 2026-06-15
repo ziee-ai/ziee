@@ -1841,8 +1841,9 @@ async fn build_workflow_create_from_hub(
     )
     .await?;
 
-    // Parse + structurally-validate workflow.yaml. Cycle check happens
-    // inside `parse_workflow_yaml`. Layer 2/3 validators land in B4.
+    // Parse + Layer 1+2+3 validate workflow.yaml. Rejects malformed
+    // bundles before they touch the DB. Published workflows are NOT
+    // is_dev → mock: in step defs is rejected here.
     let workflow_yaml_path = extraction.extracted_path.join(&hub_workflow.bundle.entry_point);
     let content = tokio::fs::read_to_string(&workflow_yaml_path).await.map_err(|e| {
         AppError::internal_error(format!(
@@ -1851,7 +1852,12 @@ async fn build_workflow_create_from_hub(
             e
         ))
     })?;
-    let _workflow_def = workflow::validate::parse_workflow_yaml(&content)?;
+    let workflow_def = workflow::validate::parse_workflow_yaml(&content)?;
+    workflow::validate::validate_for_install(
+        &workflow_def,
+        &extraction.extracted_path,
+        false,
+    )?;
 
     let display_name = hub_workflow.name.rsplit('/').next().map(str::to_string);
 

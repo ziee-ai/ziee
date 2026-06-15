@@ -1,0 +1,341 @@
+//! In-memory per-run handle registry (§4.3 + §4.4 + §4.6).
+//!
+//! Each in-flight `workflow_runs` row gets a `RunHandle` with:
+//! - a cancellation `Notify` (the runner's `tokio::select!` arms wait
+//!   on `cancel.notified()` so any branch that's awaiting can be
+//!   preempted instantly),
+//! - a per-client `mpsc::UnboundedSender` map for the per-run SSE
+//!   endpoint (matches the existing `code_sandbox/version_install_tasks.rs`
+//!   + `llm_model/handlers/downloads.rs` patterns),
+//! - an optional pending-elicitation slot (oneshot reply channel +
+//!   id, set/cleared by `ElicitDispatcher`).
+//!
+//! The registry survives only in-memory. On server restart any orphan
+//! `running` / `pending` rows are flipped to `failed` by
+//! `startup_sweep.rs`; clients reconnecting after a restart get the
+//! terminal status on subscribe.
+//!
+//! NOTE on the cancellation primitive: the codebase ships a
+//! `utils/cancellation::CancellationToken` for downloads. That one is
+//! poll-only (`is_cancelled().await` consumes its inner receiver) and
+//! doesn't compose with `tokio::select!` across multiple await points
+//! the way the runner needs. The runner uses a `Notify` instead — it's
+//! the natural primitive for "wake every waiter when this fires", which
+//! is exactly the runner's per-step `select!` shape.
+
+#![allow(dead_code)]
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+use axum::response::sse::Event;
+use dashmap::DashMap;
+use once_cell::sync::Lazy;
+use tokio::sync::{Notify, mpsc, oneshot};
+use uuid::Uuid;
+
+use crate::modules::workflow::events::SSEWorkflowRunEvent;
+
+pub type ClientId = Uuid;
+pub type ClientSender = mpsc::UnboundedSender<Result<Event, axum::Error>>;
+
+/// Pending elicitation reply slot. Set by `ElicitDispatcher::dispatch`
+/// while it's awaiting; consumed by `POST /elicit/{id}` (or cleared by
+/// cancel / timeout).
+pub struct PendingElicit {
+    pub id: Uuid,
+    pub tx: oneshot::Sender<serde_json::Value>,
+}
+
+pub struct RunHandle {
+    /// Signalled by `cancel()` — any `tokio::select!` waiting on
+    /// `cancel.notified()` returns immediately.
+    pub cancel: Arc<Notify>,
+    /// Once `cancel` has fired, this stays true so a future entrant
+    /// into a step's select! arm exits without waiting forever (Notify
+    /// is "edge"-shaped — waiters added after the notify_waiters() call
+    /// would otherwise block).
+    pub cancelled: Arc<std::sync::atomic::AtomicBool>,
+    pub clients: Arc<Mutex<HashMap<ClientId, ClientSender>>>,
+    pub pending_elicitation: Arc<Mutex<Option<PendingElicit>>>,
+    pub created_at: Instant,
+}
+
+impl RunHandle {
+    fn new() -> Self {
+        Self {
+            cancel: Arc::new(Notify::new()),
+            cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            clients: Arc::new(Mutex::new(HashMap::new())),
+            pending_elicitation: Arc::new(Mutex::new(None)),
+            created_at: Instant::now(),
+        }
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Await cancellation. Returns immediately if cancel has already
+    /// been signalled — defensive against the `Notify` edge-trigger
+    /// race (waiter added after `notify_waiters()`).
+    pub async fn await_cancel(&self) {
+        if self.is_cancelled() {
+            return;
+        }
+        self.cancel.notified().await;
+    }
+}
+
+/// Global DashMap keyed by run_id. Mirrors
+/// `code_sandbox/version_install_tasks.rs::INSTALL_TASKS`.
+pub static RUN_HANDLES: Lazy<DashMap<Uuid, Arc<RunHandle>>> = Lazy::new(DashMap::new);
+
+/// Cap on concurrent SSE subscribers per run. Above this, subscribe
+/// is refused with 429 (the FE retries; in practice users have at most
+/// one or two tabs open per run).
+pub const MAX_CLIENTS_PER_RUN: usize = 32;
+
+pub fn register(run_id: Uuid) -> Arc<RunHandle> {
+    let handle = Arc::new(RunHandle::new());
+    RUN_HANDLES.insert(run_id, handle.clone());
+    handle
+}
+
+pub fn unregister(run_id: Uuid) {
+    RUN_HANDLES.remove(&run_id);
+}
+
+pub fn get(run_id: Uuid) -> Option<Arc<RunHandle>> {
+    RUN_HANDLES.get(&run_id).map(|r| r.value().clone())
+}
+
+/// Fire the cancel signal for `run_id`. Idempotent — repeat calls
+/// after the first are no-ops. Returns `false` if the handle has
+/// already exited (runner removed itself from the registry).
+pub fn cancel(run_id: Uuid) -> bool {
+    if let Some(h) = get(run_id) {
+        h.cancelled.store(true, std::sync::atomic::Ordering::Relaxed);
+        h.cancel.notify_waiters();
+        true
+    } else {
+        false
+    }
+}
+
+// ============================================================
+// SSE client lifecycle
+// ============================================================
+
+pub fn register_client(run_id: Uuid, tx: ClientSender) -> Result<ClientId, &'static str> {
+    let handle = get(run_id).ok_or("run not active")?;
+    let mut clients = handle.clients.lock().map_err(|_| "client map poisoned")?;
+    if clients.len() >= MAX_CLIENTS_PER_RUN {
+        return Err("too many subscribers");
+    }
+    let id = Uuid::new_v4();
+    clients.insert(id, tx);
+    Ok(id)
+}
+
+pub fn remove_client(run_id: Uuid, client_id: ClientId) {
+    if let Some(handle) = get(run_id)
+        && let Ok(mut clients) = handle.clients.lock()
+    {
+        clients.remove(&client_id);
+    }
+}
+
+/// Broadcast `ev` to every client of `run_id`. Dead senders (client
+/// disconnected) are pruned. Silent on unknown run_id (the runner may
+/// have already removed the handle; reconnect path reads from DB).
+pub fn broadcast(run_id: Uuid, ev: SSEWorkflowRunEvent) {
+    let handle = match get(run_id) {
+        Some(h) => h,
+        None => return,
+    };
+    let snapshot: Vec<(ClientId, ClientSender)> = match handle.clients.lock() {
+        Ok(g) => g.iter().map(|(k, v)| (*k, v.clone())).collect(),
+        Err(_) => return,
+    };
+    let axum_event: Event = ev.into();
+    let mut dead: Vec<ClientId> = Vec::new();
+    for (id, tx) in &snapshot {
+        if tx.send(Ok(axum_event.clone())).is_err() {
+            dead.push(*id);
+        }
+    }
+    if !dead.is_empty()
+        && let Ok(mut g) = handle.clients.lock()
+    {
+        for id in dead {
+            g.remove(&id);
+        }
+    }
+}
+
+// ============================================================
+// Elicitation
+// ============================================================
+
+/// Park a oneshot reply slot for `elicitation_id`. The
+/// `ElicitDispatcher` calls this before broadcasting the
+/// `ElicitationRequired` event and then awaits `rx.recv()` (composed
+/// in a `tokio::select!` with cancel + timeout). Returns the receiver
+/// the dispatcher awaits on.
+pub fn set_pending_elicitation(
+    run_id: Uuid,
+    elicitation_id: Uuid,
+) -> Result<oneshot::Receiver<serde_json::Value>, &'static str> {
+    let handle = get(run_id).ok_or("run not active")?;
+    let (tx, rx) = oneshot::channel();
+    let mut slot = handle
+        .pending_elicitation
+        .lock()
+        .map_err(|_| "elicit slot poisoned")?;
+    *slot = Some(PendingElicit { id: elicitation_id, tx });
+    Ok(rx)
+}
+
+pub fn clear_pending_elicitation(run_id: Uuid) {
+    if let Some(handle) = get(run_id)
+        && let Ok(mut slot) = handle.pending_elicitation.lock()
+    {
+        *slot = None;
+    }
+}
+
+/// Deliver a response to a pending elicitation. Returns one of:
+/// - `Ok(())` — delivered to the waiting dispatcher
+/// - `Err("stale")` — the elicitation_id doesn't match the pending one
+///   (replay / late submission)
+/// - `Err("none")` — there's no pending elicitation for this run
+/// - `Err("run not active")` — the runner has already exited
+pub fn submit_elicitation_response(
+    run_id: Uuid,
+    elicitation_id: Uuid,
+    value: serde_json::Value,
+) -> Result<(), &'static str> {
+    let handle = get(run_id).ok_or("run not active")?;
+    let mut slot = handle
+        .pending_elicitation
+        .lock()
+        .map_err(|_| "elicit slot poisoned")?;
+    let Some(pending) = slot.take() else {
+        return Err("none");
+    };
+    if pending.id != elicitation_id {
+        // restore the slot (the in-flight one is still pending)
+        *slot = Some(pending);
+        return Err("stale");
+    }
+    pending
+        .tx
+        .send(value)
+        .map_err(|_| "dispatcher receiver dropped")
+}
+
+// ============================================================
+// Maintenance — periodic reap of orphaned handles
+// ============================================================
+
+/// Maximum age for an idle (no clients, no recent runner activity)
+/// run handle before being reaped. Wide enough to cover long elicits
+/// and slow LLM streams (30 min wall-clock + buffer).
+pub const HANDLE_TTL: Duration = Duration::from_secs(45 * 60);
+
+/// Walk the registry, drop any handle older than `HANDLE_TTL` (the
+/// runner forgot to remove itself — likely panicked). Cheap; called
+/// from the per-run SSE subscribe path opportunistically.
+pub fn reap_stale() {
+    let now = Instant::now();
+    let stale: Vec<Uuid> = RUN_HANDLES
+        .iter()
+        .filter(|e| now.duration_since(e.value().created_at) > HANDLE_TTL)
+        .map(|e| *e.key())
+        .collect();
+    for id in stale {
+        RUN_HANDLES.remove(&id);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn cancel_signal_wakes_waiter() {
+        let run_id = Uuid::new_v4();
+        let handle = register(run_id);
+        let waiter = tokio::spawn({
+            let h = handle.clone();
+            async move {
+                h.await_cancel().await;
+                42
+            }
+        });
+        // The waiter is parked; cancel should wake it.
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        assert!(cancel(run_id));
+        let v = tokio::time::timeout(Duration::from_secs(1), waiter)
+            .await
+            .expect("waiter never woke")
+            .unwrap();
+        assert_eq!(v, 42);
+        unregister(run_id);
+    }
+
+    #[tokio::test]
+    async fn cancel_is_idempotent_after_runner_exits() {
+        let run_id = Uuid::new_v4();
+        register(run_id);
+        assert!(cancel(run_id));
+        // Runner removes itself.
+        unregister(run_id);
+        // Subsequent cancel is a no-op (handle gone).
+        assert!(!cancel(run_id));
+    }
+
+    #[tokio::test]
+    async fn cancel_after_signal_does_not_block_new_waiters() {
+        let run_id = Uuid::new_v4();
+        let handle = register(run_id);
+        assert!(cancel(run_id));
+        // New waiter must NOT block; cancelled flag is sticky.
+        tokio::time::timeout(Duration::from_millis(100), handle.await_cancel())
+            .await
+            .expect("await_cancel hung after signal");
+        unregister(run_id);
+    }
+
+    #[tokio::test]
+    async fn elicitation_response_round_trips() {
+        let run_id = Uuid::new_v4();
+        register(run_id);
+        let eid = Uuid::new_v4();
+        let rx = set_pending_elicitation(run_id, eid).unwrap();
+        let val = serde_json::json!({"answer": 42});
+        let send_val = val.clone();
+        let waiter = tokio::spawn(async move { rx.await.unwrap() });
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        submit_elicitation_response(run_id, eid, send_val).unwrap();
+        let got = waiter.await.unwrap();
+        assert_eq!(got, val);
+        unregister(run_id);
+    }
+
+    #[tokio::test]
+    async fn elicitation_stale_id_rejected() {
+        let run_id = Uuid::new_v4();
+        register(run_id);
+        let eid = Uuid::new_v4();
+        let _rx = set_pending_elicitation(run_id, eid).unwrap();
+        let wrong = Uuid::new_v4();
+        let err = submit_elicitation_response(run_id, wrong, serde_json::json!(1)).unwrap_err();
+        assert_eq!(err, "stale");
+        // Original is still pending.
+        submit_elicitation_response(run_id, eid, serde_json::json!(2)).unwrap();
+        unregister(run_id);
+    }
+}

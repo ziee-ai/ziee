@@ -13,12 +13,25 @@
 //! B6 ships the REST surface (user + admin + workflow-runs handlers)
 //! per plan §3.
 
+pub mod artifact_io;
+pub mod artifact_stream;
+pub mod dispatch;
+pub mod elicit;
 pub mod events;
+pub mod file_io;
 pub mod handlers;
+pub mod log_io;
+pub mod log_stream;
 pub mod models;
+pub mod output_stream;
 pub mod permissions;
+pub mod progress_sse;
+pub mod registry;
 pub mod repository;
 pub mod routes;
+pub mod runner;
+pub mod startup_sweep;
+pub mod template;
 pub mod types;
 pub mod validate;
 
@@ -65,11 +78,16 @@ impl AppModule for WorkflowModule {
         "Workflow DAG runner"
     }
 
-    fn init(&mut self, _ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
-        // B4: spawn the startup orphan-run sweep here (any
-        // `workflow_runs` row left in `pending` / `running` from a
-        // crash before this boot gets marked Failed). Also wires the
-        // per-run registry singleton.
+    fn init(&mut self, ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
+        // Startup sweep: flip every orphan in-flight workflow_run row
+        // to `failed` ("server restart during execution") and remove
+        // stale staged dirs under <workspace_root>/*/workflow/*/.
+        let pool = (*ctx.db_pool).clone();
+        tokio::spawn(async move {
+            if let Err(e) = startup_sweep::sweep_at_boot(&pool).await {
+                tracing::warn!(error = %e, "workflow: startup sweep failed");
+            }
+        });
         Ok(())
     }
 

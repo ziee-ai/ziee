@@ -1030,6 +1030,7 @@ impl SandboxBackend for Wsl2Backend {
                 Path::new(GUEST_EMPTY),
                 Some(GUEST_SECCOMP_FD),
                 &limits,
+                &[],
             ),
             timeout_ms: secs * 1000,
             seccomp_fd: Some(GUEST_SECCOMP_FD),

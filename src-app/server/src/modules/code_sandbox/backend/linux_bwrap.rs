@@ -50,6 +50,26 @@ impl SandboxBackend for LinuxBwrapBackend {
         sandbox::run_in_sandbox(state, ctx, command, timeout_secs, flavor).await
     }
 
+    async fn run_with_mounts(
+        &self,
+        state: &CodeSandboxState,
+        ctx: &SandboxContext,
+        command: &str,
+        timeout_secs: Option<u64>,
+        flavor: &str,
+        extra_mounts: &[crate::modules::code_sandbox::workflow_staging::StagedMount],
+    ) -> Result<SandboxRunResult, AppError> {
+        sandbox::run_in_sandbox_with_mounts(
+            state,
+            ctx,
+            command,
+            timeout_secs,
+            flavor,
+            extra_mounts,
+        )
+        .await
+    }
+
     async fn shutdown(&self) {
         runtime_mount::shutdown().await
     }

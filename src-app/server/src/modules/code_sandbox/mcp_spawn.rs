@@ -358,6 +358,7 @@ async fn spawn_on_linux_host(
             seccomp_fd: seccomp_pipe.as_ref().map(|p| p.target_fd_pub()),
             extra_setenv: &req.extra_setenv,
             extra_ro_binds: &extra_ro_binds,
+            extra_rw_binds: &[],
         },
         Path::new(&guest_command),
         &{
