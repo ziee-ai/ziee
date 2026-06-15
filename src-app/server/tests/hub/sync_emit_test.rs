@@ -41,6 +41,8 @@ fn one_version() -> Vec<MockVersion> {
             min_ziee_version: None,
             extra_json: None,
             mcp_http: false,
+            bundle_files: None,
+            bundle_entry_point: None,
         }],
     }]
 }

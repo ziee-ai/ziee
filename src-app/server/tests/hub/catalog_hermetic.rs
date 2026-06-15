@@ -78,6 +78,8 @@ fn mcp_versions() -> Vec<MockVersion> {
                     min_ziee_version: None,
                     extra_json: None,
                     mcp_http: false,
+                    bundle_files: None,
+                    bundle_entry_point: None,
                 },
                 MockItem {
                     category: "mcp-server",
@@ -85,6 +87,8 @@ fn mcp_versions() -> Vec<MockVersion> {
                     min_ziee_version: Some("99.0.0"),
                     extra_json: None,
                     mcp_http: false,
+                    bundle_files: None,
+                    bundle_entry_point: None,
                 },
             ],
         },
@@ -97,6 +101,8 @@ fn mcp_versions() -> Vec<MockVersion> {
                 min_ziee_version: None,
                 extra_json: None,
                 mcp_http: false,
+                bundle_files: None,
+                bundle_entry_point: None,
             }],
         },
     ]
@@ -119,6 +125,8 @@ fn mcp_versions_http() -> Vec<MockVersion> {
                 min_ziee_version: None,
                 extra_json: None,
                 mcp_http: true,
+                bundle_files: None,
+                bundle_entry_point: None,
             }],
         },
         MockVersion {
@@ -130,6 +138,8 @@ fn mcp_versions_http() -> Vec<MockVersion> {
                 min_ziee_version: None,
                 extra_json: None,
                 mcp_http: true,
+                bundle_files: None,
+                bundle_entry_point: None,
             }],
         },
     ]
@@ -149,6 +159,8 @@ fn two_versions() -> Vec<MockVersion> {
                     min_ziee_version: None,
                     extra_json: None,
                     mcp_http: false,
+                    bundle_files: None,
+                    bundle_entry_point: None,
                 },
                 MockItem {
                     category: "assistant",
@@ -156,6 +168,8 @@ fn two_versions() -> Vec<MockVersion> {
                     min_ziee_version: None,
                     extra_json: None,
                     mcp_http: false,
+                    bundle_files: None,
+                    bundle_entry_point: None,
                 },
                 MockItem {
                     category: "assistant",
@@ -163,6 +177,8 @@ fn two_versions() -> Vec<MockVersion> {
                     min_ziee_version: Some("99.0.0"),
                     extra_json: None,
                     mcp_http: false,
+                    bundle_files: None,
+                    bundle_entry_point: None,
                 },
             ],
         },
@@ -176,6 +192,8 @@ fn two_versions() -> Vec<MockVersion> {
                     min_ziee_version: None,
                     extra_json: None,
                     mcp_http: false,
+                    bundle_files: None,
+                    bundle_entry_point: None,
                 },
                 MockItem {
                     category: "assistant",
@@ -183,6 +201,8 @@ fn two_versions() -> Vec<MockVersion> {
                     min_ziee_version: None,
                     extra_json: None,
                     mcp_http: false,
+                    bundle_files: None,
+                    bundle_entry_point: None,
                 },
             ],
         },
@@ -1486,6 +1506,8 @@ async fn replace_existing_aborts_on_validation_failure_mcp() {
                 min_ziee_version: Some("99.0.0"),
                 extra_json: None,
                     mcp_http: false,
+                    bundle_files: None,
+                    bundle_entry_point: None,
             }],
         },
         MockVersion {
@@ -1497,6 +1519,8 @@ async fn replace_existing_aborts_on_validation_failure_mcp() {
                 min_ziee_version: None,
                 extra_json: None,
                     mcp_http: false,
+                    bundle_files: None,
+                    bundle_entry_point: None,
             }],
         },
     ])

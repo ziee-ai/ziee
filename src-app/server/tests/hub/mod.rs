@@ -8,7 +8,9 @@
 mod catalog_v1;
 // Hermetic catalog tests (mock release server, no network/cosign).
 mod catalog_hermetic;
-mod mock_release_server;
+// `pub(crate)` so the skill + workflow suites can reuse the mock Pages
+// server to drive their install-from-hub bundle tests.
+pub(crate) mod mock_release_server;
 // Realtime-sync emission for the `hub_settings` entity (reuses the hermetic
 // mock Pages server to drive POST /hub/refresh).
 mod sync_emit_test;

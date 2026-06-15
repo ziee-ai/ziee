@@ -22,8 +22,10 @@ mod memory_mcp;
 mod onboarding;
 mod project;
 mod server_update;
+mod skill;
 mod summarization;
 mod sync;
+mod workflow;
 // `remote_access` integration tests live in the desktop crate now —
 // they exercise endpoints served only by the ziee-desktop binary
 // and are physically located at
