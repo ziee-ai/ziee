@@ -9,6 +9,7 @@
 //! debug-only `ZIEE_HUB_PAGES_BASE` override, so the download → sha256
 //! → extract path runs for real without touching GitHub.
 
+mod access_and_security;
 mod hide_in_conversation;
 mod install_from_hub;
 mod listing_in_chat;

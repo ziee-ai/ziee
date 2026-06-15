@@ -31,6 +31,13 @@ pub const PER_FILE_ARTIFACT_CAP_BYTES: u64 = 10 * 1024 * 1024;
 
 /// Walk `artifacts/<step_id>/` and collect every regular file. Returns
 /// the per-step `Vec<ArtifactMeta>`.
+///
+/// M3: `run_bytes_so_far` is the run's cumulative output+artifact byte
+/// total BEFORE this step's artifacts. The walk checks the per-run cap
+/// against the metadata size BEFORE reading a file's body into memory,
+/// so a single huge artifact (or a long tail of them) is rejected
+/// without ever buffering its bytes. Returns `Err` the moment the
+/// running total would cross `PER_RUN_ARTIFACT_CAP_BYTES`.
 pub fn collect_step_artifacts(
     ctx: &RunContext,
     step: &StepDef,
@@ -40,7 +47,8 @@ pub fn collect_step_artifacts(
         return Ok(Vec::new());
     }
     let mut out = Vec::new();
-    walk_dir(&dir, &dir, &mut out, step)?;
+    let mut running = ctx.total_output_bytes;
+    walk_dir(&dir, &dir, &mut out, step, &mut running)?;
     Ok(out)
 }
 
@@ -49,6 +57,7 @@ fn walk_dir(
     cur: &Path,
     out: &mut Vec<ArtifactMeta>,
     step: &StepDef,
+    running: &mut u64,
 ) -> Result<(), AppError> {
     for entry in std::fs::read_dir(cur).map_err(|e| {
         AppError::internal_error(format!("artifact_io: read_dir {}: {e}", cur.display()))
@@ -70,7 +79,7 @@ fn walk_dir(
         }
         let p = entry.path();
         if md.is_dir() {
-            walk_dir(root, &p, out, step)?;
+            walk_dir(root, &p, out, step, running)?;
             continue;
         }
         if !md.is_file() {
@@ -91,6 +100,20 @@ fn walk_dir(
             continue;
         }
 
+        // M3: per-run cap PRE-WRITE — check against the file's metadata
+        // size before reading its body. Bail (run-fails) rather than
+        // buffering bytes we'd only discard.
+        if running.saturating_add(md.len()) > PER_RUN_ARTIFACT_CAP_BYTES {
+            return Err(AppError::unprocessable_entity(
+                "WORKFLOW_ARTIFACT_RUN_CAP",
+                format!(
+                    "per-run output+artifact byte cap {PER_RUN_ARTIFACT_CAP_BYTES} \
+                     would be exceeded by artifact '{filename}' ({} bytes)",
+                    md.len()
+                ),
+            ));
+        }
+
         let (description, mime_override) = match_decl(&filename, &step.artifacts);
         let mime_type = mime_override
             .unwrap_or_else(|| detect_mime_from_extension(&filename).to_string());
@@ -101,6 +124,7 @@ fn walk_dir(
         hasher.update(&bytes);
         let sha = format!("{:x}", hasher.finalize());
 
+        *running = running.saturating_add(md.len());
         out.push(ArtifactMeta {
             filename,
             host_path: p,
@@ -113,13 +137,22 @@ fn walk_dir(
     Ok(())
 }
 
+/// M2: match a filename against the step's artifact decls. Two passes so
+/// an EXACT `path:` decl always wins over a broad `glob:` decl, even if
+/// the glob decl appears first in the list (otherwise a `glob: "*"`
+/// earlier in the list would steal a specific `path: "report.pdf"`
+/// decl's metadata).
 fn match_decl(filename: &str, decls: &[ArtifactDecl]) -> (Option<String>, Option<String>) {
+    // Pass 1: exact path decls.
     for d in decls {
         if let Some(path) = d.path.as_deref()
             && path == filename
         {
             return (d.description.clone(), d.mime_type.clone());
         }
+    }
+    // Pass 2: glob decls.
+    for d in decls {
         if let Some(glob) = d.glob.as_deref()
             && glob_match(glob, filename)
         {
@@ -129,35 +162,64 @@ fn match_decl(filename: &str, decls: &[ArtifactDecl]) -> (Option<String>, Option
     (None, None)
 }
 
-/// Minimal glob match — supports `*` (any-chars-except-/) at any
-/// position. Good enough for the `*.png`, `**/foo`, `data/*.csv`
-/// patterns the seed corpus uses.
+/// Minimal glob match. M2: a single `*` matches any run of chars EXCEPT
+/// `/` (so `*.png` does NOT match `subdir/x.png`), and `**` matches
+/// across `/` boundaries (so `**/foo` reaches into subdirs). `?` matches
+/// a single non-`/` char. This makes glob semantics path-aware: a broad
+/// `*.png` can't accidentally vacuum up files in nested artifact dirs.
 fn glob_match(pattern: &str, name: &str) -> bool {
-    fn rec(p: &[u8], n: &[u8]) -> bool {
-        let mut pi = 0usize;
-        let mut ni = 0usize;
-        let mut star: Option<(usize, usize)> = None;
-        while ni < n.len() {
-            if pi < p.len() && (p[pi] == n[ni] || p[pi] == b'?') {
-                pi += 1;
-                ni += 1;
-            } else if pi < p.len() && p[pi] == b'*' {
-                star = Some((pi, ni));
-                pi += 1;
-            } else if let Some((sp, sn)) = star {
-                pi = sp + 1;
-                ni = sn + 1;
-                star = Some((sp, ni));
-            } else {
-                return false;
+    let p: Vec<char> = pattern.chars().collect();
+    let n: Vec<char> = name.chars().collect();
+    fn rec(p: &[char], pi: usize, n: &[char], ni: usize) -> bool {
+        if pi == p.len() {
+            return ni == n.len();
+        }
+        match p[pi] {
+            '*' => {
+                // `**` — match across `/`.
+                if pi + 1 < p.len() && p[pi + 1] == '*' {
+                    // Collapse runs of `*`; `**` matches anything incl `/`.
+                    let mut next = pi + 1;
+                    while next < p.len() && p[next] == '*' {
+                        next += 1;
+                    }
+                    for k in ni..=n.len() {
+                        if rec(p, next, n, k) {
+                            return true;
+                        }
+                    }
+                    false
+                } else {
+                    // Single `*` — match any run NOT containing `/`.
+                    let mut k = ni;
+                    loop {
+                        if rec(p, pi + 1, n, k) {
+                            return true;
+                        }
+                        if k >= n.len() || n[k] == '/' {
+                            return false;
+                        }
+                        k += 1;
+                    }
+                }
+            }
+            '?' => {
+                if ni < n.len() && n[ni] != '/' {
+                    rec(p, pi + 1, n, ni + 1)
+                } else {
+                    false
+                }
+            }
+            c => {
+                if ni < n.len() && n[ni] == c {
+                    rec(p, pi + 1, n, ni + 1)
+                } else {
+                    false
+                }
             }
         }
-        while pi < p.len() && p[pi] == b'*' {
-            pi += 1;
-        }
-        pi == p.len()
     }
-    rec(pattern.as_bytes(), name.as_bytes())
+    rec(&p, 0, &n, 0)
 }
 
 fn detect_mime_from_extension(name: &str) -> &'static str {
@@ -214,6 +276,45 @@ mod tests {
         assert!(glob_match("data/*.csv", "data/x.csv"));
         assert!(glob_match("*", "anything"));
         assert!(glob_match("foo.*", "foo.bar"));
+    }
+
+    #[test]
+    fn glob_single_star_does_not_cross_slash() {
+        // M2: `*` must NOT backtrack across `/` — a broad `*.png` can't
+        // steal a file living in a subdir.
+        assert!(!glob_match("*.png", "subdir/x.png"));
+        assert!(!glob_match("*", "a/b"));
+        assert!(!glob_match("data/*.csv", "data/sub/x.csv"));
+        // `**` DOES cross `/`.
+        assert!(glob_match("**/foo.png", "a/b/foo.png"));
+        assert!(glob_match("**", "a/b/c"));
+        assert!(glob_match("**/*.csv", "data/sub/x.csv"));
+        // `?` is single-char, non-slash.
+        assert!(glob_match("a?c", "abc"));
+        assert!(!glob_match("a?c", "a/c"));
+    }
+
+    #[test]
+    fn match_decl_prefers_exact_path_over_glob() {
+        // M2: an exact `path:` decl wins even when a broad glob decl
+        // appears EARLIER in the list.
+        let decls = vec![
+            ArtifactDecl {
+                path: None,
+                glob: Some("*".to_string()),
+                description: Some("broad".to_string()),
+                mime_type: None,
+            },
+            ArtifactDecl {
+                path: Some("report.pdf".to_string()),
+                glob: None,
+                description: Some("the report".to_string()),
+                mime_type: Some("application/pdf".to_string()),
+            },
+        ];
+        let (desc, mime) = match_decl("report.pdf", &decls);
+        assert_eq!(desc.as_deref(), Some("the report"));
+        assert_eq!(mime.as_deref(), Some("application/pdf"));
     }
 
     #[test]

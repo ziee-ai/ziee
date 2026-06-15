@@ -124,7 +124,7 @@ pub struct WorkflowRun {
     pub status: String,
     pub current_step: Option<String>,
     pub error_message: Option<String>,
-    pub total_tokens: i32,
+    pub total_tokens: i64, // M4: BIGINT column — a long run can exceed i32 range
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

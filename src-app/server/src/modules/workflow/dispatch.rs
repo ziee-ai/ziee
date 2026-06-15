@@ -508,21 +508,18 @@ impl StepDispatcher for LlmMapDispatcher {
                     results[idx] = Some(v);
                     completed += 1;
                 }
-                Err(err) => match on_error {
-                    OnError::Fail => {
+                Err(err) => {
+                    let (fatal, result_value) = classify_item_error(on_error);
+                    if fatal {
+                        // Fail / Retry-exhausted → abort the step (fail-shape).
                         failed += 1;
                         any_failed_fatal.get_or_insert(format!("item {idx}: {err}"));
-                    }
-                    OnError::Skip => {
+                    } else {
+                        // Skip → record Null + keep going.
                         skipped += 1;
-                        results[idx] = Some(Value::Null);
+                        results[idx] = result_value;
                     }
-                    OnError::Retry => {
-                        // Retry exhausted → treat as failure (fail-shape).
-                        failed += 1;
-                        any_failed_fatal.get_or_insert(format!("item {idx}: {err}"));
-                    }
-                },
+                }
             }
             // Emit per-item progress update.
             let progress = ItemProgress {
@@ -585,6 +582,20 @@ fn retry_backoff(attempt: u32) -> std::time::Duration {
     // 250ms, 500ms, 1s, 2s, 4s (capped at 8s).
     let base = 250u64 * (1u64 << attempt.min(6));
     std::time::Duration::from_millis(base.min(8_000))
+}
+
+/// Per-item on-error outcome classification (pure). Returns
+/// `(is_fatal, result_value)`: `is_fatal=true` aborts the whole llm_map
+/// step (Fail / Retry-exhausted), `false` records the item as skipped
+/// with a Null result. Factored out of the inline `match` so the
+/// branch semantics are unit-testable without spawning real item calls.
+fn classify_item_error(on_error: OnError) -> (bool, Option<Value>) {
+    match on_error {
+        // Fail and Retry-exhausted are both fatal for the step.
+        OnError::Fail | OnError::Retry => (true, None),
+        // Skip records the item as Null and keeps going.
+        OnError::Skip => (false, Some(Value::Null)),
+    }
 }
 
 fn other_type_name(v: &Value) -> &'static str {
@@ -1117,6 +1128,46 @@ mod tests {
             );
         }
         assert_eq!(rendered, vec!["summarize X".to_string()]);
+    }
+
+    #[test]
+    fn shell_escape_single_wraps_and_escapes() {
+        // Plain string → single-quoted.
+        assert_eq!(shell_escape_single("hello"), "'hello'");
+        // Embedded single quote → the `'\''` dance.
+        assert_eq!(shell_escape_single("a'b"), "'a'\\''b'");
+        // Empty string still produces a valid empty arg.
+        assert_eq!(shell_escape_single(""), "''");
+        // Shell metachars are inert inside single quotes.
+        assert_eq!(shell_escape_single("$(rm -rf /)"), "'$(rm -rf /)'");
+    }
+
+    #[test]
+    fn retry_backoff_is_monotonic_and_capped() {
+        let d0 = retry_backoff(0);
+        let d1 = retry_backoff(1);
+        let d2 = retry_backoff(2);
+        assert_eq!(d0, std::time::Duration::from_millis(250));
+        assert_eq!(d1, std::time::Duration::from_millis(500));
+        assert_eq!(d2, std::time::Duration::from_millis(1000));
+        assert!(d1 > d0 && d2 > d1);
+        // Far out → capped at 8s, never overflows the shift.
+        assert_eq!(retry_backoff(100), std::time::Duration::from_millis(8_000));
+    }
+
+    #[test]
+    fn classify_item_error_branches() {
+        // Fail + Retry-exhausted are fatal (abort the step).
+        let (fatal, val) = classify_item_error(OnError::Fail);
+        assert!(fatal);
+        assert!(val.is_none());
+        let (fatal, val) = classify_item_error(OnError::Retry);
+        assert!(fatal);
+        assert!(val.is_none());
+        // Skip is non-fatal and records a Null result.
+        let (fatal, val) = classify_item_error(OnError::Skip);
+        assert!(!fatal);
+        assert_eq!(val, Some(Value::Null));
     }
 
     /// H4 regression: a scalar item still renders bare (no JSON quoting).

@@ -39,8 +39,10 @@ pub struct ValidateSkillRequest {
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct ValidateErrorEntry {
     pub code: String,
+    /// Source location of the error (e.g. a frontmatter field). Named
+    /// `location` to agree with the workflow validate surface.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub path: Option<String>,
+    pub location: Option<String>,
     pub message: String,
 }
 
@@ -68,7 +70,7 @@ pub async fn validate_skill(
             {
                 errors.push(ValidateErrorEntry {
                     code: "SKILL_FRONTMATTER_NO_DESCRIPTION".into(),
-                    path: Some("description".into()),
+                    location: Some("description".into()),
                     message: "SKILL.md frontmatter must include a non-empty `description`".into(),
                 });
             }
@@ -87,7 +89,7 @@ pub async fn validate_skill(
                 valid: false,
                 errors: vec![ValidateErrorEntry {
                     code: "SKILL_FRONTMATTER_INVALID".into(),
-                    path: None,
+                    location: None,
                     message: e.to_string(),
                 }],
                 warnings: vec![],
@@ -140,11 +142,24 @@ pub async fn import_skill(
         .clone()
         .map(|s| sanitize_slug(&s))
         .unwrap_or_else(|| "imported-skill".to_string());
-    let name = format!("local.dev/{slug}");
+    // H6: namespace the dev slug per user so user A's `local.dev/foo`
+    // can't collide with (or be clobbered by) user B's. System dev
+    // imports use the `local.dev.system/` namespace.
+    let owner_ns = if scope == "system" {
+        "system".to_string()
+    } else {
+        auth.user.id.to_string()
+    };
+    let name = format!("local.dev.{owner_ns}/{slug}");
     let version = "0.0.0-dev".to_string();
 
+    // H1: owner-scope the on-disk dir too (owner uuid or "system").
     let app_data_dir = crate::core::get_app_data_dir();
-    let target_dir = app_data_dir.join("skills").join(&name).join(&version);
+    let target_dir = app_data_dir
+        .join("skills")
+        .join(&owner_ns)
+        .join(&name)
+        .join(&version);
 
     // Bomb-guarded extract. Skill bundles drop execute bits (Phase 1).
     let extraction = crate::modules::hub::bundle::extract_tarball_bytes(
@@ -190,21 +205,24 @@ pub async fn import_skill(
         .and_then(|v| v.as_str())
         .map(str::to_string);
 
-    // Re-import overwrites: delete any prior row (the dir was already
-    // overwritten by extract_tarball_bytes).
-    if let Some(prior) = Repos
-        .skill
-        .find_by_name_version(&name, Some(&version))
-        .await?
-    {
-        Repos.skill.delete(prior.id).await?;
-    }
-
     let owner_user_id = if scope == "system" {
         None
     } else {
         Some(auth.user.id)
     };
+
+    // Re-import overwrites: delete any prior row (the dir was already
+    // overwritten by extract_tarball_bytes). H6: scope the pre-delete to
+    // THIS owner so it can never clobber another user's row (the
+    // per-user `local.dev.<owner>/` namespace already isolates the name,
+    // and the owner filter is the belt-and-braces backstop).
+    if let Some(prior) = Repos
+        .skill
+        .find_by_name_version_owner(&name, Some(&version), owner_user_id)
+        .await?
+    {
+        Repos.skill.delete(prior.id).await?;
+    }
 
     let create = CreateSkill {
         name: name.clone(),

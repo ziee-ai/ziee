@@ -32,6 +32,16 @@ impl WorkflowRepository {
         find_by_name_version(&self.pool, name, version).await
     }
 
+    /// H1: owner-scoped (name, version) lookup (see skill repo twin).
+    pub async fn find_by_name_version_owner(
+        &self,
+        name: &str,
+        version: Option<&str>,
+        owner_user_id: Option<Uuid>,
+    ) -> Result<Option<Workflow>, AppError> {
+        find_by_name_version_owner(&self.pool, name, version, owner_user_id).await
+    }
+
     pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
         delete(&self.pool, id).await
     }
@@ -180,11 +190,47 @@ pub async fn find_by_name_version(
             updated_at as "updated_at: _"
         FROM workflows
         WHERE name = $1
-          AND ($2::text IS NULL AND version IS NULL OR version = $2)
+          AND (($2::text IS NULL AND version IS NULL) OR version = $2)
         LIMIT 1
         "#,
         name,
         version,
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(row)
+}
+
+/// H1: owner-scoped (name, version) lookup. NULL `owner_user_id` matches
+/// the system row; a non-NULL value matches that user's row only.
+pub async fn find_by_name_version_owner(
+    pool: &PgPool,
+    name: &str,
+    version: Option<&str>,
+    owner_user_id: Option<Uuid>,
+) -> Result<Option<Workflow>, AppError> {
+    let row = sqlx::query_as!(
+        Workflow,
+        r#"
+        SELECT
+            id, name, version, display_name, description,
+            extracted_path, bundle_sha256, bundle_size_bytes, file_count,
+            entry_point,
+            tags as "tags: _",
+            scope, owner_user_id, created_by, enabled, is_dev,
+            compiled_ir_json as "compiled_ir_json: _",
+            created_at as "created_at: _",
+            updated_at as "updated_at: _"
+        FROM workflows
+        WHERE name = $1
+          AND (($2::text IS NULL AND version IS NULL) OR version = $2)
+          AND owner_user_id IS NOT DISTINCT FROM $3
+        LIMIT 1
+        "#,
+        name,
+        version,
+        owner_user_id,
     )
     .fetch_optional(pool)
     .await
@@ -251,9 +297,16 @@ pub async fn list_for_user(pool: &PgPool, user_id: Uuid) -> Result<Vec<Workflow>
             compiled_ir_json as "compiled_ir_json: _",
             created_at as "created_at: _",
             updated_at as "updated_at: _"
-        FROM workflows
-        WHERE (scope = 'user' AND owner_user_id = $1)
-           OR scope = 'system'
+        FROM workflows w
+        WHERE (w.scope = 'user' AND w.owner_user_id = $1)
+           OR (w.scope = 'system' AND (
+                NOT EXISTS (SELECT 1 FROM group_workflows WHERE workflow_id = w.id)
+                OR EXISTS (
+                  SELECT 1 FROM group_workflows gw
+                  JOIN user_groups ug ON gw.group_id = ug.group_id
+                  WHERE gw.workflow_id = w.id AND ug.user_id = $1
+                )
+           ))
         ORDER BY name ASC
         "#,
         user_id,
@@ -262,6 +315,43 @@ pub async fn list_for_user(pool: &PgPool, user_id: Uuid) -> Result<Vec<Workflow>
     .await
     .map_err(AppError::database_error)?;
     Ok(rows)
+}
+
+/// Group-restriction access check for a single workflow (H2). Mirrors
+/// `skill::repository::user_can_read`. A user can access a workflow iff
+/// they own it (user-scope) OR it's a system workflow with NO group
+/// restriction OR it's a system workflow assigned to one of their groups.
+/// Used by the GET / RUN / cancel handlers so a group-restricted system
+/// workflow is invisible + unrunnable to a non-member.
+pub async fn user_can_access(
+    pool: &PgPool,
+    user_id: Uuid,
+    workflow_id: Uuid,
+) -> Result<bool, AppError> {
+    let count = sqlx::query_scalar!(
+        r#"
+        SELECT COUNT(*) as "count!"
+        FROM workflows w
+        WHERE w.id = $1
+          AND (
+            (w.scope = 'user' AND w.owner_user_id = $2)
+            OR (w.scope = 'system' AND (
+              NOT EXISTS (SELECT 1 FROM group_workflows WHERE workflow_id = w.id)
+              OR EXISTS (
+                SELECT 1 FROM group_workflows gw
+                JOIN user_groups ug ON gw.group_id = ug.group_id
+                WHERE gw.workflow_id = w.id AND ug.user_id = $2
+              )
+            ))
+          )
+        "#,
+        workflow_id,
+        user_id,
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(count > 0)
 }
 
 pub async fn delete(pool: &PgPool, id: Uuid) -> Result<(), AppError> {
@@ -328,12 +418,26 @@ pub async fn insert_run(
     Ok(row)
 }
 
+/// Terminal-status write (H3). Guards against clobbering an already
+/// terminal row: an in-flight step that completes AFTER a cancel must NOT
+/// overwrite `cancelled` back to `completed`/`failed`. The CAS predicate
+/// `status NOT IN ('cancelled','completed','failed')` makes the first
+/// terminal writer win; later writers are no-ops.
+///
+/// Writing `cancelled` is a special case — the runner's
+/// `RunInnerOutcome::Cancelled` arm re-asserts cancellation after the
+/// `cancel_cas` handler already flipped the row, and that must stay
+/// idempotent (the row is already `cancelled`, so the guard would block
+/// it). We therefore allow a `cancelled` write to also match an already
+/// `cancelled` row — it's a no-op either way and never resurrects a
+/// completed/failed run to cancelled.
 pub async fn mark_status(
     pool: &PgPool,
     run_id: Uuid,
     status: WorkflowRunStatus,
     error_message: Option<&str>,
 ) -> Result<(), AppError> {
+    let allow_cancelled_self = matches!(status, WorkflowRunStatus::Cancelled);
     sqlx::query!(
         r#"
         UPDATE workflow_runs
@@ -341,10 +445,15 @@ pub async fn mark_status(
             error_message = $3,
             updated_at = NOW()
         WHERE id = $1
+          AND (
+            status NOT IN ('cancelled', 'completed', 'failed')
+            OR ($4 AND status = 'cancelled')
+          )
         "#,
         run_id,
         status.as_str(),
         error_message,
+        allow_cancelled_self,
     )
     .execute(pool)
     .await
@@ -380,7 +489,9 @@ pub async fn persist_step_meta(
         run_id,
         step_id,
         meta,
-        total_tokens_delta as i32,
+        // M4: BIGINT column — saturating cast so an absurd delta clamps
+        // to i64::MAX rather than wrapping negative.
+        i64::try_from(total_tokens_delta).unwrap_or(i64::MAX),
         current_step,
     )
     .execute(pool)
@@ -516,9 +627,15 @@ pub async fn set_final_output(
     Ok(())
 }
 
+/// Flip `pending` → `running` (H3). Guarded with `WHERE status =
+/// 'pending'` so a fast cancel that landed BEFORE the runner task got to
+/// `mark_running` is not resurrected to `running`: if the row was already
+/// flipped to `cancelled` (or any non-pending state) the UPDATE matches
+/// zero rows and the runner observes the cancel on its next
+/// `handle.is_cancelled()` / DB re-check.
 pub async fn mark_running(pool: &PgPool, run_id: Uuid) -> Result<(), AppError> {
     sqlx::query!(
-        r#"UPDATE workflow_runs SET status = 'running', updated_at = NOW() WHERE id = $1"#,
+        r#"UPDATE workflow_runs SET status = 'running', updated_at = NOW() WHERE id = $1 AND status = 'pending'"#,
         run_id,
     )
     .execute(pool)

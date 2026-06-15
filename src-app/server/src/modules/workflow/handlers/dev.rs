@@ -186,12 +186,22 @@ async fn import_workflow_inner(
         .clone()
         .map(|s| sanitize_slug(&s))
         .unwrap_or_else(|| "imported-workflow".to_string());
-    let name = format!("local.dev/{slug}");
+    // H6: namespace the dev slug per user so user A's `local.dev/foo`
+    // can't be clobbered by user B's import. System imports use the
+    // `local.dev.system/` namespace.
+    let owner_ns = if scope == "system" {
+        "system".to_string()
+    } else {
+        user.id.to_string()
+    };
+    let name = format!("local.dev.{owner_ns}/{slug}");
     let version = "0.0.0-dev".to_string();
 
+    // H1: owner-scope the on-disk dir too.
     let app_data_dir = crate::core::get_app_data_dir();
     let target_dir = app_data_dir
         .join("workflows")
+        .join(&owner_ns)
         .join(&name)
         .join(&version);
 
@@ -238,19 +248,26 @@ async fn import_workflow_inner(
         return Err(e.into());
     }
 
-    // Re-import overwrites: delete any prior row with the same name+version
-    // (the extracted dir was already overwritten by extract_tarball_bytes).
-    if let Some(prior) =
-        repository::find_by_name_version(Repos.pool(), &name, Some(&version)).await?
-    {
-        repository::delete(Repos.pool(), prior.id).await?;
-    }
-
     let owner_user_id = if scope == "system" {
         None
     } else {
         Some(user.id)
     };
+
+    // Re-import overwrites: delete any prior row with the same
+    // name+version (the extracted dir was already overwritten by
+    // extract_tarball_bytes). H6: scope the pre-delete to THIS owner so
+    // it can never delete another user's workflow row.
+    if let Some(prior) = repository::find_by_name_version_owner(
+        Repos.pool(),
+        &name,
+        Some(&version),
+        owner_user_id,
+    )
+    .await?
+    {
+        repository::delete(Repos.pool(), prior.id).await?;
+    }
 
     let create = CreateWorkflow {
         name: name.clone(),

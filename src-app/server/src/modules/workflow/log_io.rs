@@ -9,10 +9,12 @@
 //!   → `logs/<step_id>/trace.json`
 //!
 //! Capture writes to `<workspace>/<conv>/workflow/<run>/logs/<step_id>/<kind>`.
-//! Files inline up to 64 KiB into the per-run `step_logs_json`
-//! metadata; over that, the metadata stores only `{path, size_bytes,
-//! preview}` and the file stays on disk for retrieval via
-//! `log_stream`.
+//! M1: the captured body is ALWAYS written to disk (the file is the
+//! source of truth, streamed back via `log_stream`); the per-run
+//! `step_logs_json` metadata stores only `{path, size_bytes, preview}`
+//! where `preview` is the first 500 chars. There is no inline-vs-spill
+//! threshold — the previously-declared (and unused) 64 KiB
+//! `SPILL_THRESHOLD_BYTES` has been removed to match actual behavior.
 
 #![allow(dead_code)]
 
@@ -24,8 +26,6 @@ use serde::{Deserialize, Serialize};
 use crate::common::AppError;
 use crate::modules::workflow::types::RunContext;
 use crate::modules::workflow::validate::LogCapture;
-
-pub const SPILL_THRESHOLD_BYTES: usize = 64 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntryMeta {

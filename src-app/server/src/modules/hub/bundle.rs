@@ -753,6 +753,50 @@ fn pages_base_for(_hub_manager: &HubManager) -> String {
     crate::modules::hub::hub_manager::DEFAULT_PAGES_BASE.to_string()
 }
 
+/// SEC-2: validate a manifest-supplied `entry_point` before joining it
+/// to the extracted dir. `entry_point` is attacker-controlled (hub
+/// author / dev importer), so without this an
+/// `entry_point: "../../../etc/passwd"` joined onto `extracted_path`
+/// would read arbitrary host files in the skill/workflow install +
+/// skill_mcp + workflow_mcp + spawn_run join sites.
+///
+/// Accepts a safe relative path: at least one component, every component
+/// `Normal`, no `..` / absolute / root / prefix, total length capped.
+/// In practice this is `"SKILL.md"` / `"workflow.yaml"` or a nested
+/// `"subdir/file.md"` — anything that escapes the bundle dir is rejected.
+pub fn validate_entry_point(entry_point: &str) -> Result<(), AppError> {
+    let reject = |why: &str| {
+        AppError::unprocessable_entity(
+            "BUNDLE_ENTRY_POINT_UNSAFE",
+            format!("bundle entry_point '{entry_point}' is unsafe: {why}"),
+        )
+    };
+    if entry_point.is_empty() {
+        return Err(reject("empty"));
+    }
+    if entry_point.len() > 256 {
+        return Err(reject("too long"));
+    }
+    let path = Path::new(entry_point);
+    if path.is_absolute() {
+        return Err(reject("absolute path"));
+    }
+    let mut saw_component = false;
+    for c in path.components() {
+        match c {
+            Component::Normal(_) => saw_component = true,
+            // A bare leading `./` is harmless; anything else
+            // (`..`, root, drive prefix) escapes the bundle dir.
+            Component::CurDir => {}
+            _ => return Err(reject("contains '..' / root / prefix component")),
+        }
+    }
+    if !saw_component {
+        return Err(reject("no path component"));
+    }
+    Ok(())
+}
+
 /// Defensive check on the relative bundle URL stored in the manifest
 /// `bundle.url` field. Must look like `<category>/<ns>/<leaf>/<v>.tar.gz`
 /// and contain no `..` / absolute / weird path components.
@@ -1005,6 +1049,86 @@ mod tests {
                 || msg.contains("file"),
             "expected size rejection, got: {err}"
         );
+    }
+
+    #[tokio::test]
+    async fn rejects_cumulative_over_decompressed_cap() {
+        // Bundle bomb: many sub-cap files whose CUMULATIVE size crosses
+        // the 10 MiB decompressed cap. Each file is just under the
+        // single-file cap (2 MiB) so the per-file guard passes; the
+        // cumulative guard must fire. 6 × ~1.9 MiB = ~11.4 MiB > 10 MiB.
+        let one = vec![b'a'; (MAX_BUNDLE_SINGLE_FILE_BYTES - 1) as usize];
+        let entries: Vec<(String, u32, &[u8])> = (0..6)
+            .map(|i| (format!("f{i}.bin"), 0o644u32, one.as_slice()))
+            .collect();
+        let entries_ref: Vec<(&str, u32, &[u8])> = entries
+            .iter()
+            .map(|(n, m, b)| (n.as_str(), *m, *b))
+            .collect();
+        let body = build_tar_gz(&entries_ref, None);
+        let sha = hex_sha256(&body);
+        let bundle = synth_bundle(&sha, body.len() as u64, entries_ref.len() as u32);
+        let tmp = tempdir().unwrap();
+        let err = extract_from_seed_bytes(
+            &bundle,
+            &body,
+            &tmp.path().join("e"),
+            BundleKind::Skill,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            err.to_string().to_lowercase().contains("decompressed"),
+            "cumulative cap should fire, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_over_file_count_cap() {
+        // Bundle bomb: > 256 tiny files. The cumulative byte total stays
+        // small, so only the file-count guard can catch this.
+        let tiny = b"x";
+        let names: Vec<String> = (0..(MAX_BUNDLE_FILE_COUNT + 5))
+            .map(|i| format!("f{i}.txt"))
+            .collect();
+        let entries: Vec<(&str, u32, &[u8])> = names
+            .iter()
+            .map(|n| (n.as_str(), 0o644u32, &tiny[..]))
+            .collect();
+        let body = build_tar_gz(&entries, None);
+        let sha = hex_sha256(&body);
+        let bundle = synth_bundle(&sha, body.len() as u64, entries.len() as u32);
+        let tmp = tempdir().unwrap();
+        let err = extract_from_seed_bytes(
+            &bundle,
+            &body,
+            &tmp.path().join("e"),
+            BundleKind::Skill,
+        )
+        .await
+        .unwrap_err();
+        let msg = err.to_string().to_lowercase();
+        assert!(
+            msg.contains("file") && (msg.contains("many") || msg.contains("count")
+                || msg.contains("256")),
+            "file-count cap should fire, got: {err}"
+        );
+    }
+
+    #[test]
+    fn entry_point_validation() {
+        // SEC-2: safe relative entry points accepted.
+        assert!(validate_entry_point("SKILL.md").is_ok());
+        assert!(validate_entry_point("workflow.yaml").is_ok());
+        assert!(validate_entry_point("subdir/entry.md").is_ok());
+        assert!(validate_entry_point("./SKILL.md").is_ok());
+        // Traversal / absolute / empty rejected.
+        assert!(validate_entry_point("").is_err());
+        assert!(validate_entry_point("../../../etc/passwd").is_err());
+        assert!(validate_entry_point("/etc/passwd").is_err());
+        assert!(validate_entry_point("foo/../../bar").is_err());
+        assert!(validate_entry_point(".").is_err());
+        assert!(validate_entry_point(&"a/".repeat(200)).is_err());
     }
 
     #[test]

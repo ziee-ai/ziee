@@ -42,7 +42,6 @@ CREATE TABLE skills (
     is_dev BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT skills_name_version_unique UNIQUE (name, version),
     CONSTRAINT skills_scope_owner_check CHECK (
         (scope = 'user' AND owner_user_id IS NOT NULL) OR
         (scope = 'system' AND owner_user_id IS NULL)
@@ -51,6 +50,17 @@ CREATE TABLE skills (
 CREATE INDEX idx_skills_name ON skills(name);
 CREATE INDEX idx_skills_enabled ON skills(enabled) WHERE enabled = TRUE;
 CREATE INDEX idx_skills_owner ON skills(owner_user_id) WHERE scope = 'user';
+-- Per-owner uniqueness (H1): the install keyspace is owner-scoped, NOT
+-- global. One system copy per (name, version); one user copy per
+-- (name, version, owner_user_id). Two partial unique indexes so the
+-- NULL-distinct UNIQUE semantics don't accidentally let two system
+-- rows share a (name, version) (NULL != NULL would permit dupes), while
+-- the user index keys on the owner so user A and user B can each install
+-- the same hub skill without colliding on each other's row or on-disk dir.
+CREATE UNIQUE INDEX uniq_skills_system_name_version
+    ON skills (name, version) WHERE scope = 'system';
+CREATE UNIQUE INDEX uniq_skills_user_name_version_owner
+    ON skills (name, version, owner_user_id) WHERE scope = 'user';
 
 -- 3. workflows — same metadata-only shape + scope/ownership pattern
 CREATE TABLE workflows (
@@ -74,7 +84,6 @@ CREATE TABLE workflows (
     compiled_ir_json JSONB,                                   -- WorkflowIR (§4.1 pattern d); null until validator's compile pass runs
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT workflows_name_version_unique UNIQUE (name, version),
     CONSTRAINT workflows_scope_owner_check CHECK (
         (scope = 'user' AND owner_user_id IS NOT NULL) OR
         (scope = 'system' AND owner_user_id IS NULL)
@@ -82,6 +91,11 @@ CREATE TABLE workflows (
 );
 CREATE INDEX idx_workflows_name ON workflows(name);
 CREATE INDEX idx_workflows_owner ON workflows(owner_user_id) WHERE scope = 'user';
+-- Per-owner uniqueness (H1) — same rationale as skills above.
+CREATE UNIQUE INDEX uniq_workflows_system_name_version
+    ON workflows (name, version) WHERE scope = 'system';
+CREATE UNIQUE INDEX uniq_workflows_user_name_version_owner
+    ON workflows (name, version, owner_user_id) WHERE scope = 'user';
 
 -- 4. Group assignments — restrict system-scope items to specific groups.
 -- Empty (no rows for an item) = available to ALL users.
@@ -163,7 +177,7 @@ CREATE TABLE workflow_runs (
         CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
     current_step TEXT,
     error_message TEXT,
-    total_tokens INTEGER NOT NULL DEFAULT 0,
+    total_tokens BIGINT NOT NULL DEFAULT 0,  -- M4: BIGINT — a long run can exceed i32 range
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -176,5 +190,6 @@ CREATE INDEX idx_workflow_runs_run_kind ON workflow_runs(run_kind);
 -- 7. Administrators wildcard already covers skills::* + workflows::*, but
 -- explicit grants make the new permissions discoverable in the admin UI.
 -- See migration 85 for the precedent (mcp::user_policy::edit).
--- These are app-layer permission registrations; the linkme slice in
--- permissions.rs handles the actual const declarations.
+-- These are app-layer permission registrations; the per-module
+-- permissions.rs files declare the actual permission consts (registered
+-- via the permission-registry macro, not a linkme slice).

@@ -540,10 +540,20 @@ async fn run_inner(
                     )
                     .await;
                 }
-                // Collect step artifacts (sandbox steps only).
+                // Collect step artifacts (sandbox steps only). M3: the
+                // collector now enforces the per-run cap PRE-WRITE and
+                // returns Err when an artifact would cross it — fail the
+                // run instead of swallowing it (`unwrap_or_default`).
                 if matches!(step.config, StepConfig::Sandbox { .. }) {
-                    let artifacts = artifact_io::collect_step_artifacts(ctx, step)
-                        .unwrap_or_default();
+                    let artifacts = match artifact_io::collect_step_artifacts(ctx, step) {
+                        Ok(a) => a,
+                        Err(e) => {
+                            return RunInnerOutcome::Failed {
+                                error: format!("step '{}' artifact cap: {e}", step.id),
+                                failed_at_step: Some(step.id.clone()),
+                            };
+                        }
+                    };
                     if !artifacts.is_empty() {
                         // Tally artifact bytes toward the per-run cap.
                         let art_bytes: u64 = artifacts.iter().map(|a| a.size_bytes).sum();
@@ -662,9 +672,12 @@ async fn resolve_outputs(
     for o in outputs {
         let rendered = crate::modules::workflow::template::render(&o.from, ctx)
             .map_err(|e| AppError::internal_error(format!("output '{}': {e}", o.name)))?;
-        // The render returns a string; preview cap.
-        let truncated = if rendered.len() > 500 {
-            format!("{}…", &rendered[..500])
+        // The render returns a string; preview cap. L1: char-safe
+        // truncation — a byte slice `&rendered[..500]` panics if 500
+        // lands mid-UTF-8-codepoint (LLM output is arbitrary text),
+        // crashing the runner task. Take 500 CHARS instead.
+        let truncated = if rendered.chars().count() > 500 {
+            format!("{}…", rendered.chars().take(500).collect::<String>())
         } else {
             rendered.clone()
         };

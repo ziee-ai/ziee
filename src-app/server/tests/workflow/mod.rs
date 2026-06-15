@@ -14,6 +14,7 @@
 //!   exercise the /elicit endpoint validation paths (ownership 403,
 //!   staleness 410, schema 422) + the schema-valid resume → completed.
 
+mod access_and_durability;
 mod elicit;
 mod install_from_hub;
 mod run_mocked;
@@ -151,6 +152,48 @@ pub async fn install_fixture_workflow(server: &TestServer, token: &str) -> Json 
 /// dev-import path (run_mocked, elicit, validate).
 pub async fn plain_server() -> TestServer {
     TestServer::start().await
+}
+
+/// A minimal valid 1-step llm workflow (no sandbox flavor reqs). Shared
+/// across the access/durability + system-endpoint tests.
+pub const SIMPLE_OK_YAML: &str = r#"inputs:
+  - name: topic
+    required: true
+steps:
+  - id: gen
+    kind: llm
+    prompt: "say something about {{ inputs.topic }}"
+outputs:
+  - name: result
+    from: "{{ gen.output }}"
+"#;
+
+/// Dev-import a workflow on the SYSTEM scope (admin multipart endpoint).
+/// Returns the created `Workflow` JSON. `slug` becomes
+/// `local.dev.system/<slug>`.
+pub async fn system_import_workflow(
+    server: &TestServer,
+    token: &str,
+    slug: &str,
+    yaml: &str,
+) -> Json {
+    let tarball = workflow_tarball(yaml);
+    let part = reqwest::multipart::Part::bytes(tarball)
+        .file_name("bundle.tar.gz")
+        .mime_str("application/gzip")
+        .unwrap();
+    let form = reqwest::multipart::Form::new().part("bundle", part);
+    let resp = reqwest::Client::new()
+        .post(server.api_url(&format!("/workflows/system/import?name={slug}")))
+        .header("Authorization", format!("Bearer {token}"))
+        .multipart(form)
+        .send()
+        .await
+        .expect("system import workflow");
+    let status = resp.status();
+    let body: Json = resp.json().await.expect("parse system import body");
+    assert_eq!(status, 201, "system import should 201; got {status}: {body}");
+    body
 }
 
 /// A user with the workflow permissions needed for dev import + run.

@@ -71,14 +71,11 @@ pub async fn get_user_workflow(
     let wf = repository::find_by_id(Repos.pool(), id)
         .await?
         .ok_or_else(|| AppError::not_found("Workflow"))?;
-    if wf.scope == "user"
-        && wf.owner_user_id != Some(auth.user.id)
-    {
-        return Err::<_, (StatusCode, AppError)>((AppError::new(
-            StatusCode::FORBIDDEN,
-            "WORKFLOW_FORBIDDEN",
-            "workflow owned by another user",
-        )).into());
+    // H2: gate on full access (user-owned OR group-accessible system).
+    // A group-restricted system workflow the caller is NOT a member of
+    // must 404, not leak via GET.
+    if !repository::user_can_access(Repos.pool(), auth.user.id, id).await? {
+        return Err::<_, (StatusCode, AppError)>(AppError::not_found("Workflow").into());
     }
     Ok((StatusCode::OK, Json(wf)))
 }
@@ -105,11 +102,12 @@ pub async fn delete_user_workflow(
             "cannot delete non-owned workflow",
         )).into());
     }
-    // Best-effort rm the extracted bundle dir FIRST (mirrors skill
-    // delete — the bundle dir is per-install, not per-run). Ignore
-    // NotFound so a re-delete / already-cleaned dir is not an error.
-    remove_extracted_dir(&wf.extracted_path).await;
+    // L4: delete the DB row (source of truth) FIRST, then best-effort rm
+    // the extracted bundle dir. Mirrors `skill::handlers::delete_user_skill`
+    // — if the DB delete fails we bail with the row + dir both intact,
+    // rather than leaving an orphan row pointing at an already-removed dir.
     repository::delete(Repos.pool(), id).await?;
+    remove_extracted_dir(&wf.extracted_path).await;
     crate::modules::workflow::events::emit_user_workflow(
         crate::modules::sync::SyncAction::Delete,
         id,
@@ -186,12 +184,10 @@ pub async fn run_workflow(
     let wf = repository::find_by_id(&pool, id)
         .await?
         .ok_or_else(|| AppError::not_found("Workflow"))?;
-    if wf.scope == "user" && wf.owner_user_id != Some(auth.user.id) {
-        return Err::<_, (StatusCode, AppError)>((AppError::new(
-            StatusCode::FORBIDDEN,
-            "WORKFLOW_FORBIDDEN",
-            "workflow owned by another user",
-        )).into());
+    // H2: a group-restricted system workflow must be unrunnable to a
+    // non-member (the skill side already enforces this via user_can_read).
+    if !repository::user_can_access(&pool, auth.user.id, id).await? {
+        return Err::<_, (StatusCode, AppError)>(AppError::not_found("Workflow").into());
     }
 
     // Mocks are dev-only. Reject a /run that carries mocks against a

@@ -20,8 +20,9 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::{
-    FIXTURE_WORKFLOW_YAML, import_dev_workflow, plain_server, poll_run, run_workflow,
-    stub_conversation, workflow_user,
+    FIXTURE_WORKFLOW_YAML, admin_and_refresh, import_dev_workflow, install_fixture_workflow,
+    plain_server, poll_run, run_workflow, server_with_workflow_catalog, stub_conversation,
+    workflow_user,
 };
 
 #[tokio::test]
@@ -106,22 +107,29 @@ async fn mocked_run_completes_and_writes_outputs() {
 
 #[tokio::test]
 async fn run_with_mocks_on_published_workflow_is_rejected() {
-    // Belt-and-suspenders: the /run handler 403s when mocks are passed
-    // against a non-dev workflow. We can't easily install a published
-    // (non-dev) workflow without the mock hub here, so this exercises the
-    // gate by checking a dev workflow accepts mocks (positive control)
-    // and documents the negative path is covered by the handler's
-    // is_dev check + the workflow/run handler unit test.
-    let server = plain_server().await;
-    let user = workflow_user(&server, "wf_mock_gate").await;
-    let wf = import_dev_workflow(&server, &user.token, "mock-gate", FIXTURE_WORKFLOW_YAML).await;
-    let wf_id = wf["id"].as_str().unwrap().to_string();
-    let (_stub, conv_id) = stub_conversation(&server, &user.user_id, &user.token).await;
+    // The /run handler 403s when mocks are passed against a PUBLISHED
+    // (non-dev) workflow — mocks are dev-only (plan §1). This installs a
+    // real published workflow from the mock hub (is_dev=false) and
+    // asserts the 403, the true negative path the prior version only
+    // documented via a dev-workflow positive control.
+    let (server, _mock) = server_with_workflow_catalog().await;
+    let admin = admin_and_refresh(&server).await;
 
-    // Positive control: dev workflow accepts mocks (202).
+    // Install the fixture workflow from the hub → is_dev=false (published).
+    let installed = install_fixture_workflow(&server, &admin.token).await;
+    let wf = &installed["workflow"];
+    let wf_id = wf["id"].as_str().expect("workflow id").to_string();
+    assert_eq!(
+        wf["is_dev"], false,
+        "hub install must be a PUBLISHED (non-dev) workflow: {wf}"
+    );
+
+    let (_stub, conv_id) = stub_conversation(&server, &admin.user_id, &admin.token).await;
+
+    // Mocks against a published workflow → 403 WORKFLOW_MOCKS_NOT_ALLOWED.
     let resp = reqwest::Client::new()
         .post(server.api_url(&format!("/workflows/{wf_id}/run")))
-        .header("Authorization", format!("Bearer {}", user.token))
+        .header("Authorization", format!("Bearer {}", admin.token))
         .json(&json!({
             "inputs": { "topic": "t" },
             "conversation_id": conv_id.to_string(),
@@ -129,11 +137,11 @@ async fn run_with_mocks_on_published_workflow_is_rejected() {
         }))
         .send()
         .await
-        .expect("run dev wf with mocks");
+        .expect("run published wf with mocks");
     assert_eq!(
         resp.status(),
-        202,
-        "dev workflow accepts mocks: {}",
+        403,
+        "published workflow must reject mocks: {}",
         resp.text().await.unwrap_or_default()
     );
 }
