@@ -15,6 +15,7 @@
 
 pub mod artifact_io;
 pub mod artifact_stream;
+pub mod cost;
 pub mod dispatch;
 pub mod elicit;
 pub mod events;
@@ -32,6 +33,7 @@ pub mod routes;
 pub mod runner;
 pub mod startup_sweep;
 pub mod template;
+pub mod test_runner;
 pub mod types;
 pub mod validate;
 

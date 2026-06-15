@@ -13,7 +13,7 @@ use aide::axum::{
 
 use super::artifact_stream;
 use super::elicit;
-use super::handlers::{self, system};
+use super::handlers::{self, dev, system};
 use super::log_stream;
 use super::output_stream;
 use super::progress_sse;
@@ -76,10 +76,22 @@ pub fn user_routes() -> ApiRouter {
             "/workflow-runs/{run_id}/elicit/{elicitation_id}",
             post_with(elicit::submit_elicit, elicit::submit_elicit_docs),
         )
-        // B6 stubs
+        // B6 dev/test surface
         .api_route(
             "/workflows/validate",
-            post_with(handlers::validate_stub, handlers::validate_stub_docs),
+            post_with(dev::validate_workflow, dev::validate_workflow_docs),
+        )
+        .api_route(
+            "/workflows/import",
+            post_with(dev::import_workflow, dev::import_workflow_docs),
+        )
+        .api_route(
+            "/workflows/{id}/dry-run",
+            post_with(dev::dry_run, dev::dry_run_docs),
+        )
+        .api_route(
+            "/workflows/{id}/test",
+            post_with(dev::test_workflow, dev::test_workflow_docs),
         )
 }
 

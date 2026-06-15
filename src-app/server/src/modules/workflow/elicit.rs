@@ -113,11 +113,14 @@ pub async fn submit_elicit(
     }
 }
 
-/// Lightweight structural validation of an elicit response against the
-/// persisted JSON Schema. Checks the top-level `type` + `required` keys
-/// + each declared property's primitive type. Not a full JSON Schema
-/// engine — sufficient for the simple object schemas elicit steps use.
-fn validate_response_shape(
+/// Lightweight structural validation of a value against a JSON Schema.
+/// Checks the top-level `type` + `required` keys + each declared
+/// property's primitive type + array `minItems` / `maxItems`. Not a full
+/// JSON Schema engine — sufficient for the simple object schemas elicit
+/// steps use AND for the `matches_schema:` assertion mode in workflow
+/// `tests/*.yaml` fixtures (B6 — see plan §7). Shared rather than
+/// duplicated so the two call sites stay in lockstep.
+pub(crate) fn validate_response_shape(
     schema: &serde_json::Value,
     response: &serde_json::Value,
 ) -> Result<(), String> {
@@ -141,6 +144,26 @@ fn validate_response_shape(
         };
         if !ok {
             return Err(format!("response is not of type '{ty}'"));
+        }
+    }
+
+    // Array item-count bounds.
+    if let Some(arr) = response.as_array() {
+        if let Some(min) = obj.get("minItems").and_then(|v| v.as_u64()) {
+            if (arr.len() as u64) < min {
+                return Err(format!(
+                    "array has {} items, fewer than minItems {min}",
+                    arr.len()
+                ));
+            }
+        }
+        if let Some(max) = obj.get("maxItems").and_then(|v| v.as_u64()) {
+            if (arr.len() as u64) > max {
+                return Err(format!(
+                    "array has {} items, more than maxItems {max}",
+                    arr.len()
+                ));
+            }
         }
     }
 

@@ -175,6 +175,7 @@ mod tests {
             total_tokens: 0,
             is_dev: false,
             mocks: std::collections::HashMap::new(),
+            force_mocks: false,
         }
     }
 

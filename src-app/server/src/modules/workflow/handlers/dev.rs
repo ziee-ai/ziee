@@ -1,0 +1,748 @@
+//! Dev / test REST handlers (Phase B6):
+//!   POST /api/workflows/validate          (no side effect)
+//!   POST /api/workflows/import            (multipart dev install)
+//!   POST /api/workflows/{id}/dry-run      (cost preview)
+//!   POST /api/workflows/{id}/test         (run bundled tests/ fixtures)
+//!
+//! See plan §3 (REST surface) + §4.5 (dry-run) + §7 (test fixtures).
+
+#![allow(dead_code)]
+
+use std::collections::HashMap;
+
+use aide::transform::TransformOperation;
+use axum::extract::{Multipart, Path as AxumPath, Query};
+use axum::http::StatusCode;
+use axum::Json;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use crate::common::{ApiResult, AppError};
+use crate::core::Repos;
+use crate::modules::permissions::checker::check_permission_union;
+use crate::modules::permissions::extractors::RequirePermissions;
+use crate::modules::permissions::with_permission;
+use crate::modules::sync::{SyncAction, SyncOrigin};
+use crate::modules::workflow::cost;
+use crate::modules::workflow::models::{CreateWorkflow, CreateWorkflowRun, Workflow};
+use crate::modules::workflow::permissions::{WorkflowsExecute, WorkflowsInstall};
+use crate::modules::workflow::repository;
+use crate::modules::workflow::test_runner::{
+    self, FixtureMode, FixtureResult, TestFixture, TestRunResponse,
+};
+use crate::modules::workflow::validate;
+
+// ============================================================
+// POST /api/workflows/validate
+// ============================================================
+
+/// JSON body for `/validate` — just the workflow.yaml text. (A multipart
+/// tarball would also work, but validate only needs the entry-point YAML
+/// since it never installs.)
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct ValidateWorkflowRequest {
+    pub workflow_yaml: String,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct ValidateErrorEntry {
+    pub code: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub location: Option<String>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct ValidateWorkflowResponse {
+    pub valid: bool,
+    pub errors: Vec<ValidateErrorEntry>,
+    pub warnings: Vec<ValidateErrorEntry>,
+    pub steps: u64,
+    pub est_max_calls: u64,
+    pub est_max_tokens: u64,
+}
+
+pub async fn validate_workflow(
+    _auth: RequirePermissions<(WorkflowsInstall,)>,
+    Json(req): Json<ValidateWorkflowRequest>,
+) -> ApiResult<Json<ValidateWorkflowResponse>> {
+    // Layer 1 (shape) — parse. A parse failure is a single hard error.
+    let parsed = match validate::parse_workflow_yaml(&req.workflow_yaml) {
+        Ok(p) => p,
+        Err(e) => {
+            return Ok((
+                StatusCode::OK,
+                Json(ValidateWorkflowResponse {
+                    valid: false,
+                    errors: vec![ValidateErrorEntry {
+                        code: "WORKFLOW_INVALID_YAML".into(),
+                        location: None,
+                        message: e.to_string(),
+                    }],
+                    warnings: vec![],
+                    steps: 0,
+                    est_max_calls: 0,
+                    est_max_tokens: 0,
+                }),
+            ));
+        }
+    };
+
+    // Layer 2 + 3 — validate, collecting ALL errors. `is_dev = true` so a
+    // dev author's `mock:` fields don't trip the no-mock check at validate
+    // time (validate is a dev affordance). prompt_file resolution uses a
+    // throwaway temp dir — since we don't have the bundle here, any
+    // `prompt_file:` is reported as a (soft) missing-file error; that's
+    // acceptable for the YAML-only validate surface.
+    let tmp = std::env::temp_dir();
+    let raw = validate::validate_collecting(&parsed, &tmp, true);
+    let errors: Vec<ValidateErrorEntry> = raw
+        .into_iter()
+        .map(|e| ValidateErrorEntry {
+            code: e.code.to_string(),
+            location: e.location,
+            message: e.message,
+        })
+        .collect();
+
+    let (steps, est_max_calls, est_max_tokens) = cost::estimate_static(&parsed);
+
+    Ok((
+        StatusCode::OK,
+        Json(ValidateWorkflowResponse {
+            valid: errors.is_empty(),
+            errors,
+            warnings: vec![],
+            steps,
+            est_max_calls,
+            est_max_tokens,
+        }),
+    ))
+}
+
+pub fn validate_workflow_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(WorkflowsInstall,)>(op)
+        .id("Workflow.validate")
+        .tag("Workflows")
+        .summary("Validate a workflow.yaml without installing")
+        .description("Runs Layer 1+2+3 checks + static cost estimation. No DB row created.")
+        .response::<200, Json<ValidateWorkflowResponse>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+}
+
+// ============================================================
+// POST /api/workflows/import  (multipart, dev install)
+// ============================================================
+
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+pub struct ImportQuery {
+    /// Optional slug override; `local.dev/<slug>` becomes the row name.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// `user` (default) or `system`. `system` requires
+    /// `workflows::manage_system`.
+    #[serde(default)]
+    pub scope: Option<String>,
+}
+
+pub async fn import_workflow(
+    auth: RequirePermissions<(WorkflowsInstall,)>,
+    Query(q): Query<ImportQuery>,
+    origin: SyncOrigin,
+    multipart: Multipart,
+) -> ApiResult<Json<Workflow>> {
+    let bytes = read_bundle_field(multipart).await?;
+
+    // Scope resolution. `system` is admin-only.
+    let scope = resolve_import_scope(&auth.user, &auth.groups, q.scope.as_deref(), "workflows")?;
+
+    // Derive the dev slug + name.
+    let slug = q
+        .name
+        .clone()
+        .map(|s| sanitize_slug(&s))
+        .unwrap_or_else(|| "imported-workflow".to_string());
+    let name = format!("local.dev/{slug}");
+    let version = "0.0.0-dev".to_string();
+
+    let app_data_dir = crate::core::get_app_data_dir();
+    let target_dir = app_data_dir
+        .join("workflows")
+        .join(&name)
+        .join(&version);
+
+    // Bomb-guarded extract (preserves execute bits for workflow scripts/).
+    let extraction = crate::modules::hub::bundle::extract_tarball_bytes(
+        &bytes,
+        &target_dir,
+        crate::modules::hub::bundle::BundleKind::Workflow,
+    )
+    .await?;
+
+    // Parse + validate workflow.yaml. is_dev=true ALLOWS mock: fields.
+    let entry_point = "workflow.yaml".to_string();
+    let wf_path = extraction.extracted_path.join(&entry_point);
+    let content = match tokio::fs::read_to_string(&wf_path).await {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&extraction.extracted_path);
+            return Err(AppError::bad_request(
+                "WORKFLOW_NO_ENTRY_POINT",
+                format!("bundle is missing workflow.yaml: {e}"),
+            )
+            .into());
+        }
+    };
+    let workflow_def = match validate::parse_workflow_yaml(&content) {
+        Ok(d) => d,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&extraction.extracted_path);
+            return Err(e.into());
+        }
+    };
+    if let Err(e) =
+        validate::validate_for_install(&workflow_def, &extraction.extracted_path, true)
+    {
+        let _ = std::fs::remove_dir_all(&extraction.extracted_path);
+        return Err(e.into());
+    }
+
+    // Re-import overwrites: delete any prior row with the same name+version
+    // (the extracted dir was already overwritten by extract_tarball_bytes).
+    if let Some(prior) =
+        repository::find_by_name_version(Repos.pool(), &name, Some(&version)).await?
+    {
+        repository::delete(Repos.pool(), prior.id).await?;
+    }
+
+    let owner_user_id = if scope == "system" {
+        None
+    } else {
+        Some(auth.user.id)
+    };
+
+    let create = CreateWorkflow {
+        name: name.clone(),
+        version: Some(version),
+        display_name: Some(slug),
+        description: workflow_def
+            .steps
+            .first()
+            .map(|_| "Dev-imported workflow".to_string()),
+        extracted_path: extraction.extracted_path.display().to_string(),
+        bundle_sha256: extraction.sha256_hex.clone(),
+        bundle_size_bytes: extraction.total_bytes as i64,
+        file_count: extraction.file_count as i32,
+        entry_point,
+        tags: serde_json::Value::Array(vec![]),
+        scope: scope.clone(),
+        owner_user_id,
+        created_by: Some(auth.user.id),
+        enabled: true,
+        is_dev: true,
+        compiled_ir_json: None,
+    };
+
+    let workflow = match repository::insert(Repos.pool(), create).await {
+        Ok(w) => w,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&extraction.extracted_path);
+            return Err(e.into());
+        }
+    };
+
+    if scope == "system" {
+        crate::modules::workflow::events::emit_system_workflow(
+            SyncAction::Create,
+            workflow.id,
+            origin.0,
+        );
+    } else {
+        crate::modules::workflow::events::emit_user_workflow(
+            SyncAction::Create,
+            workflow.id,
+            auth.user.id,
+            origin.0,
+        );
+    }
+
+    Ok((StatusCode::CREATED, Json(workflow)))
+}
+
+pub fn import_workflow_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(WorkflowsInstall,)>(op)
+        .id("Workflow.import")
+        .tag("Workflows")
+        .summary("Dev-import a workflow bundle (multipart tarball)")
+        .description("Extract a tar.gz of the workflow source dir, validate (is_dev), install as local.dev/<slug>. Re-import overwrites.")
+        .response::<201, Json<Workflow>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+        .response_with::<403, (), _>(|r| r.description("Forbidden (system scope without admin)"))
+}
+
+// ============================================================
+// POST /api/workflows/{id}/dry-run  (cost preview)
+// ============================================================
+
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+pub struct DryRunRequest {
+    #[serde(default)]
+    pub inputs: serde_json::Value,
+}
+
+pub async fn dry_run(
+    auth: RequirePermissions<(WorkflowsExecute,)>,
+    AxumPath(id): AxumPath<Uuid>,
+    Json(req): Json<DryRunRequest>,
+) -> ApiResult<Json<cost::DryRunResult>> {
+    let wf = repository::find_by_id(Repos.pool(), id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Workflow"))?;
+    if wf.scope == "user" && wf.owner_user_id != Some(auth.user.id) {
+        return Err::<_, (StatusCode, AppError)>(
+            AppError::forbidden("WORKFLOW_FORBIDDEN", "workflow owned by another user").into(),
+        );
+    }
+
+    let wf_path = std::path::PathBuf::from(&wf.extracted_path).join(&wf.entry_point);
+    let content = tokio::fs::read_to_string(&wf_path).await.map_err(|e| {
+        AppError::internal_error(format!("dry-run: read workflow.yaml: {e}"))
+    })?;
+    let workflow_def = validate::parse_workflow_yaml(&content)?;
+
+    // Validate + bind inputs against workflow.inputs[].
+    let bound = bind_inputs(&workflow_def, req.inputs)?;
+
+    let result = cost::dry_run(&workflow_def, &bound);
+    Ok((StatusCode::OK, Json(result)))
+}
+
+pub fn dry_run_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(WorkflowsExecute,)>(op)
+        .id("Workflow.dryRun")
+        .tag("Workflows")
+        .summary("Cost preview — walk the DAG without executing")
+        .description("Per-step est_calls + est_tokens; llm_map fan-out marked runtime-dependent when for_each refs a prior step. Zero tokens spent, no run row.")
+        .response::<200, Json<cost::DryRunResult>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+}
+
+// ============================================================
+// POST /api/workflows/{id}/test  (run bundled fixtures)
+// ============================================================
+
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+pub struct TestWorkflowRequest {
+    /// Conversation to snapshot the model from (mirrors /run). Required
+    /// for `real_llm` fixtures; ci fixtures are fully mocked but still
+    /// need a model snapshot to build the (never-called) provider object.
+    #[serde(default)]
+    pub conversation_id: Option<Uuid>,
+}
+
+pub async fn test_workflow(
+    auth: RequirePermissions<(WorkflowsExecute,)>,
+    AxumPath(id): AxumPath<Uuid>,
+    Json(req): Json<TestWorkflowRequest>,
+) -> ApiResult<Json<TestRunResponse>> {
+    let pool = Repos.pool().clone();
+    let wf = repository::find_by_id(&pool, id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Workflow"))?;
+    if wf.scope == "user" && wf.owner_user_id != Some(auth.user.id) {
+        return Err::<_, (StatusCode, AppError)>(
+            AppError::forbidden("WORKFLOW_FORBIDDEN", "workflow owned by another user").into(),
+        );
+    }
+
+    // Parse the on-disk workflow.yaml.
+    let wf_path = std::path::PathBuf::from(&wf.extracted_path).join(&wf.entry_point);
+    let content = tokio::fs::read_to_string(&wf_path).await.map_err(|e| {
+        AppError::internal_error(format!("test: read workflow.yaml: {e}"))
+    })?;
+    let workflow_def = validate::parse_workflow_yaml(&content)?;
+
+    // Load fixtures from <extracted_path>/tests/*.yaml.
+    let fixtures = load_fixtures(&wf.extracted_path).await?;
+    if fixtures.is_empty() {
+        return Ok((
+            StatusCode::OK,
+            Json(TestRunResponse {
+                total: 0,
+                passed: 0,
+                failed: 0,
+                skipped: 0,
+                results: vec![],
+            }),
+        ));
+    }
+
+    // Resolve a model snapshot + provider once (shared across fixtures).
+    // For ci-mode fixtures the provider is never invoked (all steps
+    // mocked); for real_llm it's the real path.
+    let model_provider = resolve_test_model(&wf, &req, auth.user.id).await;
+
+    let mut results: Vec<FixtureResult> = Vec::with_capacity(fixtures.len());
+    for (name, fixture) in fixtures {
+        let started = std::time::Instant::now();
+        let res = run_one_fixture(
+            &pool,
+            &wf,
+            &workflow_def,
+            &name,
+            fixture,
+            &model_provider,
+            req.conversation_id,
+            auth.user.id,
+            started,
+        )
+        .await;
+        results.push(res);
+    }
+
+    let passed = results.iter().filter(|r| r.passed && !r.skipped).count() as u32;
+    let skipped = results.iter().filter(|r| r.skipped).count() as u32;
+    let failed = results.iter().filter(|r| !r.passed && !r.skipped).count() as u32;
+
+    Ok((
+        StatusCode::OK,
+        Json(TestRunResponse {
+            total: results.len() as u32,
+            passed,
+            failed,
+            skipped,
+            results,
+        }),
+    ))
+}
+
+pub fn test_workflow_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(WorkflowsExecute,)>(op)
+        .id("Workflow.test")
+        .tag("Workflows")
+        .summary("Run bundled tests/<name>.yaml fixtures")
+        .description("mode: ci requires mocks covering all llm/llm_map steps; mocks honored regardless of is_dev (the sanctioned mock context). Assertion modes: contains / equals / min_length / max_length / matches_schema.")
+        .response::<200, Json<TestRunResponse>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+}
+
+// ============================================================
+// Helpers
+// ============================================================
+
+/// Pull the `bundle` form field out of a multipart upload as raw bytes.
+async fn read_bundle_field(mut multipart: Multipart) -> Result<Vec<u8>, AppError> {
+    while let Ok(Some(field)) = multipart.next_field().await {
+        let field_name = field.name().unwrap_or("").to_string();
+        if field_name == "bundle" {
+            let data = field.bytes().await.map_err(|e| {
+                AppError::bad_request("IMPORT_READ_FAILED", format!("read bundle field: {e}"))
+            })?;
+            return Ok(data.to_vec());
+        }
+    }
+    Err(AppError::bad_request(
+        "IMPORT_NO_BUNDLE",
+        "multipart upload missing a `bundle` form field carrying the tar.gz",
+    ))
+}
+
+/// Resolve the requested scope for a dev import. `system` requires the
+/// `<module>::manage_system` permission; everything else is `user`.
+pub(crate) fn resolve_import_scope(
+    user: &crate::modules::user::models::User,
+    groups: &[crate::modules::user::models::Group],
+    requested: Option<&str>,
+    module: &str,
+) -> Result<String, AppError> {
+    match requested {
+        Some("system") => {
+            let perm = format!("{module}::manage_system");
+            if user.is_admin || check_permission_union(user, groups, &perm) {
+                Ok("system".to_string())
+            } else {
+                Err(AppError::forbidden(
+                    "IMPORT_SYSTEM_FORBIDDEN",
+                    format!("system-scope import requires {perm}"),
+                ))
+            }
+        }
+        _ => Ok("user".to_string()),
+    }
+}
+
+/// `^[a-z0-9._-]+$`-safe slug from arbitrary input.
+fn sanitize_slug(raw: &str) -> String {
+    let s: String = raw
+        .trim()
+        .to_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let s = s.trim_matches('-').to_string();
+    if s.is_empty() {
+        "imported".to_string()
+    } else {
+        s
+    }
+}
+
+/// Bind request inputs against workflow.inputs[] (defaults + required).
+fn bind_inputs(
+    workflow: &validate::WorkflowDef,
+    inputs: serde_json::Value,
+) -> Result<serde_json::Map<String, serde_json::Value>, AppError> {
+    let provided = match inputs {
+        serde_json::Value::Object(m) => m,
+        serde_json::Value::Null => Default::default(),
+        _ => {
+            return Err(AppError::bad_request(
+                "WORKFLOW_INPUTS_NOT_OBJECT",
+                "inputs must be a JSON object",
+            ));
+        }
+    };
+    let mut bound = serde_json::Map::new();
+    for input in &workflow.inputs {
+        if let Some(v) = provided.get(&input.name) {
+            bound.insert(input.name.clone(), v.clone());
+        } else if let Some(d) = &input.default {
+            bound.insert(input.name.clone(), d.clone());
+        } else if input.required {
+            return Err(AppError::bad_request(
+                "WORKFLOW_INPUT_MISSING",
+                format!("required input '{}' not provided", input.name),
+            ));
+        }
+    }
+    Ok(bound)
+}
+
+/// Read every `tests/*.yaml` (or `.yml`) under the extracted bundle.
+async fn load_fixtures(extracted_path: &str) -> Result<Vec<(String, TestFixture)>, AppError> {
+    let dir = std::path::PathBuf::from(extracted_path).join("tests");
+    let mut out = Vec::new();
+    let mut rd = match tokio::fs::read_dir(&dir).await {
+        Ok(rd) => rd,
+        Err(_) => return Ok(out), // no tests/ dir → empty (no error)
+    };
+    while let Ok(Some(entry)) = rd.next_entry().await {
+        let path = entry.path();
+        let is_yaml = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e == "yaml" || e == "yml")
+            .unwrap_or(false);
+        if !is_yaml {
+            continue;
+        }
+        let name = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("fixture")
+            .to_string();
+        let content = tokio::fs::read_to_string(&path).await.map_err(|e| {
+            AppError::internal_error(format!("test: read fixture {}: {e}", path.display()))
+        })?;
+        let fixture: TestFixture = serde_yaml::from_str(&content).map_err(|e| {
+            AppError::bad_request(
+                "WORKFLOW_FIXTURE_INVALID",
+                format!("tests/{name}.yaml is malformed: {e}"),
+            )
+        })?;
+        out.push((name, fixture));
+    }
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(out)
+}
+
+/// Snapshot a model + build a provider for test runs. Returns None when
+/// no model is resolvable (real_llm fixtures then report skipped).
+async fn resolve_test_model(
+    wf: &Workflow,
+    req: &TestWorkflowRequest,
+    user_id: Uuid,
+) -> Option<(Uuid, String, std::sync::Arc<ai_providers::Provider>)> {
+    let _ = wf;
+    let conv_id = req.conversation_id?;
+    let conv = crate::core::Repos
+        .chat
+        .core
+        .get_conversation(conv_id, user_id)
+        .await
+        .ok()
+        .flatten()?;
+    let model_id = conv.model_id?;
+    let model = crate::core::Repos.llm_model.get_by_id(model_id).await.ok().flatten()?;
+    let (provider, _name, _mid, _pid, _params) =
+        crate::modules::chat::core::ai_provider::create_provider_from_model_id(model_id, user_id)
+            .await
+            .ok()?;
+    Some((model_id, model.name, provider))
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_one_fixture(
+    pool: &sqlx::PgPool,
+    wf: &Workflow,
+    workflow_def: &validate::WorkflowDef,
+    name: &str,
+    fixture: TestFixture,
+    model_provider: &Option<(Uuid, String, std::sync::Arc<ai_providers::Provider>)>,
+    conversation_id: Option<Uuid>,
+    user_id: Uuid,
+    started: std::time::Instant,
+) -> FixtureResult {
+    let fail = |output_name: &str, assertion: &str, expected: String, actual: String| {
+        FixtureResult {
+            name: name.to_string(),
+            passed: false,
+            skipped: false,
+            duration_ms: started.elapsed().as_millis() as u64,
+            failure: Some(test_runner::FixtureFailure {
+                output_name: output_name.to_string(),
+                assertion: assertion.to_string(),
+                expected,
+                actual_preview: actual,
+            }),
+        }
+    };
+
+    // ci mode: every llm/llm_map step MUST be mocked.
+    if fixture.mode == FixtureMode::Ci {
+        let missing = test_runner::missing_mock_steps(workflow_def, &fixture.mocks);
+        if !missing.is_empty() {
+            return fail(
+                "",
+                "missing_mocks",
+                format!("mocks covering steps: {}", missing.join(", ")),
+                format!("un-mocked: {}", missing.join(", ")),
+            );
+        }
+    }
+
+    // Resolve model + provider. Required for both modes (ci uses it only
+    // to satisfy the runner's type; real_llm actually calls it).
+    let (model_id, model_name, provider) = match model_provider {
+        Some(mp) => mp.clone(),
+        None => {
+            // real_llm with no provider → skipped (not failed); ci with no
+            // model is also skipped because we can't construct the runner.
+            return FixtureResult {
+                name: name.to_string(),
+                passed: false,
+                skipped: true,
+                duration_ms: started.elapsed().as_millis() as u64,
+                failure: Some(test_runner::FixtureFailure {
+                    output_name: "".into(),
+                    assertion: "skipped_no_model".into(),
+                    expected: "a resolvable model (pass conversation_id)".into(),
+                    actual_preview: "no model available".into(),
+                }),
+            };
+        }
+    };
+
+    let sandbox_flavor = workflow_def.sandbox.as_ref().map(|s| s.flavor.clone());
+    let run_row = match repository::insert_run(
+        pool,
+        CreateWorkflowRun {
+            workflow_id: wf.id,
+            conversation_id,
+            user_id,
+            model_id: Some(model_id),
+            sandbox_flavor,
+            run_kind: "test".into(),
+            inputs_json: fixture.inputs.clone(),
+        },
+    )
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            return fail("", "run_setup", "a workflow_runs row".into(), e.to_string());
+        }
+    };
+
+    let outcome = crate::modules::workflow::runner::run_for_test(
+        pool,
+        run_row.id,
+        user_id,
+        conversation_id,
+        wf,
+        workflow_def,
+        fixture.inputs.clone(),
+        fixture.mocks.clone(),
+        model_id,
+        model_name,
+        provider,
+    )
+    .await;
+
+    let outcome = match outcome {
+        Ok(o) => o,
+        Err(e) => return fail("", "run_failed", "a completed run".into(), e.to_string()),
+    };
+
+    if outcome.status != crate::modules::workflow::models::WorkflowRunStatus::Completed {
+        let err = outcome.error.unwrap_or_else(|| "run did not complete".into());
+        // real_llm runs that fail because no provider is configured are
+        // reported skipped, not failed (plan §3 + §7).
+        if fixture.mode == FixtureMode::RealLlm
+            && (err.contains("provider") || err.contains("PROVIDER") || err.contains("api_key"))
+        {
+            return FixtureResult {
+                name: name.to_string(),
+                passed: false,
+                skipped: true,
+                duration_ms: started.elapsed().as_millis() as u64,
+                failure: Some(test_runner::FixtureFailure {
+                    output_name: "".into(),
+                    assertion: "skipped_no_provider".into(),
+                    expected: "a configured provider".into(),
+                    actual_preview: err,
+                }),
+            };
+        }
+        return fail("", "run_failed", "a completed run".into(), err);
+    }
+
+    // Compare resolved outputs against expected_outputs.
+    for (output_name, assertion_set) in &fixture.expected_outputs {
+        let actual = match outcome.outputs.get(output_name) {
+            Some(v) => v,
+            None => {
+                return fail(
+                    output_name,
+                    "output_present",
+                    "an output named this".into(),
+                    "output not produced by the run".into(),
+                );
+            }
+        };
+        if let Err(f) = test_runner::check_assertions(output_name, assertion_set, actual) {
+            return FixtureResult {
+                name: name.to_string(),
+                passed: false,
+                skipped: false,
+                duration_ms: started.elapsed().as_millis() as u64,
+                failure: Some(f),
+            };
+        }
+    }
+
+    FixtureResult {
+        name: name.to_string(),
+        passed: true,
+        skipped: false,
+        duration_ms: started.elapsed().as_millis() as u64,
+        failure: None,
+    }
+}

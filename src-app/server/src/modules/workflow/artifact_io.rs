@@ -248,6 +248,7 @@ mod tests {
             total_tokens: 0,
             is_dev: false,
             mocks: std::collections::HashMap::new(),
+            force_mocks: false,
         };
         assert!(artifact_host_path(&ctx, "s", "../../etc/passwd").is_err());
         assert!(artifact_host_path(&ctx, "s", "/abs").is_err());

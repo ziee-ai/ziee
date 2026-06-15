@@ -67,6 +67,7 @@ pub async fn preflight(
     sandbox_flavor: Option<String>,
     is_dev: bool,
     mocks: HashMap<String, Value>,
+    force_mocks: bool,
 ) -> Result<RunContext, AppError> {
     // Validate `inputs` against workflow.inputs[].
     let mut bound: HashMap<String, Value> = HashMap::new();
@@ -153,10 +154,18 @@ pub async fn preflight(
         sandbox_flavor,
         total_tokens: 0,
         is_dev,
-        // Mocks only honored for dev workflows. The handler already gates
-        // this (403 when mocks present on a published workflow), but
-        // belt-and-suspenders: drop them here too if somehow non-dev.
-        mocks: if is_dev { mocks } else { HashMap::new() },
+        // Mocks only honored for dev workflows OR test runs (force_mocks).
+        // The /run handler already gates the dev case (403 when mocks present
+        // on a published workflow); the /test handler sets force_mocks so a
+        // published workflow's tests/ fixtures still run with mocks (the
+        // sanctioned mock context — plan §3). Belt-and-suspenders: drop the
+        // mocks here if neither condition holds.
+        mocks: if is_dev || force_mocks {
+            mocks
+        } else {
+            HashMap::new()
+        },
+        force_mocks,
     })
 }
 
@@ -435,12 +444,15 @@ async fn run_inner(
             message: message_rendered,
         }));
 
-        // Mock short-circuit (dev only). Honor a per-run `mocks[step.id]`
-        // from the /run body OR a `StepDef.mock` baked into the workflow.
-        // Skips real dispatch entirely — no LLM tokens, no sandbox spawn.
-        // Gated on `is_dev` (handler rejects mocks for published workflows,
-        // and RunContext drops them when !is_dev). See plan §1 + B4 audit.
-        let mock_value: Option<Value> = if ctx.is_dev {
+        // Mock short-circuit. Honor a per-run `mocks[step.id]` from the
+        // /run body OR a `StepDef.mock` baked into the workflow. Skips real
+        // dispatch entirely — no LLM tokens, no sandbox spawn.
+        // Gated on `is_dev` (the /run handler rejects mocks for published
+        // workflows, and RunContext drops them when !is_dev) OR `force_mocks`
+        // (set ONLY by the /test handler — the sanctioned mock context that
+        // lets a published workflow's tests/ fixtures run with mocks).
+        // See plan §1 + §3 + B4 audit.
+        let mock_value: Option<Value> = if ctx.is_dev || ctx.force_mocks {
             ctx.mocks
                 .get(&step.id)
                 .cloned()
@@ -611,6 +623,155 @@ async fn resolve_outputs(
     Ok(Value::Object(map))
 }
 
+/// Resolve `outputs[]` to their FULL values (not the 500-char previews
+/// `resolve_outputs` writes into `final_output_json`). Used by the
+/// `POST /api/workflows/{id}/test` runner (B6) so fixture assertions
+/// (`min_length`, `matches_schema`, `equals`) see the real output. Each
+/// output's `from` template renders to a string; if that string parses
+/// as JSON we keep the parsed Value (so array/object schema assertions
+/// work), else we keep the string.
+pub async fn resolve_outputs_full(
+    ctx: &mut RunContext,
+    outputs: &[OutputDef],
+) -> Result<serde_json::Map<String, Value>, AppError> {
+    let mut map = serde_json::Map::new();
+    for o in outputs {
+        let rendered = crate::modules::workflow::template::render(&o.from, ctx)
+            .map_err(|e| AppError::internal_error(format!("output '{}': {e}", o.name)))?;
+        let value = serde_json::from_str::<Value>(&rendered)
+            .unwrap_or_else(|_| Value::String(rendered));
+        map.insert(o.name.clone(), value);
+    }
+    Ok(map)
+}
+
+/// Outcome of a synchronous test run (B6).
+pub struct TestRunOutcome {
+    pub run_id: Uuid,
+    pub status: WorkflowRunStatus,
+    pub error: Option<String>,
+    /// Full resolved outputs (only populated on `Completed`).
+    pub outputs: serde_json::Map<String, Value>,
+}
+
+/// Run a workflow to terminal status IN-PROCESS (no fire-and-forget
+/// spawn) and return the FULL resolved outputs. Powers
+/// `POST /api/workflows/{id}/test` (B6).
+///
+/// `force_mocks` is threaded into the RunContext so a published
+/// (`is_dev = false`) workflow's `tests/` fixtures still honor mocks —
+/// the sanctioned mock context (plan §3). The /run endpoint's is_dev
+/// gate is untouched: only the test handler passes `force_mocks: true`.
+///
+/// The caller owns the `workflow_runs` row insert (with
+/// `run_kind = 'test'`) — this fn just drives execution + output
+/// resolution and cleans the staged dir afterward.
+#[allow(clippy::too_many_arguments)]
+pub async fn run_for_test(
+    pool: &PgPool,
+    run_id: Uuid,
+    user_id: Uuid,
+    conversation_id: Option<Uuid>,
+    workflow: &crate::modules::workflow::models::Workflow,
+    workflow_def: &WorkflowDef,
+    inputs: Value,
+    mocks: HashMap<String, Value>,
+    model_id: Uuid,
+    model_name: String,
+    provider: Arc<ai_providers::Provider>,
+) -> Result<TestRunOutcome, AppError> {
+    let sandbox_flavor = workflow_def.sandbox.as_ref().map(|s| s.flavor.clone());
+    let _handle = registry::register(run_id);
+    let workspace_root = workflow_workspace_root();
+    let mut ctx = preflight(
+        pool,
+        run_id,
+        user_id,
+        conversation_id,
+        workflow.id,
+        inputs,
+        workflow_def,
+        PathBuf::from(&workflow.extracted_path),
+        workspace_root,
+        model_id,
+        model_name,
+        sandbox_flavor,
+        workflow.is_dev,
+        mocks,
+        true, // force_mocks: sanctioned mock context for test runs
+    )
+    .await?;
+
+    let handle = match registry::get(run_id) {
+        Some(h) => h,
+        None => registry::register(run_id),
+    };
+    let emit: Arc<dyn ProgressEmitter> = Arc::new(PerRunEmitter { run_id });
+
+    let outcome = tokio::time::timeout(
+        RUN_WALL_CLOCK,
+        run_inner(pool, &mut ctx, workflow_def, provider, handle.clone(), emit.clone()),
+    )
+    .await;
+
+    let result = match outcome {
+        Ok(RunInnerOutcome::Completed { .. }) => {
+            let _ = repository::mark_status(pool, run_id, WorkflowRunStatus::Completed, None).await;
+            let outputs = resolve_outputs_full(&mut ctx, &workflow_def.outputs)
+                .await
+                .unwrap_or_default();
+            TestRunOutcome {
+                run_id,
+                status: WorkflowRunStatus::Completed,
+                error: None,
+                outputs,
+            }
+        }
+        Ok(RunInnerOutcome::Failed { error, .. }) => {
+            let _ =
+                repository::mark_status(pool, run_id, WorkflowRunStatus::Failed, Some(&error)).await;
+            TestRunOutcome {
+                run_id,
+                status: WorkflowRunStatus::Failed,
+                error: Some(error),
+                outputs: Default::default(),
+            }
+        }
+        Ok(RunInnerOutcome::Cancelled { .. }) => {
+            let _ = repository::mark_status(
+                pool,
+                run_id,
+                WorkflowRunStatus::Cancelled,
+                Some("cancelled"),
+            )
+            .await;
+            TestRunOutcome {
+                run_id,
+                status: WorkflowRunStatus::Cancelled,
+                error: Some("cancelled".into()),
+                outputs: Default::default(),
+            }
+        }
+        Err(_) => {
+            let err = "workflow test runner wall-clock timeout (30 min)".to_string();
+            let _ =
+                repository::mark_status(pool, run_id, WorkflowRunStatus::Failed, Some(&err)).await;
+            TestRunOutcome {
+                run_id,
+                status: WorkflowRunStatus::Failed,
+                error: Some(err),
+                outputs: Default::default(),
+            }
+        }
+    };
+
+    // Cleanup the staged dir + registry entry.
+    let _ = tokio::fs::remove_dir_all(&ctx.sandbox_workspace).await;
+    registry::unregister(run_id);
+
+    Ok(result)
+}
+
 /// Shared run-spawn path used by BOTH the REST `POST /run` handler and
 /// the `workflow_mcp` tool-call path (B5). Loads + validates the
 /// workflow.yaml, snapshots the conversation's model, inserts the
@@ -713,6 +874,7 @@ pub async fn spawn_run(
         sandbox_flavor,
         workflow.is_dev,
         mocks,
+        false, // force_mocks: normal /run path uses the is_dev gate
     )
     .await?;
 

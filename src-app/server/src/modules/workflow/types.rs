@@ -187,6 +187,14 @@ pub struct RunContext {
     /// set) by writing the canned value as the step output instead of
     /// dispatching. See plan §1 + the B4 audit MAJOR finding.
     pub mocks: HashMap<String, serde_json::Value>,
+    /// Test-run mock exception (B6). `POST /api/workflows/{id}/test` runs
+    /// bundled `tests/*.yaml` fixtures with their mocks — a sanctioned mock
+    /// context. When `true`, the runner honors `mocks` (and `StepDef.mock`)
+    /// EVEN on a published (`is_dev = false`) workflow. This does NOT relax
+    /// the `/run` endpoint's is_dev gate: only the test handler sets it.
+    /// See plan §3 (`/test` "tests/ files providing mocks still run them in
+    /// test-mode without spending tokens").
+    pub force_mocks: bool,
 }
 
 impl RunContext {

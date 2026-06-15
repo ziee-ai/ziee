@@ -359,6 +359,91 @@ pub async fn extract_from_seed_bytes(
     })
 }
 
+/// Extract a tar.gz from raw bytes WITHOUT a manifest sha256 to verify
+/// against — the sha256 is computed over the input bytes and returned.
+/// Used by the dev/local `POST /api/{skills,workflows}/import` path
+/// (B6): a developer uploads a source tarball directly, so there's no
+/// hub catalog entry carrying an expected digest. Runs the identical
+/// bomb-guard + path-safety + per-kind permission pipeline as
+/// `fetch_and_extract` / `extract_from_seed_bytes`; the only difference
+/// is the missing checksum-match gate.
+///
+/// Overwrites `target_dir` if it already exists (dev re-import is an
+/// in-place overwrite — see plan §3 dev/local import).
+pub async fn extract_tarball_bytes(
+    bytes: &[u8],
+    target_dir: &Path,
+    kind: BundleKind,
+) -> Result<BundleExtraction, AppError> {
+    let sha_actual = hex_sha256(bytes);
+
+    let staging_parent = target_dir
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(std::env::temp_dir);
+    fs::create_dir_all(&staging_parent).map_err(|e| {
+        AppError::internal_error(format!(
+            "bundle: create import staging parent {}: {}",
+            staging_parent.display(),
+            e
+        ))
+    })?;
+    let staging_root = staging_parent
+        .join(".staging")
+        .join(Uuid::new_v4().to_string());
+    let extracted_dir = staging_root.join("extracted");
+    fs::create_dir_all(&extracted_dir).map_err(|e| {
+        AppError::internal_error(format!(
+            "bundle: create import extracted dir {}: {}",
+            extracted_dir.display(),
+            e
+        ))
+    })?;
+
+    let extraction = match extract_tar_gz_to(bytes, &extracted_dir, kind) {
+        Ok(e) => e,
+        Err(e) => {
+            let _ = fs::remove_dir_all(&staging_root);
+            return Err(e);
+        }
+    };
+
+    if let Some(parent) = target_dir.parent() {
+        fs::create_dir_all(parent).map_err(|e| {
+            AppError::internal_error(format!(
+                "bundle: create import target parent {}: {}",
+                parent.display(),
+                e
+            ))
+        })?;
+    }
+    if target_dir.exists() {
+        fs::remove_dir_all(target_dir).map_err(|e| {
+            AppError::internal_error(format!(
+                "bundle: remove prior import target {}: {}",
+                target_dir.display(),
+                e
+            ))
+        })?;
+    }
+    fs::rename(&extracted_dir, target_dir).map_err(|e| {
+        AppError::internal_error(format!(
+            "bundle: promote {} -> {}: {}",
+            extracted_dir.display(),
+            target_dir.display(),
+            e
+        ))
+    })?;
+    let _ = fs::remove_dir_all(&staging_root);
+
+    Ok(BundleExtraction {
+        extracted_path: target_dir.to_path_buf(),
+        file_count: extraction.file_count,
+        total_bytes: extraction.total_bytes,
+        sha256_hex: sha_actual,
+    })
+}
+
 // ============================================================
 // Internals
 // ============================================================
@@ -763,6 +848,39 @@ mod tests {
         assert_eq!(res.file_count, 2);
         assert!(target.join("SKILL.md").exists());
         assert!(target.join("references/foo.md").exists());
+    }
+
+    #[tokio::test]
+    async fn extract_tarball_bytes_no_manifest_and_overwrites() {
+        // First import.
+        let body1 = build_tar_gz(
+            &[("workflow.yaml", 0o644, b"steps: []\n")],
+            None,
+        );
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("wf").join("0.0.0-dev");
+        let res = extract_tarball_bytes(&body1, &target, BundleKind::Workflow)
+            .await
+            .expect("first extract");
+        assert_eq!(res.file_count, 1);
+        assert_eq!(res.sha256_hex, hex_sha256(&body1));
+        assert!(target.join("workflow.yaml").exists());
+
+        // Re-import a different bundle to the SAME target → overwrite.
+        let body2 = build_tar_gz(
+            &[
+                ("workflow.yaml", 0o644, b"steps: [a]\n"),
+                ("scripts/x.py", 0o755, b"print('hi')\n"),
+            ],
+            None,
+        );
+        let res2 = extract_tarball_bytes(&body2, &target, BundleKind::Workflow)
+            .await
+            .expect("re-extract");
+        assert_eq!(res2.file_count, 2);
+        assert!(target.join("scripts/x.py").exists());
+        let yaml = std::fs::read_to_string(target.join("workflow.yaml")).unwrap();
+        assert!(yaml.contains("[a]"));
     }
 
     #[tokio::test]

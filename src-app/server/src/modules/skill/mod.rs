@@ -17,6 +17,7 @@
 //!   (mirrors `mcp/handlers/system.rs`).
 
 pub mod chat_extension;
+pub mod dev_handlers;
 pub mod events;
 pub mod frontmatter;
 pub mod handlers;

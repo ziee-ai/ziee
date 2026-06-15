@@ -1,13 +1,12 @@
-//! Workflow REST handlers (user + admin split; B4).
+//! Workflow REST handlers (user + admin split; B4 + B6).
 //!
 //! User: list / get / delete + install-from-hub re-bind + RUN + CANCEL.
-//! Admin (`/system/*`): list / delete + group assignment (TODO B6).
-//! `/import`, `/validate`, `/dry-run`, `/test` are stubbed —
-//! they need additional plumbing (multipart upload, mock cost
-//! estimation) and land in B6.
+//! Admin (`/system/*`): list / delete + group assignment.
+//! `/validate`, `/import`, `/dry-run`, `/test` (B6) live in `dev.rs`.
 
 #![allow(dead_code)]
 
+pub mod dev;
 pub mod system;
 
 use aide::transform::TransformOperation;
@@ -240,30 +239,4 @@ pub fn get_run_docs(op: TransformOperation) -> TransformOperation {
         .response::<200, Json<WorkflowRun>>()
 }
 
-// Stub for /validate, /import, /dry-run, /test — Phase B6.
-#[derive(Debug, Serialize, JsonSchema)]
-pub struct DeferredResponse {
-    pub status: String,
-    pub message: String,
-}
-
-pub async fn validate_stub(
-    _auth: RequirePermissions<(WorkflowsRead,)>,
-) -> ApiResult<Json<DeferredResponse>> {
-    Ok((
-        StatusCode::ACCEPTED,
-        Json(DeferredResponse {
-            status: "deferred".into(),
-            message: "POST /api/workflows/validate lands in Phase B6".into(),
-        }),
-    ))
-}
-
-pub fn validate_stub_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(WorkflowsRead,)>(op)
-        .id("Workflow.validateStub")
-        .tag("Workflows")
-        .summary("[Phase B6] Validate a workflow.yaml without installing")
-        .response::<202, Json<DeferredResponse>>()
-}
 
