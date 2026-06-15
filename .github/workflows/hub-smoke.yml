@@ -85,17 +85,23 @@ jobs:
       # to the ziee-ai/hub release; the token lifts the unauthenticated rate
       # limit on the shared CI egress IP.
       #
-      # Build with the seccomp feature OFF (--no-default-features +
-      # gpu-detect), mirroring server-release.yml: the default
-      # `code_sandbox_seccomp` static-links libseccomp (LIBSECCOMP_LINK_TYPE
-      # in .cargo/config.toml), which needs libseccomp.a on the runner. The
-      # smoke test only imports + runs hub workflows; seccomp hardening isn't
-      # required (the sandbox still runs, logging seccomp off-feature-not-linked).
+      # DEBUG build (no --release): a smoke test just imports + runs a handful
+      # of mocked fixture workflows over HTTP, so runtime speed is irrelevant;
+      # a debug build compiles ~3x faster (~10 min vs ~30 min cold). The same
+      # code paths are exercised — the debug-only test seams
+      # (CODE_SANDBOX_ROOTFS_MIRROR etc.) stay inert because their env vars
+      # aren't set, so the sandbox still uses the real published-rootfs fetch.
+      #
+      # Seccomp feature OFF (--no-default-features + gpu-detect), mirroring
+      # server-release.yml: the default `code_sandbox_seccomp` static-links
+      # libseccomp (LIBSECCOMP_LINK_TYPE in .cargo/config.toml), which needs
+      # libseccomp.a on the runner. The smoke test doesn't need seccomp
+      # hardening (the sandbox still runs, logging seccomp off-feature-not-linked).
       - name: Build ziee
         working-directory: src-app/server
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: cargo build --release -p ziee --no-default-features --features gpu-detect
+        run: cargo build -p ziee --no-default-features --features gpu-detect
 
       # Runtime config: external Postgres (reuse the build DB), code_sandbox on
       # (hub workflows may ship sandbox steps), server on :3000.
@@ -149,7 +155,7 @@ jobs:
           CONFIG_FILE: /tmp/ziee-hub-smoke/config.yaml
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ./src-app/target/release/ziee > /tmp/ziee-hub-smoke/server.log 2>&1 &
+          ./src-app/target/debug/ziee > /tmp/ziee-hub-smoke/server.log 2>&1 &
           echo "ziee_pid=$!" >> "$GITHUB_ENV"
 
       - name: Import + test every hub workflow
