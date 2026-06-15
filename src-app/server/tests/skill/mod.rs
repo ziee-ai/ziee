@@ -23,19 +23,25 @@ use crate::hub::mock_release_server::{MockHub, MockItem, MockVersion, spawn_mock
 
 /// The SKILL.md body the fixture skill ships. Path B contract: this
 /// text must NOT appear in the chat listing — only via `load_skill`.
-pub const FIXTURE_SKILL_MD: &str = "---\n\
-name: configure-llm-providers\n\
-description: How to configure local + cloud LLM providers in ziee.\n\
-when_to_use: When the user mentions provider, API key, Ollama, or model registry.\n\
-allowed-tools: Read\n\
-metadata:\n\
-  author: ziee\n\
-  license: MIT\n\
----\n\
-\n\
-# Configuring LLM providers\n\
-\n\
-THIS_IS_THE_SKILL_BODY_MARKER. Step 1: open settings. Step 2: add a key.\n";
+// Raw string literal (NOT "...\n\" continuation): a backslash-newline
+// continuation strips the LEADING WHITESPACE of the next source line, which
+// would silently de-indent the nested `metadata:` block and turn it into
+// `metadata: null` + top-level author/license. Raw string preserves the
+// 2-space indentation so the nested YAML survives.
+pub const FIXTURE_SKILL_MD: &str = r#"---
+name: configure-llm-providers
+description: How to configure local + cloud LLM providers in ziee.
+when_to_use: When the user mentions provider, API key, Ollama, or model registry.
+allowed-tools: Read
+metadata:
+  author: ziee
+  license: MIT
+---
+
+# Configuring LLM providers
+
+THIS_IS_THE_SKILL_BODY_MARKER. Step 1: open settings. Step 2: add a key.
+"#;
 
 /// A supporting reference file the fixture skill ships under references/.
 pub const FIXTURE_REFERENCE_MD: &str =

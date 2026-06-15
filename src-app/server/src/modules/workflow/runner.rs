@@ -459,8 +459,18 @@ pub async fn run_workflow(
         }
     }
 
-    // Cleanup the staged dir.
-    let _ = tokio::fs::remove_dir_all(&ctx.sandbox_workspace).await;
+    // Cleanup the EPHEMERAL scratch (the bundle copy + staged stdin) to
+    // reclaim disk, but KEEP outputs/ artifacts/ logs/ so the per-step
+    // output / artifact / log REST endpoints AND workflow_mcp resources can
+    // be read AFTER the run reaches a terminal status — that's the whole
+    // point of those surfaces (and the LLM may resources/read immediately
+    // after the tool call returns). The staged dir is GC'd in full by the
+    // startup sweep on the next restart. (The plan's "rm -rf the whole run
+    // dir on terminal" conflicted with its own results-readable-after-
+    // completion contract; results must outlive the terminal transition.)
+    for sub in ["scripts", "references", "prompts", "inputs"] {
+        let _ = tokio::fs::remove_dir_all(ctx.sandbox_workspace.join(sub)).await;
+    }
     registry::unregister(run_id);
 }
 

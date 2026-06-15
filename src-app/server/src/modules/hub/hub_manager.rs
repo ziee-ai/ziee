@@ -1045,6 +1045,8 @@ pub(crate) fn is_safe_manifest_path(rel: &str) -> bool {
     rel.starts_with("models/")
         || rel.starts_with("assistants/")
         || rel.starts_with("mcp-servers/")
+        || rel.starts_with("skills/")
+        || rel.starts_with("workflows/")
 }
 
 /// Guard a semver-shaped string. Kept from v1 for handlers that read
@@ -1187,6 +1189,8 @@ mod tests {
         assert!(is_safe_manifest_path("models/llama/1.0.0.json"));
         assert!(is_safe_manifest_path("assistants/foo/1.0.0.json"));
         assert!(is_safe_manifest_path("mcp-servers/bar/2.3.4.json"));
+        assert!(is_safe_manifest_path("skills/io.github.x/configure/1.0.0.json"));
+        assert!(is_safe_manifest_path("workflows/io.github.x/research/1.0.0.json"));
         // Wrong extension.
         assert!(!is_safe_manifest_path("models/foo/1.0.0.yaml"));
         // Parent-dir.
