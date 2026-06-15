@@ -2510,6 +2510,10 @@ export interface Skill {
   when_to_use?: string
 }
 
+export interface SkillBodyResponse {
+  body: string
+}
+
 export interface SkillFromHubResponse {
   hub_tracking: HubEntity
   skill: Skill
@@ -3633,6 +3637,7 @@ export const ApiEndpoints = {
   'ServerUpdate.getStatus': 'GET /api/server-update/status',
   'Skill.delete': 'DELETE /api/skills/{id}',
   'Skill.get': 'GET /api/skills/{id}',
+  'Skill.getBody': 'GET /api/skills/{id}/body',
   'Skill.hideInConversation': 'POST /api/skills/{id}/hide-in-conversation',
   'Skill.import': 'POST /api/skills/import',
   'Skill.list': 'GET /api/skills',
@@ -3941,6 +3946,7 @@ export type ApiEndpointParameters = {
   'ServerUpdate.getStatus': void
   'Skill.delete': { id: string }
   'Skill.get': { id: string }
+  'Skill.getBody': { id: string }
   'Skill.hideInConversation': { id: string } & HideSkillInConversationRequest
   'Skill.import': { name?: string; scope?: string } & FormData
   'Skill.list': void
@@ -4249,6 +4255,7 @@ export type ApiEndpointResponses = {
   'ServerUpdate.getStatus': UpdateStatusResponse
   'Skill.delete': void
   'Skill.get': Skill
+  'Skill.getBody': SkillBodyResponse
   'Skill.hideInConversation': void
   'Skill.import': Skill
   'Skill.list': SkillListResponse

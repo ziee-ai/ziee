@@ -11,6 +11,7 @@ import {
 } from 'antd'
 import { useEffect, useMemo, useState } from 'react'
 import { Streamdown } from 'streamdown'
+import { ApiClient } from '@/api-client'
 import type { Skill } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
@@ -25,14 +26,10 @@ const { Text, Title } = Typography
  *  `when_to_use`) — which is what the model sees in the available-skills
  *  listing — NOT the full SKILL.md body.
  *
- *  BACKEND FOLLOW-UP: the full SKILL.md body lives on disk under
- *  `skill.extracted_path` post-install. There is currently NO REST
- *  endpoint to read it — the skill_mcp `load_skill` / `read_skill_file`
- *  tools return the body but those are MCP tool calls, not a plain REST
- *  surface the FE can hit. To render the real body here, the backend
- *  needs e.g. `GET /api/skills/{id}/content` (or `/file/{path}`) that
- *  streams the on-disk SKILL.md; this component would then fetch it and
- *  render via Streamdown in place of (or below) this summary. */
+ *  The frontmatter-derived summary (title / description / when-to-use)
+ *  is rendered immediately from the `Skill` row; the full SKILL.md body
+ *  is fetched on open via `GET /api/skills/{id}/body` (the on-disk
+ *  bundle body, frontmatter stripped) and rendered below it. */
 function buildSkillMarkdown(skill: Skill): string {
   const parts: string[] = []
   const title = skill.display_name || skill.name
@@ -53,6 +50,8 @@ export function SkillDetailDrawer() {
   const canManage = usePermission(Permissions.SkillsInstall)
   const canManageSystem = usePermission(Permissions.SkillsManageSystem)
   const [hidden, setHidden] = useState(false)
+  const [body, setBody] = useState<string | null>(null)
+  const [bodyLoading, setBodyLoading] = useState(false)
 
   useEffect(() => {
     // Re-sync the checkbox each time a (different) skill opens. The
@@ -66,6 +65,29 @@ export function SkillDetailDrawer() {
       }
     }
   }, [isOpen, skill, conversationId])
+
+  useEffect(() => {
+    // Fetch the full SKILL.md body (frontmatter stripped) from the
+    // on-disk bundle when a skill opens. Reset between skills.
+    let cancelled = false
+    setBody(null)
+    if (isOpen && skill) {
+      setBodyLoading(true)
+      ApiClient.Skill.getBody({ id: skill.id })
+        .then(res => {
+          if (!cancelled) setBody(res.body)
+        })
+        .catch(() => {
+          if (!cancelled) setBody(null)
+        })
+        .finally(() => {
+          if (!cancelled) setBodyLoading(false)
+        })
+    }
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, skill])
 
   const markdown = useMemo(
     () => (skill ? buildSkillMarkdown(skill) : ''),
@@ -175,6 +197,23 @@ export function SkillDetailDrawer() {
             </Streamdown>
           </StreamdownErrorBoundary>
         </div>
+
+        {/* Full SKILL.md body fetched from the on-disk bundle. */}
+        {bodyLoading && (
+          <Text type="secondary" className="text-xs">
+            Loading skill content…
+          </Text>
+        )}
+        {body && (
+          <div className="overflow-auto">
+            <Title level={5}>Skill content (SKILL.md)</Title>
+            <StreamdownErrorBoundary fallbackText={body}>
+              <Streamdown shikiTheme={['github-light', 'github-dark']}>
+                {body}
+              </Streamdown>
+            </StreamdownErrorBoundary>
+          </div>
+        )}
 
         <div>
           <Text type="secondary" className="text-xs">
