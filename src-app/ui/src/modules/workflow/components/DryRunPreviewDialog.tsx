@@ -27,12 +27,25 @@ export function DryRunPreviewDialog({
 
   useEffect(() => {
     if (!open) return
+    let cancelled = false
     setLoading(true)
     setError(null)
-    Stores.Workflow.dryRun(workflow.id, {})
-      .then(setResult)
-      .catch(e => setError(e instanceof Error ? e.message : 'Dry-run failed'))
-      .finally(() => setLoading(false))
+    setResult(null)
+    Stores.Workflow.__state
+      .dryRun(workflow.id, {})
+      .then(r => {
+        if (!cancelled) setResult(r)
+      })
+      .catch(e => {
+        if (!cancelled)
+          setError(e instanceof Error ? e.message : 'Dry-run failed')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [open, workflow.id])
 
   return (

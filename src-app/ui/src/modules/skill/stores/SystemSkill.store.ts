@@ -2,7 +2,12 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
-import { Permissions, type Skill, type UpdateSkill } from '@/api-client/types'
+import {
+  type ApiEndpointParameters,
+  Permissions,
+  type Skill,
+  type UpdateSkill,
+} from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 
@@ -119,7 +124,12 @@ export const useSystemSkillStore = create<SystemSkillState>()(
             draft.error = null
           })
           try {
-            const skill = await ApiClient.Skill.import(form as any)
+            // FormData carries the multipart fields (incl. scope=system)
+            // the endpoint reads; narrow to the endpoint's param type
+            // instead of defeating type-checking with `any`.
+            const skill = await ApiClient.Skill.import(
+              form as ApiEndpointParameters['Skill.import'],
+            )
             set(draft => {
               const idx = draft.systemSkills.findIndex(s => s.id === skill.id)
               if (idx >= 0) draft.systemSkills[idx] = skill

@@ -45,7 +45,9 @@ export function AdminWorkflowGroupAssignment({
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    Stores.SystemWorkflow.loadGroups(workflowId)
+    // Effect context → use `.__state` (the `Stores.X.*` proxy is
+    // render-only; it calls hooks on access).
+    void Stores.SystemWorkflow.__state.loadGroups(workflowId)
   }, [workflowId])
 
   const startEdit = async () => {

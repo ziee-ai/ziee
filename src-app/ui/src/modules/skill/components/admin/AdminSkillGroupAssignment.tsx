@@ -45,7 +45,9 @@ export function AdminSkillGroupAssignment({
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    Stores.SystemSkill.loadGroups(skillId)
+    // Effect context → use `.__state` (the `Stores.X.*` proxy is
+    // render-only; it calls hooks on access).
+    void Stores.SystemSkill.__state.loadGroups(skillId)
   }, [skillId])
 
   const startEdit = async () => {

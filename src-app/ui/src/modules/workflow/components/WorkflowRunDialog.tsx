@@ -1,5 +1,5 @@
 import { Alert, App, Form, Input, Modal, Switch, Typography } from 'antd'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Workflow } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 import { parseWorkflowIr } from './workflowIr'
@@ -35,6 +35,16 @@ export function WorkflowRunDialog({
 
   const { inputs } = useMemo(() => parseWorkflowIr(workflow), [workflow])
   const structured = inputs.length > 0
+
+  // Reset the form + JSON editor each time the dialog opens (or the
+  // target workflow changes) so reopening for a different workflow
+  // doesn't surface the prior run's values.
+  useEffect(() => {
+    if (!open) return
+    form.resetFields()
+    setJsonInputs('{}')
+    setJsonError(null)
+  }, [open, workflow.id, form])
 
   const handleRun = async () => {
     let inputValues: Record<string, unknown> = {}
@@ -88,7 +98,7 @@ export function WorkflowRunDialog({
               key={input.name}
               name={input.name}
               label={input.name}
-              tooltip={input.description}
+              extra={input.description}
               rules={
                 input.required
                   ? [{ required: true, message: `${input.name} is required` }]

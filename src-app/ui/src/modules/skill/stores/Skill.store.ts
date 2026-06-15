@@ -3,6 +3,7 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
 import {
+  type ApiEndpointParameters,
   Permissions,
   type Skill,
   type UpdateSkill,
@@ -121,7 +122,13 @@ export const useSkillStore = create<SkillState>()(
             draft.error = null
           })
           try {
-            const skill = await ApiClient.Skill.import(form as any)
+            // The generated param type is `{ name?; scope? } & FormData`;
+            // a bare FormData carries the multipart fields the endpoint
+            // reads, so narrow to the endpoint's param type rather than
+            // defeating type-checking with `any`.
+            const skill = await ApiClient.Skill.import(
+              form as ApiEndpointParameters['Skill.import'],
+            )
             set(draft => {
               const idx = draft.skills.findIndex(s => s.id === skill.id)
               if (idx >= 0) draft.skills[idx] = skill

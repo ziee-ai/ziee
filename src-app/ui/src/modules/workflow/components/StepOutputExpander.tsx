@@ -1,4 +1,4 @@
-import { Collapse, Spin, Typography } from 'antd'
+import { App, Collapse, Spin, Typography } from 'antd'
 import { useState } from 'react'
 import { Streamdown } from 'streamdown'
 import { ApiClient } from '@/api-client'
@@ -26,6 +26,7 @@ export function StepOutputExpander({
   stepId,
   parsedAs,
 }: StepOutputExpanderProps) {
+  const { message } = App.useApp()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [content, setContent] = useState<string | null>(null)
@@ -50,8 +51,21 @@ export function StepOutputExpander({
         setContent(JSON.stringify(res, null, 2))
         setIsJson(true)
       }
-    } catch {
+    } catch (e) {
+      // 404 is the EXPECTED "step not completed / output cleaned up"
+      // case — show the inline "not available" note. Any other failure
+      // (network, 403, 5xx) is a real error → surface it so it isn't
+      // masked by the expected-404 message.
       setError(true)
+      const status =
+        typeof e === 'object' && e !== null
+          ? (e as { status?: number }).status
+          : undefined
+      if (status !== 404) {
+        message.error(
+          e instanceof Error ? e.message : 'Failed to load output',
+        )
+      }
     } finally {
       setLoading(false)
     }

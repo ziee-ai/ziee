@@ -32,13 +32,25 @@ export function WorkflowTestsPanel({
 
   useEffect(() => {
     if (!open) return
+    let cancelled = false
     setLoading(true)
     setError(null)
     setResult(null)
-    Stores.Workflow.test(workflow.id)
-      .then(setResult)
-      .catch(e => setError(e instanceof Error ? e.message : 'Test run failed'))
-      .finally(() => setLoading(false))
+    Stores.Workflow.__state
+      .test(workflow.id)
+      .then(r => {
+        if (!cancelled) setResult(r)
+      })
+      .catch(e => {
+        if (!cancelled)
+          setError(e instanceof Error ? e.message : 'Test run failed')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [open, workflow.id])
 
   return (

@@ -37,7 +37,19 @@ export function SkillHubCard({ item }: SkillHubCardProps) {
   const canManageSystem = usePermission(Permissions.SkillsManageSystem)
 
   const installing = Stores.HubSkills.installing[item.name] ?? false
-  const state = Stores.HubSkills.installStateFor(item.name)
+  // Derive install state from the REACTIVE installed-items field (not
+  // the store's `installStateFor` function — reading a stable fn ref in
+  // render subscribes to the fn key, not the underlying data, so the
+  // badge would go stale on external uninstall / cross-device sync).
+  const installedRows = Stores.HubInstalled.items
+  const state: 'none' | 'user' | 'system' = (() => {
+    const rows = installedRows.filter(
+      r => r.hub_id === item.name && r.hub_category === 'skill',
+    )
+    if (rows.some(r => r.is_system)) return 'system'
+    if (rows.length > 0) return 'user'
+    return 'none'
+  })()
   const title = item.title ?? item.name
 
   const handleInstallForMe = async () => {
@@ -125,6 +137,7 @@ export function SkillHubCard({ item }: SkillHubCardProps) {
                 type="primary"
                 icon={<DownloadOutlined />}
                 loading={installing}
+                disabled={installing}
                 menu={adminMenu}
                 onClick={handleInstallForMe}
               >

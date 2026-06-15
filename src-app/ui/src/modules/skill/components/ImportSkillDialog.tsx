@@ -32,11 +32,13 @@ export function ImportSkillDialog({
     null,
   )
   const [submitting, setSubmitting] = useState(false)
+  const [validating, setValidating] = useState(false)
 
   const reset = () => {
     setFileList([])
     setValidation(null)
     setSubmitting(false)
+    setValidating(false)
   }
 
   const handleValidate = async () => {
@@ -53,12 +55,15 @@ export function ImportSkillDialog({
       )
       return
     }
-    const text = await file.text()
+    setValidating(true)
     try {
+      const text = await file.text()
       const result = await Stores.Skill.validateSkill(text)
       setValidation(result)
     } catch {
       message.error('Validation request failed')
+    } finally {
+      setValidating(false)
     }
   }
 
@@ -96,7 +101,7 @@ export function ImportSkillDialog({
         onClose()
       }}
       footer={[
-        <Button key="validate" onClick={handleValidate}>
+        <Button key="validate" loading={validating} onClick={handleValidate}>
           Validate
         </Button>,
         <Button

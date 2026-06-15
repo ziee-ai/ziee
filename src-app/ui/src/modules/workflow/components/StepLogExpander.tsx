@@ -1,4 +1,4 @@
-import { Button, Collapse, Spin, Typography } from 'antd'
+import { App, Button, Collapse, Spin, Typography } from 'antd'
 import { useState } from 'react'
 import { ApiClient } from '@/api-client'
 
@@ -24,6 +24,7 @@ export function StepLogExpander({
   kind,
   label,
 }: StepLogExpanderProps) {
+  const { message } = App.useApp()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [content, setContent] = useState<string | null>(null)
@@ -39,8 +40,21 @@ export function StepLogExpander({
         kind,
       })
       setContent(typeof res === 'string' ? res : JSON.stringify(res, null, 2))
-    } catch {
+    } catch (e) {
+      // 404 is the EXPECTED "log not exposed / not produced" case — show
+      // the inline "not available" note. Any other failure (network,
+      // 403, 5xx) is a real error → surface it so it isn't masked by the
+      // expected-404 message.
       setError(true)
+      const status =
+        typeof e === 'object' && e !== null
+          ? (e as { status?: number }).status
+          : undefined
+      if (status !== 404) {
+        message.error(
+          e instanceof Error ? e.message : `Failed to load ${label}`,
+        )
+      }
     } finally {
       setLoading(false)
     }

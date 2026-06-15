@@ -10,13 +10,12 @@ import type { AvailableSkillEntry, Skill } from '@/api-client/types'
  * currently VISIBLE in a conversation and lets the user hide/unhide
  * individual ones. The "available" listing is the effective set (after
  * group restrictions + the conversation's own overrides), so a skill
- * present in `available` is visible and a skill in `hiddenIds` is
- * opted-out.
+ * present in `available` is visible and a skill absent from it is
+ * opted-out (derived via `deriveHiddenSkills`).
  */
 interface ConversationSkillsState {
   // Keyed by conversation id.
   available: Record<string, AvailableSkillEntry[]>
-  hiddenIds: Record<string, Set<string>>
   loading: Record<string, boolean>
   error: string | null
 
@@ -30,7 +29,6 @@ export const useConversationSkillsStore = create<ConversationSkillsState>()(
     immer(
       (set, get): ConversationSkillsState => ({
         available: {},
-        hiddenIds: {},
         loading: {},
         error: null,
 
@@ -64,12 +62,6 @@ export const useConversationSkillsStore = create<ConversationSkillsState>()(
               id: skillId,
               conversation_id: conversationId,
             })
-            set(draft => {
-              if (!draft.hiddenIds[conversationId]) {
-                draft.hiddenIds[conversationId] = new Set<string>()
-              }
-              draft.hiddenIds[conversationId].add(skillId)
-            })
             // Refetch the effective listing so the UI reflects the change.
             await get().loadAvailable(conversationId)
           } catch (error) {
@@ -86,9 +78,6 @@ export const useConversationSkillsStore = create<ConversationSkillsState>()(
             await ApiClient.Skill.unhideInConversation({
               id: skillId,
               conversation_id: conversationId,
-            })
-            set(draft => {
-              draft.hiddenIds[conversationId]?.delete(skillId)
             })
             await get().loadAvailable(conversationId)
           } catch (error) {

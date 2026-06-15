@@ -52,25 +52,38 @@ export function SkillDetailDrawer() {
   const [hidden, setHidden] = useState(false)
   const [body, setBody] = useState<string | null>(null)
   const [bodyLoading, setBodyLoading] = useState(false)
+  const [bodyError, setBodyError] = useState(false)
+
+  // Read the REACTIVE available map so the effect below re-runs when
+  // the conversation's available listing loads — reading
+  // `__state.available` (non-reactive) meant the checkbox stayed false
+  // for an actually-hidden skill if `available` wasn't loaded yet.
+  const availableMap = Stores.ConversationSkills.available
+  const conversationAvailable = conversationId
+    ? availableMap[conversationId]
+    : undefined
 
   useEffect(() => {
-    // Re-sync the checkbox each time a (different) skill opens. The
-    // effective hide state comes from the conversation-skills store's
-    // available listing — a skill missing from "available" is hidden.
-    if (isOpen && skill && conversationId) {
-      const available =
-        Stores.ConversationSkills.__state.available[conversationId]
-      if (available) {
-        setHidden(!available.some(s => s.id === skill.id))
-      }
+    // Re-sync the checkbox each time a (different) skill opens or the
+    // available listing loads. The effective hide state comes from the
+    // conversation-skills store's available listing — a skill missing
+    // from "available" is hidden. If the listing isn't loaded yet,
+    // trigger a fetch (the reactive `conversationAvailable` dep then
+    // re-runs this effect once it arrives).
+    if (!isOpen || !skill || !conversationId) return
+    if (conversationAvailable) {
+      setHidden(!conversationAvailable.some(s => s.id === skill.id))
+    } else {
+      void Stores.ConversationSkills.__state.loadAvailable(conversationId)
     }
-  }, [isOpen, skill, conversationId])
+  }, [isOpen, skill, conversationId, conversationAvailable])
 
   useEffect(() => {
     // Fetch the full SKILL.md body (frontmatter stripped) from the
     // on-disk bundle when a skill opens. Reset between skills.
     let cancelled = false
     setBody(null)
+    setBodyError(false)
     if (isOpen && skill) {
       setBodyLoading(true)
       ApiClient.Skill.getBody({ id: skill.id })
@@ -78,7 +91,11 @@ export function SkillDetailDrawer() {
           if (!cancelled) setBody(res.body)
         })
         .catch(() => {
-          if (!cancelled) setBody(null)
+          // Surface a subtle error state rather than rendering blank.
+          if (!cancelled) {
+            setBody(null)
+            setBodyError(true)
+          }
         })
         .finally(() => {
           if (!cancelled) setBodyLoading(false)
@@ -202,6 +219,11 @@ export function SkillDetailDrawer() {
         {bodyLoading && (
           <Text type="secondary" className="text-xs">
             Loading skill content…
+          </Text>
+        )}
+        {bodyError && !bodyLoading && (
+          <Text type="secondary" className="text-xs">
+            Couldn’t load skill content.
           </Text>
         )}
         {body && (
