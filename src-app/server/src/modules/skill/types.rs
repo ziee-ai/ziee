@@ -62,6 +62,15 @@ pub struct AvailableSkillsResponse {
     pub skills: Vec<AvailableSkillEntry>,
 }
 
+/// `GET /api/skills/{id}/body` response — the SKILL.md markdown body
+/// (frontmatter stripped), read from the extracted bundle on disk. Lets
+/// the FE SkillDetailDrawer render the real procedural content, not just
+/// the frontmatter-derived metadata (plan §5 "renders SKILL.md").
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct SkillBodyResponse {
+    pub body: String,
+}
+
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct AvailableSkillsQuery {
     pub conversation_id: Uuid,

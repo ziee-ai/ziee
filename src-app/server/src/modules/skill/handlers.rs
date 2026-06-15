@@ -30,7 +30,7 @@ use super::permissions::{
 };
 use super::types::{
     AvailableSkillEntry, AvailableSkillsQuery, AvailableSkillsResponse,
-    HideSkillInConversationRequest, SkillGroupsRequest, SkillListResponse,
+    HideSkillInConversationRequest, SkillBodyResponse, SkillGroupsRequest, SkillListResponse,
 };
 
 // =====================================================
@@ -80,6 +80,47 @@ pub fn get_user_skill_docs(op: TransformOperation) -> TransformOperation {
         .summary("Get one skill")
         .description("Read a single accessible skill by id.")
         .response::<200, Json<Skill>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+        .response_with::<404, (), _>(|r| r.description("Skill not found"))
+}
+
+/// Read the SKILL.md markdown body (frontmatter stripped) from the
+/// extracted bundle on disk. The frontmatter metadata is already on the
+/// `Skill` row; this serves the substantive procedural content for the
+/// detail drawer (plan §5). Path is anchored to the row's
+/// `extracted_path` + `entry_point` — no user-supplied path component.
+pub async fn get_skill_body(
+    auth: RequirePermissions<(SkillsRead,)>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<SkillBodyResponse>> {
+    if !Repos.skill.user_can_read(auth.user.id, id).await? {
+        return Err(AppError::not_found("Skill").into());
+    }
+    let skill = Repos
+        .skill
+        .find_by_id(id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Skill"))?;
+    let path = std::path::Path::new(&skill.extracted_path).join(&skill.entry_point);
+    let content = tokio::fs::read_to_string(&path).await.map_err(|e| {
+        AppError::internal_error(format!(
+            "skill: read {} body at {}: {e}",
+            skill.name,
+            path.display()
+        ))
+    })?;
+    let (_frontmatter, body) = super::frontmatter::parse_skill_md_frontmatter(&content)
+        .unwrap_or_else(|_| (serde_json::Value::Null, content.clone()));
+    Ok((StatusCode::OK, Json(SkillBodyResponse { body })))
+}
+
+pub fn get_skill_body_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(SkillsRead,)>(op)
+        .id("Skill.getBody")
+        .tag("Skills")
+        .summary("Get a skill's SKILL.md body")
+        .description("Returns the markdown body (frontmatter stripped) read from the extracted bundle.")
+        .response::<200, Json<SkillBodyResponse>>()
         .response_with::<401, (), _>(|r| r.description("Unauthorized"))
         .response_with::<404, (), _>(|r| r.description("Skill not found"))
 }

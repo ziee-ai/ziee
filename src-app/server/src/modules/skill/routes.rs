@@ -33,6 +33,10 @@ pub fn user_routes() -> ApiRouter {
         )
         .api_route("/skills/{id}", get_with(get_user_skill, get_user_skill_docs))
         .api_route(
+            "/skills/{id}/body",
+            get_with(get_skill_body, get_skill_body_docs),
+        )
+        .api_route(
             "/skills/{id}",
             put_with(update_user_skill, update_user_skill_docs),
         )
