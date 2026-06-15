@@ -10,6 +10,7 @@
 //! → extract path runs for real without touching GitHub.
 
 mod access_and_security;
+mod builtin;
 mod hide_in_conversation;
 mod install_from_hub;
 mod listing_in_chat;

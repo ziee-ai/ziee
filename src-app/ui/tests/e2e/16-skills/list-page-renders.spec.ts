@@ -1,7 +1,7 @@
 import { test, expect } from '../../fixtures/test-context'
 import { assertNoAccessibilityViolations } from '../../utils/accessibility'
 import { loginAsAdmin } from '../../common/auth-helpers'
-import { assertSkillsEmptyState, goToSkillsPage } from './helpers/skill-helpers'
+import { goToSkillsPage } from './helpers/skill-helpers'
 
 test.describe('Skills - List page render', () => {
   test.beforeEach(async ({ page, testInfra }) => {
@@ -29,11 +29,13 @@ test.describe('Skills - List page render', () => {
     })
   })
 
-  test('shows empty state when no skills are installed', async ({ page }) => {
-    // A fresh test database has no installed skills, so the antd <Empty>
-    // ("No skills installed yet — browse the Hub to install one")
-    // renders. See SkillsList.tsx.
-    await assertSkillsEmptyState(page)
+  test('lists ziee built-in capability skills', async ({ page }) => {
+    // ziee's built-in capability skills are embedded in the binary and
+    // boot-synced as scope='built_in' rows, so /skills is never empty —
+    // even on a fresh DB the built-ins render with the "Built-in" badge.
+    // (expect auto-retries, covering the boot-sync that runs on server
+    // start.)
+    await expect(page.getByText('Built-in').first()).toBeVisible()
   })
 
   test('admin sees the permission-gated Import affordance', async ({ page }) => {

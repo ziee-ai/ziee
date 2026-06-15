@@ -16,6 +16,7 @@
 //! - The full user / system CRUD REST surface
 //!   (mirrors `mcp/handlers/system.rs`).
 
+pub mod builtin;
 pub mod chat_extension;
 pub mod dev_handlers;
 pub mod events;
@@ -68,9 +69,18 @@ impl AppModule for SkillModule {
         "Agent Skills bundles"
     }
 
-    fn init(&mut self, _ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
-        // No background tasks yet — install path is event-free.
-        // B3 wires the chat extension via linkme.
+    fn init(&mut self, ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
+        // Sync ziee's embedded built-in capability skills into the DB as
+        // scope='built_in' rows (idempotent upsert). Spawned (init is sync)
+        // — mirrors skill_mcp's built-in server registration. The 10-row
+        // upsert completes in ms; built-ins are version-locked to the binary.
+        let pool = (*ctx.db_pool).clone();
+        tokio::spawn(async move {
+            match builtin::sync_builtin_skills(&pool).await {
+                Ok(n) => tracing::info!("skill: synced {n} built-in capability skill(s)"),
+                Err(e) => tracing::warn!(error = %e, "skill: built-in sync failed"),
+            }
+        });
         Ok(())
     }
 

@@ -250,6 +250,82 @@ pub async fn insert(pool: &PgPool, request: CreateSkill) -> Result<Skill, AppErr
     Ok(row)
 }
 
+/// Upsert a built-in (scope='built_in') skill keyed on `name`. Used by the
+/// boot sync so a binary upgrade replaces the row in place (stable id,
+/// version-locked content). Conflict target is the `uniq_skills_builtin_name`
+/// partial index.
+pub async fn upsert_builtin(pool: &PgPool, request: CreateSkill) -> Result<Skill, AppError> {
+    let row = sqlx::query_as!(
+        Skill,
+        r#"
+        INSERT INTO skills (
+            name, version, display_name, description, when_to_use,
+            extracted_path, bundle_sha256, bundle_size_bytes, file_count,
+            entry_point, frontmatter_json, tags,
+            scope, owner_user_id, created_by, enabled, is_dev
+        )
+        VALUES (
+            $1, $2, $3, $4, $5,
+            $6, $7, $8, $9,
+            $10, $11, $12,
+            'built_in', NULL, NULL, TRUE, FALSE
+        )
+        ON CONFLICT (name) WHERE scope = 'built_in'
+        DO UPDATE SET
+            version = EXCLUDED.version,
+            display_name = EXCLUDED.display_name,
+            description = EXCLUDED.description,
+            when_to_use = EXCLUDED.when_to_use,
+            extracted_path = EXCLUDED.extracted_path,
+            bundle_sha256 = EXCLUDED.bundle_sha256,
+            bundle_size_bytes = EXCLUDED.bundle_size_bytes,
+            file_count = EXCLUDED.file_count,
+            entry_point = EXCLUDED.entry_point,
+            frontmatter_json = EXCLUDED.frontmatter_json,
+            tags = EXCLUDED.tags,
+            enabled = TRUE,
+            updated_at = NOW()
+        RETURNING
+            id,
+            name,
+            version,
+            display_name,
+            description,
+            when_to_use,
+            extracted_path,
+            bundle_sha256,
+            bundle_size_bytes,
+            file_count,
+            entry_point,
+            frontmatter_json as "frontmatter_json: _",
+            tags as "tags: _",
+            scope,
+            owner_user_id,
+            created_by,
+            enabled,
+            is_dev,
+            created_at as "created_at: _",
+            updated_at as "updated_at: _"
+        "#,
+        request.name,
+        request.version,
+        request.display_name,
+        request.description,
+        request.when_to_use,
+        request.extracted_path,
+        request.bundle_sha256,
+        request.bundle_size_bytes,
+        request.file_count,
+        request.entry_point,
+        request.frontmatter_json,
+        request.tags,
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(row)
+}
+
 pub async fn find_by_name_version(
     pool: &PgPool,
     name: &str,
@@ -459,7 +535,8 @@ pub async fn find_accessible_by_name(
           -- user_can_read (deliberately without this filter).
           AND s.enabled = TRUE
           AND (
-            (s.scope = 'user' AND s.owner_user_id = $2)
+            s.scope = 'built_in'
+            OR (s.scope = 'user' AND s.owner_user_id = $2)
             OR (s.scope = 'system' AND (
               NOT EXISTS (SELECT 1 FROM group_skills WHERE skill_id = s.id)
               OR EXISTS (
@@ -549,7 +626,9 @@ pub async fn list_available_for_conversation(
         FROM skills s
         WHERE s.enabled = TRUE
           AND (
-            (s.scope = 'user' AND s.owner_user_id = $1)
+            -- Built-in capability skills: always available to everyone.
+            s.scope = 'built_in'
+            OR (s.scope = 'user' AND s.owner_user_id = $1)
             OR
             (s.scope = 'system' AND (
               NOT EXISTS (SELECT 1 FROM group_skills WHERE skill_id = s.id)
@@ -604,7 +683,8 @@ pub async fn list_accessible(
             s.updated_at as "updated_at: _"
         FROM skills s
         WHERE
-            (s.scope = 'user' AND s.owner_user_id = $1)
+            s.scope = 'built_in'
+            OR (s.scope = 'user' AND s.owner_user_id = $1)
             OR (s.scope = 'system' AND (
                 NOT EXISTS (SELECT 1 FROM group_skills WHERE skill_id = s.id)
                 OR EXISTS (
@@ -721,7 +801,8 @@ pub async fn user_can_read(
         FROM skills s
         WHERE s.id = $1
           AND (
-            (s.scope = 'user' AND s.owner_user_id = $2)
+            s.scope = 'built_in'
+            OR (s.scope = 'user' AND s.owner_user_id = $2)
             OR (s.scope = 'system' AND (
               NOT EXISTS (SELECT 1 FROM group_skills WHERE skill_id = s.id)
               OR EXISTS (

@@ -34,8 +34,12 @@ CREATE TABLE skills (
     entry_point TEXT NOT NULL,                                -- "SKILL.md"
     frontmatter_json JSONB NOT NULL DEFAULT '{}'::jsonb,      -- FULL parsed frontmatter
     tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+    -- 'built_in' = ziee's own capability/instruction skills, embedded in the
+    -- binary and boot-synced (NOT hub-distributed, NOT uninstallable,
+    -- version-locked to the binary). Like 'system', built-ins are
+    -- unowned (owner_user_id IS NULL).
     scope VARCHAR(10) NOT NULL DEFAULT 'user'
-        CHECK (scope IN ('user', 'system')),
+        CHECK (scope IN ('user', 'system', 'built_in')),
     owner_user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     created_by UUID REFERENCES users(id) ON DELETE SET NULL,  -- audit; separate from ownership
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
@@ -44,7 +48,7 @@ CREATE TABLE skills (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT skills_scope_owner_check CHECK (
         (scope = 'user' AND owner_user_id IS NOT NULL) OR
-        (scope = 'system' AND owner_user_id IS NULL)
+        (scope IN ('system', 'built_in') AND owner_user_id IS NULL)
     )
 );
 CREATE INDEX idx_skills_name ON skills(name);
@@ -61,6 +65,10 @@ CREATE UNIQUE INDEX uniq_skills_system_name_version
     ON skills (name, version) WHERE scope = 'system';
 CREATE UNIQUE INDEX uniq_skills_user_name_version_owner
     ON skills (name, version, owner_user_id) WHERE scope = 'user';
+-- Built-in: exactly one row per name (the binary's embedded copy). The
+-- boot sync upserts on this key so a binary upgrade replaces the row.
+CREATE UNIQUE INDEX uniq_skills_builtin_name
+    ON skills (name) WHERE scope = 'built_in';
 
 -- 3. workflows — same metadata-only shape + scope/ownership pattern
 CREATE TABLE workflows (

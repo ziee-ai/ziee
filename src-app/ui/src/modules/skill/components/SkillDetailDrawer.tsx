@@ -122,7 +122,14 @@ export function SkillDetailDrawer() {
     )
   }
 
-  const editable = skill.scope === 'system' ? canManageSystem : canManage
+  // Built-in capability skills are owned by the binary — never editable /
+  // deletable from the UI (the backend rejects it too).
+  const editable =
+    skill.scope === 'built_in'
+      ? false
+      : skill.scope === 'system'
+        ? canManageSystem
+        : canManage
 
   const handleToggleHidden = async (next: boolean) => {
     if (!conversationId) return
