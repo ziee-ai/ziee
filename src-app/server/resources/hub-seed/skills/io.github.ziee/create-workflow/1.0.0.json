@@ -1,0 +1,23 @@
+{
+  "$schema": "/schemas/2026-06-12/skill.schema.json",
+  "name": "io.github.ziee/create-workflow",
+  "version": "1.0.0",
+  "description": "Author a new workflow for ziee (declarative YAML DAG with llm / llm_map / sandbox / elicit step kinds). Use when the user wants to create, edit, or test a workflow.",
+  "tags": [
+    "workflow",
+    "authoring",
+    "yaml",
+    "dag",
+    "contributing"
+  ],
+  "license": "CC0-1.0",
+  "author": "ziee",
+  "bundle": {
+    "url": "skills/io.github.ziee/create-workflow/1.0.0.tar.gz",
+    "sha256": "fa608d18a85c462ef8663a129ac75b809fdfb22b0b1dc9f1cfb9ee8cf2a361a9",
+    "size_bytes": 1627,
+    "file_count": 1,
+    "entry_point": "SKILL.md"
+  },
+  "dependencies": []
+}

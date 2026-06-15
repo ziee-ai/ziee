@@ -1,0 +1,22 @@
+{
+  "$schema": "/schemas/2026-06-12/skill.schema.json",
+  "name": "io.github.ziee/manage-projects",
+  "version": "1.0.0",
+  "description": "Create/manage chat projects in ziee -- group conversations + attach reference files + set per-project assistant + MCP defaults. Use when the user wants to organize conversations or attach files to multiple chats at once.",
+  "tags": [
+    "projects",
+    "organization",
+    "files",
+    "conversations"
+  ],
+  "license": "CC0-1.0",
+  "author": "ziee",
+  "bundle": {
+    "url": "skills/io.github.ziee/manage-projects/1.0.0.tar.gz",
+    "sha256": "f305944d1f6cfb774ee61c978b1a597113e5e4d29e75d34634a47a543b87af3c",
+    "size_bytes": 1126,
+    "file_count": 1,
+    "entry_point": "SKILL.md"
+  },
+  "dependencies": []
+}

@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "hub_version": "2.0.0",
-  "generated_at": "2026-06-12T04:38:39Z",
+  "generated_at": "2026-06-15T02:39:47Z",
   "items": [
     {
       "name": "io.github.phibya/code-reviewer",
@@ -316,6 +316,336 @@
       "min_ziee_version": null,
       "version": "1.0.0",
       "manifest_path": "models/io.github.phibya/qwen2.5-vl-3b-instruct/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/configure-code-sandbox",
+      "category": "skill",
+      "title": "Configure Code Sandbox",
+      "summary": "Enable + configure ziee's bwrap-isolated code execution sandbox.",
+      "tags": [
+        "sandbox",
+        "bwrap",
+        "code-execution",
+        "python",
+        "setup"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "skills/io.github.ziee/configure-code-sandbox/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/configure-llm-providers",
+      "category": "skill",
+      "title": "Configure LLM Providers",
+      "summary": "Walks the user through adding/configuring LLM providers in ziee.",
+      "tags": [
+        "providers",
+        "setup",
+        "anthropic",
+        "openai",
+        "ollama",
+        "groq"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "skills/io.github.ziee/configure-llm-providers/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/configure-mcp-servers",
+      "category": "skill",
+      "title": "Configure MCP Servers",
+      "summary": "Install + configure MCP servers in ziee (built-in + third-party).",
+      "tags": [
+        "mcp",
+        "tools",
+        "setup",
+        "integration"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "skills/io.github.ziee/configure-mcp-servers/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/create-skill",
+      "category": "skill",
+      "title": "Create a Skill",
+      "summary": "Author a new skill following the Agent Skills standard.",
+      "tags": [
+        "skill",
+        "authoring",
+        "agent-skills",
+        "contributing"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "skills/io.github.ziee/create-skill/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/create-workflow",
+      "category": "skill",
+      "title": "Create a Workflow",
+      "summary": "Author a new declarative YAML workflow for ziee.",
+      "tags": [
+        "workflow",
+        "authoring",
+        "yaml",
+        "dag",
+        "contributing"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "skills/io.github.ziee/create-workflow/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/hub-installation",
+      "category": "skill",
+      "title": "Hub Installation",
+      "summary": "Browse + install models, assistants, MCP servers, skills, workflows from the hub.",
+      "tags": [
+        "hub",
+        "registry",
+        "installation",
+        "catalog"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "skills/io.github.ziee/hub-installation/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/manage-projects",
+      "category": "skill",
+      "title": "Manage Projects",
+      "summary": "Create/manage chat projects -- group conversations + attach files + set defaults.",
+      "tags": [
+        "projects",
+        "organization",
+        "files",
+        "conversations"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "skills/io.github.ziee/manage-projects/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/set-up-memory",
+      "category": "skill",
+      "title": "Set Up Memory",
+      "summary": "Enable + use ziee's per-user persistent memory.",
+      "tags": [
+        "memory",
+        "pgvector",
+        "persistence",
+        "mem0"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "skills/io.github.ziee/set-up-memory/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/troubleshoot-workflow-run",
+      "category": "skill",
+      "title": "Troubleshoot a Workflow Run",
+      "summary": "Diagnose a failed workflow run using log resources + the error structure.",
+      "tags": [
+        "workflow",
+        "troubleshooting",
+        "debugging",
+        "logs"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "skills/io.github.ziee/troubleshoot-workflow-run/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/use-assistants",
+      "category": "skill",
+      "title": "Use Assistants",
+      "summary": "Use + create assistants -- preset combinations of prompt + model + parameters.",
+      "tags": [
+        "assistants",
+        "persona",
+        "system-prompt",
+        "configuration"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "skills/io.github.ziee/use-assistants/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/answer-with-citations",
+      "category": "workflow",
+      "title": "Answer With Citations",
+      "summary": "Confirm scope, fan-out search queries, synthesize a cited answer.",
+      "tags": [
+        "question-answering",
+        "citations",
+        "elicit",
+        "llm-map"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "workflows/io.github.ziee/answer-with-citations/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/code-review",
+      "category": "workflow",
+      "title": "Code Review",
+      "summary": "Walks git diff, reviews each file via LLM, synthesizes findings.",
+      "tags": [
+        "code-review",
+        "git",
+        "sandbox",
+        "llm-map"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "workflows/io.github.ziee/code-review/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/data-transform-pipeline",
+      "category": "workflow",
+      "title": "Data Transform Pipeline",
+      "summary": "LLM detects shape, writes a Python transform script, sandbox runs + validates.",
+      "tags": [
+        "data",
+        "transformation",
+        "pandas",
+        "sandbox",
+        "json",
+        "csv"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "workflows/io.github.ziee/data-transform-pipeline/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/deep-research",
+      "category": "workflow",
+      "title": "Deep Research",
+      "summary": "Multi-stage research pipeline -- query gen, fan-out search, cross-verify, outline, memo.",
+      "tags": [
+        "research",
+        "fan-out",
+        "llm-map",
+        "headliner",
+        "memo"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "workflows/io.github.ziee/deep-research/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/document-from-outline",
+      "category": "workflow",
+      "title": "Document From Outline",
+      "summary": "Parse outline, fan-out write each section in parallel, assemble final doc.",
+      "tags": [
+        "writing",
+        "llm-map",
+        "document"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "workflows/io.github.ziee/document-from-outline/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/extract-and-classify",
+      "category": "workflow",
+      "title": "Extract and Classify",
+      "summary": "Chunk text, extract per chunk in parallel, classify aggregated extractions.",
+      "tags": [
+        "extraction",
+        "classification",
+        "llm-map",
+        "text-processing"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "workflows/io.github.ziee/extract-and-classify/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/git-commit-summarize",
+      "category": "workflow",
+      "title": "Git Commit Summarize",
+      "summary": "Capture git diff + status, draft a conventional-commits message.",
+      "tags": [
+        "git",
+        "commit",
+        "sandbox",
+        "conventional-commits"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "workflows/io.github.ziee/git-commit-summarize/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/research-summarize-write",
+      "category": "workflow",
+      "title": "Research, Summarize, Write",
+      "summary": "Three-step llm chain: research a topic, summarize sources, write a memo.",
+      "tags": [
+        "research",
+        "writing",
+        "demo",
+        "entry-level"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "workflows/io.github.ziee/research-summarize-write/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/web-page-to-markdown",
+      "category": "workflow",
+      "title": "Web Page to Markdown",
+      "summary": "Fetch a URL, extract readable content, polish to clean markdown.",
+      "tags": [
+        "web",
+        "scraping",
+        "markdown",
+        "sandbox",
+        "readability"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "workflows/io.github.ziee/web-page-to-markdown/1.0.0.json"
     }
   ]
 }

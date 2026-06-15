@@ -1,0 +1,22 @@
+{
+  "$schema": "/schemas/2026-06-12/workflow.schema.json",
+  "name": "io.github.ziee/code-review",
+  "version": "1.0.0",
+  "description": "Walks git diff, reviews each file via LLM, synthesizes findings.",
+  "tags": [
+    "code-review",
+    "git",
+    "sandbox",
+    "llm-map"
+  ],
+  "license": "MIT",
+  "author": "ziee",
+  "bundle": {
+    "url": "workflows/io.github.ziee/code-review/1.0.0.tar.gz",
+    "sha256": "fde352f3b02262a8e3dbe6ab599c85e107355a926b85c23a356e72a92e4798e1",
+    "size_bytes": 1209,
+    "file_count": 1,
+    "entry_point": "workflow.yaml"
+  },
+  "dependencies": []
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "/schemas/2026-06-12/workflow.schema.json",
+  "name": "io.github.ziee/extract-and-classify",
+  "version": "1.0.0",
+  "description": "Chunk text, extract per chunk in parallel, classify aggregated extractions.",
+  "tags": [
+    "extraction",
+    "classification",
+    "llm-map",
+    "text-processing"
+  ],
+  "license": "MIT",
+  "author": "ziee",
+  "bundle": {
+    "url": "workflows/io.github.ziee/extract-and-classify/1.0.0.tar.gz",
+    "sha256": "7303699fc4e39767877538f9f0e313d6df11e924379a4247a84c01c090613f47",
+    "size_bytes": 685,
+    "file_count": 1,
+    "entry_point": "workflow.yaml"
+  },
+  "dependencies": []
+}

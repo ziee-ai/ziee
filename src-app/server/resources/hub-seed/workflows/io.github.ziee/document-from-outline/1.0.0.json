@@ -1,0 +1,21 @@
+{
+  "$schema": "/schemas/2026-06-12/workflow.schema.json",
+  "name": "io.github.ziee/document-from-outline",
+  "version": "1.0.0",
+  "description": "Parse outline, fan-out write each section in parallel, assemble final doc.",
+  "tags": [
+    "writing",
+    "llm-map",
+    "document"
+  ],
+  "license": "MIT",
+  "author": "ziee",
+  "bundle": {
+    "url": "workflows/io.github.ziee/document-from-outline/1.0.0.tar.gz",
+    "sha256": "38f4e9225a90987d9d8765f4a3db0587dce55a7559e64d051c9213aa6dad22a6",
+    "size_bytes": 760,
+    "file_count": 1,
+    "entry_point": "workflow.yaml"
+  },
+  "dependencies": []
+}

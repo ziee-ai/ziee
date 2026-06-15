@@ -1,0 +1,23 @@
+{
+  "$schema": "/schemas/2026-06-12/workflow.schema.json",
+  "name": "io.github.ziee/web-page-to-markdown",
+  "version": "1.0.0",
+  "description": "Fetch a URL, extract readable content, polish to clean markdown.",
+  "tags": [
+    "web",
+    "scraping",
+    "markdown",
+    "sandbox",
+    "readability"
+  ],
+  "license": "MIT",
+  "author": "ziee",
+  "bundle": {
+    "url": "workflows/io.github.ziee/web-page-to-markdown/1.0.0.tar.gz",
+    "sha256": "55d2c59ddde379fae2f1cd1270215d60dbee03c6ec99fcb2f5198e036f8d2c6a",
+    "size_bytes": 719,
+    "file_count": 1,
+    "entry_point": "workflow.yaml"
+  },
+  "dependencies": []
+}

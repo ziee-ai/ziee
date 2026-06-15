@@ -1,0 +1,22 @@
+{
+  "$schema": "/schemas/2026-06-12/skill.schema.json",
+  "name": "io.github.ziee/create-skill",
+  "version": "1.0.0",
+  "description": "Author a new skill for ziee (Agent Skills standard -- works in Claude Code too). Use when the user wants to create, edit, or share a skill.",
+  "tags": [
+    "skill",
+    "authoring",
+    "agent-skills",
+    "contributing"
+  ],
+  "license": "CC0-1.0",
+  "author": "ziee",
+  "bundle": {
+    "url": "skills/io.github.ziee/create-skill/1.0.0.tar.gz",
+    "sha256": "d70f7a8e19b4f27ff9eabadc59dfe64e78c2b9cf9b288263519c257d7bff3f61",
+    "size_bytes": 1317,
+    "file_count": 1,
+    "entry_point": "SKILL.md"
+  },
+  "dependencies": []
+}
