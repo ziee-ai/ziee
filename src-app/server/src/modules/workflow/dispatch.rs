@@ -84,18 +84,31 @@ async fn resolve_prompt(
     prompt: &Option<String>,
     prompt_file: &Option<String>,
 ) -> Result<String, String> {
-    let raw = match (prompt, prompt_file) {
-        (Some(p), None) => p.clone(),
+    let raw = load_raw_prompt(step, ctx, prompt, prompt_file).await?;
+    crate::modules::workflow::template::render(&raw, ctx).map_err(|e| e.to_string())
+}
+
+/// Load the RAW (un-rendered) prompt from inline `prompt:` or
+/// `prompt_file:`. Used by `llm_map`, whose per-item prompt contains the
+/// `{{ <item_var> }}` binding that does NOT exist in `ctx` — so it must be
+/// rendered per-item via `render_with_bindings` (H4), never pre-rendered
+/// against `ctx` alone.
+async fn load_raw_prompt(
+    step: &StepDef,
+    ctx: &RunContext,
+    prompt: &Option<String>,
+    prompt_file: &Option<String>,
+) -> Result<String, String> {
+    match (prompt, prompt_file) {
+        (Some(p), None) => Ok(p.clone()),
         (None, Some(rel)) => {
             let path = ctx.extracted_path.join(rel);
-            match tokio::fs::read_to_string(&path).await {
-                Ok(s) => s,
-                Err(e) => return Err(format!("read prompt_file '{rel}': {e}")),
-            }
+            tokio::fs::read_to_string(&path)
+                .await
+                .map_err(|e| format!("read prompt_file '{rel}': {e}"))
         }
-        _ => return Err(format!("step '{}' has invalid prompt config", step.id)),
-    };
-    crate::modules::workflow::template::render(&raw, ctx).map_err(|e| e.to_string())
+        _ => Err(format!("step '{}' has invalid prompt config", step.id)),
+    }
 }
 
 #[async_trait]
@@ -331,16 +344,39 @@ impl StepDispatcher for LlmMapDispatcher {
         let parallel = max_parallel.min(crate::modules::workflow::validate::MAX_PARALLEL_HARD_CAP);
         let sem = Arc::new(Semaphore::new(parallel as usize));
 
-        // Per-item prompts: render with `{{ <item_var> }}` bound.
-        let base_prompt = match resolve_prompt(step, ctx, &prompt, &prompt_file).await {
+        // Per-item prompts: render with `{{ <item_var> }}` bound through the
+        // REAL template engine (H4). We load the RAW prompt (NOT pre-rendered
+        // against ctx — it carries the `{{ <item_var> }}` binding) then render
+        // it once per item on the main task (which holds `&ctx`, so ctx refs
+        // like `{{ inputs.x }}` / `{{ s.output }}` resolve too), binding the
+        // item as a resolvable variable so `{{ <item_var>.field }}` /
+        // `{{ <item_var>[N] }}` work when items are objects/arrays. The
+        // finished string is moved into the spawned task.
+        let raw_prompt = match load_raw_prompt(step, ctx, &prompt, &prompt_file).await {
             Ok(p) => p,
             Err(e) => {
                 return StepResult::Failed {
-                    error: format!("prompt render: {e}"),
+                    error: format!("prompt load: {e}"),
                     tokens_used: 0,
                 };
             }
         };
+        let mut per_item_prompts: Vec<String> = Vec::with_capacity(items.len());
+        for (idx, item) in items.iter().enumerate() {
+            let mut binding = std::collections::HashMap::new();
+            binding.insert(item_var.clone(), item.clone());
+            match crate::modules::workflow::template::render_with_bindings(
+                &raw_prompt, ctx, &binding,
+            ) {
+                Ok(p) => per_item_prompts.push(p),
+                Err(e) => {
+                    return StepResult::Failed {
+                        error: format!("item {idx} prompt render: {e}"),
+                        tokens_used: 0,
+                    };
+                }
+            }
+        }
 
         // For each item we'll spawn a future and collect results in input order.
         let mut handles: Vec<tokio::task::JoinHandle<(usize, Result<Value, String>, u64)>> =
@@ -363,10 +399,7 @@ impl StepDispatcher for LlmMapDispatcher {
             progress: ctx.step_item_progress[&step.id].clone(),
         }));
 
-        for (idx, item) in items.iter().enumerate() {
-            let item = item.clone();
-            let item_var = item_var.clone();
-            let base_prompt = base_prompt.clone();
+        for (idx, prompt) in per_item_prompts.into_iter().enumerate() {
             let provider = self.provider.clone();
             let cancel_clone = cancel.clone();
             let sem_clone = sem.clone();
@@ -380,17 +413,6 @@ impl StepDispatcher for LlmMapDispatcher {
                 if cancel_clone.is_cancelled() {
                     return (idx, Err("cancelled".into()), 0);
                 }
-
-                // Per-item template render: substitute `{{ <item_var> }}` first
-                // via a manual placeholder swap so the runner doesn't have to
-                // mutate `ctx` per-item.
-                let item_str = match &item {
-                    Value::String(s) => s.clone(),
-                    _ => serde_json::to_string(&item).unwrap_or_default(),
-                };
-                let needle = format!("{{{{ {item_var} }}}}");
-                let needle_b = format!("{{{{{item_var}}}}}");
-                let prompt = base_prompt.replace(&needle, &item_str).replace(&needle_b, &item_str);
 
                 let mut attempts: u32 = 0;
                 let max_attempts = if on_error == OnError::Retry {
@@ -1039,5 +1061,75 @@ async fn clear_pending(ctx: &RunContext) -> Result<(), AppError> {
         None,
     )
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+
+    fn bare_ctx() -> RunContext {
+        RunContext {
+            run_id: uuid::Uuid::nil(),
+            user_id: uuid::Uuid::nil(),
+            conversation_id: None,
+            workflow_id: uuid::Uuid::nil(),
+            inputs: HashMap::new(),
+            step_outputs: HashMap::new(),
+            step_item_progress: HashMap::new(),
+            extracted_path: PathBuf::from("/tmp/_"),
+            sandbox_workspace: PathBuf::from("/tmp/_/ws"),
+            outputs_dir: PathBuf::from("/tmp/_/ws/outputs"),
+            artifacts_dir: PathBuf::from("/tmp/_/ws/artifacts"),
+            inputs_dir: PathBuf::from("/tmp/_/ws/inputs"),
+            model_id: uuid::Uuid::nil(),
+            model_name: "test-model".into(),
+            sandbox_flavor: None,
+            total_tokens: 0,
+            total_output_bytes: 0,
+            is_dev: false,
+            mocks: HashMap::new(),
+            force_mocks: false,
+        }
+    }
+
+    /// H4: llm_map per-item prompt rendering over OBJECT items binds the
+    /// item so `{{ q.title }}` resolves to the field (not raw spliced JSON).
+    /// This is the exact substitution the `LlmMapDispatcher` performs before
+    /// spawning each item's LLM call.
+    #[test]
+    fn llm_map_item_field_renders() {
+        let ctx = bare_ctx();
+        let item_var = "q".to_string();
+        let raw_prompt = "summarize {{ q.title }}";
+        let items = vec![serde_json::json!({"title": "X"})];
+
+        let mut rendered = Vec::new();
+        for item in &items {
+            let mut binding = HashMap::new();
+            binding.insert(item_var.clone(), item.clone());
+            rendered.push(
+                crate::modules::workflow::template::render_with_bindings(
+                    raw_prompt, &ctx, &binding,
+                )
+                .unwrap(),
+            );
+        }
+        assert_eq!(rendered, vec!["summarize X".to_string()]);
+    }
+
+    /// H4 regression: a scalar item still renders bare (no JSON quoting).
+    #[test]
+    fn llm_map_scalar_item_renders_bare() {
+        let ctx = bare_ctx();
+        let mut binding = HashMap::new();
+        binding.insert("q".to_string(), serde_json::json!("hello"));
+        let s = crate::modules::workflow::template::render_with_bindings(
+            "say {{ q }}", &ctx, &binding,
+        )
+        .unwrap();
+        assert_eq!(s, "say hello");
+    }
 }
 

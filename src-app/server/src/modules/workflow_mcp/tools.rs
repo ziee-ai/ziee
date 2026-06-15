@@ -141,6 +141,12 @@ fn input_schema_for(def: &WorkflowDef) -> Value {
 pub async fn tool_list(pool: &sqlx::PgPool, user_id: Uuid) -> Result<Value, AppError> {
     let workflows = repository::list_for_user(pool, user_id).await?;
     let mut tools: Vec<Value> = Vec::new();
+    // L3: distinct reverse-DNS names can collapse to the SAME `wf_*` slug
+    // (`/` and `.` both map to `_`). Two such workflows would surface as
+    // duplicate tool names → first-wins dispatch on the lossy reverse-scan.
+    // Track emitted slugs and drop-and-warn on a collision so each tool name
+    // is unique in tools/list.
+    let mut emitted_slugs: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for wf in workflows {
         if !wf.enabled {
@@ -158,6 +164,15 @@ pub async fn tool_list(pool: &sqlx::PgPool, user_id: Uuid) -> Result<Value, AppE
                 continue;
             }
         };
+
+        if !emitted_slugs.insert(slug.clone()) {
+            tracing::warn!(
+                workflow = %wf.name,
+                slug = %slug,
+                "workflow_mcp: tool slug collides with an earlier workflow (distinct names mapping to the same wf_* slug); dropping the duplicate from tools/list"
+            );
+            continue;
+        }
 
         // Parse workflow.yaml for the input schema + description.
         let def = match read_workflow_def(&wf).await {
@@ -311,17 +326,47 @@ pub async fn call_tool(
 /// cap (30 min) inside the runner guarantees this loop terminates. We
 /// add a generous independent ceiling so a vanished runner task can't
 /// hang the tool call forever.
+///
+/// M5: a PANICKED runner task stops updating the row but never marks it
+/// terminal — without a no-progress guard the tool call would block the
+/// full 31-min ceiling. We track `updated_at`: every step transition /
+/// item-progress emit bumps it, so a stalled `updated_at` past the
+/// no-progress threshold means the runner is dead → fail fast. The
+/// threshold is generously above the per-step elicit timeout's keep-alive
+/// cadence so a legitimately long-but-live step is never killed.
 async fn await_terminal(pool: &sqlx::PgPool, run_id: Uuid) -> Result<WorkflowRun, AppError> {
     // Slightly above the runner's 30-min wall-clock cap.
     const MAX_WAIT: Duration = Duration::from_secs(31 * 60);
     const POLL_INTERVAL: Duration = Duration::from_millis(500);
+    // No-progress kill: if `updated_at` doesn't advance for this long while
+    // the run is still non-terminal, treat the runner as crashed.
+    const NO_PROGRESS_LIMIT: chrono::Duration = chrono::Duration::minutes(5);
     let started = std::time::Instant::now();
+    let mut last_updated_at: Option<chrono::DateTime<chrono::Utc>> = None;
+    let mut last_progress_at = std::time::Instant::now();
     loop {
         let run = repository::find_run(pool, run_id)
             .await?
             .ok_or_else(|| AppError::not_found("WorkflowRun"))?;
         if matches!(run.status.as_str(), "completed" | "failed" | "cancelled") {
             return Ok(run);
+        }
+        // Reset the no-progress clock whenever the row's updated_at advances.
+        if last_updated_at != Some(run.updated_at) {
+            last_updated_at = Some(run.updated_at);
+            last_progress_at = std::time::Instant::now();
+        }
+        // Fail fast on a stalled runner (M5). Compare against wall-clock age
+        // of the LAST observed progress; a crashed task can't bump updated_at.
+        let stalled_for = chrono::Utc::now().signed_duration_since(run.updated_at);
+        if stalled_for > NO_PROGRESS_LIMIT
+            && last_progress_at.elapsed() > Duration::from_secs(NO_PROGRESS_LIMIT.num_seconds() as u64)
+        {
+            return Err(AppError::internal_error(format!(
+                "workflow_mcp: workflow run made no progress for over {} minutes \
+                 (runner task appears to have crashed); failing the tool call",
+                NO_PROGRESS_LIMIT.num_minutes()
+            )));
         }
         if started.elapsed() > MAX_WAIT {
             return Err(AppError::internal_error(
@@ -404,23 +449,53 @@ pub async fn format_outputs_for_mcp(
             }),
         );
 
+        // H5: EVERY inlined entry (path / preview / full) counts against the
+        // 50 KiB total-text cap, accounted by its REAL serialized byte size.
+        // An entry that would push the running body over the cap auto-promotes
+        // to a resource regardless of expose mode (hundreds of preview/path
+        // entries previously blew past the cap because only the Full arm
+        // tracked it).
+        let promote_to_resource = |entries: &mut Vec<Value>, desc: String| {
+            entries.push(resource_block(&uri, &o.name, desc, &mime));
+        };
+
         match o.expose {
             ExposeMode::Hidden => {
                 // Omitted from content entirely.
             }
             ExposeMode::Path => {
-                inline_outputs.insert(o.name.clone(), json!(uri));
+                let val = json!(uri);
+                let bytes = serialized_len(&val);
+                if running_text_bytes.saturating_add(bytes) > TOTAL_TEXT_CAP_BYTES {
+                    promote_to_resource(
+                        &mut resource_entries,
+                        format!("Output path for '{}' ({} bytes).", o.name, size_bytes),
+                    );
+                } else {
+                    running_text_bytes = running_text_bytes.saturating_add(bytes);
+                    inline_outputs.insert(o.name.clone(), val);
+                }
             }
             ExposeMode::Preview => {
                 let snippet = take_chars(&preview, PREVIEW_SNIPPET_CHARS);
-                inline_outputs.insert(
-                    o.name.clone(),
-                    json!({
-                        "preview": snippet,
-                        "size_bytes": size_bytes,
-                        "uri": uri,
-                    }),
-                );
+                let val = json!({
+                    "preview": snippet,
+                    "size_bytes": size_bytes,
+                    "uri": uri,
+                });
+                let bytes = serialized_len(&val);
+                if running_text_bytes.saturating_add(bytes) > TOTAL_TEXT_CAP_BYTES {
+                    promote_to_resource(
+                        &mut resource_entries,
+                        format!(
+                            "Preview of '{}' ({} bytes); inline body cap reached.",
+                            o.name, size_bytes
+                        ),
+                    );
+                } else {
+                    running_text_bytes = running_text_bytes.saturating_add(bytes);
+                    inline_outputs.insert(o.name.clone(), val);
+                }
             }
             ExposeMode::Artifact => {
                 resource_entries.push(resource_block(
@@ -435,23 +510,39 @@ pub async fn format_outputs_for_mcp(
             ExposeMode::Full => {
                 // Auto-promote when over the per-output cap OR when adding
                 // it would push the running text body over the total cap.
-                let would_exceed_total =
-                    running_text_bytes.saturating_add(size_bytes) > TOTAL_TEXT_CAP_BYTES;
-                if size_bytes > INLINE_FULL_CAP_BYTES || would_exceed_total {
+                if size_bytes > INLINE_FULL_CAP_BYTES {
                     let desc = format!(
                         "Output of '{}' ({} bytes). Truncated preview: '{}...'",
                         o.name,
                         size_bytes,
                         take_chars(&preview, PREVIEW_SNIPPET_CHARS),
                     );
-                    resource_entries.push(resource_block(&uri, &o.name, desc, &mime));
+                    promote_to_resource(&mut resource_entries, desc);
                 } else {
                     // Inline the full value (read from disk if available;
                     // fall back to the preview when content isn't on disk).
-                    let val = read_full_output_value(run, &o.name)
-                        .unwrap_or(Value::String(preview.clone()));
-                    running_text_bytes = running_text_bytes.saturating_add(size_bytes);
-                    inline_outputs.insert(o.name.clone(), val);
+                    // C2: `step_outputs_json` is keyed by STEP ID, not output
+                    // NAME, so we resolve the source step id from the output's
+                    // `from` template (`{{ write.output }}` → step `write`)
+                    // before looking it up — keying by `o.name` silently
+                    // truncated full outputs whose name ≠ step id to the preview.
+                    let val = read_full_output_value(run, o)
+                        .unwrap_or_else(|| Value::String(preview.clone()));
+                    // Account the REAL serialized byte size of what we inline
+                    // against the running total (H5), not the raw size_bytes.
+                    let inlined_bytes = serialized_len(&val);
+                    if running_text_bytes.saturating_add(inlined_bytes) > TOTAL_TEXT_CAP_BYTES {
+                        let desc = format!(
+                            "Output of '{}' ({} bytes); inline body cap reached. Truncated preview: '{}...'",
+                            o.name,
+                            size_bytes,
+                            take_chars(&preview, PREVIEW_SNIPPET_CHARS),
+                        );
+                        promote_to_resource(&mut resource_entries, desc);
+                    } else {
+                        running_text_bytes = running_text_bytes.saturating_add(inlined_bytes);
+                        inline_outputs.insert(o.name.clone(), val);
+                    }
                 }
             }
         }
@@ -597,16 +688,51 @@ fn run_ms_elapsed(run: &WorkflowRun) -> u64 {
 }
 
 /// Read a resolved output's full value from disk via the per-step output
-/// file referenced in `step_outputs_json`. `outputs[].from` typically
-/// reads a single step's output; we resolve via the matching step meta
-/// when the output name equals a step id, else `None` (caller falls back
-/// to the preview). This keeps inlining cheap without re-running the
-/// template engine on the MCP path.
-fn read_full_output_value(run: &WorkflowRun, name: &str) -> Option<Value> {
-    let meta_json = run.step_outputs_json.get(name)?;
+/// file referenced in `step_outputs_json`. C2: `step_outputs_json` is keyed
+/// by STEP ID, not output NAME — so we resolve the source step id from the
+/// output's `from` template (`{{ write.output }}` → step `write`) and look
+/// up by that. Falls back to keying by `o.name` (covers the common
+/// name==step-id case + any `from` we can't parse), else `None` (caller
+/// falls back to the preview). This keeps inlining cheap without re-running
+/// the full template engine on the MCP path.
+fn read_full_output_value(run: &WorkflowRun, o: &OutputDef) -> Option<Value> {
+    let key = step_id_from_template(&o.from).unwrap_or_else(|| o.name.clone());
+    let meta_json = run
+        .step_outputs_json
+        .get(&key)
+        .or_else(|| run.step_outputs_json.get(&o.name))?;
     let meta: crate::modules::workflow::types::OutputMeta =
         serde_json::from_value(meta_json.clone()).ok()?;
     crate::modules::workflow::file_io::read_output_value(&meta).ok()
+}
+
+/// Extract the leading step id from an `outputs[].from` template such as
+/// `{{ write.output }}` / `{{ write.output.field }}` / `{{ write.path }}`.
+/// Returns `None` for `{{ inputs.x }}` heads (no backing step file) or a
+/// `from` with no recognizable `{{ <step>.… }}` head.
+pub(crate) fn step_id_from_template(from: &str) -> Option<String> {
+    let open = from.find("{{")?;
+    let close = from[open + 2..].find("}}")? + open + 2;
+    let inner = from[open + 2..close].trim();
+    // Strip an optional `| filter` suffix.
+    let lhs = inner.split('|').next().unwrap_or(inner).trim();
+    // Head is up to the first `.` or `[`.
+    let head_end = lhs
+        .char_indices()
+        .find(|(_, c)| *c == '.' || *c == '[')
+        .map(|(i, _)| i)
+        .unwrap_or(lhs.len());
+    let head = lhs[..head_end].trim();
+    if head.is_empty() || head == "inputs" {
+        return None;
+    }
+    Some(head.to_string())
+}
+
+/// Serialized byte length of a JSON value as it will appear inline in the
+/// MCP text body (H5 — account the ACTUAL inlined size, not raw size_bytes).
+fn serialized_len(v: &Value) -> usize {
+    serde_json::to_string(v).map(|s| s.len()).unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -697,6 +823,16 @@ mod tests {
         }
     }
 
+    fn out_from(name: &str, from: &str, expose: ExposeMode) -> OutputDef {
+        OutputDef {
+            name: name.into(),
+            from: from.into(),
+            expose,
+            description: None,
+            mime_type: None,
+        }
+    }
+
     #[test]
     fn expose_hidden_omitted_full_inlined() {
         // Drive the synchronous classification logic the formatter uses
@@ -772,6 +908,132 @@ mod tests {
         let parsed: Value = serde_json::from_str(text).unwrap();
         let snip = parsed["outputs"]["prev"]["preview"].as_str().unwrap();
         assert_eq!(snip.chars().count(), 500);
+    }
+
+    // ── L3: slug collision ────────────────────────────────────────────
+
+    #[test]
+    fn distinct_names_collide_to_same_slug() {
+        // `io.github.x/y` and `io_github_x/y` both normalize to the same
+        // `wf_io_github_x_y` slug — a collision the list_tools dedup drops.
+        let a = slug_for_name("io.github.x/y");
+        let b = slug_for_name("io_github_x_y");
+        assert_eq!(a, b, "distinct reverse-DNS names must collide on slug");
+        // Simulate the dedup the list path performs.
+        let mut seen = std::collections::HashSet::new();
+        assert!(seen.insert(a.clone()), "first wins");
+        assert!(!seen.insert(b.clone()), "second is a dup and is dropped");
+    }
+
+    // ── C2: from-template step-id extraction ───────────────────────────
+
+    #[test]
+    fn step_id_from_template_extracts_head() {
+        assert_eq!(
+            step_id_from_template("{{ write.output }}").as_deref(),
+            Some("write")
+        );
+        assert_eq!(
+            step_id_from_template("{{ write.output.title }}").as_deref(),
+            Some("write")
+        );
+        assert_eq!(
+            step_id_from_template("{{ fan.output[0] }}").as_deref(),
+            Some("fan")
+        );
+        assert_eq!(
+            step_id_from_template("{{ write.output | json }}").as_deref(),
+            Some("write")
+        );
+        // inputs head → no backing step file.
+        assert_eq!(step_id_from_template("{{ inputs.x }}"), None);
+        assert_eq!(step_id_from_template("no template here"), None);
+    }
+
+    // ── C2: inline full-output keyed by step id, NOT output name ───────
+
+    #[tokio::test]
+    async fn c2_full_output_name_differs_from_step_id_inlines_real_body() {
+        // The output is NAMED "report" but its `from` reads step "write"'s
+        // output. step_outputs_json is keyed by STEP ID ("write"). The old
+        // code keyed by output name ("report") → miss → truncated to preview.
+        let dir = std::env::temp_dir().join(format!("ziee-c2-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let real_body = "THE FULL REPORT BODY that is NOT in the preview";
+        let path = dir.join("write.txt");
+        std::fs::write(&path, real_body).unwrap();
+
+        let meta = crate::modules::workflow::types::OutputMeta {
+            path: path.clone(),
+            size_bytes: real_body.len() as u64,
+            sha256: String::new(),
+            preview: "preview-snippet".into(),
+            kind: crate::modules::workflow::types::StepKindTag::Llm,
+            parsed_as: crate::modules::workflow::types::ParsedAs::Text,
+        };
+        let step_outputs = json!({ "write": serde_json::to_value(&meta).unwrap() });
+        // final_output_json is keyed by OUTPUT name ("report") with the small
+        // size so it stays under the inline cap.
+        let final_json = json!({
+            "report": {
+                "value_preview": "preview-snippet",
+                "size_bytes": real_body.len(),
+                "expose": "full",
+            }
+        });
+        let run = run_with_final(final_json, step_outputs);
+        let pool = test_pool().await;
+        let outs = vec![out_from("report", "{{ write.output }}", ExposeMode::Full)];
+        let res = format_outputs_for_mcp(&pool, &run, &outs).await.unwrap();
+        let text = res["content"][0]["text"].as_str().unwrap();
+        let parsed: Value = serde_json::from_str(text).unwrap();
+        // The inlined value must be the REAL body, not the preview.
+        assert_eq!(
+            parsed["outputs"]["report"].as_str(),
+            Some(real_body),
+            "inlined full output must be the real on-disk body, not the preview"
+        );
+    }
+
+    // ── H5: 50 KiB total-text cap trips with many preview outputs ──────
+
+    #[tokio::test]
+    async fn h5_total_cap_promotes_many_previews_to_resources() {
+        // Many preview outputs, each ~600 bytes inlined. Past 50 KiB total
+        // they must auto-promote to resources instead of inlining.
+        let big_preview = "p".repeat(600);
+        let mut final_map = serde_json::Map::new();
+        let mut outs = Vec::new();
+        let count = 200; // 200 * ~600 = ~120 KiB >> 50 KiB cap
+        for i in 0..count {
+            let name = format!("o{i}");
+            final_map.insert(
+                name.clone(),
+                json!({
+                    "value_preview": big_preview,
+                    "size_bytes": 600,
+                    "expose": "preview",
+                }),
+            );
+            outs.push(out(&name, ExposeMode::Preview));
+        }
+        let run = run_with_final(Value::Object(final_map), json!({}));
+        let pool = test_pool().await;
+        let res = format_outputs_for_mcp(&pool, &run, &outs).await.unwrap();
+        let content = res["content"].as_array().unwrap();
+        // Some outputs must have promoted to resource blocks (cap tripped).
+        let resource_count = content.iter().filter(|c| c["type"] == json!("resource")).count();
+        assert!(
+            resource_count > 0,
+            "H5: total-text cap must promote excess previews to resources"
+        );
+        // The inline text body must stay within the cap.
+        let text = content[0]["text"].as_str().unwrap();
+        assert!(
+            text.len() <= TOTAL_TEXT_CAP_BYTES + 4096,
+            "inline body {} exceeds the 50 KiB cap (+slack)",
+            text.len()
+        );
     }
 
     // A connectionless pool for tests that don't actually query. The

@@ -42,6 +42,54 @@ const READ_CAP_BYTES: u64 = 1024 * 1024;
 
 const LOG_KINDS: &[&str] = &["prompt", "raw_output", "stderr", "items", "trace"];
 
+// ── path-safety (SEC-1) ────────────────────────────────────────────────
+
+/// Reject any URI path component that could traverse out of the run dir:
+/// `..`, empty, absolute markers, or embedded path separators (`/`, `\`).
+/// Mirrors `skill_mcp::sanitize_relative_path`'s airtight component check
+/// (per the security audit) but applied per-segment, since these segments
+/// come straight off an attacker-controllable `ziee://` URI. The URI is
+/// already URL-decoded by the transport, so a `%2f`-encoded separator
+/// arrives here as a literal `/` and is caught by the separator check.
+fn sanitize_uri_component(label: &str, seg: &str) -> Result<String, AppError> {
+    if seg.is_empty()
+        || seg == ".."
+        || seg == "."
+        || seg.contains('/')
+        || seg.contains('\\')
+        || seg.contains('\0')
+    {
+        return Err(AppError::bad_request(
+            "WORKFLOW_URI_INVALID",
+            format!("{label} component '{seg}' is not a safe path segment"),
+        ));
+    }
+    Ok(seg.to_string())
+}
+
+/// Defense-in-depth: after building a path under the run dir, canonicalize
+/// it (and the run dir) and confirm the resolved file stays under the run
+/// workspace dir — catches symlink escapes + any residual traversal. The
+/// run dir is `<workspace>/<conv-or-run>/workflow/<run>/`.
+fn confirm_under_run_dir(run: &WorkflowRun, path: &std::path::Path) -> Result<(), AppError> {
+    let conv_dir_id = run.conversation_id.unwrap_or(run.id);
+    let run_dir = workflow_workspace_root()
+        .join(conv_dir_id.to_string())
+        .join("workflow")
+        .join(run.id.to_string());
+    let canon_root = std::fs::canonicalize(&run_dir)
+        .map_err(|e| AppError::not_found(&format!("workflow run dir missing: {e}")))?;
+    let canon_path = std::fs::canonicalize(path)
+        .map_err(|_| AppError::not_found("resource file not found in run dir"))?;
+    if !canon_path.starts_with(&canon_root) {
+        return Err(AppError::forbidden(
+            "WORKFLOW_PATH_ESCAPE",
+            "resolved path escapes the workflow run dir",
+        ));
+    }
+    Ok(())
+}
+
 // ── resources/list ────────────────────────────────────────────────────
 
 pub async fn resources_list(pool: &sqlx::PgPool, user_id: Uuid) -> Result<Value, AppError> {
@@ -205,12 +253,10 @@ fn read_artifact(
     step_id: &str,
     filename: &str,
 ) -> Result<(Vec<u8>, String), AppError> {
-    if filename.contains("..") || filename.starts_with('/') {
-        return Err(AppError::bad_request(
-            "ARTIFACT_PATH_INVALID",
-            "artifact filename not safe",
-        ));
-    }
+    // SEC-1: step_id + filename are already sanitized in `parse_uri`; this
+    // re-check is defense in depth for any internal caller.
+    sanitize_uri_component("artifact step id", step_id)?;
+    sanitize_uri_component("artifact filename", filename)?;
     let step_arts = run
         .step_artifacts_json
         .get(step_id)
@@ -221,6 +267,8 @@ fn read_artifact(
         .into_iter()
         .find(|m| m.filename == filename)
         .ok_or_else(|| AppError::not_found("artifact filename not found"))?;
+    // Confirm the recorded host_path stays under the run dir before reading.
+    confirm_under_run_dir(run, &meta.host_path)?;
     let bytes = std::fs::read(&meta.host_path)
         .map_err(|e| AppError::not_found(&format!("artifact file missing: {e}")))?;
     Ok((bytes, meta.mime_type))
@@ -237,6 +285,9 @@ fn read_log(
             format!("log kind '{kind}' not recognized"),
         ));
     }
+    // SEC-1: re-sanitize the step id (defense in depth; parse_uri already
+    // rejected separators / `..`, but read_log is also reachable internally).
+    sanitize_uri_component("log step id", step_id)?;
     // Reconstruct the on-disk path the same way log_stream.rs does:
     // <workspace>/<conv-or-run>/workflow/<run>/logs/<step>/<kind>[.json]
     let conv_dir_id = run.conversation_id.unwrap_or(run.id);
@@ -332,24 +383,30 @@ pub fn parse_uri(uri: &str) -> Result<ParsedResourceUri, AppError> {
                     "trailing segments after output name",
                 ));
             }
-            ResourceKind::Output(name.to_string())
+            // SEC-1: output name is later used to key step_outputs_json (no
+            // path join) but sanitize anyway so a `..`/separator can't slip
+            // into any downstream path use.
+            ResourceKind::Output(sanitize_uri_component("output name", name)?)
         }
         "artifacts" => {
             let step_id = parts.next().ok_or_else(|| {
                 AppError::bad_request("WORKFLOW_URI_INVALID", "missing artifact step id")
             })?;
-            // Filename may itself contain `/`? No — artifacts are flat per
-            // step. Join the remainder defensively but reject `..`.
-            let filename: String = parts.collect::<Vec<_>>().join("/");
-            if filename.is_empty() {
+            // Artifacts are flat per step — exactly one filename segment.
+            let filename = parts.next().ok_or_else(|| {
+                AppError::bad_request("WORKFLOW_URI_INVALID", "missing artifact filename")
+            })?;
+            if parts.next().is_some() {
                 return Err(AppError::bad_request(
                     "WORKFLOW_URI_INVALID",
-                    "missing artifact filename",
+                    "trailing segments after artifact filename",
                 ));
             }
+            // SEC-1: sanitize BOTH the step id AND the filename (the old code
+            // checked only the filename, leaving step_id traversable).
             ResourceKind::Artifact {
-                step_id: step_id.to_string(),
-                filename,
+                step_id: sanitize_uri_component("artifact step id", step_id)?,
+                filename: sanitize_uri_component("artifact filename", filename)?,
             }
         }
         "logs" => {
@@ -357,11 +414,20 @@ pub fn parse_uri(uri: &str) -> Result<ParsedResourceUri, AppError> {
                 AppError::bad_request("WORKFLOW_URI_INVALID", "missing log step id")
             })?;
             // kind is optional in list-form (`.../logs/<step>`); read-form
-            // needs it. Default to "stderr"? No — require it for read.
+            // needs it. Default to "trace".
             let kind = parts.next().unwrap_or("trace");
+            if parts.next().is_some() {
+                return Err(AppError::bad_request(
+                    "WORKFLOW_URI_INVALID",
+                    "trailing segments after log kind",
+                ));
+            }
+            // SEC-1: sanitize the step id (the old code joined it raw into the
+            // log path). `kind` is whitelist-validated in `read_log`, but
+            // sanitize it too for defense in depth.
             ResourceKind::Log {
-                step_id: step_id.to_string(),
-                kind: kind.to_string(),
+                step_id: sanitize_uri_component("log step id", step_id)?,
+                kind: sanitize_uri_component("log kind", kind)?,
             }
         }
         other => {
@@ -490,5 +556,58 @@ mod tests {
         assert!(is_text_mime("application/json"));
         assert!(!is_text_mime("image/png"));
         assert!(!is_text_mime("application/octet-stream"));
+    }
+
+    // ── SEC-1: path traversal in step_id / filename / output name ─────
+
+    #[test]
+    fn sanitize_rejects_traversal_segments() {
+        assert!(sanitize_uri_component("x", "..").is_err());
+        assert!(sanitize_uri_component("x", ".").is_err());
+        assert!(sanitize_uri_component("x", "a/b").is_err());
+        assert!(sanitize_uri_component("x", "a\\b").is_err());
+        assert!(sanitize_uri_component("x", "").is_err());
+        assert!(sanitize_uri_component("x", "a\0b").is_err());
+        // A normal segment passes.
+        assert_eq!(sanitize_uri_component("x", "step1").unwrap(), "step1");
+        assert_eq!(sanitize_uri_component("x", "report.md").unwrap(), "report.md");
+    }
+
+    #[test]
+    fn parse_uri_rejects_dotdot_in_log_step_id() {
+        // SEC-1: `..` in the step_id of a log URI must be rejected. The
+        // transport URL-decodes, so `..%2f..%2fetc` arrives as literal `/`
+        // segments — each is caught either as the `..` segment or as an
+        // embedded separator in the surrounding segment.
+        let run = Uuid::new_v4();
+        // Literal `..` segment in the step id position.
+        let bad = format!("ziee://workflow-runs/{run}/logs/../stderr");
+        assert!(parse_uri(&bad).is_err(), "must reject `..` step id");
+    }
+
+    #[test]
+    fn parse_uri_rejects_dotdot_in_artifact_step_id() {
+        let run = Uuid::new_v4();
+        let bad = format!("ziee://workflow-runs/{run}/artifacts/../report.md");
+        assert!(parse_uri(&bad).is_err(), "must reject `..` artifact step id");
+    }
+
+    #[test]
+    fn parse_uri_rejects_dotdot_in_artifact_filename() {
+        let run = Uuid::new_v4();
+        // step ok, filename traversal — `..%2f..` decoded → `../..` which the
+        // single-segment rule + `..` check reject (the extra `/` makes it a
+        // trailing-segment error or the `..` check fires first).
+        let bad = format!("ziee://workflow-runs/{run}/artifacts/step1/..");
+        assert!(parse_uri(&bad).is_err(), "must reject `..` filename");
+        let bad2 = format!("ziee://workflow-runs/{run}/artifacts/step1/a/../b");
+        assert!(parse_uri(&bad2).is_err(), "must reject multi-segment filename");
+    }
+
+    #[test]
+    fn parse_uri_rejects_dotdot_in_output_name() {
+        let run = Uuid::new_v4();
+        let bad = format!("ziee://workflow-runs/{run}/outputs/..");
+        assert!(parse_uri(&bad).is_err(), "must reject `..` output name");
     }
 }

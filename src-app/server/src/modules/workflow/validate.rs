@@ -705,6 +705,14 @@ fn check_template_refs(workflow: &WorkflowDef) -> Vec<ValidationError> {
                             loc.to_string(),
                         ));
                     } else if field != "output" && field != "path" {
+                        // `field` is the LEADING access segment after the step
+                        // head (`scan_var_refs` returns the first field only),
+                        // so chained refs like `{{ s.output.proceed }}` or
+                        // `{{ s.output[0] }}` carry leading field `output` and
+                        // pass here — the deeper chain is type-checked by
+                        // `ref_check.rs` and resolved by `template.rs` (C1).
+                        // Only a non-output/path leading field (or a bare
+                        // index directly on the step head) is an error.
                         out.push(ValidationError::at(
                             "semantic",
                             "WORKFLOW_BAD_STEP_FIELD",
@@ -1049,6 +1057,45 @@ outputs:
         let tmp = tempdir().unwrap();
         let errs = validate_collecting(&wf, tmp.path(), false);
         assert!(errs.iter().any(|e| e.code == "WORKFLOW_UNKNOWN_STEP_REF"));
+    }
+
+    #[test]
+    fn chained_step_output_ref_not_bad_step_field() {
+        // C1: `{{ confirm.output.proceed }}` (object readback) +
+        // `{{ fan.output[0] }}` (array index) must NOT trip
+        // WORKFLOW_BAD_STEP_FIELD — the leading field is `output`, the
+        // deeper chain is template-resolvable + type-checked elsewhere.
+        let yaml = r#"
+steps:
+  - id: confirm
+    kind: elicit
+    message: "go?"
+    schema:
+      type: object
+      properties:
+        proceed: { type: boolean }
+      required: [proceed]
+  - id: fan
+    kind: llm_map
+    for_each: "{{ inputs.qs }}"
+    item_var: q
+    prompt: "{{ q }}"
+    depends_on: [confirm]
+  - id: use
+    kind: llm
+    prompt: "go={{ confirm.output.proceed }} first={{ fan.output[0] }}"
+    depends_on: [confirm, fan]
+inputs:
+  - name: qs
+    default: ["a", "b"]
+"#;
+        let wf = parse_workflow_yaml(yaml).unwrap();
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(
+            !errs.iter().any(|e| e.code == "WORKFLOW_BAD_STEP_FIELD"),
+            "chained step.output refs must not trip WORKFLOW_BAD_STEP_FIELD: {errs:?}"
+        );
     }
 
     #[test]
