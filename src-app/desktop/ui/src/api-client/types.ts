@@ -75,6 +75,21 @@ export interface AutoApprovedServer {
   tools: string[]
 }
 
+export interface AvailableSkillEntry {
+  description?: string
+  id: string
+  name: string
+  when_to_use?: string
+}
+
+export interface AvailableSkillsQuery {
+  conversation_id: string
+}
+
+export interface AvailableSkillsResponse {
+  skills: AvailableSkillEntry[]
+}
+
 export interface AvailableUpdatesResponse {
   arch: string
   engine: string
@@ -125,6 +140,11 @@ export interface CallToolRequest {
 export interface CallToolResponse {
   content: ToolContent[]
   is_error: boolean
+}
+
+export interface CancelAckResponse {
+  run_id: string
+  status: string
 }
 
 export interface Catalog {
@@ -409,12 +429,30 @@ export interface CreateProjectRequest {
   name?: string
 }
 
+export interface CreateSkillFromHubRequest {
+  hub_id: string
+}
+
+export interface CreateSystemSkillFromHubRequest {
+  groups?: string[]
+  hub_id: string
+}
+
+export interface CreateSystemWorkflowFromHubRequest {
+  groups?: string[]
+  hub_id: string
+}
+
 export interface CreateUserRequest {
   display_name?: string
   email: string
   password: string
   permissions?: string[]
   username: string
+}
+
+export interface CreateWorkflowFromHubRequest {
+  hub_id: string
 }
 
 export interface DeleteAllResponse {
@@ -568,6 +606,10 @@ export interface DownloadSnapshot {
 
 export type DownloadStatus = 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled'
 
+export interface DownloadTokenGenQuery {
+  version?: number
+}
+
 export interface DownloadTokenQuery {
   token: string
 }
@@ -604,6 +646,26 @@ export interface DrainEntry {
   version: string
 }
 
+export interface DryRunRequest {
+  inputs?: any
+}
+
+export interface DryRunResult {
+  est_cost_usd?: number
+  steps: DryRunStep[]
+  total_est_calls: number
+  total_est_tokens: number
+}
+
+export interface DryRunStep {
+  est_calls: number
+  est_tokens_in: number
+  est_tokens_out: number
+  kind: string
+  runtime_dependent: boolean
+  step_id: string
+}
+
 export interface EditMessageRequest {
   content: string
 }
@@ -611,6 +673,16 @@ export interface EditMessageRequest {
 export interface EditMessageResponse {
   branch: Branch
   message: Message
+}
+
+export interface ElicitAckResponse {
+  elicitation_id: string
+  run_id: string
+  status: string
+}
+
+export interface ElicitationResponseRequest {
+  response: any
 }
 
 export type EngineDownloadStatus = 'pending' | 'downloading' | 'verifying' | 'extracting' | 'registering' | 'completed' | 'failed'
@@ -639,9 +711,11 @@ export interface EnvironmentInfo {
 }
 
 export interface File {
+  blob_version_id: string
   checksum?: string
   created_at: string
   created_by: string
+  current_version_id: string
   file_size: number
   filename: string
   has_thumbnail: boolean
@@ -652,6 +726,7 @@ export interface File {
   text_page_count: number
   updated_at: string
   user_id: string
+  version: number
 }
 
 export type FileFormat = 'safetensors' | 'pytorch' | 'gguf'
@@ -666,6 +741,39 @@ export interface FileListResponse {
 }
 
 export type FileRole = 'weight' | 'index' | 'config' | 'tokenizer' | 'vocab' | 'other'
+
+export interface FileVersion {
+  blob_version_id: string
+  checksum?: string
+  created_at: string
+  created_by: string
+  file_id: string
+  file_size: number
+  has_thumbnail: boolean
+  id: string
+  is_head: boolean
+  mime_type?: string
+  preview_page_count: number
+  processing_metadata: any
+  source_message_id?: string
+  text_page_count: number
+  version: number
+}
+
+export interface FixtureFailure {
+  actual_preview: string
+  assertion: string
+  expected: string
+  output_name: string
+}
+
+export interface FixtureResult {
+  duration_ms: number
+  failure?: FixtureFailure
+  name: string
+  passed: boolean
+  skipped?: boolean
+}
 
 export interface FtsRebuildRequest {
   dictionary: string
@@ -798,6 +906,10 @@ export interface HealthResponse {
   status: string
 }
 
+export interface HideSkillInConversationRequest {
+  conversation_id: string
+}
+
 export interface HubAssistant {
   $schema?: string
   description?: string
@@ -818,10 +930,20 @@ export interface HubAssistant {
   websiteUrl?: string
 }
 
+export interface HubBundle {
+  entry_point: string
+  file_count: number
+  sha256: string
+  size_bytes: number
+  url: string
+}
+
 export interface HubCatalogCounts {
   assistants: number
   mcp_servers: number
   models: number
+  skills?: number
+  workflows?: number
 }
 
 export interface HubCatalogRefreshResponse {
@@ -838,7 +960,7 @@ export interface HubCatalogVersionResponse {
   source: CatalogProvenance
 }
 
-export type HubCategory = 'assistant' | 'mcp-server' | 'model'
+export type HubCategory = 'assistant' | 'mcp-server' | 'model' | 'skill' | 'workflow'
 
 export interface HubDependency {
   kind: DependencyKind
@@ -903,6 +1025,8 @@ export interface HubManifest {
   category: HubCategory
   mcp_server?: HubMCPServer
   model?: HubModel
+  skill?: HubSkill
+  workflow?: HubWorkflow
 }
 
 export interface HubManifestQuery {
@@ -946,9 +1070,35 @@ export interface HubRepository {
   url: string
 }
 
+export interface HubSkill {
+  $schema?: string
+  description?: string
+  _meta?: any
+  author?: string
+  bundle: HubBundle
+  dependencies?: HubDependency[]
+  license?: string
+  name: string
+  tags?: string[]
+  version?: string
+}
+
 export interface HubVersionResponse {
   last_updated?: string
   version: string
+}
+
+export interface HubWorkflow {
+  $schema?: string
+  description?: string
+  _meta?: any
+  author?: string
+  bundle: HubBundle
+  dependencies?: HubDependency[]
+  license?: string
+  name: string
+  tags?: string[]
+  version?: string
 }
 
 export type ImageSource = {
@@ -961,6 +1111,16 @@ export type ImageSource = {
 } | {
   type: 'file'
   file_id: string
+}
+
+export interface ImportQuery {
+  name?: string
+  scope?: string
+}
+
+export interface ImportQuery2 {
+  name?: string
+  scope?: string
 }
 
 export interface IndexItem {
@@ -1020,6 +1180,14 @@ export interface InstanceStatusResponse {
   model_id: string
   status: string
   uptime_seconds?: number
+}
+
+export interface ItemProgress {
+  completed: number
+  failed: number
+  skipped: number
+  tokens_so_far: number
+  total: number
 }
 
 export interface LinkAccountRequest {
@@ -1468,6 +1636,8 @@ export interface MessageContentDataFileAttachment {
   file_size: number
   filename: string
   mime_type?: string | null
+  version?: number | null
+  version_id?: string | null
 }
 export interface MessageContentDataToolUse {
   type: 'tool_use'
@@ -1890,6 +2060,8 @@ export interface ResourceLink {
   name?: string
   size?: number
   uri: string
+  version?: number
+  version_id?: string
 }
 
 export interface RespondToElicitationRequest {
@@ -1899,6 +2071,10 @@ export interface RespondToElicitationRequest {
 
 export interface RespondToElicitationResponse {
   success: boolean
+}
+
+export interface RestoreVersionRequest {
+  version: number
 }
 
 export interface RichFile {
@@ -2040,6 +2216,11 @@ export interface SSEChatStreamTitleUpdatedData {
   title: string
 }
 
+export interface SSEConnectedData {
+  message: string
+  run_id: string
+}
+
 export interface SSEDownloadProgressConnectedData {
   message?: string
 }
@@ -2049,6 +2230,22 @@ export type SSEDownloadProgressEvent = {
   update: DownloadProgressUpdate[]
   complete: string
   error: string
+}
+
+export interface SSEElicitationRequiredData {
+  deadline_at: string
+  elicitation_id: string
+  message: string
+  run_id: string
+  schema: any
+  step_id: string
+}
+
+export interface SSEElicitationResolvedData {
+  elicitation_id: string
+  resolved_by: string
+  run_id: string
+  step_id: string
 }
 
 export interface SSEEngineDownloadCompleteData {
@@ -2139,6 +2336,94 @@ export interface SSELogLineData {
   line: string
 }
 
+export interface SSERunCancelledData {
+  cancelled_at_step?: string
+  run_id: string
+  tokens_at_cancel: number
+  total_tokens: number
+}
+
+export interface SSERunCompletedData {
+  ms_elapsed: number
+  outputs_preview: any
+  run_id: string
+  total_tokens: number
+}
+
+export interface SSERunFailedData {
+  error: string
+  failed_at_step?: string
+  run_id: string
+  total_tokens: number
+}
+
+export interface SSERunStartedData {
+  conversation_id?: string
+  model_id?: string
+  run_id: string
+  sandbox_flavor?: string
+  total_steps: number
+  workflow_id: string
+}
+
+export interface SSESnapshotData {
+  current_step?: string
+  final_output_json?: any
+  pending_elicitation_json?: any
+  run_id: string
+  status: string
+  step_artifacts_json: any
+  step_item_progress_json: any
+  step_logs_json: any
+  step_outputs_json: any
+  total_tokens: number
+}
+
+export interface SSEStepCompletedData {
+  ms_elapsed: number
+  output_preview: string
+  run_id: string
+  step_id: string
+  tokens_used: number
+}
+
+export interface SSEStepFailedData {
+  error: string
+  run_id: string
+  step_id: string
+  tokens_used: number
+}
+
+export interface SSEStepItemProgressData {
+  progress: ItemProgress
+  run_id: string
+  step_id: string
+}
+
+export interface SSEStepStartedData {
+  message?: string
+  run_id: string
+  step_id: string
+  step_index: number
+  step_kind: string
+  total_steps: number
+}
+
+export type SSEWorkflowRunEvent = {
+  connected: SSEConnectedData
+  snapshot: SSESnapshotData
+  runStarted: SSERunStartedData
+  stepStarted: SSEStepStartedData
+  stepItemProgress: SSEStepItemProgressData
+  stepCompleted: SSEStepCompletedData
+  stepFailed: SSEStepFailedData
+  elicitationRequired: SSEElicitationRequiredData
+  elicitationResolved: SSEElicitationResolvedData
+  runCompleted: SSERunCompletedData
+  runCancelled: SSERunCancelledData
+  runFailed: SSERunFailedData
+}
+
 export interface SandboxFlavorsResponse {
   available: EnvironmentInfo[]
   host_allowed_commands: string[]
@@ -2202,6 +2487,42 @@ export interface SetupStatusResponse {
   needs_setup: boolean
 }
 
+export interface Skill {
+  description?: string
+  bundle_sha256: string
+  bundle_size_bytes: number
+  created_at: string
+  created_by?: string
+  display_name?: string
+  enabled: boolean
+  entry_point: string
+  extracted_path: string
+  file_count: number
+  frontmatter_json: any
+  id: string
+  is_dev: boolean
+  name: string
+  owner_user_id?: string
+  scope: string
+  tags: any
+  updated_at: string
+  version?: string
+  when_to_use?: string
+}
+
+export interface SkillFromHubResponse {
+  hub_tracking: HubEntity
+  skill: Skill
+}
+
+export interface SkillGroupsRequest {
+  group_ids: string[]
+}
+
+export interface SkillListResponse {
+  skills: Skill[]
+}
+
 export type StartInstanceRequest = any
 
 export interface StreamError {
@@ -2250,7 +2571,7 @@ export interface SyncConnectedData {
   connection_id: string
 }
 
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'user_llm_provider' | 'user_mcp_server' | 'session'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'file' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run'
 
 export interface SyncEvent {
   action: SyncAction
@@ -2310,6 +2631,18 @@ export interface TestRepositoryConnectionRequest {
 export interface TestRepositoryConnectionResponse {
   message: string
   success: boolean
+}
+
+export interface TestRunResponse {
+  failed: number
+  passed: number
+  results: FixtureResult[]
+  skipped: number
+  total: number
+}
+
+export interface TestWorkflowRequest {
+  conversation_id?: string
 }
 
 export interface TextPageQuery {
@@ -2522,6 +2855,14 @@ export interface UpdateRuntimeSettingsRequest {
   idle_unload_secs?: number
 }
 
+export interface UpdateSkill {
+  description?: string
+  display_name?: string
+  enabled?: boolean
+  tags?: any
+  when_to_use?: string
+}
+
 export interface UpdateStatusResponse {
   checked_at?: string
   current_version: string
@@ -2667,6 +3008,41 @@ export interface UserMemorySettings {
   user_id: string
 }
 
+export interface ValidateErrorEntry {
+  code: string
+  message: string
+  path?: string
+}
+
+export interface ValidateErrorEntry2 {
+  code: string
+  location?: string
+  message: string
+}
+
+export interface ValidateSkillRequest {
+  skill_md: string
+}
+
+export interface ValidateSkillResponse {
+  errors: ValidateErrorEntry[]
+  valid: boolean
+  warnings: ValidateErrorEntry[]
+}
+
+export interface ValidateWorkflowRequest {
+  workflow_yaml: string
+}
+
+export interface ValidateWorkflowResponse {
+  errors: ValidateErrorEntry2[]
+  est_max_calls: number
+  est_max_tokens: number
+  steps: number
+  valid: boolean
+  warnings: ValidateErrorEntry2[]
+}
+
 export interface VersionStatus {
   available: RootfsRelease[]
   conversation_count: number
@@ -2686,6 +3062,71 @@ export interface VersionUsageEntry {
 export interface VersionUsageResponse {
   unresolved: ModelUsageInfo[]
   versions: VersionUsageEntry[]
+}
+
+export interface Workflow {
+  description?: string
+  bundle_sha256: string
+  bundle_size_bytes: number
+  compiled_ir_json?: any
+  created_at: string
+  created_by?: string
+  display_name?: string
+  enabled: boolean
+  entry_point: string
+  extracted_path: string
+  file_count: number
+  id: string
+  is_dev: boolean
+  name: string
+  owner_user_id?: string
+  scope: string
+  tags: any
+  updated_at: string
+  version?: string
+}
+
+export interface WorkflowFromHubResponse {
+  hub_tracking: HubEntity
+  workflow: Workflow
+}
+
+export interface WorkflowListResponse {
+  workflows: Workflow[]
+}
+
+export interface WorkflowRun {
+  conversation_id?: string
+  created_at: string
+  current_step?: string
+  error_message?: string
+  final_output_json?: any
+  id: string
+  inputs_json: any
+  model_id?: string
+  pending_elicitation_json?: any
+  run_kind: string
+  sandbox_flavor?: string
+  status: string
+  step_artifacts_json: any
+  step_item_progress_json: any
+  step_logs_json: any
+  step_outputs_json: any
+  total_tokens: number
+  updated_at: string
+  user_id: string
+  workflow_id: string
+}
+
+export interface WorkflowRunRequest {
+  conversation_id?: string
+  inputs?: any
+  mocks?: any
+}
+
+export interface WorkflowRunStartResponse {
+  run_id: string
+  status: string
 }
 
 // =============================================================================
@@ -2789,6 +3230,10 @@ export enum Permissions {
   RuntimeVersionRead = 'llm_local_runtime::versions_read',
   RuntimeVersionUpdate = 'llm_local_runtime::update',
   ServerUpdateRead = 'server_update::read',
+  SkillsAssignToGroups = 'skills::assign_to_groups',
+  SkillsInstall = 'skills::install',
+  SkillsManageSystem = 'skills::manage_system',
+  SkillsRead = 'skills::read',
   SummarizationSettingsManage = 'summarization::settings::manage',
   SummarizationSettingsRead = 'summarization::settings::read',
   UserLlmProvidersRead = 'user_llm_providers::read',
@@ -2797,7 +3242,12 @@ export enum Permissions {
   UsersEdit = 'users::edit',
   UsersRead = 'users::read',
   UsersResetPassword = 'users::reset_password',
-  UsersToggleStatus = 'users::toggle_status'
+  UsersToggleStatus = 'users::toggle_status',
+  WorkflowsExecute = 'workflows::execute',
+  WorkflowsInstall = 'workflows::install',
+  WorkflowsManage = 'workflows::manage',
+  WorkflowsManageSystem = 'workflows::manage_system',
+  WorkflowsRead = 'workflows::read'
 }
 
 export const PermissionDescriptions: Record<string, string> = {
@@ -2897,6 +3347,10 @@ export const PermissionDescriptions: Record<string, string> = {
   RuntimeVersionRead: 'View runtime versions and check for updates',
   RuntimeVersionUpdate: 'Update runtime version settings and defaults',
   ServerUpdateRead: 'View the cached server update-availability status.',
+  SkillsAssignToGroups: 'Manage group assignments for system-scope skills',
+  SkillsInstall: 'Install user-scope skills (from hub or local import)',
+  SkillsManageSystem: 'Install / edit / delete system-scope skills (admin)',
+  SkillsRead: 'View installed skills',
   SummarizationSettingsManage: 'Update deployment-wide summarization settings (enable, model, thresholds, prompts).',
   SummarizationSettingsRead: 'Read deployment-wide summarization settings (model + thresholds + prompt overrides).',
   UserLlmProvidersRead: 'View available LLM providers and models',
@@ -2905,7 +3359,12 @@ export const PermissionDescriptions: Record<string, string> = {
   UsersEdit: 'Edit existing user information',
   UsersRead: 'View user information and list users',
   UsersResetPassword: 'Reset user passwords',
-  UsersToggleStatus: 'Enable or disable user accounts'
+  UsersToggleStatus: 'Enable or disable user accounts',
+  WorkflowsExecute: 'Kick off a workflow run',
+  WorkflowsInstall: 'Install user-scope workflows',
+  WorkflowsManage: 'Edit / delete own user-scope workflows',
+  WorkflowsManageSystem: 'Install / edit / delete system-scope workflows (admin)',
+  WorkflowsRead: 'View installed workflows'
 }
 
 // =============================================================================
@@ -2974,13 +3433,20 @@ export const ApiEndpoints = {
   'CoreMemory.upsert': 'PUT /api/assistants/core-memory',
   'File.delete': 'DELETE /api/files/{file_id}',
   'File.download': 'GET /api/files/{file_id}/download',
+  'File.downloadVersion': 'GET /api/files/{file_id}/versions/{version}/download',
   'File.downloadWithToken': 'GET /api/files/{file_id}/download-with-token',
   'File.generateDownloadToken': 'POST /api/files/{file_id}/download-token',
   'File.get': 'GET /api/files/{file_id}',
+  'File.getHeadVersion': 'GET /api/files/{file_id}/head',
   'File.getPreview': 'GET /api/files/{file_id}/preview',
   'File.getTextContent': 'GET /api/files/{file_id}/text',
   'File.getThumbnail': 'GET /api/files/{file_id}/thumbnail',
+  'File.getVersion': 'GET /api/files/{file_id}/versions/{version}',
   'File.list': 'GET /api/files',
+  'File.listVersions': 'GET /api/files/{file_id}/versions',
+  'File.previewVersion': 'GET /api/files/{file_id}/versions/{version}/preview',
+  'File.restore': 'POST /api/files/{file_id}/restore',
+  'File.textVersion': 'GET /api/files/{file_id}/versions/{version}/text',
   'File.upload': 'POST /api/files/upload',
   'Group.getProviders': 'GET /api/groups/{group_id}/providers',
   'Group.getSystemServers': 'GET /api/groups/{group_id}/system-servers',
@@ -2993,7 +3459,11 @@ export const ApiEndpoints = {
   'Hub.createAssistantTemplateFromHub': 'POST /api/hub/assistant-templates/create',
   'Hub.createMcpServerFromHub': 'POST /api/hub/mcp-servers/create',
   'Hub.createModelFromHub': 'POST /api/hub/models/download',
+  'Hub.createSkillFromHub': 'POST /api/skills/install-from-hub',
   'Hub.createSystemMcpServerFromHub': 'POST /api/hub/mcp-servers/create-system',
+  'Hub.createSystemSkillFromHub': 'POST /api/skills/system/install-from-hub',
+  'Hub.createSystemWorkflowFromHub': 'POST /api/hub/workflows/create-system',
+  'Hub.createWorkflowFromHub': 'POST /api/hub/workflows/create',
   'Hub.getAssistants': 'GET /api/hub/assistants',
   'Hub.getAssistantsVersion': 'GET /api/hub/assistants/version',
   'Hub.getCatalog': 'GET /api/hub/index',
@@ -3148,6 +3618,22 @@ export const ApiEndpoints = {
   'RuntimeVersion.syncCache': 'POST /api/local-runtime/versions/sync-cache',
   'RuntimeVersion.usage': 'GET /api/local-runtime/version-usage',
   'ServerUpdate.getStatus': 'GET /api/server-update/status',
+  'Skill.delete': 'DELETE /api/skills/{id}',
+  'Skill.get': 'GET /api/skills/{id}',
+  'Skill.hideInConversation': 'POST /api/skills/{id}/hide-in-conversation',
+  'Skill.import': 'POST /api/skills/import',
+  'Skill.list': 'GET /api/skills',
+  'Skill.listAvailable': 'GET /api/skills/available',
+  'Skill.unhideInConversation': 'DELETE /api/skills/{id}/hide-in-conversation/{conversation_id}',
+  'Skill.update': 'PUT /api/skills/{id}',
+  'Skill.validate': 'POST /api/skills/validate',
+  'SkillSystem.delete': 'DELETE /api/skills/system/{id}',
+  'SkillSystem.get': 'GET /api/skills/system/{id}',
+  'SkillSystem.getGroups': 'GET /api/skills/system/{id}/groups',
+  'SkillSystem.list': 'GET /api/skills/system',
+  'SkillSystem.removeFromGroup': 'DELETE /api/skills/system/{id}/groups/{group_id}',
+  'SkillSystem.setGroups': 'POST /api/skills/system/{id}/groups',
+  'SkillSystem.update': 'PUT /api/skills/system/{id}',
   'Summarization.getConversationSummary': 'GET /api/conversations/{id}/summary',
   'SummarizationAdmin.get': 'GET /api/summarization/settings',
   'SummarizationAdmin.update': 'PUT /api/summarization/settings',
@@ -3167,7 +3653,25 @@ export const ApiEndpoints = {
   'UserGroup.getMembers': 'GET /api/groups/{group_id}/members',
   'UserGroup.list': 'GET /api/groups',
   'UserGroup.removeUser': 'DELETE /api/groups/{user_id}/{group_id}/remove',
-  'UserGroup.update': 'POST /api/groups/{group_id}'
+  'UserGroup.update': 'POST /api/groups/{group_id}',
+  'Workflow.cancelRun': 'POST /api/workflow-runs/{run_id}/cancel',
+  'Workflow.delete': 'DELETE /api/workflows/{id}',
+  'Workflow.deleteSystem': 'DELETE /api/workflows/system/{id}',
+  'Workflow.dryRun': 'POST /api/workflows/{id}/dry-run',
+  'Workflow.get': 'GET /api/workflows/{id}',
+  'Workflow.getRun': 'GET /api/workflow-runs/{run_id}',
+  'Workflow.getSystem': 'GET /api/workflows/system/{id}',
+  'Workflow.import': 'POST /api/workflows/import',
+  'Workflow.list': 'GET /api/workflows',
+  'Workflow.listSystem': 'GET /api/workflows/system',
+  'Workflow.readArtifact': 'GET /api/workflow-runs/{run_id}/artifact/{step_id}/{filename}',
+  'Workflow.readLog': 'GET /api/workflow-runs/{run_id}/logs/{step_id}/{kind}',
+  'Workflow.readOutput': 'GET /api/workflow-runs/{run_id}/output/{step_id}',
+  'Workflow.run': 'POST /api/workflows/{id}/run',
+  'Workflow.submitElicit': 'POST /api/workflow-runs/{run_id}/elicit/{elicitation_id}',
+  'Workflow.subscribeRunEvents': 'GET /api/workflow-runs/{run_id}/events',
+  'Workflow.test': 'POST /api/workflows/{id}/test',
+  'Workflow.validate': 'POST /api/workflows/validate'
 } as const
 
 // API endpoint parameters
@@ -3232,13 +3736,20 @@ export type ApiEndpointParameters = {
   'CoreMemory.upsert': UpsertCoreMemoryBlockRequest
   'File.delete': { file_id: string }
   'File.download': { file_id: string }
+  'File.downloadVersion': { file_id: string; version: string }
   'File.downloadWithToken': { file_id: string; token: string }
-  'File.generateDownloadToken': { file_id: string }
+  'File.generateDownloadToken': { file_id: string; version?: number }
   'File.get': { file_id: string }
+  'File.getHeadVersion': { file_id: string }
   'File.getPreview': { file_id: string; page?: number }
   'File.getTextContent': { file_id: string; page?: number }
   'File.getThumbnail': { file_id: string }
+  'File.getVersion': { file_id: string; version: string }
   'File.list': PaginationQuery
+  'File.listVersions': { file_id: string }
+  'File.previewVersion': { file_id: string; version: string; page?: number }
+  'File.restore': { file_id: string } & RestoreVersionRequest
+  'File.textVersion': { file_id: string; version: string; page?: number }
   'File.upload': FormData
   'Group.getProviders': { group_id: string }
   'Group.getSystemServers': { group_id: string }
@@ -3251,7 +3762,11 @@ export type ApiEndpointParameters = {
   'Hub.createAssistantTemplateFromHub': CreateAssistantFromHubRequest
   'Hub.createMcpServerFromHub': CreateMcpServerFromHubRequest
   'Hub.createModelFromHub': CreateModelFromHubRequest
+  'Hub.createSkillFromHub': CreateSkillFromHubRequest
   'Hub.createSystemMcpServerFromHub': CreateMcpServerFromHubRequest
+  'Hub.createSystemSkillFromHub': CreateSystemSkillFromHubRequest
+  'Hub.createSystemWorkflowFromHub': CreateSystemWorkflowFromHubRequest
+  'Hub.createWorkflowFromHub': CreateWorkflowFromHubRequest
   'Hub.getAssistants': { lang?: string }
   'Hub.getAssistantsVersion': void
   'Hub.getCatalog': void
@@ -3406,6 +3921,22 @@ export type ApiEndpointParameters = {
   'RuntimeVersion.syncCache': void
   'RuntimeVersion.usage': { engine?: string }
   'ServerUpdate.getStatus': void
+  'Skill.delete': { id: string }
+  'Skill.get': { id: string }
+  'Skill.hideInConversation': { id: string } & HideSkillInConversationRequest
+  'Skill.import': { name?: string; scope?: string } & FormData
+  'Skill.list': void
+  'Skill.listAvailable': { conversation_id: string }
+  'Skill.unhideInConversation': { id: string; conversation_id: string }
+  'Skill.update': { id: string } & UpdateSkill
+  'Skill.validate': ValidateSkillRequest
+  'SkillSystem.delete': { id: string }
+  'SkillSystem.get': { id: string }
+  'SkillSystem.getGroups': { id: string }
+  'SkillSystem.list': void
+  'SkillSystem.removeFromGroup': { id: string; group_id: string }
+  'SkillSystem.setGroups': { id: string } & SkillGroupsRequest
+  'SkillSystem.update': { id: string } & UpdateSkill
   'Summarization.getConversationSummary': { id: string }
   'SummarizationAdmin.get': void
   'SummarizationAdmin.update': UpdateSummarizationAdminSettingsRequest
@@ -3426,6 +3957,24 @@ export type ApiEndpointParameters = {
   'UserGroup.list': PaginationQuery
   'UserGroup.removeUser': { user_id: string; group_id: string }
   'UserGroup.update': { group_id: string } & UpdateGroupRequest
+  'Workflow.cancelRun': { run_id: string }
+  'Workflow.delete': { id: string }
+  'Workflow.deleteSystem': { id: string }
+  'Workflow.dryRun': { id: string } & DryRunRequest
+  'Workflow.get': { id: string }
+  'Workflow.getRun': { run_id: string }
+  'Workflow.getSystem': { id: string }
+  'Workflow.import': { name?: string; scope?: string } & FormData
+  'Workflow.list': void
+  'Workflow.listSystem': void
+  'Workflow.readArtifact': { run_id: string; step_id: string; filename: string }
+  'Workflow.readLog': { run_id: string; step_id: string; kind: string }
+  'Workflow.readOutput': { run_id: string; step_id: string }
+  'Workflow.run': { id: string } & WorkflowRunRequest
+  'Workflow.submitElicit': { run_id: string; elicitation_id: string } & ElicitationResponseRequest
+  'Workflow.subscribeRunEvents': { run_id: string }
+  'Workflow.test': { id: string } & TestWorkflowRequest
+  'Workflow.validate': ValidateWorkflowRequest
 }
 
 // API endpoint responses
@@ -3490,13 +4039,20 @@ export type ApiEndpointResponses = {
   'CoreMemory.upsert': CoreMemoryBlock
   'File.delete': void
   'File.download': Blob
+  'File.downloadVersion': Blob
   'File.downloadWithToken': Blob
   'File.generateDownloadToken': DownloadTokenResponse
   'File.get': File
+  'File.getHeadVersion': FileVersion
   'File.getPreview': Blob
   'File.getTextContent': Blob
   'File.getThumbnail': Blob
+  'File.getVersion': FileVersion
   'File.list': FileListResponse
+  'File.listVersions': FileVersion[]
+  'File.previewVersion': Blob
+  'File.restore': File
+  'File.textVersion': Blob
   'File.upload': File
   'Group.getProviders': GroupProvidersResponse
   'Group.getSystemServers': GroupSystemServersResponse
@@ -3509,7 +4065,11 @@ export type ApiEndpointResponses = {
   'Hub.createAssistantTemplateFromHub': AssistantFromHubResponse
   'Hub.createMcpServerFromHub': McpServerFromHubResponse
   'Hub.createModelFromHub': ModelFromHubResponse
+  'Hub.createSkillFromHub': SkillFromHubResponse
   'Hub.createSystemMcpServerFromHub': McpServerFromHubResponse
+  'Hub.createSystemSkillFromHub': SkillFromHubResponse
+  'Hub.createSystemWorkflowFromHub': WorkflowFromHubResponse
+  'Hub.createWorkflowFromHub': WorkflowFromHubResponse
   'Hub.getAssistants': HubAssistant[]
   'Hub.getAssistantsVersion': HubVersionResponse
   'Hub.getCatalog': Catalog
@@ -3664,6 +4224,22 @@ export type ApiEndpointResponses = {
   'RuntimeVersion.syncCache': SyncCacheResponse
   'RuntimeVersion.usage': VersionUsageResponse
   'ServerUpdate.getStatus': UpdateStatusResponse
+  'Skill.delete': void
+  'Skill.get': Skill
+  'Skill.hideInConversation': void
+  'Skill.import': Skill
+  'Skill.list': SkillListResponse
+  'Skill.listAvailable': AvailableSkillsResponse
+  'Skill.unhideInConversation': void
+  'Skill.update': Skill
+  'Skill.validate': ValidateSkillResponse
+  'SkillSystem.delete': void
+  'SkillSystem.get': Skill
+  'SkillSystem.getGroups': string[]
+  'SkillSystem.list': SkillListResponse
+  'SkillSystem.removeFromGroup': void
+  'SkillSystem.setGroups': void
+  'SkillSystem.update': Skill
   'Summarization.getConversationSummary': ConversationSummary | null
   'SummarizationAdmin.get': SummarizationAdminSettings
   'SummarizationAdmin.update': SummarizationAdminSettings
@@ -3684,6 +4260,24 @@ export type ApiEndpointResponses = {
   'UserGroup.list': GroupListResponse
   'UserGroup.removeUser': void
   'UserGroup.update': Group
+  'Workflow.cancelRun': CancelAckResponse
+  'Workflow.delete': void
+  'Workflow.deleteSystem': void
+  'Workflow.dryRun': DryRunResult
+  'Workflow.get': Workflow
+  'Workflow.getRun': WorkflowRun
+  'Workflow.getSystem': Workflow
+  'Workflow.import': Workflow
+  'Workflow.list': WorkflowListResponse
+  'Workflow.listSystem': WorkflowListResponse
+  'Workflow.readArtifact': any
+  'Workflow.readLog': any
+  'Workflow.readOutput': any
+  'Workflow.run': WorkflowRunStartResponse
+  'Workflow.submitElicit': ElicitAckResponse
+  'Workflow.subscribeRunEvents': SSEWorkflowRunEvent
+  'Workflow.test': TestRunResponse
+  'Workflow.validate': ValidateWorkflowResponse
 }
 
 // Type helpers
