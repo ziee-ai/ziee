@@ -681,7 +681,11 @@ fn check_template_refs(workflow: &WorkflowDef) -> Vec<ValidationError> {
         workflow.inputs.iter().map(|i| i.name.as_str()).collect();
     let step_ids: HashSet<&str> = workflow.steps.iter().map(|s| s.id.as_str()).collect();
 
-    let mut check = |loc: &str, body: &str| {
+    // `item_var` is the per-item binding of an llm_map step — valid as a head
+    // ONLY inside that step's own prompt (e.g. `{{ aspect }}` /
+    // `{{ aspect.field }}`); the item is opaque JSON so any field on it is
+    // allowed and left to runtime.
+    let mut check = |loc: &str, body: &str, item_var: Option<&str>| {
         let refs = match crate::modules::workflow::template::scan_var_refs(body) {
             Ok(r) => r,
             Err(e) => {
@@ -695,6 +699,9 @@ fn check_template_refs(workflow: &WorkflowDef) -> Vec<ValidationError> {
             }
         };
         for (head, field) in refs {
+            if Some(head.as_str()) == item_var {
+                continue;
+            }
             match head.as_str() {
                 "inputs" => {
                     if !input_names.contains(field.as_str()) {
@@ -740,40 +747,49 @@ fn check_template_refs(workflow: &WorkflowDef) -> Vec<ValidationError> {
     };
 
     for s in &workflow.steps {
-        let bodies: Vec<(String, &str)> = match &s.config {
+        // (loc, body, item_var-valid-in-this-body)
+        let bodies: Vec<(String, &str, Option<&str>)> = match &s.config {
             StepConfig::Llm { prompt, .. } => prompt
                 .as_deref()
-                .map(|p| vec![(format!("{}.prompt", s.id), p)])
+                .map(|p| vec![(format!("{}.prompt", s.id), p, None)])
                 .unwrap_or_default(),
             StepConfig::LlmMap {
-                prompt, for_each, ..
+                prompt,
+                for_each,
+                item_var,
+                ..
             } => {
-                let mut v: Vec<(String, &str)> =
-                    vec![(format!("{}.for_each", s.id), for_each.as_str())];
+                // `for_each` is evaluated BEFORE the item is bound, so the
+                // item_var is NOT in scope there — only in the per-item prompt.
+                let mut v: Vec<(String, &str, Option<&str>)> =
+                    vec![(format!("{}.for_each", s.id), for_each.as_str(), None)];
                 if let Some(p) = prompt.as_deref() {
-                    v.push((format!("{}.prompt", s.id), p));
+                    v.push((format!("{}.prompt", s.id), p, Some(item_var.as_str())));
                 }
                 v
             }
             StepConfig::Sandbox { run, stdin, .. } => {
-                let mut v: Vec<(String, &str)> = vec![(format!("{}.run", s.id), run.as_str())];
+                let mut v: Vec<(String, &str, Option<&str>)> =
+                    vec![(format!("{}.run", s.id), run.as_str(), None)];
                 if let Some(st) = stdin.as_deref() {
-                    v.push((format!("{}.stdin", s.id), st));
+                    v.push((format!("{}.stdin", s.id), st, None));
                 }
                 v
             }
             // Elicit's prompt is the shared StepDef.message, scanned below.
             StepConfig::Elicit { .. } => Vec::new(),
         };
-        for (loc, body) in bodies {
-            check(&loc, body);
+        for (loc, body, item_var) in bodies {
+            check(&loc, body, item_var);
         }
+        // The step message renders at step-start (before any item is bound),
+        // so item_var is not in scope there.
         if let Some(msg) = s.message.as_deref() {
-            check(&format!("{}.message", s.id), msg);
+            check(&format!("{}.message", s.id), msg, None);
         }
     }
     for o in &workflow.outputs {
-        check(&format!("outputs[{}].from", o.name), &o.from);
+        check(&format!("outputs[{}].from", o.name), &o.from, None);
     }
     out
 }
@@ -1069,6 +1085,61 @@ outputs:
         let tmp = tempdir().unwrap();
         let errs = validate_collecting(&wf, tmp.path(), false);
         assert!(errs.iter().any(|e| e.code == "WORKFLOW_UNKNOWN_STEP_REF"));
+    }
+
+    #[test]
+    fn llm_map_item_var_is_valid_in_its_prompt() {
+        // Regression: the per-item binding (`item_var`) must be a valid head
+        // inside the llm_map step's own prompt — `{{ aspect }}` and
+        // `{{ aspect.field }}`. Without this, every real seed llm_map
+        // workflow (deep-research, code-review, …) fails to install.
+        let yaml = r#"
+inputs:
+  - name: topic
+    required: true
+steps:
+  - id: list
+    kind: llm
+    prompt: "list aspects of {{ inputs.topic }}"
+    output_format: json
+  - id: each
+    kind: llm_map
+    for_each: "{{ list.output }}"
+    item_var: aspect
+    prompt: "describe {{ aspect }} (field {{ aspect.name }}) of {{ inputs.topic }}"
+    depends_on: [list]
+outputs:
+  - name: o
+    from: "{{ each.output }}"
+"#;
+        let wf = parse_workflow_yaml(yaml).unwrap();
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(
+            !errs.iter().any(|e| e.code == "WORKFLOW_UNKNOWN_STEP_REF"),
+            "item_var must not be flagged as an unknown step ref: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn item_var_out_of_scope_in_for_each_and_other_steps() {
+        // The item_var is in scope ONLY in its own prompt — referencing it in
+        // for_each or in another step must still error.
+        let yaml = r#"
+steps:
+  - id: each
+    kind: llm_map
+    for_each: "{{ aspect.output }}"
+    item_var: aspect
+    prompt: "x {{ aspect }}"
+"#;
+        let wf = parse_workflow_yaml(yaml).unwrap();
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(
+            errs.iter().any(|e| e.code == "WORKFLOW_UNKNOWN_STEP_REF"),
+            "item_var in for_each must error: {errs:?}"
+        );
     }
 
     #[test]

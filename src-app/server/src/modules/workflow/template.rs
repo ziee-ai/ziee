@@ -450,6 +450,7 @@ mod tests {
             inputs_dir: PathBuf::from("/tmp/_/ws/inputs"),
             model_id: uuid::Uuid::nil(),
             model_name: "test-model".into(),
+            model_max_tokens: 8192,
             sandbox_flavor: None,
             total_tokens: 0,
             total_output_bytes: 0,

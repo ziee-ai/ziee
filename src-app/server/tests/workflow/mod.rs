@@ -17,7 +17,9 @@
 mod access_and_durability;
 mod elicit;
 mod install_from_hub;
+mod real_llm;
 mod run_mocked;
+mod sandbox_run;
 mod system_endpoints;
 mod validate_and_dry_run;
 

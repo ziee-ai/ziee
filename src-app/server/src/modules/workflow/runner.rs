@@ -116,6 +116,7 @@ pub async fn preflight(
     workspace_root: PathBuf,
     model_id: Uuid,
     model_name: String,
+    model_max_tokens: u32,
     sandbox_flavor: Option<String>,
     is_dev: bool,
     mocks: HashMap<String, Value>,
@@ -203,6 +204,7 @@ pub async fn preflight(
         inputs_dir,
         model_id,
         model_name,
+        model_max_tokens,
         sandbox_flavor,
         total_tokens: 0,
         total_output_bytes: 0,
@@ -815,6 +817,9 @@ pub async fn run_for_test(
         workspace_root,
         model_id,
         model_name,
+        // /test runs mock every llm step, so the request max_tokens is never
+        // sent — the chat-path default is fine here.
+        8192,
         sandbox_flavor,
         workflow.is_dev,
         mocks,
@@ -959,6 +964,16 @@ pub async fn spawn_run(
         .await?
         .ok_or_else(|| AppError::not_found("Model"))?;
     let model_name = model.name.clone();
+    // Use the model's configured max output (fallback 8192) for llm requests
+    // — same as the chat path's apply_model_params. Hardcoding the 50k
+    // per-call cost cap here exceeds many models' output limits and the
+    // provider rejects the request.
+    let model_max_tokens = model
+        .parameters
+        .max_tokens
+        .and_then(|n| u32::try_from(n).ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(8192);
 
     let sandbox_flavor = workflow_def.sandbox.as_ref().map(|s| s.flavor.clone());
 
@@ -991,6 +1006,7 @@ pub async fn spawn_run(
         workspace_root,
         model_id,
         model_name,
+        model_max_tokens,
         sandbox_flavor,
         workflow.is_dev,
         mocks,

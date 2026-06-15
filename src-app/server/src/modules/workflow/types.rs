@@ -185,6 +185,13 @@ pub struct RunContext {
     /// step.
     pub model_id: Uuid,
     pub model_name: String,
+    /// Request `max_tokens` for every llm/llm_map call — the model's
+    /// configured `parameters.max_tokens` (fallback 8192), matching the chat
+    /// path. NOT the per-call cost cap: hardcoding 50k here exceeds many
+    /// models' output limits (e.g. Claude Opus 4.1 = 32k) and the provider
+    /// rejects the request. The cost cap is enforced post-call by the
+    /// accumulator.
+    pub model_max_tokens: u32,
     pub sandbox_flavor: Option<String>,
     pub total_tokens: u64,
     /// Cumulative bytes of step OUTPUT files + collected ARTIFACT files

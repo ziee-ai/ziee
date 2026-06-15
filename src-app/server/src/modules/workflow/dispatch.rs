@@ -154,7 +154,7 @@ impl StepDispatcher for LlmDispatcher {
         let req = ChatRequest {
             model: ctx.model_name.clone(),
             messages: vec![ChatMessage::user(rendered.clone())],
-            max_tokens: Some(PER_CALL_TOKEN_CAP as u32),
+            max_tokens: Some(ctx.model_max_tokens),
             ..Default::default()
         };
 
@@ -399,6 +399,7 @@ impl StepDispatcher for LlmMapDispatcher {
             progress: ctx.step_item_progress[&step.id].clone(),
         }));
 
+        let max_toks = ctx.model_max_tokens;
         for (idx, prompt) in per_item_prompts.into_iter().enumerate() {
             let provider = self.provider.clone();
             let cancel_clone = cancel.clone();
@@ -427,7 +428,7 @@ impl StepDispatcher for LlmMapDispatcher {
                     let req = ChatRequest {
                         model: model.clone(),
                         messages: vec![ChatMessage::user(prompt.clone())],
-                        max_tokens: Some(PER_CALL_TOKEN_CAP as u32),
+                        max_tokens: Some(max_toks),
                         ..Default::default()
                     };
                     match run_llm_call(&provider, req, cancel_clone.clone()).await {
@@ -1131,6 +1132,7 @@ mod tests {
             inputs_dir: PathBuf::from("/tmp/_/ws/inputs"),
             model_id: uuid::Uuid::nil(),
             model_name: "test-model".into(),
+            model_max_tokens: 8192,
             sandbox_flavor: None,
             total_tokens: 0,
             total_output_bytes: 0,
