@@ -82,7 +82,17 @@ export function ConversationSkillsPanel({
             ]}
           >
             <List.Item.Meta
-              title={skill.display_name || skill.name}
+              title={
+                <button
+                  type="button"
+                  className="bg-transparent border-0 p-0 cursor-pointer text-left text-inherit"
+                  // Thread conversationId so the detail drawer's "Hide in
+                  // this conversation" checkbox is reachable from chat.
+                  onClick={() => Stores.SkillDrawer.open(skill, conversationId)}
+                >
+                  {skill.display_name || skill.name}
+                </button>
+              }
               description={
                 skill.description ? (
                   <Text type="secondary" className="text-xs" ellipsis>

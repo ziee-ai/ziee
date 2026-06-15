@@ -11,6 +11,30 @@ import {
   subscribeRunProgress,
 } from '@/modules/workflow/sse/runProgressClient'
 
+/** Per-step output metadata (mirrors backend `OutputMeta`). Content
+ *  lives on disk; this is the snapshot blob carried in
+ *  `step_outputs_json[step_id]`. Its presence means a full output file
+ *  exists and can be fetched via `readOutput`. */
+export interface StepOutputMeta {
+  path?: string
+  size_bytes?: number
+  sha256?: string
+  preview?: string
+  kind?: string
+  parsed_as?: 'json' | 'text'
+}
+
+/** Per-step artifact metadata (mirrors backend `ArtifactMeta`). One
+ *  entry per file in `artifacts/<step_id>/`; fetched via
+ *  `readArtifact`. */
+export interface StepArtifactMeta {
+  filename: string
+  size_bytes?: number
+  sha256?: string
+  mime_type?: string
+  description?: string
+}
+
 /** Per-step UI state aggregated from the WorkflowRunEvent stream. */
 export interface StepProgress {
   stepId: string
@@ -23,6 +47,14 @@ export interface StepProgress {
   error?: string
   tokensUsed?: number
   msElapsed?: number
+  // True once a completed step has a full output file on disk (set from
+  // the snapshot's step_outputs_json or on stepCompleted). Drives the
+  // "Show full output" expander.
+  hasOutput?: boolean
+  outputMeta?: StepOutputMeta
+  // Files the step wrote to artifacts/<step_id>/ (from the snapshot's
+  // step_artifacts_json). Rendered as attachment-style blocks.
+  artifacts?: StepArtifactMeta[]
 }
 
 /** Aggregated live view of a single run, keyed by run id. */
@@ -106,6 +138,34 @@ export const useWorkflowRunStore = create<WorkflowRunState>()(
                 v.totalTokens = d.total_tokens
                 v.currentStep = d.current_step ?? undefined
                 v.pendingElicitation = d.pending_elicitation_json ?? undefined
+                // Hydrate per-step output + artifact metadata so a
+                // freshly-mounted view (or a reconnect) renders the
+                // "Show full output" expander + artifact blocks without
+                // a separate GET /workflow-runs/{id} call. The blobs are
+                // metadata only (path/size/preview/mime); content is
+                // fetched lazily via readOutput / readArtifact.
+                const outputs = (d.step_outputs_json ?? {}) as Record<
+                  string,
+                  StepOutputMeta
+                >
+                for (const [stepId, meta] of Object.entries(outputs)) {
+                  const s = ensureStep(v, stepId)
+                  s.outputMeta = meta
+                  s.hasOutput = true
+                  if (!s.outputPreview && meta?.preview) {
+                    s.outputPreview = meta.preview
+                  }
+                  if (s.status === 'pending') s.status = 'completed'
+                }
+                const artifacts = (d.step_artifacts_json ?? {}) as Record<
+                  string,
+                  StepArtifactMeta[]
+                >
+                for (const [stepId, list] of Object.entries(artifacts)) {
+                  if (!Array.isArray(list) || list.length === 0) continue
+                  const s = ensureStep(v, stepId)
+                  s.artifacts = list
+                }
                 draft.runs[runId] = v
               })
             },
@@ -146,6 +206,12 @@ export const useWorkflowRunStore = create<WorkflowRunState>()(
                 s.outputPreview = d.output_preview
                 s.tokensUsed = d.tokens_used
                 s.msElapsed = d.ms_elapsed
+                // A completed step has a full output file on disk; the
+                // SSE frame only carries a 500-char preview. Flag so the
+                // "Show full output" expander mounts (it fetches the
+                // full bytes via readOutput). Artifact metadata arrives
+                // on the next snapshot (reconnect / mount).
+                s.hasOutput = true
                 v.totalTokens += d.tokens_used
                 draft.runs[runId] = v
               })

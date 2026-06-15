@@ -19,6 +19,8 @@ interface SystemWorkflowState {
   loading: boolean
   creating: boolean
   error: string | null
+  // Per-workflow assigned group ids (lazy-loaded by the assignment card).
+  groups: Record<string, { groupIds: string[]; loading: boolean }>
 
   __init__: {
     __store__?: () => void
@@ -30,6 +32,8 @@ interface SystemWorkflowState {
   installSystemFromHub: (hubId: string, groups?: string[]) => Promise<Workflow>
   importSystemWorkflow: (form: FormData) => Promise<Workflow>
   deleteSystemWorkflow: (id: string) => Promise<void>
+  loadGroups: (workflowId: string) => Promise<void>
+  setGroups: (workflowId: string, groupIds: string[]) => Promise<void>
 }
 
 export const useSystemWorkflowStore = create<SystemWorkflowState>()(
@@ -41,6 +45,7 @@ export const useSystemWorkflowStore = create<SystemWorkflowState>()(
         loading: false,
         creating: false,
         error: null,
+        groups: {},
 
         __init__: {
           __store__: () => {
@@ -142,6 +147,44 @@ export const useSystemWorkflowStore = create<SystemWorkflowState>()(
             draft.systemWorkflows = draft.systemWorkflows.filter(
               w => w.id !== id,
             )
+          })
+        },
+
+        loadGroups: async (workflowId: string) => {
+          set(draft => {
+            draft.groups[workflowId] = {
+              groupIds: draft.groups[workflowId]?.groupIds ?? [],
+              loading: true,
+            }
+          })
+          try {
+            const groupIds = await ApiClient.WorkflowSystem.getGroups({
+              id: workflowId,
+            })
+            set(draft => {
+              draft.groups[workflowId] = { groupIds, loading: false }
+            })
+          } catch (error) {
+            set(draft => {
+              draft.groups[workflowId] = {
+                groupIds: draft.groups[workflowId]?.groupIds ?? [],
+                loading: false,
+              }
+              draft.error =
+                error instanceof Error
+                  ? error.message
+                  : 'Failed to load workflow groups'
+            })
+          }
+        },
+
+        setGroups: async (workflowId: string, groupIds: string[]) => {
+          await ApiClient.WorkflowSystem.setGroups({
+            id: workflowId,
+            group_ids: groupIds,
+          })
+          set(draft => {
+            draft.groups[workflowId] = { groupIds, loading: false }
           })
         },
 

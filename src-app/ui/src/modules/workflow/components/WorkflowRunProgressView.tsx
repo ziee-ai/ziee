@@ -12,7 +12,9 @@ import {
 import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
 import type { StepProgress } from '@/modules/workflow/stores/WorkflowRun.store'
+import { StepArtifacts } from './StepArtifacts'
 import { StepLogExpander } from './StepLogExpander'
+import { StepOutputExpander } from './StepOutputExpander'
 import { WorkflowElicitForm } from './WorkflowElicitForm'
 
 const { Text } = Typography
@@ -159,6 +161,20 @@ export function WorkflowRunProgressView({
                     ? `${(s.msElapsed / 1000).toFixed(1)}s`
                     : ''}
                 </Text>
+              )}
+              {s.status === 'completed' && s.hasOutput && (
+                <StepOutputExpander
+                  runId={runId}
+                  stepId={s.stepId}
+                  parsedAs={s.outputMeta?.parsed_as}
+                />
+              )}
+              {s.artifacts && s.artifacts.length > 0 && (
+                <StepArtifacts
+                  runId={runId}
+                  stepId={s.stepId}
+                  artifacts={s.artifacts}
+                />
               )}
               {(s.status === 'completed' || s.status === 'failed') && (
                 <Space size={4} wrap>

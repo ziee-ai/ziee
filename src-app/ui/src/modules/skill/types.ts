@@ -1,6 +1,7 @@
 import type { StoreProxy } from '@/core/stores'
 import type {
   useConversationSkillsStore,
+  useSkillConversationDrawerStore,
   useSkillDrawerStore,
   useSkillStore,
   useSystemSkillStore,
@@ -14,6 +15,9 @@ declare module '@/core/stores' {
     >
     SystemSkill: StoreProxy<ReturnType<typeof useSystemSkillStore.getState>>
     SkillDrawer: StoreProxy<ReturnType<typeof useSkillDrawerStore.getState>>
+    SkillConversationDrawer: StoreProxy<
+      ReturnType<typeof useSkillConversationDrawerStore.getState>
+    >
   }
 }
 

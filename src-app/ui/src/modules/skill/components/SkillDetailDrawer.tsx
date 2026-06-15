@@ -20,11 +20,19 @@ import { SkillScopeBadge } from './SkillScopeBadge'
 
 const { Text, Title } = Typography
 
-/** Build a readable markdown body from the skill's persisted metadata.
- *  The full SKILL.md body lives on disk; the row carries the parsed
- *  frontmatter (`description`, `when_to_use`, plus any opaque fields in
- *  `frontmatter_json`) which is what the model sees in the
- *  available-skills listing. */
+/** Build a readable markdown summary from the skill's persisted
+ *  metadata. This renders the parsed FRONTMATTER only (`description`,
+ *  `when_to_use`) — which is what the model sees in the available-skills
+ *  listing — NOT the full SKILL.md body.
+ *
+ *  BACKEND FOLLOW-UP: the full SKILL.md body lives on disk under
+ *  `skill.extracted_path` post-install. There is currently NO REST
+ *  endpoint to read it — the skill_mcp `load_skill` / `read_skill_file`
+ *  tools return the body but those are MCP tool calls, not a plain REST
+ *  surface the FE can hit. To render the real body here, the backend
+ *  needs e.g. `GET /api/skills/{id}/content` (or `/file/{path}`) that
+ *  streams the on-disk SKILL.md; this component would then fetch it and
+ *  render via Streamdown in place of (or below) this summary. */
 function buildSkillMarkdown(skill: Skill): string {
   const parts: string[] = []
   const title = skill.display_name || skill.name

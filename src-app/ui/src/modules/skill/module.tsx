@@ -5,6 +5,7 @@ import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import {
   useConversationSkillsStore,
+  useSkillConversationDrawerStore,
   useSkillDrawerStore,
   useSkillStore,
   useSystemSkillStore,
@@ -35,6 +36,10 @@ export default createModule({
     { name: 'ConversationSkills', store: useConversationSkillsStore },
     { name: 'SystemSkill', store: useSystemSkillStore },
     { name: 'SkillDrawer', store: useSkillDrawerStore },
+    {
+      name: 'SkillConversationDrawer',
+      store: useSkillConversationDrawerStore,
+    },
   ],
   routes: [
     {

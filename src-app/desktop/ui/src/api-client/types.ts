@@ -2896,6 +2896,13 @@ export interface UpdateUserRequest {
   username?: string
 }
 
+export interface UpdateWorkflow {
+  description?: string
+  display_name?: string
+  enabled?: boolean
+  tags?: any
+}
+
 export interface UpsertCoreMemoryBlockRequest {
   assistant_id: string
   block_label: string
@@ -3091,6 +3098,10 @@ export interface WorkflowFromHubResponse {
   workflow: Workflow
 }
 
+export interface WorkflowGroupsRequest {
+  group_ids: string[]
+}
+
 export interface WorkflowListResponse {
   workflows: Workflow[]
 }
@@ -3243,6 +3254,7 @@ export enum Permissions {
   UsersRead = 'users::read',
   UsersResetPassword = 'users::reset_password',
   UsersToggleStatus = 'users::toggle_status',
+  WorkflowsAssignToGroups = 'workflows::assign_to_groups',
   WorkflowsExecute = 'workflows::execute',
   WorkflowsInstall = 'workflows::install',
   WorkflowsManage = 'workflows::manage',
@@ -3360,6 +3372,7 @@ export const PermissionDescriptions: Record<string, string> = {
   UsersRead: 'View user information and list users',
   UsersResetPassword: 'Reset user passwords',
   UsersToggleStatus: 'Enable or disable user accounts',
+  WorkflowsAssignToGroups: 'Manage group assignments for system-scope workflows',
   WorkflowsExecute: 'Kick off a workflow run',
   WorkflowsInstall: 'Install user-scope workflows',
   WorkflowsManage: 'Edit / delete own user-scope workflows',
@@ -3462,8 +3475,8 @@ export const ApiEndpoints = {
   'Hub.createSkillFromHub': 'POST /api/skills/install-from-hub',
   'Hub.createSystemMcpServerFromHub': 'POST /api/hub/mcp-servers/create-system',
   'Hub.createSystemSkillFromHub': 'POST /api/skills/system/install-from-hub',
-  'Hub.createSystemWorkflowFromHub': 'POST /api/hub/workflows/create-system',
-  'Hub.createWorkflowFromHub': 'POST /api/hub/workflows/create',
+  'Hub.createSystemWorkflowFromHub': 'POST /api/workflows/system/install-from-hub',
+  'Hub.createWorkflowFromHub': 'POST /api/workflows/install-from-hub',
   'Hub.getAssistants': 'GET /api/hub/assistants',
   'Hub.getAssistantsVersion': 'GET /api/hub/assistants/version',
   'Hub.getCatalog': 'GET /api/hub/index',
@@ -3662,6 +3675,7 @@ export const ApiEndpoints = {
   'Workflow.getRun': 'GET /api/workflow-runs/{run_id}',
   'Workflow.getSystem': 'GET /api/workflows/system/{id}',
   'Workflow.import': 'POST /api/workflows/import',
+  'Workflow.importSystem': 'POST /api/workflows/system/import',
   'Workflow.list': 'GET /api/workflows',
   'Workflow.listSystem': 'GET /api/workflows/system',
   'Workflow.readArtifact': 'GET /api/workflow-runs/{run_id}/artifact/{step_id}/{filename}',
@@ -3671,7 +3685,11 @@ export const ApiEndpoints = {
   'Workflow.submitElicit': 'POST /api/workflow-runs/{run_id}/elicit/{elicitation_id}',
   'Workflow.subscribeRunEvents': 'GET /api/workflow-runs/{run_id}/events',
   'Workflow.test': 'POST /api/workflows/{id}/test',
-  'Workflow.validate': 'POST /api/workflows/validate'
+  'Workflow.update': 'PUT /api/workflows/{id}',
+  'Workflow.validate': 'POST /api/workflows/validate',
+  'WorkflowSystem.getGroups': 'GET /api/workflows/system/{id}/groups',
+  'WorkflowSystem.removeFromGroup': 'DELETE /api/workflows/system/{id}/groups/{group_id}',
+  'WorkflowSystem.setGroups': 'POST /api/workflows/system/{id}/groups'
 } as const
 
 // API endpoint parameters
@@ -3965,6 +3983,7 @@ export type ApiEndpointParameters = {
   'Workflow.getRun': { run_id: string }
   'Workflow.getSystem': { id: string }
   'Workflow.import': { name?: string; scope?: string } & FormData
+  'Workflow.importSystem': { name?: string; scope?: string } & FormData
   'Workflow.list': void
   'Workflow.listSystem': void
   'Workflow.readArtifact': { run_id: string; step_id: string; filename: string }
@@ -3974,7 +3993,11 @@ export type ApiEndpointParameters = {
   'Workflow.submitElicit': { run_id: string; elicitation_id: string } & ElicitationResponseRequest
   'Workflow.subscribeRunEvents': { run_id: string }
   'Workflow.test': { id: string } & TestWorkflowRequest
+  'Workflow.update': { id: string } & UpdateWorkflow
   'Workflow.validate': ValidateWorkflowRequest
+  'WorkflowSystem.getGroups': { id: string }
+  'WorkflowSystem.removeFromGroup': { id: string; group_id: string }
+  'WorkflowSystem.setGroups': { id: string } & WorkflowGroupsRequest
 }
 
 // API endpoint responses
@@ -4268,6 +4291,7 @@ export type ApiEndpointResponses = {
   'Workflow.getRun': WorkflowRun
   'Workflow.getSystem': Workflow
   'Workflow.import': Workflow
+  'Workflow.importSystem': Workflow
   'Workflow.list': WorkflowListResponse
   'Workflow.listSystem': WorkflowListResponse
   'Workflow.readArtifact': any
@@ -4277,7 +4301,11 @@ export type ApiEndpointResponses = {
   'Workflow.submitElicit': ElicitAckResponse
   'Workflow.subscribeRunEvents': SSEWorkflowRunEvent
   'Workflow.test': TestRunResponse
+  'Workflow.update': Workflow
   'Workflow.validate': ValidateWorkflowResponse
+  'WorkflowSystem.getGroups': string[]
+  'WorkflowSystem.removeFromGroup': void
+  'WorkflowSystem.setGroups': void
 }
 
 // Type helpers
