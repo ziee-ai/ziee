@@ -820,15 +820,24 @@ impl StepDispatcher for ElicitDispatcher {
         emit: Arc<dyn ProgressEmitter>,
     ) -> StepResult {
         let started = Instant::now();
-        let (message_tpl, schema, timeout_ms) = match &step.config {
+        let (schema, timeout_ms) = match &step.config {
             StepConfig::Elicit {
-                message,
                 schema,
                 timeout_ms,
-            } => (message.clone(), schema.clone(), *timeout_ms),
+            } => (schema.clone(), *timeout_ms),
             _ => {
                 return StepResult::Failed {
                     error: "ElicitDispatcher called on non-elicit step".into(),
+                    tokens_used: 0,
+                };
+            }
+        };
+        // The elicitation prompt is the shared `StepDef.message` field.
+        let message_tpl = match step.message.as_deref() {
+            Some(m) => m.to_string(),
+            None => {
+                return StepResult::Failed {
+                    error: "elicit step requires a `message` (the prompt shown to the user)".into(),
                     tokens_used: 0,
                 };
             }

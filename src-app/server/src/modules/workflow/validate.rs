@@ -155,7 +155,13 @@ pub enum StepConfig {
         timeout_ms: u32,
     },
     Elicit {
-        message: String,
+        // NOTE: the elicitation PROMPT shown to the user is the shared
+        // `StepDef.message` field (top-level on the step), NOT a nested
+        // field here. A nested `message` would collide with
+        // `StepDef.message` under `#[serde(flatten)]` (serde routes the
+        // YAML `message` key to the outer field first, so the nested one
+        // deserializes as missing). The workflow-definition.schema.json
+        // already models `message` as a top-level step field for elicit.
         schema: serde_json::Value,
         #[serde(default = "default_elicit_timeout_ms")]
         timeout_ms: u32,
@@ -482,6 +488,15 @@ fn check_steps_shape(workflow: &WorkflowDef) -> Vec<ValidationError> {
                     &s.id,
                 ));
             }
+            // The elicitation prompt is the shared StepDef.message field.
+            if s.message.as_deref().map(str::trim).unwrap_or("").is_empty() {
+                out.push(ValidationError::at(
+                    "semantic",
+                    "WORKFLOW_ELICIT_NO_MESSAGE",
+                    "elicit step requires a `message` (the prompt shown to the user)",
+                    &s.id,
+                ));
+            }
         }
         // llm_map for_each separate check (avoid borrowing issue)
         if let StepConfig::LlmMap {
@@ -659,9 +674,8 @@ fn check_template_refs(workflow: &WorkflowDef) -> Vec<ValidationError> {
                 }
                 v
             }
-            StepConfig::Elicit { message, .. } => {
-                vec![(format!("{}.message", s.id), message.as_str())]
-            }
+            // Elicit's prompt is the shared StepDef.message, scanned below.
+            StepConfig::Elicit { .. } => Vec::new(),
         };
         for (loc, body) in bodies {
             check(&loc, body);
@@ -810,6 +824,64 @@ outputs:
         let tmp = tempdir().unwrap();
         let errs = validate_collecting(&wf, tmp.path(), false);
         assert!(errs.is_empty(), "unexpected errors: {errs:?}");
+    }
+
+    #[test]
+    fn elicit_step_deserializes_with_shared_message() {
+        // Regression: `message` is StepDef's shared field; with
+        // #[serde(flatten)] the elicit variant must NOT redeclare it or
+        // the YAML key gets eaten by StepDef and the elicit step fails
+        // to deserialize. The seed workflow answer-with-citations relies
+        // on this.
+        let yaml = r#"
+inputs:
+  - name: question
+    required: true
+steps:
+  - id: confirm
+    kind: elicit
+    message: "Proceed with '{{ inputs.question }}'?"
+    schema:
+      type: object
+      properties:
+        proceed: { type: boolean }
+      required: [proceed]
+  - id: answer
+    kind: llm
+    prompt: "Answer: {{ inputs.question }} (confirmed: {{ confirm.output }})"
+    depends_on: [confirm]
+outputs:
+  - name: result
+    from: "{{ answer.output }}"
+"#;
+        let wf = parse_workflow_yaml(yaml).expect("elicit workflow must parse");
+        assert_eq!(wf.steps.len(), 2);
+        assert!(matches!(wf.steps[0].config, StepConfig::Elicit { .. }));
+        assert_eq!(
+            wf.steps[0].message.as_deref(),
+            Some("Proceed with '{{ inputs.question }}'?")
+        );
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(errs.is_empty(), "unexpected errors: {errs:?}");
+    }
+
+    #[test]
+    fn elicit_step_without_message_rejected() {
+        let yaml = r#"
+steps:
+  - id: confirm
+    kind: elicit
+    schema:
+      type: object
+"#;
+        let wf = parse_workflow_yaml(yaml).expect("parse");
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(
+            errs.iter().any(|e| e.code == "WORKFLOW_ELICIT_NO_MESSAGE"),
+            "expected WORKFLOW_ELICIT_NO_MESSAGE, got: {errs:?}"
+        );
     }
 
     #[test]
