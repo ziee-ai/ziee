@@ -84,11 +84,18 @@ jobs:
       # GITHUB_TOKEN: the hub-seed build helper panics without network access
       # to the ziee-ai/hub release; the token lifts the unauthenticated rate
       # limit on the shared CI egress IP.
+      #
+      # Build with the seccomp feature OFF (--no-default-features +
+      # gpu-detect), mirroring server-release.yml: the default
+      # `code_sandbox_seccomp` static-links libseccomp (LIBSECCOMP_LINK_TYPE
+      # in .cargo/config.toml), which needs libseccomp.a on the runner. The
+      # smoke test only imports + runs hub workflows; seccomp hardening isn't
+      # required (the sandbox still runs, logging seccomp off-feature-not-linked).
       - name: Build ziee
         working-directory: src-app/server
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: cargo build --release -p ziee
+        run: cargo build --release -p ziee --no-default-features --features gpu-detect
 
       # Runtime config: external Postgres (reuse the build DB), code_sandbox on
       # (hub workflows may ship sandbox steps), server on :3000.
