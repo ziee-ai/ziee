@@ -45,6 +45,12 @@ use crate::modules::workflow::validate::{
 /// Per-call LLM token cap (plan §4.5).
 pub const PER_CALL_TOKEN_CAP: u64 = 50_000;
 
+/// Per-step token cap (plan §4.5 + §10). Re-exported from the runner so
+/// the `LlmMapDispatcher` can abort the step the moment the running sum
+/// of its item tokens crosses the cap (rather than only at the runner's
+/// post-step backstop). Aggregate across all `llm_map` items.
+pub use crate::modules::workflow::runner::PER_STEP_TOKEN_CAP;
+
 #[async_trait]
 pub trait StepDispatcher: Send + Sync {
     async fn dispatch(
@@ -461,6 +467,20 @@ impl StepDispatcher for LlmMapDispatcher {
             }
             let (idx, outcome, item_tokens) = res;
             total_tokens += item_tokens;
+            // Per-step token cap (plan §4.5 + §10): abort the whole step the
+            // moment the aggregate across processed items exceeds 2M. We do
+            // NOT spawn-cancel the remaining in-flight items here (they hold
+            // their own per-call 50k cap + share the run's cancel handle and
+            // wall-clock); failing the step propagates to RunFailed.
+            if total_tokens > PER_STEP_TOKEN_CAP {
+                return StepResult::Failed {
+                    error: format!(
+                        "per-step token cap {PER_STEP_TOKEN_CAP} exceeded \
+                         ({total_tokens} used across llm_map items)"
+                    ),
+                    tokens_used: total_tokens,
+                };
+            }
             match outcome {
                 Ok(v) => {
                     results[idx] = Some(v);

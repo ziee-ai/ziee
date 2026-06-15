@@ -50,6 +50,51 @@ pub const RUN_WALL_CLOCK: std::time::Duration = std::time::Duration::from_secs(3
 /// Per-run cumulative token cap (plan §4.5).
 pub const PER_RUN_TOKEN_CAP: u64 = 5_000_000;
 
+/// Per-step token cap (plan §4.5 + §10). Aggregate across all `llm_map`
+/// items in a single step (a single `llm` step's one call is already
+/// ≤ `PER_CALL_TOKEN_CAP` = 50k so it can't reach this, but the runner
+/// enforces it uniformly across step kinds). The `LlmMapDispatcher`
+/// aborts the step the moment its running item-token sum exceeds this.
+pub const PER_STEP_TOKEN_CAP: u64 = 2_000_000;
+
+/// Per-run cumulative output + artifact byte cap (plan §4.5 + §10).
+/// Enforced by the runner after each step's outputs + artifacts are
+/// written; the run aborts (Failed) once the cumulative crosses it.
+/// `artifact_io::PER_RUN_ARTIFACT_CAP_BYTES` is the same 100 MiB value
+/// (declared there but historically never enforced — audit gap 6).
+pub const PER_RUN_OUTPUT_ARTIFACT_CAP_BYTES: u64 = artifact_io::PER_RUN_ARTIFACT_CAP_BYTES;
+
+/// Pure cap-check applied by the runner after each step completes.
+/// Returns `Err(reason)` when ANY of the per-step token cap, per-run
+/// token cap, or per-run output+artifact byte cap is exceeded. Factored
+/// out so the cap logic is unit-testable without driving a full run
+/// (plan §4.5 + §10 / audit gaps 5 + 6).
+pub(crate) fn check_step_caps(
+    step_id: &str,
+    step_tokens_used: u64,
+    run_total_tokens: u64,
+    run_total_output_bytes: u64,
+) -> Result<(), String> {
+    if step_tokens_used > PER_STEP_TOKEN_CAP {
+        return Err(format!(
+            "per-step token cap {PER_STEP_TOKEN_CAP} exceeded \
+             ({step_tokens_used} used in step '{step_id}')"
+        ));
+    }
+    if run_total_tokens > PER_RUN_TOKEN_CAP {
+        return Err(format!(
+            "per-run token cap {PER_RUN_TOKEN_CAP} exceeded ({run_total_tokens} used)"
+        ));
+    }
+    if run_total_output_bytes > PER_RUN_OUTPUT_ARTIFACT_CAP_BYTES {
+        return Err(format!(
+            "per-run output+artifact byte cap {PER_RUN_OUTPUT_ARTIFACT_CAP_BYTES} \
+             exceeded ({run_total_output_bytes} written)"
+        ));
+    }
+    Ok(())
+}
+
 /// Pre-flight: parse + validate inputs + build the `RunContext`.
 /// Called by the route handler BEFORE spawning the runner task.
 pub async fn preflight(
@@ -153,6 +198,7 @@ pub async fn preflight(
         model_name,
         sandbox_flavor,
         total_tokens: 0,
+        total_output_bytes: 0,
         is_dev,
         // Mocks only honored for dev workflows OR test runs (force_mocks).
         // The /run handler already gates the dev case (403 when mocks present
@@ -478,8 +524,11 @@ async fn run_inner(
 
         match result {
             StepResult::Completed { output, parsed_as, tokens_used, ms_elapsed } => {
-                // Persist meta (already wrote the file).
+                // Persist meta (already wrote the file). Tally output bytes
+                // toward the per-run output+artifact cap.
                 if let Some(meta) = ctx.step_outputs.get(&step.id).cloned() {
+                    ctx.total_output_bytes =
+                        ctx.total_output_bytes.saturating_add(meta.size_bytes);
                     let meta_json = serde_json::to_value(&meta).unwrap_or(Value::Null);
                     let _ = repository::persist_step_meta(
                         pool,
@@ -496,6 +545,10 @@ async fn run_inner(
                     let artifacts = artifact_io::collect_step_artifacts(ctx, step)
                         .unwrap_or_default();
                     if !artifacts.is_empty() {
+                        // Tally artifact bytes toward the per-run cap.
+                        let art_bytes: u64 = artifacts.iter().map(|a| a.size_bytes).sum();
+                        ctx.total_output_bytes =
+                            ctx.total_output_bytes.saturating_add(art_bytes);
                         let json = serde_json::to_value(&artifacts).unwrap_or(Value::Null);
                         let _ = repository::persist_step_artifacts(
                             pool,
@@ -540,13 +593,17 @@ async fn run_inner(
                     tokens_used,
                     ms_elapsed,
                 }));
-                // Token cap check.
-                if ctx.total_tokens > PER_RUN_TOKEN_CAP {
+                // Per-step token cap (the LlmMapDispatcher also self-aborts
+                // mid-fan-out — this is the uniform backstop), per-run token
+                // cap, and per-run output+artifact byte cap (audit gaps 5+6).
+                if let Err(reason) = check_step_caps(
+                    &step.id,
+                    tokens_used,
+                    ctx.total_tokens,
+                    ctx.total_output_bytes,
+                ) {
                     return RunInnerOutcome::Failed {
-                        error: format!(
-                            "per-run token cap {} exceeded ({} used)",
-                            PER_RUN_TOKEN_CAP, ctx.total_tokens
-                        ),
+                        error: reason,
                         failed_at_step: Some(step.id.clone()),
                     };
                 }
@@ -902,5 +959,55 @@ pub fn workflow_workspace_root() -> PathBuf {
         // this dir; the bundle dir itself lives elsewhere
         // (`<data_dir>/workflows/...`).
         std::env::temp_dir().join("ziee-workflows")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn caps_pass_under_limits() {
+        assert!(check_step_caps("s", 10_000, 100_000, 1_024).is_ok());
+        // Exactly at the caps is allowed (the runner uses strict `>`).
+        assert!(
+            check_step_caps(
+                "s",
+                PER_STEP_TOKEN_CAP,
+                PER_RUN_TOKEN_CAP,
+                PER_RUN_OUTPUT_ARTIFACT_CAP_BYTES,
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn per_step_token_cap_trips() {
+        let err = check_step_caps("gen", PER_STEP_TOKEN_CAP + 1, 0, 0)
+            .expect_err("per-step cap should trip");
+        assert!(err.contains("per-step token cap"), "got: {err}");
+    }
+
+    #[test]
+    fn per_run_token_cap_trips() {
+        let err = check_step_caps("gen", 1, PER_RUN_TOKEN_CAP + 1, 0)
+            .expect_err("per-run token cap should trip");
+        assert!(err.contains("per-run token cap"), "got: {err}");
+    }
+
+    #[test]
+    fn per_run_output_byte_cap_trips() {
+        let err =
+            check_step_caps("gen", 1, 1, PER_RUN_OUTPUT_ARTIFACT_CAP_BYTES + 1)
+                .expect_err("per-run byte cap should trip");
+        assert!(err.contains("output+artifact byte cap"), "got: {err}");
+    }
+
+    #[test]
+    fn cap_constant_values_match_plan() {
+        // Plan §4.5 + §10: per-step 2M, per-run 5M, 100 MiB output+artifact.
+        assert_eq!(PER_STEP_TOKEN_CAP, 2_000_000);
+        assert_eq!(PER_RUN_TOKEN_CAP, 5_000_000);
+        assert_eq!(PER_RUN_OUTPUT_ARTIFACT_CAP_BYTES, 100 * 1024 * 1024);
     }
 }

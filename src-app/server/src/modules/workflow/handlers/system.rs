@@ -1,8 +1,7 @@
 //! Admin-scope workflow handlers (`/api/workflows/system/*`).
 //!
-//! B4 ships LIST + GET + DELETE. Install-from-hub re-binds to
-//! `hub::handlers::create_system_workflow_from_hub`. Group-assignment
-//! endpoints land in B6.
+//! LIST + GET + UPDATE + DELETE + install-from-hub re-bind + multipart
+//! import + group assignment. Mirrors `skill::handlers` (system half).
 
 #![allow(dead_code)]
 
@@ -16,10 +15,11 @@ use crate::common::{ApiResult, AppError};
 use crate::core::Repos;
 use crate::modules::permissions::extractors::RequirePermissions;
 use crate::modules::permissions::with_permission;
+use crate::modules::sync::{SyncAction, SyncOrigin};
 use crate::modules::workflow::models::Workflow;
-use crate::modules::workflow::permissions::WorkflowsManageSystem;
+use crate::modules::workflow::permissions::{WorkflowsAssignToGroups, WorkflowsManageSystem};
 use crate::modules::workflow::repository;
-use crate::modules::workflow::types::WorkflowListResponse;
+use crate::modules::workflow::types::{WorkflowGroupsRequest, WorkflowListResponse};
 
 pub async fn list_system_workflows(
     _auth: RequirePermissions<(WorkflowsManageSystem,)>,
@@ -78,6 +78,9 @@ pub async fn delete_system_workflow(
             "use user-scope delete for non-system workflows",
         )).into());
     }
+    // Best-effort rm the extracted bundle dir FIRST (mirrors skill +
+    // user-scope workflow delete). Ignore NotFound.
+    super::remove_extracted_dir(&wf.extracted_path).await;
     repository::delete(Repos.pool(), id).await?;
     crate::modules::workflow::events::emit_system_workflow(
         crate::modules::sync::SyncAction::Delete,
@@ -95,7 +98,78 @@ pub fn delete_system_workflow_docs(op: TransformOperation) -> TransformOperation
         .response::<204, ()>()
 }
 
-// Install from hub is exposed under /api/hub/workflows/* (see hub
-// module routes); the workflow module doesn't re-bind it because the
-// existing handlers require Extension<EventBus> + SyncOrigin that are
-// awkward to thread through a re-bind shim.
+// ============================================================
+// Group assignment (mirrors skill::handlers group endpoints)
+// ============================================================
+
+pub async fn get_workflow_groups(
+    _auth: RequirePermissions<(WorkflowsAssignToGroups,)>,
+    AxumPath(id): AxumPath<Uuid>,
+) -> ApiResult<Json<Vec<Uuid>>> {
+    let groups = repository::get_workflow_groups(Repos.pool(), id).await?;
+    Ok((StatusCode::OK, Json(groups)))
+}
+
+pub fn get_workflow_groups_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(WorkflowsAssignToGroups,)>(op)
+        .id("WorkflowSystem.getGroups")
+        .tag("Workflows - Admin")
+        .summary("Get groups assigned to a system-scope workflow")
+        .response::<200, Json<Vec<Uuid>>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+}
+
+pub async fn set_workflow_groups(
+    _auth: RequirePermissions<(WorkflowsAssignToGroups,)>,
+    AxumPath(id): AxumPath<Uuid>,
+    origin: SyncOrigin,
+    Json(request): Json<WorkflowGroupsRequest>,
+) -> ApiResult<StatusCode> {
+    let existing = repository::find_by_id(Repos.pool(), id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Workflow"))?;
+    // Only system-scope workflows can be assigned to groups (matches the
+    // group_workflows trigger; surface a 400 before hitting it).
+    if existing.scope != "system" {
+        return Err::<_, (StatusCode, AppError)>(
+            AppError::bad_request(
+                "INVALID_SCOPE",
+                "only system-scope workflows can be assigned to groups",
+            )
+            .into(),
+        );
+    }
+    repository::set_workflow_groups(Repos.pool(), id, &request.group_ids).await?;
+    crate::modules::workflow::events::emit_system_workflow(SyncAction::Update, id, origin.0);
+    Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
+}
+
+pub fn set_workflow_groups_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(WorkflowsAssignToGroups,)>(op)
+        .id("WorkflowSystem.setGroups")
+        .tag("Workflows - Admin")
+        .summary("Replace the set of groups assigned to a workflow")
+        .response_with::<204, (), _>(|r| r.description("Assignments updated"))
+        .response_with::<400, (), _>(|r| r.description("Bad request — non-system scope"))
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+        .response_with::<404, (), _>(|r| r.description("Workflow not found"))
+}
+
+pub async fn remove_workflow_group(
+    _auth: RequirePermissions<(WorkflowsAssignToGroups,)>,
+    AxumPath((id, group_id)): AxumPath<(Uuid, Uuid)>,
+    origin: SyncOrigin,
+) -> ApiResult<StatusCode> {
+    repository::remove_workflow_group(Repos.pool(), id, group_id).await?;
+    crate::modules::workflow::events::emit_system_workflow(SyncAction::Update, id, origin.0);
+    Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
+}
+
+pub fn remove_workflow_group_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(WorkflowsAssignToGroups,)>(op)
+        .id("WorkflowSystem.removeFromGroup")
+        .tag("Workflows - Admin")
+        .summary("Remove a workflow from one group")
+        .response_with::<204, (), _>(|r| r.description("Removed"))
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+}

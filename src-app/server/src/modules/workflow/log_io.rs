@@ -173,6 +173,7 @@ mod tests {
             model_name: "m".into(),
             sandbox_flavor: None,
             total_tokens: 0,
+            total_output_bytes: 0,
             is_dev: false,
             mocks: std::collections::HashMap::new(),
             force_mocks: false,

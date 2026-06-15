@@ -1,14 +1,23 @@
-//! Workflow router (B4 surface).
+//! Workflow router.
 //!
 //! User-scope `/api/workflows/*` + `/api/workflow-runs/*` +
-//! admin-scope `/api/workflows/system/*`. The hub install
-//! (`/api/hub/workflows/...`) stays in the hub module.
+//! admin-scope `/api/workflows/system/*`. The canonical install paths
+//! (`/api/workflows/install-from-hub`, `/api/workflows/system/install-from-hub`)
+//! re-bind the hub install handlers (same as `skill/routes.rs`); the hub
+//! module's `/api/hub/workflows/...` routes remain too.
+//!
+//! NOTE — no plain `POST /api/workflows` (or `/api/workflows/system`)
+//! create endpoint: a hand-authored workflow bundle has no source of
+//! truth without a file upload, so `import` (multipart tarball) IS the
+//! create path. install-from-hub + import cover the real flows. This
+//! mirrors the skills surface, which also omits a plain create. (An
+//! intentional impl-differs vs. the plan's endpoint list — see plan §3.)
 
 #![allow(dead_code)]
 
 use aide::axum::{
     ApiRouter,
-    routing::{delete_with, get_with, post_with},
+    routing::{delete_with, get_with, post_with, put_with},
 };
 
 use super::artifact_stream;
@@ -32,8 +41,21 @@ pub fn user_routes() -> ApiRouter {
             get_with(handlers::list_user_workflows, handlers::list_user_workflows_docs),
         )
         .api_route(
+            "/workflows/install-from-hub",
+            // Thin re-bind of `hub::handlers::create_workflow_from_hub` at
+            // the canonical user-facing path (mirrors skill/routes.rs).
+            post_with(handlers::install_from_hub, handlers::install_from_hub_docs),
+        )
+        .api_route(
             "/workflows/{id}",
             get_with(handlers::get_user_workflow, handlers::get_user_workflow_docs),
+        )
+        .api_route(
+            "/workflows/{id}",
+            put_with(
+                handlers::update_user_workflow,
+                handlers::update_user_workflow_docs,
+            ),
         )
         .api_route(
             "/workflows/{id}",
@@ -102,6 +124,17 @@ pub fn admin_routes() -> ApiRouter {
             get_with(system::list_system_workflows, system::list_system_workflows_docs),
         )
         .api_route(
+            "/workflows/system/install-from-hub",
+            post_with(
+                handlers::install_system_from_hub,
+                handlers::install_system_from_hub_docs,
+            ),
+        )
+        .api_route(
+            "/workflows/system/import",
+            post_with(dev::import_system_workflow, dev::import_system_workflow_docs),
+        )
+        .api_route(
             "/workflows/system/{id}",
             get_with(system::get_system_workflow, system::get_system_workflow_docs),
         )
@@ -110,6 +143,21 @@ pub fn admin_routes() -> ApiRouter {
             delete_with(
                 system::delete_system_workflow,
                 system::delete_system_workflow_docs,
+            ),
+        )
+        .api_route(
+            "/workflows/system/{id}/groups",
+            get_with(system::get_workflow_groups, system::get_workflow_groups_docs),
+        )
+        .api_route(
+            "/workflows/system/{id}/groups",
+            post_with(system::set_workflow_groups, system::set_workflow_groups_docs),
+        )
+        .api_route(
+            "/workflows/system/{id}/groups/{group_id}",
+            delete_with(
+                system::remove_workflow_group,
+                system::remove_workflow_group_docs,
             ),
         )
 }

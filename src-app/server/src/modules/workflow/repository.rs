@@ -52,6 +52,40 @@ impl WorkflowRepository {
     pub async fn find_run(&self, run_id: Uuid) -> Result<Option<WorkflowRun>, AppError> {
         find_run(&self.pool, run_id).await
     }
+
+    pub async fn find_by_id(&self, id: Uuid) -> Result<Option<Workflow>, AppError> {
+        find_by_id(&self.pool, id).await
+    }
+
+    pub async fn update(
+        &self,
+        id: Uuid,
+        request: super::models::UpdateWorkflow,
+    ) -> Result<Workflow, AppError> {
+        update(&self.pool, id, request).await
+    }
+
+    /// Group assignment management for system-scope workflows. Mirrors
+    /// `SkillRepository`'s `get/assign/remove` group fns.
+    pub async fn get_workflow_groups(&self, workflow_id: Uuid) -> Result<Vec<Uuid>, AppError> {
+        get_workflow_groups(&self.pool, workflow_id).await
+    }
+
+    pub async fn set_workflow_groups(
+        &self,
+        workflow_id: Uuid,
+        group_ids: &[Uuid],
+    ) -> Result<(), AppError> {
+        set_workflow_groups(&self.pool, workflow_id, group_ids).await
+    }
+
+    pub async fn remove_workflow_group(
+        &self,
+        workflow_id: Uuid,
+        group_id: Uuid,
+    ) -> Result<(), AppError> {
+        remove_workflow_group(&self.pool, workflow_id, group_id).await
+    }
 }
 
 pub async fn insert(pool: &PgPool, request: CreateWorkflow) -> Result<Workflow, AppError> {
@@ -606,6 +640,126 @@ pub async fn find_by_name(pool: &PgPool, name: &str) -> Result<Option<Workflow>,
     .await
     .map_err(AppError::database_error)?;
     Ok(row)
+}
+
+/// Edit the limited mutable metadata of a workflow (display_name /
+/// description / enabled / tags). Mirrors `skill::repository::update`.
+pub async fn update(
+    pool: &PgPool,
+    id: Uuid,
+    request: super::models::UpdateWorkflow,
+) -> Result<Workflow, AppError> {
+    let row = sqlx::query_as!(
+        Workflow,
+        r#"
+        UPDATE workflows SET
+            display_name = COALESCE($2, display_name),
+            description = COALESCE($3, description),
+            enabled = COALESCE($4, enabled),
+            tags = COALESCE($5, tags),
+            updated_at = NOW()
+        WHERE id = $1
+        RETURNING
+            id,
+            name,
+            version,
+            display_name,
+            description,
+            extracted_path,
+            bundle_sha256,
+            bundle_size_bytes,
+            file_count,
+            entry_point,
+            tags as "tags: _",
+            scope,
+            owner_user_id,
+            created_by,
+            enabled,
+            is_dev,
+            compiled_ir_json as "compiled_ir_json: _",
+            created_at as "created_at: _",
+            updated_at as "updated_at: _"
+        "#,
+        id,
+        request.display_name,
+        request.description,
+        request.enabled,
+        request.tags,
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::database_error)?
+    .ok_or_else(|| AppError::not_found("Workflow"))?;
+    Ok(row)
+}
+
+// ============================================================
+// group_workflows — system-scope group assignment (mirrors group_skills)
+// ============================================================
+
+pub async fn get_workflow_groups(
+    pool: &PgPool,
+    workflow_id: Uuid,
+) -> Result<Vec<Uuid>, AppError> {
+    let rows = sqlx::query_scalar!(
+        r#"SELECT group_id FROM group_workflows WHERE workflow_id = $1"#,
+        workflow_id,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(rows)
+}
+
+/// Replace the entire set of groups assigned to a workflow (diff-apply):
+/// remove the groups no longer desired, insert the new ones. The
+/// `group_workflows` table has a trigger rejecting non-system workflows,
+/// so the caller MUST have already verified `scope == 'system'`.
+pub async fn set_workflow_groups(
+    pool: &PgPool,
+    workflow_id: Uuid,
+    group_ids: &[Uuid],
+) -> Result<(), AppError> {
+    use std::collections::HashSet;
+    let current: HashSet<Uuid> = get_workflow_groups(pool, workflow_id)
+        .await?
+        .into_iter()
+        .collect();
+    let desired: HashSet<Uuid> = group_ids.iter().copied().collect();
+    for gid in current.difference(&desired) {
+        remove_workflow_group(pool, workflow_id, *gid).await?;
+    }
+    for gid in desired.difference(&current) {
+        sqlx::query!(
+            r#"
+            INSERT INTO group_workflows (group_id, workflow_id)
+            VALUES ($1, $2)
+            ON CONFLICT DO NOTHING
+            "#,
+            gid,
+            workflow_id,
+        )
+        .execute(pool)
+        .await
+        .map_err(AppError::database_error)?;
+    }
+    Ok(())
+}
+
+pub async fn remove_workflow_group(
+    pool: &PgPool,
+    workflow_id: Uuid,
+    group_id: Uuid,
+) -> Result<(), AppError> {
+    sqlx::query!(
+        r#"DELETE FROM group_workflows WHERE workflow_id = $1 AND group_id = $2"#,
+        workflow_id,
+        group_id,
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(())
 }
 
 /// Recent runs owned by `user_id`, newest first, capped at `limit`.

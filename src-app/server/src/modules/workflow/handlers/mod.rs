@@ -21,7 +21,8 @@ use crate::common::{ApiResult, AppError};
 use crate::core::Repos;
 use crate::modules::permissions::extractors::RequirePermissions;
 use crate::modules::permissions::with_permission;
-use crate::modules::workflow::models::{Workflow, WorkflowRun};
+use crate::modules::sync::{SyncAction, SyncOrigin};
+use crate::modules::workflow::models::{UpdateWorkflow, Workflow, WorkflowRun};
 use crate::modules::workflow::permissions::{
     WorkflowsExecute, WorkflowsManage, WorkflowsRead,
 };
@@ -29,6 +30,18 @@ use crate::modules::workflow::registry;
 use crate::modules::workflow::repository;
 use crate::modules::workflow::types::{
     WorkflowListResponse, WorkflowRunRequest, WorkflowRunStartResponse,
+};
+
+/// Re-export wrapper: `POST /api/workflows/install-from-hub` (user) +
+/// `POST /api/workflows/system/install-from-hub` (admin) bind the
+/// existing hub handlers at the canonical workflow-facing paths. Single
+/// implementation in `hub::handlers` — same compiled function bound to a
+/// second route (mirrors `skill::handlers`'s install re-export).
+pub use crate::modules::hub::handlers::{
+    create_system_workflow_from_hub as install_system_from_hub,
+    create_system_workflow_from_hub_docs as install_system_from_hub_docs,
+    create_workflow_from_hub as install_from_hub,
+    create_workflow_from_hub_docs as install_from_hub_docs,
 };
 
 // ============================================================
@@ -92,6 +105,10 @@ pub async fn delete_user_workflow(
             "cannot delete non-owned workflow",
         )).into());
     }
+    // Best-effort rm the extracted bundle dir FIRST (mirrors skill
+    // delete — the bundle dir is per-install, not per-run). Ignore
+    // NotFound so a re-delete / already-cleaned dir is not an error.
+    remove_extracted_dir(&wf.extracted_path).await;
     repository::delete(Repos.pool(), id).await?;
     crate::modules::workflow::events::emit_user_workflow(
         crate::modules::sync::SyncAction::Delete,
@@ -108,6 +125,50 @@ pub fn delete_user_workflow_docs(op: TransformOperation) -> TransformOperation {
         .tag("Workflows")
         .summary("Delete a user-owned workflow")
         .response::<204, ()>()
+}
+
+/// Edit a user-owned workflow (limited fields: display_name /
+/// description / enabled / tags). Mirrors `skill::handlers::update_user_skill`.
+/// Admin edits to system-scope items go through a future admin endpoint;
+/// for now only the owner of a user-scope workflow may edit here.
+pub async fn update_user_workflow(
+    auth: RequirePermissions<(WorkflowsManage,)>,
+    AxumPath(id): AxumPath<Uuid>,
+    origin: SyncOrigin,
+    Json(request): Json<UpdateWorkflow>,
+) -> ApiResult<Json<Workflow>> {
+    let existing = repository::find_by_id(Repos.pool(), id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Workflow"))?;
+    if existing.scope != "user" || existing.owner_user_id != Some(auth.user.id) {
+        return Err::<_, (StatusCode, AppError)>(
+            AppError::forbidden(
+                "WORKFLOW_FORBIDDEN",
+                "only the owner may edit a user-scope workflow",
+            )
+            .into(),
+        );
+    }
+    let updated = repository::update(Repos.pool(), id, request).await?;
+    crate::modules::workflow::events::emit_user_workflow(
+        SyncAction::Update,
+        id,
+        auth.user.id,
+        origin.0,
+    );
+    Ok((StatusCode::OK, Json(updated)))
+}
+
+pub fn update_user_workflow_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(WorkflowsManage,)>(op)
+        .id("Workflow.update")
+        .tag("Workflows")
+        .summary("Edit a user-owned workflow")
+        .description("Update the editable metadata (display_name / description / enabled / tags) of a user-scope workflow the caller owns.")
+        .response::<200, Json<Workflow>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+        .response_with::<403, (), _>(|r| r.description("Not the owner"))
+        .response_with::<404, (), _>(|r| r.description("Workflow not found"))
 }
 
 // ============================================================
@@ -237,6 +298,53 @@ pub fn get_run_docs(op: TransformOperation) -> TransformOperation {
         .tag("Workflows - Runs")
         .summary("Get a workflow run row")
         .response::<200, Json<WorkflowRun>>()
+}
+
+/// Best-effort removal of a workflow's extracted bundle dir on uninstall.
+/// Mirrors the skill delete cleanup. A `NotFound` is treated as success
+/// (the dir may already be gone); other errors are logged + swallowed so
+/// the DB delete (the source of truth) still completes.
+pub(crate) async fn remove_extracted_dir(extracted_path: &str) {
+    match tokio::fs::remove_dir_all(extracted_path).await {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => {
+            tracing::warn!(
+                path = %extracted_path,
+                error = %e,
+                "workflow: failed to remove extracted bundle dir on uninstall"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn remove_extracted_dir_deletes_bundle_dir() {
+        // Audit gap 1: workflow uninstall must rm the extracted bundle dir.
+        let tmp = tempfile::tempdir().unwrap();
+        let bundle = tmp.path().join("workflows/local.dev~x/0.0.0-dev");
+        tokio::fs::create_dir_all(&bundle).await.unwrap();
+        tokio::fs::write(bundle.join("workflow.yaml"), b"steps: []")
+            .await
+            .unwrap();
+        assert!(bundle.exists());
+        remove_extracted_dir(&bundle.display().to_string()).await;
+        assert!(!bundle.exists(), "extracted dir should be removed");
+    }
+
+    #[tokio::test]
+    async fn remove_extracted_dir_ignores_missing() {
+        // A second uninstall / already-cleaned dir is not an error.
+        let tmp = tempfile::tempdir().unwrap();
+        let gone = tmp.path().join("never-existed");
+        // Must not panic / must complete cleanly.
+        remove_extracted_dir(&gone.display().to_string()).await;
+        assert!(!gone.exists());
+    }
 }
 
 

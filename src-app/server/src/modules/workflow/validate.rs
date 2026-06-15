@@ -467,7 +467,10 @@ fn check_steps_shape(workflow: &WorkflowDef) -> Vec<ValidationError> {
             }
         }
         if let StepConfig::Sandbox { run, .. } = &s.config {
-            if run.is_empty() {
+            // Reject empty OR whitespace-only `run:` (a `run: "   "` would
+            // otherwise pass `.is_empty()` yet produce a no-op `cd && `
+            // command at dispatch). Plan §4 workflow_mcp + audit gap 7.
+            if run.trim().is_empty() {
                 out.push(ValidationError::at(
                     "semantic",
                     "WORKFLOW_SANDBOX_NO_RUN",
@@ -864,6 +867,52 @@ outputs:
         let tmp = tempdir().unwrap();
         let errs = validate_collecting(&wf, tmp.path(), false);
         assert!(errs.is_empty(), "unexpected errors: {errs:?}");
+    }
+
+    #[test]
+    fn sandbox_step_with_whitespace_only_run_rejected() {
+        // Audit gap 7: a `run:` of only whitespace must be rejected (it
+        // would otherwise produce a no-op `cd <dir> &&    ` at dispatch).
+        let yaml = r#"
+sandbox:
+  flavor: minimal
+steps:
+  - id: build
+    kind: sandbox
+    run: "   \t  "
+outputs:
+  - name: result
+    from: "{{ build.output }}"
+"#;
+        let wf = parse_workflow_yaml(yaml).expect("parse");
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(
+            errs.iter().any(|e| e.code == "WORKFLOW_SANDBOX_NO_RUN"),
+            "expected WORKFLOW_SANDBOX_NO_RUN for whitespace-only run, got: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn sandbox_step_with_real_run_accepted() {
+        let yaml = r#"
+sandbox:
+  flavor: minimal
+steps:
+  - id: build
+    kind: sandbox
+    run: "echo hi"
+outputs:
+  - name: result
+    from: "{{ build.output }}"
+"#;
+        let wf = parse_workflow_yaml(yaml).expect("parse");
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(
+            !errs.iter().any(|e| e.code == "WORKFLOW_SANDBOX_NO_RUN"),
+            "non-empty run should not trip WORKFLOW_SANDBOX_NO_RUN: {errs:?}"
+        );
     }
 
     #[test]

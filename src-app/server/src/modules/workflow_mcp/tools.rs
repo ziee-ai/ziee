@@ -79,6 +79,28 @@ pub fn checked_composed_name(slug: &str) -> Option<String> {
     Some(name)
 }
 
+/// INSTALL-TIME guard (plan §4 workflow_mcp + audit gap 4): reject a
+/// workflow whose reverse-DNS `name` would produce a composed MCP tool
+/// name (`<server_uuid>__wf_<slug>`) longer than 128 chars (i.e. slug
+/// body > 87 chars) OR carrying an illegal char. The `list_tools` path
+/// drops-and-warns at runtime, but a workflow that can NEVER surface as a
+/// tool should be rejected at install rather than silently swallowed
+/// later. Returns `Err(AppError::bad_request)` when the name is unusable.
+pub fn check_install_slug_len(name: &str) -> Result<(), AppError> {
+    let slug = slug_for_name(name);
+    if checked_composed_name(&slug).is_none() {
+        return Err(AppError::bad_request(
+            "WORKFLOW_TOOL_NAME_TOO_LONG",
+            format!(
+                "workflow name '{name}' yields an MCP tool name longer than {MCP_TOOL_NAME_CAP} \
+                 chars (or carrying an illegal char); shorten the workflow name so the slug body \
+                 is at most 87 chars"
+            ),
+        ));
+    }
+    Ok(())
+}
+
 /// Derive a JSON-Schema `inputSchema` object from a workflow's
 /// `inputs[]`. Required inputs land in `required[]`; defaults pass
 /// through as schema `default`.
@@ -622,6 +644,20 @@ mod tests {
         let ok_leaf = "a".repeat(87);
         let slug_ok = format!("wf_{ok_leaf}");
         assert!(checked_composed_name(&slug_ok).is_some());
+    }
+
+    #[test]
+    fn install_slug_len_rejects_too_long_name() {
+        // Audit gap 4: install-time rejection of a name whose slug body
+        // (>87 chars) would overflow the 128-char composed tool name.
+        // 88 alphanumerics → wf_<88> = 91-char slug body → overflow.
+        let long_name = format!("io.github.x/{}", "a".repeat(88));
+        let err = check_install_slug_len(&long_name).expect_err("should reject");
+        assert_eq!(err.error_code(), "WORKFLOW_TOOL_NAME_TOO_LONG");
+
+        // A short, ordinary name installs fine.
+        check_install_slug_len("io.github.phibya/research-summarize-write")
+            .expect("short name accepted");
     }
 
     fn run_with_final(final_json: Value, step_outputs: Value) -> WorkflowRun {

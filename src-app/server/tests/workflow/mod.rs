@@ -17,6 +17,7 @@
 mod elicit;
 mod install_from_hub;
 mod run_mocked;
+mod system_endpoints;
 mod validate_and_dry_run;
 
 use std::io::Write;

@@ -152,10 +152,25 @@ pub async fn import_workflow(
     origin: SyncOrigin,
     multipart: Multipart,
 ) -> ApiResult<Json<Workflow>> {
+    import_workflow_inner(&auth.user, &auth.groups, q, origin, multipart).await
+}
+
+/// Shared multipart-import core. The user handler (`WorkflowsInstall`) and
+/// the admin handler (`WorkflowsManageSystem`, system scope forced) both
+/// delegate here so the extract→validate→install pipeline has a single
+/// source of truth. `resolve_import_scope` re-checks `manage_system` for a
+/// `system` request, so the user route can't escalate.
+async fn import_workflow_inner(
+    user: &crate::modules::user::models::User,
+    groups: &[crate::modules::user::models::Group],
+    q: ImportQuery,
+    origin: SyncOrigin,
+    multipart: Multipart,
+) -> ApiResult<Json<Workflow>> {
     let bytes = read_bundle_field(multipart).await?;
 
     // Scope resolution. `system` is admin-only.
-    let scope = resolve_import_scope(&auth.user, &auth.groups, q.scope.as_deref(), "workflows")?;
+    let scope = resolve_import_scope(user, groups, q.scope.as_deref(), "workflows")?;
 
     // Derive the dev slug + name.
     let slug = q
@@ -208,6 +223,13 @@ pub async fn import_workflow(
         return Err(e.into());
     }
 
+    // Reject if the computed MCP tool slug would overflow the 128-char
+    // composed-name cap (slug body > 87 chars). Audit gap 4 / plan §4.
+    if let Err(e) = crate::modules::workflow_mcp::tools::check_install_slug_len(&name) {
+        let _ = std::fs::remove_dir_all(&extraction.extracted_path);
+        return Err(e.into());
+    }
+
     // Re-import overwrites: delete any prior row with the same name+version
     // (the extracted dir was already overwritten by extract_tarball_bytes).
     if let Some(prior) =
@@ -219,7 +241,7 @@ pub async fn import_workflow(
     let owner_user_id = if scope == "system" {
         None
     } else {
-        Some(auth.user.id)
+        Some(user.id)
     };
 
     let create = CreateWorkflow {
@@ -238,7 +260,7 @@ pub async fn import_workflow(
         tags: serde_json::Value::Array(vec![]),
         scope: scope.clone(),
         owner_user_id,
-        created_by: Some(auth.user.id),
+        created_by: Some(user.id),
         enabled: true,
         is_dev: true,
         compiled_ir_json: None,
@@ -262,7 +284,7 @@ pub async fn import_workflow(
         crate::modules::workflow::events::emit_user_workflow(
             SyncAction::Create,
             workflow.id,
-            auth.user.id,
+            user.id,
             origin.0,
         );
     }
@@ -279,6 +301,42 @@ pub fn import_workflow_docs(op: TransformOperation) -> TransformOperation {
         .response::<201, Json<Workflow>>()
         .response_with::<401, (), _>(|r| r.description("Unauthorized"))
         .response_with::<403, (), _>(|r| r.description("Forbidden (system scope without admin)"))
+}
+
+// ============================================================
+// POST /api/workflows/system/import  (admin multipart, system scope)
+// ============================================================
+
+/// Admin-scope multipart dev-import. Forces `scope=system` regardless of
+/// the query param and is gated on `WorkflowsManageSystem` (vs the user
+/// import's `WorkflowsInstall`). Delegates to the shared `import_workflow`
+/// body with the scope overridden to `system`. Mirrors the skills surface
+/// intent — the user `/import` IS the create path, so this is the admin
+/// equivalent (there is no plain hand-authored create endpoint; see the
+/// routes.rs comment on the create-vs-import decision).
+pub async fn import_system_workflow(
+    auth: RequirePermissions<(crate::modules::workflow::permissions::WorkflowsManageSystem,)>,
+    Query(mut q): Query<ImportQuery>,
+    origin: SyncOrigin,
+    multipart: Multipart,
+) -> ApiResult<Json<Workflow>> {
+    // Force system scope regardless of any client-supplied query param.
+    q.scope = Some("system".to_string());
+    // Delegate to the shared core. The admin already holds manage_system;
+    // `resolve_import_scope` re-checks it for the system scope, so this is
+    // belt-and-suspenders, not a privilege grant.
+    import_workflow_inner(&auth.user, &auth.groups, q, origin, multipart).await
+}
+
+pub fn import_system_workflow_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(crate::modules::workflow::permissions::WorkflowsManageSystem,)>(op)
+        .id("Workflow.importSystem")
+        .tag("Workflows - Admin")
+        .summary("Admin dev-import a SYSTEM-WIDE workflow bundle (multipart tarball)")
+        .description("Same extract+validate pipeline as the user import, but installs as scope='system' and requires workflows::manage_system.")
+        .response::<201, Json<Workflow>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+        .response_with::<403, (), _>(|r| r.description("Forbidden (requires workflows::manage_system)"))
 }
 
 // ============================================================

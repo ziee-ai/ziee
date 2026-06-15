@@ -74,6 +74,13 @@ pub struct ElicitationResponseRequest {
     pub response: serde_json::Value,
 }
 
+/// `POST /api/workflows/system/{id}/groups` body. Replaces the entire
+/// set (mirrors `skill::types::SkillGroupsRequest`).
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct WorkflowGroupsRequest {
+    pub group_ids: Vec<Uuid>,
+}
+
 // ============================================================
 // Runner-side types (B4)
 // ============================================================
@@ -180,6 +187,10 @@ pub struct RunContext {
     pub model_name: String,
     pub sandbox_flavor: Option<String>,
     pub total_tokens: u64,
+    /// Cumulative bytes of step OUTPUT files + collected ARTIFACT files
+    /// across the whole run. The runner enforces the per-run 100 MiB cap
+    /// against this after each step (plan §4.5 + §10 / audit gap 6).
+    pub total_output_bytes: u64,
     pub is_dev: bool,
     /// Runtime per-step mocks from the `/run` request body. ONLY populated
     /// when `is_dev` (the handler drops them otherwise). The runner short-

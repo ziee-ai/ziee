@@ -1859,6 +1859,17 @@ async fn build_workflow_create_from_hub(
         false,
     )?;
 
+    // Reject install when the computed MCP tool slug would overflow the
+    // 128-char composed-name cap (slug body > 87 chars) — otherwise the
+    // workflow installs but can never surface as a workflow_mcp tool
+    // (list_tools would silently drop it). Audit gap 4 / plan §4.
+    if let Err(e) =
+        crate::modules::workflow_mcp::tools::check_install_slug_len(&hub_workflow.name)
+    {
+        let _ = tokio::fs::remove_dir_all(&extraction.extracted_path).await;
+        return Err(e);
+    }
+
     let display_name = hub_workflow.name.rsplit('/').next().map(str::to_string);
 
     let create_request = CreateWorkflow {
