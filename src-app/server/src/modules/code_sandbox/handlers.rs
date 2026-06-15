@@ -752,27 +752,12 @@ async fn build_context(
     // uid, so the server already owns the workspace and `0o700` suffices.
     // Keeping `0o1777` on Linux is a cross-tenant data leak on multi-user
     // hosts (every local user can read/write every conversation's workspace).
-    #[cfg(target_os = "linux")]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = tokio::fs::set_permissions(
-            &workspace,
-            std::fs::Permissions::from_mode(0o700),
-        )
-        .await;
-    }
-    #[cfg(target_os = "macos")]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = tokio::fs::set_permissions(
-            &workspace,
-            std::fs::Permissions::from_mode(0o1777),
-        )
-        .await;
-    }
-    // Windows host has its own NTFS ACL story; the in-WSL2-distro path that
-    // rsync's bytes into the agent's GUEST_WORKSPACE_ROOT applies its own
-    // mode. Nothing to chmod on the Windows host side.
+    // Apply the H-3 workspace mode policy (Linux 0o700 / macOS+Windows-VM
+    // 0o1777). Shared with the workflow runner's direct
+    // `execute_command_with_mounts` path via `apply_workspace_mode` so the
+    // two can't drift (the workflow path hit "Permission denied" creating
+    // the `.gitconfig` mask on macOS before it shared this policy).
+    apply_workspace_mode(&workspace).await;
 
     let files = Repos
         .code_sandbox
@@ -1012,6 +997,45 @@ fn workspace_for(state: &CodeSandboxState, conversation_id: Uuid) -> std::path::
     state
         .workspace_root
         .join(conversation_id.to_string())
+}
+
+/// Apply the per-conversation workspace mode policy (Audit H-3) so the
+/// in-sandbox uid 1001 can write into its `/home/sandboxuser` bind.
+///
+/// - **Linux host-bwrap**: `0o700`. `--unshare-user` maps in-sandbox
+///   uid 1001 → the server's host uid, so the server already owns the
+///   dir; world-writable would leak across local users on a multi-user
+///   host.
+/// - **macOS / Windows VM backends**: `0o1777`. The workload runs at
+///   uid 1001 inside the VM (virtio-fs uid passthrough) against a dir
+///   owned by the server's host uid, so it MUST be world-writable —
+///   otherwise even bwrap can't create the dotfile-mask mountpoints
+///   (`.gitconfig`, …) and the spawn fails with "Permission denied".
+///   Single-user box / per-user utility VM, so the broad mode is safe.
+/// - **Windows host side**: no-op (NTFS ACLs; the in-distro rsync path
+///   applies its own mode).
+///
+/// Best-effort: a chmod failure is non-fatal (the reaper falls back to
+/// dir mtime; a genuine bind failure surfaces downstream). Callers that
+/// require the dir to EXIST must `create_dir_all` separately — this only
+/// sets the mode on an existing dir.
+pub(crate) async fn apply_workspace_mode(workspace: &std::path::Path) {
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ =
+            tokio::fs::set_permissions(workspace, std::fs::Permissions::from_mode(0o700)).await;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ =
+            tokio::fs::set_permissions(workspace, std::fs::Permissions::from_mode(0o1777)).await;
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    {
+        let _ = workspace; // Windows: NTFS ACL story handled elsewhere.
+    }
 }
 
 /// SECURITY: assert that the JWT-authenticated `user_id` is the owner

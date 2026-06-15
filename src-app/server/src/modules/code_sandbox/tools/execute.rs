@@ -48,6 +48,15 @@ pub async fn execute_command_with_mounts(
         .workspace_root
         .join(ctx.conversation_id.to_string());
 
+    // Ensure the workspace dir exists with the correct mode for the
+    // in-sandbox uid. The chat-side path does this in `build_context`,
+    // but the workflow runner calls this fn directly — without the macOS
+    // 0o1777 chmod, the in-VM uid 1001 can't create the `.gitconfig`
+    // dotfile-mask mountpoint and bwrap fails with "Permission denied".
+    // Shared helper keeps the H-3 mode policy in lockstep with build_context.
+    let _ = tokio::fs::create_dir_all(&workspace_dir).await;
+    crate::modules::code_sandbox::handlers::apply_workspace_mode(&workspace_dir).await;
+
     // Per-conversation flavor lock: the FIRST execute_command in a
     // conversation pins the flavor. Subsequent calls with a different
     // flavor trigger Trigger B (per-conversation install-cache wipe)

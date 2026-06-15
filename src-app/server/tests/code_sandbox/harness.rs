@@ -502,21 +502,30 @@ pub fn github_fetch_server_options(
         return None;
     }
 
-    // Skip when no rootfs asset is published for this host's arch.
-    // `ziee-ai/sandbox-rootfs` publishes only `x86_64-*.squashfs`
-    // assets today (every tag through v1.0.0-alpha). On aarch64 hosts
-    // (Apple Silicon Macs, ARM Linux) the server's auto-fetch hits
-    // 404 on `ziee-sandbox-rootfs-aarch64-<flavor>.squashfs` and the
-    // sandbox-spawned MCP server never starts — tools/list returns
-    // empty, the LLM sees no tools, the assert fails. Once aarch64
-    // rootfs is published, drop this gate.
-    if test_arch_token() != "x86_64" {
-        eprintln!(
-            "test skipped: ziee-ai/sandbox-rootfs publishes no {}-arch assets yet \
-             (rootfs system is ready, but the released rootfs is x86_64-only)",
-            test_arch_token()
+    // Skip cleanly only when THIS host's arch has no published rootfs
+    // for the pinned tag. `ziee-ai/sandbox-rootfs` ships BOTH x86_64 and
+    // aarch64 squashfs assets from `v0.0.5-alpha` onward (the default
+    // `TEST_ROOTFS_TAG`); older tags — and `v1.0.0-alpha` — are
+    // x86_64-only. Rather than hardcode an arch string (which went stale
+    // the moment aarch64 shipped), probe the `minimal` sha256 sidecar as
+    // a canary: if it 404s for this arch+tag the test skips cleanly
+    // instead of failing later with a confusing download 404. On
+    // aarch64 the server's auto-fetch resolves the aarch64 squashfs and
+    // the macOS libkrun backend boots it for real.
+    {
+        let tag = test_rootfs_tag();
+        let arch = test_arch_token();
+        let sidecar_url = format!(
+            "https://github.com/{TEST_ROOTFS_REPO}/releases/download/{tag}/\
+             ziee-sandbox-rootfs-{arch}-minimal.squashfs.sha256"
         );
-        return None;
+        if http_get_blocking(&sidecar_url).is_err() {
+            eprintln!(
+                "test skipped: no {arch} rootfs published for {TEST_ROOTFS_REPO}@{tag} \
+                 (probe of {sidecar_url} failed)"
+            );
+            return None;
+        }
     }
 
     let e2e_cache = test_cache_dir().join("e2e");

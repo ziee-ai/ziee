@@ -2,12 +2,14 @@
 //! full path: POST /run → runner → SandboxDispatcher → code_sandbox (bwrap)
 //! → real shell command → captured stdout as the step output.
 //!
-//! Gated like the code_sandbox Tier-6 HTTP-E2E tests: needs bwrap + a
-//! published rootfs. `harness::enabled_test_server()` returns `None` (clean
-//! skip) when the host can't run the sandbox (no bwrap, or non-x86_64 where
-//! no rootfs asset is published) — NOT a make-suite-green ignore, the same
-//! genuine external dependency every sandbox tier gates on. Runs in CI on
-//! x86_64 Linux with bubblewrap installed.
+//! Gated like the code_sandbox Tier-6 HTTP-E2E tests: needs a runnable
+//! sandbox backend + a published rootfs for the host arch.
+//! `harness::enabled_test_server()` returns `None` (clean skip) only when the
+//! host genuinely can't run the sandbox (Linux without bubblewrap, or an
+//! arch/tag with no published rootfs) — NOT a make-suite-green ignore, the
+//! same genuine external dependency every sandbox tier gates on. Runs on
+//! x86_64 Linux (bwrap) AND Apple-Silicon macOS (libkrun microVM), since
+//! `v0.0.5-alpha` of `ziee-ai/sandbox-rootfs` publishes aarch64 squashfs too.
 
 use serde_json::{Value as Json, json};
 use uuid::Uuid;
@@ -35,7 +37,8 @@ outputs:
 #[tokio::test]
 async fn sandbox_run_script_workflow_completes() {
     let Some(server) = crate::code_sandbox::harness::enabled_test_server().await else {
-        // bwrap/rootfs unavailable (e.g. non-x86_64 or no bubblewrap) — skip.
+        // Sandbox backend / rootfs unavailable for this host (no bubblewrap on
+        // Linux, or an arch+tag with no published rootfs) — skip cleanly.
         return;
     };
 
