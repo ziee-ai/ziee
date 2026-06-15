@@ -77,21 +77,22 @@ curl -fsSL "${HUB_BASE}/index.json" -o "${WORKDIR}/index.json" \
   || fail "could not fetch hub index"
 
 mapfile -t WF_NAMES < <(jq -r '.items[] | select(.category == "workflow") | .name' "${WORKDIR}/index.json")
-log "found ${#WF_NAMES[@]} workflow(s) in the hub catalog"
-# Graceful skip when the live hub publishes no workflows yet. This is the
-# expected state on the PR that INTRODUCES workflows (the hub PR hasn't
-# merged + Pages rebuilt yet) — there's simply nothing to drift-check, so
-# the detector passes. Once the hub publishes workflow entries, subsequent
-# runs (nightly + PRs) exercise them for real.
-if [ "${#WF_NAMES[@]}" -eq 0 ]; then
-  log "OK — live hub catalog lists zero workflows; nothing to drift-check (skipping)"
+mapfile -t SKILL_NAMES < <(jq -r '.items[] | select(.category == "skill") | .name' "${WORKDIR}/index.json")
+log "found ${#WF_NAMES[@]} workflow(s) + ${#SKILL_NAMES[@]} skill(s) in the hub catalog"
+# Graceful skip when the live hub publishes neither yet. This is the
+# expected state on the PR that INTRODUCES them (the hub PR hasn't merged +
+# Pages rebuilt yet) — nothing to drift-check, so the detector passes. Once
+# the hub publishes entries, subsequent runs (nightly + PRs) exercise them.
+if [ "${#WF_NAMES[@]}" -eq 0 ] && [ "${#SKILL_NAMES[@]}" -eq 0 ]; then
+  log "OK — live hub catalog lists zero workflows + zero skills; nothing to drift-check (skipping)"
   exit 0
 fi
 
-# ── 4. install + test each workflow ──────────────────────────────────────
 failures=0
+
+# ── 4. install + test each workflow ──────────────────────────────────────
 for name in "${WF_NAMES[@]}"; do
-  log "=== ${name} ==="
+  log "=== workflow: ${name} ==="
 
   install_resp="$(curl -fsS -X POST "${API}/workflows/install-from-hub" \
     "${AUTH[@]}" -H 'Content-Type: application/json' \
@@ -127,8 +128,36 @@ for name in "${WF_NAMES[@]}"; do
   fi
 done
 
+# ── 4b. install each skill + verify the row was created ──────────────────
+# Skills don't execute (no /test endpoint), so the smoke is: install from
+# the live hub, then confirm the skill now appears in the user's list.
+for name in "${SKILL_NAMES[@]}"; do
+  log "=== skill: ${name} ==="
+
+  install_resp="$(curl -fsS -X POST "${API}/skills/install-from-hub" \
+    "${AUTH[@]}" -H 'Content-Type: application/json' \
+    -d "{\"hub_id\":\"${name}\"}" 2>/dev/null || true)"
+
+  skill_id="$(printf '%s' "$install_resp" | jq -r '.skill.id // .id // empty' 2>/dev/null || true)"
+  if [ -z "$skill_id" ]; then
+    log "  install FAILED: ${install_resp:0:400}"
+    failures=$((failures + 1))
+    continue
+  fi
+  log "  installed → ${skill_id}"
+
+  list_resp="$(curl -fsS "${API}/skills" "${AUTH[@]}" 2>/dev/null || true)"
+  if printf '%s' "$list_resp" | jq -e --arg id "$skill_id" \
+       '.skills[]? | select(.id == $id)' >/dev/null 2>&1; then
+    log "  verified in GET /skills"
+  else
+    log "  installed skill ${skill_id} not found in GET /skills"
+    failures=$((failures + 1))
+  fi
+done
+
 # ── 5. verdict ───────────────────────────────────────────────────────────
 if [ "$failures" -ne 0 ]; then
-  fail "${failures} workflow(s) failed install or test against this ziee build"
+  fail "${failures} hub item(s) failed install or test against this ziee build"
 fi
-log "OK — all ${#WF_NAMES[@]} hub workflow(s) installed + passed their fixtures"
+log "OK — all ${#WF_NAMES[@]} hub workflow(s) + ${#SKILL_NAMES[@]} hub skill(s) installed cleanly"

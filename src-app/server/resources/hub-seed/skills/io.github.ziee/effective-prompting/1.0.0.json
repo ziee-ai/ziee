@@ -1,0 +1,23 @@
+{
+  "$schema": "/schemas/2026-06-12/skill.schema.json",
+  "name": "io.github.ziee/effective-prompting",
+  "version": "1.0.0",
+  "description": "Write clearer, more reliable prompts for any LLM. Use when the user's request is vague, a model's answer is off-target or inconsistent, or the user asks how to phrase a prompt, reduce hallucination, or get structured output.",
+  "tags": [
+    "prompting",
+    "prompt-engineering",
+    "llm",
+    "output-format",
+    "hallucination"
+  ],
+  "license": "CC0-1.0",
+  "author": "ziee",
+  "bundle": {
+    "url": "skills/io.github.ziee/effective-prompting/1.0.0.tar.gz",
+    "sha256": "f77de1f04b15efbbbc3540aaab4d8bf7a2ed6ba0c4407db234fe274455b053ac",
+    "size_bytes": 1457,
+    "file_count": 1,
+    "entry_point": "SKILL.md"
+  },
+  "dependencies": []
+}

@@ -26,9 +26,12 @@ use crate::common::test_helpers::{create_user_with_no_permissions, create_user_w
 /// than loaded dynamically so a bumped seed forces test review.
 const SEED_VERSION: &str = "2.0.0";
 // The seed mirrors ziee-ai/hub's published `dist/` — 7 models +
-// 5 assistants + 6 mcp-servers + 10 skills + 9 workflows = 37 entries.
+// 5 assistants + 6 mcp-servers + 1 skill + 9 workflows = 28 entries.
+// (ziee's 10 capability skills are now built-in, embedded in the binary,
+// NOT hub-distributed; the hub ships one generic example skill,
+// io.github.ziee/effective-prompting.)
 // Bump when the seed snapshot is refreshed.
-const SEED_ITEM_COUNT: usize = 37;
+const SEED_ITEM_COUNT: usize = 28;
 
 // =====================================================================
 // /hub/version + /hub/index — anyone with read can call
@@ -59,7 +62,9 @@ async fn version_endpoint_returns_seed_catalog_metadata() {
     assert_eq!(counts["models"], 7);
     assert_eq!(counts["assistants"], 5);
     assert_eq!(counts["mcp_servers"], 6);
-    assert_eq!(counts["skills"], 10);
+    // ziee's 10 capability skills are now built-in (not hub); the hub ships
+    // one generic example skill (io.github.ziee/effective-prompting).
+    assert_eq!(counts["skills"], 1);
     assert_eq!(counts["workflows"], 9);
 }
 
