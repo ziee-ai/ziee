@@ -15941,6 +15941,76 @@
         ]
       }
     },
+    "/api/workflows/install-from-hub": {
+      "post": {
+        "tags": [
+          "Hub",
+          "Workflows"
+        ],
+        "summary": "Install user-scope workflow from hub catalog",
+        "description": "\n\n**Required Permission:** `workflows::install`\n\nInstall user-scope workflows",
+        "operationId": "Hub.createWorkflowFromHub",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWorkflowFromHubRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Install user-scope workflows",
+                        "name": "WorkflowsInstall",
+                        "value": "workflows::install"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: workflows::install",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowFromHubResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Hub workflow not found"
+          },
+          "422": {
+            "description": "Bundle verification failed OR workflow.yaml structurally invalid (duplicate step id, depends_on cycle, unknown dependency)"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/workflows/{id}": {
       "get": {
         "tags": [
@@ -15982,6 +16052,50 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Workflows"
+        ],
+        "summary": "Edit a user-owned workflow",
+        "description": "Update the editable metadata (display_name / description / enabled / tags) of a user-scope workflow the caller owns.",
+        "operationId": "Workflow.update",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWorkflow"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Not the owner"
+          },
+          "200": {
+            "description": "Database row in `workflows`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workflow"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Workflow not found"
           }
         },
         "security": [
@@ -16697,6 +16811,150 @@
         ]
       }
     },
+    "/api/workflows/system/install-from-hub": {
+      "post": {
+        "tags": [
+          "Hub",
+          "Workflows - System"
+        ],
+        "summary": "Install SYSTEM-WIDE workflow from hub catalog",
+        "description": "Installs a hub workflow entry as a system-wide workflow (`scope='system', owner_user_id=NULL`). Optional `groups: [...]` body field assigns it to specific groups. Requires `workflows::manage_system`.",
+        "operationId": "Hub.createSystemWorkflowFromHub",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSystemWorkflowFromHubRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Install / edit / delete system-scope workflows (admin)",
+                        "name": "WorkflowsManageSystem",
+                        "value": "workflows::manage_system"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: workflows::manage_system",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowFromHubResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Hub workflow not found"
+          },
+          "422": {
+            "description": "Bundle verification or workflow.yaml validation failure"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/workflows/system/import": {
+      "post": {
+        "tags": [
+          "Workflows - Admin"
+        ],
+        "summary": "Admin dev-import a SYSTEM-WIDE workflow bundle (multipart tarball)",
+        "description": "Same extract+validate pipeline as the user import, but installs as scope='system' and requires workflows::manage_system.",
+        "operationId": "Workflow.importSystem",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "name",
+            "description": "Optional slug override; `local.dev/<slug>` becomes the row name.",
+            "schema": {
+              "description": "Optional slug override; `local.dev/<slug>` becomes the row name.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "description": "`user` (default) or `system`. `system` requires\n `workflows::manage_system`.",
+            "schema": {
+              "description": "`user` (default) or `system`. `system` requires\n `workflows::manage_system`.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "style": "form"
+          }
+        ],
+        "requestBody": {
+          "description": "multipart form data",
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "array"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden (requires workflows::manage_system)"
+          },
+          "201": {
+            "description": "Database row in `workflows`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workflow"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/workflows/system/{id}": {
       "get": {
         "tags": [
@@ -16779,6 +17037,170 @@
           },
           "204": {
             "description": "no content"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/workflows/system/{id}/groups": {
+      "get": {
+        "tags": [
+          "Workflows - Admin"
+        ],
+        "summary": "Get groups assigned to a system-scope workflow",
+        "description": "\n\n**Required Permission:** `workflows::assign_to_groups`\n\nManage group assignments for system-scope workflows",
+        "operationId": "WorkflowSystem.getGroups",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Manage group assignments for system-scope workflows",
+                        "name": "WorkflowsAssignToGroups",
+                        "value": "workflows::assign_to_groups"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: workflows::assign_to_groups",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Workflows - Admin"
+        ],
+        "summary": "Replace the set of groups assigned to a workflow",
+        "description": "\n\n**Required Permission:** `workflows::assign_to_groups`\n\nManage group assignments for system-scope workflows",
+        "operationId": "WorkflowSystem.setGroups",
+        "requestBody": {
+          "description": "`POST /api/workflows/system/{id}/groups` body. Replaces the entire\n set (mirrors `skill::types::SkillGroupsRequest`).",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowGroupsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Manage group assignments for system-scope workflows",
+                        "name": "WorkflowsAssignToGroups",
+                        "value": "workflows::assign_to_groups"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: workflows::assign_to_groups",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Assignments updated"
+          },
+          "400": {
+            "description": "Bad request — non-system scope"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Workflow not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/workflows/system/{id}/groups/{group_id}": {
+      "delete": {
+        "tags": [
+          "Workflows - Admin"
+        ],
+        "summary": "Remove a workflow from one group",
+        "description": "\n\n**Required Permission:** `workflows::assign_to_groups`\n\nManage group assignments for system-scope workflows",
+        "operationId": "WorkflowSystem.removeFromGroup",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Manage group assignments for system-scope workflows",
+                        "name": "WorkflowsAssignToGroups",
+                        "value": "workflows::assign_to_groups"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: workflows::assign_to_groups",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Removed"
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "security": [
@@ -30671,6 +31093,30 @@
           }
         }
       },
+      "UpdateWorkflow": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "tags": true
+        }
+      },
       "UpsertCoreMemoryBlockRequest": {
         "type": "object",
         "properties": {
@@ -31568,6 +32014,22 @@
         "required": [
           "workflow",
           "hub_tracking"
+        ]
+      },
+      "WorkflowGroupsRequest": {
+        "description": "`POST /api/workflows/system/{id}/groups` body. Replaces the entire\n set (mirrors `skill::types::SkillGroupsRequest`).",
+        "type": "object",
+        "properties": {
+          "group_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "group_ids"
         ]
       },
       "WorkflowListResponse": {

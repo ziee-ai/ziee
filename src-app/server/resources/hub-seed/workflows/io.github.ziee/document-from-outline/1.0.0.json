@@ -12,8 +12,8 @@
   "author": "ziee",
   "bundle": {
     "url": "workflows/io.github.ziee/document-from-outline/1.0.0.tar.gz",
-    "sha256": "38f4e9225a90987d9d8765f4a3db0587dce55a7559e64d051c9213aa6dad22a6",
-    "size_bytes": 760,
+    "sha256": "46069335d61577564786938da65bd2e8127483b606f0579929dd7ebf1f22086c",
+    "size_bytes": 762,
     "file_count": 1,
     "entry_point": "workflow.yaml"
   },

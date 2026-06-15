@@ -14,8 +14,8 @@
   "author": "ziee",
   "bundle": {
     "url": "workflows/io.github.ziee/deep-research/1.0.0.tar.gz",
-    "sha256": "419dae9af73d751f3c5729ef5ebe5b793493a5d8bce7b71e6a2e909daaf0654a",
-    "size_bytes": 1644,
+    "sha256": "09cbaa0acafb714a0bcf76306277f749ea6a9322e28aef49a6ed1e5a44a49b51",
+    "size_bytes": 1624,
     "file_count": 1,
     "entry_point": "workflow.yaml"
   },
