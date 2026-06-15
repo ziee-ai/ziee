@@ -1895,8 +1895,9 @@ async fn build_workflow_create_from_hub(
         created_by,
         enabled: true,
         is_dev: false,
-        // B4 fills this in via the validator's compile pass.
-        compiled_ir_json: None,
+        // Pattern (d): compile the validated def into the typed IR and
+        // persist it so the column is non-NULL + available to the runner.
+        compiled_ir_json: workflow::compiled::compile_to_json(&workflow_def),
     };
 
     Ok(HubWorkflowCreatePlan {

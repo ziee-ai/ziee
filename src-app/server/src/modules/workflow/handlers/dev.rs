@@ -97,14 +97,22 @@ pub async fn validate_workflow(
     // acceptable for the YAML-only validate surface.
     let tmp = std::env::temp_dir();
     let raw = validate::validate_collecting(&parsed, &tmp, true);
-    let errors: Vec<ValidateErrorEntry> = raw
-        .into_iter()
-        .map(|e| ValidateErrorEntry {
+    // Split findings by severity: errors gate `valid`; warnings (the
+    // type-aware ref-check escape hatch for under-specified workflows) are
+    // surfaced separately and never affect `valid`.
+    let mut errors: Vec<ValidateErrorEntry> = Vec::new();
+    let mut warnings: Vec<ValidateErrorEntry> = Vec::new();
+    for e in raw {
+        let entry = ValidateErrorEntry {
             code: e.code.to_string(),
             location: e.location,
             message: e.message,
-        })
-        .collect();
+        };
+        match e.severity {
+            validate::Severity::Error => errors.push(entry),
+            validate::Severity::Warning => warnings.push(entry),
+        }
+    }
 
     let (steps, est_max_calls, est_max_tokens) = cost::estimate_static(&parsed);
 
@@ -113,7 +121,7 @@ pub async fn validate_workflow(
         Json(ValidateWorkflowResponse {
             valid: errors.is_empty(),
             errors,
-            warnings: vec![],
+            warnings,
             steps,
             est_max_calls,
             est_max_tokens,
@@ -263,7 +271,10 @@ async fn import_workflow_inner(
         created_by: Some(user.id),
         enabled: true,
         is_dev: true,
-        compiled_ir_json: None,
+        // Pattern (d): compile the validated def into the typed IR so the
+        // column is non-NULL + available to the runner (matches the hub
+        // install path). See compiled.rs.
+        compiled_ir_json: crate::modules::workflow::compiled::compile_to_json(&workflow_def),
     };
 
     let workflow = match repository::insert(Repos.pool(), create).await {

@@ -6,9 +6,24 @@
 //! gives the consumer the same enforcement for free (typed enums for
 //! `kind`, default values for omitted fields, mutually-exclusive
 //! `prompt`/`prompt_file` via the `#[serde(flatten)]` tagged union).
-//! A future patch may load and validate against the actual JSON
-//! Schema (jsonschema-rs is not in the workspace today; serde is the
-//! Phase-1 surface).
+//!
+//! **Layer-1 jsonschema decision (Phase 8 G):** the plan §4.1 Layer 1
+//! nominally calls for the `jsonschema` crate run against the vendored
+//! `workflow-definition.schema.json`. We deliberately KEEP the serde
+//! path instead of adding the crate, because:
+//!   1. serde already gives EQUIVALENT shape enforcement (typed enums,
+//!      defaults, the `prompt`/`prompt_file` flatten-mutex re-checked in
+//!      `check_steps_shape`).
+//!   2. the actual GOAL of plan §4.1 Layer 1 — publisher + consumer
+//!      validators AGREE on shape — is now guaranteed by the shared
+//!      `test-fixtures/` corpus (Layer 4 cross-fixture parity), not by
+//!      both sides happening to call the same library.
+//!   3. the vendored schema is draft-2020-12 with conditional
+//!      `if/then`/`allOf` per-kind blocks; loading + compiling that with
+//!      jsonschema-rs (a new workspace dep) is non-trivial and brings
+//!      no behavioral win over serde + fixture-parity.
+//! If a future need for literal schema fidelity arises (e.g. a third
+//! Layer-1 consumer), revisit; for Phase 1 the equivalence holds.
 //!
 //! Layer 2 (semantic):
 //! - step IDs unique + match `^[a-z][a-z0-9_]*$`,
@@ -251,6 +266,17 @@ fn default_expose_mode() -> ExposeMode {
 // Validation
 // ============================================================
 
+/// Severity of a validation finding. Errors BLOCK install; warnings are
+/// surfaced (e.g. via the `/validate` endpoint's `warnings` array) but do
+/// NOT fail install — they preserve the Phase-1 escape hatch for
+/// under-specified workflows (plan §4.1 pattern (b)).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Severity {
+    Error,
+    Warning,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ValidationError {
     pub layer: &'static str, // "schema" | "semantic" | "security"
@@ -259,18 +285,28 @@ pub struct ValidationError {
     /// Optional step id / output name / inputs.foo path for FE
     /// rendering.
     pub location: Option<String>,
+    /// `Error` (blocks install) or `Warning` (surfaced, non-blocking).
+    /// Defaults to `Error` for all existing call sites; only the
+    /// type-aware ref checker (`ref_check.rs`) emits warnings.
+    #[serde(default = "default_severity")]
+    pub severity: Severity,
+}
+
+fn default_severity() -> Severity {
+    Severity::Error
 }
 
 impl ValidationError {
-    fn err<S: Into<String>>(layer: &'static str, code: &'static str, msg: S) -> Self {
+    pub(crate) fn err<S: Into<String>>(layer: &'static str, code: &'static str, msg: S) -> Self {
         Self {
             layer,
             code,
             message: msg.into(),
             location: None,
+            severity: Severity::Error,
         }
     }
-    fn at<S: Into<String>, L: Into<String>>(
+    pub(crate) fn at<S: Into<String>, L: Into<String>>(
         layer: &'static str,
         code: &'static str,
         msg: S,
@@ -281,6 +317,23 @@ impl ValidationError {
             code,
             message: msg.into(),
             location: Some(loc.into()),
+            severity: Severity::Error,
+        }
+    }
+    /// Warning-severity finding with a location. Surfaced but never
+    /// blocks install (`validate_for_install` filters to errors only).
+    pub(crate) fn warn<S: Into<String>, L: Into<String>>(
+        layer: &'static str,
+        code: &'static str,
+        msg: S,
+        loc: L,
+    ) -> Self {
+        Self {
+            layer,
+            code,
+            message: msg.into(),
+            location: Some(loc.into()),
+            severity: Severity::Warning,
         }
     }
 }
@@ -309,8 +362,13 @@ pub fn validate_for_install(
     bundle_root: &Path,
     is_dev: bool,
 ) -> Result<(), AppError> {
-    let errors = validate_collecting(workflow, bundle_root, is_dev);
-    if let Some(first) = errors.into_iter().next() {
+    let findings = validate_collecting(workflow, bundle_root, is_dev);
+    // Warnings (type-aware ref-check escape hatch) are surfaced via the
+    // `/validate` endpoint but MUST NOT block install. Only errors fail.
+    if let Some(first) = findings
+        .into_iter()
+        .find(|e| e.severity == Severity::Error)
+    {
         return Err(AppError::bad_request(
             first.code,
             format!(
@@ -340,6 +398,13 @@ pub fn validate_collecting(
     out.extend(check_template_refs(workflow));
     out.extend(check_prompt_files(workflow, bundle_root));
     out.extend(check_security(workflow));
+    // Pattern (b): type-aware reference validation. Runs AFTER the
+    // name-level `check_template_refs` so unknown ids are reported once
+    // (the typed checker skips unknown ids). Emits a mix of errors
+    // (definite type mismatches) + warnings (under-specified shapes).
+    out.extend(crate::modules::workflow::ref_check::check_typed_refs(
+        workflow,
+    ));
     if !is_dev {
         out.extend(check_no_mock(workflow));
     }

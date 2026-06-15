@@ -33,6 +33,24 @@ async fn user_install_creates_row_extract_and_tracking() {
     assert_eq!(wf["entry_point"], "workflow.yaml", "entry_point: {body}");
     assert_eq!(wf["is_dev"], false, "hub install is not is_dev: {body}");
 
+    // Phase 8 G pattern (d): the validator's compile pass populates
+    // compiled_ir_json at install time (it was always NULL before). Assert
+    // the column is no longer null and carries a well-formed IR.
+    let ir = &wf["compiled_ir_json"];
+    assert!(
+        !ir.is_null(),
+        "compiled_ir_json must be populated on install: {body}"
+    );
+    assert_eq!(ir["ir_version"], 1, "IR version stamped: {body}");
+    assert_eq!(
+        ir["step_count"], 3,
+        "IR captures the 3 steps of the fixture workflow: {body}"
+    );
+    assert!(
+        ir["steps"].is_array() && ir["topo_order"].is_array(),
+        "IR carries steps[] + topo_order[]: {body}"
+    );
+
     // On-disk extract: workflow.yaml present at extracted_path. The
     // install handler already parsed + cycle-checked it (the 201 proves
     // validation passed), so reading the file back confirms the bundle
