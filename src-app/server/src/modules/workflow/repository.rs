@@ -644,6 +644,23 @@ pub async fn mark_running(pool: &PgPool, run_id: Uuid) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Liveness heartbeat: bump `updated_at` on a still-running run without
+/// changing any other state. The workflow_mcp tool path treats a stalled
+/// `updated_at` as a crashed runner (M5 no-progress guard); a long-but-live
+/// step (e.g. a 30-min elicit wait) produces no step transitions, so the
+/// runner ticks this heartbeat to prove it's alive. The status guard means a
+/// terminal run is never touched (can't resurrect a completed/cancelled run).
+pub async fn heartbeat(pool: &PgPool, run_id: Uuid) -> Result<(), AppError> {
+    sqlx::query!(
+        r#"UPDATE workflow_runs SET updated_at = NOW() WHERE id = $1 AND status IN ('pending', 'running')"#,
+        run_id,
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(())
+}
+
 /// Status-guarded cancel CAS (plan §4.3).
 pub async fn cancel_cas(
     pool: &PgPool,

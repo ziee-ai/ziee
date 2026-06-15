@@ -113,17 +113,20 @@ pub fn parse_skill_md_frontmatter(
         ));
     }
 
-    // Cap description + when_to_use per the spec.
+    // Cap description + when_to_use per the spec. The cap is in CHARACTERS
+    // (the spec's truncation rule + the publisher's validate.py count chars),
+    // so count chars, not bytes — otherwise a multibyte (CJK / emoji)
+    // description would be capped early.
     let desc_len = frontmatter_json
         .get("description")
         .and_then(|v| v.as_str())
-        .map(str::len)
+        .map(|s| s.chars().count())
         .unwrap_or(0);
     let when_len = frontmatter_json
         .get("when_to_use")
         .or_else(|| frontmatter_json.get("when-to-use"))
         .and_then(|v| v.as_str())
-        .map(str::len)
+        .map(|s| s.chars().count())
         .unwrap_or(0);
     if desc_len + when_len > MAX_DESCRIPTION_PLUS_WHEN_TO_USE {
         return Err(AppError::bad_request(

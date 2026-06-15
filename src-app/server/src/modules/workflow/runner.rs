@@ -47,6 +47,13 @@ use crate::modules::workflow::validate::{
 /// the run with a `wall_clock_exceeded` error message.
 pub const RUN_WALL_CLOCK: std::time::Duration = std::time::Duration::from_secs(30 * 60);
 
+/// Liveness-heartbeat cadence. While a run is in-flight the runner bumps
+/// `workflow_runs.updated_at` this often so the workflow_mcp tool path's
+/// no-progress guard (5 min) doesn't false-kill a long-but-live single step
+/// (a 30-min elicit wait or a 10-min sandbox step produces no step
+/// transitions to advance `updated_at` on its own).
+pub const HEARTBEAT_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
+
 /// Per-run cumulative token cap (plan §4.5).
 pub const PER_RUN_TOKEN_CAP: u64 = 5_000_000;
 
@@ -330,12 +337,34 @@ pub async fn run_workflow(
     };
     let emit: Arc<dyn ProgressEmitter> = Arc::new(PerRunEmitter { run_id });
 
+    // Liveness heartbeat: bump `updated_at` every HEARTBEAT_INTERVAL so the
+    // workflow_mcp no-progress guard sees a live runner even during a long
+    // single step (elicit / sandbox) that emits no step transitions. A
+    // crashed runner task can't tick this, so the guard still catches it.
+    let hb_pool = pool.clone();
+    let heartbeat = tokio::spawn(async move {
+        let mut tick = tokio::time::interval(HEARTBEAT_INTERVAL);
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        // Skip the immediate first tick (mark_running already set updated_at).
+        tick.tick().await;
+        loop {
+            tick.tick().await;
+            // Stop quietly once the row is terminal (the guard no-ops) or gone.
+            if repository::heartbeat(&hb_pool, run_id).await.is_err() {
+                break;
+            }
+        }
+    });
+
     // Wrap the entire run in the wall-clock timeout.
     let outcome = tokio::time::timeout(
         RUN_WALL_CLOCK,
         run_inner(&pool, &mut ctx, &workflow_def, provider, handle.clone(), emit.clone()),
     )
     .await;
+
+    // Stop the heartbeat the moment the run reaches a terminal state.
+    heartbeat.abort();
 
     let total_tokens = ctx.total_tokens;
 

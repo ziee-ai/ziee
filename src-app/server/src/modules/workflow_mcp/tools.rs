@@ -390,10 +390,12 @@ impl Drop for RunCancelOnDrop {
 /// M5: a PANICKED runner task stops updating the row but never marks it
 /// terminal — without a no-progress guard the tool call would block the
 /// full 31-min ceiling. We track `updated_at`: every step transition /
-/// item-progress emit bumps it, so a stalled `updated_at` past the
-/// no-progress threshold means the runner is dead → fail fast. The
-/// threshold is generously above the per-step elicit timeout's keep-alive
-/// cadence so a legitimately long-but-live step is never killed.
+/// item-progress emit bumps it, AND a live runner ticks a 60s liveness
+/// heartbeat (`runner::HEARTBEAT_INTERVAL`) so a long-but-live single step
+/// (a 30-min elicit wait, a 10-min sandbox step) keeps `updated_at` fresh.
+/// A stalled `updated_at` past the no-progress threshold therefore means the
+/// runner task is genuinely dead → fail fast, without false-killing a live
+/// run that's merely waiting.
 async fn await_terminal(pool: &sqlx::PgPool, run_id: Uuid) -> Result<WorkflowRun, AppError> {
     // Slightly above the runner's 30-min wall-clock cap.
     const MAX_WAIT: Duration = Duration::from_secs(31 * 60);
@@ -589,13 +591,19 @@ pub async fn format_outputs_for_mcp(
                     let val = read_full_output_value(run, o)
                         .unwrap_or_else(|| Value::String(preview.clone()));
                     // Account the REAL serialized byte size of what we inline
-                    // against the running total (H5), not the raw size_bytes.
+                    // against the running total (H5) — and re-check the
+                    // per-output 4 KiB cap against the ACTUAL content size, not
+                    // the metadata `size_bytes` (which for a sub-field `from`
+                    // is just the small rendered-template length, letting a
+                    // large backing file slip past the per-output cap).
                     let inlined_bytes = serialized_len(&val);
-                    if running_text_bytes.saturating_add(inlined_bytes) > TOTAL_TEXT_CAP_BYTES {
+                    if inlined_bytes > INLINE_FULL_CAP_BYTES
+                        || running_text_bytes.saturating_add(inlined_bytes) > TOTAL_TEXT_CAP_BYTES
+                    {
                         let desc = format!(
-                            "Output of '{}' ({} bytes); inline body cap reached. Truncated preview: '{}...'",
+                            "Output of '{}' ({} bytes); exceeds inline cap. Truncated preview: '{}...'",
                             o.name,
-                            size_bytes,
+                            inlined_bytes,
                             take_chars(&preview, PREVIEW_SNIPPET_CHARS),
                         );
                         promote_to_resource(&mut resource_entries, desc);
