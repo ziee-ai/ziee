@@ -591,7 +591,9 @@ fn sanitize_slug(raw: &str) -> String {
         })
         .collect();
     let s = s.trim_matches('-').to_string();
-    if s.is_empty() {
+    // Reject a dot-only slug (".", "..", "…") so it can't act as a path
+    // component when joined into the extracted-bundle dir.
+    if s.is_empty() || s.chars().all(|c| c == '.') {
         "imported".to_string()
     } else {
         s
