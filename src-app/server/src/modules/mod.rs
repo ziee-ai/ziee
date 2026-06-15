@@ -28,5 +28,6 @@ pub mod summarization;
 pub mod sync;
 pub mod user;
 pub mod workflow;
+pub mod workflow_mcp;
 
 // Re-export modules

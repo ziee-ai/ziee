@@ -133,27 +133,6 @@ pub async fn run_workflow(
             "workflow owned by another user",
         )).into());
     }
-    if !wf.enabled {
-        return Err::<_, (StatusCode, AppError)>((AppError::bad_request(
-            "WORKFLOW_DISABLED",
-            "workflow is disabled",
-        )).into());
-    }
-
-    // Parse + validate.
-    let wf_yaml_path = std::path::PathBuf::from(&wf.extracted_path).join(&wf.entry_point);
-    let content = tokio::fs::read_to_string(&wf_yaml_path).await.map_err(|e| {
-        AppError::internal_error(format!(
-            "workflow: read workflow.yaml at {}: {e}",
-            wf_yaml_path.display()
-        ))
-    })?;
-    let workflow_def = crate::modules::workflow::validate::parse_workflow_yaml(&content)?;
-    crate::modules::workflow::validate::validate_for_install(
-        &workflow_def,
-        std::path::Path::new(&wf.extracted_path),
-        wf.is_dev,
-    )?;
 
     // Mocks are dev-only. Reject a /run that carries mocks against a
     // published (non-dev) workflow — prevents bypassing real execution
@@ -169,95 +148,21 @@ pub async fn run_workflow(
         );
     }
 
-    // Resolve model_id from the conversation if set; otherwise reject.
-    let (model_id, model_name) = if let Some(conv_id) = req.conversation_id {
-        let conv = Repos
-            .chat
-            .core
-            .get_conversation(conv_id, auth.user.id)
-            .await?
-            .ok_or_else(|| AppError::not_found("Conversation"))?;
-        let mid = conv.model_id.ok_or_else(|| {
-            AppError::bad_request(
-                "WORKFLOW_CONVERSATION_NO_MODEL",
-                "conversation has no model set; cannot snapshot for workflow run",
-            )
-        })?;
-        let m = Repos
-            .llm_model
-            .get_by_id(mid)
-            .await?
-            .ok_or_else(|| AppError::not_found("Model"))?;
-        (mid, m.name.clone())
-    } else {
-        return Err::<_, (StatusCode, AppError)>((AppError::bad_request(
-            "WORKFLOW_NO_MODEL_SOURCE",
-            "Phase 1: workflow runs must carry a conversation_id (used to snapshot the model)",
-        )).into());
-    };
-
-    let sandbox_flavor = workflow_def.sandbox.as_ref().map(|s| s.flavor.clone());
-
-    // Insert workflow_runs row.
-    let row = repository::insert_run(
+    // Shared spawn path (also used by workflow_mcp's tool-call handler).
+    let run_id = crate::modules::workflow::runner::spawn_run(
         &pool,
-        crate::modules::workflow::models::CreateWorkflowRun {
-            workflow_id: wf.id,
-            conversation_id: req.conversation_id,
-            user_id: auth.user.id,
-            model_id: Some(model_id),
-            sandbox_flavor: sandbox_flavor.clone(),
-            run_kind: "normal".into(),
-            inputs_json: req.inputs.clone(),
-        },
-    )
-    .await?;
-
-    // Register handle + spawn runner.
-    let _handle = registry::register(row.id);
-
-    let workspace_root = crate::modules::workflow::runner::workflow_workspace_root();
-    let ctx = crate::modules::workflow::runner::preflight(
-        &pool,
-        row.id,
+        &wf,
         auth.user.id,
         req.conversation_id,
-        wf.id,
         req.inputs,
-        &workflow_def,
-        std::path::PathBuf::from(&wf.extracted_path),
-        workspace_root,
-        model_id,
-        model_name,
-        sandbox_flavor,
-        wf.is_dev,
         req.mocks,
     )
     .await?;
 
-    // Resolve provider for that model.
-    let (provider, _name, _mid, _pid, _params) =
-        crate::modules::chat::core::ai_provider::create_provider_from_model_id(
-            model_id,
-            auth.user.id,
-        )
-        .await?;
-
-    let pool_for_task = pool.clone();
-    tokio::spawn(async move {
-        crate::modules::workflow::runner::run_workflow(
-            pool_for_task,
-            ctx,
-            workflow_def,
-            provider,
-        )
-        .await;
-    });
-
     Ok((
         StatusCode::ACCEPTED,
         Json(WorkflowRunStartResponse {
-            run_id: row.id,
+            run_id,
             status: "pending".into(),
         }),
     ))

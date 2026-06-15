@@ -611,6 +611,123 @@ async fn resolve_outputs(
     Ok(Value::Object(map))
 }
 
+/// Shared run-spawn path used by BOTH the REST `POST /run` handler and
+/// the `workflow_mcp` tool-call path (B5). Loads + validates the
+/// workflow.yaml, snapshots the conversation's model, inserts the
+/// `workflow_runs` row, registers the run handle, runs `preflight`,
+/// resolves the provider, and spawns the runner task. Returns the
+/// created `run_id` immediately (fire-and-forget); callers that need to
+/// block until completion (workflow_mcp) poll `repository::find_run`.
+///
+/// `mocks` are dev-only and already gated by the caller (REST handler
+/// rejects mocks on a non-dev workflow with 403; preflight drops them
+/// when `!is_dev`).
+pub async fn spawn_run(
+    pool: &PgPool,
+    workflow: &crate::modules::workflow::models::Workflow,
+    user_id: Uuid,
+    conversation_id: Option<Uuid>,
+    inputs: Value,
+    mocks: HashMap<String, Value>,
+) -> Result<Uuid, AppError> {
+    if !workflow.enabled {
+        return Err(AppError::bad_request(
+            "WORKFLOW_DISABLED",
+            "workflow is disabled",
+        ));
+    }
+
+    // Parse + validate the on-disk workflow.yaml.
+    let wf_yaml_path = PathBuf::from(&workflow.extracted_path).join(&workflow.entry_point);
+    let content = tokio::fs::read_to_string(&wf_yaml_path).await.map_err(|e| {
+        AppError::internal_error(format!(
+            "workflow: read workflow.yaml at {}: {e}",
+            wf_yaml_path.display()
+        ))
+    })?;
+    let workflow_def = crate::modules::workflow::validate::parse_workflow_yaml(&content)?;
+    crate::modules::workflow::validate::validate_for_install(
+        &workflow_def,
+        std::path::Path::new(&workflow.extracted_path),
+        workflow.is_dev,
+    )?;
+
+    // Snapshot the model from the conversation (Phase 1: a conversation
+    // is required so we have a model to run llm steps with).
+    let conv_id = conversation_id.ok_or_else(|| {
+        AppError::bad_request(
+            "WORKFLOW_NO_MODEL_SOURCE",
+            "Phase 1: workflow runs must carry a conversation_id (used to snapshot the model)",
+        )
+    })?;
+    let conv = crate::core::Repos
+        .chat
+        .core
+        .get_conversation(conv_id, user_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Conversation"))?;
+    let model_id = conv.model_id.ok_or_else(|| {
+        AppError::bad_request(
+            "WORKFLOW_CONVERSATION_NO_MODEL",
+            "conversation has no model set; cannot snapshot for workflow run",
+        )
+    })?;
+    let model = crate::core::Repos
+        .llm_model
+        .get_by_id(model_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Model"))?;
+    let model_name = model.name.clone();
+
+    let sandbox_flavor = workflow_def.sandbox.as_ref().map(|s| s.flavor.clone());
+
+    let row = repository::insert_run(
+        pool,
+        crate::modules::workflow::models::CreateWorkflowRun {
+            workflow_id: workflow.id,
+            conversation_id,
+            user_id,
+            model_id: Some(model_id),
+            sandbox_flavor: sandbox_flavor.clone(),
+            run_kind: "normal".into(),
+            inputs_json: inputs.clone(),
+        },
+    )
+    .await?;
+
+    let _handle = registry::register(row.id);
+
+    let workspace_root = workflow_workspace_root();
+    let ctx = preflight(
+        pool,
+        row.id,
+        user_id,
+        conversation_id,
+        workflow.id,
+        inputs,
+        &workflow_def,
+        PathBuf::from(&workflow.extracted_path),
+        workspace_root,
+        model_id,
+        model_name,
+        sandbox_flavor,
+        workflow.is_dev,
+        mocks,
+    )
+    .await?;
+
+    let (provider, _name, _mid, _pid, _params) =
+        crate::modules::chat::core::ai_provider::create_provider_from_model_id(model_id, user_id)
+            .await?;
+
+    let pool_for_task = pool.clone();
+    tokio::spawn(async move {
+        run_workflow(pool_for_task, ctx, workflow_def, provider).await;
+    });
+
+    Ok(row.id)
+}
+
 /// Convenience: lookup the workspace root from the configured
 /// `code_sandbox` state (workflow stage dirs live under it). Falls
 /// back to a sensible default if the sandbox module isn't initialized

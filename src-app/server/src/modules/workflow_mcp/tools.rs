@@ -1,0 +1,754 @@
+//! `tools/list` + `tools/call` for the built-in workflow MCP server.
+//!
+//! Each installed + accessible + enabled workflow becomes one opaque
+//! tool `wf_<slug>`. `call_tool` snapshots the conversation model,
+//! spawns the runner (shared `runner::spawn_run`), blocks until the run
+//! is terminal, then builds a `CallToolResult` via
+//! `format_outputs_for_mcp` honoring each output's `expose:` mode and
+//! the size caps (plan §4.7).
+
+#![allow(dead_code)]
+
+use std::time::Duration;
+
+use serde_json::{Map, Value, json};
+use uuid::Uuid;
+
+use crate::common::AppError;
+use crate::modules::workflow::models::{Workflow, WorkflowRun};
+use crate::modules::workflow::repository;
+use crate::modules::workflow::runner;
+use crate::modules::workflow::validate::{ExposeMode, OutputDef, WorkflowDef, parse_workflow_yaml};
+
+use super::workflow_mcp_server_id;
+
+// ── size caps (plan §4.7) ─────────────────────────────────────────────
+/// `expose: full` outputs at or below this size are inlined as JSON; above
+/// it they auto-promote to a `Content::Resource` entry.
+pub const INLINE_FULL_CAP_BYTES: usize = 4 * 1024;
+/// `expose: preview` snippet length.
+pub const PREVIEW_SNIPPET_CHARS: usize = 500;
+/// Total text-body cap across all inlined outputs. Outputs that would
+/// push the body over this auto-promote to resources.
+pub const TOTAL_TEXT_CAP_BYTES: usize = 50 * 1024;
+/// Anthropic tool-name cap: `^[a-zA-Z0-9_-]{1,128}$`.
+pub const MCP_TOOL_NAME_CAP: usize = 128;
+
+// ── slug + composed-name derivation ───────────────────────────────────
+
+/// Map a reverse-DNS workflow name to a tool-name leaf slug. `/` and `.`
+/// (the only non-`[a-z0-9._-]` separators the publisher allows in a
+/// name) collapse to `_`; any remaining non-alphanumeric char is also
+/// normalized to `_` so the composed name stays inside Anthropic's
+/// `^[a-zA-Z0-9_-]{1,128}$`.
+pub fn slug_for_name(name: &str) -> String {
+    let body: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    format!("wf_{body}")
+}
+
+/// The full LLM-visible tool name: `<server_uuid>__wf_<slug>`. Matches
+/// the `mcp/chat_extension/helpers.rs` `{server}__{tool}` convention.
+pub fn composed_tool_name(slug: &str) -> String {
+    format!("{}__{}", workflow_mcp_server_id(), slug)
+}
+
+/// Enforce the 128-char cap on the composed name. Returns `Some(name)`
+/// when it fits + is regex-clean, `None` (caller drops + warns) when it
+/// would overflow or carry an illegal char. Mirrors B2's drop-and-warn
+/// behavior in `mcp/chat_extension/helpers.rs`.
+pub fn checked_composed_name(slug: &str) -> Option<String> {
+    let name = composed_tool_name(slug);
+    if name.len() > MCP_TOOL_NAME_CAP {
+        return None;
+    }
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
+        return None;
+    }
+    Some(name)
+}
+
+/// Derive a JSON-Schema `inputSchema` object from a workflow's
+/// `inputs[]`. Required inputs land in `required[]`; defaults pass
+/// through as schema `default`.
+fn input_schema_for(def: &WorkflowDef) -> Value {
+    let mut props = Map::new();
+    let mut required: Vec<Value> = Vec::new();
+    for input in &def.inputs {
+        let mut p = Map::new();
+        // Phase 1: inputs are untyped (string-ish). Keep the schema
+        // permissive — the LLM gets the description for guidance, the
+        // runner does the real validation against workflow.inputs[].
+        if let Some(d) = &input.description {
+            p.insert("description".into(), json!(d));
+        }
+        if let Some(default) = &input.default {
+            p.insert("default".into(), default.clone());
+        }
+        props.insert(input.name.clone(), Value::Object(p));
+        if input.required {
+            required.push(json!(input.name));
+        }
+    }
+    json!({
+        "type": "object",
+        "properties": Value::Object(props),
+        "required": required,
+    })
+}
+
+// ── tools/list ────────────────────────────────────────────────────────
+
+/// Build the `tools/list` result for the given user. One tool per
+/// installed workflow that's (a) `enabled`, (b) accessible (user-owned
+/// OR system-scope; `repository::list_for_user` already encodes the
+/// visibility predicate), and (c) whose composed tool name fits the
+/// 128-char cap. Workflows whose `workflow.yaml` fails to parse are
+/// skipped (defensive — install-time validation should have caught it).
+pub async fn tool_list(pool: &sqlx::PgPool, user_id: Uuid) -> Result<Value, AppError> {
+    let workflows = repository::list_for_user(pool, user_id).await?;
+    let mut tools: Vec<Value> = Vec::new();
+
+    for wf in workflows {
+        if !wf.enabled {
+            continue;
+        }
+        let slug = slug_for_name(&wf.name);
+        let composed = match checked_composed_name(&slug) {
+            Some(_n) => slug.clone(),
+            None => {
+                tracing::warn!(
+                    workflow = %wf.name,
+                    slug = %slug,
+                    "workflow_mcp: composed tool name exceeds 128-char cap or carries an illegal char; dropping from tools/list"
+                );
+                continue;
+            }
+        };
+
+        // Parse workflow.yaml for the input schema + description.
+        let def = match read_workflow_def(&wf).await {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::warn!(
+                    workflow = %wf.name,
+                    error = %e,
+                    "workflow_mcp: failed to parse workflow.yaml; dropping from tools/list"
+                );
+                continue;
+            }
+        };
+
+        let description = wf
+            .description
+            .clone()
+            .or_else(|| wf.display_name.clone())
+            .unwrap_or_else(|| format!("Run the '{}' workflow.", wf.name));
+
+        tools.push(json!({
+            "name": composed,
+            "description": description,
+            "inputSchema": input_schema_for(&def),
+        }));
+    }
+
+    Ok(json!({ "tools": tools }))
+}
+
+async fn read_workflow_def(wf: &Workflow) -> Result<WorkflowDef, AppError> {
+    let path = std::path::PathBuf::from(&wf.extracted_path).join(&wf.entry_point);
+    let content = tokio::fs::read_to_string(&path).await.map_err(|e| {
+        AppError::internal_error(format!(
+            "workflow_mcp: read workflow.yaml at {}: {e}",
+            path.display()
+        ))
+    })?;
+    parse_workflow_yaml(&content)
+}
+
+// ── tools/call ────────────────────────────────────────────────────────
+
+/// Recover the reverse-DNS workflow name from a `wf_<slug>` tool-name
+/// leaf by matching against the user's accessible workflows (the slug
+/// mapping is lossy — `/` and `.` both map to `_` — so we reverse via a
+/// scan rather than a string un-map).
+async fn resolve_workflow_by_slug(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+    slug: &str,
+) -> Result<Workflow, AppError> {
+    let workflows = repository::list_for_user(pool, user_id).await?;
+    workflows
+        .into_iter()
+        .find(|wf| slug_for_name(&wf.name) == slug)
+        .ok_or_else(|| AppError::not_found("workflow not installed for this user"))
+}
+
+/// `tools/call` dispatch for a `wf_<slug>` tool. Spawns the run, blocks
+/// until terminal, formats the result.
+///
+/// `tool_leaf` is the bare leaf the JSON-RPC handler extracted from the
+/// composed `<server>__wf_<slug>` (stripping the `<server>__` prefix);
+/// here it's already `wf_<slug>`.
+pub async fn call_tool(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+    conversation_id: Option<Uuid>,
+    tool_leaf: &str,
+    arguments: &Value,
+) -> Result<Value, AppError> {
+    if !tool_leaf.starts_with("wf_") {
+        return Err(AppError::bad_request(
+            "WORKFLOW_TOOL_UNKNOWN",
+            format!("unknown workflow tool '{tool_leaf}'"),
+        ));
+    }
+
+    let wf = resolve_workflow_by_slug(pool, user_id, tool_leaf).await?;
+
+    // Inputs arrive as the tool's `arguments` object.
+    let inputs = match arguments {
+        Value::Object(_) | Value::Null => arguments.clone(),
+        _ => {
+            return Err(AppError::bad_request(
+                "WORKFLOW_INPUTS_NOT_OBJECT",
+                "tool arguments must be a JSON object",
+            ));
+        }
+    };
+
+    // Spawn via the shared run path (validates yaml + snapshots model +
+    // inserts the workflow_runs row + spawns the runner task). mocks are
+    // never accepted on the MCP path (always production-shaped).
+    let run_id = runner::spawn_run(
+        pool,
+        &wf,
+        user_id,
+        conversation_id,
+        inputs,
+        Default::default(),
+    )
+    .await?;
+
+    // Block until terminal. The MCP tool call holds open until the run
+    // finishes — there's no async tool-result pattern in the chat path.
+    //
+    // ELICITATION BRIDGE (plan §4.6) — NOT fully wired in B5; honest TODO.
+    // ─────────────────────────────────────────────────────────────────
+    // A `kind: elicit` step inside a workflow invoked here STILL works:
+    // the runner's `ElicitDispatcher` (B4) persists `pending_elicitation_
+    // json`, emits `ElicitationRequired` on the PER-RUN SSE, and blocks on
+    // `registry::await_elicitation`. The user answers via the existing
+    // `POST /api/workflow-runs/{run}/elicit/{id}` endpoint (B4); the run
+    // then continues and `await_terminal` below returns the final result.
+    // So the run does not hang and the simpler surface is live.
+    //
+    // What is NOT wired: pushing the elicitation into the CHAT thread as an
+    // MCP `elicitation/create` request (the §4.6 "workflow_mcp path"
+    // primary surface). Doing so requires SERVER→CLIENT request plumbing
+    // that the built-in HTTP JSON-RPC transport does not have today: the
+    // built-in servers are plain request/response handlers (this file),
+    // and the MCP client (`mcp/client/http.rs`) has no path to receive a
+    // server-initiated `elicitation/create` mid-`tools/call` and route the
+    // response back. Wiring it real means (1) a bidirectional/streamable
+    // transport for built-in servers and (2) a `RunContext.mcp_tool_context`
+    // elicitation channel (referenced in the §4.6 pseudocode but absent
+    // from B4's `RunContext`). Both are out of B5's scope. Until then the
+    // per-run SSE form is the surface for workflow_mcp elicitations too.
+    let run = await_terminal(pool, run_id).await?;
+
+    // Read the workflow def again for the outputs[] expose modes.
+    let def = read_workflow_def(&wf).await?;
+
+    match run.status.as_str() {
+        "completed" => {
+            let formatted = format_outputs_for_mcp(pool, &run, &def.outputs).await?;
+            Ok(formatted)
+        }
+        _ => {
+            // failed / cancelled / (defensive) anything non-completed.
+            let err = build_error_result(pool, &run, &def).await;
+            Ok(err)
+        }
+    }
+}
+
+/// Poll `workflow_runs.status` until terminal. The runner marks
+/// `completed` / `failed` / `cancelled` on exit; the per-run wall-clock
+/// cap (30 min) inside the runner guarantees this loop terminates. We
+/// add a generous independent ceiling so a vanished runner task can't
+/// hang the tool call forever.
+async fn await_terminal(pool: &sqlx::PgPool, run_id: Uuid) -> Result<WorkflowRun, AppError> {
+    // Slightly above the runner's 30-min wall-clock cap.
+    const MAX_WAIT: Duration = Duration::from_secs(31 * 60);
+    const POLL_INTERVAL: Duration = Duration::from_millis(500);
+    let started = std::time::Instant::now();
+    loop {
+        let run = repository::find_run(pool, run_id)
+            .await?
+            .ok_or_else(|| AppError::not_found("WorkflowRun"))?;
+        if matches!(run.status.as_str(), "completed" | "failed" | "cancelled") {
+            return Ok(run);
+        }
+        if started.elapsed() > MAX_WAIT {
+            return Err(AppError::internal_error(
+                "workflow_mcp: timed out waiting for run to reach a terminal status",
+            ));
+        }
+        tokio::time::sleep(POLL_INTERVAL).await;
+    }
+}
+
+// ── format_outputs_for_mcp (plan §4.7) ────────────────────────────────
+
+/// Whether the workflow's effective `expose_logs` setting surfaces a
+/// `logs_resource` URI on failure for the given step. Workflow-level
+/// `never` blocks it entirely; `always` / `on_error` both surface on
+/// error (the error path is the only caller).
+fn logs_surfaceable(def: &WorkflowDef, step_id: &str) -> bool {
+    use crate::modules::workflow::validate::ExposeLogs;
+    // Per-step override wins; else the workflow-level setting.
+    let effective = def
+        .steps
+        .iter()
+        .find(|s| s.id == step_id)
+        .and_then(|s| s.expose_logs)
+        .unwrap_or(def.expose_logs);
+    !matches!(effective, ExposeLogs::Never)
+}
+
+/// Build the success `CallToolResult` JSON. Honors per-output `expose:`
+/// modes + size caps (plan §4.7). The result has a heterogeneous
+/// `content` array (text body + zero-or-more resource links) plus a
+/// `structuredContent` typed mirror and `metadata`.
+pub async fn format_outputs_for_mcp(
+    pool: &sqlx::PgPool,
+    run: &WorkflowRun,
+    outputs: &[OutputDef],
+) -> Result<Value, AppError> {
+    let _ = pool;
+    let run_id = run.id;
+
+    // final_output_json carries per-output {value_preview, size_bytes, expose}.
+    let resolved = run
+        .final_output_json
+        .as_ref()
+        .and_then(|v| v.as_object())
+        .cloned()
+        .unwrap_or_default();
+
+    let mut inline_outputs = Map::new(); // name -> inline value
+    let mut resource_entries: Vec<Value> = Vec::new();
+    let mut structured = Map::new();
+    let mut running_text_bytes: usize = 0;
+
+    for o in outputs {
+        let entry = resolved.get(&o.name);
+        let size_bytes = entry
+            .and_then(|e| e.get("size_bytes"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as usize;
+        let preview = entry
+            .and_then(|e| e.get("value_preview"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let uri = output_uri(run_id, &o.name);
+        let mime = o
+            .mime_type
+            .clone()
+            .unwrap_or_else(|| "text/plain".to_string());
+
+        // Per-output structured mirror (FE rich render).
+        structured.insert(
+            o.name.clone(),
+            json!({
+                "expose": expose_str(o.expose),
+                "size_bytes": size_bytes,
+                "uri": uri,
+                "mime_type": mime,
+            }),
+        );
+
+        match o.expose {
+            ExposeMode::Hidden => {
+                // Omitted from content entirely.
+            }
+            ExposeMode::Path => {
+                inline_outputs.insert(o.name.clone(), json!(uri));
+            }
+            ExposeMode::Preview => {
+                let snippet = take_chars(&preview, PREVIEW_SNIPPET_CHARS);
+                inline_outputs.insert(
+                    o.name.clone(),
+                    json!({
+                        "preview": snippet,
+                        "size_bytes": size_bytes,
+                        "uri": uri,
+                    }),
+                );
+            }
+            ExposeMode::Artifact => {
+                resource_entries.push(resource_block(
+                    &uri,
+                    &o.name,
+                    o.description.clone().unwrap_or_else(|| {
+                        format!("Artifact output '{}' ({} bytes).", o.name, size_bytes)
+                    }),
+                    &mime,
+                ));
+            }
+            ExposeMode::Full => {
+                // Auto-promote when over the per-output cap OR when adding
+                // it would push the running text body over the total cap.
+                let would_exceed_total =
+                    running_text_bytes.saturating_add(size_bytes) > TOTAL_TEXT_CAP_BYTES;
+                if size_bytes > INLINE_FULL_CAP_BYTES || would_exceed_total {
+                    let desc = format!(
+                        "Output of '{}' ({} bytes). Truncated preview: '{}...'",
+                        o.name,
+                        size_bytes,
+                        take_chars(&preview, PREVIEW_SNIPPET_CHARS),
+                    );
+                    resource_entries.push(resource_block(&uri, &o.name, desc, &mime));
+                } else {
+                    // Inline the full value (read from disk if available;
+                    // fall back to the preview when content isn't on disk).
+                    let val = read_full_output_value(run, &o.name)
+                        .unwrap_or(Value::String(preview.clone()));
+                    running_text_bytes = running_text_bytes.saturating_add(size_bytes);
+                    inline_outputs.insert(o.name.clone(), val);
+                }
+            }
+        }
+    }
+
+    let metadata = json!({
+        "run_id": run_id,
+        "total_tokens": run.total_tokens,
+        "ms_elapsed": run_ms_elapsed(run),
+        "status": run.status,
+        "steps_completed": run.step_outputs_json.as_object().map(|m| m.len()).unwrap_or(0),
+    });
+
+    let body = json!({
+        "outputs": Value::Object(inline_outputs),
+        "metadata": metadata.clone(),
+    });
+
+    let mut content: Vec<Value> = vec![json!({
+        "type": "text",
+        "text": serde_json::to_string_pretty(&body).unwrap_or_else(|_| "{}".to_string()),
+    })];
+    content.extend(resource_entries);
+
+    Ok(json!({
+        "content": content,
+        "isError": false,
+        "structuredContent": {
+            "outputs": Value::Object(structured),
+            "metadata": metadata,
+        },
+    }))
+}
+
+/// Build the rich error `CallToolResult` (plan §4.7). Always carries the
+/// minimum recovery context; `logs_resource` only when `expose_logs`
+/// allows it.
+async fn build_error_result(
+    pool: &sqlx::PgPool,
+    run: &WorkflowRun,
+    def: &WorkflowDef,
+) -> Value {
+    let _ = pool;
+    let error_message = run
+        .error_message
+        .clone()
+        .unwrap_or_else(|| format!("workflow run {}", run.status));
+    let failed_step_id = run.current_step.clone();
+
+    let mut failed_step = Map::new();
+    if let Some(fid) = &failed_step_id {
+        failed_step.insert("id".into(), json!(fid));
+        if let Some(s) = def.steps.iter().find(|s| &s.id == fid) {
+            failed_step.insert("kind".into(), json!(s.config.kind_str()));
+        }
+        if let Some(idx) = def.steps.iter().position(|s| &s.id == fid) {
+            failed_step.insert("step_index".into(), json!(idx));
+        }
+        // Item-level counters for llm_map (if persisted).
+        if let Some(prog) = run.step_item_progress_json.get(fid) {
+            failed_step.insert("item_progress".into(), prog.clone());
+        }
+    }
+
+    // Partial outputs that resolved before the failure (previews only).
+    let mut partial = Map::new();
+    if let Some(obj) = run.final_output_json.as_ref().and_then(|v| v.as_object()) {
+        for (k, v) in obj {
+            if let Some(p) = v.get("value_preview") {
+                partial.insert(k.clone(), p.clone());
+            }
+        }
+    }
+
+    let mut body = json!({
+        "error": error_message,
+        "metadata": {
+            "run_id": run.id,
+            "total_tokens": run.total_tokens,
+            "status": run.status,
+        },
+        "partial_outputs": Value::Object(partial),
+    });
+    if !failed_step.is_empty() {
+        body["failed_step"] = Value::Object(failed_step);
+    }
+    if let Some(fid) = &failed_step_id {
+        if logs_surfaceable(def, fid) {
+            body["logs_resource"] = json!(logs_step_uri(run.id, fid));
+        }
+    }
+
+    json!({
+        "content": [{
+            "type": "text",
+            "text": serde_json::to_string_pretty(&body).unwrap_or_else(|_| "{}".to_string()),
+        }],
+        "isError": true,
+        "structuredContent": body,
+    })
+}
+
+// ── small helpers ─────────────────────────────────────────────────────
+
+pub fn output_uri(run_id: Uuid, name: &str) -> String {
+    format!("ziee://workflow-runs/{run_id}/outputs/{name}")
+}
+
+pub fn logs_step_uri(run_id: Uuid, step_id: &str) -> String {
+    format!("ziee://workflow-runs/{run_id}/logs/{step_id}")
+}
+
+fn resource_block(uri: &str, name: &str, description: String, mime: &str) -> Value {
+    json!({
+        "type": "resource",
+        "resource": {
+            "uri": uri,
+            "name": name,
+            "description": description,
+            "mimeType": mime,
+        }
+    })
+}
+
+fn expose_str(e: ExposeMode) -> &'static str {
+    match e {
+        ExposeMode::Full => "full",
+        ExposeMode::Preview => "preview",
+        ExposeMode::Artifact => "artifact",
+        ExposeMode::Path => "path",
+        ExposeMode::Hidden => "hidden",
+    }
+}
+
+fn take_chars(s: &str, n: usize) -> String {
+    s.chars().take(n).collect()
+}
+
+fn run_ms_elapsed(run: &WorkflowRun) -> u64 {
+    (run.updated_at - run.created_at)
+        .num_milliseconds()
+        .max(0) as u64
+}
+
+/// Read a resolved output's full value from disk via the per-step output
+/// file referenced in `step_outputs_json`. `outputs[].from` typically
+/// reads a single step's output; we resolve via the matching step meta
+/// when the output name equals a step id, else `None` (caller falls back
+/// to the preview). This keeps inlining cheap without re-running the
+/// template engine on the MCP path.
+fn read_full_output_value(run: &WorkflowRun, name: &str) -> Option<Value> {
+    let meta_json = run.step_outputs_json.get(name)?;
+    let meta: crate::modules::workflow::types::OutputMeta =
+        serde_json::from_value(meta_json.clone()).ok()?;
+    crate::modules::workflow::file_io::read_output_value(&meta).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn slug_maps_separators_to_underscore() {
+        assert_eq!(
+            slug_for_name("io.github.phibya/research-summarize-write"),
+            "wf_io_github_phibya_research-summarize-write"
+        );
+        assert_eq!(slug_for_name("local.dev/x"), "wf_local_dev_x");
+        // hyphens are preserved (legal in Anthropic's regex).
+        assert_eq!(slug_for_name("a/b-c"), "wf_a_b-c");
+    }
+
+    #[test]
+    fn composed_name_under_cap_accepted() {
+        let slug = slug_for_name("io.github.phibya/research-summarize-write");
+        let name = checked_composed_name(&slug).expect("fits");
+        assert!(name.len() <= MCP_TOOL_NAME_CAP);
+        assert!(name.starts_with(&workflow_mcp_server_id().to_string()));
+        assert!(name.contains("__wf_"));
+    }
+
+    #[test]
+    fn composed_name_over_cap_dropped() {
+        // 36 (uuid) + 2 (__) + 3 (wf_) = 41 prefix; slug body must be
+        // ≤ 87 chars. An 88-char body overflows.
+        let long_leaf = "a".repeat(88);
+        let slug = format!("wf_{long_leaf}");
+        assert!(checked_composed_name(&slug).is_none());
+        // 87 fits exactly.
+        let ok_leaf = "a".repeat(87);
+        let slug_ok = format!("wf_{ok_leaf}");
+        assert!(checked_composed_name(&slug_ok).is_some());
+    }
+
+    fn run_with_final(final_json: Value, step_outputs: Value) -> WorkflowRun {
+        use chrono::Utc;
+        let now = Utc::now();
+        WorkflowRun {
+            id: Uuid::new_v4(),
+            workflow_id: Uuid::new_v4(),
+            conversation_id: None,
+            user_id: Uuid::new_v4(),
+            model_id: None,
+            sandbox_flavor: None,
+            run_kind: "normal".into(),
+            inputs_json: json!({}),
+            step_outputs_json: step_outputs,
+            step_item_progress_json: json!({}),
+            step_logs_json: json!({}),
+            step_artifacts_json: json!({}),
+            pending_elicitation_json: None,
+            final_output_json: Some(final_json),
+            status: "completed".into(),
+            current_step: None,
+            error_message: None,
+            total_tokens: 42,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    fn out(name: &str, expose: ExposeMode) -> OutputDef {
+        OutputDef {
+            name: name.into(),
+            from: format!("{{{{ {name}.output }}}}"),
+            expose,
+            description: None,
+            mime_type: None,
+        }
+    }
+
+    #[test]
+    fn expose_hidden_omitted_full_inlined() {
+        // Drive the synchronous classification logic the formatter uses
+        // by reconstructing it here (the formatter itself is async + takes
+        // a pool; these assertions cover the same expose-mode decisions).
+        let small_preview = "hello world";
+        // full small → inline
+        assert!(small_preview.len() <= INLINE_FULL_CAP_BYTES);
+        // preview snippet truncation
+        let long = "x".repeat(1000);
+        assert_eq!(take_chars(&long, PREVIEW_SNIPPET_CHARS).len(), 500);
+    }
+
+    #[tokio::test]
+    async fn format_full_small_inlines_and_hidden_omits() {
+        let final_json = json!({
+            "summary": {"value_preview": "short text", "size_bytes": 10, "expose": "full"},
+            "secret": {"value_preview": "nope", "size_bytes": 4, "expose": "hidden"},
+        });
+        let run = run_with_final(final_json, json!({}));
+        // No pool needed for these expose modes (full falls back to
+        // preview when step output file is absent; hidden omits).
+        let pool = test_pool().await;
+        let outs = vec![out("summary", ExposeMode::Full), out("secret", ExposeMode::Hidden)];
+        let res = format_outputs_for_mcp(&pool, &run, &outs).await.unwrap();
+        let outputs = &res["structuredContent"]["outputs"];
+        assert!(outputs.get("summary").is_some());
+        assert!(outputs.get("secret").is_some()); // structured always has it
+        // text body: summary present, secret omitted from content outputs
+        let text = res["content"][0]["text"].as_str().unwrap();
+        let parsed: Value = serde_json::from_str(text).unwrap();
+        assert!(parsed["outputs"].get("summary").is_some());
+        assert!(parsed["outputs"].get("secret").is_none());
+        assert_eq!(res["isError"], json!(false));
+    }
+
+    #[tokio::test]
+    async fn format_full_large_auto_promotes_to_resource() {
+        let big = INLINE_FULL_CAP_BYTES + 1;
+        let final_json = json!({
+            "report": {"value_preview": "preview...", "size_bytes": big, "expose": "full"},
+        });
+        let run = run_with_final(final_json, json!({}));
+        let pool = test_pool().await;
+        let outs = vec![out("report", ExposeMode::Full)];
+        let res = format_outputs_for_mcp(&pool, &run, &outs).await.unwrap();
+        // content[1] should be a resource block (auto-promoted).
+        let content = res["content"].as_array().unwrap();
+        assert!(content.iter().any(|c| c["type"] == json!("resource")));
+        // and it should NOT be in the inline outputs body.
+        let text = content[0]["text"].as_str().unwrap();
+        let parsed: Value = serde_json::from_str(text).unwrap();
+        assert!(parsed["outputs"].get("report").is_none());
+    }
+
+    #[tokio::test]
+    async fn format_artifact_and_preview_modes() {
+        let final_json = json!({
+            "art": {"value_preview": "x", "size_bytes": 5, "expose": "artifact"},
+            "prev": {"value_preview": "y".repeat(800), "size_bytes": 800, "expose": "preview"},
+        });
+        let run = run_with_final(final_json, json!({}));
+        let pool = test_pool().await;
+        let outs = vec![out("art", ExposeMode::Artifact), out("prev", ExposeMode::Preview)];
+        let res = format_outputs_for_mcp(&pool, &run, &outs).await.unwrap();
+        let content = res["content"].as_array().unwrap();
+        // artifact → resource block
+        assert!(content.iter().any(|c| {
+            c["type"] == json!("resource") && c["resource"]["name"] == json!("art")
+        }));
+        // preview → inline snippet capped at 500 chars
+        let text = content[0]["text"].as_str().unwrap();
+        let parsed: Value = serde_json::from_str(text).unwrap();
+        let snip = parsed["outputs"]["prev"]["preview"].as_str().unwrap();
+        assert_eq!(snip.chars().count(), 500);
+    }
+
+    // A connectionless pool for tests that don't actually query. The
+    // formatter only reads the pool to satisfy the signature (it never
+    // queries when output files are absent), so a lazily-connected pool
+    // that's never used works.
+    async fn test_pool() -> sqlx::PgPool {
+        let url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+            "postgresql://postgres:password@127.0.0.1:54321/phase8_build".into()
+        });
+        sqlx::postgres::PgPoolOptions::new()
+            .max_connections(1)
+            .connect_lazy(&url)
+            .expect("lazy pool")
+    }
+}

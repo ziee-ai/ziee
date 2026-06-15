@@ -567,3 +567,89 @@ pub async fn find_run(pool: &PgPool, run_id: Uuid) -> Result<Option<WorkflowRun>
     .map_err(AppError::database_error)?;
     Ok(row)
 }
+
+/// Look up an installed workflow by its reverse-DNS name (latest by
+/// `updated_at`). Used by `workflow_mcp::tools::call_tool` to reverse
+/// the `wf_<slug>` → workflow mapping. B5.
+pub async fn find_by_name(pool: &PgPool, name: &str) -> Result<Option<Workflow>, AppError> {
+    let row = sqlx::query_as!(
+        Workflow,
+        r#"
+        SELECT
+            id,
+            name,
+            version,
+            display_name,
+            description,
+            extracted_path,
+            bundle_sha256,
+            bundle_size_bytes,
+            file_count,
+            entry_point,
+            tags as "tags: _",
+            scope,
+            owner_user_id,
+            created_by,
+            enabled,
+            is_dev,
+            compiled_ir_json as "compiled_ir_json: _",
+            created_at as "created_at: _",
+            updated_at as "updated_at: _"
+        FROM workflows
+        WHERE name = $1
+        ORDER BY updated_at DESC
+        LIMIT 1
+        "#,
+        name,
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(row)
+}
+
+/// Recent runs owned by `user_id`, newest first, capped at `limit`.
+/// Backs `workflow_mcp::resources::list` (recency-bounded resource
+/// listing). B5.
+pub async fn list_runs_for_user(
+    pool: &PgPool,
+    user_id: Uuid,
+    limit: i64,
+) -> Result<Vec<WorkflowRun>, AppError> {
+    let rows = sqlx::query_as!(
+        WorkflowRun,
+        r#"
+        SELECT
+            id,
+            workflow_id,
+            conversation_id,
+            user_id,
+            model_id,
+            sandbox_flavor,
+            run_kind,
+            inputs_json as "inputs_json: _",
+            step_outputs_json as "step_outputs_json: _",
+            step_item_progress_json as "step_item_progress_json: _",
+            step_logs_json as "step_logs_json: _",
+            step_artifacts_json as "step_artifacts_json: _",
+            pending_elicitation_json as "pending_elicitation_json: _",
+            final_output_json as "final_output_json: _",
+            status,
+            current_step,
+            error_message,
+            total_tokens,
+            created_at as "created_at: _",
+            updated_at as "updated_at: _"
+        FROM workflow_runs
+        WHERE user_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2
+        "#,
+        user_id,
+        limit,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(rows)
+}
