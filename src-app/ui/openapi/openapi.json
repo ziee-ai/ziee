@@ -12563,6 +12563,288 @@
         ]
       }
     },
+    "/api/hub/skills/create": {
+      "post": {
+        "tags": [
+          "Hub",
+          "Skills"
+        ],
+        "summary": "Install user-scope skill from hub catalog",
+        "description": "\n\n**Required Permission:** `skills::install`\n\nInstall user-scope skills (from hub or local import)",
+        "operationId": "Hub.createSkillFromHub",
+        "requestBody": {
+          "description": "`POST /api/skills/install-from-hub` body. Mirrors\n `CreateAssistantFromHubRequest` — just the hub identity, server\n derives the rest from the bundle.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSkillFromHubRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Install user-scope skills (from hub or local import)",
+                        "name": "SkillsInstall",
+                        "value": "skills::install"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: skills::install",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Response from any install-from-hub endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillFromHubResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Hub skill not found"
+          },
+          "422": {
+            "description": "Bundle verification failed (sha256 mismatch, size cap, path traversal, non-regular tar entry, or SKILL.md frontmatter invalid)"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/skills/create-system": {
+      "post": {
+        "tags": [
+          "Hub",
+          "Skills - System"
+        ],
+        "summary": "Install SYSTEM-WIDE skill from hub catalog",
+        "description": "Installs a hub skill entry as a system-wide skill (`scope='system', owner_user_id=NULL`). Optional `groups: [...]` body field assigns the skill to specific groups in the same install. Requires `skills::manage_system` (admin).",
+        "operationId": "Hub.createSystemSkillFromHub",
+        "requestBody": {
+          "description": "`POST /api/skills/system/install-from-hub` body. Same as the\n user-scope variant plus optional group assignment.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSystemSkillFromHubRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Install / edit / delete system-scope skills (admin)",
+                        "name": "SkillsManageSystem",
+                        "value": "skills::manage_system"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: skills::manage_system",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Response from any install-from-hub endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillFromHubResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Hub skill not found"
+          },
+          "422": {
+            "description": "Bundle verification or frontmatter parse failure"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/workflows/create": {
+      "post": {
+        "tags": [
+          "Hub",
+          "Workflows"
+        ],
+        "summary": "Install user-scope workflow from hub catalog",
+        "description": "\n\n**Required Permission:** `workflows::install`\n\nInstall user-scope workflows",
+        "operationId": "Hub.createWorkflowFromHub",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWorkflowFromHubRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Install user-scope workflows",
+                        "name": "WorkflowsInstall",
+                        "value": "workflows::install"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: workflows::install",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowFromHubResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Hub workflow not found"
+          },
+          "422": {
+            "description": "Bundle verification failed OR workflow.yaml structurally invalid (duplicate step id, depends_on cycle, unknown dependency)"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/workflows/create-system": {
+      "post": {
+        "tags": [
+          "Hub",
+          "Workflows - System"
+        ],
+        "summary": "Install SYSTEM-WIDE workflow from hub catalog",
+        "description": "Installs a hub workflow entry as a system-wide workflow (`scope='system', owner_user_id=NULL`). Optional `groups: [...]` body field assigns it to specific groups. Requires `workflows::manage_system`.",
+        "operationId": "Hub.createSystemWorkflowFromHub",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSystemWorkflowFromHubRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Install / edit / delete system-scope workflows (admin)",
+                        "name": "WorkflowsManageSystem",
+                        "value": "workflows::manage_system"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: workflows::manage_system",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowFromHubResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Hub workflow not found"
+          },
+          "422": {
+            "description": "Bundle verification or workflow.yaml validation failure"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/hub/index": {
       "get": {
         "tags": [
@@ -13391,6 +13673,233 @@
             }
           }
         }
+      }
+    },
+    "/api/summarization/settings": {
+      "get": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Read deployment-wide summarization settings",
+        "description": "\n\n**Required Permission:** `summarization::settings::read`\n\nRead deployment-wide summarization settings (model + thresholds + prompt overrides).",
+        "operationId": "SummarizationAdmin.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read deployment-wide summarization settings (model + thresholds + prompt overrides).",
+                        "name": "SummarizationSettingsRead",
+                        "value": "summarization::settings::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummarizationAdminSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Update deployment-wide summarization settings",
+        "description": "Tri-state partial update — every field is optional. Missing field = no change; explicit JSON null = clear back to compiled default. Returns 400 on range / placeholder / keep<trigger / unknown-llm-model violations before any DB write.",
+        "operationId": "SummarizationAdmin.update",
+        "requestBody": {
+          "description": "Partial-update request for the singleton admin settings row.\n\n The four nullable fields (model id + the two prompts) use the\n `Option<Option<T>>` tri-state:\n   missing  → `None`        → leave the column alone\n   `null`   → `Some(None)`  → clear the column\n   value    → `Some(Some(v))` → set the column",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSummarizationAdminSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
+                        "name": "SummarizationSettingsManage",
+                        "value": "summarization::settings::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummarizationAdminSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed (out-of-range token threshold, missing prompt placeholder, keep>=trigger, unknown default_summarization_model_id, or model that is not chat-capable)."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations/{id}/summary": {
+      "get": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Get the active-branch summary for a conversation (null if none)",
+        "description": "\n\n**Required Permission:** `conversations::read`\n\nView chat conversations",
+        "operationId": "Summarization.getConversationSummary",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View chat conversations",
+                        "name": "ConversationsRead",
+                        "value": "conversations::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConversationSummary"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/_test/summarization/refresh": {
+      "post": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Test-only: trigger summary refresh synchronously (debug builds)",
+        "description": "\n\n**Required Permission:** `summarization::settings::manage`\n\nUpdate deployment-wide summarization settings (enable, model, thresholds, prompts).",
+        "operationId": "SummarizationTest.refresh",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestRefreshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
+                        "name": "SummarizationSettingsManage",
+                        "value": "summarization::settings::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
       }
     },
     "/api/memories": {
@@ -14360,14 +14869,14 @@
         ]
       }
     },
-    "/api/summarization/settings": {
+    "/api/skills": {
       "get": {
         "tags": [
-          "Summarization"
+          "Skills"
         ],
-        "summary": "Read deployment-wide summarization settings",
-        "description": "\n\n**Required Permission:** `summarization::settings::read`\n\nRead deployment-wide summarization settings (model + thresholds + prompt overrides).",
-        "operationId": "SummarizationAdmin.get",
+        "summary": "List accessible skills",
+        "description": "List the caller's own user-scope skills plus any system-scope skills they can access via group assignment.",
+        "operationId": "Skill.list",
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -14380,24 +14889,1096 @@
                   "details": {
                     "required_permissions": [
                       {
-                        "description": "Read deployment-wide summarization settings (model + thresholds + prompt overrides).",
-                        "name": "SummarizationSettingsRead",
-                        "value": "summarization::settings::read"
+                        "description": "View installed skills",
+                        "name": "SkillsRead",
+                        "value": "skills::read"
                       }
                     ]
                   },
-                  "error": "Missing required permission: summarization::settings::read",
+                  "error": "Missing required permission: skills::read",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
             }
           },
           "200": {
-            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
+            "description": "`GET /api/skills` response shape — user-owned + accessible system\n skills, each tagged with its `scope`.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SummarizationAdminSettings"
+                  "$ref": "#/components/schemas/SkillListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/skills/available": {
+      "get": {
+        "tags": [
+          "Skills"
+        ],
+        "summary": "List effective skills for a conversation",
+        "description": "Return the same listing the chat extension and `skill_mcp::list_tools` produce: user-owned + accessible system, minus per-conversation hides.",
+        "operationId": "Skill.listAvailable",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View installed skills",
+                        "name": "SkillsRead",
+                        "value": "skills::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: skills::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvailableSkillsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing conversation_id"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Conversation not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/skills/install-from-hub": {
+      "post": {
+        "tags": [
+          "Hub",
+          "Skills"
+        ],
+        "summary": "Install user-scope skill from hub catalog",
+        "description": "\n\n**Required Permission:** `skills::install`\n\nInstall user-scope skills (from hub or local import)",
+        "operationId": "Hub.createSkillFromHub",
+        "requestBody": {
+          "description": "`POST /api/skills/install-from-hub` body. Mirrors\n `CreateAssistantFromHubRequest` — just the hub identity, server\n derives the rest from the bundle.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSkillFromHubRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Install user-scope skills (from hub or local import)",
+                        "name": "SkillsInstall",
+                        "value": "skills::install"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: skills::install",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Response from any install-from-hub endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillFromHubResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Hub skill not found"
+          },
+          "422": {
+            "description": "Bundle verification failed (sha256 mismatch, size cap, path traversal, non-regular tar entry, or SKILL.md frontmatter invalid)"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/skills/import": {
+      "post": {
+        "tags": [
+          "Skills"
+        ],
+        "summary": "Dev-import a skill bundle (multipart tarball)",
+        "description": "Extract a tar.gz of the skill source dir, parse SKILL.md frontmatter, install as local.dev/<slug> with is_dev=true. Re-import overwrites.",
+        "operationId": "Skill.import",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "name",
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "style": "form"
+          }
+        ],
+        "requestBody": {
+          "description": "multipart form data",
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "array"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden (system scope without admin)"
+          },
+          "201": {
+            "description": "Database row in `skills`. The bundle's SKILL.md + reference files\n live on disk at `extracted_path`; the row carries metadata only.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Skill"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/skills/validate": {
+      "post": {
+        "tags": [
+          "Skills"
+        ],
+        "summary": "Validate a SKILL.md without installing",
+        "description": "Parses SKILL.md frontmatter (require description, 1536-char cap). No DB row created.",
+        "operationId": "Skill.validate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateSkillRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Install user-scope skills (from hub or local import)",
+                        "name": "SkillsInstall",
+                        "value": "skills::install"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: skills::install",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidateSkillResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/skills/{id}": {
+      "get": {
+        "tags": [
+          "Skills"
+        ],
+        "summary": "Get one skill",
+        "description": "Read a single accessible skill by id.",
+        "operationId": "Skill.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View installed skills",
+                        "name": "SkillsRead",
+                        "value": "skills::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: skills::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Database row in `skills`. The bundle's SKILL.md + reference files\n live on disk at `extracted_path`; the row carries metadata only.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Skill"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Skill not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Skills"
+        ],
+        "summary": "Edit a user-owned skill",
+        "description": "Update the editable metadata of a user-scope skill the caller owns.",
+        "operationId": "Skill.update",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSkill"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Not the owner"
+          },
+          "200": {
+            "description": "Database row in `skills`. The bundle's SKILL.md + reference files\n live on disk at `extracted_path`; the row carries metadata only.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Skill"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Skill not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Skills"
+        ],
+        "summary": "Delete a user-owned skill",
+        "description": "Remove a user-scope skill and rm its extracted bundle dir.",
+        "operationId": "Skill.delete",
+        "responses": {
+          "403": {
+            "description": "Not the owner"
+          },
+          "204": {
+            "description": "Skill deleted"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Skill not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/skills/{id}/hide-in-conversation": {
+      "post": {
+        "tags": [
+          "Skills"
+        ],
+        "summary": "Hide a skill from a conversation",
+        "description": "Insert a per-conversation override so this skill is omitted from the available-skills listing for that conversation.",
+        "operationId": "Skill.hideInConversation",
+        "requestBody": {
+          "description": "`POST /api/skills/{id}/hide-in-conversation` body.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HideSkillInConversationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View installed skills",
+                        "name": "SkillsRead",
+                        "value": "skills::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: skills::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Skill hidden"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Skill or conversation not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/skills/{id}/hide-in-conversation/{conversation_id}": {
+      "delete": {
+        "tags": [
+          "Skills"
+        ],
+        "summary": "Remove a per-conversation hide",
+        "description": "Restore the skill to the available-skills listing in this conversation.",
+        "operationId": "Skill.unhideInConversation",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View installed skills",
+                        "name": "SkillsRead",
+                        "value": "skills::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: skills::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Hide cleared"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Conversation not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/skills/system": {
+      "get": {
+        "tags": [
+          "Skills - System"
+        ],
+        "summary": "List all system-scope skills",
+        "description": "\n\n**Required Permission:** `skills::manage_system`\n\nInstall / edit / delete system-scope skills (admin)",
+        "operationId": "SkillSystem.list",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Install / edit / delete system-scope skills (admin)",
+                        "name": "SkillsManageSystem",
+                        "value": "skills::manage_system"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: skills::manage_system",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "`GET /api/skills` response shape — user-owned + accessible system\n skills, each tagged with its `scope`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/skills/system/install-from-hub": {
+      "post": {
+        "tags": [
+          "Hub",
+          "Skills - System"
+        ],
+        "summary": "Install SYSTEM-WIDE skill from hub catalog",
+        "description": "Installs a hub skill entry as a system-wide skill (`scope='system', owner_user_id=NULL`). Optional `groups: [...]` body field assigns the skill to specific groups in the same install. Requires `skills::manage_system` (admin).",
+        "operationId": "Hub.createSystemSkillFromHub",
+        "requestBody": {
+          "description": "`POST /api/skills/system/install-from-hub` body. Same as the\n user-scope variant plus optional group assignment.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSystemSkillFromHubRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Install / edit / delete system-scope skills (admin)",
+                        "name": "SkillsManageSystem",
+                        "value": "skills::manage_system"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: skills::manage_system",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Response from any install-from-hub endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillFromHubResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Hub skill not found"
+          },
+          "422": {
+            "description": "Bundle verification or frontmatter parse failure"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/skills/system/{id}": {
+      "get": {
+        "tags": [
+          "Skills - System"
+        ],
+        "summary": "Get one system-scope skill",
+        "description": "\n\n**Required Permission:** `skills::manage_system`\n\nInstall / edit / delete system-scope skills (admin)",
+        "operationId": "SkillSystem.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Install / edit / delete system-scope skills (admin)",
+                        "name": "SkillsManageSystem",
+                        "value": "skills::manage_system"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: skills::manage_system",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Database row in `skills`. The bundle's SKILL.md + reference files\n live on disk at `extracted_path`; the row carries metadata only.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Skill"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Skill not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Skills - System"
+        ],
+        "summary": "Edit a system-scope skill",
+        "description": "\n\n**Required Permission:** `skills::manage_system`\n\nInstall / edit / delete system-scope skills (admin)",
+        "operationId": "SkillSystem.update",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSkill"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Install / edit / delete system-scope skills (admin)",
+                        "name": "SkillsManageSystem",
+                        "value": "skills::manage_system"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: skills::manage_system",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Database row in `skills`. The bundle's SKILL.md + reference files\n live on disk at `extracted_path`; the row carries metadata only.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Skill"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Skill not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Skills - System"
+        ],
+        "summary": "Delete a system-scope skill",
+        "description": "\n\n**Required Permission:** `skills::manage_system`\n\nInstall / edit / delete system-scope skills (admin)",
+        "operationId": "SkillSystem.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Install / edit / delete system-scope skills (admin)",
+                        "name": "SkillsManageSystem",
+                        "value": "skills::manage_system"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: skills::manage_system",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Skill deleted"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Skill not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/skills/system/{id}/groups": {
+      "get": {
+        "tags": [
+          "Skills - System"
+        ],
+        "summary": "Get groups assigned to a skill",
+        "description": "\n\n**Required Permission:** `skills::assign_to_groups`\n\nManage group assignments for system-scope skills",
+        "operationId": "SkillSystem.getGroups",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Manage group assignments for system-scope skills",
+                        "name": "SkillsAssignToGroups",
+                        "value": "skills::assign_to_groups"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: skills::assign_to_groups",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Skills - System"
+        ],
+        "summary": "Replace the set of groups assigned to a skill",
+        "description": "\n\n**Required Permission:** `skills::assign_to_groups`\n\nManage group assignments for system-scope skills",
+        "operationId": "SkillSystem.setGroups",
+        "requestBody": {
+          "description": "`POST /api/skills/system/{id}/groups` body. Replaces the entire set\n (mirrors `mcp/handlers/groups.rs`'s `ServerGroupsRequest`).",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillGroupsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Manage group assignments for system-scope skills",
+                        "name": "SkillsAssignToGroups",
+                        "value": "skills::assign_to_groups"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: skills::assign_to_groups",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Assignments updated"
+          },
+          "400": {
+            "description": "Bad request — non-system scope"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Skill not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/skills/system/{id}/groups/{group_id}": {
+      "delete": {
+        "tags": [
+          "Skills - System"
+        ],
+        "summary": "Remove a skill from one group",
+        "description": "\n\n**Required Permission:** `skills::assign_to_groups`\n\nManage group assignments for system-scope skills",
+        "operationId": "SkillSystem.removeFromGroup",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Manage group assignments for system-scope skills",
+                        "name": "SkillsAssignToGroups",
+                        "value": "skills::assign_to_groups"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: skills::assign_to_groups",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Removed"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/workflows": {
+      "get": {
+        "tags": [
+          "Workflows"
+        ],
+        "summary": "List workflows visible to the current user",
+        "description": "\n\n**Required Permission:** `workflows::read`\n\nView installed workflows",
+        "operationId": "Workflow.list",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View installed workflows",
+                        "name": "WorkflowsRead",
+                        "value": "workflows::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: workflows::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/workflows/{id}": {
+      "get": {
+        "tags": [
+          "Workflows"
+        ],
+        "summary": "Get a workflow by id",
+        "description": "\n\n**Required Permission:** `workflows::read`\n\nView installed workflows",
+        "operationId": "Workflow.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View installed workflows",
+                        "name": "WorkflowsRead",
+                        "value": "workflows::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: workflows::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Database row in `workflows`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workflow"
                 }
               }
             }
@@ -14409,19 +15990,62 @@
           }
         ]
       },
-      "put": {
+      "delete": {
         "tags": [
-          "Summarization"
+          "Workflows"
         ],
-        "summary": "Update deployment-wide summarization settings",
-        "description": "Tri-state partial update — every field is optional. Missing field = no change; explicit JSON null = clear back to compiled default. Returns 400 on range / placeholder / keep<trigger / unknown-llm-model violations before any DB write.",
-        "operationId": "SummarizationAdmin.update",
+        "summary": "Delete a user-owned workflow",
+        "description": "\n\n**Required Permission:** `workflows::manage`\n\nEdit / delete own user-scope workflows",
+        "operationId": "Workflow.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit / delete own user-scope workflows",
+                        "name": "WorkflowsManage",
+                        "value": "workflows::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: workflows::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "no content"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/workflows/{id}/run": {
+      "post": {
+        "tags": [
+          "Workflows - Runs"
+        ],
+        "summary": "Kick off a workflow run",
+        "description": "Synchronously returns {run_id}; progress streams via the per-run SSE endpoint.",
+        "operationId": "Workflow.run",
         "requestBody": {
-          "description": "Partial-update request for the singleton admin settings row.\n\n The four nullable fields (model id + the two prompts) use the\n `Option<Option<T>>` tri-state:\n   missing  → `None`        → leave the column alone\n   `null`   → `Some(None)`  → clear the column\n   value    → `Some(Some(v))` → set the column",
+          "description": "Body of `POST /api/workflows/{id}/run`.",
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/UpdateSummarizationAdminSettingsRequest"
+                "$ref": "#/components/schemas/WorkflowRunRequest"
               }
             }
           },
@@ -14439,30 +16063,27 @@
                   "details": {
                     "required_permissions": [
                       {
-                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
-                        "name": "SummarizationSettingsManage",
-                        "value": "summarization::settings::manage"
+                        "description": "Kick off a workflow run",
+                        "name": "WorkflowsExecute",
+                        "value": "workflows::execute"
                       }
                     ]
                   },
-                  "error": "Missing required permission: summarization::settings::manage",
+                  "error": "Missing required permission: workflows::execute",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
             }
           },
-          "200": {
-            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
+          "202": {
+            "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SummarizationAdminSettings"
+                  "$ref": "#/components/schemas/WorkflowRunStartResponse"
                 }
               }
             }
-          },
-          "400": {
-            "description": "Validation failed (out-of-range token threshold, missing prompt placeholder, keep>=trigger, unknown default_summarization_model_id, or model that is not chat-capable)."
           }
         },
         "security": [
@@ -14472,14 +16093,14 @@
         ]
       }
     },
-    "/api/conversations/{id}/summary": {
+    "/api/workflow-runs/{run_id}": {
       "get": {
         "tags": [
-          "Summarization"
+          "Workflows - Runs"
         ],
-        "summary": "Get the active-branch summary for a conversation (null if none)",
-        "description": "\n\n**Required Permission:** `conversations::read`\n\nView chat conversations",
-        "operationId": "Summarization.getConversationSummary",
+        "summary": "Get a workflow run row",
+        "description": "\n\n**Required Permission:** `workflows::read`\n\nView installed workflows",
+        "operationId": "Workflow.getRun",
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -14492,13 +16113,63 @@
                   "details": {
                     "required_permissions": [
                       {
-                        "description": "View chat conversations",
-                        "name": "ConversationsRead",
-                        "value": "conversations::read"
+                        "description": "View installed workflows",
+                        "name": "WorkflowsRead",
+                        "value": "workflows::read"
                       }
                     ]
                   },
-                  "error": "Missing required permission: conversations::read",
+                  "error": "Missing required permission: workflows::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Database row in `workflow_runs`. Heavy fields (step outputs, logs,\n artifacts, final output) live as JSONB metadata blobs — actual\n content (multi-MiB step output, artifact bytes) is on disk under\n the per-run workspace.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRun"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/workflow-runs/{run_id}/cancel": {
+      "post": {
+        "tags": [
+          "Workflows - Runs"
+        ],
+        "summary": "Cancel an in-flight run",
+        "description": "\n\n**Required Permission:** `workflows::execute`\n\nKick off a workflow run",
+        "operationId": "Workflow.cancelRun",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Kick off a workflow run",
+                        "name": "WorkflowsExecute",
+                        "value": "workflows::execute"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: workflows::execute",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
@@ -14509,14 +16180,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/ConversationSummary"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
+                  "$ref": "#/components/schemas/CancelAckResponse"
                 }
               }
             }
@@ -14529,47 +16193,56 @@
         ]
       }
     },
-    "/api/_test/summarization/refresh": {
-      "post": {
+    "/api/workflow-runs/{run_id}/events": {
+      "get": {
         "tags": [
-          "Summarization"
+          "Workflows - Runs"
         ],
-        "summary": "Test-only: trigger summary refresh synchronously (debug builds)",
-        "description": "\n\n**Required Permission:** `summarization::settings::manage`\n\nUpdate deployment-wide summarization settings (enable, model, thresholds, prompts).",
-        "operationId": "SummarizationTest.refresh",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TestRefreshRequest"
-              }
-            }
-          },
-          "required": true
-        },
+        "summary": "Subscribe to per-run progress events via SSE",
+        "description": "Returns a snapshot frame followed by live per-step events until the run reaches a terminal status.",
+        "operationId": "Workflow.subscribeRunEvents",
         "responses": {
           "403": {
-            "description": "Forbidden - Missing required permission",
+            "description": "Forbidden"
+          },
+          "200": {
+            "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
-                        "name": "SummarizationSettingsManage",
-                        "value": "summarization::settings::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: summarization::settings::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                  "$ref": "#/components/schemas/SSEWorkflowRunEvent"
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Run not found"
+          },
+          "429": {
+            "description": "Too many subscribers"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/workflow-runs/{run_id}/output/{step_id}": {
+      "get": {
+        "tags": [
+          "Workflows - Runs"
+        ],
+        "summary": "Read a step's output file content",
+        "description": "\n\n**Required Permission:** `workflows::read`\n\nView installed workflows",
+        "operationId": "Workflow.readOutput",
+        "responses": {
+          "403": {
+            "description": "Forbidden"
           },
           "200": {
             "description": "",
@@ -14578,6 +16251,534 @@
                 "schema": true
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Output not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/workflow-runs/{run_id}/artifact/{step_id}/{filename}": {
+      "get": {
+        "tags": [
+          "Workflows - Runs"
+        ],
+        "summary": "Read a step's artifact file content",
+        "description": "\n\n**Required Permission:** `workflows::read`\n\nView installed workflows",
+        "operationId": "Workflow.readArtifact",
+        "responses": {
+          "403": {
+            "description": "Forbidden"
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": true
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Artifact not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/workflow-runs/{run_id}/logs/{step_id}/{kind}": {
+      "get": {
+        "tags": [
+          "Workflows - Runs"
+        ],
+        "summary": "Read a step's diagnostic log (prompt / raw_output / stderr / trace)",
+        "description": "\n\n**Required Permission:** `workflows::read`\n\nView installed workflows",
+        "operationId": "Workflow.readLog",
+        "responses": {
+          "403": {
+            "description": "Forbidden"
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": true
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Log not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/workflow-runs/{run_id}/elicit/{elicitation_id}": {
+      "post": {
+        "tags": [
+          "Workflows - Runs"
+        ],
+        "summary": "Submit a user response to a pending elicit step",
+        "description": "\n\n**Required Permission:** `workflows::execute`\n\nKick off a workflow run",
+        "operationId": "Workflow.submitElicit",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ElicitationResponseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden"
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ElicitAckResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Run not found"
+          },
+          "410": {
+            "description": "Elicitation already resolved"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/workflows/validate": {
+      "post": {
+        "tags": [
+          "Workflows"
+        ],
+        "summary": "Validate a workflow.yaml without installing",
+        "description": "Runs Layer 1+2+3 checks + static cost estimation. No DB row created.",
+        "operationId": "Workflow.validate",
+        "requestBody": {
+          "description": "JSON body for `/validate` — just the workflow.yaml text. (A multipart\n tarball would also work, but validate only needs the entry-point YAML\n since it never installs.)",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateWorkflowRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Install user-scope workflows",
+                        "name": "WorkflowsInstall",
+                        "value": "workflows::install"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: workflows::install",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidateWorkflowResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/workflows/import": {
+      "post": {
+        "tags": [
+          "Workflows"
+        ],
+        "summary": "Dev-import a workflow bundle (multipart tarball)",
+        "description": "Extract a tar.gz of the workflow source dir, validate (is_dev), install as local.dev/<slug>. Re-import overwrites.",
+        "operationId": "Workflow.import",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "name",
+            "description": "Optional slug override; `local.dev/<slug>` becomes the row name.",
+            "schema": {
+              "description": "Optional slug override; `local.dev/<slug>` becomes the row name.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "description": "`user` (default) or `system`. `system` requires\n `workflows::manage_system`.",
+            "schema": {
+              "description": "`user` (default) or `system`. `system` requires\n `workflows::manage_system`.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "style": "form"
+          }
+        ],
+        "requestBody": {
+          "description": "multipart form data",
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "array"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden (system scope without admin)"
+          },
+          "201": {
+            "description": "Database row in `workflows`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workflow"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/workflows/{id}/dry-run": {
+      "post": {
+        "tags": [
+          "Workflows"
+        ],
+        "summary": "Cost preview — walk the DAG without executing",
+        "description": "Per-step est_calls + est_tokens; llm_map fan-out marked runtime-dependent when for_each refs a prior step. Zero tokens spent, no run row.",
+        "operationId": "Workflow.dryRun",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DryRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Kick off a workflow run",
+                        "name": "WorkflowsExecute",
+                        "value": "workflows::execute"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: workflows::execute",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Result of `dry_run`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DryRunResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/workflows/{id}/test": {
+      "post": {
+        "tags": [
+          "Workflows"
+        ],
+        "summary": "Run bundled tests/<name>.yaml fixtures",
+        "description": "mode: ci requires mocks covering all llm/llm_map steps; mocks honored regardless of is_dev (the sanctioned mock context). Assertion modes: contains / equals / min_length / max_length / matches_schema.",
+        "operationId": "Workflow.test",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestWorkflowRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Kick off a workflow run",
+                        "name": "WorkflowsExecute",
+                        "value": "workflows::execute"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: workflows::execute",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Top-level `POST /api/workflows/{id}/test` response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestRunResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/workflows/system": {
+      "get": {
+        "tags": [
+          "Workflows - Admin"
+        ],
+        "summary": "List system-scope workflows",
+        "description": "\n\n**Required Permission:** `workflows::manage_system`\n\nInstall / edit / delete system-scope workflows (admin)",
+        "operationId": "Workflow.listSystem",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Install / edit / delete system-scope workflows (admin)",
+                        "name": "WorkflowsManageSystem",
+                        "value": "workflows::manage_system"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: workflows::manage_system",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowListResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/workflows/system/{id}": {
+      "get": {
+        "tags": [
+          "Workflows - Admin"
+        ],
+        "summary": "Get a system-scope workflow",
+        "description": "\n\n**Required Permission:** `workflows::manage_system`\n\nInstall / edit / delete system-scope workflows (admin)",
+        "operationId": "Workflow.getSystem",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Install / edit / delete system-scope workflows (admin)",
+                        "name": "WorkflowsManageSystem",
+                        "value": "workflows::manage_system"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: workflows::manage_system",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Database row in `workflows`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workflow"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Workflows - Admin"
+        ],
+        "summary": "Delete a system-scope workflow",
+        "description": "\n\n**Required Permission:** `workflows::manage_system`\n\nInstall / edit / delete system-scope workflows (admin)",
+        "operationId": "Workflow.deleteSystem",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Install / edit / delete system-scope workflows (admin)",
+                        "name": "WorkflowsManageSystem",
+                        "value": "workflows::manage_system"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: workflows::manage_system",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "no content"
           }
         },
         "security": [
@@ -15226,6 +17427,61 @@
           "tools"
         ]
       },
+      "AvailableSkillEntry": {
+        "description": "Lightweight `GET /api/skills/available` entry — what the chat\n extension AND `skill_mcp::list_tools` consume. Mirrors\n `repository::SkillAvailableEntry` but with JsonSchema for the REST\n surface.",
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "when_to_use": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "AvailableSkillsQuery": {
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "conversation_id"
+        ]
+      },
+      "AvailableSkillsResponse": {
+        "type": "object",
+        "properties": {
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AvailableSkillEntry"
+            }
+          }
+        },
+        "required": [
+          "skills"
+        ]
+      },
       "AvailableUpdatesResponse": {
         "description": "Response for the update check: upstream releases diffed against what is\n installed, scoped to the host platform/arch. Drafts are omitted.",
         "type": "object",
@@ -15465,6 +17721,22 @@
         "required": [
           "content",
           "is_error"
+        ]
+      },
+      "CancelAckResponse": {
+        "type": "object",
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "run_id"
         ]
       },
       "Catalog": {
@@ -16852,6 +19124,59 @@
           }
         }
       },
+      "CreateSkillFromHubRequest": {
+        "description": "`POST /api/skills/install-from-hub` body. Mirrors\n `CreateAssistantFromHubRequest` — just the hub identity, server\n derives the rest from the bundle.",
+        "type": "object",
+        "properties": {
+          "hub_id": {
+            "description": "Hub skill ID (reverse-DNS canonical name).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hub_id"
+        ]
+      },
+      "CreateSystemSkillFromHubRequest": {
+        "description": "`POST /api/skills/system/install-from-hub` body. Same as the\n user-scope variant plus optional group assignment.",
+        "type": "object",
+        "properties": {
+          "groups": {
+            "description": "Optional list of group IDs to assign in the same TX as the install.",
+            "type": "array",
+            "default": [],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "hub_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "hub_id"
+        ]
+      },
+      "CreateSystemWorkflowFromHubRequest": {
+        "type": "object",
+        "properties": {
+          "groups": {
+            "type": "array",
+            "default": [],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "hub_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "hub_id"
+        ]
+      },
       "CreateUserRequest": {
         "type": "object",
         "properties": {
@@ -16884,6 +19209,17 @@
           "username",
           "email",
           "password"
+        ]
+      },
+      "CreateWorkflowFromHubRequest": {
+        "type": "object",
+        "properties": {
+          "hub_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "hub_id"
         ]
       },
       "DeleteAllResponse": {
@@ -17782,6 +20118,89 @@
           "inflight_mcp"
         ]
       },
+      "DryRunRequest": {
+        "type": "object",
+        "properties": {
+          "inputs": {
+            "default": null
+          }
+        }
+      },
+      "DryRunResult": {
+        "description": "Result of `dry_run`.",
+        "type": "object",
+        "properties": {
+          "est_cost_usd": {
+            "description": "Rough constant-rate cost estimate. Omitted (None) — we don't ship\n per-model pricing tables in Phase 1.",
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DryRunStep"
+            }
+          },
+          "total_est_calls": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "total_est_tokens": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "steps",
+          "total_est_calls",
+          "total_est_tokens"
+        ]
+      },
+      "DryRunStep": {
+        "description": "Per-step dry-run breakdown row.",
+        "type": "object",
+        "properties": {
+          "est_calls": {
+            "description": "Number of LLM calls this step makes. `llm` = 1, `llm_map` = the\n fan-out count (or `max_parallel` cap when runtime-dependent),\n `sandbox` / `elicit` = 0.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "est_tokens_in": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "est_tokens_out": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "kind": {
+            "type": "string"
+          },
+          "runtime_dependent": {
+            "description": "`true` when the call count couldn't be resolved statically — i.e.\n an `llm_map` whose `for_each` references a prior step's output. The\n reported `est_calls` is then the `max_parallel` cap, not a true\n count.",
+            "type": "boolean"
+          },
+          "step_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "step_id",
+          "kind",
+          "est_calls",
+          "est_tokens_in",
+          "est_tokens_out",
+          "runtime_dependent"
+        ]
+      },
       "EditMessageRequest": {
         "description": "Request to edit an existing message",
         "type": "object",
@@ -17808,6 +20227,36 @@
         "required": [
           "message",
           "branch"
+        ]
+      },
+      "ElicitAckResponse": {
+        "type": "object",
+        "properties": {
+          "elicitation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "run_id",
+          "elicitation_id"
+        ]
+      },
+      "ElicitationResponseRequest": {
+        "type": "object",
+        "properties": {
+          "response": true
+        },
+        "required": [
+          "response"
         ]
       },
       "EngineDownloadStatus": {
@@ -18142,6 +20591,68 @@
           "processing_metadata",
           "created_by",
           "created_at"
+        ]
+      },
+      "FixtureFailure": {
+        "type": "object",
+        "properties": {
+          "actual_preview": {
+            "type": "string"
+          },
+          "assertion": {
+            "description": "The assertion that failed (or a descriptive code like\n \"missing_mocks\" / \"run_failed\").",
+            "type": "string"
+          },
+          "expected": {
+            "type": "string"
+          },
+          "output_name": {
+            "description": "The output name (or \"\" for whole-run errors like missing mocks).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "output_name",
+          "assertion",
+          "expected",
+          "actual_preview"
+        ]
+      },
+      "FixtureResult": {
+        "description": "Per-fixture result.",
+        "type": "object",
+        "properties": {
+          "duration_ms": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FixtureFailure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "skipped": {
+            "description": "`true` when the fixture was skipped (e.g. a `real_llm` fixture\n with no provider configured). Skipped fixtures count toward\n neither passed nor failed.",
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "name",
+          "passed",
+          "duration_ms"
         ]
       },
       "FtsRebuildRequest": {
@@ -18658,6 +21169,19 @@
           "status"
         ]
       },
+      "HideSkillInConversationRequest": {
+        "description": "`POST /api/skills/{id}/hide-in-conversation` body.",
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "conversation_id"
+        ]
+      },
       "HubAssistant": {
         "description": "Hub assistant entry.\n\n Like HubModel, the identity envelope is reverse-DNS via `name`. The\n body has a single `dependencies[]` list instead of separate\n `recommended_models` / `recommended_mcp_servers` / `use_cases` /\n `example_prompts` / `popularity_score` fields.",
         "type": "object",
@@ -18774,6 +21298,43 @@
           "parameters"
         ]
       },
+      "HubBundle": {
+        "description": "Pointer to a tar.gz bundle served alongside the manifest on Pages.\n See `schemas/2026-06-12/bundle.schema.json` for the wire shape.",
+        "type": "object",
+        "properties": {
+          "entry_point": {
+            "description": "Conventional entry point inside the extracted bundle\n (`\"SKILL.md\"` for skills, `\"workflow.yaml\"` for workflows).",
+            "type": "string"
+          },
+          "file_count": {
+            "description": "Number of regular files inside the bundle (cap: 256).",
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "sha256": {
+            "description": "Hex-encoded SHA-256 of the tar.gz bytes (lowercase, 64 chars).",
+            "type": "string"
+          },
+          "size_bytes": {
+            "description": "Bundle size in bytes (consumer pre-checks against the 10 MiB cap).",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "url": {
+            "description": "Bundle URL relative to the Pages base.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "sha256",
+          "size_bytes",
+          "file_count",
+          "entry_point"
+        ]
+      },
       "HubCatalogCounts": {
         "description": "Per-category counts inside the unified catalog. Surfaced from\n `GET /api/hub/version` so the UI can show \"X models, Y assistants,\n Z MCP servers\" without re-reading the index.",
         "type": "object",
@@ -18791,6 +21352,18 @@
           "models": {
             "type": "integer",
             "format": "uint",
+            "minimum": 0
+          },
+          "skills": {
+            "type": "integer",
+            "format": "uint",
+            "default": 0,
+            "minimum": 0
+          },
+          "workflows": {
+            "type": "integer",
+            "format": "uint",
+            "default": 0,
             "minimum": 0
           }
         },
@@ -18864,7 +21437,9 @@
         "enum": [
           "assistant",
           "mcp-server",
-          "model"
+          "model",
+          "skill",
+          "workflow"
         ]
       },
       "HubDependency": {
@@ -19172,6 +21747,26 @@
                 "type": "null"
               }
             ]
+          },
+          "skill": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HubSkill"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "workflow": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HubWorkflow"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -19373,6 +21968,69 @@
           "url"
         ]
       },
+      "HubSkill": {
+        "description": "Hub skill entry — Agent Skills standard bundle (see plan §1).\n\n The manifest only carries the envelope + bundle pointer. The actual\n SKILL.md frontmatter is parsed at consumer-install time + persisted in\n `skills.frontmatter_json`.",
+        "type": "object",
+        "properties": {
+          "$schema": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "_meta": true,
+          "author": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bundle": {
+            "$ref": "#/components/schemas/HubBundle"
+          },
+          "dependencies": {
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/HubDependency"
+            }
+          },
+          "license": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "Reverse-DNS canonical name.",
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "default": [],
+            "items": {
+              "type": "string"
+            }
+          },
+          "version": {
+            "description": "Per-entry semver.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "bundle"
+        ]
+      },
       "HubVersionResponse": {
         "description": "Version response",
         "type": "object",
@@ -19389,6 +22047,69 @@
         },
         "required": [
           "version"
+        ]
+      },
+      "HubWorkflow": {
+        "description": "Hub workflow entry — declarative DAG bundle (see plan §1 + §4.5).\n\n The manifest carries the envelope + bundle pointer. The actual\n `workflow.yaml` is parsed at consumer-install time + validated via the\n `workflow::validate` Layer 1+2+3 pipeline.",
+        "type": "object",
+        "properties": {
+          "$schema": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "_meta": true,
+          "author": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bundle": {
+            "$ref": "#/components/schemas/HubBundle"
+          },
+          "dependencies": {
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/HubDependency"
+            }
+          },
+          "license": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "Reverse-DNS canonical name.",
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "default": [],
+            "items": {
+              "type": "string"
+            }
+          },
+          "version": {
+            "description": "Per-entry semver.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "bundle"
         ]
       },
       "ImageSource": {
@@ -19447,6 +22168,46 @@
             ]
           }
         ]
+      },
+      "ImportQuery": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "scope": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        }
+      },
+      "ImportQuery2": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "Optional slug override; `local.dev/<slug>` becomes the row name.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "scope": {
+            "description": "`user` (default) or `system`. `system` requires\n `workflows::manage_system`.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        }
       },
       "IndexItem": {
         "type": "object",
@@ -19719,6 +22480,44 @@
         "required": [
           "model_id",
           "status"
+        ]
+      },
+      "ItemProgress": {
+        "description": "Per-`llm_map` per-item progress snapshot (counters only — no\n per-item content; that lives in the step's output file).",
+        "type": "object",
+        "properties": {
+          "completed": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "failed": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "skipped": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "tokens_so_far": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "total": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "completed",
+          "total",
+          "failed",
+          "skipped",
+          "tokens_so_far"
         ]
       },
       "JsonOption_for_DownloadProgressData": {
@@ -24594,6 +27393,22 @@
           "title"
         ]
       },
+      "SSEConnectedData": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "message",
+          "run_id"
+        ]
+      },
       "SSEDownloadProgressConnectedData": {
         "description": "SSE connected event data",
         "type": "object",
@@ -24659,6 +27474,63 @@
               "error"
             ]
           }
+        ]
+      },
+      "SSEElicitationRequiredData": {
+        "type": "object",
+        "properties": {
+          "deadline_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "elicitation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "message": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "schema": true,
+          "step_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "step_id",
+          "elicitation_id",
+          "message",
+          "schema",
+          "deadline_at"
+        ]
+      },
+      "SSEElicitationResolvedData": {
+        "type": "object",
+        "properties": {
+          "elicitation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "resolved_by": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "step_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "step_id",
+          "elicitation_id",
+          "resolved_by"
         ]
       },
       "SSEEngineDownloadCompleteData": {
@@ -25067,6 +27939,435 @@
           "line"
         ]
       },
+      "SSERunCancelledData": {
+        "type": "object",
+        "properties": {
+          "cancelled_at_step": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tokens_at_cancel": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "total_tokens": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "run_id",
+          "total_tokens",
+          "tokens_at_cancel"
+        ]
+      },
+      "SSERunCompletedData": {
+        "type": "object",
+        "properties": {
+          "ms_elapsed": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "outputs_preview": true,
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "total_tokens": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "run_id",
+          "outputs_preview",
+          "total_tokens",
+          "ms_elapsed"
+        ]
+      },
+      "SSERunFailedData": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "failed_at_step": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "total_tokens": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "run_id",
+          "error",
+          "total_tokens"
+        ]
+      },
+      "SSERunStartedData": {
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sandbox_flavor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "total_steps": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "workflow_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "run_id",
+          "workflow_id",
+          "total_steps"
+        ]
+      },
+      "SSESnapshotData": {
+        "type": "object",
+        "properties": {
+          "current_step": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "final_output_json": true,
+          "pending_elicitation_json": true,
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "step_artifacts_json": true,
+          "step_item_progress_json": true,
+          "step_logs_json": true,
+          "step_outputs_json": true,
+          "total_tokens": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "run_id",
+          "status",
+          "total_tokens",
+          "step_outputs_json",
+          "step_item_progress_json",
+          "step_logs_json",
+          "step_artifacts_json"
+        ]
+      },
+      "SSEStepCompletedData": {
+        "type": "object",
+        "properties": {
+          "ms_elapsed": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "output_preview": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "step_id": {
+            "type": "string"
+          },
+          "tokens_used": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "run_id",
+          "step_id",
+          "output_preview",
+          "tokens_used",
+          "ms_elapsed"
+        ]
+      },
+      "SSEStepFailedData": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "step_id": {
+            "type": "string"
+          },
+          "tokens_used": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "run_id",
+          "step_id",
+          "error",
+          "tokens_used"
+        ]
+      },
+      "SSEStepItemProgressData": {
+        "type": "object",
+        "properties": {
+          "progress": {
+            "$ref": "#/components/schemas/ItemProgress"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "step_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "step_id",
+          "progress"
+        ]
+      },
+      "SSEStepStartedData": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "step_id": {
+            "type": "string"
+          },
+          "step_index": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "step_kind": {
+            "type": "string"
+          },
+          "total_steps": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "run_id",
+          "step_id",
+          "step_kind",
+          "step_index",
+          "total_steps"
+        ]
+      },
+      "SSEWorkflowRunEvent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "connected": {
+                "$ref": "#/components/schemas/SSEConnectedData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "connected"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "snapshot": {
+                "$ref": "#/components/schemas/SSESnapshotData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "snapshot"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "runStarted": {
+                "$ref": "#/components/schemas/SSERunStartedData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "runStarted"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "stepStarted": {
+                "$ref": "#/components/schemas/SSEStepStartedData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "stepStarted"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "stepItemProgress": {
+                "$ref": "#/components/schemas/SSEStepItemProgressData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "stepItemProgress"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "stepCompleted": {
+                "$ref": "#/components/schemas/SSEStepCompletedData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "stepCompleted"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "stepFailed": {
+                "$ref": "#/components/schemas/SSEStepFailedData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "stepFailed"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "elicitationRequired": {
+                "$ref": "#/components/schemas/SSEElicitationRequiredData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "elicitationRequired"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "elicitationResolved": {
+                "$ref": "#/components/schemas/SSEElicitationResolvedData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "elicitationResolved"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "runCompleted": {
+                "$ref": "#/components/schemas/SSERunCompletedData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "runCompleted"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "runCancelled": {
+                "$ref": "#/components/schemas/SSERunCancelledData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "runCancelled"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "runFailed": {
+                "$ref": "#/components/schemas/SSERunFailedData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "runFailed"
+            ]
+          }
+        ]
+      },
       "SandboxFlavorsResponse": {
         "description": "REST response for the MCP-server form's sandbox flavor picker:\n the selectable rootfs flavors plus the host command allowlist.",
         "type": "object",
@@ -25330,6 +28631,167 @@
         },
         "required": [
           "needs_setup"
+        ]
+      },
+      "Skill": {
+        "description": "Database row in `skills`. The bundle's SKILL.md + reference files\n live on disk at `extracted_path`; the row carries metadata only.",
+        "type": "object",
+        "properties": {
+          "description": {
+            "description": "SKILL.md frontmatter `description` — Path-B listing line the\n model sees in the system prompt.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bundle_sha256": {
+            "description": "Hex-encoded sha256 of the original tar.gz; used for re-verification.",
+            "type": "string"
+          },
+          "bundle_size_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "display_name": {
+            "description": "Display name from SKILL.md frontmatter `name`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "entry_point": {
+            "description": "Conventional entry-point file inside the bundle (`\"SKILL.md\"`).",
+            "type": "string"
+          },
+          "extracted_path": {
+            "description": "Absolute path on disk to the extracted bundle dir.",
+            "type": "string"
+          },
+          "file_count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "frontmatter_json": {
+            "description": "FULL parsed YAML frontmatter — JSONB. Opaque-preserving so unknown\n fields (`allowed-tools`, `disable-model-invocation`, `paths`, etc.)\n round-trip if the bundle is re-exported."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_dev": {
+            "description": "True when imported via `/api/skills/import` (dev workflow:\n mock: honored, no version bumping).",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Reverse-DNS canonical name (matches hub identity).",
+            "type": "string"
+          },
+          "owner_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "tags": true,
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "description": "Per-entry semver (the hub manifest's `version`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "when_to_use": {
+            "description": "SKILL.md frontmatter `when_to_use` — supplemental trigger hint.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "extracted_path",
+          "bundle_sha256",
+          "bundle_size_bytes",
+          "file_count",
+          "entry_point",
+          "frontmatter_json",
+          "tags",
+          "scope",
+          "enabled",
+          "is_dev",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "SkillFromHubResponse": {
+        "description": "Response from any install-from-hub endpoint.",
+        "type": "object",
+        "properties": {
+          "hub_tracking": {
+            "$ref": "#/components/schemas/HubEntity"
+          },
+          "skill": {
+            "$ref": "#/components/schemas/Skill"
+          }
+        },
+        "required": [
+          "skill",
+          "hub_tracking"
+        ]
+      },
+      "SkillGroupsRequest": {
+        "description": "`POST /api/skills/system/{id}/groups` body. Replaces the entire set\n (mirrors `mcp/handlers/groups.rs`'s `ServerGroupsRequest`).",
+        "type": "object",
+        "properties": {
+          "group_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "group_ids"
+        ]
+      },
+      "SkillListResponse": {
+        "description": "`GET /api/skills` response shape — user-owned + accessible system\n skills, each tagged with its `scope`.",
+        "type": "object",
+        "properties": {
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Skill"
+            }
+          }
+        },
+        "required": [
+          "skills"
         ]
       },
       "StartInstanceRequest": {
@@ -25652,6 +29114,31 @@
             "description": "The user's session/permissions changed (group membership or a group's\n permissions were edited) — the client re-bootstraps `/auth/me`. `id`\n is the affected user id.",
             "type": "string",
             "const": "session"
+          },
+          {
+            "description": "A user-installed skill (user-scope). Notify-only — the client refetches\n `/api/skills` (which returns the user's own + accessible system skills).",
+            "type": "string",
+            "const": "skill"
+          },
+          {
+            "description": "Admin view of a system-scope skill (assigned via group_skills).\n Emitted ALONGSIDE `Skill` when scope='system' to refresh both surfaces.",
+            "type": "string",
+            "const": "skill_system"
+          },
+          {
+            "description": "A user-installed workflow (user-scope). Same shape as Skill.",
+            "type": "string",
+            "const": "workflow"
+          },
+          {
+            "description": "Admin view of a system-scope workflow.",
+            "type": "string",
+            "const": "workflow_system"
+          },
+          {
+            "description": "A workflow_runs lifecycle transition (started / completed / failed /\n cancelled) — NOT per-step events; those go on the dedicated per-run\n SSE channel (§4.4). Notify-only so cross-device list views refresh.",
+            "type": "string",
+            "const": "workflow_run"
           }
         ]
       },
@@ -25909,6 +29396,59 @@
           "success",
           "message"
         ]
+      },
+      "TestRunResponse": {
+        "description": "Top-level `POST /api/workflows/{id}/test` response.",
+        "type": "object",
+        "properties": {
+          "failed": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "passed": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FixtureResult"
+            }
+          },
+          "skipped": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "total": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "total",
+          "passed",
+          "failed",
+          "skipped",
+          "results"
+        ]
+      },
+      "TestWorkflowRequest": {
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "description": "Conversation to snapshot the model from (mirrors /run). Required\n for `real_llm` fixtures; ci fixtures are fully mocked but still\n need a model snapshot to build the (never-called) provider object.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "default": null
+          }
+        }
       },
       "TextPageQuery": {
         "description": "Text page query params",
@@ -26940,6 +30480,36 @@
           }
         }
       },
+      "UpdateSkill": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "tags": true,
+          "when_to_use": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "UpdateStatusResponse": {
         "description": "Cached server update-availability status (admin endpoint).",
         "type": "object",
@@ -27650,6 +31220,140 @@
           "updated_at"
         ]
       },
+      "ValidateErrorEntry": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      },
+      "ValidateErrorEntry2": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "location": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      },
+      "ValidateSkillRequest": {
+        "type": "object",
+        "properties": {
+          "skill_md": {
+            "description": "The SKILL.md text (frontmatter + body).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "skill_md"
+        ]
+      },
+      "ValidateSkillResponse": {
+        "type": "object",
+        "properties": {
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ValidateErrorEntry"
+            }
+          },
+          "valid": {
+            "type": "boolean"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ValidateErrorEntry"
+            }
+          }
+        },
+        "required": [
+          "valid",
+          "errors",
+          "warnings"
+        ]
+      },
+      "ValidateWorkflowRequest": {
+        "description": "JSON body for `/validate` — just the workflow.yaml text. (A multipart\n tarball would also work, but validate only needs the entry-point YAML\n since it never installs.)",
+        "type": "object",
+        "properties": {
+          "workflow_yaml": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflow_yaml"
+        ]
+      },
+      "ValidateWorkflowResponse": {
+        "type": "object",
+        "properties": {
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ValidateErrorEntry2"
+            }
+          },
+          "est_max_calls": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "est_max_tokens": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "steps": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "valid": {
+            "type": "boolean"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ValidateErrorEntry2"
+            }
+          }
+        },
+        "required": [
+          "valid",
+          "errors",
+          "warnings",
+          "steps",
+          "est_max_calls",
+          "est_max_tokens"
+        ]
+      },
       "VersionStatus": {
         "description": "Snapshot returned by `status()` for the admin UI's \"Rootfs\n versions\" page.",
         "type": "object",
@@ -27751,6 +31455,261 @@
         "required": [
           "versions",
           "unresolved"
+        ]
+      },
+      "Workflow": {
+        "description": "Database row in `workflows`.",
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bundle_sha256": {
+            "type": "string"
+          },
+          "bundle_size_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "compiled_ir_json": {
+            "description": "Pre-resolved templates + typed step metadata. NULL until the\n validator's compile pass runs (B4). See plan §4.1 pattern (d)."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "entry_point": {
+            "type": "string"
+          },
+          "extracted_path": {
+            "type": "string"
+          },
+          "file_count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_dev": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "tags": true,
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "extracted_path",
+          "bundle_sha256",
+          "bundle_size_bytes",
+          "file_count",
+          "entry_point",
+          "tags",
+          "scope",
+          "enabled",
+          "is_dev",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "WorkflowFromHubResponse": {
+        "type": "object",
+        "properties": {
+          "hub_tracking": {
+            "$ref": "#/components/schemas/HubEntity"
+          },
+          "workflow": {
+            "$ref": "#/components/schemas/Workflow"
+          }
+        },
+        "required": [
+          "workflow",
+          "hub_tracking"
+        ]
+      },
+      "WorkflowListResponse": {
+        "type": "object",
+        "properties": {
+          "workflows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Workflow"
+            }
+          }
+        },
+        "required": [
+          "workflows"
+        ]
+      },
+      "WorkflowRun": {
+        "description": "Database row in `workflow_runs`. Heavy fields (step outputs, logs,\n artifacts, final output) live as JSONB metadata blobs — actual\n content (multi-MiB step output, artifact bytes) is on disk under\n the per-run workspace.",
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "current_step": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error_message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "final_output_json": true,
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "inputs_json": true,
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "pending_elicitation_json": true,
+          "run_kind": {
+            "type": "string"
+          },
+          "sandbox_flavor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "step_artifacts_json": true,
+          "step_item_progress_json": true,
+          "step_logs_json": true,
+          "step_outputs_json": true,
+          "total_tokens": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workflow_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id",
+          "workflow_id",
+          "user_id",
+          "run_kind",
+          "inputs_json",
+          "step_outputs_json",
+          "step_item_progress_json",
+          "step_logs_json",
+          "step_artifacts_json",
+          "status",
+          "total_tokens",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "WorkflowRunRequest": {
+        "description": "Body of `POST /api/workflows/{id}/run`.",
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "inputs": {
+            "default": null
+          },
+          "mocks": {
+            "description": "Per-step canned responses, keyed by step id. ONLY honored when the\n workflow's `is_dev = true` (the route handler rejects mocks for\n published workflows with 403). Lets dev iteration + `tests/` fixtures\n stub specific steps without spending LLM tokens. See plan §1.",
+            "type": "object",
+            "additionalProperties": true,
+            "default": {}
+          }
+        }
+      },
+      "WorkflowRunStartResponse": {
+        "type": "object",
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "status"
         ]
       }
     }
