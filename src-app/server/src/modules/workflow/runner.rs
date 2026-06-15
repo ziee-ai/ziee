@@ -349,12 +349,26 @@ pub async fn run_workflow(
         tick.tick().await;
         loop {
             tick.tick().await;
-            // Stop quietly once the row is terminal (the guard no-ops) or gone.
-            if repository::heartbeat(&hb_pool, run_id).await.is_err() {
-                break;
-            }
+            // M-4: a TRANSIENT DB error must NOT stop the heartbeat — the
+            // no-progress guard relies on this signal, and stopping early
+            // would let it false-kill a healthy run. A terminal/gone run
+            // makes the guarded UPDATE a harmless no-op; the AbortOnDrop
+            // guard below is what actually stops the loop on run exit.
+            let _ = repository::heartbeat(&hb_pool, run_id).await;
         }
     });
+    // #1a: abort the heartbeat on EVERY exit of run_workflow — including a
+    // panic unwinding past the wall-clock await (timeout doesn't catch
+    // panics, and run_workflow is a detached task). A bare abort() after the
+    // await would be skipped on panic, leaking a heartbeat that keeps
+    // updated_at fresh and defeats the very no-progress guard it serves.
+    struct AbortOnDrop(tokio::task::JoinHandle<()>);
+    impl Drop for AbortOnDrop {
+        fn drop(&mut self) {
+            self.0.abort();
+        }
+    }
+    let _heartbeat_guard = AbortOnDrop(heartbeat);
 
     // Wrap the entire run in the wall-clock timeout.
     let outcome = tokio::time::timeout(
@@ -362,9 +376,6 @@ pub async fn run_workflow(
         run_inner(&pool, &mut ctx, &workflow_def, provider, handle.clone(), emit.clone()),
     )
     .await;
-
-    // Stop the heartbeat the moment the run reaches a terminal state.
-    heartbeat.abort();
 
     let total_tokens = ctx.total_tokens;
 

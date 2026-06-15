@@ -382,14 +382,18 @@ pub async fn dry_run(
     AxumPath(id): AxumPath<Uuid>,
     Json(req): Json<DryRunRequest>,
 ) -> ApiResult<Json<cost::DryRunResult>> {
+    // H-2: gate exactly like get/run — `user_can_access` enforces both
+    // ownership (user-scope) AND group-restriction (system-scope). The old
+    // `scope == "user"` check skipped the group check for system workflows,
+    // letting a non-member dry-run a group-restricted workflow they can't see.
+    if !repository::user_can_access(Repos.pool(), auth.user.id, id).await? {
+        return Err::<_, (StatusCode, AppError)>(
+            AppError::not_found("Workflow").into(),
+        );
+    }
     let wf = repository::find_by_id(Repos.pool(), id)
         .await?
         .ok_or_else(|| AppError::not_found("Workflow"))?;
-    if wf.scope == "user" && wf.owner_user_id != Some(auth.user.id) {
-        return Err::<_, (StatusCode, AppError)>(
-            AppError::forbidden("WORKFLOW_FORBIDDEN", "workflow owned by another user").into(),
-        );
-    }
 
     let wf_path = std::path::PathBuf::from(&wf.extracted_path).join(&wf.entry_point);
     let content = tokio::fs::read_to_string(&wf_path).await.map_err(|e| {
@@ -433,14 +437,15 @@ pub async fn test_workflow(
     Json(req): Json<TestWorkflowRequest>,
 ) -> ApiResult<Json<TestRunResponse>> {
     let pool = Repos.pool().clone();
+    // H-2: same access gate as get/run/dry_run (ownership + group restriction).
+    if !repository::user_can_access(&pool, auth.user.id, id).await? {
+        return Err::<_, (StatusCode, AppError)>(
+            AppError::not_found("Workflow").into(),
+        );
+    }
     let wf = repository::find_by_id(&pool, id)
         .await?
         .ok_or_else(|| AppError::not_found("Workflow"))?;
-    if wf.scope == "user" && wf.owner_user_id != Some(auth.user.id) {
-        return Err::<_, (StatusCode, AppError)>(
-            AppError::forbidden("WORKFLOW_FORBIDDEN", "workflow owned by another user").into(),
-        );
-    }
 
     // Parse the on-disk workflow.yaml.
     let wf_path = std::path::PathBuf::from(&wf.extracted_path).join(&wf.entry_point);

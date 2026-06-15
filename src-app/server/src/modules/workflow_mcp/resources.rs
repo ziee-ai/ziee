@@ -271,6 +271,11 @@ fn read_output(
         .ok_or_else(|| AppError::not_found("output not found in this run"))?;
     let meta: OutputMeta = serde_json::from_value(meta_json.clone())
         .map_err(|e| AppError::internal_error(format!("decode output meta: {e}")))?;
+    // H-1 defense-in-depth: confine the resolved path under the run dir
+    // before reading (parity with read_artifact). The path is server-written
+    // and the run dir is RO-mounted to the sandbox, so this is belt-and-
+    // suspenders against a symlink escape, not a known-reachable hole.
+    confirm_under_run_dir(run, &meta.path)?;
     let bytes = std::fs::read(&meta.path)
         .map_err(|e| AppError::not_found(&format!("output file missing: {e}")))?;
     // Prefer the output's declared mime_type (so list-mime and read-mime
@@ -340,6 +345,8 @@ fn read_log(
         // dir listing as a JSON index (individual items are addressable
         // via REST). Phase 1 returns the index.
         let items_dir = base.join("items");
+        // H-1 defense-in-depth: confine before listing.
+        confirm_under_run_dir(run, &items_dir)?;
         let mut names: Vec<String> = Vec::new();
         if let Ok(rd) = std::fs::read_dir(&items_dir) {
             for e in rd.flatten() {
@@ -355,6 +362,8 @@ fn read_log(
     } else {
         base.join(kind)
     };
+    // H-1 defense-in-depth: confine the resolved log path under the run dir.
+    confirm_under_run_dir(run, &path)?;
     let bytes = std::fs::read(&path)
         .map_err(|e| AppError::not_found(&format!("log file missing: {e}")))?;
     let mime = if kind == "trace" {
@@ -494,11 +503,14 @@ async fn workflow_def_for_run(
 }
 
 /// Whether logs for `step_id` are surfaceable given the workflow's
-/// `expose_logs` (per-step override wins). `None` def → conservatively
-/// allow (the runner only populated step_logs_json because a log level
-/// was set; a missing def shouldn't hide already-captured logs).
+/// `expose_logs` (per-step override wins). M-6: `None` def → fail CLOSED.
+/// `expose_logs` is a confidentiality control (a step can mark its prompts /
+/// raw output `never`); if the def can't be loaded we can't prove the step
+/// isn't `never`, so we must not surface its logs. Ownership is still
+/// enforced separately, so this only ever hides a same-user's own logs when
+/// the workflow.yaml is unreadable — the safe trade-off for a privacy gate.
 fn logs_surfaceable(def: Option<&WorkflowDef>, step_id: &str) -> bool {
-    let Some(def) = def else { return true };
+    let Some(def) = def else { return false };
     let effective = def
         .steps
         .iter()

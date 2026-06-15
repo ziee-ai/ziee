@@ -156,6 +156,7 @@ pub async fn read_skill_file(
         skill_id: skill.id,
         rel_path: rel.to_string_lossy().to_string(),
         mtime_nanos,
+        stripped: false, // raw file content (M-5)
     };
     if let Some(cached) = file_cache::get(&key) {
         return Ok(json!({ "name": skill.name, "path": args.path, "content": cached }));
@@ -236,6 +237,7 @@ async fn read_skill_md_cached(
         skill_id: skill.id,
         rel_path: skill.entry_point.clone(),
         mtime_nanos,
+        stripped: true, // frontmatter-stripped body (M-5)
     };
     if let Some(cached) = file_cache::get(&key) {
         return Ok(cached);

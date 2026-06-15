@@ -12,8 +12,11 @@ use sqlx::PgPool;
 use crate::common::AppError;
 use crate::modules::workflow::repository;
 
-pub async fn sweep_at_boot(pool: &PgPool) -> Result<(), AppError> {
-    let rows = repository::fail_orphaned_runs(pool).await?;
+pub async fn sweep_at_boot(
+    pool: &PgPool,
+    cutoff: time::OffsetDateTime,
+) -> Result<(), AppError> {
+    let rows = repository::fail_orphaned_runs(pool, cutoff).await?;
     if rows > 0 {
         tracing::warn!(
             count = rows,

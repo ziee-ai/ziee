@@ -148,6 +148,10 @@ pub async fn update_user_skill(
         )
         .into());
     }
+    // M-2: the edit path must enforce the same description+when_to_use cap as
+    // install (frontmatter parse) — otherwise an edit could bloat the
+    // always-loaded available-skills system message.
+    check_description_cap(&existing, &request)?;
     let updated = Repos.skill.update(id, request).await?;
     // Drop any cached SKILL.md / reference-file content for this id so
     // the next skill_mcp `load_skill` / `read_skill_file` re-reads from
@@ -408,10 +412,46 @@ pub async fn update_system_skill(
     if existing.scope != "system" {
         return Err(AppError::not_found("Skill").into());
     }
+    // M-2: enforce the description+when_to_use cap on edits (system-scope
+    // edits affect EVERY user's always-loaded listing, so this matters most
+    // here).
+    check_description_cap(&existing, &request)?;
     let updated = Repos.skill.update(id, request).await?;
     crate::modules::skill_mcp::file_cache::invalidate_skill(id);
     events::emit_system_skill(SyncAction::Update, id, origin.0);
     Ok((StatusCode::OK, Json(updated)))
+}
+
+/// M-2: enforce the Agent-Skills description+when_to_use char cap on the edit
+/// path (install enforces it during frontmatter parse). Partial updates merge
+/// the request's new values over the existing row before measuring.
+fn check_description_cap(
+    existing: &Skill,
+    request: &UpdateSkill,
+) -> Result<(), (StatusCode, AppError)> {
+    let desc = request
+        .description
+        .as_deref()
+        .or(existing.description.as_deref())
+        .unwrap_or("");
+    let when = request
+        .when_to_use
+        .as_deref()
+        .or(existing.when_to_use.as_deref())
+        .unwrap_or("");
+    let combined = desc.chars().count() + when.chars().count();
+    if combined > crate::modules::skill::frontmatter::MAX_DESCRIPTION_PLUS_WHEN_TO_USE {
+        return Err(AppError::unprocessable_entity(
+            "SKILL_DESCRIPTION_TOO_LONG",
+            format!(
+                "description + when_to_use exceeds {} chars (got {})",
+                crate::modules::skill::frontmatter::MAX_DESCRIPTION_PLUS_WHEN_TO_USE,
+                combined
+            ),
+        )
+        .into());
+    }
+    Ok(())
 }
 
 pub fn update_system_skill_docs(op: TransformOperation) -> TransformOperation {

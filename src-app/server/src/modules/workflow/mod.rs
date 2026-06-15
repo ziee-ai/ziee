@@ -88,8 +88,13 @@ impl AppModule for WorkflowModule {
         // to `failed` ("server restart during execution") and remove
         // stale staged dirs under <workspace_root>/*/workflow/*/.
         let pool = (*ctx.db_pool).clone();
+        // M-3: capture the cutoff synchronously, BEFORE spawning the sweep, so
+        // it predates any run the server accepts once routes are live. The
+        // sweep only fails runs created before this instant — a run started in
+        // the boot window (after this point) is never clobbered.
+        let cutoff = time::OffsetDateTime::now_utc();
         tokio::spawn(async move {
-            if let Err(e) = startup_sweep::sweep_at_boot(&pool).await {
+            if let Err(e) = startup_sweep::sweep_at_boot(&pool, cutoff).await {
                 tracing::warn!(error = %e, "workflow: startup sweep failed");
             }
         });

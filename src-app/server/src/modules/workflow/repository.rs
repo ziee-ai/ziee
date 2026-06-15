@@ -683,8 +683,14 @@ pub async fn cancel_cas(
     Ok(row.map(|r| r.status))
 }
 
-/// Startup sweep: flip every still-pending/running row to `failed`.
-pub async fn fail_orphaned_runs(pool: &PgPool) -> Result<u64, AppError> {
+/// Startup sweep: flip every still-pending/running row created BEFORE
+/// `cutoff` to `failed`. M-3: the `created_at < cutoff` bound prevents the
+/// sweep (spawned detached at module init) from racing — and clobbering — a
+/// run legitimately started in the boot window after `cutoff` was captured.
+pub async fn fail_orphaned_runs(
+    pool: &PgPool,
+    cutoff: time::OffsetDateTime,
+) -> Result<u64, AppError> {
     let res = sqlx::query!(
         r#"
         UPDATE workflow_runs
@@ -692,7 +698,9 @@ pub async fn fail_orphaned_runs(pool: &PgPool) -> Result<u64, AppError> {
             error_message = 'server restart during execution',
             updated_at = NOW()
         WHERE status IN ('pending', 'running')
+          AND created_at < $1
         "#,
+        cutoff,
     )
     .execute(pool)
     .await

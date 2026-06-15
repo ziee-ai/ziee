@@ -453,6 +453,11 @@ pub async fn find_accessible_by_name(
             updated_at as "updated_at: _"
         FROM skills s
         WHERE s.name = $1
+          -- M-1: a disabled skill must not be loadable by the LLM via
+          -- skill_mcp (it's already excluded from the chat listing). The
+          -- owner can still read/manage it via the REST path, which uses
+          -- user_can_read (deliberately without this filter).
+          AND s.enabled = TRUE
           AND (
             (s.scope = 'user' AND s.owner_user_id = $2)
             OR (s.scope = 'system' AND (

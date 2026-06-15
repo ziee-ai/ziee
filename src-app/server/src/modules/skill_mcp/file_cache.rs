@@ -30,6 +30,11 @@ pub struct CacheKey {
     pub skill_id: Uuid,
     pub rel_path: String,
     pub mtime_nanos: i128,
+    /// M-5: `load_skill` caches the frontmatter-STRIPPED body of SKILL.md,
+    /// while `read_skill_file("SKILL.md")` caches the RAW file. Both share
+    /// (skill_id, "SKILL.md", mtime); without this discriminator they collide
+    /// and return each other's content. `true` = stripped body.
+    pub stripped: bool,
 }
 
 struct Entry {
@@ -139,6 +144,7 @@ mod tests {
             skill_id: id,
             rel_path: path.to_string(),
             mtime_nanos: 1,
+            stripped: false,
         }
     }
 

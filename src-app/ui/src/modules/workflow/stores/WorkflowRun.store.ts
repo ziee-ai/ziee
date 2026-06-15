@@ -287,6 +287,14 @@ export const useWorkflowRunStore = create<WorkflowRunState>()(
           })
           try {
             await ApiClient.Workflow.cancelRun({ run_id: runId })
+          } catch (e) {
+            // M-7: callers fire-and-forget via `void`, so swallow-and-surface
+            // here rather than reject unhandled. Show the failure in the run's
+            // error banner.
+            set(draft => {
+              const v = draft.runs[runId]
+              if (v) v.error = `Failed to cancel run: ${String(e)}`
+            })
           } finally {
             set(draft => {
               delete draft.cancelling[runId]
@@ -311,6 +319,12 @@ export const useWorkflowRunStore = create<WorkflowRunState>()(
             set(draft => {
               const v = draft.runs[runId]
               if (v) v.pendingElicitation = undefined
+            })
+          } catch (e) {
+            // M-7: surface a failed submission instead of rejecting unhandled.
+            set(draft => {
+              const v = draft.runs[runId]
+              if (v) v.error = `Failed to submit response: ${String(e)}`
             })
           } finally {
             set(draft => {
