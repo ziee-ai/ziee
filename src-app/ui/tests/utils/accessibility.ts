@@ -36,9 +36,12 @@ export async function checkAccessibility(
 
   let builder = new AxeBuilder({ page }).withTags(tags)
 
-  // Disable specific rules if requested
-  for (const rule of disabledRules) {
-    builder = builder.disableRules([rule])
+  // Disable specific rules if requested. NOTE: AxeBuilder.disableRules
+  // REPLACES the disabled-rules set on each call (it doesn't accumulate),
+  // so the whole array must be passed in ONE call — a per-rule loop would
+  // leave only the last rule disabled and silently re-enable the rest.
+  if (disabledRules.length > 0) {
+    builder = builder.disableRules(disabledRules)
   }
 
   // Include/exclude specific elements
