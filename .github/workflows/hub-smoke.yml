@@ -57,6 +57,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-app
+          # Stable key so every hub-smoke run shares ONE cache (PR runs +
+          # the nightly main run) instead of per-job keys — the dependency
+          # build (~30 min cold) is restored, leaving only the ziee crate to
+          # recompile (~2-5 min) on subsequent runs.
+          shared-key: hub-smoke
+          # Save the dep cache even when a later step fails (e.g. the earlier
+          # libseccomp link error happened AFTER all deps compiled, so without
+          # this the costly compilation was thrown away on the retry).
+          cache-on-failure: true
 
       # bwrap + squashfuse so code_sandbox steps in hub workflows actually run.
       - name: Install host deps
