@@ -71,6 +71,18 @@ impl SkillRepository {
         find_by_name(&self.pool, name).await
     }
 
+    /// M5: resolve a skill by name to the row the CALLER can actually read,
+    /// preferring the user's own copy over an accessible system copy. Used by
+    /// `skill_mcp` so a same-named skill owned by another user can't shadow
+    /// (and make uncallable) the caller's own installed skill.
+    pub async fn find_accessible_by_name(
+        &self,
+        user_id: Uuid,
+        name: &str,
+    ) -> Result<Option<Skill>, AppError> {
+        find_accessible_by_name(&self.pool, user_id, name).await
+    }
+
     pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
         delete(&self.pool, id).await
     }
@@ -396,6 +408,67 @@ pub async fn find_by_name(pool: &PgPool, name: &str) -> Result<Option<Skill>, Ap
         LIMIT 1
         "#,
         name,
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(row)
+}
+
+/// M5: name → the row the caller can read, preferring the user's own copy.
+/// Same access predicate as `user_can_read` (user-owned OR accessible
+/// system), ordered so the user's own copy wins over a system copy, then by
+/// version. This makes a same-named cross-user install unable to shadow the
+/// caller's own skill (the old `find_by_name` picked the global highest
+/// version then access-checked it, so another user's higher-versioned copy
+/// made the caller's own skill resolve to a forbidden row).
+pub async fn find_accessible_by_name(
+    pool: &PgPool,
+    user_id: Uuid,
+    name: &str,
+) -> Result<Option<Skill>, AppError> {
+    let row = sqlx::query_as!(
+        Skill,
+        r#"
+        SELECT
+            id,
+            name,
+            version,
+            display_name,
+            description,
+            when_to_use,
+            extracted_path,
+            bundle_sha256,
+            bundle_size_bytes,
+            file_count,
+            entry_point,
+            frontmatter_json as "frontmatter_json: _",
+            tags as "tags: _",
+            scope,
+            owner_user_id,
+            created_by,
+            enabled,
+            is_dev,
+            created_at as "created_at: _",
+            updated_at as "updated_at: _"
+        FROM skills s
+        WHERE s.name = $1
+          AND (
+            (s.scope = 'user' AND s.owner_user_id = $2)
+            OR (s.scope = 'system' AND (
+              NOT EXISTS (SELECT 1 FROM group_skills WHERE skill_id = s.id)
+              OR EXISTS (
+                SELECT 1 FROM group_skills gs
+                JOIN user_groups ug ON gs.group_id = ug.group_id
+                WHERE gs.skill_id = s.id AND ug.user_id = $2
+              )
+            ))
+          )
+        ORDER BY (s.scope = 'user') DESC, s.version DESC NULLS LAST
+        LIMIT 1
+        "#,
+        name,
+        user_id,
     )
     .fetch_optional(pool)
     .await

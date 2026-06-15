@@ -70,6 +70,17 @@ pub async fn submit_elicit(
             "elicitation_id no longer pending (already resolved or replaced)",
         )).into());
     }
+    // L6: reject a submission that arrives past the deadline. The
+    // dispatcher's timeout arm is authoritative, but a submission landing in
+    // the skew window between deadline and the timer firing should be told
+    // it's too late rather than delivered as a normal response.
+    if chrono::Utc::now() > pending.deadline_at {
+        return Err::<_, (StatusCode, AppError)>((AppError::new(
+            StatusCode::GONE,
+            "WORKFLOW_ELICIT_STALE",
+            "elicitation deadline has passed",
+        )).into());
+    }
 
     // Validate the response against the persisted schema (plan §3:
     // "Validated against the schema → 422 on mismatch"). Lightweight

@@ -4,9 +4,14 @@
 //! via atomic temp-then-rename. Metadata (path / size / sha256 /
 //! preview / kind / parsed_as) goes into the DB row's
 //! `step_outputs_json` column AFTER the file is on disk (write-file-
-//! then-DB: a crash between leaves an orphan file the startup sweep
-//! cleans; the reverse would orphan a DB row pointing at a missing
-//! file).
+//! then-DB: a crash between leaves an orphan file but never a DB row
+//! pointing at a missing file — the safe ordering). The orphan file is
+//! reclaimed when the run reaches a terminal status: every terminal
+//! path (`run_workflow` completion/fail/cancel + the startup sweep for
+//! runs interrupted by a restart) removes the whole staged
+//! `<workspace>/<conv>/workflow/<run>/` directory, taking any orphan
+//! output file with it. (The sweep removes orphan run DIRECTORIES, not
+//! individual files.)
 
 #![allow(dead_code)]
 

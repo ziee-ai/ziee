@@ -77,7 +77,10 @@ fn parse_ref(body: &str) -> Option<RefExpr> {
         .find(|(_, c)| *c == '.' || *c == '[')
         .map(|(i, _)| i)
         .unwrap_or(lhs.len());
-    let head = lhs[..head_end].to_string();
+    // M1: trim head the same way `template::resolve_expr` does, so a ref with
+    // internal whitespace (`{{ step . output }}`) is type-checked rather than
+    // silently treated as an unknown id (the engine trims and resolves it).
+    let head = lhs[..head_end].trim().to_string();
     let mut rest = &lhs[head_end..];
     while !rest.is_empty() {
         if let Some(stripped) = rest.strip_prefix('.') {
@@ -89,7 +92,8 @@ fn parse_ref(body: &str) -> Option<RefExpr> {
                     break;
                 }
             }
-            let field = &stripped[..end];
+            // M1: trim to match the template engine (`{{ step. output }}`).
+            let field = stripped[..end].trim();
             if field.is_empty() {
                 return None;
             }

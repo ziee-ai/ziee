@@ -468,6 +468,10 @@ fn extract_tar_gz_to(
 
     let mut total_bytes: u64 = 0;
     let mut file_count: u32 = 0;
+    // L9: directory entries are also capped — a bundle of tens of thousands
+    // of nested empty dirs compresses to almost nothing and would otherwise
+    // pass the file-count + byte caps while exhausting inodes at extract.
+    let mut dir_count: u32 = 0;
 
     for entry_result in archive.entries().map_err(|e| {
         AppError::internal_error(format!("bundle: tar entries: {e}"))
@@ -517,6 +521,13 @@ fn extract_tar_gz_to(
         }
 
         if entry_type.is_dir() {
+            if dir_count >= MAX_BUNDLE_FILE_COUNT {
+                return Err(AppError::unprocessable_entity(
+                    "BUNDLE_TOO_MANY_FILES",
+                    format!("bundle exceeds {} directory entries", MAX_BUNDLE_FILE_COUNT),
+                ));
+            }
+            dir_count += 1;
             let dest = target_dir.join(&path);
             fs::create_dir_all(&dest).map_err(|e| {
                 AppError::internal_error(format!(

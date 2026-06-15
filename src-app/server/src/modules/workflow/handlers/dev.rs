@@ -519,13 +519,26 @@ pub fn test_workflow_docs(op: TransformOperation) -> TransformOperation {
 
 /// Pull the `bundle` form field out of a multipart upload as raw bytes.
 async fn read_bundle_field(mut multipart: Multipart) -> Result<Vec<u8>, AppError> {
-    while let Ok(Some(field)) = multipart.next_field().await {
+    while let Ok(Some(mut field)) = multipart.next_field().await {
         let field_name = field.name().unwrap_or("").to_string();
         if field_name == "bundle" {
-            let data = field.bytes().await.map_err(|e| {
+            // L10: stream chunk-by-chunk with a hard cap rather than
+            // `field.bytes()` (unbounded RAM buffering). Bound the upload at
+            // the bundle compressed cap on this authenticated endpoint.
+            let cap = crate::modules::hub::bundle::MAX_BUNDLE_COMPRESSED_BYTES as usize;
+            let mut data: Vec<u8> = Vec::new();
+            while let Some(chunk) = field.chunk().await.map_err(|e| {
                 AppError::bad_request("IMPORT_READ_FAILED", format!("read bundle field: {e}"))
-            })?;
-            return Ok(data.to_vec());
+            })? {
+                if data.len().saturating_add(chunk.len()) > cap {
+                    return Err(AppError::unprocessable_entity(
+                        "IMPORT_BUNDLE_TOO_LARGE",
+                        format!("uploaded bundle exceeds the {cap}-byte cap"),
+                    ));
+                }
+                data.extend_from_slice(&chunk);
+            }
+            return Ok(data);
         }
     }
     Err(AppError::bad_request(

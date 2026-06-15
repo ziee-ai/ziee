@@ -16,7 +16,7 @@ import {
   Tag,
   Typography,
 } from 'antd'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
@@ -45,6 +45,14 @@ export function WorkflowDetailDrawer() {
   const [dryRunOpen, setDryRunOpen] = useState(false)
   const [testsOpen, setTestsOpen] = useState(false)
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
+
+  // FE LOW-1: the drawer is a singleton bound to Stores.WorkflowDrawer; when
+  // the user opens a different workflow's card while the drawer is open the
+  // store swaps `workflow` without closing it. Reset the active run so a prior
+  // workflow's progress view doesn't render under the new workflow's header.
+  useEffect(() => {
+    setActiveRunId(null)
+  }, [workflow?.id])
 
   const { steps } = useMemo(
     () => (workflow ? parseWorkflowIr(workflow) : { inputs: [], steps: [] }),

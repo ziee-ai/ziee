@@ -600,6 +600,18 @@ fn check_steps_shape(workflow: &WorkflowDef) -> Vec<ValidationError> {
                     "llm_map for_each must be a template referencing an array",
                     &s.id,
                 ));
+            } else if !for_each.contains("{{") {
+                // L2: a non-template for_each (e.g. a bare literal) passes the
+                // non-empty check but fails at runtime when the dispatcher
+                // tries to parse it as an array. Reject at install with a
+                // clear message.
+                out.push(ValidationError::at(
+                    "semantic",
+                    "WORKFLOW_FOR_EACH_NOT_TEMPLATE",
+                    "llm_map for_each must be a template referencing an array \
+                     (e.g. \"{{ step_id.output }}\")",
+                    &s.id,
+                ));
             }
             if item_var.is_empty() {
                 out.push(ValidationError::at(

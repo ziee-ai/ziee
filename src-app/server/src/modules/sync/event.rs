@@ -14,10 +14,15 @@ use crate::modules::permissions::{PermissionCheck, PermissionList};
 /// The kind of entity that changed. Serialized snake_case to match the
 /// frontend's `sync:<entity>` event vocabulary.
 ///
-/// ADD a variant here when wiring a new domain: `audience_kind`'s match
-/// is exhaustive, so the build fails until the new entity is assigned an
-/// audience — a new syncable entity can never silently default to a
-/// broadcast (the dangerous default becomes a compile error, not a leak).
+/// ADD a variant here when wiring a new domain. NOTE: there is no central
+/// `audience_kind` match — each emitting handler picks the `Audience`
+/// explicitly at the `publish` call site (`Audience::owner(..)` /
+/// `Audience::perm::<P>()` / `Audience::everyone()`). So adding a variant
+/// does NOT force an audience assignment at compile time; the author must
+/// choose the correct audience at every emit site for the new entity (an
+/// owner-scoped entity broadcast to everyone would be a leak). Keep new
+/// entities' audiences aligned with the read-permission gating their
+/// refetch endpoint enforces.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SyncEntity {

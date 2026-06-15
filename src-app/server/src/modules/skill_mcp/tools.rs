@@ -188,12 +188,17 @@ async fn lookup_accessible(
     conversation_id: Option<Uuid>,
     name: &str,
 ) -> Result<crate::modules::skill::models::Skill, AppError> {
+    // M5: resolve to the row THIS user can read (preferring their own copy),
+    // not the global highest-version row — otherwise another user's same-named
+    // install could shadow and make the caller's own skill uncallable.
     let skill = Repos
         .skill
-        .find_by_name(name)
+        .find_accessible_by_name(user_id, name)
         .await?
         .ok_or_else(|| AppError::not_found("skill not installed"))?;
 
+    // Defense in depth: the resolver already filtered by access, but keep the
+    // explicit check so the gate is obvious at the call site.
     if !Repos.skill.user_can_read(user_id, skill.id).await? {
         return Err(AppError::forbidden(
             "SKILL_INACCESSIBLE",

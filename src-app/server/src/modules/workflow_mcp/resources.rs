@@ -150,13 +150,23 @@ pub async fn resources_list(pool: &sqlx::PgPool, user_id: Uuid) -> Result<Value,
             }
         }
 
-        // 3. Logs — per-step, gated by expose_logs.
+        // 3. Logs — per-step, gated by expose_logs. L11: list only the
+        //    kinds actually captured for the step (the per-step object's
+        //    keys), not all of LOG_KINDS — listing a kind that was never
+        //    captured would 404 on resources/read.
         if let Some(obj) = run.step_logs_json.as_object() {
-            for step_id in obj.keys() {
+            for (step_id, step_logs) in obj {
                 if !logs_surfaceable(def.as_ref(), step_id) {
                     continue;
                 }
+                let captured = step_logs.as_object();
                 for kind in LOG_KINDS {
+                    // Only advertise a kind that was actually captured. If the
+                    // per-step value isn't an object we can't tell, so skip.
+                    let present = captured.map(|c| c.contains_key(*kind)).unwrap_or(false);
+                    if !present {
+                        continue;
+                    }
                     resources.push(json!({
                         "uri": log_uri(run.id, step_id, kind),
                         "name": format!("{step_id} · {kind}"),
@@ -190,7 +200,13 @@ pub async fn resources_read(
     }
 
     let (bytes, mime) = match parsed.kind {
-        ResourceKind::Output(name) => read_output(&run, &name)?,
+        ResourceKind::Output(name) => {
+            // C2: an output's `from` may reference a step whose id differs
+            // from the output name, so we need the def to resolve the
+            // backing step file (mirrors tools::read_full_output_value).
+            let def = workflow_def_for_run(pool, &run).await.ok();
+            read_output(&run, def.as_ref(), &name)?
+        }
         ResourceKind::Artifact { step_id, filename } => {
             read_artifact(&run, &step_id, &filename)?
         }
@@ -232,19 +248,39 @@ pub async fn resources_read(
 
 // ── on-disk readers ───────────────────────────────────────────────────
 
-fn read_output(run: &WorkflowRun, name: &str) -> Result<(Vec<u8>, String), AppError> {
+fn read_output(
+    run: &WorkflowRun,
+    def: Option<&WorkflowDef>,
+    name: &str,
+) -> Result<(Vec<u8>, String), AppError> {
+    // SEC-1: parse_uri already sanitized the name; re-check for any internal
+    // caller (defense in depth — parity with read_log / read_artifact).
+    sanitize_uri_component("output name", name)?;
+    // C2: `step_outputs_json` is keyed by STEP ID, but the URI carries the
+    // OUTPUT name. Resolve the source step id from the output's `from`
+    // template (e.g. output `memo` ← `{{ synthesize.output }}` → step
+    // `synthesize`); fall back to the name for the name==step-id case.
+    let out_def = def.and_then(|d| d.outputs.iter().find(|o| o.name == name));
+    let step_key = out_def
+        .and_then(|o| super::tools::step_id_from_template(&o.from))
+        .unwrap_or_else(|| name.to_string());
     let meta_json = run
         .step_outputs_json
-        .get(name)
+        .get(&step_key)
+        .or_else(|| run.step_outputs_json.get(name))
         .ok_or_else(|| AppError::not_found("output not found in this run"))?;
     let meta: OutputMeta = serde_json::from_value(meta_json.clone())
         .map_err(|e| AppError::internal_error(format!("decode output meta: {e}")))?;
     let bytes = std::fs::read(&meta.path)
         .map_err(|e| AppError::not_found(&format!("output file missing: {e}")))?;
-    let mime = match meta.parsed_as {
-        crate::modules::workflow::types::ParsedAs::Json => "application/json".to_string(),
-        crate::modules::workflow::types::ParsedAs::Text => "text/plain".to_string(),
-    };
+    // Prefer the output's declared mime_type (so list-mime and read-mime
+    // agree), falling back to the file's parsed_as.
+    let mime = out_def
+        .and_then(|o| o.mime_type.clone())
+        .unwrap_or_else(|| match meta.parsed_as {
+            crate::modules::workflow::types::ParsedAs::Json => "application/json".to_string(),
+            crate::modules::workflow::types::ParsedAs::Text => "text/plain".to_string(),
+        });
     Ok((bytes, mime))
 }
 

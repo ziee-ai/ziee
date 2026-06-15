@@ -37,6 +37,16 @@ pub async fn read_log(
             ),
         )).into());
     }
+    // A1: `step_id` is joined into the on-disk log path below; reject path
+    // traversal / separators (parity with artifact_stream / artifact_io). The
+    // axum `{step_id}` capture can't contain a literal `/`, but a bare `..`
+    // segment would still resolve `logs/..` up to the run dir.
+    if step_id.contains("..") || step_id.contains('/') || step_id.contains('\\') {
+        return Err::<_, (StatusCode, AppError)>((AppError::bad_request(
+            "WORKFLOW_LOG_BAD_STEP_ID",
+            "step id must not contain path separators or '..'",
+        )).into());
+    }
     let row = repository::find_run(Repos.pool(), run_id)
         .await?
         .ok_or_else(|| AppError::not_found("WorkflowRun"))?;

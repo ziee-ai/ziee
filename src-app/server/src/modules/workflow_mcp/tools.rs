@@ -16,6 +16,7 @@ use uuid::Uuid;
 
 use crate::common::AppError;
 use crate::modules::workflow::models::{Workflow, WorkflowRun};
+use crate::modules::workflow::registry;
 use crate::modules::workflow::repository;
 use crate::modules::workflow::runner;
 use crate::modules::workflow::validate::{ExposeMode, OutputDef, WorkflowDef, parse_workflow_yaml};
@@ -278,6 +279,26 @@ pub async fn call_tool(
     )
     .await?;
 
+    // H2: forward chat-Stop to the runner. The runner was spawned detached
+    // (`spawn_run`), so if the chat dispatcher aborts this request (user hits
+    // Stop), dropping `call_tool`'s future must cancel the run — otherwise it
+    // keeps spending tokens until its own 30-min wall-clock cap. The guard
+    // fires the same cancel path as `POST /cancel` (DB CAS + registry signal)
+    // if dropped before we `disarm()` it on terminal status.
+    let cancel_guard = RunCancelOnDrop {
+        pool: pool.clone(),
+        run_id,
+        armed: true,
+    };
+
+    // PER-STEP MCP PROGRESS (plan §4 step 4 / §4.4) — NOT wired in B5; same
+    // transport limitation as the elicitation bridge below. The built-in
+    // HTTP JSON-RPC handler is plain request/response, so there's no path to
+    // push MCP `notifications/progress` mid-`tools/call` into the chat token
+    // SSE. Per-step progress IS available on the per-run SSE
+    // (`GET /api/workflow-runs/{id}/events`); the chat-side step granularity
+    // is deferred until built-in servers gain a streamable transport.
+    //
     // Block until terminal. The MCP tool call holds open until the run
     // finishes — there's no async tool-result pattern in the chat path.
     //
@@ -304,6 +325,11 @@ pub async fn call_tool(
     // from B4's `RunContext`). Both are out of B5's scope. Until then the
     // per-run SSE form is the surface for workflow_mcp elicitations too.
     let run = await_terminal(pool, run_id).await?;
+    // Reached a terminal status normally — don't cancel on the way out.
+    // (If `await_terminal` had returned Err, the guard would drop armed and
+    // cancel the run, which is the correct cleanup for a timed-out / crashed
+    // runner.)
+    cancel_guard.disarm();
 
     // Read the workflow def again for the outputs[] expose modes.
     let def = read_workflow_def(&wf).await?;
@@ -318,6 +344,40 @@ pub async fn call_tool(
             let err = build_error_result(pool, &run, &def).await;
             Ok(err)
         }
+    }
+}
+
+/// H2: cancel-on-drop guard for the MCP tool-call path. While the tool call
+/// awaits the run, this guard is alive; if the awaiting future is dropped
+/// (chat Stop aborts the request) before `disarm()`, its `Drop` fires the
+/// same cancel path as `POST /cancel` — the synchronous registry signal so an
+/// in-flight step's `tokio::select!` preempts immediately, plus a detached
+/// task for the async DB status CAS (`Drop` can't await).
+struct RunCancelOnDrop {
+    pool: sqlx::PgPool,
+    run_id: Uuid,
+    armed: bool,
+}
+
+impl RunCancelOnDrop {
+    fn disarm(mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for RunCancelOnDrop {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        // Registry signal is synchronous — fire immediately.
+        let _ = registry::cancel(self.run_id);
+        // DB status CAS is async — spawn detached.
+        let pool = self.pool.clone();
+        let run_id = self.run_id;
+        tokio::spawn(async move {
+            let _ = repository::cancel_cas(&pool, run_id).await;
+        });
     }
 }
 

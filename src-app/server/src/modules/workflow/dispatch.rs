@@ -485,6 +485,24 @@ impl StepDispatcher for LlmMapDispatcher {
                 }
             };
             if cancel.is_cancelled() {
+                // L3: snapshot the partial item progress at cancel so the
+                // run row + any live SSE client reflect what completed before
+                // the cancel (the cancelled count is derivable as
+                // total - completed - failed - skipped).
+                let progress = ItemProgress {
+                    completed,
+                    total,
+                    failed,
+                    skipped,
+                    tokens_so_far: total_tokens,
+                };
+                ctx.step_item_progress
+                    .insert(step.id.clone(), progress.clone());
+                emit.emit(SSEWorkflowRunEvent::StepItemProgress(SSEStepItemProgressData {
+                    run_id: ctx.run_id,
+                    step_id: step.id.clone(),
+                    progress,
+                }));
                 return StepResult::Cancelled;
             }
             let (idx, outcome, item_tokens) = res;
@@ -749,7 +767,15 @@ impl StepDispatcher for SandboxDispatcher {
         let sb_ctx = SandboxContext {
             conversation_id: conv_id,
             user_id: ctx.user_id,
-            workspace: ctx.sandbox_workspace.parent().unwrap_or(&ctx.sandbox_workspace).join("..").canonicalize().unwrap_or(ctx.sandbox_workspace.clone()),
+            // M2: the sandbox home bind source is the conversation workspace
+            // dir, i.e. two levels up from the staged run dir
+            // (`<root>/<conv>/workflow/<run>` → `<root>/<conv>`). Derive it
+            // deterministically from the same root + conv_id the runner used
+            // to stage, instead of `parent().join("..").canonicalize()` which
+            // silently fell back to the WRONG dir (the run dir itself) when
+            // canonicalize failed.
+            workspace: crate::modules::workflow::runner::workflow_workspace_root()
+                .join(conv_id.to_string()),
             files: Arc::new(Vec::new()),
         };
 
@@ -910,6 +936,23 @@ impl StepDispatcher for ElicitDispatcher {
         let deadline = chrono::Utc::now()
             + chrono::Duration::milliseconds(timeout_ms as i64);
 
+        // M3: set the in-memory registry slot FIRST (synchronous), THEN
+        // persist to DB, THEN emit. The `/elicit` handler validates the
+        // elicitation_id against the DB record and delivers via the registry
+        // slot; setting the slot before the DB record guarantees that any
+        // submission carrying a valid (DB-persisted) elicitation_id always
+        // finds the delivery slot already present — closing the window where a
+        // correctly-timed submission got a spurious 410.
+        let rx = match registry::set_pending_elicitation(ctx.run_id, elicitation_id) {
+            Ok(rx) => rx,
+            Err(e) => {
+                return StepResult::Failed {
+                    error: format!("register pending elicit: {e}"),
+                    tokens_used: 0,
+                };
+            }
+        };
+
         // Persist pending state to DB so a page-reload can render the form.
         if let Err(e) = persist_pending(
             ctx,
@@ -921,21 +964,13 @@ impl StepDispatcher for ElicitDispatcher {
         )
         .await
         {
+            // Roll back the registry slot we just set so it can't leak.
+            registry::clear_pending_elicitation(ctx.run_id);
             return StepResult::Failed {
                 error: format!("persist pending elicit: {e}"),
                 tokens_used: 0,
             };
         }
-
-        let rx = match registry::set_pending_elicitation(ctx.run_id, elicitation_id) {
-            Ok(rx) => rx,
-            Err(e) => {
-                return StepResult::Failed {
-                    error: format!("register pending elicit: {e}"),
-                    tokens_used: 0,
-                };
-            }
-        };
 
         emit.emit(SSEWorkflowRunEvent::ElicitationRequired(
             SSEElicitationRequiredData {
