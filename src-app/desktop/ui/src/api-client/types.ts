@@ -3021,8 +3021,8 @@ export interface UserMemorySettings {
 
 export interface ValidateErrorEntry {
   code: string
+  location?: string
   message: string
-  path?: string
 }
 
 export interface ValidateErrorEntry2 {

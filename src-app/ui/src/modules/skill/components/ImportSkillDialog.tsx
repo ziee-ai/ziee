@@ -145,13 +145,13 @@ export function ImportSkillDialog({
                 <div className="flex flex-col gap-1">
                   {validation.errors.map((e, i) => (
                     <Text key={`e${i}`} type="danger" className="text-xs">
-                      {e.path ? `${e.path}: ` : ''}
+                      {e.location ? `${e.location}: ` : ''}
                       {e.message}
                     </Text>
                   ))}
                   {validation.warnings.map((w, i) => (
                     <Text key={`w${i}`} type="warning" className="text-xs">
-                      {w.path ? `${w.path}: ` : ''}
+                      {w.location ? `${w.location}: ` : ''}
                       {w.message}
                     </Text>
                   ))}
