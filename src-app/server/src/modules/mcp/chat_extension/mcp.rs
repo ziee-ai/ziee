@@ -132,6 +132,15 @@ fn auto_attach_builtin_ids(
     if flag("attach_memory_mcp") {
         ids.push(crate::modules::memory_mcp::memory_mcp_server_id());
     }
+    // `bio` attaches behind a flag set by the bio_mcp chat extension
+    // (`attach_bio_mcp`), gated on the model being tool-capable AND the
+    // admin having enabled the bio row. Like the others it's fetched by
+    // id OUTSIDE the group-gated path; the `s.enabled` guard at the
+    // fetch site (and the bio extension's own check) keeps a disabled
+    // bio off.
+    if flag("attach_bio_mcp") {
+        ids.push(crate::modules::bio_mcp::bio_mcp_server_id());
+    }
     // `ask_user` is always-on — the assistant may need to ask the user for input
     // in any conversation — but ONLY for tool-capable models: a model that can't
     // call tools can't call `ask_user`, and attaching it would run the full
@@ -176,6 +185,11 @@ fn is_builtin_server_id(id: Uuid) -> bool {
     id == crate::modules::files_mcp::files_mcp_server_id()
         || id == crate::modules::memory_mcp::memory_mcp_server_id()
         || id == crate::modules::elicitation_mcp::elicitation_mcp_server_id()
+        // bio is approval-bypassed (read-only biomedical searches, auto-attached)
+        // but — unlike the three above — it is NOT in the zero-config edit
+        // deny-list (`repository.rs::update_system_mcp_server`), so admins can
+        // still edit its Headers (API keys). The two lists are independent.
+        || id == crate::modules::bio_mcp::bio_mcp_server_id()
 }
 
 ///
@@ -3259,6 +3273,12 @@ mod builtin_tests {
         let all = auto_attach_builtin_ids(&m);
         assert!(all.contains(&files) && all.contains(&memory) && all.contains(&elicit));
         assert_eq!(all.len(), 3);
+        // bio attaches on its own flag, on top of the others.
+        let bio = crate::modules::bio_mcp::bio_mcp_server_id();
+        m.insert("attach_bio_mcp".into(), json!("true"));
+        let with_bio = auto_attach_builtin_ids(&m);
+        assert!(with_bio.contains(&bio));
+        assert_eq!(with_bio.len(), 4);
         // A non-"true" flag value is ignored — only elicitation remains.
         let mut m2: HashMap<String, serde_json::Value> = HashMap::new();
         m2.insert("model_tools_capable".into(), json!(true));
@@ -3285,6 +3305,11 @@ mod builtin_tests {
         ));
         assert!(is_builtin_server_id(
             crate::modules::elicitation_mcp::elicitation_mcp_server_id()
+        ));
+        // bio is approval-bypassed too (auto-attached, read-only searches) —
+        // even though, unlike the three above, it stays admin-editable.
+        assert!(is_builtin_server_id(
+            crate::modules::bio_mcp::bio_mcp_server_id()
         ));
         // A third-party server id is NOT a privileged built-in.
         assert!(!is_builtin_server_id(Uuid::new_v4()));

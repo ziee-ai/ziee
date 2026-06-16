@@ -298,6 +298,14 @@ jwt:
   audience: "ziee-test-api"
   access_token_expiry_hours: 24
   refresh_token_expiry_days: 30
+
+bio_mcp:
+  # Disabled in E2E for isolation. BioMCP is ON by default in production, but
+  # leaving it on here would register the bio server in every system-server
+  # list and auto-attach it (spawning the biomcp sidecar) in every tool-capable
+  # chat. Its admin surface is the generic MCP system-server UI; a dedicated
+  # bio E2E spec would enable it explicitly.
+  enabled: false
 `
 
     writeFileSync(configPath, configContent)

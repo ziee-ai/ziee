@@ -66,16 +66,18 @@ export function RecentConversationsWidget() {
     }
   }, [isInitialized])
 
-  // Section header rendered as a Menu group title so it shares typography
-  // with Navigation / Tools — but the empty + loading states render the
-  // header standalone (no Menu) since there are no items to host it.
+  // Section header for the empty + loading states. Rendered as a standalone
+  // styled heading (NOT an antd <Menu>) — an empty Menu group produces a
+  // `role="menu"` with no children, which fails axe-core's
+  // `aria-required-children`. The classes mirror the Menu group-title
+  // typography in SIDEBAR_MENU_CLASS so it reads identically.
   const headerOnly = (
-    <Menu
-      mode="inline"
-      selectable={false}
-      className={SIDEBAR_MENU_CLASS}
-      items={[{ type: 'group', label: 'Recent chats' }]}
-    />
+    <div
+      className="px-3 pt-0 pb-0.5 text-xs font-semibold tracking-wide"
+      style={{ color: token.colorTextDescription }}
+    >
+      Recent chats
+    </div>
   )
 
   if (loading && !isInitialized) {
