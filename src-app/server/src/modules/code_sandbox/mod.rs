@@ -44,6 +44,7 @@ pub mod version_back;
 pub mod version_handlers;
 pub mod version_install_tasks;
 pub mod version_manager;
+pub mod workflow_staging;
 
 pub use repository::CodeSandboxRepository;
 

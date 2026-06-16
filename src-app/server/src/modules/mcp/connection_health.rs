@@ -71,7 +71,19 @@ pub async fn enforce_on_create(
     server: super::models::McpServer,
     event_bus: &crate::core::events::EventBus,
 ) -> Result<McpServerWithHealthWarning, AppError> {
-    if !server.enabled || server.is_built_in {
+    // Skip the auto-disable probe for: disabled servers (nothing to
+    // probe), built-in servers (owned by their modules), AND
+    // `run_in_sandbox` servers. A sandboxed stdio server's connectivity
+    // genuinely requires the code_sandbox runtime (lazy rootfs
+    // fetch/mount + VM/bwrap spawn), which may not be ready at
+    // create/enable time — probing it here would either route through an
+    // un-mounted sandbox (false failure → wrong auto-disable, seen on the
+    // macOS libkrun path) or, if we probed the raw command on the host,
+    // false-fail any guest-only command. The real sandboxed connect on
+    // first use surfaces genuine errors to the user; mirrors the
+    // "Connectivity probe only — never routed through the code_sandbox"
+    // rule the explicit Test Connection path already follows.
+    if !server.enabled || server.is_built_in || server.run_in_sandbox {
         return Ok(McpServerWithHealthWarning {
             server,
             connection_warning: None,
@@ -171,7 +183,10 @@ pub async fn enforce_on_update_transition(
     event_bus: &crate::core::events::EventBus,
 ) -> Result<super::models::McpServer, AppError> {
     let transitioned_to_enabled = persisted.enabled && !old_enabled;
-    if !transitioned_to_enabled || persisted.is_built_in {
+    // See enforce_on_create: `run_in_sandbox` servers are not probe-gated
+    // (their connectivity needs the lazy code_sandbox runtime; the real
+    // sandboxed connect surfaces genuine errors at use time).
+    if !transitioned_to_enabled || persisted.is_built_in || persisted.run_in_sandbox {
         return Ok(persisted);
     }
 

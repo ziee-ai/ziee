@@ -1,0 +1,22 @@
+{
+  "$schema": "/schemas/2026-06-12/workflow.schema.json",
+  "name": "io.github.ziee/research-summarize-write",
+  "version": "1.0.0",
+  "description": "Three-step llm chain: research a topic, summarize sources, write a memo.",
+  "tags": [
+    "research",
+    "writing",
+    "demo",
+    "entry-level"
+  ],
+  "license": "MIT",
+  "author": "ziee",
+  "bundle": {
+    "url": "workflows/io.github.ziee/research-summarize-write/1.0.0.tar.gz",
+    "sha256": "5e52da978121af5bdd2bf2d51deabb5f7a2ca8e1dcf1374ce18b517868ff5994",
+    "size_bytes": 669,
+    "file_count": 1,
+    "entry_point": "workflow.yaml"
+  },
+  "dependencies": []
+}

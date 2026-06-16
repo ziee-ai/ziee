@@ -10,7 +10,17 @@ use crate::{
         llm_model::{ModelParameters, permissions::LlmModelsCreate},
         mcp::McpServersAdminCreate,
         permissions::{RequirePermissions, with_permission},
+        skill::{
+            self,
+            models::CreateSkill,
+            permissions::{SkillsInstall, SkillsManageSystem},
+        },
         sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
+        workflow::{
+            self,
+            models::CreateWorkflow,
+            permissions::{WorkflowsInstall, WorkflowsManageSystem},
+        },
     },
 };
 use std::sync::Arc;
@@ -19,11 +29,30 @@ use uuid::Uuid;
 use super::{
     events::HubEvent,
     hub_manager::{Catalog, HubManager, HubManifest},
-    models::{HubCategory, HubEntityType},
+    models::{HubCategory, HubEntity, HubEntityType},
     permissions::*,
     types::*,
 };
+use crate::modules::skill::types::{
+    CreateSkillFromHubRequest, CreateSystemSkillFromHubRequest, SkillFromHubResponse,
+};
+use crate::modules::workflow::types::{
+    CreateSystemWorkflowFromHubRequest, CreateWorkflowFromHubRequest, WorkflowFromHubResponse,
+};
 use axum::extract::Path as AxumPath;
+
+/// H1: the per-owner on-disk path segment for a skill/workflow bundle.
+/// User installs land under their UUID; system installs under "system".
+/// This keeps user A's and user B's copies of the same hub item in
+/// distinct dirs so one install's `remove_dir_all` can never clobber the
+/// other's live bundle. The segment is a UUID or the literal "system" —
+/// both path-safe (no separators / `..`).
+fn owner_dir_segment(owner_user_id: Option<Uuid>) -> String {
+    match owner_user_id {
+        Some(uid) => uid.to_string(),
+        None => "system".to_string(),
+    }
+}
 
 /// Resolve the per-entry semver for one catalog item, used to stamp
 /// `hub_entities.hub_version` on install. Returns `None` if the entry
@@ -1545,6 +1574,774 @@ pub async fn create_model_from_hub(
 }
 
 // =====================================================
+// SKILL FROM HUB
+// =====================================================
+
+/// Shared lookup + bundle-extract + frontmatter parse for both skill
+/// install paths (user / system). Mirrors `build_assistant_create_from_hub`
+/// but for the directory-bundle shape.
+struct HubSkillCreatePlan {
+    create_request: CreateSkill,
+    hub_version: Option<String>,
+    extracted_path: std::path::PathBuf,
+}
+
+async fn build_skill_create_from_hub(
+    hub_id: &str,
+    scope: &str,
+    owner_user_id: Option<Uuid>,
+    created_by: Option<Uuid>,
+) -> Result<HubSkillCreatePlan, AppError> {
+    let app_data_dir = crate::core::get_app_data_dir();
+    let hub_manager = HubManager::new(app_data_dir.clone())?;
+
+    hub_manager
+        .ensure_installable(HubCategory::Skill, hub_id)
+        .await?;
+
+    let hub_version =
+        resolve_entry_version(&hub_manager, HubCategory::Skill, hub_id).await;
+
+    let manifest = hub_manager.manifest(HubCategory::Skill, hub_id).await?;
+    let hub_skill = manifest
+        .skill
+        .ok_or_else(|| {
+            AppError::internal_error(format!(
+                "hub: manifest for '{hub_id}' is not a skill"
+            ))
+        })?;
+
+    // SEC-2: validate the manifest-supplied entry_point BEFORE it's
+    // joined to the extracted dir or persisted. A malicious hub author
+    // could otherwise set `entry_point: "../../../etc/passwd"`.
+    super::bundle::validate_entry_point(&hub_skill.bundle.entry_point)?;
+
+    // H1: owner-scope the on-disk layout so two users installing the same
+    // hub skill don't share a dir (User B's install would `remove_dir_all`
+    // User A's live dir). Layout:
+    //   <app_data>/skills/<owner-or-"system">/<reverse-dns>/<version>/
+    // The reverse-DNS path safety is enforced by `is_safe_name` inside
+    // hub_manager::manifest; defense-in-depth in the extractor against
+    // `..`/`/`.
+    let version_seg = hub_skill
+        .version
+        .clone()
+        .unwrap_or_else(|| "unversioned".to_string());
+    let target_dir = app_data_dir
+        .join("skills")
+        .join(owner_dir_segment(owner_user_id))
+        .join(&hub_skill.name)
+        .join(&version_seg);
+
+    let extraction = super::bundle::fetch_and_extract(
+        &hub_manager,
+        &hub_skill.bundle,
+        &target_dir,
+        super::bundle::BundleKind::Skill,
+    )
+    .await?;
+
+    // Parse SKILL.md frontmatter from the extracted bundle. Entry point
+    // defaults to "SKILL.md" — honor whatever the manifest specifies in
+    // case the publisher evolves the convention.
+    let skill_md_path = extraction.extracted_path.join(&hub_skill.bundle.entry_point);
+    let content = tokio::fs::read_to_string(&skill_md_path).await.map_err(|e| {
+        AppError::internal_error(format!(
+            "hub: read SKILL.md at {}: {}",
+            skill_md_path.display(),
+            e
+        ))
+    })?;
+    let (frontmatter_json, _body) =
+        skill::frontmatter::parse_skill_md_frontmatter(&content)?;
+
+    let display_name = frontmatter_json
+        .get("name")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let description = frontmatter_json
+        .get("description")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .or_else(|| hub_skill.description.clone());
+    let when_to_use = frontmatter_json
+        .get("when_to_use")
+        .or_else(|| frontmatter_json.get("when-to-use"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+
+    let create_request = CreateSkill {
+        name: hub_skill.name.clone(),
+        version: hub_skill.version.clone(),
+        display_name,
+        description,
+        when_to_use,
+        extracted_path: extraction.extracted_path.display().to_string(),
+        bundle_sha256: extraction.sha256_hex.clone(),
+        bundle_size_bytes: extraction.total_bytes as i64,
+        file_count: extraction.file_count as i32,
+        entry_point: hub_skill.bundle.entry_point.clone(),
+        frontmatter_json,
+        tags: serde_json::Value::Array(
+            hub_skill
+                .tags
+                .iter()
+                .cloned()
+                .map(serde_json::Value::String)
+                .collect(),
+        ),
+        scope: scope.to_string(),
+        owner_user_id,
+        created_by,
+        enabled: true,
+        is_dev: false,
+    };
+
+    Ok(HubSkillCreatePlan {
+        create_request,
+        hub_version,
+        extracted_path: extraction.extracted_path,
+    })
+}
+
+/// User-scoped skill install. Permission: `skills::install` (any
+/// authenticated user by default).
+#[debug_handler]
+pub async fn create_skill_from_hub(
+    auth: RequirePermissions<(SkillsInstall,)>,
+    Extension(_event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
+    Json(request): Json<CreateSkillFromHubRequest>,
+) -> ApiResult<Json<SkillFromHubResponse>> {
+    let plan = build_skill_create_from_hub(
+        &request.hub_id,
+        "user",
+        Some(auth.user.id),
+        Some(auth.user.id),
+    )
+    .await?;
+
+    // H1: re-install must OVERWRITE cleanly. The per-owner unique index
+    // means a same (name, version) re-install by THIS user would 23505 on
+    // insert. Delete the caller's own prior row first (the on-disk dir was
+    // already replaced by fetch_and_extract). Scoped to THIS owner so we
+    // never touch another user's row or the system copy (also closes H6
+    // for the hub path).
+    let create_name = plan.create_request.name.clone();
+    let create_version = plan.create_request.version.clone();
+    if let Some(prior) = Repos
+        .skill
+        .find_by_name_version_owner(
+            &create_name,
+            create_version.as_deref(),
+            Some(auth.user.id),
+        )
+        .await?
+    {
+        Repos.skill.delete(prior.id).await?;
+        // Drop the prior install's hub_entities row (no FK cascade) so
+        // the overwrite doesn't leave it orphaned at the stale version.
+        Repos
+            .hub
+            .delete_hub_tracking(HubEntityType::Skill, prior.id)
+            .await?;
+    }
+
+    let skill = match Repos.skill.insert(plan.create_request).await {
+        Ok(s) => s,
+        Err(e) => {
+            // Best-effort cleanup of the extracted bundle on insert
+            // failure so we don't leak disk.
+            let _ = std::fs::remove_dir_all(&plan.extracted_path);
+            return Err(e.into());
+        }
+    };
+
+    let hub_tracking = match Repos
+        .hub
+        .track_hub_entity(
+            HubEntityType::Skill,
+            skill.id,
+            &request.hub_id,
+            HubCategory::Skill,
+            Some(auth.user.id),
+            plan.hub_version.as_deref(),
+        )
+        .await
+    {
+        Ok(t) => t,
+        Err(e) => {
+            // Roll back the partial state: drop the skill row + extracted
+            // dir so a hub-tracking failure doesn't leak a half-install.
+            let _ = Repos.skill.delete(skill.id).await;
+            let _ = std::fs::remove_dir_all(&plan.extracted_path);
+            return Err(e.into());
+        }
+    };
+
+    skill::events::emit_user_skill(SyncAction::Create, skill.id, auth.user.id, origin.0);
+
+    Ok((StatusCode::CREATED, Json(SkillFromHubResponse { skill, hub_tracking })))
+}
+
+/// System-scope skill install. Permission: `skills::manage_system`.
+/// Optional `groups: [...]` body field assigns the new system-scope
+/// skill to specific groups in the same TX as the install.
+///
+/// M6: the three post-extract DB writes (skills insert + group_skills
+/// rows + hub_entities track) run in ONE transaction. A mid-failure
+/// rolls back ALL of them so we never leak a half-install (orphan row,
+/// partial group set, untracked entity). The extracted dir is cleaned
+/// up on any post-extract error. H1: a same (name, version) system
+/// re-install deletes the prior system row first (within the same TX).
+#[debug_handler]
+pub async fn create_system_skill_from_hub(
+    auth: RequirePermissions<(SkillsManageSystem,)>,
+    Extension(_event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
+    Json(request): Json<CreateSystemSkillFromHubRequest>,
+) -> ApiResult<Json<SkillFromHubResponse>> {
+    let plan = build_skill_create_from_hub(
+        &request.hub_id,
+        "system",
+        None,
+        Some(auth.user.id),
+    )
+    .await?;
+
+    let skill = match install_system_skill_tx(
+        Repos.pool(),
+        &plan.create_request,
+        &request.groups,
+        &request.hub_id,
+        plan.hub_version.as_deref(),
+    )
+    .await
+    {
+        Ok(s) => s,
+        Err(e) => {
+            // Roll-back already happened (TX dropped uncommitted). Clean
+            // up the extracted dir so a failed install leaks nothing.
+            let _ = std::fs::remove_dir_all(&plan.extracted_path);
+            return Err(e.into());
+        }
+    };
+
+    let hub_tracking = HubEntity {
+        id: skill.hub_entity_id,
+        entity_type: HubEntityType::Skill.as_str().to_string(),
+        entity_id: skill.skill.id,
+        hub_id: request.hub_id.clone(),
+        hub_category: HubCategory::Skill.as_str().to_string(),
+        created_at: skill.skill.created_at,
+        created_by: None,
+    };
+
+    skill::events::emit_system_skill(SyncAction::Create, skill.skill.id, origin.0);
+
+    Ok((
+        StatusCode::CREATED,
+        Json(SkillFromHubResponse {
+            skill: skill.skill,
+            hub_tracking,
+        }),
+    ))
+}
+
+/// Bundles the inserted skill row with the hub_entities row id created in
+/// the same transaction.
+struct SystemSkillInstallResult {
+    skill: skill::models::Skill,
+    hub_entity_id: Uuid,
+}
+
+/// M6: transactional system-skill install (insert + group rows +
+/// hub_entities track). Returns Err with the TX rolled back on any step.
+async fn install_system_skill_tx(
+    pool: &sqlx::PgPool,
+    create: &CreateSkill,
+    groups: &[Uuid],
+    hub_id: &str,
+    hub_version: Option<&str>,
+) -> Result<SystemSkillInstallResult, AppError> {
+    let mut tx = pool.begin().await.map_err(AppError::database_error)?;
+
+    // H1: overwrite a prior system row for the same (name, version).
+    // Drop its hub_entities tracking row too (no FK cascade) so the
+    // overwrite doesn't leave an orphan pointing at the deleted skill.
+    let prior_ids: Vec<Uuid> = sqlx::query_scalar!(
+        r#"SELECT id FROM skills WHERE name = $1 AND scope = 'system'
+           AND (($2::text IS NULL AND version IS NULL) OR version = $2)"#,
+        create.name,
+        create.version,
+    )
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?;
+    for pid in &prior_ids {
+        sqlx::query!(
+            r#"DELETE FROM hub_entities WHERE entity_type = 'skill' AND entity_id = $1"#,
+            pid,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::database_error)?;
+        sqlx::query!(r#"DELETE FROM skills WHERE id = $1"#, pid)
+            .execute(&mut *tx)
+            .await
+            .map_err(AppError::database_error)?;
+    }
+
+    let skill = sqlx::query_as!(
+        skill::models::Skill,
+        r#"
+        INSERT INTO skills (
+            name, version, display_name, description, when_to_use,
+            extracted_path, bundle_sha256, bundle_size_bytes, file_count,
+            entry_point, frontmatter_json, tags,
+            scope, owner_user_id, created_by, enabled, is_dev
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+        RETURNING
+            id, name, version, display_name, description, when_to_use,
+            extracted_path, bundle_sha256, bundle_size_bytes, file_count,
+            entry_point,
+            frontmatter_json as "frontmatter_json: _",
+            tags as "tags: _", scope, owner_user_id, created_by,
+            enabled, is_dev,
+            created_at as "created_at: _",
+            updated_at as "updated_at: _"
+        "#,
+        create.name,
+        create.version,
+        create.display_name,
+        create.description,
+        create.when_to_use,
+        create.extracted_path,
+        create.bundle_sha256,
+        create.bundle_size_bytes,
+        create.file_count,
+        create.entry_point,
+        create.frontmatter_json,
+        create.tags,
+        create.scope,
+        create.owner_user_id,
+        create.created_by,
+        create.enabled,
+        create.is_dev,
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?;
+
+    for group_id in groups {
+        sqlx::query!(
+            r#"INSERT INTO group_skills (group_id, skill_id)
+               VALUES ($1, $2) ON CONFLICT DO NOTHING"#,
+            group_id,
+            skill.id,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::database_error)?;
+    }
+
+    let hub_entity_id = sqlx::query_scalar!(
+        r#"
+        INSERT INTO hub_entities (entity_type, entity_id, hub_id, hub_category, created_by, hub_version)
+        VALUES ($1, $2, $3, $4, NULL, $5)
+        ON CONFLICT (entity_type, entity_id)
+        DO UPDATE SET hub_id = EXCLUDED.hub_id, hub_category = EXCLUDED.hub_category, hub_version = EXCLUDED.hub_version
+        RETURNING id
+        "#,
+        HubEntityType::Skill.as_str(),
+        skill.id,
+        hub_id,
+        HubCategory::Skill.as_str(),
+        hub_version,
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?;
+
+    tx.commit().await.map_err(AppError::database_error)?;
+    Ok(SystemSkillInstallResult { skill, hub_entity_id })
+}
+
+// =====================================================
+// WORKFLOW FROM HUB
+// =====================================================
+
+struct HubWorkflowCreatePlan {
+    create_request: CreateWorkflow,
+    hub_version: Option<String>,
+    extracted_path: std::path::PathBuf,
+}
+
+async fn build_workflow_create_from_hub(
+    hub_id: &str,
+    scope: &str,
+    owner_user_id: Option<Uuid>,
+    created_by: Option<Uuid>,
+) -> Result<HubWorkflowCreatePlan, AppError> {
+    let app_data_dir = crate::core::get_app_data_dir();
+    let hub_manager = HubManager::new(app_data_dir.clone())?;
+
+    hub_manager
+        .ensure_installable(HubCategory::Workflow, hub_id)
+        .await?;
+
+    let hub_version =
+        resolve_entry_version(&hub_manager, HubCategory::Workflow, hub_id).await;
+
+    let manifest = hub_manager.manifest(HubCategory::Workflow, hub_id).await?;
+    let hub_workflow = manifest
+        .workflow
+        .ok_or_else(|| {
+            AppError::internal_error(format!(
+                "hub: manifest for '{hub_id}' is not a workflow"
+            ))
+        })?;
+
+    // SEC-2: validate the manifest-supplied entry_point before any join.
+    super::bundle::validate_entry_point(&hub_workflow.bundle.entry_point)?;
+
+    // H1: owner-scope the on-disk layout (see build_skill_create_from_hub).
+    let version_seg = hub_workflow
+        .version
+        .clone()
+        .unwrap_or_else(|| "unversioned".to_string());
+    let target_dir = app_data_dir
+        .join("workflows")
+        .join(owner_dir_segment(owner_user_id))
+        .join(&hub_workflow.name)
+        .join(&version_seg);
+
+    let extraction = super::bundle::fetch_and_extract(
+        &hub_manager,
+        &hub_workflow.bundle,
+        &target_dir,
+        super::bundle::BundleKind::Workflow,
+    )
+    .await?;
+
+    // Parse + Layer 1+2+3 validate workflow.yaml. Rejects malformed
+    // bundles before they touch the DB. Published workflows are NOT
+    // is_dev → mock: in step defs is rejected here.
+    let workflow_yaml_path = extraction.extracted_path.join(&hub_workflow.bundle.entry_point);
+    let content = tokio::fs::read_to_string(&workflow_yaml_path).await.map_err(|e| {
+        AppError::internal_error(format!(
+            "hub: read workflow.yaml at {}: {}",
+            workflow_yaml_path.display(),
+            e
+        ))
+    })?;
+    let workflow_def = workflow::validate::parse_workflow_yaml(&content)?;
+    workflow::validate::validate_for_install(
+        &workflow_def,
+        &extraction.extracted_path,
+        false,
+    )?;
+
+    // Reject install when the computed MCP tool slug would overflow the
+    // 128-char composed-name cap (slug body > 87 chars) — otherwise the
+    // workflow installs but can never surface as a workflow_mcp tool
+    // (list_tools would silently drop it). Audit gap 4 / plan §4.
+    if let Err(e) =
+        crate::modules::workflow_mcp::tools::check_install_slug_len(&hub_workflow.name)
+    {
+        let _ = tokio::fs::remove_dir_all(&extraction.extracted_path).await;
+        return Err(e);
+    }
+
+    let display_name = hub_workflow.name.rsplit('/').next().map(str::to_string);
+
+    let create_request = CreateWorkflow {
+        name: hub_workflow.name.clone(),
+        version: hub_workflow.version.clone(),
+        display_name,
+        description: hub_workflow.description.clone(),
+        extracted_path: extraction.extracted_path.display().to_string(),
+        bundle_sha256: extraction.sha256_hex.clone(),
+        bundle_size_bytes: extraction.total_bytes as i64,
+        file_count: extraction.file_count as i32,
+        entry_point: hub_workflow.bundle.entry_point.clone(),
+        tags: serde_json::Value::Array(
+            hub_workflow
+                .tags
+                .iter()
+                .cloned()
+                .map(serde_json::Value::String)
+                .collect(),
+        ),
+        scope: scope.to_string(),
+        owner_user_id,
+        created_by,
+        enabled: true,
+        is_dev: false,
+        // Pattern (d): compile the validated def into the typed IR and
+        // persist it so the column is non-NULL + available to the runner.
+        compiled_ir_json: workflow::compiled::compile_to_json(&workflow_def),
+    };
+
+    Ok(HubWorkflowCreatePlan {
+        create_request,
+        hub_version,
+        extracted_path: extraction.extracted_path,
+    })
+}
+
+#[debug_handler]
+pub async fn create_workflow_from_hub(
+    auth: RequirePermissions<(WorkflowsInstall,)>,
+    Extension(_event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
+    Json(request): Json<CreateWorkflowFromHubRequest>,
+) -> ApiResult<Json<WorkflowFromHubResponse>> {
+    let plan = build_workflow_create_from_hub(
+        &request.hub_id,
+        "user",
+        Some(auth.user.id),
+        Some(auth.user.id),
+    )
+    .await?;
+
+    // H1: re-install overwrite — delete THIS user's prior row for the
+    // same (name, version) (the dir was already replaced by extract).
+    let create_name = plan.create_request.name.clone();
+    let create_version = plan.create_request.version.clone();
+    if let Some(prior) = Repos
+        .workflow
+        .find_by_name_version_owner(
+            &create_name,
+            create_version.as_deref(),
+            Some(auth.user.id),
+        )
+        .await?
+    {
+        Repos.workflow.delete(prior.id).await?;
+        Repos
+            .hub
+            .delete_hub_tracking(HubEntityType::Workflow, prior.id)
+            .await?;
+    }
+
+    let workflow = match Repos.workflow.insert(plan.create_request).await {
+        Ok(w) => w,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&plan.extracted_path);
+            return Err(e.into());
+        }
+    };
+
+    let hub_tracking = match Repos
+        .hub
+        .track_hub_entity(
+            HubEntityType::Workflow,
+            workflow.id,
+            &request.hub_id,
+            HubCategory::Workflow,
+            Some(auth.user.id),
+            plan.hub_version.as_deref(),
+        )
+        .await
+    {
+        Ok(t) => t,
+        Err(e) => {
+            let _ = Repos.workflow.delete(workflow.id).await;
+            let _ = std::fs::remove_dir_all(&plan.extracted_path);
+            return Err(e.into());
+        }
+    };
+
+    workflow::events::emit_user_workflow(
+        SyncAction::Create,
+        workflow.id,
+        auth.user.id,
+        origin.0,
+    );
+
+    Ok((
+        StatusCode::CREATED,
+        Json(WorkflowFromHubResponse {
+            workflow,
+            hub_tracking,
+        }),
+    ))
+}
+
+/// M6 + H1: transactional system-workflow install (mirrors
+/// `create_system_skill_from_hub`).
+#[debug_handler]
+pub async fn create_system_workflow_from_hub(
+    auth: RequirePermissions<(WorkflowsManageSystem,)>,
+    Extension(_event_bus): Extension<Arc<EventBus>>,
+    origin: SyncOrigin,
+    Json(request): Json<CreateSystemWorkflowFromHubRequest>,
+) -> ApiResult<Json<WorkflowFromHubResponse>> {
+    let plan = build_workflow_create_from_hub(
+        &request.hub_id,
+        "system",
+        None,
+        Some(auth.user.id),
+    )
+    .await?;
+
+    let result = match install_system_workflow_tx(
+        Repos.pool(),
+        &plan.create_request,
+        &request.groups,
+        &request.hub_id,
+        plan.hub_version.as_deref(),
+    )
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&plan.extracted_path);
+            return Err(e.into());
+        }
+    };
+
+    let hub_tracking = HubEntity {
+        id: result.hub_entity_id,
+        entity_type: HubEntityType::Workflow.as_str().to_string(),
+        entity_id: result.workflow.id,
+        hub_id: request.hub_id.clone(),
+        hub_category: HubCategory::Workflow.as_str().to_string(),
+        created_at: result.workflow.created_at,
+        created_by: None,
+    };
+
+    workflow::events::emit_system_workflow(SyncAction::Create, result.workflow.id, origin.0);
+
+    Ok((
+        StatusCode::CREATED,
+        Json(WorkflowFromHubResponse {
+            workflow: result.workflow,
+            hub_tracking,
+        }),
+    ))
+}
+
+struct SystemWorkflowInstallResult {
+    workflow: workflow::models::Workflow,
+    hub_entity_id: Uuid,
+}
+
+/// M6: transactional system-workflow install (insert + group rows +
+/// hub_entities track). TX rolls back on any step failure.
+async fn install_system_workflow_tx(
+    pool: &sqlx::PgPool,
+    create: &CreateWorkflow,
+    groups: &[Uuid],
+    hub_id: &str,
+    hub_version: Option<&str>,
+) -> Result<SystemWorkflowInstallResult, AppError> {
+    let mut tx = pool.begin().await.map_err(AppError::database_error)?;
+
+    // H1: overwrite a prior system row for the same (name, version) +
+    // drop its hub_entities tracking row (no FK cascade).
+    let prior_ids: Vec<Uuid> = sqlx::query_scalar!(
+        r#"SELECT id FROM workflows WHERE name = $1 AND scope = 'system'
+           AND (($2::text IS NULL AND version IS NULL) OR version = $2)"#,
+        create.name,
+        create.version,
+    )
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?;
+    for pid in &prior_ids {
+        sqlx::query!(
+            r#"DELETE FROM hub_entities WHERE entity_type = 'workflow' AND entity_id = $1"#,
+            pid,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::database_error)?;
+        sqlx::query!(r#"DELETE FROM workflows WHERE id = $1"#, pid)
+            .execute(&mut *tx)
+            .await
+            .map_err(AppError::database_error)?;
+    }
+
+    let workflow = sqlx::query_as!(
+        workflow::models::Workflow,
+        r#"
+        INSERT INTO workflows (
+            name, version, display_name, description,
+            extracted_path, bundle_sha256, bundle_size_bytes, file_count,
+            entry_point, tags,
+            scope, owner_user_id, created_by, enabled, is_dev,
+            compiled_ir_json
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+        RETURNING
+            id, name, version, display_name, description,
+            extracted_path, bundle_sha256, bundle_size_bytes, file_count,
+            entry_point,
+            tags as "tags: _",
+            scope, owner_user_id, created_by, enabled, is_dev,
+            compiled_ir_json as "compiled_ir_json: _",
+            created_at as "created_at: _",
+            updated_at as "updated_at: _"
+        "#,
+        create.name,
+        create.version,
+        create.display_name,
+        create.description,
+        create.extracted_path,
+        create.bundle_sha256,
+        create.bundle_size_bytes,
+        create.file_count,
+        create.entry_point,
+        create.tags,
+        create.scope,
+        create.owner_user_id,
+        create.created_by,
+        create.enabled,
+        create.is_dev,
+        create.compiled_ir_json,
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?;
+
+    for group_id in groups {
+        sqlx::query!(
+            r#"INSERT INTO group_workflows (group_id, workflow_id)
+               VALUES ($1, $2) ON CONFLICT DO NOTHING"#,
+            group_id,
+            workflow.id,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::database_error)?;
+    }
+
+    let hub_entity_id = sqlx::query_scalar!(
+        r#"
+        INSERT INTO hub_entities (entity_type, entity_id, hub_id, hub_category, created_by, hub_version)
+        VALUES ($1, $2, $3, $4, NULL, $5)
+        ON CONFLICT (entity_type, entity_id)
+        DO UPDATE SET hub_id = EXCLUDED.hub_id, hub_category = EXCLUDED.hub_category, hub_version = EXCLUDED.hub_version
+        RETURNING id
+        "#,
+        HubEntityType::Workflow.as_str(),
+        workflow.id,
+        hub_id,
+        HubCategory::Workflow.as_str(),
+        hub_version,
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?;
+
+    tx.commit().await.map_err(AppError::database_error)?;
+    Ok(SystemWorkflowInstallResult { workflow, hub_entity_id })
+}
+
+// =====================================================
 // OpenAPI Documentation
 // =====================================================
 
@@ -1743,6 +2540,82 @@ pub fn create_model_from_hub_docs(op: TransformOperation) -> TransformOperation 
         })
 }
 
+pub fn create_skill_from_hub_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(SkillsInstall,)>(op)
+        .id("Hub.createSkillFromHub")
+        .tag("Hub")
+        .tag("Skills")
+        .summary("Install user-scope skill from hub catalog")
+        .response::<201, Json<SkillFromHubResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("Hub skill not found"))
+        .response_with::<422, (), _>(|res| {
+            res.description(
+                "Bundle verification failed (sha256 mismatch, size cap, \
+                 path traversal, non-regular tar entry, or SKILL.md \
+                 frontmatter invalid)",
+            )
+        })
+}
+
+pub fn create_system_skill_from_hub_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(SkillsManageSystem,)>(op)
+        .id("Hub.createSystemSkillFromHub")
+        .tag("Hub")
+        .tag("Skills - System")
+        .summary("Install SYSTEM-WIDE skill from hub catalog")
+        .description(
+            "Installs a hub skill entry as a system-wide skill \
+             (`scope='system', owner_user_id=NULL`). Optional \
+             `groups: [...]` body field assigns the skill to specific \
+             groups in the same install. Requires `skills::manage_system` \
+             (admin).",
+        )
+        .response::<201, Json<SkillFromHubResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("Hub skill not found"))
+        .response_with::<422, (), _>(|res| {
+            res.description("Bundle verification or frontmatter parse failure")
+        })
+}
+
+pub fn create_workflow_from_hub_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(WorkflowsInstall,)>(op)
+        .id("Hub.createWorkflowFromHub")
+        .tag("Hub")
+        .tag("Workflows")
+        .summary("Install user-scope workflow from hub catalog")
+        .response::<201, Json<WorkflowFromHubResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("Hub workflow not found"))
+        .response_with::<422, (), _>(|res| {
+            res.description(
+                "Bundle verification failed OR workflow.yaml structurally \
+                 invalid (duplicate step id, depends_on cycle, unknown dependency)",
+            )
+        })
+}
+
+pub fn create_system_workflow_from_hub_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(WorkflowsManageSystem,)>(op)
+        .id("Hub.createSystemWorkflowFromHub")
+        .tag("Hub")
+        .tag("Workflows - System")
+        .summary("Install SYSTEM-WIDE workflow from hub catalog")
+        .description(
+            "Installs a hub workflow entry as a system-wide workflow \
+             (`scope='system', owner_user_id=NULL`). Optional `groups: [...]` \
+             body field assigns it to specific groups. Requires \
+             `workflows::manage_system`.",
+        )
+        .response::<201, Json<WorkflowFromHubResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("Hub workflow not found"))
+        .response_with::<422, (), _>(|res| {
+            res.description("Bundle verification or workflow.yaml validation failure")
+        })
+}
+
 // =====================================================
 // LOCAL PROVIDERS FOR HUB DOWNLOADS
 // =====================================================
@@ -1819,12 +2692,16 @@ pub async fn get_hub_catalog_version(
         models: 0,
         assistants: 0,
         mcp_servers: 0,
+        skills: 0,
+        workflows: 0,
     };
     for item in &catalog.items {
         match item.category {
             HubCategory::Model => counts.models += 1,
             HubCategory::Assistant => counts.assistants += 1,
             HubCategory::McpServer => counts.mcp_servers += 1,
+            HubCategory::Skill => counts.skills += 1,
+            HubCategory::Workflow => counts.workflows += 1,
         }
     }
     Ok((

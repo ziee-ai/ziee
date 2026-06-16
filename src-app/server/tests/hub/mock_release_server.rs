@@ -18,6 +18,7 @@
 //! the server side.
 
 use std::collections::HashMap;
+use std::io::Write;
 use std::sync::{Arc, Mutex};
 
 use axum::{
@@ -28,11 +29,14 @@ use axum::{
     routing::get,
     Router,
 };
+use flate2::write::GzEncoder;
+use flate2::Compression;
 use serde_json::{json, Value as Json};
+use sha2::{Digest, Sha256};
 
 /// One catalog item to bake into a mock catalog version.
 pub struct MockItem {
-    pub category: &'static str, // "model" | "assistant" | "mcp-server"
+    pub category: &'static str, // "model" | "assistant" | "mcp-server" | "skill" | "workflow"
     /// Reverse-DNS `name` (e.g. `"io.github.test/mock-asst-a"`). Must
     /// contain exactly one `/` — this is the catalog lookup key + the
     /// path layout under dist/`<category>/<namespace>/<leaf>/<version>.json`.
@@ -48,6 +52,89 @@ pub struct MockItem {
     /// user-scoped endpoint (the MCP user policy gates stdio whenever
     /// `code_sandbox.enabled` is false). Ignored for non-mcp-server.
     pub mcp_http: bool,
+    /// For `skill` / `workflow` items only: the in-bundle files to
+    /// pack into a tar.gz served alongside the manifest. Each tuple is
+    /// `(relative_path, contents)`. When set, the mock serves the
+    /// real bundle bytes + the manifest's `bundle.{url,sha256,
+    /// size_bytes,file_count}` describe them — so the consumer's
+    /// download → sha256 → extract path runs against the mock (NOT the
+    /// embedded seed). The first file's name is also the entry_point
+    /// unless overridden by `bundle_entry_point`. `None` for non-bundle
+    /// categories.
+    pub bundle_files: Option<Vec<(&'static str, &'static str)>>,
+    /// Override the bundle's entry_point (defaults to `SKILL.md` for
+    /// skills, `workflow.yaml` for workflows). Ignored when
+    /// `bundle_files` is `None`.
+    pub bundle_entry_point: Option<&'static str>,
+}
+
+impl MockItem {
+    /// Convenience constructor for a non-bundle model/assistant/mcp item
+    /// (the fields skill/workflow tests don't use default to `None`).
+    pub fn simple(
+        category: &'static str,
+        name: &'static str,
+        min_ziee_version: Option<&'static str>,
+    ) -> Self {
+        MockItem {
+            category,
+            name,
+            min_ziee_version,
+            extra_json: None,
+            mcp_http: false,
+            bundle_files: None,
+            bundle_entry_point: None,
+        }
+    }
+
+    /// Convenience constructor for a skill / workflow item that ships a
+    /// real tar.gz bundle. `category` is `"skill"` or `"workflow"`.
+    pub fn bundle(
+        category: &'static str,
+        name: &'static str,
+        files: Vec<(&'static str, &'static str)>,
+    ) -> Self {
+        MockItem {
+            category,
+            name,
+            min_ziee_version: None,
+            extra_json: None,
+            mcp_http: false,
+            bundle_files: Some(files),
+            bundle_entry_point: None,
+        }
+    }
+}
+
+/// Build a deterministic tar.gz from `(path, contents)` tuples + return
+/// `(bytes, sha256_hex, file_count)`. Mirrors the publisher's
+/// deterministic bundling (mode 0o644, no execute bits) so the
+/// consumer's extractor accepts it.
+fn build_bundle_tar_gz(files: &[(&'static str, &'static str)]) -> (Vec<u8>, String, u32) {
+    use tar::{Builder, Header};
+    let buf: Vec<u8> = Vec::new();
+    let enc = GzEncoder::new(buf, Compression::default());
+    let mut builder = Builder::new(enc);
+    for (path, contents) in files {
+        let mut header = Header::new_gnu();
+        header.set_size(contents.len() as u64);
+        header.set_mode(0o644);
+        header.set_mtime(0);
+        header.set_uid(0);
+        header.set_gid(0);
+        header.set_entry_type(tar::EntryType::Regular);
+        header.set_cksum();
+        builder
+            .append_data(&mut header, path, contents.as_bytes())
+            .expect("append bundle file");
+    }
+    let enc = builder.into_inner().expect("tar into_inner");
+    let mut bytes = enc.finish().expect("gz finish");
+    bytes.flush().ok();
+    let mut hasher = Sha256::new();
+    hasher.update(&bytes);
+    let sha = format!("{:x}", hasher.finalize());
+    (bytes, sha, files.len() as u32)
 }
 
 /// One mock catalog "version" (snapshot of what the Pages branch is
@@ -69,6 +156,11 @@ struct PreparedCatalog {
     version: String,
     index_bytes: Vec<u8>,
     manifests: HashMap<String, Vec<u8>>,
+    /// `bundle_url -> tar.gz bytes` for skill / workflow items. Served
+    /// by the catch-all route alongside the `.json` manifests so the
+    /// consumer's download → sha256 → extract path runs against the
+    /// mock. e.g. `"skills/io.foo/bar/1.0.0.tar.gz"`.
+    bundles: HashMap<String, Vec<u8>>,
 }
 
 pub struct MockHub {
@@ -104,6 +196,8 @@ fn folder(category: &str) -> &'static str {
         "model" => "models",
         "assistant" => "assistants",
         "mcp-server" => "mcp-servers",
+        "skill" => "skills",
+        "workflow" => "workflows",
         _ => "models",
     }
 }
@@ -190,6 +284,7 @@ fn prepare_catalog(v: &MockVersion) -> PreparedCatalog {
     let _ = v.prerelease; // no release list; field kept for source-compat.
 
     let mut manifests: HashMap<String, Vec<u8>> = HashMap::new();
+    let mut bundles: HashMap<String, Vec<u8>> = HashMap::new();
     let mut index_items: Vec<Json> = Vec::new();
 
     for it in &v.items {
@@ -206,10 +301,53 @@ fn prepare_catalog(v: &MockVersion) -> PreparedCatalog {
             leaf,
             v.version
         );
-        let mut body = minimal_manifest_for(it.category, it.name, it.mcp_http);
-        if let Some(extra) = it.extra_json.clone() {
-            merge_into(&mut body, extra);
-        }
+
+        let body = match (it.category, &it.bundle_files) {
+            // Skill / workflow item shipping a real bundle: build the
+            // tar.gz, compute its sha256, and emit a manifest with the
+            // `bundle` pointer the consumer's `fetch_and_extract` reads.
+            ("skill" | "workflow", Some(files)) => {
+                let bundle_url = format!(
+                    "{}/{}/{}/{}.tar.gz",
+                    folder(it.category),
+                    namespace,
+                    leaf,
+                    v.version
+                );
+                let (bytes, sha, file_count) = build_bundle_tar_gz(files);
+                let size_bytes = bytes.len() as u64;
+                bundles.insert(bundle_url.clone(), bytes);
+                let entry_point = it.bundle_entry_point.unwrap_or(match it.category {
+                    "skill" => "SKILL.md",
+                    _ => "workflow.yaml",
+                });
+                let mut body = json!({
+                    "name": it.name,
+                    "version": v.version,
+                    "description": format!("mock {leaf}"),
+                    "bundle": {
+                        "url": bundle_url,
+                        "sha256": sha,
+                        "size_bytes": size_bytes,
+                        "file_count": file_count,
+                        "entry_point": entry_point,
+                    },
+                    "tags": ["mock"],
+                });
+                if let Some(extra) = it.extra_json.clone() {
+                    merge_into(&mut body, extra);
+                }
+                body
+            }
+            _ => {
+                let mut body = minimal_manifest_for(it.category, it.name, it.mcp_http);
+                if let Some(extra) = it.extra_json.clone() {
+                    merge_into(&mut body, extra);
+                }
+                body
+            }
+        };
+
         manifests.insert(
             manifest_path.clone(),
             serde_json::to_vec(&body).expect("serialize manifest"),
@@ -241,6 +379,7 @@ fn prepare_catalog(v: &MockVersion) -> PreparedCatalog {
         version: v.version.to_string(),
         index_bytes: serde_json::to_vec(&index).expect("serialize index"),
         manifests,
+        bundles,
     }
 }
 
@@ -267,6 +406,22 @@ async fn serve_manifest(
     Path(rest): Path<String>,
 ) -> Response {
     let active = state.active.lock().expect("mock state poisoned");
+    // tar.gz bundle (skill / workflow) — served alongside manifests so
+    // the consumer's download → sha256 → extract path runs against the
+    // mock. Checked first because the manifest map only holds `.json`.
+    if rest.ends_with(".tar.gz") {
+        return match active.bundles.get(&rest) {
+            Some(bytes) => Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "application/gzip")
+                .body(Body::from(bytes.clone()))
+                .unwrap(),
+            None => Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Body::empty())
+                .unwrap(),
+        };
+    }
     match active.manifests.get(&rest) {
         Some(bytes) => Response::builder()
             .status(StatusCode::OK)

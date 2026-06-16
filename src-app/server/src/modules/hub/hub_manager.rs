@@ -35,7 +35,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use super::models::{HubAssistant, HubCategory, HubData, HubMCPServer, HubModel};
+use super::models::{HubAssistant, HubCategory, HubData, HubMCPServer, HubModel, HubSkill, HubWorkflow};
 use crate::common::AppError;
 
 // =====================================================================
@@ -194,6 +194,10 @@ pub struct HubManifest {
     pub assistant: Option<Box<HubAssistant>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mcp_server: Option<Box<HubMCPServer>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill: Option<Box<HubSkill>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workflow: Option<Box<HubWorkflow>>,
 }
 
 impl HubManifest {
@@ -203,6 +207,8 @@ impl HubManifest {
             model: Some(Box::new(m)),
             assistant: None,
             mcp_server: None,
+            skill: None,
+            workflow: None,
         }
     }
     fn assistant(a: HubAssistant) -> Self {
@@ -211,6 +217,8 @@ impl HubManifest {
             model: None,
             assistant: Some(Box::new(a)),
             mcp_server: None,
+            skill: None,
+            workflow: None,
         }
     }
     fn mcp_server(s: HubMCPServer) -> Self {
@@ -219,6 +227,28 @@ impl HubManifest {
             model: None,
             assistant: None,
             mcp_server: Some(Box::new(s)),
+            skill: None,
+            workflow: None,
+        }
+    }
+    fn skill(s: HubSkill) -> Self {
+        Self {
+            category: HubCategory::Skill,
+            model: None,
+            assistant: None,
+            mcp_server: None,
+            skill: Some(Box::new(s)),
+            workflow: None,
+        }
+    }
+    fn workflow(w: HubWorkflow) -> Self {
+        Self {
+            category: HubCategory::Workflow,
+            model: None,
+            assistant: None,
+            mcp_server: None,
+            skill: None,
+            workflow: Some(Box::new(w)),
         }
     }
 }
@@ -534,6 +564,18 @@ impl HubManager {
                 })?;
                 Ok(HubManifest::mcp_server(s))
             }
+            HubCategory::Skill => {
+                let s: HubSkill = serde_json::from_slice(&bytes).map_err(|e| {
+                    AppError::internal_error(format!("hub: parse skill {}: {}", name, e))
+                })?;
+                Ok(HubManifest::skill(s))
+            }
+            HubCategory::Workflow => {
+                let w: HubWorkflow = serde_json::from_slice(&bytes).map_err(|e| {
+                    AppError::internal_error(format!("hub: parse workflow {}: {}", name, e))
+                })?;
+                Ok(HubManifest::workflow(w))
+            }
         }
     }
 
@@ -594,11 +636,17 @@ impl HubManager {
         let models = self.list_models().await?;
         let assistants = self.list_assistants().await?;
         let mcp_servers = self.list_mcp_servers().await?;
+        // Phase 8: skills + workflows. list_skills/list_workflows ship in B3/B4;
+        // for the foundation pass they're empty so the existing catalog APIs stay green.
+        let skills = Vec::new();
+        let workflows = Vec::new();
         Ok(HubData {
             version: catalog.hub_version,
             models,
             assistants,
             mcp_servers,
+            skills,
+            workflows,
         })
     }
 
@@ -880,6 +928,8 @@ fn category_folder(category: HubCategory) -> &'static str {
         HubCategory::Model => "models",
         HubCategory::Assistant => "assistants",
         HubCategory::McpServer => "mcp-servers",
+        HubCategory::Skill => "skills",
+        HubCategory::Workflow => "workflows",
     }
 }
 
@@ -995,6 +1045,8 @@ pub(crate) fn is_safe_manifest_path(rel: &str) -> bool {
     rel.starts_with("models/")
         || rel.starts_with("assistants/")
         || rel.starts_with("mcp-servers/")
+        || rel.starts_with("skills/")
+        || rel.starts_with("workflows/")
 }
 
 /// Guard a semver-shaped string. Kept from v1 for handlers that read
@@ -1137,6 +1189,8 @@ mod tests {
         assert!(is_safe_manifest_path("models/llama/1.0.0.json"));
         assert!(is_safe_manifest_path("assistants/foo/1.0.0.json"));
         assert!(is_safe_manifest_path("mcp-servers/bar/2.3.4.json"));
+        assert!(is_safe_manifest_path("skills/io.github.x/configure/1.0.0.json"));
+        assert!(is_safe_manifest_path("workflows/io.github.x/research/1.0.0.json"));
         // Wrong extension.
         assert!(!is_safe_manifest_path("models/foo/1.0.0.yaml"));
         // Parent-dir.

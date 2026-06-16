@@ -1,0 +1,23 @@
+{
+  "$schema": "/schemas/2026-06-12/workflow.schema.json",
+  "name": "io.github.ziee/deep-research",
+  "version": "1.0.0",
+  "description": "Multi-stage research pipeline -- query gen, fan-out search, cross-verify, outline, memo.",
+  "tags": [
+    "research",
+    "fan-out",
+    "llm-map",
+    "headliner",
+    "memo"
+  ],
+  "license": "MIT",
+  "author": "ziee",
+  "bundle": {
+    "url": "workflows/io.github.ziee/deep-research/1.0.0.tar.gz",
+    "sha256": "09cbaa0acafb714a0bcf76306277f749ea6a9322e28aef49a6ed1e5a44a49b51",
+    "size_bytes": 1624,
+    "file_count": 1,
+    "entry_point": "workflow.yaml"
+  },
+  "dependencies": []
+}

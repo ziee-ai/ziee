@@ -1,0 +1,22 @@
+{
+  "$schema": "/schemas/2026-06-12/workflow.schema.json",
+  "name": "io.github.ziee/git-commit-summarize",
+  "version": "1.0.0",
+  "description": "Capture git diff + status, draft a conventional-commits message.",
+  "tags": [
+    "git",
+    "commit",
+    "sandbox",
+    "conventional-commits"
+  ],
+  "license": "MIT",
+  "author": "ziee",
+  "bundle": {
+    "url": "workflows/io.github.ziee/git-commit-summarize/1.0.0.tar.gz",
+    "sha256": "935f486242b99ff2e0acbabd6fb4b2378e75b52fe4f28570e4464115bc971a53",
+    "size_bytes": 553,
+    "file_count": 1,
+    "entry_point": "workflow.yaml"
+  },
+  "dependencies": []
+}

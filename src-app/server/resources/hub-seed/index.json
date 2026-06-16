@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "hub_version": "2.0.0",
-  "generated_at": "2026-06-12T04:38:39Z",
+  "generated_at": "2026-06-15T04:23:16Z",
   "items": [
     {
       "name": "io.github.phibya/code-reviewer",
@@ -286,7 +286,7 @@
       "name": "io.github.phibya/qwen2.5-coder-7b-instruct",
       "category": "model",
       "title": "Qwen2.5-Coder 7B",
-      "summary": "Alibaba's Qwen2.5-Coder 7B \u2014 code generation, completion, and reasoning across 40+ languages.",
+      "summary": "Alibaba's Qwen2.5-Coder 7B — code generation, completion, and reasoning across 40+ languages.",
       "tags": [
         "code",
         "instruct",
@@ -316,6 +316,180 @@
       "min_ziee_version": null,
       "version": "1.0.0",
       "manifest_path": "models/io.github.phibya/qwen2.5-vl-3b-instruct/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/answer-with-citations",
+      "category": "workflow",
+      "title": "Answer With Citations",
+      "summary": "Confirm scope, fan-out search queries, synthesize a cited answer.",
+      "tags": [
+        "question-answering",
+        "citations",
+        "elicit",
+        "llm-map"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "workflows/io.github.ziee/answer-with-citations/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/code-review",
+      "category": "workflow",
+      "title": "Code Review",
+      "summary": "Walks git diff, reviews each file via LLM, synthesizes findings.",
+      "tags": [
+        "code-review",
+        "git",
+        "sandbox",
+        "llm-map"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "workflows/io.github.ziee/code-review/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/data-transform-pipeline",
+      "category": "workflow",
+      "title": "Data Transform Pipeline",
+      "summary": "LLM detects shape, writes a Python transform script, sandbox runs + validates.",
+      "tags": [
+        "data",
+        "transformation",
+        "pandas",
+        "sandbox",
+        "json",
+        "csv"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "workflows/io.github.ziee/data-transform-pipeline/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/deep-research",
+      "category": "workflow",
+      "title": "Deep Research",
+      "summary": "Multi-stage research pipeline -- query gen, fan-out search, cross-verify, outline, memo.",
+      "tags": [
+        "research",
+        "fan-out",
+        "llm-map",
+        "headliner",
+        "memo"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "workflows/io.github.ziee/deep-research/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/document-from-outline",
+      "category": "workflow",
+      "title": "Document From Outline",
+      "summary": "Parse outline, fan-out write each section in parallel, assemble final doc.",
+      "tags": [
+        "writing",
+        "llm-map",
+        "document"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "workflows/io.github.ziee/document-from-outline/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/extract-and-classify",
+      "category": "workflow",
+      "title": "Extract and Classify",
+      "summary": "Chunk text, extract per chunk in parallel, classify aggregated extractions.",
+      "tags": [
+        "extraction",
+        "classification",
+        "llm-map",
+        "text-processing"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "workflows/io.github.ziee/extract-and-classify/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/git-commit-summarize",
+      "category": "workflow",
+      "title": "Git Commit Summarize",
+      "summary": "Capture git diff + status, draft a conventional-commits message.",
+      "tags": [
+        "git",
+        "commit",
+        "sandbox",
+        "conventional-commits"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "workflows/io.github.ziee/git-commit-summarize/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/research-summarize-write",
+      "category": "workflow",
+      "title": "Research, Summarize, Write",
+      "summary": "Three-step llm chain: research a topic, summarize sources, write a memo.",
+      "tags": [
+        "research",
+        "writing",
+        "demo",
+        "entry-level"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "workflows/io.github.ziee/research-summarize-write/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/web-page-to-markdown",
+      "category": "workflow",
+      "title": "Web Page to Markdown",
+      "summary": "Fetch a URL, extract readable content, polish to clean markdown.",
+      "tags": [
+        "web",
+        "scraping",
+        "markdown",
+        "sandbox",
+        "readability"
+      ],
+      "verified": true,
+      "added_at": "2026-06-14",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "workflows/io.github.ziee/web-page-to-markdown/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/effective-prompting",
+      "category": "skill",
+      "title": "Effective Prompting",
+      "summary": "Model-agnostic techniques for clearer, more reliable LLM prompts — structure, output shaping, few-shot, and hallucination control.",
+      "tags": [
+        "prompting",
+        "prompt-engineering",
+        "llm",
+        "output-format",
+        "hallucination"
+      ],
+      "verified": true,
+      "added_at": "2026-06-15",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "skills/io.github.ziee/effective-prompting/1.0.0.json"
     }
   ]
 }

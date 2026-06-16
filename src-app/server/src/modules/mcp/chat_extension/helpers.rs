@@ -78,20 +78,63 @@ pub async fn validate_and_build_config(
     Ok((config, accessible_ids))
 }
 
+/// Anthropic API tool-name regex: `^[a-zA-Z0-9_-]{1,128}$`.
+/// Composed names produced by [`convert_mcp_tool_to_ai_tool`] must
+/// satisfy this OR they fail silently at chat time with a confusing
+/// provider error (closes the latent bug called out by the Phase 8 audit
+/// — affects ANY MCP server with oversize or non-conforming names,
+/// not just workflow_mcp).
+const MAX_ANTHROPIC_TOOL_NAME_LEN: usize = 128;
+
+/// True if `name` is composed entirely of ASCII letters, digits,
+/// underscores, or hyphens. Matches Anthropic's tool-name regex
+/// character set.
+fn is_anthropic_tool_name_charset(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
 /// Convert MCP Tool to AI provider Tool format
-/// Uses server_id (UUID) to ensure uniqueness across users with same server names
+/// Uses server_id (UUID) to ensure uniqueness across users with same server names.
+///
+/// Returns `None` when the composed `<server_id>__<tool_name>` would
+/// fail Anthropic's `^[a-zA-Z0-9_-]{1,128}$` constraint — either too
+/// long, or contains characters outside the safe charset. The caller
+/// MUST drop the tool from the list it ships to the LLM in that case
+/// (a silent rename would break tool dispatch on the return path).
 pub fn convert_mcp_tool_to_ai_tool(
     server_id: Uuid,
     mcp_tool: &Tool,
-) -> ai_providers::Tool {
+) -> Option<ai_providers::Tool> {
     // Use double underscore separator for compatibility with Anthropic's naming rules
     // Anthropic requires: ^[a-zA-Z0-9_-]{1,128}$ (no colons allowed)
     // Using server_id (UUID) ensures uniqueness when multiple servers have same name
-    ai_providers::Tool::function(
-        format!("{}__{}", server_id, mcp_tool.name),
+    let composed = format!("{}__{}", server_id, mcp_tool.name);
+    if composed.len() > MAX_ANTHROPIC_TOOL_NAME_LEN {
+        tracing::warn!(
+            server_id = %server_id,
+            tool_name = %mcp_tool.name,
+            composed_len = composed.len(),
+            cap = MAX_ANTHROPIC_TOOL_NAME_LEN,
+            "mcp: dropping tool — composed name exceeds Anthropic's 128-char cap"
+        );
+        return None;
+    }
+    if !is_anthropic_tool_name_charset(&composed) {
+        tracing::warn!(
+            server_id = %server_id,
+            tool_name = %mcp_tool.name,
+            "mcp: dropping tool — composed name contains characters outside ^[a-zA-Z0-9_-]+$"
+        );
+        return None;
+    }
+    Some(ai_providers::Tool::function(
+        composed,
         mcp_tool.description.clone().unwrap_or_default(),
         mcp_tool.input_schema.clone(),
-    )
+    ))
 }
 
 /// Execute a tool via MCP session
@@ -474,7 +517,49 @@ pub fn build_query_input(schema: &serde_json::Value, query_text: &str) -> Option
 
 #[cfg(test)]
 mod tests {
-    use super::build_query_input;
+    use super::{build_query_input, convert_mcp_tool_to_ai_tool, MAX_ANTHROPIC_TOOL_NAME_LEN};
+    use crate::modules::mcp::client::traits::Tool as McpToolDef;
+    use uuid::Uuid;
+
+    fn make_mcp_tool(name: &str) -> McpToolDef {
+        McpToolDef {
+            name: name.to_string(),
+            description: Some("test".to_string()),
+            input_schema: serde_json::json!({}),
+        }
+    }
+
+    #[test]
+    fn convert_mcp_tool_accepts_safe_name() {
+        let server_id = Uuid::new_v4();
+        let tool = make_mcp_tool("short_name-1");
+        let out = convert_mcp_tool_to_ai_tool(server_id, &tool);
+        assert!(out.is_some(), "safe name should produce a tool");
+    }
+
+    #[test]
+    fn convert_mcp_tool_drops_oversize_composed_name() {
+        let server_id = Uuid::new_v4();
+        // server_id is 36 chars + "__" = 38; budget for tool_name is 90.
+        // Pick > 90 to exceed 128.
+        let big = "a".repeat(MAX_ANTHROPIC_TOOL_NAME_LEN);
+        let tool = make_mcp_tool(&big);
+        let out = convert_mcp_tool_to_ai_tool(server_id, &tool);
+        assert!(out.is_none(), "oversize composed name should be dropped");
+    }
+
+    #[test]
+    fn convert_mcp_tool_drops_disallowed_charset() {
+        let server_id = Uuid::new_v4();
+        // Colons + dots are common in non-conforming MCP servers and
+        // fail Anthropic's regex.
+        let tool = make_mcp_tool("category:subtool.v2");
+        let out = convert_mcp_tool_to_ai_tool(server_id, &tool);
+        assert!(
+            out.is_none(),
+            "name with colons/dots should be dropped (charset rejection)"
+        );
+    }
 
     #[test]
     fn test_build_query_input_required_string_param() {

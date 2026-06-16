@@ -14,10 +14,15 @@ use crate::modules::permissions::{PermissionCheck, PermissionList};
 /// The kind of entity that changed. Serialized snake_case to match the
 /// frontend's `sync:<entity>` event vocabulary.
 ///
-/// ADD a variant here when wiring a new domain: `audience_kind`'s match
-/// is exhaustive, so the build fails until the new entity is assigned an
-/// audience — a new syncable entity can never silently default to a
-/// broadcast (the dangerous default becomes a compile error, not a leak).
+/// ADD a variant here when wiring a new domain. NOTE: there is no central
+/// `audience_kind` match — each emitting handler picks the `Audience`
+/// explicitly at the `publish` call site (`Audience::owner(..)` /
+/// `Audience::perm::<P>()` / `Audience::everyone()`). So adding a variant
+/// does NOT force an audience assignment at compile time; the author must
+/// choose the correct audience at every emit site for the new entity (an
+/// owner-scoped entity broadcast to everyone would be a leak). Keep new
+/// entities' audiences aligned with the read-permission gating their
+/// refetch endpoint enforces.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SyncEntity {
@@ -100,6 +105,22 @@ pub enum SyncEntity {
     /// permissions were edited) — the client re-bootstraps `/auth/me`. `id`
     /// is the affected user id.
     Session,
+
+    // --- Phase 8: skills + workflows (see plan §3 + §4.4) ---
+    /// A user-installed skill (user-scope). Notify-only — the client refetches
+    /// `/api/skills` (which returns the user's own + accessible system skills).
+    Skill,
+    /// Admin view of a system-scope skill (assigned via group_skills).
+    /// Emitted ALONGSIDE `Skill` when scope='system' to refresh both surfaces.
+    SkillSystem,
+    /// A user-installed workflow (user-scope). Same shape as Skill.
+    Workflow,
+    /// Admin view of a system-scope workflow.
+    WorkflowSystem,
+    /// A workflow_runs lifecycle transition (started / completed / failed /
+    /// cancelled) — NOT per-step events; those go on the dedicated per-run
+    /// SSE channel (§4.4). Notify-only so cross-device list views refresh.
+    WorkflowRun,
 }
 
 /// What happened to the entity.

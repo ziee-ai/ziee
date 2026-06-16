@@ -127,15 +127,20 @@ impl JsonRpcError {
     }
 
     /// Map an `AppError` onto the right JSON-RPC error class for the built-in
-    /// MCP servers (files / memory), so client-class errors surface as
-    /// method-not-found / invalid-params rather than a generic internal error.
-    /// Shared so the two built-in handlers can't drift.
+    /// MCP servers (files / memory / skill / workflow), so client-class errors
+    /// surface as method-not-found / invalid-params rather than a generic
+    /// internal error. Shared so the built-in handlers can't drift.
     pub fn from_app_error(e: &crate::common::AppError) -> Self {
         match e.status_code() {
             400 if e.error_code() == "UNKNOWN_TOOL" => {
                 Self::method_not_found(&e.to_string())
             }
-            400 | 404 => Self::invalid_params(e.to_string()),
+            // 4xx are client-class (bad input / access-denied / not-found /
+            // stale) — surface as invalid_params so the LLM sees a client
+            // error, not a server crash. skill_mcp / workflow_mcp return 403
+            // (hidden / inaccessible / not-owner) and 410 (stale elicit),
+            // which the older 400|404-only arm misclassified as internal.
+            400 | 403 | 404 | 409 | 410 | 422 => Self::invalid_params(e.to_string()),
             _ => Self::internal(e.to_string()),
         }
     }

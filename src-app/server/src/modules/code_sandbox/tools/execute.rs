@@ -1,4 +1,9 @@
 //! `execute_command` — invokes bwrap with a user-supplied shell command.
+//!
+//! `execute_command_with_mounts` (B4) is the additive entry point the
+//! workflow runner's `SandboxDispatcher` calls — it threads per-call
+//! `StagedMount`s through to `build_bwrap_argv`. Every other caller
+//! continues to use the no-mounts `execute_command` and is unaffected.
 
 use axum::http::StatusCode;
 use serde_json::json;
@@ -9,11 +14,25 @@ use crate::modules::code_sandbox::config;
 use crate::modules::code_sandbox::sandbox::DEFAULT_TIMEOUT_SECS;
 use crate::modules::code_sandbox::types::{SandboxContext, CONVERSATION_FLAVOR};
 use crate::modules::code_sandbox::version_manager;
+use crate::modules::code_sandbox::workflow_staging::StagedMount;
 
 pub async fn execute_command(
     ctx: &SandboxContext,
     command: &str,
     flavor: &str,
+) -> Result<serde_json::Value, AppError> {
+    execute_command_with_mounts(ctx, command, flavor, &[]).await
+}
+
+/// `execute_command` with additional per-call bwrap binds (workflow
+/// runner integration; B4). Mounts are partitioned by mode in
+/// `build_bwrap_argv` (RO → `--ro-bind`, RW → `--bind`). The chat-side
+/// `execute_command` calls this with `&[]`.
+pub async fn execute_command_with_mounts(
+    ctx: &SandboxContext,
+    command: &str,
+    flavor: &str,
+    extra_mounts: &[StagedMount],
 ) -> Result<serde_json::Value, AppError> {
     let state = config::get_state().ok_or_else(|| {
         AppError::new(
@@ -28,6 +47,15 @@ pub async fn execute_command(
     let workspace_dir = state
         .workspace_root
         .join(ctx.conversation_id.to_string());
+
+    // Ensure the workspace dir exists with the correct mode for the
+    // in-sandbox uid. The chat-side path does this in `build_context`,
+    // but the workflow runner calls this fn directly — without the macOS
+    // 0o1777 chmod, the in-VM uid 1001 can't create the `.gitconfig`
+    // dotfile-mask mountpoint and bwrap fails with "Permission denied".
+    // Shared helper keeps the H-3 mode policy in lockstep with build_context.
+    let _ = tokio::fs::create_dir_all(&workspace_dir).await;
+    crate::modules::code_sandbox::handlers::apply_workspace_mode(&workspace_dir).await;
 
     // Per-conversation flavor lock: the FIRST execute_command in a
     // conversation pins the flavor. Subsequent calls with a different
@@ -74,7 +102,14 @@ pub async fn execute_command(
     let fetch_info = ensure.fetch_info.clone();
 
     let result = backend::active()
-        .run(&state, ctx, command, Some(DEFAULT_TIMEOUT_SECS), flavor)
+        .run_with_mounts(
+            &state,
+            ctx,
+            command,
+            Some(DEFAULT_TIMEOUT_SECS),
+            flavor,
+            extra_mounts,
+        )
         .await?;
 
     let mut response = json!({

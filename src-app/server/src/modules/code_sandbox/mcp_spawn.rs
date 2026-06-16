@@ -107,7 +107,6 @@ pub async fn start_mcp_in_sandbox(
     state: &CodeSandboxState,
     req: McpSpawnRequest,
 ) -> Result<McpSandboxTransport, AppError> {
-    use crate::modules::code_sandbox::runtime_mount;
     use crate::modules::code_sandbox::version_manager::{self, InflightKind};
 
     // Per-server flavor (from `mcp_servers.sandbox_flavor`, default full).
@@ -119,7 +118,16 @@ pub async fn start_mcp_in_sandbox(
     // here keeps the drain-on-swap task from evicting the mount as
     // long as this MCP server's transport (held by the caller via
     // `McpSandboxTransport`) is alive.
-    let ensure = runtime_mount::ensure_rootfs_ready(state, &flavor).await?;
+    //
+    // Go through the BACKEND (not `runtime_mount::ensure_rootfs_ready`
+    // directly): the Linux backend delegates to runtime_mount (host
+    // squashfuse mount), but the macOS/WSL2 VM backends mount the rootfs
+    // INSIDE the guest. Calling runtime_mount directly here required host
+    // squashfuse on every platform and made sandboxed MCP servers
+    // unspawnable on macOS (SANDBOX_SQUASHFUSE_MISSING) even though the
+    // one-shot `execute_command` path — which already routes through the
+    // backend — works fine.
+    let ensure = backend::active().ensure_rootfs_ready(state, &flavor).await?;
     let inflight = ensure
         .artifact_id
         .and_then(|id| version_manager::acquire_inflight(id, InflightKind::Mcp));
@@ -358,6 +366,7 @@ async fn spawn_on_linux_host(
             seccomp_fd: seccomp_pipe.as_ref().map(|p| p.target_fd_pub()),
             extra_setenv: &req.extra_setenv,
             extra_ro_binds: &extra_ro_binds,
+            extra_rw_binds: &[],
         },
         Path::new(&guest_command),
         &{

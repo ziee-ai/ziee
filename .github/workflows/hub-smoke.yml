@@ -1,0 +1,178 @@
+name: hub-workflows-smoke
+
+# Consumer-side drift detector — symmetric to cargo's crater runs: the Rust
+# compiler verifies it doesn't break the crates.io ecosystem; here, the ziee
+# workflow / workflow_mcp / code_sandbox / hub modules verify they don't break
+# the LIVE hub workflow catalog.
+#
+# Triggers:
+#   - PRs touching any of the four modules whose behavior the hub workflows
+#     depend on (a change there can silently break an installed workflow).
+#   - Nightly cron (catches drift introduced by a hub-side workflow change
+#     that the consumer's PR set never touched).
+#
+# What it does: builds ziee from the branch, starts it, pulls the published
+# hub dist/ (https://ziee-ai.github.io/hub/index.json + the workflow bundles
+# it references), installs every workflow + runs its bundled tests/ fixtures
+# via scripts/hub-smoke.sh, and fails on any install/test failure.
+#
+# On failure the ziee maintainer decides: fix the compat regression in ziee,
+# OR open a hub PR to update the affected workflow, OR mark it broken_at:
+# ziee@X.Y in the hub catalog (dropped from auto-installs until repaired).
+
+on:
+  pull_request:
+    paths:
+      - 'src-app/server/src/modules/workflow/**'
+      - 'src-app/server/src/modules/workflow_mcp/**'
+      - 'src-app/server/src/modules/code_sandbox/**'
+      - 'src-app/server/src/modules/hub/**'
+      - 'scripts/hub-smoke.sh'
+      - '.github/workflows/hub-smoke.yml'
+  schedule:
+    - cron: '0 6 * * *'   # nightly drift catch
+  workflow_dispatch:
+
+# A new push to the same PR supersedes an in-flight smoke run.
+concurrency:
+  group: hub-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: import + test live hub workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-app
+          # Stable key so every hub-smoke run shares ONE cache (PR runs +
+          # the nightly main run) instead of per-job keys — the dependency
+          # build (~30 min cold) is restored, leaving only the ziee crate to
+          # recompile (~2-5 min) on subsequent runs.
+          shared-key: hub-smoke
+          # Save the dep cache even when a later step fails (e.g. the earlier
+          # libseccomp link error happened AFTER all deps compiled, so without
+          # this the costly compilation was thrown away on the retry).
+          cache-on-failure: true
+
+      # bwrap + squashfuse so code_sandbox steps in hub workflows actually run.
+      - name: Install host deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bubblewrap squashfuse fuse3 jq
+
+      # Single Postgres (pgvector) serving BOTH the SQLx compile-time build DB
+      # (:54321, consumed by build.rs) AND the running server's runtime DB.
+      # Mirrors server-release.yml's build-DB step (pgvector image required by
+      # migration 46's CREATE EXTENSION vector).
+      - name: Setup Postgres + pgvector
+        run: |
+          docker run -d --name ziee-build-db \
+            -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password -e POSTGRES_DB=postgres \
+            -p 54321:5432 pgvector/pgvector:pg18
+          for _ in $(seq 1 30); do
+            if docker exec ziee-build-db pg_isready -U postgres >/dev/null 2>&1; then
+              echo "postgres ready"; break
+            fi
+            sleep 2
+          done
+
+      # GITHUB_TOKEN: the hub-seed build helper panics without network access
+      # to the ziee-ai/hub release; the token lifts the unauthenticated rate
+      # limit on the shared CI egress IP.
+      #
+      # DEBUG build (no --release): a smoke test just imports + runs a handful
+      # of mocked fixture workflows over HTTP, so runtime speed is irrelevant;
+      # a debug build compiles ~3x faster (~10 min vs ~30 min cold). The same
+      # code paths are exercised — the debug-only test seams
+      # (CODE_SANDBOX_ROOTFS_MIRROR etc.) stay inert because their env vars
+      # aren't set, so the sandbox still uses the real published-rootfs fetch.
+      #
+      # Seccomp feature OFF (--no-default-features + gpu-detect), mirroring
+      # server-release.yml: the default `code_sandbox_seccomp` static-links
+      # libseccomp (LIBSECCOMP_LINK_TYPE in .cargo/config.toml), which needs
+      # libseccomp.a on the runner. The smoke test doesn't need seccomp
+      # hardening (the sandbox still runs, logging seccomp off-feature-not-linked).
+      - name: Build ziee
+        working-directory: src-app/server
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: cargo build -p ziee --no-default-features --features gpu-detect
+
+      # Runtime config: external Postgres (reuse the build DB), code_sandbox on
+      # (hub workflows may ship sandbox steps), server on :3000.
+      - name: Write CI runtime config
+        run: |
+          mkdir -p /tmp/ziee-hub-smoke
+          cat > /tmp/ziee-hub-smoke/config.yaml <<'YAML'
+          app:
+            data_dir: "/tmp/ziee-hub-smoke/app-data"
+          postgresql:
+            use_embedded: false
+            external:
+              host: "127.0.0.1"
+              port: 54321
+              username: "postgres"
+              password: "password"
+              database: "postgres"
+            pool:
+              max_connections: 10
+              min_connections: 1
+              acquire_timeout_secs: 5
+              idle_timeout_secs: 30
+              max_lifetime_secs: 300
+          server:
+            host: "127.0.0.1"
+            port: 3000
+            api_prefix: "/api"
+            cors:
+              allow_origins: ["http://localhost:5173"]
+              allow_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+              allow_headers: ["Content-Type", "Authorization"]
+          logging:
+            level: "info"
+            format: "pretty"
+          jwt:
+            secret: "hub-smoke-ci-secret-min-32-chars-aaaaaaaaaa"
+            issuer: "ziee"
+            audience: "ziee-api"
+            access_token_expiry_hours: 24
+            refresh_token_expiry_days: 30
+          code_sandbox:
+            enabled: true
+            rootfs_path: "./.ziee-cache/sandbox-rootfs/current"
+            cgroup_parent: ""
+          update_check:
+            enabled: false
+          YAML
+
+      - name: Start ziee
+        env:
+          CONFIG_FILE: /tmp/ziee-hub-smoke/config.yaml
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ./src-app/target/debug/ziee > /tmp/ziee-hub-smoke/server.log 2>&1 &
+          echo "ziee_pid=$!" >> "$GITHUB_ENV"
+
+      - name: Import + test every hub workflow
+        env:
+          ZIEE_BASE: http://127.0.0.1:3000
+          HUB_BASE: https://ziee-ai.github.io/hub
+        run: scripts/hub-smoke.sh
+
+      - name: Server log (on failure)
+        if: failure()
+        run: tail -n 200 /tmp/ziee-hub-smoke/server.log || true

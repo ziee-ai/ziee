@@ -71,6 +71,24 @@ pub const DEFAULT_TIMEOUT_SECS: u64 = 600;
 ///   4. Spawn bwrap → wrap with tokio `timeout` → capture-with-cap.
 ///   5. Tear down cgroup scope on the way out.
 #[cfg(target_os = "linux")]
+pub async fn run_in_sandbox(
+    state: &CodeSandboxState,
+    ctx: &SandboxContext,
+    command: &str,
+    timeout_secs: Option<u64>,
+    flavor: &str,
+) -> Result<SandboxRunResult, AppError> {
+    run_in_sandbox_with_mounts(state, ctx, command, timeout_secs, flavor, &[]).await
+}
+
+/// `run_in_sandbox` with per-call extra mounts (B4 workflow runner
+/// integration). `extra_mounts` is partitioned by mode in
+/// `build_bwrap_argv`: `ReadOnly` → `--ro-bind`, `ReadWrite` → `--bind`.
+/// Existing security guarantees (`--clearenv`, `--unshare-user`,
+/// seccomp gate, cgroup, `--die-with-parent`, output cap, wall-clock
+/// timeout) are unchanged. Pass `&[]` for the chat-side path; the
+/// workflow runner is the only caller passing non-empty mounts today.
+#[cfg(target_os = "linux")]
 #[tracing::instrument(
     name = "code_sandbox.exec",
     skip_all,
@@ -80,12 +98,13 @@ pub const DEFAULT_TIMEOUT_SECS: u64 = 600;
         command_preview = preview(command, 80),
     ),
 )]
-pub async fn run_in_sandbox(
+pub async fn run_in_sandbox_with_mounts(
     state: &CodeSandboxState,
     ctx: &SandboxContext,
     command: &str,
     timeout_secs: Option<u64>,
     flavor: &str,
+    extra_mounts: &[crate::modules::code_sandbox::workflow_staging::StagedMount],
 ) -> Result<SandboxRunResult, AppError> {
     use crate::modules::code_sandbox::{cgroup, runtime_mount};
 
@@ -167,6 +186,7 @@ pub async fn run_in_sandbox(
         synthetic.mask_path(),
         seccomp_pipe.as_ref().map(|p| p.target_fd()),
         &limits,
+        extra_mounts,
     );
 
     let started = Instant::now();
@@ -326,6 +346,19 @@ pub async fn run_in_sandbox(
 /// position attachment binds occupy in the one-shot path). For
 /// one-shot it carries conversation attachments; for MCP it carries
 /// the embedded uv/bun extraction dir + its parents.
+///
+/// `extra_rw_binds` is the workflow runner's per-step artifact mount
+/// hook (B4): an additional set of `(host_src, sandbox_dst)` pairs
+/// emitted as `--bind` (read-write) — currently used only for
+/// `artifacts/<step_id>/` per `kind: sandbox` step so scripts can
+/// produce side files for post-collection. Placed AFTER `extra_ro_binds`
+/// so a RW bind can't be silently shadowed by an unrelated RO bind at
+/// a child path.
+///
+/// SECURITY: the hardening guarantees (`--clearenv`, `--unshare-user`,
+/// seccomp gate, cgroup, `--die-with-parent`) are unaffected by either
+/// extra-bind list — they continue to ship before the per-call binds
+/// and the `--` terminator.
 pub(crate) struct HardeningArgvParams<'a> {
     pub caps: &'a HardeningCapabilities,
     pub rootfs_dir: &'a Path,
@@ -336,6 +369,7 @@ pub(crate) struct HardeningArgvParams<'a> {
     pub seccomp_fd: Option<i32>,
     pub extra_setenv: &'a [(String, String)],
     pub extra_ro_binds: &'a [(String, String)],
+    pub extra_rw_binds: &'a [(String, String)],
 }
 
 /// Build the shared hardening prefix: every flag from `--clearenv`
@@ -514,6 +548,18 @@ pub(crate) fn build_hardening_prefix(p: &HardeningArgvParams) -> Vec<String> {
         argv.push(sandbox_dst.clone());
     }
 
+    // B4 — workflow runner extra mounts (read-write, e.g. per-step
+    // `artifacts/<step_id>/`). `--bind` (not `--bind-try`): the host
+    // dir MUST exist — the runner creates it before dispatch — so a
+    // missing dir is a programming bug, not a no-op. Placed AFTER the
+    // RO binds so an overlapping path resolves RW (the runner never
+    // does this today, but the ordering is explicit).
+    for (host_src, sandbox_dst) in p.extra_rw_binds {
+        argv.push("--bind".into());
+        argv.push(host_src.clone());
+        argv.push(sandbox_dst.clone());
+    }
+
     // Optional seccomp filter on a well-known fd we'll dup2 to.
     if let Some(fd) = p.seccomp_fd {
         argv.push("--seccomp".into());
@@ -589,6 +635,12 @@ pub(crate) fn build_bwrap_argv(
     // guest agent reading `ExecRequest.cgroup` (macOS / WSL2). The caller
     // resolves this via `resource_limits_cache::snapshot_or_defaults()`.
     limits: &crate::modules::code_sandbox::resource_limits::CodeSandboxResourceLimits,
+    // B4 — additional per-call mounts requested by the workflow runner.
+    // ReadOnly mounts become `--ro-bind`, ReadWrite mounts become
+    // `--bind`. Existing callers (all chat-side `execute_command` paths,
+    // every tier-4 test) pass `&[]` and behavior is byte-identical to
+    // the pre-B4 argv.
+    extra_mounts: &[crate::modules::code_sandbox::workflow_staging::StagedMount],
 ) -> Vec<String> {
     // SECURITY (kept here for archaeology — the actual --clearenv flag
     // ships from `build_hardening_prefix`):
@@ -647,6 +699,25 @@ pub(crate) fn build_bwrap_argv(
         })
         .collect();
 
+    // Partition workflow runner mounts by mode (B4). Empty for every
+    // non-workflow call path → byte-identical argv.
+    use crate::modules::code_sandbox::workflow_staging::StageMode;
+    let extra_workflow_ro: Vec<(String, String)> = extra_mounts
+        .iter()
+        .filter(|m| m.mode == StageMode::ReadOnly)
+        .map(|m| (m.host_path.display().to_string(), m.sandbox_path.clone()))
+        .collect();
+    let extra_workflow_rw: Vec<(String, String)> = extra_mounts
+        .iter()
+        .filter(|m| m.mode == StageMode::ReadWrite)
+        .map(|m| (m.host_path.display().to_string(), m.sandbox_path.clone()))
+        .collect();
+
+    // Concatenate the attachment RO binds with the workflow RO binds so
+    // both sets land in the same position in argv.
+    let mut all_ro_binds = extra_ro_binds;
+    all_ro_binds.extend(extra_workflow_ro);
+
     let mut argv = build_hardening_prefix(&HardeningArgvParams {
         caps,
         rootfs_dir,
@@ -656,7 +727,8 @@ pub(crate) fn build_bwrap_argv(
         home_bind_source: &ctx.workspace,
         seccomp_fd,
         extra_setenv: &[],
-        extra_ro_binds: &extra_ro_binds,
+        extra_ro_binds: &all_ro_binds,
+        extra_rw_binds: &extra_workflow_rw,
     });
 
     // Wrap user code in `prlimit` so per-call rlimits apply to the
@@ -1097,6 +1169,7 @@ mod tests {
             std::path::Path::new("/tmp/.sandbox_empty"),
             None,
             &fake_limits(),
+            &[],
         );
 
         let clearenv = argv
@@ -1140,6 +1213,7 @@ mod tests {
             std::path::Path::new("/tmp/.sandbox_empty"),
             None,
             &fake_limits(),
+            &[],
         );
         // There should be at least one `--` before the prlimit wrapper.
         let prlimit_idx = argv
@@ -1173,6 +1247,7 @@ mod tests {
             std::path::Path::new("/tmp/.sandbox_empty"),
             None,
             &fake_limits(),
+            &[],
         );
         // Must use --dev-bind /proc /proc, NOT --proc /proc.
         assert!(argv.windows(3).any(|w| w == ["--dev-bind", "/proc", "/proc"]));
@@ -1205,6 +1280,7 @@ mod tests {
             std::path::Path::new("/tmp/.sandbox_empty"),
             None,
             &fake_limits(),
+            &[],
         );
         assert!(argv.iter().any(|a| a == "--unshare-pid"));
         assert!(argv.windows(2).any(|w| w == ["--proc", "/proc"]));
@@ -1233,6 +1309,7 @@ mod tests {
                 std::path::Path::new("/tmp/.sandbox_empty"),
                 None,
                 &fake_limits(),
+                &[],
             );
             for masked in ["/proc/sysrq-trigger", "/proc/kcore", "/proc/kallsyms", "/proc/kmsg"] {
                 assert!(
@@ -1264,6 +1341,7 @@ mod tests {
             std::path::Path::new("/tmp/.sandbox_empty"),
             None,
             &fake_limits(),
+            &[],
         );
         // The bind source is the empty-regular-file passed in (NOT /dev/null —
         // that's a char device on a `nodev` mount, which bash's `open()`
@@ -1325,6 +1403,7 @@ mod tests {
             std::path::Path::new("/tmp/.sandbox_empty"),
             None,
             &fake_limits(),
+            &[],
         );
 
         // Attachments emit `--ro-bind-try <host> /home/sandboxuser/<dest>`.
@@ -1363,6 +1442,7 @@ mod tests {
             std::path::Path::new("/tmp/.sandbox_empty"),
             None,
             &fake_limits(),
+            &[],
         );
 
         let dests: Vec<&str> = argv
@@ -1399,6 +1479,7 @@ mod tests {
             std::path::Path::new("/tmp/.sandbox_empty"),
             None,
             &fake_limits(),
+            &[],
         );
 
         let must_have = [
@@ -1453,6 +1534,7 @@ mod tests {
             std::path::Path::new("/tmp/.sandbox_empty"),
             None,
             &fake_limits(),
+            &[],
         );
         assert!(!argv_without.iter().any(|a| a == "--seccomp"));
 
@@ -1467,8 +1549,99 @@ mod tests {
             std::path::Path::new("/tmp/.sandbox_empty"),
             Some(7),
             &fake_limits(),
+            &[],
         );
         assert!(argv_with.windows(2).any(|w| w == ["--seccomp", "7"]));
+    }
+
+    #[test]
+    fn argv_workflow_extra_mounts_emit_ro_and_rw_binds() {
+        // B4 — `build_bwrap_argv` honors per-call `StagedMount` entries:
+        // ReadOnly → `--ro-bind`, ReadWrite → `--bind`. Existing security
+        // flags (`--clearenv`, `--unshare-user`, seccomp, prlimit) must
+        // continue to ship.
+        use crate::modules::code_sandbox::workflow_staging::{StageMode, StagedMount};
+        let caps = fake_caps();
+        let state = fake_state();
+        let ctx = fake_ctx();
+        let mounts = vec![
+            StagedMount {
+                mode: StageMode::ReadOnly,
+                host_path: PathBuf::from("/host/workflow"),
+                sandbox_path: "/home/sandboxuser/workflow/run-1".to_string(),
+            },
+            StagedMount {
+                mode: StageMode::ReadWrite,
+                host_path: PathBuf::from("/host/artifacts"),
+                sandbox_path: "/home/sandboxuser/workflow/run-1/artifacts/step1".to_string(),
+            },
+        ];
+        let argv = build_bwrap_argv(
+            &caps,
+            &state.workspace_root,
+            &ctx,
+            std::path::Path::new(state.config.rootfs_path()),
+            "x",
+            std::path::Path::new("/tmp/.sandbox_passwd"),
+            std::path::Path::new("/tmp/.sandbox_group"),
+            std::path::Path::new("/tmp/.sandbox_empty"),
+            None,
+            &fake_limits(),
+            &mounts,
+        );
+        // ReadOnly → `--ro-bind-try` window.
+        assert!(
+            argv.windows(3).any(|w| w[0] == "--ro-bind-try"
+                && w[1] == "/host/workflow"
+                && w[2] == "/home/sandboxuser/workflow/run-1"),
+            "RO mount missing; argv: {argv:?}"
+        );
+        // ReadWrite → `--bind` window.
+        assert!(
+            argv.windows(3).any(|w| w[0] == "--bind"
+                && w[1] == "/host/artifacts"
+                && w[2] == "/home/sandboxuser/workflow/run-1/artifacts/step1"),
+            "RW mount missing; argv: {argv:?}"
+        );
+        // Security guarantees still ship.
+        for required in &["--clearenv", "--unshare-user", "--die-with-parent", "/usr/bin/prlimit"] {
+            assert!(
+                argv.iter().any(|a| a == required),
+                "missing security flag {required}; argv: {argv:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn argv_with_no_extra_mounts_is_byte_identical_to_empty_slice() {
+        // Defense: passing `&[]` must not emit any extra --ro-bind /
+        // --bind beyond the existing attachment binds.
+        let caps = fake_caps();
+        let state = fake_state();
+        let ctx = fake_ctx();
+        let argv = build_bwrap_argv(
+            &caps,
+            &state.workspace_root,
+            &ctx,
+            std::path::Path::new(state.config.rootfs_path()),
+            "x",
+            std::path::Path::new("/tmp/.sandbox_passwd"),
+            std::path::Path::new("/tmp/.sandbox_group"),
+            std::path::Path::new("/tmp/.sandbox_empty"),
+            None,
+            &fake_limits(),
+            &[],
+        );
+        // No --bind for `/home/sandboxuser/workflow/*` (the workflow
+        // namespace). The base `--bind workspace /home/sandboxuser`
+        // still ships from the hardening prefix.
+        assert!(
+            !argv
+                .windows(3)
+                .any(|w| w[0] == "--bind"
+                    && w[2].starts_with("/home/sandboxuser/workflow/")),
+            "no workflow mounts requested but found one; argv: {argv:?}"
+        );
     }
 
     #[test]
@@ -1487,6 +1660,7 @@ mod tests {
             std::path::Path::new("/tmp/.sandbox_empty"),
             None,
             &fake_limits(),
+            &[],
         );
         let s = argv.join(" ");
         assert!(s.contains("/usr/bin/prlimit"));
@@ -1543,6 +1717,7 @@ mod tests {
             seccomp_fd: None,
             extra_setenv: env,
             extra_ro_binds: binds,
+            extra_rw_binds: &[],
         }
     }
 
