@@ -20,6 +20,7 @@ import {
   assertTestConnectionButtonInDrawerVisible,
   waitForConnectionTestResult,
 } from './helpers/repository-helpers'
+import { RepoHealthMock } from './helpers/repository-health-mock'
 
 test.describe('LLM Repositories - List Page', () => {
   test('should pass accessibility checks', async ({ page, testInfra }) => {
@@ -614,15 +615,37 @@ test.describe('LLM Repositories - Connection Testing', () => {
     await deleteRepository(page, repositoryName)
   })
 
-  // "should fail connection test with invalid URL" was here. Removed
-  // because it requires creating a repository with an unresolvable
-  // hostname, which the new outbound URL validator (security A2)
-  // rejects at create time to prevent SSRF/DNS-rebinding. The
-  // "successfully test connection from drawer" + "fail connection
-  // from drawer with invalid credentials" tests below cover the
-  // connection-test UI. Tracked in
-  // src-app/ui/tests/e2e/TODO_E2E.md for a future redesign that
-  // separates create-validation from connection-test errors.
+  test('should fail connection test with an unreachable URL', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    const repositoryName = `test-connection-unreachable-${Date.now()}`
+
+    // The original test used an UNRESOLVABLE hostname, which the outbound
+    // URL validator (security A2, F-01/F-03) now rejects at create time to
+    // prevent SSRF / DNS-rebinding. Instead use a RESOLVABLE-but-unreachable
+    // URL: start the local mock to claim a free 127.0.0.1 port, then dispose
+    // it so nothing is listening. 127.0.0.1 resolves, so create-validation
+    // (DEV_LOCAL policy in debug builds, allow_localhost: true) accepts it;
+    // the connection test then gets ECONNREFUSED — exercising the
+    // connection-failure error UI deterministically and fully offline
+    // (distinct from the invalid-credentials/401 path covered above).
+    const mock = await RepoHealthMock.start()
+    const unreachableUrl = mock.url()
+    await mock.dispose()
+
+    await loginAsAdmin(page, baseURL)
+
+    await createRepository(page, baseURL, {
+      name: repositoryName,
+      url: unreachableUrl,
+      authType: 'none',
+      enabled: true,
+    })
+
+    await clickTestConnectionFromList(page, repositoryName)
+    await waitForConnectionTestResult(page, 'error')
+
+    await deleteRepository(page, repositoryName)
+  })
 
   test('should show Test Connection button in drawer when form is valid', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
