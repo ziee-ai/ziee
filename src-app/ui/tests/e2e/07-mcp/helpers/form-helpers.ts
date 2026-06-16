@@ -58,6 +58,10 @@ export async function fillMcpServerForm(page: Page, data: McpServerFormData) {
     .locator('.ant-form-item:has-text("Transport Type")')
     .first()
     .getByRole('combobox')
+  // In edit mode the pre-populated drawer is tall enough to push this field
+  // below the fold; scroll into view first (same as the Enabled/Sampling
+  // switches below) so the click doesn't fail "Element is outside of the viewport".
+  await transportCombobox.scrollIntoViewIfNeeded()
   await transportCombobox.click({ force: true })
   await page.waitForTimeout(300)
   const transportIdx = data.transportType === 'stdio' ? 0 : data.transportType === 'http' ? 1 : 2
