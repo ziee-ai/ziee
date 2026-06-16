@@ -414,12 +414,28 @@ fn last_tool_result_text(messages: &[Value]) -> String {
         .collect()
 }
 
-/// Parse the substring after `prefix` up to end-of-line.
+/// Parse the substring after `prefix` up to end-of-line OR the next
+/// ` STUB_` token — whichever comes first.
+///
+/// The next-`STUB_` boundary matters when multiple `STUB_*` tokens share
+/// one line (e.g. `... STUB_FILE=notes.txt STUB_CONTENT=hi`): a plain
+/// to-end-of-line parse made an earlier token (STUB_FILE) greedily
+/// swallow every later token, so `write_file` received a filename like
+/// `notes.txt STUB_CONTENT=hi` and wrote a garbage-named file instead of
+/// the provenance-tracked one — silently breaking the version-back tests.
+/// The LAST token on the line still runs to end-of-line, so multi-word
+/// values (e.g. `STUB_CONTENT=some prose`) keep working as long as no
+/// further `STUB_*` token follows.
 fn parse_token(text: &str, prefix: &str) -> Option<String> {
     let idx = text.find(prefix)?;
     let rest = &text[idx + prefix.len()..];
-    let line: String = rest.lines().next().unwrap_or("").trim().to_string();
-    if line.is_empty() { None } else { Some(line) }
+    let line = rest.lines().next().unwrap_or("");
+    let value = match line.find(" STUB_") {
+        Some(i) => &line[..i],
+        None => line,
+    };
+    let value = value.trim().to_string();
+    if value.is_empty() { None } else { Some(value) }
 }
 
 /// Parse the first `id=<uuid>` from the manifest system block.
@@ -444,6 +460,18 @@ fn first_manifest_id(system_text: &str) -> Option<String> {
     }
 }
 
+/// Fresh, process-unique tool_use id per emitted tool call. A FIXED id
+/// (the old `call_stub_1`) breaks any flow with two tool calls in one
+/// turn: the MCP loop dedups by tool_use_id, so the second call is
+/// skipped as "already has result" and never executes (this silently
+/// broke the version-back COALESCE test — write #2 was finalized but
+/// dropped, leaving write #1's content as the head).
+fn next_tool_call_id() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(1);
+    format!("call_stub_{}", COUNTER.fetch_add(1, Ordering::Relaxed))
+}
+
 fn stream_response(model: &str, text: Option<String>, tool_call: Option<(String, Value)>) -> Response {
     let mut events: Vec<Event> = Vec::new();
     events.push(sse_chunk(model, json!({"role": "assistant"}), None));
@@ -458,7 +486,7 @@ fn stream_response(model: &str, text: Option<String>, tool_call: Option<(String,
             json!({
                 "tool_calls": [{
                     "index": 0,
-                    "id": "call_stub_1",
+                    "id": next_tool_call_id(),
                     "type": "function",
                     "function": { "name": name, "arguments": args.to_string() }
                 }]
@@ -484,7 +512,7 @@ fn json_response(model: &str, text: Option<String>, tool_call: Option<(String, V
     let mut message = json!({ "role": "assistant", "content": text });
     let finish = if let Some((name, args)) = &tool_call {
         message["tool_calls"] = json!([{
-            "id": "call_stub_1",
+            "id": next_tool_call_id(),
             "type": "function",
             "function": { "name": name, "arguments": args.to_string() }
         }]);

@@ -104,6 +104,32 @@ pub fn test_rootfs_tag() -> String {
     std::env::var("ZIEE_SANDBOX_TEST_TAG").unwrap_or_else(|_| TEST_ROOTFS_TAG.to_string())
 }
 
+/// Published version (no `v` prefix — `set-pin` form) the version-swap
+/// tests bump TO for a MAJOR change (semver major differs from the
+/// v0.0.x base → `WipeCachesOnDrain`). `Some` only on arches that
+/// actually have a higher-major rootfs published; `None` (→ the
+/// major-bump test skips cleanly) otherwise.
+///
+/// `ziee-ai/sandbox-rootfs` ships a major-1 asset (`v1.0.0-alpha`) for
+/// x86_64 only; the aarch64 line tops out at `v0.0.6-alpha` (major 0),
+/// so a *real* major bump can't be exercised on aarch64 until a 1.x
+/// aarch64 rootfs is published. This is a published-asset gap, not a
+/// macOS-VM defect — the swap/drain/wipe machinery itself is arch-neutral.
+pub fn major_bump_target() -> Option<&'static str> {
+    match test_arch_token() {
+        "x86_64" => Some("1.0.0-alpha"),
+        _ => None,
+    }
+}
+
+/// Published version (no `v` prefix) the version-swap tests bump TO for a
+/// same-major (PRESERVE) change. `v0.0.6-alpha` ships for BOTH x86_64 and
+/// aarch64, so unlike the legacy `0.0.4-alpha` target it works on every
+/// supported test arch.
+pub fn patch_bump_target() -> &'static str {
+    "0.0.6-alpha"
+}
+
 /// Our arch token as it appears in the published asset names.
 pub fn test_arch_token() -> &'static str {
     match std::env::consts::ARCH {

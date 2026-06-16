@@ -79,6 +79,17 @@ async fn create_sandboxed_echo_server(
     run_in_sandbox: bool,
     extra_env: serde_json::Value,
 ) -> String {
+    // The create API takes env vars as the structured `environment_variables_entries`
+    // ([{key,value,is_secret}]) — NOT the internal write-only `environment_variables`
+    // object (skip_serializing on the model). Convert the caller's {k:v} map.
+    let env_entries: Vec<serde_json::Value> = extra_env
+        .as_object()
+        .map(|o| {
+            o.iter()
+                .map(|(k, v)| json!({ "key": k, "value": v.as_str().unwrap_or(""), "is_secret": false }))
+                .collect()
+        })
+        .unwrap_or_default();
     let url = server.api_url("/mcp/system-servers");
     let response = reqwest::Client::new()
         .post(&url)
@@ -90,7 +101,7 @@ async fn create_sandboxed_echo_server(
             "transport_type": "stdio",
             "command": "python3",
             "args": ["-c", MCP_ECHO_PY],
-            "environment_variables": extra_env,
+            "environment_variables_entries": env_entries,
             "timeout_seconds": 60,
             "run_in_sandbox": run_in_sandbox,
         }))

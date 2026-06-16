@@ -5,14 +5,17 @@
 //! endpoint to swap the rootfs version, then verifies the documented
 //! swap policy:
 //!
-//!   * MAJOR bump (e.g. 0.0.x → 1.0.0) → the install-cache subdirs
+//!   * MAJOR bump (e.g. 0.0.x → 1.x) → the install-cache subdirs
 //!     (`.cache`, `.npm`, `.cargo`, …) are WIPED across the workspace
 //!     after drain, generated files are preserved, and the next tool
 //!     call carries a `system_note` telling the LLM to reinstall.
-//!   * MINOR/PATCH bump (0.0.3 → 0.0.4) → caches are PRESERVED, no note.
+//!   * MINOR/PATCH bump (same major) → caches are PRESERVED, no note.
 //!
-//! Needs network + bwrap + the published swap-matrix releases
-//! (v0.0.3/v0.0.4/v1.0.0-alpha). Run with:
+//! Swap targets are arch-resolved via `harness::{major_bump_target,
+//! patch_bump_target}`: the patch bump uses `v0.0.6-alpha` (published
+//! for x86_64 AND aarch64); the major bump uses `v1.0.0-alpha` on
+//! x86_64 and skips on arches with no higher-major rootfs published
+//! (aarch64 today). Needs network + a runnable sandbox backend. Run with:
 //!   cargo test --test integration_tests -- --test-threads=1 \
 //!     code_sandbox::tier6_version_swap
 
@@ -84,6 +87,18 @@ fn stdout_of(resp: &serde_json::Value) -> String {
 
 #[tokio::test]
 async fn e2e_major_version_bump_wipes_caches_and_notes() {
+    // A real major bump needs a published rootfs whose semver major
+    // differs from the v0.0.x base. Only x86_64 ships one today
+    // (v1.0.0-alpha); aarch64 tops out at v0.0.6-alpha, so this test
+    // skips cleanly there (published-asset gap, not a backend defect).
+    let Some(major_target) = crate::code_sandbox::harness::major_bump_target() else {
+        eprintln!(
+            "tier6 skipped: no major-version rootfs published for {} \
+             (cannot exercise a real major-bump swap on this arch)",
+            crate::code_sandbox::harness::test_arch_token()
+        );
+        return;
+    };
     let Some(server) = enabled_test_server().await else { return };
     let (jwt, conv_id) = setup_user_and_conv(&server).await;
 
@@ -103,10 +118,10 @@ async fn e2e_major_version_bump_wipes_caches_and_notes() {
         "setup failed to plant files: {plant:#}"
     );
 
-    // 2. Swap to the major-bump release (0.x → 1.0.0). The semver major
+    // 2. Swap to the major-bump release (0.x → 1.x). The semver major
     //    changes, so set_pin_with_drain schedules a drain-then-wipe.
-    let (status, body) = set_pin(&server, &jwt, "1.0.0-alpha").await;
-    assert_eq!(status, 200, "set-pin to 1.0.0-alpha failed: {body:#}");
+    let (status, body) = set_pin(&server, &jwt, major_target).await;
+    assert_eq!(status, 200, "set-pin to {major_target} failed: {body:#}");
     assert_eq!(
         body["swap"]["cache_wipe"].as_str(),
         Some("wipe_caches_on_drain"),
@@ -183,9 +198,11 @@ async fn e2e_patch_version_bump_preserves_caches() {
     .await;
     assert!(stdout_of(&plant).contains("marker"), "setup failed: {plant:#}");
 
-    // 0.0.3 → 0.0.4: same major → preserve policy.
-    let (status, body) = set_pin(&server, &jwt, "0.0.4-alpha").await;
-    assert_eq!(status, 200, "set-pin to 0.0.4-alpha failed: {body:#}");
+    // Same-major bump (base → patch_bump_target, both major 0) → preserve
+    // policy. Target is published for every supported test arch.
+    let patch_target = crate::code_sandbox::harness::patch_bump_target();
+    let (status, body) = set_pin(&server, &jwt, patch_target).await;
+    assert_eq!(status, 200, "set-pin to {patch_target} failed: {body:#}");
     assert_eq!(
         body["swap"]["cache_wipe"].as_str(),
         Some("preserve"),

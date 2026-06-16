@@ -68,6 +68,37 @@ async fn post(server: &TestServer, token: &str, path: &str, body: Value) -> Valu
     resp.json().await.unwrap_or(Value::Null)
 }
 
+/// Auto-approve the code_sandbox tools for this conversation so a chat
+/// turn can call `write_file` without pausing for manual approval.
+///
+/// The built-in code_sandbox server is deliberately NOT in the
+/// approval-exempt set — `is_builtin_server_id` covers only
+/// files_mcp/memory_mcp; code execution (write_file/edit_file/
+/// execute_command) requires explicit approval by design. Without this
+/// the turn pauses at `needs_approval` and the write never runs, so the
+/// version-back never fires. Mirrors
+/// `tests/chat/sandbox_real_llm_test.rs::set_auto_approve`.
+async fn set_auto_approve(server: &TestServer, token: &str, conv_id: &str) {
+    let resp = reqwest::Client::new()
+        .put(server.api_url(&format!("/conversations/{conv_id}/mcp-settings")))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&json!({
+            "approval_mode": "auto_approve",
+            "auto_approved_tools": [
+                { "server_id": sandbox_server_id(), "tools": ["write_file", "edit_file"] }
+            ]
+        }))
+        .send()
+        .await
+        .expect("set mcp-settings");
+    assert!(
+        resp.status().is_success(),
+        "mcp-settings PUT -> {}: {}",
+        resp.status(),
+        resp.text().await.unwrap_or_default()
+    );
+}
+
 #[tokio::test]
 async fn sandbox_write_file_versions_back_the_backing_file() {
     let Some(server) = enabled_test_server().await else {
@@ -100,6 +131,8 @@ async fn sandbox_write_file_versions_back_the_backing_file() {
         json!({}),
     )
     .await;
+
+    set_auto_approve(&server, &user.token, &conv_id).await;
 
     // Drive a turn: the stub model calls the sandbox write_file tool, overwriting
     // the copied-in `notes.txt`. The per-turn version-back then commits v2.
@@ -194,6 +227,7 @@ async fn sandbox_two_writes_in_one_turn_coalesce_to_one_version() {
     let conv_uuid = Uuid::parse_str(&conv_id).unwrap();
     let mut probe = ChatStreamProbe::open(&server, &user.token).await;
     probe.subscribe(Some(conv_uuid)).await;
+    set_auto_approve(&server, &user.token, &conv_id).await;
     let payload = json!({
         "content": "STUB_PLAN=sandbox_write_file_twice STUB_FILE=notes.txt \
                     STUB_CONTENT1=first-write STUB_CONTENT2=second-and-final edit twice",
@@ -286,6 +320,7 @@ async fn sandbox_unchanged_file_does_not_version_back() {
     )
     .await;
     let conv_uuid = Uuid::parse_str(&conv_id).unwrap();
+    set_auto_approve(&server, &user.token, &conv_id).await;
 
     // Two turns, BOTH writing the identical content "stable-body".
     for _ in 0..2 {
