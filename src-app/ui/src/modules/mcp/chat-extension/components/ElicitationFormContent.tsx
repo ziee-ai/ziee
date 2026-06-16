@@ -497,7 +497,7 @@ export function ElicitationFormContent({
               </Text>
             </div>
           }
-          description="This form can no longer be submitted. The MCP server session has ended."
+          description="This form can no longer be submitted — the request expired or was cancelled."
         />
       </div>
     )
