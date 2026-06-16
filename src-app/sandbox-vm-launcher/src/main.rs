@@ -155,7 +155,20 @@ fn run(cfg: VmLaunchConfig) -> ! {
                 eprintln!(
                     "launcher: parent (server, pid={initial_ppid}) exited or reparented to {ppid}; tearing down VM"
                 );
-                std::process::exit(0);
+                // Use `_exit`, NOT `std::process::exit`. We're on a side
+                // thread while the MAIN thread is blocked inside libkrun's
+                // `krun_start_enter` (the VM run loop). `std::process::exit`
+                // runs the libc/Rust runtime shutdown (atexit handlers,
+                // static destructors) — libkrun holds VM state + locks on the
+                // main thread, so that orderly teardown DEADLOCKS in cleanup
+                // and the process survives at PPID 1 with the in-process
+                // Hypervisor.framework VM + multi-GB guest RAM still mapped
+                // (the orphaned-VM RAM leak on killed/OOM'd parents).
+                // `_exit` terminates immediately with no cleanup; the kernel
+                // reclaims the whole task address space — including the VM —
+                // so it can't hang. Workspace dirs are reclaimed by the
+                // server's startup sweep on next boot.
+                unsafe { libc::_exit(0) };
             }
         });
     }
