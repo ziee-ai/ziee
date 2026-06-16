@@ -13,6 +13,8 @@ pub struct Config {
     #[serde(default)]
     pub code_sandbox: Option<CodeSandboxConfig>,
     #[serde(default)]
+    pub bio_mcp: Option<BioMcpConfig>,
+    #[serde(default)]
     pub secrets: Option<SecretsConfig>,
     /// Per-cache path overrides. Defaults to all-None; `Config::resolve_paths`
     /// fills each unset field with a subdir of `app.data_dir`. Operators
@@ -167,6 +169,37 @@ pub struct CodeSandboxConfig {
     /// and needs a remote MCP server to fetch artifacts MUST set this.
     #[serde(default)]
     pub public_base_url: Option<String>,
+}
+
+/// Configuration for the `bio_mcp` built-in MCP server (BioMCP biomedical
+/// connectors run as a managed `biomcp serve-http` sidecar).
+///
+/// Connected-only: the sidecar queries live upstream APIs (PubMed,
+/// ClinicalTrials.gov, …). **On by default** (per the feature roadmap) for
+/// connected deployments — the module self-disables when the embedded
+/// binary is a build stub or the host is offline. IP-sensitive operators
+/// turn it off with `bio_mcp: { enabled: false }`, since query terms
+/// egress to public APIs. This is the deploy-level kill switch; the
+/// per-deployment admin runtime toggle is the `mcp_servers.enabled`
+/// column on the bio row.
+#[derive(Debug, Deserialize, Clone)]
+pub struct BioMcpConfig {
+    /// Master switch. When false, the module's `init()` returns early
+    /// (no MCP row upsert, no sidecar ever spawned). Defaults to true.
+    #[serde(default = "default_bio_mcp_enabled")]
+    pub enabled: bool,
+}
+
+fn default_bio_mcp_enabled() -> bool {
+    true
+}
+
+impl Default for BioMcpConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_bio_mcp_enabled(),
+        }
+    }
 }
 
 impl Default for CodeSandboxConfig {

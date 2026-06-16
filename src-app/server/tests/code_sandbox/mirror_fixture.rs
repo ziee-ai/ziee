@@ -196,6 +196,7 @@ yanked = false
                 use_desktop_binary: false,
         sandbox_public_base_url: None,
         update_check_enabled: None,
+        bio_mcp_enabled: false,
     };
     let server = TestServer::start_with_options(opts).await;
 
