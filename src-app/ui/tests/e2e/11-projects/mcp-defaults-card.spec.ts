@@ -225,4 +225,86 @@ test.describe('Projects - MCP Defaults card', () => {
     // All-tools tag appears (the disabled rule's tools: [] = whole server).
     await expect(mcp.getByText('All tools', { exact: true })).toBeVisible()
   })
+
+  // Regression for the modal state-bleed bug: McpComposer.store
+  // openConfigModalForProject used to leave `state.selectedServers`
+  // populated from a prior session, and the modal's seed-once guard
+  // (`if (selectedServers.size > 0) return`) then skipped re-seeding from
+  // backend state — so a server disabled in a prior modal session
+  // reappeared as ENABLED on the next open. The fix resets selectedServers
+  // on every open. This drives the full MODAL UI (toggle → save → reload →
+  // reopen), which the API-driven tests above never exercise.
+  test('modal: toggle a server off, save, reload, reopen — stays off (no state-bleed)', async ({
+    page,
+    testInfra,
+  }) => {
+    const { apiURL, baseURL } = testInfra
+    const token = await getAdminToken(baseURL)
+
+    // Register a system MCP server and assign it to the admin's default
+    // group so the modal lists it as an enabled, toggle-able server.
+    const stamp = Date.now()
+    const createRes = await page.request.post(`${apiURL}/api/mcp/system-servers`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: {
+        name: `stub_bleed_${stamp}`,
+        display_name: 'Bleed Test Server',
+        enabled: true,
+        transport_type: 'http',
+        url: 'http://127.0.0.1:1/stub',
+        timeout_seconds: 5,
+        usage_mode: 'auto',
+      },
+    })
+    expect(createRes.status(), 'create server').toBe(201)
+    const sid = (await createRes.json()).id as string
+
+    const groupsRes = await page.request.get(`${apiURL}/api/groups`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const groupsBody = await groupsRes.json()
+    const groups: Array<{ id: string; is_default?: boolean; name: string }> =
+      Array.isArray(groupsBody) ? groupsBody : (groupsBody.groups ?? [])
+    const defaultGroup =
+      groups.find(g => g.is_default) ?? groups.find(g => g.name === 'Users')
+    expect(defaultGroup, 'default group').toBeTruthy()
+    await page.request.post(`${apiURL}/api/mcp/system-servers/${sid}/groups`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { group_ids: [defaultGroup!.id] },
+    })
+
+    const projectId = await createProject(page, 'MCP State-Bleed')
+
+    const openModal = async () => {
+      await page.getByRole('button', { name: 'Edit MCP defaults' }).click()
+      await expect(page.getByText('MCP Defaults for Project')).toBeVisible()
+    }
+    // The per-server toggle lives in the Collapse HEADER (the per-tool
+    // auto-approve switches are in the collapsed body), so scope to the
+    // header to avoid matching those.
+    const serverSwitch = () =>
+      page
+        .locator('.ant-collapse-header', { hasText: 'Bleed Test Server' })
+        .getByRole('switch')
+
+    // PHASE 1: open modal — the server starts ENABLED (it's in the default
+    // group, fresh project has no disabled_servers) — toggle OFF, Save & Close.
+    await openModal()
+    await expect(serverSwitch()).toBeChecked()
+    const savePut = page.waitForResponse(
+      r =>
+        r.url().includes(`/api/projects/${projectId}/mcp-settings`) &&
+        r.request().method() === 'PUT',
+    )
+    await serverSwitch().click()
+    await expect(serverSwitch()).not.toBeChecked()
+    await page.getByRole('button', { name: 'Save & Close' }).click()
+    await savePut
+
+    // PHASE 2: reload, reopen the modal — the switch must read the persisted
+    // disabled state, NOT stale in-memory selectedServers from before.
+    await page.reload()
+    await openModal()
+    await expect(serverSwitch()).not.toBeChecked()
+  })
 })

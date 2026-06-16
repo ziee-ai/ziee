@@ -555,11 +555,81 @@ test.describe('LLM Models - Local Download - Download Management', () => {
     await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', { state: 'hidden', timeout: 5000 })
   })
 
-  // "should allow cancelling an active download" was here. Removed
-  // because the test depends on a real ~350MB download from
-  // huggingface (distilgpt2) timing-windowed against a manual click
-  // of Cancel. Needs a deterministic mock-download fixture to be
-  // reliable. Tracked in src-app/ui/tests/e2e/TODO_E2E.md.
+  test('should cancel an active download and remove it from the list', async ({ page }) => {
+    // The original test drove a REAL ~350MB HuggingFace download (distilgpt2)
+    // and raced a manual Cancel click against the download finishing — flaky
+    // both ways (finished early OR failed to start). Instead, mock the
+    // downloads LIST so a deterministic "downloading" row renders for this
+    // provider with no real download, then exercise the real Cancel wiring
+    // (POST /cancel + the store's immediate row removal). The list mock is
+    // stateful (returns empty once cancel fires) so any re-fetch / SSE
+    // reconnect after cancel can't re-add the row; the live (empty) SSE
+    // can't clobber it beforehand because the merge only updates rows by id.
+    const providerId = new URL(page.url()).pathname.split('/').pop()!
+    const downloadId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+    const now = new Date().toISOString()
+    const downloadingRow = {
+      id: downloadId,
+      provider_id: providerId,
+      repository_id: 'huggingface',
+      status: 'downloading',
+      created_at: now,
+      started_at: now,
+      updated_at: now,
+      request_data: { model_name: 'cancel-me', display_name: 'cancel-me-download' },
+      progress_data: {
+        current: 1_000_000,
+        total: 350_000_000,
+        phase: 'downloading',
+        message: '',
+        speed_bps: 500_000,
+        eta_seconds: 600,
+      },
+    }
+
+    let cancelCalled = false
+
+    // Stateful list mock: a downloading row until cancel, then empty.
+    await page.route(/\/api\/llm-models\/downloads\?/, async route => {
+      if (route.request().method() !== 'GET') return route.fallback()
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          downloads: cancelCalled ? [] : [downloadingRow],
+          page: 1,
+          per_page: 100,
+          total: cancelCalled ? 0 : 1,
+        }),
+      })
+    })
+
+    // Cancel endpoint → record the call + return 204 No Content.
+    await page.route(`**/api/llm-models/downloads/${downloadId}/cancel`, async route => {
+      cancelCalled = true
+      await route.fulfill({ status: 204, body: '' })
+    })
+
+    // Reload so the list fetch fires with the mock active.
+    await page.reload()
+
+    // The downloading row + its Cancel button render in the "Downloading
+    // Models" card.
+    const card = page.locator('.ant-card:has-text("Downloading Models")')
+    await expect(card.getByText('cancel-me-download')).toBeVisible({ timeout: 10000 })
+    const cancelButton = card.locator('button:has-text("Cancel")').first()
+    await expect(cancelButton).toBeVisible()
+
+    // Click Cancel → the cancel API is hit and the row is removed.
+    const cancelRequest = page.waitForRequest(
+      req =>
+        req.url().includes(`/api/llm-models/downloads/${downloadId}/cancel`) &&
+        req.method() === 'POST',
+    )
+    await cancelButton.click()
+    await cancelRequest
+    await expect(page.getByText('cancel-me-download')).toHaveCount(0, { timeout: 10000 })
+  })
 
   test('should remove download from list after completion', async ({ page }) => {
     const modelName = `test-download-remove-${Date.now()}`
