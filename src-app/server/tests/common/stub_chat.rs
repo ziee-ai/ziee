@@ -325,6 +325,85 @@ fn script(
             }
             (Some("Got it — I'll remember that.".into()), None)
         }
+        // Emit the built-in `ask_user` elicitation tool (a single-choice enum),
+        // then, on the continuation carrying the user's answer as the tool
+        // result, echo it back. Drives the ask_user elicitation round-trip test.
+        "ask_user" => {
+            if let (false, Some(wire)) =
+                (had_tool_result, resolve_wire_name(tool_names, "ask_user"))
+            {
+                return (
+                    None,
+                    Some((
+                        wire.to_string(),
+                        json!({
+                            "message": "Which color do you want?",
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "color": {
+                                        "type": "string",
+                                        "enum": ["red", "green", "blue"]
+                                    }
+                                },
+                                "required": ["color"]
+                            }
+                        }),
+                    )),
+                );
+            }
+            let answer = last_tool_result_text(messages);
+            (Some(format!("You chose: {answer}")), None)
+        }
+        // ask_user with a MULTI-FIELD schema mixing a free-string, a bounded
+        // integer, and a `pattern`-validated string. Drives the multi-field /
+        // validated-input elicitation round-trip test; the continuation echoes
+        // the full answer JSON the user submitted.
+        "ask_user_multi" => {
+            if let (false, Some(wire)) =
+                (had_tool_result, resolve_wire_name(tool_names, "ask_user"))
+            {
+                return (
+                    None,
+                    Some((
+                        wire.to_string(),
+                        json!({
+                            "message": "Tell me about yourself",
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "nickname": { "type": "string" },
+                                    "age": { "type": "integer", "minimum": 0 },
+                                    "code": { "type": "string", "pattern": "^[A-Z]{3}$" }
+                                },
+                                "required": ["nickname", "code"]
+                            }
+                        }),
+                    )),
+                );
+            }
+            let answer = last_tool_result_text(messages);
+            (Some(format!("Recorded: {answer}")), None)
+        }
+        // ask_user with an EMPTY message — a malformed tool call. The built-in
+        // returns the is_error "non-empty message" marker WITHOUT surfacing a
+        // form; the continuation echoes that marker. Drives the empty-message
+        // integration test (no mcpElicitationRequired is emitted).
+        "ask_user_empty" => {
+            if let (false, Some(wire)) =
+                (had_tool_result, resolve_wire_name(tool_names, "ask_user"))
+            {
+                return (
+                    None,
+                    Some((
+                        wire.to_string(),
+                        json!({ "message": "", "schema": { "type": "object" } }),
+                    )),
+                );
+            }
+            let answer = last_tool_result_text(messages);
+            (Some(format!("Result: {answer}")), None)
+        }
         // Emit a code_sandbox `write_file` overwriting `STUB_FILE` with
         // `STUB_CONTENT`. Used by the sandbox version-back round-trip test: the
         // write overwrites the copied-in editable file so the per-turn

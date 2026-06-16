@@ -14,8 +14,8 @@ use crate::modules::mcp::{McpRepository, McpServer};
 
 use super::content::McpContentData;
 use super::extension::{
-    McpServerConfig, SSEChatStreamMcpApprovalRequiredData, SSEChatStreamMcpToolCompleteData,
-    SSEChatStreamMcpToolStartData, SSEChatStreamArtifactCreatedData,
+    McpServerConfig, SSEChatStreamMcpApprovalRequiredData, SSEChatStreamMcpElicitationRequiredData,
+    SSEChatStreamMcpToolCompleteData, SSEChatStreamMcpToolStartData, SSEChatStreamArtifactCreatedData,
 };
 
 /// Get all MCP servers accessible to the user
@@ -137,6 +137,170 @@ pub fn convert_mcp_tool_to_ai_tool(
     ))
 }
 
+/// How long the built-in `ask_user` tool waits for the human to answer before
+/// giving up and returning a "no response" result. The intercepted `ask_user`
+/// path returns from `execute_tool` BEFORE its outer `timeout_seconds + 300`
+/// wrap, so this is the SOLE bound on the form-fill; it's sized to match the
+/// ~300s elicitation budget that wrap grants the external-MCP elicitation path.
+const ASK_USER_ELICITATION_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// Display name shown in the elicitation form when the ASSISTANT (not a
+/// third-party MCP server) is the one asking.
+const ASK_USER_SERVER_LABEL: &str = "Assistant";
+
+/// Map an elicitation response (the user's answer, or a synthesized
+/// cancel/timeout/stream-closed) to the `(tool_result_text, is_error)` the
+/// model receives. Pure + unit-testable.
+///
+/// EVERY outcome is non-error (`is_error == false`): a decline / cancel /
+/// timeout is a legitimate answer the assistant should reason about, not a
+/// tool failure it should retry. `accept` returns the answer content as a
+/// JSON string so the model can parse the field values.
+fn ask_user_tool_result(
+    response: &crate::modules::mcp::elicitation::models::ElicitationResponse,
+) -> (String, bool) {
+    match response.action.as_str() {
+        "accept" => {
+            let content = response.content.clone().unwrap_or(Value::Null);
+            (
+                serde_json::to_string(&content).unwrap_or_else(|_| "{}".to_string()),
+                false,
+            )
+        }
+        "decline" => ("The user declined to answer.".to_string(), false),
+        // cancel / timeout / stream-closed / anything unexpected
+        _ => (
+            "The user did not respond (cancelled or timed out).".to_string(),
+            false,
+        ),
+    }
+}
+
+/// Drive the built-in `ask_user` elicitation INLINE in the chat-stream context.
+///
+/// Mirrors the external-MCP-server path in `mcp/client/http.rs` (register →
+/// `ElicitationStartedNotification` → `mcpElicitationRequired` SSE → block on
+/// the oneshot), but returns the user's answer as the tool result instead of
+/// POSTing it back to a server. The whole existing pipeline is reused: the
+/// global registry, the chat extension's owner-bind + content-block persister
+/// (driven by the notification), the FE form, and the
+/// `POST /api/mcp/elicitation/{id}/respond` endpoint that unblocks the oneshot.
+pub(crate) async fn run_ask_user_elicitation(
+    input: Value,
+    message_id: Option<uuid::Uuid>,
+    owner_user_id: Option<uuid::Uuid>,
+    sse_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
+    elicit_notify_tx: Option<
+        tokio::sync::mpsc::UnboundedSender<
+            crate::modules::mcp::elicitation::models::ElicitationStartedNotification,
+        >,
+    >,
+) -> McpContentData {
+    use crate::modules::mcp::elicitation::{models, registry};
+
+    // Builds the ToolResult; tool_use_id + server_id are stamped by the caller
+    // (same as execute_tool's success path).
+    let ask_result = |content: String, is_error: bool| McpContentData::ToolResult {
+        tool_use_id: String::new(),
+        name: Some("ask_user".to_string()),
+        server_id: None,
+        content,
+        is_error: if is_error { Some(true) } else { None },
+        attachment: None,
+        images: None,
+        resource_links: None,
+        hidden_content: None,
+    };
+
+    let message = input
+        .get("message")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if message.is_empty() {
+        return ask_result("ask_user requires a non-empty 'message'.".to_string(), true);
+    }
+    let requested_schema = input
+        .get("schema")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({ "type": "object" }));
+
+    // No interactive stream (e.g. the before_llm_call no-SSE path) → nobody to ask.
+    let Some(sse_tx) = sse_tx else {
+        return ask_result(
+            "The user did not respond (no interactive session available).".to_string(),
+            false,
+        );
+    };
+
+    let elicitation_id = uuid::Uuid::new_v4();
+    let content_id = uuid::Uuid::new_v4();
+    let (etx, erx) = tokio::sync::oneshot::channel::<models::ElicitationResponse>();
+    registry::register(elicitation_id, etx, Some(content_id));
+
+    // Bind the owning user SYNCHRONOUSLY — before the elicitation_id is ever
+    // observable on the SSE stream — so a very fast `/respond` can't lose a race
+    // with the detached notify-task bind and get a spurious fail-closed 403. The
+    // notify task below ALSO binds (idempotent) and is the source of truth for
+    // the DB content-block persistence.
+    if let Some(uid) = owner_user_id {
+        registry::bind_owner(elicitation_id, uid);
+    }
+
+    // Persist the pending DB content block + (idempotently) bind the owning user
+    // — handled by the chat extension's elicit_notify listener.
+    if let Some(ref notify_tx) = elicit_notify_tx {
+        let _ = notify_tx.send(models::ElicitationStartedNotification {
+            elicitation_id,
+            content_id,
+            message_id,
+            message: message.clone(),
+            requested_schema: requested_schema.clone(),
+            server: ASK_USER_SERVER_LABEL.to_string(),
+        });
+    }
+
+    // Surface the form on the chat token stream (same event the FE already
+    // renders). Use the TYPED SSEChatStreamEvent variant — like
+    // send_tool_start_event — so the serialized payload carries the `type`
+    // discriminator the per-user chat stream keys extension events on (a
+    // hand-built Event without `type` is silently dropped by consumers).
+    let event = SSEChatStreamEvent::McpElicitationRequired(SSEChatStreamMcpElicitationRequiredData {
+        elicitation_id: elicitation_id.to_string(),
+        message_id: message_id.map(|m| m.to_string()),
+        message: message.clone(),
+        requested_schema: requested_schema.clone(),
+        server: ASK_USER_SERVER_LABEL.to_string(),
+    });
+    if sse_tx.send(Ok(event.into())).is_err() {
+        let _ = registry::remove(elicitation_id);
+        return ask_result(
+            "The user did not respond (the chat stream closed).".to_string(),
+            false,
+        );
+    }
+
+    // Block until the user answers, hits Stop (stream closes), or we time out.
+    let response = tokio::select! {
+        r = erx => r.unwrap_or(models::ElicitationResponse {
+            action: "cancel".to_string(),
+            content: None,
+        }),
+        _ = sse_tx.closed() => {
+            let _ = registry::remove(elicitation_id);
+            models::ElicitationResponse { action: "cancel".to_string(), content: None }
+        }
+        _ = tokio::time::sleep(ASK_USER_ELICITATION_TIMEOUT) => {
+            let _ = registry::remove(elicitation_id);
+            models::ElicitationResponse { action: "cancel".to_string(), content: None }
+        }
+    };
+
+    let (content, is_error) = ask_user_tool_result(&response);
+    ask_result(content, is_error)
+}
+
 /// Execute a tool via MCP session
 ///
 /// # Arguments
@@ -168,6 +332,22 @@ pub async fn execute_tool(
     // (modelcontextprotocol.io/specification/2025-11-25/server/resources#annotations),
     // `["user", "assistant"]` means "both audiences should see it" — the LLM
     // should ALSO process such content, which means we must NOT bypass it.
+
+    // `ask_user` (the built-in elicitation tool) is driven INLINE here instead
+    // of being dispatched over the loopback: only this chat-stream context holds
+    // the live `sse_tx` needed to surface the form. It blocks until the user
+    // answers and returns their answer as the tool result.
+    if tool_name == "ask_user"
+        && session.server_id()
+            == crate::modules::elicitation_mcp::elicitation_mcp_server_id()
+    {
+        // Defensive fallback path (sampling / before_llm_call approved-tools):
+        // no user_id in scope here, so the owning user is bound by the notify
+        // task. The hot path (after_llm_call) binds synchronously — see mcp.rs.
+        let result =
+            run_ask_user_elicitation(input, message_id, None, sse_tx, elicit_notify_tx).await;
+        return (result, false);
+    }
 
     // Elicitation may block for up to 300s; use a generous outer timeout so that
     // elicitation requests have time to complete before we give up.
@@ -517,9 +697,113 @@ pub fn build_query_input(schema: &serde_json::Value, query_text: &str) -> Option
 
 #[cfg(test)]
 mod tests {
-    use super::{build_query_input, convert_mcp_tool_to_ai_tool, MAX_ANTHROPIC_TOOL_NAME_LEN};
+    use super::{
+        ask_user_tool_result, build_query_input, convert_mcp_tool_to_ai_tool,
+        run_ask_user_elicitation, McpContentData, MAX_ANTHROPIC_TOOL_NAME_LEN,
+    };
     use crate::modules::mcp::client::traits::Tool as McpToolDef;
+    use crate::modules::mcp::elicitation::models::ElicitationResponse;
     use uuid::Uuid;
+
+    /// Pull `(content, is_error)` out of a `ToolResult` for assertions.
+    fn tool_result_parts(r: &McpContentData) -> (String, bool) {
+        match r {
+            McpContentData::ToolResult { content, is_error, .. } => {
+                (content.clone(), is_error.unwrap_or(false))
+            }
+            other => panic!("expected ToolResult, got {other:?}"),
+        }
+    }
+
+    /// An empty `message` is a malformed tool call from the model → the ONE
+    /// genuine error outcome (so the model retries with a real prompt). Returns
+    /// before any registry/SSE work, so it's drivable with all-None args.
+    #[tokio::test]
+    async fn ask_user_empty_message_is_error() {
+        let result = run_ask_user_elicitation(
+            serde_json::json!({ "message": "   ", "schema": { "type": "object" } }),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await;
+        let (content, is_error) = tool_result_parts(&result);
+        assert!(is_error, "empty message must be a tool error");
+        assert!(content.contains("non-empty"), "got: {content}");
+    }
+
+    /// With no interactive stream (sse_tx == None — the before_llm_call no-SSE
+    /// approved-tools path) there's nobody to ask, so ask_user returns a
+    /// NON-error "no interactive session" marker (not a failure to retry).
+    #[tokio::test]
+    async fn ask_user_without_sse_returns_non_error_no_session_marker() {
+        let result = run_ask_user_elicitation(
+            serde_json::json!({ "message": "Pick a color", "schema": { "type": "object" } }),
+            None,
+            None,
+            None, // no sse_tx
+            None,
+        )
+        .await;
+        let (content, is_error) = tool_result_parts(&result);
+        assert!(!is_error, "no-session is not a tool failure");
+        assert!(content.contains("no interactive session"), "got: {content}");
+    }
+
+    // ── ask_user response → tool_result mapping (plan Tier 1) ─────────────────
+
+    #[test]
+    fn ask_user_accept_returns_answer_json_non_error() {
+        let r = ElicitationResponse {
+            action: "accept".to_string(),
+            content: Some(serde_json::json!({ "color": "green" })),
+        };
+        let (content, is_error) = ask_user_tool_result(&r);
+        assert_eq!(content, r#"{"color":"green"}"#);
+        assert!(!is_error, "accept must never be a tool error");
+    }
+
+    #[test]
+    fn ask_user_accept_without_content_is_json_null() {
+        let r = ElicitationResponse {
+            action: "accept".to_string(),
+            content: None,
+        };
+        let (content, is_error) = ask_user_tool_result(&r);
+        assert_eq!(content, "null");
+        assert!(!is_error);
+    }
+
+    #[test]
+    fn ask_user_decline_returns_marker_non_error() {
+        let r = ElicitationResponse {
+            action: "decline".to_string(),
+            content: None,
+        };
+        let (content, is_error) = ask_user_tool_result(&r);
+        assert!(content.contains("declined"), "got: {content}");
+        assert!(!is_error, "decline is an answer, not a failure");
+    }
+
+    #[test]
+    fn ask_user_cancel_timeout_and_unknown_map_to_no_response_marker() {
+        // cancel (explicit), the synthesized timeout/stream-closed cancel, and
+        // any unexpected action all collapse to the same non-error "no response"
+        // marker so the assistant reasons about it instead of retrying.
+        for action in ["cancel", "timeout", "weird-action"] {
+            let r = ElicitationResponse {
+                action: action.to_string(),
+                content: None,
+            };
+            let (content, is_error) = ask_user_tool_result(&r);
+            assert!(
+                content.contains("did not respond"),
+                "action={action} got: {content}"
+            );
+            assert!(!is_error, "action={action} must be non-error");
+        }
+    }
 
     fn make_mcp_tool(name: &str) -> McpToolDef {
         McpToolDef {

@@ -110,9 +110,11 @@ struct AccumulatedToolUse {
 
 /// MCP chat extension
 /// Deterministic ids of the privileged built-in MCP servers to auto-attach this
-/// request, based on flags set by the file (`attach_files_mcp`) and memory
-/// (`attach_memory_mcp`) chat extensions. These are fetched by id OUTSIDE the
-/// group-gated accessibility path — always-on for tool-capable models, no grant.
+/// request. `files`/`memory` attach behind flags set by the file
+/// (`attach_files_mcp`) and memory (`attach_memory_mcp`) chat extensions;
+/// `elicitation` (`ask_user`) attaches whenever the model is tool-capable
+/// (`model_tools_capable`). All are fetched by id OUTSIDE the group-gated
+/// accessibility path — no per-user grant — and only for tool-capable models.
 fn auto_attach_builtin_ids(
     metadata: &std::collections::HashMap<String, serde_json::Value>,
 ) -> Vec<Uuid> {
@@ -130,6 +132,25 @@ fn auto_attach_builtin_ids(
     if flag("attach_memory_mcp") {
         ids.push(crate::modules::memory_mcp::memory_mcp_server_id());
     }
+    // `ask_user` is always-on — the assistant may need to ask the user for input
+    // in any conversation — but ONLY for tool-capable models: a model that can't
+    // call tools can't call `ask_user`, and attaching it would run the full
+    // before_llm_call body (loopback session + tools/list) on EVERY chat, incl.
+    // non-tool-capable models and MCP-off chats. The flag-gated built-ins above
+    // are already only flagged on the tool-capable path (file.rs gates
+    // `attach_files_mcp` on `tool_capable`); mirror that contract here.
+    // `model_tools_capable` is memoized into metadata by
+    // chat/core/services/streaming.rs before the extension pipeline runs (and may
+    // round-trip as a JSON bool or "true"/"false" string). Auto-approved (the
+    // user answering the form IS the approval); execution is intercepted in
+    // `helpers::execute_tool`, not dispatched over the loopback.
+    let tool_capable = metadata
+        .get("model_tools_capable")
+        .and_then(|v| v.as_bool().or_else(|| v.as_str().map(|s| s == "true")))
+        .unwrap_or(false);
+    if tool_capable {
+        ids.push(crate::modules::elicitation_mcp::elicitation_mcp_server_id());
+    }
     ids
 }
 
@@ -146,13 +167,15 @@ fn is_side_effect_tool(server_id: Uuid, tool_name: &str) -> bool {
         && matches!(tool_name, "remember" | "forget")
 }
 
-/// Privileged built-in servers (files, memory). Their tools bypass the MCP
-/// approval flow — they're read-only / save-only and auto-attached, so a
-/// `read_file`/`remember` call must execute immediately rather than stall behind
-/// a manual-approval prompt the user never opted into.
+/// Privileged built-in servers (files, memory, elicitation). Their tools bypass
+/// the MCP approval flow — they're read-only / save-only / user-prompting and
+/// auto-attached, so a `read_file`/`remember`/`ask_user` call must execute
+/// immediately rather than stall behind a manual-approval prompt the user never
+/// opted into (for `ask_user`, the user answering the form IS the approval).
 fn is_builtin_server_id(id: Uuid) -> bool {
     id == crate::modules::files_mcp::files_mcp_server_id()
         || id == crate::modules::memory_mcp::memory_mcp_server_id()
+        || id == crate::modules::elicitation_mcp::elicitation_mcp_server_id()
 }
 
 ///
@@ -1457,6 +1480,30 @@ impl ChatExtension for McpChatExtension {
                 continue; // Don't add "always" server tools to the LLM tool list
             }
 
+            // `ask_user` is intercepted in execute_tool and NEVER dispatched over
+            // the loopback, so advertise its STATIC descriptor directly instead of
+            // paying a loopback initialize + tools/list round-trip on every
+            // tool-capable turn. The wire name (`<server_id>__ask_user`) is
+            // identical to what list_tools would have produced.
+            if *server_id == crate::modules::elicitation_mcp::elicitation_mcp_server_id() {
+                let list = crate::modules::elicitation_mcp::tools::tool_list();
+                if let Some(arr) = list["tools"].as_array() {
+                    for t in arr {
+                        let mcp_tool = crate::modules::mcp::client::traits::Tool {
+                            name: t["name"].as_str().unwrap_or_default().to_string(),
+                            description: t["description"].as_str().map(|s| s.to_string()),
+                            input_schema: t["inputSchema"].clone(),
+                        };
+                        if let Some(ai_tool) =
+                            helpers::convert_mcp_tool_to_ai_tool(server.id, &mcp_tool)
+                        {
+                            all_tools.push(ai_tool);
+                        }
+                    }
+                }
+                continue;
+            }
+
             // Auto mode: Get or create MCP session and collect tools for LLM
             let session_arc = match self.session_manager
                 .get_or_create_with_context(
@@ -1883,8 +1930,8 @@ impl ChatExtension for McpChatExtension {
             auto_approved_servers.len()
         );
 
-        // Built-in privileged servers (files/memory) always execute, even when
-        // the conversation has MCP approval Disabled — so a user with MCP off
+        // Built-in privileged servers (files/memory/elicitation) always execute,
+        // even when the conversation has MCP approval Disabled — so a user with MCP off
         // still gets file reading + memory saving.
         let has_builtin_call = tool_uses.iter().any(|(_, _, sid, _)| {
             uuid::Uuid::parse_str(sid)
@@ -2163,7 +2210,27 @@ impl ChatExtension for McpChatExtension {
             // Send tool start event
             helpers::send_tool_start_event(tx, &tool_use_id, &tool_name, &server.name, &input).await;
 
-            let (mut result, is_final) = if server.supports_sampling {
+            let (mut result, is_final) = if server.id
+                == crate::modules::elicitation_mcp::elicitation_mcp_server_id()
+                && tool_name == "ask_user"
+            {
+                // `ask_user` is driven INLINE (it needs the live chat sse_tx) and is
+                // never dispatched over the loopback — so intercept here, BEFORE any
+                // session is created, to skip a wasted initialize handshake. (The
+                // same interception lives defensively in execute_tool for the
+                // sampling + before_llm_call approved-tools paths.)
+                (
+                    helpers::run_ask_user_elicitation(
+                        input,
+                        context.message_id,
+                        Some(context.user_id),
+                        tx.cloned(),
+                        Some(elicit_notify_tx.clone()),
+                    )
+                    .await,
+                    false,
+                )
+            } else if server.supports_sampling {
                 // Sampling path: create a fresh session with the sampling handler (bypass pool)
                 let model_id_opt = context.metadata.get("model_id")
                     .and_then(|v| v.as_str())
@@ -3160,26 +3227,66 @@ mod builtin_tests {
 
     #[test]
     fn auto_attach_ids_from_flags() {
+        let elicit = crate::modules::elicitation_mcp::elicitation_mcp_server_id();
+        let files = crate::modules::files_mcp::files_mcp_server_id();
+        let memory = crate::modules::memory_mcp::memory_mcp_server_id();
+
+        // Non-tool-capable model (no model_tools_capable seeded) → NOTHING
+        // auto-attaches. ask_user must NOT be sent to a model that can't call
+        // tools (regression guard: attaching it ran the full MCP body + a tools
+        // array on every chat, incl. non-tool-capable / MCP-off chats).
         let mut m: HashMap<String, serde_json::Value> = HashMap::new();
         assert!(auto_attach_builtin_ids(&m).is_empty());
+        // Explicit false is the same.
+        m.insert("model_tools_capable".into(), json!(false));
+        assert!(auto_attach_builtin_ids(&m).is_empty());
+
+        // Tool-capable model → ask_user (elicitation) is always attached.
+        let mut m = HashMap::new();
+        m.insert("model_tools_capable".into(), json!(true));
+        assert_eq!(auto_attach_builtin_ids(&m), vec![elicit]);
+        // The capability flag round-trips as a "true"/"false" string too.
+        let mut ms = HashMap::new();
+        ms.insert("model_tools_capable".into(), json!("true"));
+        assert_eq!(auto_attach_builtin_ids(&ms), vec![elicit]);
+
+        // The flag-gated built-ins add on top of the elicitation id.
         m.insert("attach_files_mcp".into(), json!("true"));
-        assert_eq!(auto_attach_builtin_ids(&m).len(), 1);
+        let with_files = auto_attach_builtin_ids(&m);
+        assert!(with_files.contains(&files) && with_files.contains(&elicit));
+        assert_eq!(with_files.len(), 2);
         m.insert("attach_memory_mcp".into(), json!("true"));
-        assert_eq!(auto_attach_builtin_ids(&m).len(), 2);
-        // a non-"true" value is ignored
+        let all = auto_attach_builtin_ids(&m);
+        assert!(all.contains(&files) && all.contains(&memory) && all.contains(&elicit));
+        assert_eq!(all.len(), 3);
+        // A non-"true" flag value is ignored — only elicitation remains.
         let mut m2: HashMap<String, serde_json::Value> = HashMap::new();
+        m2.insert("model_tools_capable".into(), json!(true));
         m2.insert("attach_files_mcp".into(), json!("false"));
-        assert!(auto_attach_builtin_ids(&m2).is_empty());
+        assert_eq!(auto_attach_builtin_ids(&m2), vec![elicit]);
     }
 
     #[test]
-    fn builtin_server_id_recognizes_files_and_memory_only() {
+    fn elicitation_is_builtin_and_auto_approved() {
+        // ask_user must be treated as a built-in so its tool skips the manual
+        // approval prompt (the user answering the form IS the approval).
+        assert!(is_builtin_server_id(
+            crate::modules::elicitation_mcp::elicitation_mcp_server_id()
+        ));
+    }
+
+    #[test]
+    fn builtin_server_id_recognizes_zero_config_builtins() {
         assert!(is_builtin_server_id(
             crate::modules::files_mcp::files_mcp_server_id()
         ));
         assert!(is_builtin_server_id(
             crate::modules::memory_mcp::memory_mcp_server_id()
         ));
+        assert!(is_builtin_server_id(
+            crate::modules::elicitation_mcp::elicitation_mcp_server_id()
+        ));
+        // A third-party server id is NOT a privileged built-in.
         assert!(!is_builtin_server_id(Uuid::new_v4()));
     }
 }

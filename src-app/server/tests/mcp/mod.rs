@@ -10,6 +10,7 @@ mod run_in_sandbox_test;
 // behavior end-to-end via the test server's HTTP surface; they don't
 // import bridge code directly (rely on `crate::chat::helpers::*` for
 // model fixtures + SSE parsing, same pattern as project tests).
+mod elicitation_mcp_test;
 mod mcp_approval_workflow_test;
 mod mcp_content_test;
 mod mcp_defaults_test;
