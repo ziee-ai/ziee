@@ -47,9 +47,17 @@ src-app/server/vendor/pgvector/pg_config_wrapper/
 # Output of the updater Pages CI test (`just check-updater-ci` via act --bind).
 .updater-test-out/
 
-# Per-session Claude Code state (lock file used by the scheduled-task
-# bookkeeping). Never committed.
-.claude/scheduled_tasks.lock
+# Claude Code local state + docs — never tracked (settings, agents,
+# worktrees, scheduled-task lock, and any architecture notes under here).
+.claude/
 
 # Transient server build/packaging staging (server-release.yml + nfpm smoke).
 /dist/
+
+# --- Local / diagnostic artifacts: kept on disk, never tracked ---
+# Audit reports (round-by-round reports at repo root + .audit/ outputs).
+/AUDIT-*.md
+.audit/
+# Test logs + antd diagnostic dumps roll over naturally; don't commit them.
+src-app/server/test-logs/
+src-app/ui/docs/antd-diagnostics/
