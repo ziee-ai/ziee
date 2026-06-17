@@ -1120,6 +1120,13 @@ pub(crate) fn tool_definitions() -> Value {
                 read-only. Use relative paths (e.g. ./out.png) or paths under /home/sandboxuser.\n\
                 FILES: Conversation attachments are staged in /home/sandboxuser under their \
                 original filenames, so a bare filename (e.g. data.csv) resolves there.\n\
+                MOUNTED FOLDERS: Folders the user has mounted from their machine appear under \
+                /mnt/<full host path> (read-only unless stated) — e.g. host /Users/me/runs maps \
+                to /mnt/Users/me/runs, and Windows C:\\data to /mnt/C/data. This mapping is exact \
+                and reversible, so any host path the user names resolves deterministically. Read \
+                large data files (BAM/FASTQ/VCF, etc.) there in place; never copy or re-upload \
+                them. The active mounts for this conversation are also listed in a system note, \
+                and each execute_command result echoes them under `mounts`.\n\
                 TIMEOUT: 10 minutes. Output capped at 1 MiB per stream.",
             "inputSchema": {
                 "type": "object",
