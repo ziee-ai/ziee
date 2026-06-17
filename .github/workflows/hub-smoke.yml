@@ -51,6 +51,19 @@ jobs:
         with:
           submodules: recursive
 
+      # The full debug build of this workspace (server + 9 crates + embedded
+      # artifacts: hub-seed, sandbox bundle, pandoc/pdfium/biomcp, …) plus the
+      # restored rust-cache overruns the stock 14 GB runner disk — the build
+      # was failing on the final rlib link with "No space left on device".
+      # Reclaim the preinstalled toolchains we don't use (~25-30 GB).
+      - name: Free up disk space
+        run: |
+          echo "before:"; df -h /
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+            /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/share/swift
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          echo "after:"; df -h /
+
       - name: Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
@@ -110,6 +123,10 @@ jobs:
         working-directory: src-app/server
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Debug info is the bulk of a debug target dir; a smoke test never runs
+          # a debugger, so drop it. Roughly halves the on-disk artifact size,
+          # which (with the free-disk step) keeps the link under the disk cap.
+          CARGO_PROFILE_DEV_DEBUG: "0"
         run: cargo build -p ziee --no-default-features --features gpu-detect
 
       # Runtime config: external Postgres (reuse the build DB), code_sandbox on
