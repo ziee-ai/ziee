@@ -147,6 +147,14 @@ impl DesktopModule for BackendModule {
         let sandbox_cfg = config.code_sandbox.get_or_insert_with(Default::default);
         sandbox_cfg.enabled = true;
 
+        // BioMCP: force the config flag on. The module self-disables if
+        // the embedded biomcp binary is a build stub, and the managed
+        // sidecar surfaces a clear error when offline — so a desktop user
+        // without connectivity isn't broken; bio tools just stay
+        // unavailable until the network returns. Connected-only by nature.
+        let bio_cfg = config.bio_mcp.get_or_insert_with(Default::default);
+        bio_cfg.enabled = true;
+
         tracing::info!("Backend will use port {}", port);
 
         // Publish the bound port into the remote_access state so the

@@ -116,6 +116,9 @@ pub async fn restore_version(
     // Sync: a restore changes the head.
     crate::modules::file::sync::publish_file_changed(user_id, file_id);
 
+    // Document RAG: a restore makes a different version the head → re-index.
+    crate::modules::file_rag::ingest::spawn_reindex(user_id, file_id);
+
     let updated = Repos
         .file
         .get_by_id_and_user(file_id, user_id)

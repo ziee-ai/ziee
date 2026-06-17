@@ -4,10 +4,12 @@
 mod agentic_chat;
 mod assistant;
 mod auth;
+mod bio_mcp;
 mod chat;
 mod code_sandbox;
 mod common;
 mod file;
+mod file_rag;
 mod files_mcp;
 mod hardware;
 mod hub;
@@ -25,6 +27,7 @@ mod server_update;
 mod skill;
 mod summarization;
 mod sync;
+mod web_search;
 mod workflow;
 // `remote_access` integration tests live in the desktop crate now —
 // they exercise endpoints served only by the ziee-desktop binary

@@ -179,6 +179,9 @@ mod tests {
         assert_eq!(get_extension("test.pdf"), "pdf");
         assert_eq!(get_extension("image.jpeg"), "jpeg");
         assert_eq!(get_extension("document.tar.gz"), "gz");
-        assert_eq!(get_extension("noext"), "");
+        // Per `file::utils::extension_of`'s documented contract, a dot-less
+        // name yields the WHOLE (lowercased) name — so the on-disk blob key
+        // matches how `upload` wrote it — NOT "".
+        assert_eq!(get_extension("noext"), "noext");
     }
 }

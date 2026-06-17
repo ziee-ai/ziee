@@ -183,6 +183,12 @@ pub struct TestServerOptions {
     /// no test-server boot makes a live api.github.com call. The mock-GitHub
     /// test sets `Some(true)` + a `SERVER_UPDATE_API_MIRROR` in `extra_env`.
     pub update_check_enabled: Option<bool>,
+    /// Enable the `bio_mcp` built-in MCP server in the test config. Defaults
+    /// to FALSE so the (production-default-ON) BioMCP sidecar never spawns
+    /// during unrelated tests and chat tests don't auto-attach it; bio tests
+    /// opt in explicitly. The `BIO_MCP_SIDECAR_URL` debug seam (set via
+    /// `extra_env`) lets a test point the proxy at a mock sidecar.
+    pub bio_mcp_enabled: bool,
 }
 
 impl TestServer {
@@ -410,6 +416,14 @@ secrets:
         let update_check_enabled = opts.update_check_enabled.unwrap_or(false);
         config.push_str(&format!(
             "\nupdate_check:\n  enabled: {update_check_enabled}\n"
+        ));
+
+        // bio_mcp defaults ON in production but OFF in tests (see field
+        // doc) — write the section explicitly so the test server never
+        // spawns the BioMCP sidecar unless a bio test opts in.
+        config.push_str(&format!(
+            "\nbio_mcp:\n  enabled: {}\n",
+            opts.bio_mcp_enabled
         ));
 
         fs::write(&temp_config_path, config).expect("Failed to write temporary config");

@@ -226,6 +226,13 @@ export interface CodeSandboxResourceLimits {
   vm_max_concurrent_execs: number
 }
 
+export interface ConfigField {
+  key: string
+  label: string
+  placeholder: string
+  required: boolean
+}
+
 export type ContentBlockDelta = {
   type: 'text_delta'
   delta: string
@@ -759,6 +766,25 @@ export interface FileListResponse {
   page: number
   per_page: number
   total: number
+}
+
+export interface FileRagAdminSettings {
+  chunk_chars: number
+  chunk_overlap_chars: number
+  cosine_threshold: number
+  default_top_k: number
+  embedding_dimensions: number
+  embedding_model_id?: string
+  enabled: boolean
+  fts_candidate_multiplier: number
+  fts_dictionary: string
+  fts_enabled: boolean
+  fts_min_rank: number
+  fts_rrf_k: number
+  id: number
+  max_chunks_per_file: number
+  semantic_enabled: boolean
+  updated_at: string
 }
 
 export type FileRole = 'weight' | 'index' | 'config' | 'tokenizer' | 'vocab' | 'other'
@@ -1979,6 +2005,20 @@ export interface PromptArgument {
   required?: boolean
 }
 
+export interface ProviderCatalogEntry {
+  api_key_set: boolean
+  config: any
+  config_fields: ConfigField[]
+  configured: boolean
+  display_name: string
+  key: string
+  needs_api_key: boolean
+}
+
+export interface ProviderCatalogResponse {
+  providers: ProviderCatalogEntry[]
+}
+
 export interface ProviderInstancesResponse {
   instances: InstanceResponse[]
   provider_id: string
@@ -2673,7 +2713,7 @@ export interface SyncConnectedData {
   connection_id: string
 }
 
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'file' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'file' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'web_search_settings' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run'
 
 export interface SyncEvent {
   action: SyncAction
@@ -2804,6 +2844,10 @@ export interface ToolUseApproval {
 
 export type TransportType = 'stdio' | 'http' | 'sse'
 
+export interface TriggerResponse {
+  status: string
+}
+
 export interface TunnelStartResponse {
   public_url: string
   started_at: string
@@ -2859,6 +2903,21 @@ export interface UpdateConversationRequest {
 
 export interface UpdateConversationSummarizationModeRequest {
   summarization_mode: string
+}
+
+export interface UpdateFileRagAdminSettingsRequest {
+  chunk_chars?: number
+  chunk_overlap_chars?: number
+  cosine_threshold?: number
+  default_top_k?: number
+  embedding_model_id?: string
+  enabled?: boolean
+  fts_candidate_multiplier?: number
+  fts_enabled?: boolean
+  fts_min_rank?: number
+  fts_rrf_k?: number
+  max_chunks_per_file?: number
+  semantic_enabled?: boolean
 }
 
 export interface UpdateGroupProvidersRequest {
@@ -2970,6 +3029,11 @@ export interface UpdateProjectRequest {
   name?: string
 }
 
+export interface UpdateProviderRequest {
+  api_key?: string
+  config?: any
+}
+
 export interface UpdateRemoteAccessSettingsRequest {
   auto_start_tunnel?: boolean
   ngrok_auth_token?: string
@@ -3037,6 +3101,15 @@ export interface UpdateUserRequest {
   display_name?: string
   is_active?: boolean
   username?: string
+}
+
+export interface UpdateWebSearchSettingsRequest {
+  enabled?: boolean
+  fetch_max_bytes?: number
+  fetch_max_chars?: number
+  max_results?: number
+  provider_chain?: string[]
+  request_timeout_secs?: number
 }
 
 export interface UpdateWorkflow {
@@ -3214,6 +3287,16 @@ export interface VersionUsageResponse {
   versions: VersionUsageEntry[]
 }
 
+export interface WebSearchSettings {
+  enabled: boolean
+  fetch_max_bytes: number
+  fetch_max_chars: number
+  max_results: number
+  provider_chain: string[]
+  request_timeout_secs: number
+  updated_at: string
+}
+
 export interface Workflow {
   description?: string
   bundle_sha256: string
@@ -3310,6 +3393,8 @@ export enum Permissions {
   ConversationsRead = 'conversations::read',
   CoreMemoryRead = 'memory::core::read',
   CoreMemoryWrite = 'memory::core::write',
+  FileRagAdminManage = 'file_rag::admin::manage',
+  FileRagAdminRead = 'file_rag::admin::read',
   FilesDelete = 'files::delete',
   FilesDownload = 'files::download',
   FilesGenerateToken = 'files::generate_token',
@@ -3401,6 +3486,8 @@ export enum Permissions {
   UsersRead = 'users::read',
   UsersResetPassword = 'users::reset_password',
   UsersToggleStatus = 'users::toggle_status',
+  WebSearchAdminManage = 'web_search::admin::manage',
+  WebSearchAdminRead = 'web_search::admin::read',
   WorkflowsAssignToGroups = 'workflows::assign_to_groups',
   WorkflowsExecute = 'workflows::execute',
   WorkflowsInstall = 'workflows::install',
@@ -3432,6 +3519,8 @@ export const PermissionDescriptions: Record<string, string> = {
   ConversationsRead: 'View chat conversations',
   CoreMemoryRead: 'Read own assistant core memory blocks.',
   CoreMemoryWrite: 'Upsert / delete own assistant core memory blocks.',
+  FileRagAdminManage: 'Update Document-RAG admin settings, trigger re-embed and backfill.',
+  FileRagAdminRead: 'Read Document-RAG admin settings (embedding model, tuning).',
   FilesDelete: 'Delete files',
   FilesDownload: 'Download file content',
   FilesGenerateToken: 'Generate download tokens',
@@ -3523,6 +3612,8 @@ export const PermissionDescriptions: Record<string, string> = {
   UsersRead: 'View user information and list users',
   UsersResetPassword: 'Reset user passwords',
   UsersToggleStatus: 'Enable or disable user accounts',
+  WebSearchAdminManage: 'Update web search settings, provider chain, and provider API keys.',
+  WebSearchAdminRead: 'Read web search settings (enable, provider chain, caps).',
   WorkflowsAssignToGroups: 'Manage group assignments for system-scope workflows',
   WorkflowsExecute: 'Kick off a workflow run',
   WorkflowsInstall: 'Install user-scope workflows',
@@ -3621,6 +3712,10 @@ export const ApiEndpoints = {
   'File.restore': 'POST /api/files/{file_id}/restore',
   'File.textVersion': 'GET /api/files/{file_id}/versions/{version}/text',
   'File.upload': 'POST /api/files/upload',
+  'FileRagAdmin.backfill': 'POST /api/file-rag/backfill',
+  'FileRagAdmin.get': 'GET /api/file-rag/admin-settings',
+  'FileRagAdmin.reembed': 'POST /api/file-rag/admin-settings/reembed',
+  'FileRagAdmin.update': 'PUT /api/file-rag/admin-settings',
   'Group.getProviders': 'GET /api/groups/{group_id}/providers',
   'Group.getSystemServers': 'GET /api/groups/{group_id}/system-servers',
   'Group.updateProviders': 'PUT /api/groups/{group_id}/providers',
@@ -3845,6 +3940,10 @@ export const ApiEndpoints = {
   'UserGroup.removeUser': 'DELETE /api/groups/{user_id}/{group_id}/remove',
   'UserGroup.update': 'POST /api/groups/{group_id}',
   'Users.changeOwnPassword': 'POST /api/users/me/password',
+  'WebSearch.getProviders': 'GET /api/web-search/providers',
+  'WebSearch.getSettings': 'GET /api/web-search/settings',
+  'WebSearch.updateProvider': 'PUT /api/web-search/providers/{provider}',
+  'WebSearch.updateSettings': 'PUT /api/web-search/settings',
   'Workflow.cancelRun': 'POST /api/workflow-runs/{run_id}/cancel',
   'Workflow.delete': 'DELETE /api/workflows/{id}',
   'Workflow.deleteSystem': 'DELETE /api/workflows/system/{id}',
@@ -3956,6 +4055,10 @@ export type ApiEndpointParameters = {
   'File.restore': { file_id: string } & RestoreVersionRequest
   'File.textVersion': { file_id: string; version: string; page?: number }
   'File.upload': FormData
+  'FileRagAdmin.backfill': void
+  'FileRagAdmin.get': void
+  'FileRagAdmin.reembed': void
+  'FileRagAdmin.update': UpdateFileRagAdminSettingsRequest
   'Group.getProviders': { group_id: string }
   'Group.getSystemServers': { group_id: string }
   'Group.updateProviders': { group_id: string } & UpdateGroupProvidersRequest
@@ -4180,6 +4283,10 @@ export type ApiEndpointParameters = {
   'UserGroup.removeUser': { user_id: string; group_id: string }
   'UserGroup.update': { group_id: string } & UpdateGroupRequest
   'Users.changeOwnPassword': ChangePasswordRequest2
+  'WebSearch.getProviders': void
+  'WebSearch.getSettings': void
+  'WebSearch.updateProvider': { provider: string } & UpdateProviderRequest
+  'WebSearch.updateSettings': UpdateWebSearchSettingsRequest
   'Workflow.cancelRun': { run_id: string }
   'Workflow.delete': { id: string }
   'Workflow.deleteSystem': { id: string }
@@ -4291,6 +4398,10 @@ export type ApiEndpointResponses = {
   'File.restore': File
   'File.textVersion': Blob
   'File.upload': File
+  'FileRagAdmin.backfill': TriggerResponse
+  'FileRagAdmin.get': FileRagAdminSettings
+  'FileRagAdmin.reembed': TriggerResponse
+  'FileRagAdmin.update': FileRagAdminSettings
   'Group.getProviders': GroupProvidersResponse
   'Group.getSystemServers': GroupSystemServersResponse
   'Group.updateProviders': GroupProvidersResponse
@@ -4515,6 +4626,10 @@ export type ApiEndpointResponses = {
   'UserGroup.removeUser': void
   'UserGroup.update': Group
   'Users.changeOwnPassword': void
+  'WebSearch.getProviders': ProviderCatalogResponse
+  'WebSearch.getSettings': WebSearchSettings
+  'WebSearch.updateProvider': ProviderCatalogResponse
+  'WebSearch.updateSettings': WebSearchSettings
   'Workflow.cancelRun': CancelAckResponse
   'Workflow.delete': void
   'Workflow.deleteSystem': void

@@ -17443,6 +17443,215 @@
         }
       }
     },
+    "/api/file-rag/admin-settings": {
+      "get": {
+        "tags": [
+          "FileRag"
+        ],
+        "summary": "Read Document-RAG admin settings",
+        "description": "\n\n**Required Permission:** `file_rag::admin::read`\n\nRead Document-RAG admin settings (embedding model, tuning).",
+        "operationId": "FileRagAdmin.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read Document-RAG admin settings (embedding model, tuning).",
+                        "name": "FileRagAdminRead",
+                        "value": "file_rag::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: file_rag::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide Document-RAG admin settings (single row, id=1).\n\n Mirrors `memory_admin_settings`, but Document-RAG defaults **ON**\n (`enabled = true`) — FTS works from day one; the vector arm activates\n once `embedding_model_id` is set. `embedding_dimensions` is capped at\n 4000 (the HNSW halfvec ceiling) and is derived by probing the chosen\n model, never typed by the admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileRagAdminSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "FileRag"
+        ],
+        "summary": "Update Document-RAG admin settings",
+        "description": "\n\n**Required Permission:** `file_rag::admin::manage`\n\nUpdate Document-RAG admin settings, trigger re-embed and backfill.",
+        "operationId": "FileRagAdmin.update",
+        "requestBody": {
+          "description": "Partial update body for `PUT /api/file-rag/admin-settings`.\n\n `embedding_model_id` uses the `Option<Option<Uuid>>` pattern: absent =\n unchanged, `null` = clear, value = set (see `deserialize_nullable_field`).\n `embedding_dimensions` is intentionally NOT a field — the handler derives\n it by probe-embedding the chosen model. `fts_dictionary` is intentionally\n NOT a field in v1 (kept at `'simple'` to match the GENERATED column).",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateFileRagAdminSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update Document-RAG admin settings, trigger re-embed and backfill.",
+                        "name": "FileRagAdminManage",
+                        "value": "file_rag::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: file_rag::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide Document-RAG admin settings (single row, id=1).\n\n Mirrors `memory_admin_settings`, but Document-RAG defaults **ON**\n (`enabled = true`) — FTS works from day one; the vector arm activates\n once `embedding_model_id` is set. `embedding_dimensions` is capped at\n 4000 (the HNSW halfvec ceiling) and is derived by probing the chosen\n model, never typed by the admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileRagAdminSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/file-rag/admin-settings/reembed": {
+      "post": {
+        "tags": [
+          "FileRag"
+        ],
+        "summary": "Re-embed all document chunks with the configured model",
+        "description": "\n\n**Required Permission:** `file_rag::admin::manage`\n\nUpdate Document-RAG admin settings, trigger re-embed and backfill.",
+        "operationId": "FileRagAdmin.reembed",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update Document-RAG admin settings, trigger re-embed and backfill.",
+                        "name": "FileRagAdminManage",
+                        "value": "file_rag::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: file_rag::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Response for the fire-and-forget admin triggers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggerResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/file-rag/backfill": {
+      "post": {
+        "tags": [
+          "FileRag"
+        ],
+        "summary": "Index pre-existing files that have text but no chunks",
+        "description": "\n\n**Required Permission:** `file_rag::admin::manage`\n\nUpdate Document-RAG admin settings, trigger re-embed and backfill.",
+        "operationId": "FileRagAdmin.backfill",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update Document-RAG admin settings, trigger re-embed and backfill.",
+                        "name": "FileRagAdminManage",
+                        "value": "file_rag::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: file_rag::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Response for the fire-and-forget admin triggers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggerResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/app/setup/status": {
       "get": {
         "tags": [
@@ -17601,6 +17810,226 @@
           },
           "429": {
             "description": "Too many open sync connections"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/web-search/settings": {
+      "get": {
+        "tags": [
+          "WebSearch"
+        ],
+        "summary": "Read web search settings",
+        "description": "\n\n**Required Permission:** `web_search::admin::read`\n\nRead web search settings (enable, provider chain, caps).",
+        "operationId": "WebSearch.getSettings",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read web search settings (enable, provider chain, caps).",
+                        "name": "WebSearchAdminRead",
+                        "value": "web_search::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: web_search::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide web search settings (singleton row). Returned by GET.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebSearchSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "WebSearch"
+        ],
+        "summary": "Update web search settings (enable, provider chain, caps)",
+        "description": "\n\n**Required Permission:** `web_search::admin::manage`\n\nUpdate web search settings, provider chain, and provider API keys.",
+        "operationId": "WebSearch.updateSettings",
+        "requestBody": {
+          "description": "PUT body for the global settings. Every field optional → absent = leave.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWebSearchSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update web search settings, provider chain, and provider API keys.",
+                        "name": "WebSearchAdminManage",
+                        "value": "web_search::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: web_search::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide web search settings (singleton row). Returned by GET.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebSearchSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/web-search/providers": {
+      "get": {
+        "tags": [
+          "WebSearch"
+        ],
+        "summary": "List search-provider catalog (descriptors + configured state)",
+        "description": "\n\n**Required Permission:** `web_search::admin::read`\n\nRead web search settings (enable, provider chain, caps).",
+        "operationId": "WebSearch.getProviders",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read web search settings (enable, provider chain, caps).",
+                        "name": "WebSearchAdminRead",
+                        "value": "web_search::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: web_search::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderCatalogResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/web-search/providers/{provider}": {
+      "put": {
+        "tags": [
+          "WebSearch"
+        ],
+        "summary": "Upsert one provider's API key / config",
+        "description": "\n\n**Required Permission:** `web_search::admin::manage`\n\nUpdate web search settings, provider chain, and provider API keys.",
+        "operationId": "WebSearch.updateProvider",
+        "requestBody": {
+          "description": "PUT body for one provider's config/key.\n `api_key`: absent = leave; `\"\"` = clear; non-empty = set.\n `config`: absent = leave; present = replace.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProviderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update web search settings, provider chain, and provider API keys.",
+                        "name": "WebSearchAdminManage",
+                        "value": "web_search::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: web_search::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderCatalogResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -19599,6 +20028,30 @@
           "vm_max_concurrent_execs",
           "created_at",
           "updated_at"
+        ]
+      },
+      "ConfigField": {
+        "description": "A non-secret config field a provider needs — drives the generic admin UI.",
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "placeholder": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "required",
+          "placeholder"
         ]
       },
       "ContentBlockDelta": {
@@ -22059,6 +22512,97 @@
           "total",
           "page",
           "per_page"
+        ]
+      },
+      "FileRagAdminSettings": {
+        "description": "Deployment-wide Document-RAG admin settings (single row, id=1).\n\n Mirrors `memory_admin_settings`, but Document-RAG defaults **ON**\n (`enabled = true`) — FTS works from day one; the vector arm activates\n once `embedding_model_id` is set. `embedding_dimensions` is capped at\n 4000 (the HNSW halfvec ceiling) and is derived by probing the chosen\n model, never typed by the admin.",
+        "type": "object",
+        "properties": {
+          "chunk_chars": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "chunk_overlap_chars": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "cosine_threshold": {
+            "type": "number",
+            "format": "float"
+          },
+          "default_top_k": {
+            "type": "integer",
+            "format": "int16",
+            "maximum": 32767,
+            "minimum": -32768
+          },
+          "embedding_dimensions": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "embedding_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "fts_candidate_multiplier": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "fts_dictionary": {
+            "description": "Postgres dictionary used by `websearch_to_tsquery` at query time.\n The GENERATED `content_tsv` is fixed at `'simple'`, so v1 keeps this\n at `'simple'` too (not exposed in the update request) to avoid an\n index/query stemming mismatch — see the plan's FTS gotcha.",
+            "type": "string"
+          },
+          "fts_enabled": {
+            "type": "boolean"
+          },
+          "fts_min_rank": {
+            "type": "number",
+            "format": "float"
+          },
+          "fts_rrf_k": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int16",
+            "maximum": 32767,
+            "minimum": -32768
+          },
+          "max_chunks_per_file": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "semantic_enabled": {
+            "type": "boolean"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "enabled",
+          "embedding_dimensions",
+          "chunk_chars",
+          "chunk_overlap_chars",
+          "max_chunks_per_file",
+          "default_top_k",
+          "cosine_threshold",
+          "semantic_enabled",
+          "fts_enabled",
+          "fts_dictionary",
+          "fts_rrf_k",
+          "fts_candidate_multiplier",
+          "fts_min_rank",
+          "updated_at"
         ]
       },
       "FileRole": {
@@ -27742,6 +28286,61 @@
           "name"
         ]
       },
+      "ProviderCatalogEntry": {
+        "description": "One entry in the provider catalog (descriptor + current configured state).\n The API key is NEVER returned — only `api_key_set`.",
+        "type": "object",
+        "properties": {
+          "api_key_set": {
+            "description": "True when an API key is stored (the value itself is never exposed).",
+            "type": "boolean"
+          },
+          "config": {
+            "description": "Non-secret stored config for this provider."
+          },
+          "config_fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConfigField"
+            }
+          },
+          "configured": {
+            "description": "True when required config + (if needed) API key are present.",
+            "type": "boolean"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "needs_api_key": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "display_name",
+          "needs_api_key",
+          "config_fields",
+          "configured",
+          "api_key_set",
+          "config"
+        ]
+      },
+      "ProviderCatalogResponse": {
+        "type": "object",
+        "properties": {
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderCatalogEntry"
+            }
+          }
+        },
+        "required": [
+          "providers"
+        ]
+      },
       "ProviderInstancesResponse": {
         "type": "object",
         "properties": {
@@ -30947,6 +31546,11 @@
             "const": "summarization_admin_settings"
           },
           {
+            "description": "Deployment-wide web search settings + provider config (singleton).\n Notify-only; the frontend refetches settings + the provider catalog.",
+            "type": "string",
+            "const": "web_search_settings"
+          },
+          {
             "description": "A user's accessible-providers (with enabled models) view changed.",
             "type": "string",
             "const": "user_llm_provider"
@@ -31530,6 +32134,18 @@
           "sse"
         ]
       },
+      "TriggerResponse": {
+        "description": "Response for the fire-and-forget admin triggers.",
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
       "TunnelStartResponse": {
         "description": "POST /api/remote-access/tunnel/start response.",
         "type": "object",
@@ -31797,6 +32413,96 @@
         "required": [
           "summarization_mode"
         ]
+      },
+      "UpdateFileRagAdminSettingsRequest": {
+        "description": "Partial update body for `PUT /api/file-rag/admin-settings`.\n\n `embedding_model_id` uses the `Option<Option<Uuid>>` pattern: absent =\n unchanged, `null` = clear, value = set (see `deserialize_nullable_field`).\n `embedding_dimensions` is intentionally NOT a field — the handler derives\n it by probe-embedding the chosen model. `fts_dictionary` is intentionally\n NOT a field in v1 (kept at `'simple'` to match the GENERATED column).",
+        "type": "object",
+        "properties": {
+          "chunk_chars": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "chunk_overlap_chars": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "cosine_threshold": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "default_top_k": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int16",
+            "maximum": 32767,
+            "minimum": -32768
+          },
+          "embedding_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "default": null
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "fts_candidate_multiplier": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "fts_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "fts_min_rank": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "fts_rrf_k": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "max_chunks_per_file": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "semantic_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
       },
       "UpdateGroupProvidersRequest": {
         "type": "object",
@@ -32376,6 +33082,22 @@
           }
         }
       },
+      "UpdateProviderRequest": {
+        "description": "PUT body for one provider's config/key.\n `api_key`: absent = leave; `\"\"` = clear; non-empty = set.\n `config`: absent = leave; present = replace.",
+        "type": "object",
+        "properties": {
+          "api_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "config": {
+            "default": null
+          }
+        }
+      },
       "UpdateRemoteAccessSettingsRequest": {
         "description": "PUT /api/remote-access/settings request body. Each field uses\n three-state semantics:\n   - missing key → don't touch (keep DB value)\n   - null → clear (set to NULL / FALSE)\n   - value → set\n\n Implemented via `Option<Option<T>>` + a custom serde fn that\n distinguishes \"absent\" from \"null\". The frontend matches by\n only sending fields it actually wants to change.",
         "type": "object",
@@ -32682,6 +33404,61 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "UpdateWebSearchSettingsRequest": {
+        "description": "PUT body for the global settings. Every field optional → absent = leave.",
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null
+          },
+          "fetch_max_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "default": null
+          },
+          "fetch_max_chars": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "default": null
+          },
+          "max_results": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "default": null
+          },
+          "provider_chain": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "default": null,
+            "items": {
+              "type": "string"
+            }
+          },
+          "request_timeout_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "default": null
           }
         }
       },
@@ -33494,6 +34271,51 @@
         "required": [
           "versions",
           "unresolved"
+        ]
+      },
+      "WebSearchSettings": {
+        "description": "Deployment-wide web search settings (singleton row). Returned by GET.",
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "fetch_max_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "fetch_max_chars": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "max_results": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "provider_chain": {
+            "description": "Ordered fallback chain of provider registry keys.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "request_timeout_secs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "enabled",
+          "provider_chain",
+          "max_results",
+          "fetch_max_bytes",
+          "fetch_max_chars",
+          "request_timeout_secs",
+          "updated_at"
         ]
       },
       "Workflow": {

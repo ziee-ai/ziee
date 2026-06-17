@@ -196,6 +196,7 @@ declare_repositories! {
     app: AppRepository => crate::modules::app,
     auth: AuthRepository => crate::modules::auth,
     file: FileRepository => crate::modules::file,
+    file_rag: FileRagRepository => crate::modules::file_rag,
     project_files: ProjectFilesRepository => crate::modules::file::project_extension,
     chat: ChatRepository => crate::modules::chat::core,
     local_runtime: LocalRuntimeRepository => crate::modules::llm_local_runtime,
@@ -207,4 +208,5 @@ declare_repositories! {
     onboarding: OnboardingRepository => crate::modules::onboarding,
     skill: SkillRepository => crate::modules::skill,
     workflow: WorkflowRepository => crate::modules::workflow,
+    web_search: WebSearchRepository => crate::modules::web_search,
 }

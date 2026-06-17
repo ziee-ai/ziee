@@ -26,8 +26,10 @@
 //!    `Location` hop so that an attacker-controlled redirect cannot bypass
 //!    the original check.
 
+use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use reqwest::redirect::Policy;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, ToSocketAddrs};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
+use std::sync::Arc;
 use thiserror::Error;
 use url::Url;
 
@@ -222,47 +224,121 @@ fn is_blocked_v6(ip: &Ipv6Addr, policy: &OutboundUrlPolicy) -> bool {
 }
 
 /// Build a `reqwest::Client` whose redirect policy re-validates each hop
-/// against the supplied policy. Without this, a 302 to an attacker-chosen
-/// `Location: http://169.254.169.254/...` would bypass any one-shot
-/// pre-flight check on the original URL.
+/// against the supplied policy — including targets given as a HOSTNAME
+/// (resolved + checked), not just IP literals. Without this, a 302 to an
+/// attacker-chosen `Location: http://evil.example/` whose host resolves to
+/// `169.254.169.254` / loopback / an RFC1918 address would bypass the one-shot
+/// pre-flight check on the original URL. The new untrusted page-fetch path
+/// (`web_search::fetch`) is the first surface exposing this to genuinely
+/// attacker-controlled redirect chains, so hostname hops MUST be checked.
 ///
-/// The returned client also disables URL credential auto-inclusion
-/// (`reqwest` would otherwise forward `username:password@` from the URL
-/// as a `Authorization: Basic ...` header on redirects).
+/// Credential safety on the initial URL is enforced separately by
+/// [`validate_outbound_url`], which rejects any URL embedding `username:password@`
+/// before the fetch begins — this builder does not itself strip credentials.
 pub fn build_validated_client(policy: OutboundUrlPolicy) -> reqwest::Result<reqwest::Client> {
     reqwest::Client::builder()
+        // Filter EVERY resolved address through the policy at CONNECT time. This
+        // closes the DNS-rebinding TOCTOU window that a one-shot pre-flight
+        // `validate_outbound_url` leaves open: even if a hostname resolves to a
+        // public IP during the pre-flight and rebinds to 169.254.169.254 /
+        // loopback / RFC1918 before the socket connects, the connection is
+        // refused here. Applies to the initial connect AND every redirect hop.
+        .dns_resolver(Arc::new(GuardingResolver { policy }))
         .redirect(Policy::custom(move |attempt| {
             // Hard cap on hops to avoid infinite-redirect DoS, in addition
             // to the per-hop policy check.
             if attempt.previous().len() >= 10 {
                 return attempt.error("too many redirects (>10)");
             }
-            // Extract the bits we need before any branch that moves attempt.
+            // Extract owned bits before any branch that moves `attempt`.
             let scheme = attempt.url().scheme().to_string();
-            let host_opt = attempt.url().host_str().map(str::to_string);
-
-            if !policy.allow_schemes.iter().any(|s| *s == scheme) {
-                return attempt.error(format!(
-                    "redirect to disallowed scheme '{scheme}'"
-                ));
-            }
-            let host = match host_opt {
+            let host = attempt.url().host_str().map(str::to_string);
+            let port = attempt.url().port_or_known_default().unwrap_or(443);
+            let host = match host {
                 Some(h) => h,
                 None => return attempt.error("redirect target has no host"),
             };
-            if let Ok(ip) = host.parse::<IpAddr>()
-                && is_blocked_ip(&ip, &policy) {
-                    return attempt
-                        .error(format!("redirect to blocked address {ip}"));
-                }
-            // Note: hostname resolution at redirect time is not done here
-            // (the validate_outbound_url call before .send() already covered
-            // the pre-fetch case; a redirect by hostname will be re-resolved
-            // by reqwest before the next request — but we don't pre-empt
-            // here to keep the redirect callback non-blocking).
-            attempt.follow()
+            match redirect_blocked_reason(&scheme, &host, port, &policy) {
+                Some(reason) => attempt.error(reason),
+                None => attempt.follow(),
+            }
         }))
         .build()
+}
+
+/// Decide whether a redirect target is blocked under `policy`. Returns
+/// `Some(reason)` to refuse the hop, `None` to allow it. Mirrors
+/// [`validate_outbound_url`]: rejects disallowed schemes, blocked IP literals,
+/// AND hostnames that RESOLVE to any blocked address (closing the
+/// redirect-to-hostname SSRF hole). DNS resolution here is blocking, which is
+/// acceptable on the rare redirect path; the originating call already resolved
+/// the first hop in `validate_outbound_url`.
+fn redirect_blocked_reason(
+    scheme: &str,
+    host: &str,
+    port: u16,
+    policy: &OutboundUrlPolicy,
+) -> Option<String> {
+    if !policy.allow_schemes.iter().any(|s| *s == scheme) {
+        return Some(format!("redirect to disallowed scheme '{scheme}'"));
+    }
+    // Strip brackets from IPv6 literals (matches validate_outbound_url).
+    let host_for_parse = host
+        .strip_prefix('[')
+        .and_then(|h| h.strip_suffix(']'))
+        .unwrap_or(host);
+    if let Ok(ip) = host_for_parse.parse::<IpAddr>() {
+        return is_blocked_ip(&ip, policy).then(|| format!("redirect to blocked address {ip}"));
+    }
+    // Hostname: resolve and reject if ANY resolved IP is blocked.
+    match (host_for_parse, port).to_socket_addrs() {
+        Ok(addrs) => addrs
+            .map(|sock| sock.ip())
+            .find(|ip| is_blocked_ip(ip, policy))
+            .map(|ip| format!("redirect to blocked address {ip}")),
+        Err(_) => Some(format!(
+            "redirect target DNS resolution failed for host '{host}'"
+        )),
+    }
+}
+
+/// A reqwest DNS resolver that filters resolved addresses through the SSRF
+/// [`OutboundUrlPolicy`] at connect time. Rejects the whole resolution if ANY
+/// returned address is blocked (matching [`validate_outbound_url`]'s
+/// split-horizon paranoia), so an attacker cannot rebind a hostname to a
+/// blocked IP between the pre-flight check and the socket connect.
+#[derive(Debug, Clone, Copy)]
+struct GuardingResolver {
+    policy: OutboundUrlPolicy,
+}
+
+impl Resolve for GuardingResolver {
+    fn resolve(&self, name: Name) -> Resolving {
+        let policy = self.policy;
+        let host = name.as_str().to_string();
+        Box::pin(async move {
+            let host_for_resolve = host.clone();
+            // Blocking system resolution, off the async runtime. Port 0 — the
+            // connector overrides it with the request's real port.
+            let resolved: Vec<SocketAddr> = tokio::task::spawn_blocking(move || {
+                (host_for_resolve.as_str(), 0u16)
+                    .to_socket_addrs()
+                    .map(|it| it.collect::<Vec<_>>())
+            })
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+
+            if let Some(bad) = resolved.iter().find(|s| is_blocked_ip(&s.ip(), &policy)) {
+                return Err(format!(
+                    "SSRF policy blocked '{host}' resolving to {}",
+                    bad.ip()
+                )
+                .into());
+            }
+            Ok(Box::new(resolved.into_iter()) as Addrs)
+        })
+    }
 }
 
 #[cfg(test)]
@@ -430,5 +506,78 @@ mod tests {
         let err = validate_outbound_url("http://10.255.255.255/", &OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS)
             .expect_err("RFC1918 IP literal must be blocked without DNS");
         assert!(matches!(err, OutboundUrlError::BlockedAddress(_)));
+    }
+
+    // ─── redirect re-validation (redirect_blocked_reason) ────────────────
+    // Closes the SSRF hole where a redirect Location given as a HOSTNAME that
+    // resolves to a private/loopback/IMDS address was followed unchecked.
+
+    #[test]
+    fn redirect_blocks_disallowed_scheme() {
+        // Scheme is checked first (no DNS needed).
+        assert!(
+            redirect_blocked_reason("ftp", "example.com", 21, &OutboundUrlPolicy::STRICT).is_some()
+        );
+    }
+
+    #[test]
+    fn redirect_blocks_ip_literal_imds_and_private() {
+        for host in ["169.254.169.254", "127.0.0.1", "10.0.0.1", "[::1]"] {
+            assert!(
+                redirect_blocked_reason("https", host, 443, &OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS)
+                    .is_some(),
+                "redirect to {host} must be blocked"
+            );
+        }
+    }
+
+    #[test]
+    fn redirect_blocks_hostname_resolving_to_loopback() {
+        // The core fix: a HOSTNAME (not an IP literal) that resolves to a
+        // blocked address must be refused. `localhost` deterministically
+        // resolves to loopback, so this is hermetic.
+        assert!(
+            redirect_blocked_reason("https", "localhost", 443, &OutboundUrlPolicy::STRICT).is_some(),
+            "redirect to a hostname resolving to loopback must be blocked"
+        );
+        // Under DEV_LOCAL, loopback is intentionally allowed.
+        assert!(
+            redirect_blocked_reason("https", "localhost", 443, &OutboundUrlPolicy::DEV_LOCAL)
+                .is_none(),
+            "DEV_LOCAL allows loopback"
+        );
+    }
+
+    #[test]
+    fn redirect_allows_public_ip_literal() {
+        assert!(
+            redirect_blocked_reason("https", "1.1.1.1", 443, &OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS)
+                .is_none()
+        );
+    }
+
+    // ─── DNS-rebinding guard (GuardingResolver) ──────────────────────────
+    // The connect-time resolver refuses a hostname that resolves to a blocked
+    // address, closing the TOCTOU between the pre-flight check and the socket.
+
+    #[tokio::test]
+    async fn guarding_resolver_blocks_loopback_hostname() {
+        use std::str::FromStr;
+        // localhost deterministically resolves to loopback → blocked under STRICT.
+        let strict = GuardingResolver {
+            policy: OutboundUrlPolicy::STRICT,
+        };
+        assert!(
+            strict.resolve(Name::from_str("localhost").unwrap()).await.is_err(),
+            "STRICT must refuse a hostname resolving to loopback"
+        );
+        // DEV_LOCAL intentionally allows loopback.
+        let dev = GuardingResolver {
+            policy: OutboundUrlPolicy::DEV_LOCAL,
+        };
+        assert!(
+            dev.resolve(Name::from_str("localhost").unwrap()).await.is_ok(),
+            "DEV_LOCAL allows loopback"
+        );
     }
 }
