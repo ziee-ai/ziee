@@ -1,0 +1,155 @@
+//! Document-RAG embedding worker — re-embeds `file_chunks` when the admin sets
+//! or changes the embedding model, performing the destructive
+//! `ALTER COLUMN embedding TYPE halfvec(N)` migration when the new model has a
+//! different dimension. A complete, independent copy of memory's worker
+//! targeting `file_chunks` (Option B: file_rag owns its own embedder).
+//!
+//! Triggered (detached) from the admin PUT / `/reembed`. While a rebuild is in
+//! flight, retrieval skips `embedding IS NULL` rows, so search degrades to
+//! FTS-only without errors.
+
+use sqlx::PgPool;
+use std::sync::atomic::{AtomicBool, Ordering};
+use uuid::Uuid;
+
+use crate::common::AppError;
+use crate::core::Repos;
+use crate::modules::memory::engine::dispatch::embed_batch;
+use pgvector::HalfVector;
+
+const REBUILD_BATCH_SIZE: i64 = 100;
+
+/// Process-global guard so two concurrent admin PUTs can't interleave
+/// NULL + ALTER + re-embed against the same `file_chunks.embedding` column.
+static REBUILD_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+/// True while a rebuild is in flight — surfaced to the admin UI so it can show
+/// a progress banner instead of letting the operator trigger a second rebuild.
+pub fn is_in_progress() -> bool {
+    REBUILD_IN_PROGRESS.load(Ordering::Acquire)
+}
+
+/// Re-embed all `file_chunks` with `model_id`. If `target_dimensions` differs
+/// from the column's current dimension, first NULLs all embeddings, then
+/// `ALTER`s the column + HNSW index. Tags rows with the model UUID so a model
+/// swap (even at the same dimension) re-embeds the whole corpus.
+pub async fn reembed_all(pool: PgPool, model_id: Uuid, target_dimensions: i32) {
+    if REBUILD_IN_PROGRESS
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        tracing::warn!(
+            "file_rag.embed_worker: a rebuild is already in progress; skipping concurrent run for model {model_id}"
+        );
+        return;
+    }
+    let result = run(pool, model_id, target_dimensions).await;
+    REBUILD_IN_PROGRESS.store(false, Ordering::Release);
+    if let Err(e) = result {
+        tracing::warn!("file_rag.embed_worker: failed: {e}");
+    }
+}
+
+async fn run(pool: PgPool, model_id: Uuid, target_dimensions: i32) -> Result<(), AppError> {
+    let current_dim = sqlx::query_scalar!(
+        r#"SELECT embedding_dimensions FROM file_rag_admin_settings WHERE id = 1"#
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(AppError::database_error)?;
+
+    if current_dim != target_dimensions {
+        tracing::info!(
+            "file_rag.embed_worker: dimension change {current_dim} -> {target_dimensions} — NULLing + ALTER COLUMN"
+        );
+        sqlx::query!("UPDATE file_chunks SET embedding = NULL, embedding_model = NULL")
+            .execute(&pool)
+            .await
+            .map_err(AppError::database_error)?;
+        sqlx::query!("DROP INDEX IF EXISTS idx_file_chunks_embedding")
+            .execute(&pool)
+            .await
+            .map_err(AppError::database_error)?;
+        // `target_dimensions` is an i32 from the controlled admin path (probe-
+        // derived), interpolated into the TYPE because Postgres parses TYPE at
+        // parse time, not as a bind parameter. No injection risk.
+        let alter = format!(
+            "ALTER TABLE file_chunks ALTER COLUMN embedding TYPE halfvec({target_dimensions})"
+        );
+        sqlx::query(&alter)
+            .execute(&pool)
+            .await
+            .map_err(AppError::database_error)?;
+        sqlx::query!(
+            "CREATE INDEX idx_file_chunks_embedding ON file_chunks USING hnsw (embedding halfvec_cosine_ops)"
+        )
+        .execute(&pool)
+        .await
+        .map_err(AppError::database_error)?;
+        sqlx::query!(
+            "UPDATE file_rag_admin_settings SET embedding_dimensions = $1, updated_at = NOW() WHERE id = 1",
+            target_dimensions
+        )
+        .execute(&pool)
+        .await
+        .map_err(AppError::database_error)?;
+    }
+
+    // Re-embed every chunk whose embedding_model != model tag (or is NULL).
+    let model_tag = model_id.to_string();
+    let mut total: i64 = 0;
+    loop {
+        let batch = Repos
+            .file_rag
+            .chunks_needing_embedding(&model_tag, REBUILD_BATCH_SIZE)
+            .await?;
+        if batch.is_empty() {
+            break;
+        }
+        let texts: Vec<String> = batch.iter().map(|(_, _, c)| c.clone()).collect();
+        let vecs = match embed_batch(model_id, &texts).await {
+            Ok(v) => v,
+            Err(e) => {
+                // Leave the rest NULL (FTS still works); admin can retry.
+                tracing::warn!("file_rag.embed_worker: embed batch failed ({e}); aborting re-embed");
+                break;
+            }
+        };
+        let mut updated = 0usize;
+        for ((id, uid, _), vec) in batch.iter().zip(vecs.iter()) {
+            if vec.len() as i32 != target_dimensions {
+                tracing::warn!(
+                    "file_rag.embed_worker: model returned {}-dim vector but column is {}-dim — skipping chunk {}",
+                    vec.len(),
+                    target_dimensions,
+                    id
+                );
+                continue;
+            }
+            let hv = HalfVector::from_f32_slice(vec);
+            // Log-and-continue on a single bad write rather than aborting the
+            // whole rebuild; the `updated == 0` guard still terminates a batch
+            // that makes no progress.
+            match Repos.file_rag.set_chunk_embedding(*id, *uid, &hv, &model_tag).await {
+                Ok(()) => {
+                    updated += 1;
+                    total += 1;
+                }
+                Err(e) => {
+                    tracing::warn!("file_rag.embed_worker: write embedding for {id} failed: {e}");
+                }
+            }
+        }
+        // No-progress guard: if a full non-empty batch produced zero updates
+        // (persistent dimension mismatch), stop instead of spinning forever.
+        if updated == 0 {
+            tracing::warn!(
+                "file_rag.embed_worker: no progress on a batch of {} (dimension mismatch?); stopping",
+                batch.len()
+            );
+            break;
+        }
+    }
+    tracing::info!("file_rag.embed_worker: re-embedded {total} chunks with model {model_id} (dim {target_dimensions})");
+    Ok(())
+}

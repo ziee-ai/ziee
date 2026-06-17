@@ -38,6 +38,19 @@ pub fn tool_list() -> Value {
                 }
             },
             {
+                "name": "semantic_search",
+                "description": "Semantic search over the available files: finds passages by MEANING (vector similarity blended with keyword relevance), so it matches conceptually even when the wording differs. Optionally restrict to one file with `id`. Returns the most relevant passages with file/page and character-span references. Complements grep_files (exact regex) and read_file.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string", "description": "Natural-language description of what you're looking for." },
+                        "top_k": { "type": "integer", "minimum": 1, "maximum": 50, "description": "Max passages to return (defaults to the deployment setting)." },
+                        "id": { "type": "string", "format": "uuid", "description": "Optional: restrict the search to this one file." }
+                    },
+                    "required": ["query"]
+                }
+            },
+            {
                 "name": "create_file",
                 "description": "Create a new TEXT file (markdown, code, csv, json, …) with the given content. Returns its id and a resource_link. Edit it later with edit_file / rewrite_file. Use this to author a document the user can view and that you can revise across turns.",
                 "inputSchema": {

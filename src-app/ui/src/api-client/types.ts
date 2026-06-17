@@ -747,6 +747,25 @@ export interface FileListResponse {
   total: number
 }
 
+export interface FileRagAdminSettings {
+  chunk_chars: number
+  chunk_overlap_chars: number
+  cosine_threshold: number
+  default_top_k: number
+  embedding_dimensions: number
+  embedding_model_id?: string
+  enabled: boolean
+  fts_candidate_multiplier: number
+  fts_dictionary: string
+  fts_enabled: boolean
+  fts_min_rank: number
+  fts_rrf_k: number
+  id: number
+  max_chunks_per_file: number
+  semantic_enabled: boolean
+  updated_at: string
+}
+
 export type FileRole = 'weight' | 'index' | 'config' | 'tokenizer' | 'vocab' | 'other'
 
 export interface FileVersion {
@@ -2727,6 +2746,10 @@ export interface ToolUseApproval {
 
 export type TransportType = 'stdio' | 'http' | 'sse'
 
+export interface TriggerResponse {
+  status: string
+}
+
 export interface UpdateAssistantRequest {
   description?: string
   enabled?: boolean
@@ -2769,6 +2792,21 @@ export interface UpdateConversationRequest {
 
 export interface UpdateConversationSummarizationModeRequest {
   summarization_mode: string
+}
+
+export interface UpdateFileRagAdminSettingsRequest {
+  chunk_chars?: number
+  chunk_overlap_chars?: number
+  cosine_threshold?: number
+  default_top_k?: number
+  embedding_model_id?: string
+  enabled?: boolean
+  fts_candidate_multiplier?: number
+  fts_enabled?: boolean
+  fts_min_rank?: number
+  fts_rrf_k?: number
+  max_chunks_per_file?: number
+  semantic_enabled?: boolean
 }
 
 export interface UpdateGroupProvidersRequest {
@@ -3216,6 +3254,8 @@ export enum Permissions {
   ConversationsRead = 'conversations::read',
   CoreMemoryRead = 'memory::core::read',
   CoreMemoryWrite = 'memory::core::write',
+  FileRagAdminManage = 'file_rag::admin::manage',
+  FileRagAdminRead = 'file_rag::admin::read',
   FilesDelete = 'files::delete',
   FilesDownload = 'files::download',
   FilesGenerateToken = 'files::generate_token',
@@ -3336,6 +3376,8 @@ export const PermissionDescriptions: Record<string, string> = {
   ConversationsRead: 'View chat conversations',
   CoreMemoryRead: 'Read own assistant core memory blocks.',
   CoreMemoryWrite: 'Upsert / delete own assistant core memory blocks.',
+  FileRagAdminManage: 'Update Document-RAG admin settings, trigger re-embed and backfill.',
+  FileRagAdminRead: 'Read Document-RAG admin settings (embedding model, tuning).',
   FilesDelete: 'Delete files',
   FilesDownload: 'Download file content',
   FilesGenerateToken: 'Generate download tokens',
@@ -3514,6 +3556,10 @@ export const ApiEndpoints = {
   'File.restore': 'POST /api/files/{file_id}/restore',
   'File.textVersion': 'GET /api/files/{file_id}/versions/{version}/text',
   'File.upload': 'POST /api/files/upload',
+  'FileRagAdmin.backfill': 'POST /api/file-rag/backfill',
+  'FileRagAdmin.get': 'GET /api/file-rag/admin-settings',
+  'FileRagAdmin.reembed': 'POST /api/file-rag/admin-settings/reembed',
+  'FileRagAdmin.update': 'PUT /api/file-rag/admin-settings',
   'Group.getProviders': 'GET /api/groups/{group_id}/providers',
   'Group.getSystemServers': 'GET /api/groups/{group_id}/system-servers',
   'Group.updateProviders': 'PUT /api/groups/{group_id}/providers',
@@ -3827,6 +3873,10 @@ export type ApiEndpointParameters = {
   'File.restore': { file_id: string } & RestoreVersionRequest
   'File.textVersion': { file_id: string; version: string; page?: number }
   'File.upload': FormData
+  'FileRagAdmin.backfill': void
+  'FileRagAdmin.get': void
+  'FileRagAdmin.reembed': void
+  'FileRagAdmin.update': UpdateFileRagAdminSettingsRequest
   'Group.getProviders': { group_id: string }
   'Group.getSystemServers': { group_id: string }
   'Group.updateProviders': { group_id: string } & UpdateGroupProvidersRequest
@@ -4140,6 +4190,10 @@ export type ApiEndpointResponses = {
   'File.restore': File
   'File.textVersion': Blob
   'File.upload': File
+  'FileRagAdmin.backfill': TriggerResponse
+  'FileRagAdmin.get': FileRagAdminSettings
+  'FileRagAdmin.reembed': TriggerResponse
+  'FileRagAdmin.update': FileRagAdminSettings
   'Group.getProviders': GroupProvidersResponse
   'Group.getSystemServers': GroupSystemServersResponse
   'Group.updateProviders': GroupProvidersResponse

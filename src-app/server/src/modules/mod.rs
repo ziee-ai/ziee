@@ -7,6 +7,7 @@ pub mod bio_mcp;
 pub mod chat;
 pub mod elicitation_mcp;
 pub mod file;
+pub mod file_rag;
 pub mod files_mcp;
 pub mod code_sandbox;
 pub mod hardware;

@@ -9,6 +9,7 @@ mod chat;
 mod code_sandbox;
 mod common;
 mod file;
+mod file_rag;
 mod files_mcp;
 mod hardware;
 mod hub;
