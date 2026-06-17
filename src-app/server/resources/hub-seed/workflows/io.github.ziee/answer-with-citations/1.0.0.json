@@ -13,8 +13,8 @@
   "author": "ziee",
   "bundle": {
     "url": "workflows/io.github.ziee/answer-with-citations/1.0.0.tar.gz",
-    "sha256": "b99277a77db2d97b00358803fb2aa5509fd13c4553a17b56d386444a6c5dfb68",
-    "size_bytes": 761,
+    "sha256": "edaa328bd49a9314b6f62d9b7b7bad5f6fa50631b19961f0c238f7aa7f37c29e",
+    "size_bytes": 715,
     "file_count": 1,
     "entry_point": "workflow.yaml"
   },
