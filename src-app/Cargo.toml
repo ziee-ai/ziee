@@ -85,6 +85,12 @@ schemars = { version = "0.9.0", features = ["chrono04", "uuid1"] }
 tower = "0.5"
 tower-http = { version = "0.6.2", features = ["cors", "timeout", "set-header"] }
 
+# HTML extraction (web_search page fetch) — readability-style main-content
+# extraction (dom_smoothie, a Mozilla Readability port) + HTML→markdown
+# (htmd) to turn a fetched web page into clean, LLM-readable text.
+dom_smoothie = "0.18"
+htmd = "0.5"
+
 # Database — keep version aligned across consumers so pgvector's
 # `>= 0.8, < 0.10` constraint resolves to the same 0.8.x line that
 # `HalfVector: sqlx::Type<Postgres>` impls were built against.

@@ -568,6 +568,89 @@ and the ongoing release workflow.
 
 ---
 
+## Biomedical MCP server (BioMCP)
+
+The `bio_mcp` module exposes ~45 biomedical databases (PubMed,
+ClinicalTrials.gov, ClinVar/MyVariant, UniProt, ChEMBL/OpenFDA/
+OpenTargets, PharmGKB/CPIC, …) to the chat model as a **built-in MCP
+server**, by vendoring + wrapping
+[genomoncology/biomcp](https://github.com/genomoncology/biomcp) (MIT).
+**On by default** for connected deployments.
+
+### Architecture — proxy + managed sidecar
+
+Unlike the other built-in MCP servers (memory/files/code_sandbox), which
+are in-process Axum routes, BioMCP is an **external single-binary sidecar
+with no auth of its own**. So ziee owns a thin proxy (`bio_mcp/`):
+
+- A built-in `mcp_servers` row (`is_built_in=true`, `is_system=true`,
+  `transport_type='http'`, deterministic id `bio.ziee.internal`) whose
+  `url` is the ziee-owned route `POST/GET/DELETE /api/bio/mcp`.
+- That route (`handlers.rs`) holds the JWT boundary
+  (`RequirePermissions<(BioQuery,)>` → `bio::query`, granted to the Users
+  group by migration 96), then transparently reverse-proxies the MCP
+  streamable-HTTP body (JSON + SSE) to the sidecar's `/mcp`, forwarding
+  ONLY the MCP protocol headers.
+- `supervisor.rs` lazily spawns ONE long-lived
+  `biomcp serve-http --host 127.0.0.1 --port <ephemeral>` per process on
+  the first `/api/bio/mcp` call, `env_clear` + injects the configured API
+  keys, polls `/readyz`, applies a flap backoff + idle-reaps it.
+  `PR_SET_PDEATHSIG` (Linux) + `kill_on_drop` tear it down with the server.
+- The `bio_mcp` chat extension (order 27, before `mcp` at 30) flags
+  `attach_bio_mcp` on tool-capable chats when the row is enabled and
+  injects a one-line untrusted-content guard; `auto_attach_builtin_ids` +
+  `is_builtin_server_id` then auto-attach it and bypass per-call approval
+  (read-only searches). The biomcp surface is a single `biomcp` tool.
+
+### Key config — the standard MCP "Headers" editor (no bespoke UI)
+
+BioMCP is an **admin-configurable** built-in (NOT in the zero-config edit
+deny-list, so its row stays editable). Admins set the upstream API keys
+(`NCBI_API_KEY`, `S2_API_KEY`, `OPENFDA_API_KEY`, `NCI_API_KEY`,
+`ONCOKB_TOKEN`, `ALPHAGENOME_API_KEY`, `DISGENET_API_KEY`) as **secret
+entries in the standard MCP system-server Headers editor**. The supervisor
+reads the row's decrypted `headers` in-process and injects each as a
+process env var into the sidecar — never sent over HTTP (the proxy strips
+them); a name denylist (`PATH`/`HOME`/`LD_*`/`DYLD_*`) blocks loader
+hijack. Unauthenticated works (rate-limited) when no keys are set.
+
+### Threat model / egress
+
+**Connected-only** — the sidecar queries live upstream APIs; an air-gapped
+box gets almost nothing. **Query terms egress to public APIs**, so
+IP-sensitive deployments turn it off with `bio_mcp: { enabled: false }`
+(the deploy-level kill switch; the per-deployment admin toggle is the bio
+row's `enabled` column). Coverage skews oncology. BioMCP feeds untrusted
+third-party content into context — the untrusted-content guard + the
+external-MCP posture are the mitigations.
+
+### Binary delivery (build_helper + extract-on-first-use)
+
+`build_helper/biomcp.rs` fetches the pinned `BIOMCP_VERSION` release per
+target triple at build time, **mandatorily sha256-verifies** the `.sha256`
+sidecar, stages it under `binaries/{target}/biomcp/` (+ a `.version`
+sidecar so a `BIOMCP_VERSION` bump re-fetches), and `embedded.rs` bakes it
+in via `include_bytes!` + extract-on-first-use to `~/.ziee/bin/biomcp`.
+Fail-soft (mirrors pgvector): on any failure a zero-byte stub is staged →
+`biomcp_available()` is false → the module self-disables at boot with a
+clear log. Supported triples match uv/bun (Linux/macOS x86_64+arm64,
+Windows x86_64). Override `BIOMCP_VERSION` / `BIOMCP_GITHUB_REPO` at build
+time.
+
+### Tests
+
+| Tier | Where | Needs |
+|---|---|---|
+| 1 unit | `bio_mcp/{mod,supervisor}.rs` `#[cfg(test)]` + `mcp/chat_extension/mcp.rs` | nothing |
+| 2 DB | `tests/bio_mcp/mod.rs::test_bio_row_registered_as_editable_builtin` | Postgres + staged binary |
+| 3 HTTP | `tests/bio_mcp/mod.rs` (401 / 403 / graceful-503) | TestServer |
+| 4 real sidecar | `tests/bio_mcp/mod.rs::test_real_sidecar_proxy_initialize` | staged binary (self-skips on a stub build) |
+
+Enable bio in a test via `TestServerOptions { bio_mcp_enabled: true, .. }`
+— it defaults OFF in tests so unrelated/chat tests never spawn the sidecar.
+
+---
+
 ## Local LLM Runtime — testing
 
 The `llm_local_runtime` module turns local engines (llama.cpp /
@@ -829,6 +912,89 @@ Mutating handlers call `publish as sync_publish` with
 | unit | `modules/sync/{registry,event}.rs` `#[cfg(test)]` | audience routing isolation, self-echo skip, caps→429, snapshot refresh, lagging-conn prune, batch session delivery, the audience table + notify-only wire format |
 | integration | `server/tests/sync/subscribe_test.rs` | subscribe auth-gate (401) + SSE handshake |
 | E2E | `ui/tests/e2e/13-sync/` (`--workers=1`) | cross-device delivery without reload; cross-user isolation (A's 2nd device = positive control) |
+
+---
+
+## Web Search + Page Fetch
+
+The `web_search` module exposes web **search** + page **fetch** as a built-in
+MCP server (`web_search.ziee.internal`, loopback JSON-RPC at
+`/api/web-search/mcp`), modeled on `memory_mcp`/`files_mcp`. Two tools:
+`web_search(query, max_results?)` and `fetch_url(url)`. Connected-only;
+degrades silently (tools simply not attached) when offline / unconfigured.
+
+### Provider registry + fallback chain
+
+The *set* of engines lives in **code** — `modules/web_search/providers/mod.rs`
+`catalog()` (v1: `searxng`, `brave`). The DB (`web_search_providers`) only
+stores `{api_key, config}` per registry key, so adding Tavily/Exa/Google-CSE
+is a code-only change (a `SearchProvider` impl + a `catalog()` entry + a
+`build()` arm) — **no migration, no frontend change** (the admin UI renders
+from the descriptor catalog via `GET /api/web-search/providers`).
+
+`search_via_chain` walks `web_search_settings.provider_chain` in order: skip
+unconfigured entries; call `search`; **fall back to the next entry only on
+error/timeout/quota** — a successful (even empty) result is final. The
+`structuredContent.provider` names the engine that served.
+
+### SSRF (two trust boundaries)
+
+Reuses `utils/url_validator.rs`. The untrusted, model-supplied **page-fetch**
+URL uses `PUBLIC_HTTP_OR_HTTPS` (blocks loopback/RFC1918/IMDS; redirects
+re-validated). The admin-configured **SearXNG** base URL is trusted, so it uses
+a custom policy literal that allows private/loopback (a self-hosted SearXNG on
+a LAN is the common case). Brave uses `STRICT`. Fetched content is third-party
+data — the tool descriptions + a system nudge tell the model never to follow
+instructions embedded in it.
+
+### Enablement + keys
+
+The MCP server row is **always registered**; the chat extension
+(`chat_extension/`, order **26** — before the MCP tool-collector at 30) only
+sets the `attach_web_search_mcp` flag (read by `auto_attach_builtin_ids` in
+`mcp/chat_extension/mcp.rs`) when the model is tool-capable, web search is
+`enabled`, and ≥1 chain provider is configured. **Forgetting the two `mcp.rs`
+edits** (`auto_attach_builtin_ids` + `is_builtin_server_id`) is a silent
+failure: the server registers and curl works, but the model never sees the
+tools. Keys are **deployment-wide** (admin-configured, shared; no per-user),
+encrypted at rest via `common::secret` (dual-column + `SecretView` redaction).
+
+### Settings + surfaces
+
+- Singleton `web_search_settings` (enable, `provider_chain TEXT[]`, caps) +
+  per-engine `web_search_providers` (migration `096`); `web_search::use`
+  granted to the Users group (migration `097`); admins hold
+  `web_search::admin::{read,manage}` via `*`.
+- REST: `GET/PUT /api/web-search/settings`, `GET /api/web-search/providers`,
+  `PUT /api/web-search/providers/{provider}`. Sync entity `WebSearchSettings`.
+- Admin page at `/settings/web-search` (`ui/src/modules/web-search/`): global
+  card + reorderable provider-chain editor + generic per-provider config cards.
+
+### Tests
+
+| Tier | Where | Covers |
+|---|---|---|
+| 1 unit | `modules/web_search/{providers,fetch}.rs` + `mcp/chat_extension/mcp.rs` `#[cfg(test)]` | chain dispatch, `is_configured`, readability→markdown extraction + char-truncation, SSRF policy selection, the `auto_attach`/`is_builtin` web_search branches |
+| 2 integration | `tests/web_search/settings_test.rs` | settings GET/PUT, 403 gating, **API key stored-but-never-returned**, chain/caps validation (400) |
+| 3 HTTP handler | `tests/web_search/mcp_test.rs` | JSON-RPC initialize/tools-list, `use`-permission gate, no-provider error, **search via a mock SearXNG**, **fetch via a loopback fixture** |
+
+**Debug-only test seams** (compiled out of release via `cfg!(debug_assertions)`;
+cannot be set in production):
+- `WEB_SEARCH_FETCH_ALLOW_LOOPBACK=1` relaxes the page-fetch policy to
+  `DEV_LOCAL` so a `127.0.0.1` page fixture is reachable. SearXNG tests need no
+  seam (its trusted policy already allows loopback).
+- `WEB_SEARCH_BRAVE_ENDPOINT=<url>` overrides Brave's endpoint (and relaxes its
+  policy to `DEV_LOCAL`) so a loopback mock can stand in for the SaaS — used to
+  drive the live `[searxng→error, brave→serves]` fallback test.
+
+Same pattern as `CODE_SANDBOX_ROOTFS_MIRROR` / `LLM_RUNTIME_*_MIRROR`.
+
+```bash
+# Tier 1
+cargo test --lib -p ziee web_search::
+# Tier 2 + 3 (scoped)
+cargo test --test integration_tests web_search:: -- --test-threads=1
+```
 
 ---
 

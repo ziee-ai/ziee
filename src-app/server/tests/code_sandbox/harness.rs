@@ -575,6 +575,7 @@ pub fn github_fetch_server_options(
         use_desktop_binary: false,
         sandbox_public_base_url: None,
         update_check_enabled: None,
+        bio_mcp_enabled: false,
     })
 }
 

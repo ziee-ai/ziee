@@ -208,4 +208,5 @@ declare_repositories! {
     onboarding: OnboardingRepository => crate::modules::onboarding,
     skill: SkillRepository => crate::modules::skill,
     workflow: WorkflowRepository => crate::modules::workflow,
+    web_search: WebSearchRepository => crate::modules::web_search,
 }

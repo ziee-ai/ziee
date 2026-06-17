@@ -68,6 +68,9 @@ futures.workspace = true
 # embedded-postgres startup probe) are added on top of the workspace's
 # rustls-tls + charset + http2 baseline.
 reqwest = { workspace = true, features = ["json", "blocking", "stream"] }
+# web_search page fetch: readability-style extraction + HTML→markdown.
+dom_smoothie.workspace = true
+htmd.workspace = true
 
 # Server-specific deps (not shared, kept local)
 tower_governor = "0.7"

@@ -11,6 +11,8 @@ mod pdfium;
 mod uv;
 #[path = "build_helper/bun.rs"]
 mod bun;
+#[path = "build_helper/biomcp.rs"]
+mod biomcp;
 #[path = "build_helper/sandbox_runtime.rs"]
 mod sandbox_runtime;
 #[path = "build_helper/wsl2_agent.rs"]
@@ -196,6 +198,16 @@ fn setup_external_binaries() {
     if let Err(e) = bun::setup_bun(&target, &binaries_dir, &out_dir) {
         eprintln!("Warning: Failed to setup Bun: {}", e);
     }
+
+    // Setup BioMCP - downloads to binaries/{target}/. Fail-soft like
+    // pgvector: on failure a zero-byte stub is staged so the runtime
+    // `include_bytes!` compiles and the bio_mcp module self-disables.
+    if let Err(e) = biomcp::setup_biomcp(&target, &binaries_dir, &out_dir) {
+        eprintln!("Warning: Failed to setup BioMCP: {}", e);
+    }
+    // Re-run the helper when its source changes (e.g. a BIOMCP_VERSION bump),
+    // so a version change re-fetches even if nothing else triggered build.rs.
+    println!("cargo:rerun-if-changed=build_helper/biomcp.rs");
 
     // Assemble the macOS sandbox runtime bundle (no-op on every other
     // target). Failures here are warnings, not hard errors — a dev
