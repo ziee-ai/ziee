@@ -233,6 +233,10 @@ pub async fn upload_file_inner(
     // redundant (harmless) refetch.
     crate::modules::file::sync::publish_file_changed(user_id, file.id);
 
+    // Document RAG: chunk + (when an embedder is configured) embed in the
+    // background. Self-gates on file_rag_admin_settings.enabled.
+    crate::modules::file_rag::ingest::spawn_index(user_id, &file);
+
     Ok(file)
 }
 

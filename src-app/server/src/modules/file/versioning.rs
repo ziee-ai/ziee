@@ -93,5 +93,7 @@ pub async fn commit_new_version(
         .await?;
 
     super::sync::publish_file_changed(user_id, file.id);
+    // Document RAG: re-index the new head version in the background.
+    crate::modules::file_rag::ingest::spawn_reindex(user_id, file.id);
     Ok(Some(version))
 }
