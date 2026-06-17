@@ -458,15 +458,20 @@ test-hub: ensure-build-db
             hub:: assistant:: mcp:: llm_model:: \
             2>&1 | tee "$log"
 
-# OpenAPI two-step regen: server emits openapi.json into the core UI
-# workspace, then we copy it across to the desktop UI workspace and
-# run each workspace's generate-openapi script (which rewrites
-# `src/api-client/types.ts` from openapi.json). The whole pair is the
-# single source-of-truth flow for API types.
+# OpenAPI two-step regen: the SERVER binary emits the core UI spec, and the
+# DESKTOP binary emits the desktop UI spec (server routes + the desktop-only
+# routes — remote_access / magic_link / tunnel_auth / host_mount). Each
+# workspace then runs its generate-openapi script (which rewrites
+# `src/api-client/types.ts` from openapi.json). The whole set is the single
+# source-of-truth flow for API types.
+#
+# NOTE: do NOT `cp` the server spec onto the desktop one — that drops every
+# desktop-only route and leaves the desktop client (and `tsc`) missing them.
 openapi-regen: check-hub
     @cd src-app && DATABASE_URL="{{HUB_DB_URL}}" CONFIG_FILE=server/config/openapi-gen.yaml \
         cargo run --bin ziee -- --generate-openapi ui/openapi
-    @cp -f src-app/ui/openapi/openapi.json src-app/desktop/ui/openapi/openapi.json
+    @cd src-app && DATABASE_URL="{{HUB_DB_URL}}" CONFIG_FILE=server/config/openapi-gen.yaml \
+        cargo run -p ziee-desktop -- --generate-openapi desktop/ui/openapi
     @cd src-app/ui && npm run generate-openapi
     @cd src-app/desktop/ui && npm run generate-openapi
 

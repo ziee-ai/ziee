@@ -188,6 +188,11 @@ pub async fn run_headless(config_file: Option<String>) -> Result<()> {
     // (not the fallback 8080).
     crate::modules::remote_access::set_local_server_port(addr.port());
 
+    // PARITY with the GUI path (`start_backend_server`): register the
+    // host-folder mount provider against the sandbox seam now that the pool
+    // exists. Without this, headless `execute_command` sees no host mounts.
+    crate::modules::host_mount::register_provider();
+
     // PARITY with the GUI path: idempotent backfill of system MCP →
     // group assignments. The per-event handler above catches NEW
     // creates; this catches built-in registrations whose insert-if-

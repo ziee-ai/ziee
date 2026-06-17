@@ -47,6 +47,10 @@ use crate::modules::code_sandbox::types::{
 const GUEST_VSOCK_PORT: u32 = 1024;
 const GUEST_ROOTFS_MOUNT: &str = "/sandbox-rootfs";
 const GUEST_WORKSPACE_MOUNT: &str = "/workspace";
+// Host-folder mounts (feature #3): each shared host folder appears in the guest
+// at `/host-mounts/<i>` (mounted by the agent); bwrap binds it to
+// `/mnt/<full host path>`. MUST match the agent + launcher constants.
+const GUEST_EXTRA_MOUNTS_DIR: &str = "/host-mounts";
 const GUEST_BWRAP_PATH: &str = "/usr/bin/bwrap";
 const GUEST_AGENT_PATH: &str = "/usr/bin/ziee-sandbox-agent";
 // Fixed fd the agent dup2's the seccomp BPF pipe to in the bwrap child; the
@@ -439,15 +443,29 @@ impl MacVmBackend {
         flavor: &str,
         sandbox_disk: &Path,
         version: &str,
+        // Host folders shared read-only into this VM (feature #3), ordered:
+        // index i → virtio-fs tag `host-mount-<i>` → guest `/host-mounts/<i>`.
+        extra_mount_paths: &[String],
+        // Stable digest of `extra_mount_paths`; folded into the VM slot key so a
+        // changed mount set boots a fresh VM (the old one idle-evicts). Empty
+        // for the common no-host-mounts path (byte-identical to before).
+        mount_digest: &str,
     ) -> Result<Arc<VmHandle>, AppError> {
-        let key = vm_key(version, flavor);
+        let base_key = vm_key(version, flavor);
+        let key = if mount_digest.is_empty() {
+            base_key
+        } else {
+            format!("{base_key}/{mount_digest}")
+        };
         // Fast path: warm VM (don't hold the lock across a boot).
         if let Some(h) = VMS.lock().await.get(&key) {
             return Ok(h.clone());
         }
         // Serialize boot for THIS (version, flavor) only (B3). Global
         // VMS lock is NOT held across the ≤30 s boot, so other slots
-        // stay responsive.
+        // stay responsive. (Mount-set variants of the same flavor share this
+        // boot lock → their cold boots serialize; each still checks its own
+        // `key` after acquiring, so they get distinct VM slots.)
         let boot_lock = boot_lock_for(version, flavor).await;
         let _boot = boot_lock.lock().await;
         if let Some(h) = VMS.lock().await.get(&key) {
@@ -462,7 +480,7 @@ impl MacVmBackend {
         // `short_key_digest` for the reasoning — `connect()` fails
         // EAI_OVERFLOW on the un-hashed path; `stat()` still works
         // (historically masked the bug).
-        let key_digest = short_key_digest(&format!("{version}-{flavor}"));
+        let key_digest = short_key_digest(&format!("{version}-{flavor}-{mount_digest}"));
         let socket_path = dir.join(format!("vm-{key_digest}.sock"));
         let _ = std::fs::remove_file(&socket_path);
         if socket_path.as_os_str().len() > 100 {
@@ -487,8 +505,11 @@ impl MacVmBackend {
             "vsock_socket_path": socket_path.to_string_lossy(),
             "vsock_port": GUEST_VSOCK_PORT,
             "agent_exec_path": GUEST_AGENT_PATH,
+            // Host folders shared read-only into this VM (feature #3). Empty for
+            // the no-host-mounts path. Ordered: index i → tag host-mount-<i>.
+            "extra_mounts": extra_mount_paths,
         });
-        let cfg_path = dir.join(format!("vm-{version}-{flavor}.json"));
+        let cfg_path = dir.join(format!("vm-{key_digest}.json"));
         std::fs::write(&cfg_path, serde_json::to_vec(&cfg).unwrap()).map_err(|e| {
             AppError::internal_error(format!("write VM launch config: {e}"))
         })?;
@@ -666,6 +687,27 @@ impl SandboxBackend for MacVmBackend {
         timeout_secs: Option<u64>,
         flavor: &str,
     ) -> Result<SandboxRunResult, AppError> {
+        self.run_with_mounts(state, ctx, command, timeout_secs, flavor, &[])
+            .await
+    }
+
+    fn supports_extra_mounts(&self) -> bool {
+        // Host folders are virtio-fs-shared into the VM (feature #3) and bound
+        // by bwrap; workspace-internal extra mounts resolve via /workspace.
+        true
+    }
+
+    async fn run_with_mounts(
+        &self,
+        state: &CodeSandboxState,
+        ctx: &SandboxContext,
+        command: &str,
+        timeout_secs: Option<u64>,
+        flavor: &str,
+        extra_mounts: &[crate::modules::code_sandbox::workflow_staging::StagedMount],
+    ) -> Result<SandboxRunResult, AppError> {
+        use crate::modules::code_sandbox::workflow_staging::StagedMount;
+
         // Locate (fetch if needed) the flavor squashfs; idempotent on
         // cache hit. Capture `version` so `ensure_vm` keys its slot on
         // `(version, flavor)` — two pinned versions of the same flavor
@@ -681,6 +723,47 @@ impl SandboxBackend for MacVmBackend {
         // exec — both the host argv (prlimit) and the guest cgroup (via
         // ExecRequest.cgroup) read from the same row, so they stay coherent.
         let limits = resource_limits_cache::get().await?;
+
+        // Host-folder mounts (feature #3): a host mount's source is OUTSIDE the
+        // workspace root, so it's virtio-fs-shared into the VM by the launcher
+        // (tag host-mount-<i>), mounted by the agent at /host-mounts/<i>, and
+        // bound by bwrap to its /mnt/<full host path> target. Sort
+        // deterministically so index↔tag↔guest-path is stable, and key the VM
+        // on the mount set so adding/removing a folder boots a fresh VM (the old
+        // one idle-evicts). Workspace-internal extra mounts (workflow runner;
+        // Linux-only in practice) translate to their /workspace/... guest path.
+        let mut host_folders: Vec<&StagedMount> = extra_mounts
+            .iter()
+            .filter(|m| !m.host_path.starts_with(&state.workspace_root))
+            .collect();
+        host_folders.sort_by(|a, b| a.host_path.cmp(&b.host_path));
+        let host_folder_paths: Vec<String> = host_folders
+            .iter()
+            .map(|m| m.host_path.to_string_lossy().into_owned())
+            .collect();
+        let mount_digest = if host_folder_paths.is_empty() {
+            String::new()
+        } else {
+            short_key_digest(&host_folder_paths.join("\u{0}"))
+        };
+        let mut guest_mounts: Vec<StagedMount> = Vec::with_capacity(extra_mounts.len());
+        for (i, m) in host_folders.iter().enumerate() {
+            guest_mounts.push(StagedMount {
+                mode: m.mode,
+                host_path: PathBuf::from(format!("{GUEST_EXTRA_MOUNTS_DIR}/{i}")),
+                sandbox_path: m.sandbox_path.clone(),
+            });
+        }
+        for m in extra_mounts
+            .iter()
+            .filter(|m| m.host_path.starts_with(&state.workspace_root))
+        {
+            guest_mounts.push(StagedMount {
+                mode: m.mode,
+                host_path: guest_workspace_path(state, &m.host_path),
+                sandbox_path: m.sandbox_path.clone(),
+            });
+        }
 
         // Build the bwrap argv with GUEST paths so the agent can exec it
         // verbatim. The hardening flags are identical to the Linux backend.
@@ -716,7 +799,7 @@ impl SandboxBackend for MacVmBackend {
                 Path::new(GUEST_EMPTY),
                 Some(GUEST_SECCOMP_FD),
                 &limits,
-                &[],
+                &guest_mounts,
             ),
             timeout_ms: secs * 1000,
             seccomp_fd: Some(GUEST_SECCOMP_FD),
@@ -737,7 +820,9 @@ impl SandboxBackend for MacVmBackend {
         let mut attempt = 0;
         loop {
             attempt += 1;
-            let vm = self.ensure_vm(state, flavor, &disk, &version).await?;
+            let vm = self
+                .ensure_vm(state, flavor, &disk, &version, &host_folder_paths, &mount_digest)
+                .await?;
             // Bound concurrency per VM (Ga) and mark in-flight so the reaper
             // won't evict mid-command (with a Drop guard so a cancelled future
             // can't leak the count — B2).
@@ -835,7 +920,8 @@ impl SandboxBackend for MacVmBackend {
             .map_err(|e| AppError::internal_error(format!("rootfs fetch failed: {e}")))?;
         let disk = fetched.installed_path;
         let version = fetched.version;
-        let vm = self.ensure_vm(state, flavor, &disk, &version).await?;
+        // Long-lived MCP session VM: no host-folder mounts.
+        let vm = self.ensure_vm(state, flavor, &disk, &version, &[], "").await?;
 
         // Hold an inflight count for the session's lifetime so the
         // reaper waits for live MCP sessions to drain before evicting.

@@ -17,4 +17,5 @@
 mod common;
 
 mod auto_assign_mcp;
+mod host_mount_tests;
 mod remote_access;

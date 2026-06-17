@@ -70,6 +70,12 @@ impl SandboxBackend for LinuxBwrapBackend {
         .await
     }
 
+    fn supports_extra_mounts(&self) -> bool {
+        // bwrap binds host paths directly on the host — host folders and
+        // workflow staged dirs both work.
+        true
+    }
+
     async fn shutdown(&self) {
         runtime_mount::shutdown().await
     }

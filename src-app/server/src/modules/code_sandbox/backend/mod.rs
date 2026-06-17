@@ -117,6 +117,19 @@ pub trait SandboxBackend: Send + Sync {
         self.run(state, ctx, command, timeout_secs, flavor).await
     }
 
+    /// Whether this backend actually binds the `extra_mounts` passed to
+    /// `run_with_mounts` (vs. the default which silently ignores them).
+    ///
+    /// The Linux backend binds them directly. The VM backends (macOS libkrun,
+    /// Windows WSL2) do NOT yet — host folders would need, respectively, an
+    /// extra virtio-fs share (launcher + guest-agent change) or a `/mnt/<drive>`
+    /// 9p bind (a consented MED-1 carve-out). Until that lands, callers use
+    /// this to report host mounts as "unsupported on this backend" rather than
+    /// silently dropping them. See feature #3 Part B follow-ups.
+    fn supports_extra_mounts(&self) -> bool {
+        false
+    }
+
     /// Tear down anything this backend owns (FUSE daemons / VMs / distros).
     async fn shutdown(&self);
 

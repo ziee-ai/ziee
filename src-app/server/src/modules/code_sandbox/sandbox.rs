@@ -469,7 +469,14 @@ pub(crate) fn build_hardening_prefix(p: &HardeningArgvParams) -> Vec<String> {
         "sandboxuser".into(),
         "--setenv".into(),
         "PATH".into(),
-        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".into(),
+        // On-demand install layer (feature #3, Part A): user-space package
+        // managers install into the per-conversation $HOME (=/home/sandboxuser,
+        // the workspace bind), which persists across execute_command calls.
+        // Prepend their bin dirs so a tool installed in an earlier call is
+        // found in later ones. The dotfile mask hides ~/.bashrc, so a
+        // shell-init PATH edit would NOT survive — these --setenv lines are how
+        // cross-call persistence is actually wired.
+        "/home/sandboxuser/.local/bin:/home/sandboxuser/.ziee/micromamba/bin:/home/sandboxuser/.ziee/npm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".into(),
         "--setenv".into(),
         "LANG".into(),
         "C.UTF-8".into(),
@@ -479,6 +486,23 @@ pub(crate) fn build_hardening_prefix(p: &HardeningArgvParams) -> Vec<String> {
         "--setenv".into(),
         "TERM".into(),
         "dumb".into(),
+        // On-demand install layer prefixes (see the PATH comment above). These
+        // point micromamba / pip --user / npm at persistent $HOME locations so
+        // `pip install`, `micromamba create -p`, `npm i -g` survive across calls
+        // within a conversation. Non-secret paths only (--clearenv safe);
+        // per-conversation lifetime == the workspace's lifetime.
+        "--setenv".into(),
+        "MAMBA_ROOT_PREFIX".into(),
+        "/home/sandboxuser/.ziee/micromamba".into(),
+        "--setenv".into(),
+        "PIP_USER".into(),
+        "1".into(),
+        "--setenv".into(),
+        "PYTHONUSERBASE".into(),
+        "/home/sandboxuser/.local".into(),
+        "--setenv".into(),
+        "npm_config_prefix".into(),
+        "/home/sandboxuser/.ziee/npm".into(),
         // BLAS/LAPACK auto-detect every host CPU and spawn one thread per CPU
         // at startup. On a 64-core box that's 64 pthread_creates against the
         // sandbox's RLIMIT_NPROC=256, which OpenBLAS regularly loses (the
@@ -1195,6 +1219,66 @@ mod tests {
                 "missing --setenv for {required}; argv: {argv:?}"
             );
         }
+    }
+
+    /// Find the value following `--setenv <key>` in a bwrap argv.
+    fn setenv_value(argv: &[String], key: &str) -> Option<String> {
+        argv.windows(3).find_map(|w| {
+            (w[0] == "--setenv" && w[1] == key).then(|| w[2].clone())
+        })
+    }
+
+    #[test]
+    fn argv_sets_on_demand_install_layer_env() {
+        // Feature #3, Part A: user-space installs persist across
+        // execute_command calls only if the persistent $HOME prefixes are on
+        // PATH and the package managers point at them. The dotfile mask hides
+        // ~/.bashrc, so these --setenv lines (NOT shell init) are the
+        // persistence mechanism.
+        let caps = fake_caps();
+        let state = fake_state();
+        let ctx = fake_ctx();
+        let argv = build_bwrap_argv(
+            &caps,
+            &state.workspace_root,
+            &ctx,
+            std::path::Path::new(state.config.rootfs_path()),
+            "echo hi",
+            std::path::Path::new("/tmp/.sandbox_passwd"),
+            std::path::Path::new("/tmp/.sandbox_group"),
+            std::path::Path::new("/tmp/.sandbox_empty"),
+            None,
+            &fake_limits(),
+            &[],
+        );
+
+        // PATH prepends the three persistent bin dirs ahead of the rootfs dirs.
+        let path_val = setenv_value(&argv, "PATH").expect("PATH --setenv present");
+        assert!(
+            path_val.starts_with(
+                "/home/sandboxuser/.local/bin:/home/sandboxuser/.ziee/micromamba/bin:/home/sandboxuser/.ziee/npm/bin:"
+            ),
+            "PATH must prepend the persistent install bins; got: {path_val}"
+        );
+        assert!(
+            path_val.contains("/usr/bin"),
+            "PATH must still include the rootfs system dirs; got: {path_val}"
+        );
+
+        // The package-manager prefixes point at the persistent $HOME layer.
+        assert_eq!(
+            setenv_value(&argv, "MAMBA_ROOT_PREFIX").as_deref(),
+            Some("/home/sandboxuser/.ziee/micromamba")
+        );
+        assert_eq!(setenv_value(&argv, "PIP_USER").as_deref(), Some("1"));
+        assert_eq!(
+            setenv_value(&argv, "PYTHONUSERBASE").as_deref(),
+            Some("/home/sandboxuser/.local")
+        );
+        assert_eq!(
+            setenv_value(&argv, "npm_config_prefix").as_deref(),
+            Some("/home/sandboxuser/.ziee/npm")
+        );
     }
 
     #[test]

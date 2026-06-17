@@ -1103,9 +1103,15 @@ pub(crate) fn tool_definitions() -> Value {
                 - R: Rscript -e \"'<pkg>' %in% rownames(installed.packages())\"\n\
                 Only install if the check shows the package is missing.\n\
                 \n\
-                INSTALLING EXTRA PACKAGES: The rootfs /usr is read-only, so you MUST always use \
-                'pip install --user <pkg>' (NOT 'pip install <pkg>'). User-installed packages persist \
-                across calls in this conversation.\n\
+                INSTALLING EXTRA PACKAGES: The rootfs /usr is read-only, so install into your \
+                persistent $HOME (survives across calls in this conversation), never system-wide:\n\
+                - Python: 'pip install <pkg>' is pre-wired to --user (→ ~/.local, already on PATH).\n\
+                - Anything else (CLI tools, R, bioinformatics): use micromamba into the base env — \
+                'micromamba install -y -n base -c conda-forge -c bioconda <pkg>' puts binaries on PATH \
+                (~/.ziee/micromamba/bin). If micromamba is missing, the 'setup-datascience-env' skill \
+                carries the one-line bootstrap. Curated install skills exist for common stacks \
+                (setup-datascience-env, install-samtools-bcftools, rnaseq-toolkit) — load one via the \
+                skill tools before installing by hand. Do NOT use 'apt'/'sudo' (read-only rootfs).\n\
                 \n\
                 WORKING DIRECTORY: Commands run in /home/sandboxuser (this is also $HOME) — \
                 your writable, per-conversation workspace. Create, read, and write files here; \
