@@ -521,6 +521,79 @@ async fn non_tool_capable_model_gets_no_manifest() {
     );
 }
 
+/// End-to-end coverage of the web_search attach seam (the documented
+/// silent-failure point): before_llm_call → attach_gate_open → apply →
+/// auto_attach_builtin_ids → loopback tools/list. With web search enabled + a
+/// configured provider on a tool-capable model, the web_search + fetch_url tools
+/// must be offered to the LLM.
+#[tokio::test]
+async fn web_search_tools_attach_when_enabled_and_configured() {
+    let server = TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = power_user(&server, "agentic_websearch").await;
+    let model_id = crate::common::stub_chat::register_stub_model(
+        &server, &user.token, &user.user_id, &stub.base_url, true, None,
+    )
+    .await;
+
+    // A valid base_url makes searxng "configured" (no network needed — the tool
+    // only has to be ATTACHED, not called).
+    let client = reqwest::Client::new();
+    let r = client
+        .put(server.api_url("/web-search/providers/searxng"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "config": { "base_url": "https://searxng.example.com" } }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+    let r = client
+        .put(server.api_url("/web-search/settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "enabled": true, "provider_chain": ["searxng"] }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+
+    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
+    let _ = send_and_collect(&server, &user, &conv_id, &branch_id, &model_id, "STUB_PLAN=text hello").await;
+
+    assert!(
+        stub.requests_with_tool("web_search") >= 1,
+        "web_search tool must attach for a tool-capable model with web search configured; requests={:?}",
+        stub.requests()
+    );
+    assert!(
+        stub.requests_with_tool("fetch_url") >= 1,
+        "fetch_url tool must attach too; requests={:?}",
+        stub.requests()
+    );
+}
+
+/// Negative: with NO provider configured, the attach gate is closed and the
+/// web_search tools must NOT be offered — even though `enabled` defaults true.
+#[tokio::test]
+async fn web_search_tools_not_attached_when_unconfigured() {
+    let server = TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = power_user(&server, "agentic_websearch_off").await;
+    let model_id = crate::common::stub_chat::register_stub_model(
+        &server, &user.token, &user.user_id, &stub.base_url, true, None,
+    )
+    .await;
+
+    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
+    let _ = send_and_collect(&server, &user, &conv_id, &branch_id, &model_id, "STUB_PLAN=text hello").await;
+
+    assert_eq!(
+        stub.requests_with_tool("web_search"),
+        0,
+        "web_search must NOT attach with no provider configured; requests={:?}",
+        stub.requests()
+    );
+}
+
 // ── Track B ─────────────────────────────────────────────────────────────────
 
 /// Track B inline self-save: a tool-capable model emits an answer AND a
