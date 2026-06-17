@@ -309,6 +309,12 @@ pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHan
                     );
                 }
 
+                // Register the host-folder mount provider against the generic
+                // sandbox seam (desktop-only feature #3, Part B). Safe after
+                // migrations: the provider reads the host_mount_* tables lazily
+                // at execute_command time.
+                crate::modules::host_mount::register_provider();
+
                 // Ensure admin exists (create on first run)
                 if let Err(e) = ensure_desktop_admin().await {
                     tracing::error!("Failed to ensure desktop admin: {}", e);

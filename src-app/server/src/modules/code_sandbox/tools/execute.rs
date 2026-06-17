@@ -11,10 +11,11 @@ use serde_json::json;
 use crate::common::AppError;
 use crate::modules::code_sandbox::backend;
 use crate::modules::code_sandbox::config;
+use crate::modules::code_sandbox::mount_provider;
 use crate::modules::code_sandbox::sandbox::DEFAULT_TIMEOUT_SECS;
 use crate::modules::code_sandbox::types::{SandboxContext, CONVERSATION_FLAVOR};
 use crate::modules::code_sandbox::version_manager;
-use crate::modules::code_sandbox::workflow_staging::StagedMount;
+use crate::modules::code_sandbox::workflow_staging::{StageMode, StagedMount};
 
 pub async fn execute_command(
     ctx: &SandboxContext,
@@ -98,6 +99,33 @@ pub async fn execute_command_with_mounts(
     // the rootfs before run_in_sandbox so we can capture the fetch
     // outcome separately (run_in_sandbox internally calls
     // ensure_rootfs_ready again, but that's a cheap warm-path lookup).
+    // Provider-contributed mounts (e.g. desktop host-folder mounts; feature #3
+    // Part B). The seam is inert when no provider is registered (standalone /
+    // remote-web server), so this is a cheap no-op there. Merged with the
+    // workflow runner's `extra_mounts` — both flow through the same
+    // `StagedMount` → `build_bwrap_argv` bind path.
+    let (provider_mounts, mut mount_notes) = mount_provider::collect_and_sanitize(ctx).await;
+
+    // Honest per-backend reporting: the VM backends (macOS/WSL2) don't yet bind
+    // extra mounts (virtio-fs share / 9p carve-out are follow-ups), so surface a
+    // note instead of silently dropping. Linux binds them directly.
+    let applied_provider_mounts: Vec<StagedMount> = if backend::active().supports_extra_mounts() {
+        provider_mounts
+    } else {
+        for m in &provider_mounts {
+            mount_notes.push(format!(
+                "host folder '{}' could not be mounted: host-folder mounting is not yet supported on this sandbox backend",
+                m.sandbox_path
+            ));
+        }
+        Vec::new()
+    };
+    let all_mounts: Vec<StagedMount> = extra_mounts
+        .iter()
+        .cloned()
+        .chain(applied_provider_mounts.iter().cloned())
+        .collect();
+
     let ensure = backend::active().ensure_rootfs_ready(&state, flavor).await?;
     let fetch_info = ensure.fetch_info.clone();
 
@@ -108,7 +136,7 @@ pub async fn execute_command_with_mounts(
             command,
             Some(DEFAULT_TIMEOUT_SECS),
             flavor,
-            extra_mounts,
+            &all_mounts,
         )
         .await?;
 
@@ -133,6 +161,22 @@ pub async fn execute_command_with_mounts(
     }
     if let Some(note) = system_note {
         response["system_note"] = json!(note);
+    }
+    // Surface the active host-folder mounts so the model knows what's available
+    // and where (read-through path resolution lives in the provider).
+    if !applied_provider_mounts.is_empty() {
+        response["mounts"] = json!(applied_provider_mounts
+            .iter()
+            .map(|m| json!({
+                "path": m.sandbox_path,
+                "read_only": m.mode == StageMode::ReadOnly,
+            }))
+            .collect::<Vec<_>>());
+    }
+    // Folders that were configured but unavailable/rejected at run time
+    // (skip-with-note, not fatal).
+    if !mount_notes.is_empty() {
+        response["mount_notes"] = json!(mount_notes);
     }
     Ok(response)
 }

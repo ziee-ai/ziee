@@ -36,7 +36,18 @@ pub struct VmLaunchConfig {
     pub vsock_port: u32,
     /// Absolute path to the agent binary *inside the guest root*.
     pub agent_exec_path: String,
+    /// Extra host folders shared read-only into the guest (feature #3, host
+    /// mounts). Ordered: index `i` is shared under virtio-fs tag
+    /// `host-mount-<i>`; the agent mounts it at `/host-mounts/<i>` and the
+    /// server's bwrap argv binds it to `/mnt/<full host path>`. Empty for
+    /// every exec without host mounts (byte-identical boot to before).
+    #[serde(default)]
+    pub extra_mounts: Vec<String>,
 }
+
+/// Tag prefix for host-folder virtio-fs shares. MUST match the agent's
+/// `EXTRA_MOUNT_TAG_PREFIX` and mac_vm.rs's `GUEST_EXTRA_MOUNT_TAG_PREFIX`.
+const EXTRA_MOUNT_TAG_PREFIX: &str = "host-mount-";
 
 fn main() {
     let cfg_path = std::env::args().nth(1).unwrap_or_else(|| {
@@ -201,6 +212,20 @@ fn run(cfg: VmLaunchConfig) -> ! {
         let ws = cstr(&cfg.workspace_host_path);
         check("krun_add_virtiofs", krun_add_virtiofs(ctx, tag.as_ptr(), ws.as_ptr()));
 
+        // Extra host-folder shares (feature #3): each gets a read-only virtio-fs
+        // device under tag `host-mount-<i>`. Keep the CStrings alive until
+        // krun_start_enter. Empty for every exec without host mounts.
+        let mut extra_cstrs: Vec<(std::ffi::CString, std::ffi::CString)> = Vec::new();
+        for (i, host_path) in cfg.extra_mounts.iter().enumerate() {
+            let mtag = cstr(&format!("{EXTRA_MOUNT_TAG_PREFIX}{i}"));
+            let mpath = cstr(host_path);
+            check(
+                "krun_add_virtiofs3(host-mount, ro)",
+                krun_add_virtiofs3(ctx, mtag.as_ptr(), mpath.as_ptr(), 0, true),
+            );
+            extra_cstrs.push((mtag, mpath));
+        }
+
         // Bridge: libkrun listens on the host unix socket and forwards incoming
         // host connections to the guest vsock port (where the agent listens).
         // NOTE: confirm the `listen` semantics against the installed libkrun
@@ -215,7 +240,10 @@ fn run(cfg: VmLaunchConfig) -> ! {
         let exec = cstr(&cfg.agent_exec_path);
         let argv0 = cstr(&cfg.agent_exec_path);
         let argv: [*const c_char; 2] = [argv0.as_ptr(), std::ptr::null()];
-        let envp: [*const c_char; 1] = [std::ptr::null()];
+        // Tell the agent how many host-folder shares to mount (host-mount-0..N-1).
+        // Cleaner + safer than the agent probing tags until one fails.
+        let env_extra = cstr(&format!("ZIEE_EXTRA_MOUNTS={}", cfg.extra_mounts.len()));
+        let envp: [*const c_char; 2] = [env_extra.as_ptr(), std::ptr::null()];
         check(
             "krun_set_exec",
             krun_set_exec(ctx, exec.as_ptr(), argv.as_ptr(), envp.as_ptr()),

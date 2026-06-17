@@ -122,6 +122,14 @@ pub mod code_sandbox {
     pub use crate::modules::code_sandbox::{
         code_sandbox_server_id, loopback_host, CodeSandboxRepository,
     };
+    // Generic mount-provider seam (feature #3, Part B0). The desktop crate's
+    // `host_mount` module registers a provider here at boot to inject host
+    // folder mounts without the server core knowing about host folders.
+    pub use crate::modules::code_sandbox::mount_provider::{
+        has_providers, register_sandbox_mount_provider, MountSpec, SandboxMountProvider,
+    };
+    pub use crate::modules::code_sandbox::types::SandboxContext;
+    pub use crate::modules::code_sandbox::workflow_staging::StageMode;
 }
 // MCP repository for integration tests that need McpRepository::list_accessible.
 #[doc(hidden)]

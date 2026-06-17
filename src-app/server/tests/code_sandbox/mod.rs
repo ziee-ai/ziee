@@ -47,6 +47,12 @@ mod tier6_sandbox_version_back;
 mod tier6_mcp_sandbox_e2e;
 mod tier6_security_regression;
 mod tier6_hardening;
+// Tier 6 — host-folder mounting end-to-end (desktop provider + DB row +
+// execute_command reads the mounted file). Self-skips without rootfs.
+mod tier6_host_mount;
+// Tier 6 — Part A: assert the install-prefix env (--setenv) reaches the
+// sandbox at runtime. Self-skips without rootfs.
+mod tier6_install_env;
 mod tier6_version_swap;
 
 // Tier 8 — TRULY-PUBLISHED MCP package smoke. Pip-installs

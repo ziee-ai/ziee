@@ -1103,9 +1103,15 @@ pub(crate) fn tool_definitions() -> Value {
                 - R: Rscript -e \"'<pkg>' %in% rownames(installed.packages())\"\n\
                 Only install if the check shows the package is missing.\n\
                 \n\
-                INSTALLING EXTRA PACKAGES: The rootfs /usr is read-only, so you MUST always use \
-                'pip install --user <pkg>' (NOT 'pip install <pkg>'). User-installed packages persist \
-                across calls in this conversation.\n\
+                INSTALLING EXTRA PACKAGES: The rootfs /usr is read-only, so install into your \
+                persistent $HOME (survives across calls in this conversation), never system-wide:\n\
+                - Python: 'pip install <pkg>' is pre-wired to --user (→ ~/.local, already on PATH).\n\
+                - Anything else (CLI tools, R, bioinformatics): use micromamba into the base env — \
+                'micromamba install -y -n base -c conda-forge -c bioconda <pkg>' puts binaries on PATH \
+                (~/.ziee/micromamba/bin). If micromamba is missing, the 'setup-datascience-env' skill \
+                carries the one-line bootstrap. Curated install skills exist for common stacks \
+                (setup-datascience-env, install-samtools-bcftools, rnaseq-toolkit) — load one via the \
+                skill tools before installing by hand. Do NOT use 'apt'/'sudo' (read-only rootfs).\n\
                 \n\
                 WORKING DIRECTORY: Commands run in /home/sandboxuser (this is also $HOME) — \
                 your writable, per-conversation workspace. Create, read, and write files here; \
@@ -1114,6 +1120,13 @@ pub(crate) fn tool_definitions() -> Value {
                 read-only. Use relative paths (e.g. ./out.png) or paths under /home/sandboxuser.\n\
                 FILES: Conversation attachments are staged in /home/sandboxuser under their \
                 original filenames, so a bare filename (e.g. data.csv) resolves there.\n\
+                MOUNTED FOLDERS: Folders the user has mounted from their machine appear under \
+                /mnt/<full host path> (read-only unless stated) — e.g. host /Users/me/runs maps \
+                to /mnt/Users/me/runs, and Windows C:\\data to /mnt/C/data. This mapping is exact \
+                and reversible, so any host path the user names resolves deterministically. Read \
+                large data files (BAM/FASTQ/VCF, etc.) there in place; never copy or re-upload \
+                them. The active mounts for this conversation are also listed in a system note, \
+                and each execute_command result echoes them under `mounts`.\n\
                 TIMEOUT: 10 minutes. Output capped at 1 MiB per stream.",
             "inputSchema": {
                 "type": "object",

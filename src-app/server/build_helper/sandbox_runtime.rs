@@ -305,8 +305,12 @@ fn assemble_guest_root(guest_root: &Path) -> Result<(), Box<dyn std::error::Erro
              apk --root /root-stage --no-cache add \
                  alpine-baselayout busybox musl libseccomp bubblewrap util-linux >/dev/null 2>&1
              # Pre-create mount points (root is RO at runtime via virtio-fs).
+             # /host-mounts is the base for host-folder mounts (feature #3): the
+             # agent mounts a tmpfs there, then each extra virtio-fs share at
+             # /host-mounts/<i>; bwrap binds those to /mnt/<full host path>.
              mkdir -p /root-stage/proc /root-stage/sandbox-rootfs /root-stage/workspace \
-                      /root-stage/sys/fs/cgroup /root-stage/dev /root-stage/tmp /root-stage/run
+                      /root-stage/sys/fs/cgroup /root-stage/dev /root-stage/tmp /root-stage/run \
+                      /root-stage/host-mounts
              # Synthetic identity files baked into the guest root (referenced
              # by GUEST_PASSWD / GUEST_GROUP / GUEST_EMPTY in mac_vm.rs;
              # build_bwrap_argv binds these over /etc/passwd + /etc/group

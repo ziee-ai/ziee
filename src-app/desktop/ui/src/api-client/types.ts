@@ -10,6 +10,10 @@
 // TYPE DEFINITIONS
 // =============================================================================
 
+export interface AllSettingsResponse {
+  settings: SettingItem[]
+}
+
 export type ApprovalMode = 'disabled' | 'auto_approve' | 'manual_approve'
 
 export interface AssignProviderToGroupRequest {
@@ -47,6 +51,12 @@ export interface AssistantListResponse {
 
 export interface AttachFileRequest {
   file_id: string
+}
+
+export interface AuthConfigResponse {
+  hide_username: boolean
+  magic_link_enabled: boolean
+  password_auth_enabled: boolean
 }
 
 export interface AuthProviderResponse {
@@ -109,6 +119,12 @@ export interface AvailableVersion {
   version: string
 }
 
+export interface BackendStatusResponse {
+  ready: boolean
+  running: boolean
+  version: string
+}
+
 export interface Branch {
   conversation_id: string
   created_at: string
@@ -157,6 +173,11 @@ export interface Catalog {
 export type CatalogProvenance = 'seed' | 'pages'
 
 export interface ChangePasswordRequest {
+  current_password: string
+  new_password: string
+}
+
+export interface ChangePasswordRequest2 {
   current_password: string
   new_password: string
 }
@@ -936,6 +957,16 @@ export interface HideSkillInConversationRequest {
   conversation_id: string
 }
 
+export interface HostMountPolicyResponse {
+  allow_readwrite: boolean
+  allowed_prefixes: string[]
+  enabled: boolean
+}
+
+export interface HostMountsBody {
+  mounts: MountEntry[]
+}
+
 export interface HubAssistant {
   $schema?: string
   description?: string
@@ -1409,6 +1440,15 @@ export interface LoopSettings {
   stop_when_tools_called?: ToolIdentifier[]
 }
 
+export interface MagicLinkExchangeRequest {
+  token: string
+}
+
+export interface MagicLinkIssueResponse {
+  expires_at: string
+  token: string
+}
+
 export interface McpArgument {
   description?: string
   type?: string
@@ -1829,6 +1869,11 @@ export interface ModelUsageInfo {
   running: boolean
 }
 
+export interface MountEntry {
+  host_path: string
+  read_only?: boolean
+}
+
 export interface OnboardingProgress {
   completed_guide_ids: string[]
   completed_step_ids: string[]
@@ -1864,6 +1909,10 @@ export interface PaginationQuery4 {
 export interface PaginationQuery5 {
   limit?: number
   page?: number
+}
+
+export interface PasswordOnlyLoginRequest {
+  password: string
 }
 
 export interface PendingApprovalsResponse {
@@ -2048,6 +2097,27 @@ export interface RegisterRequest {
   email: string
   password: string
   username: string
+}
+
+export interface RemoteAccessSettingsResponse {
+  auth_token_set: boolean
+  auto_start_tunnel: boolean
+  created_at: string
+  ngrok_domain?: string
+  password_auth_enabled: boolean
+  updated_at: string
+}
+
+export interface RemoteAccessStatusResponse {
+  auth_token_set: boolean
+  auto_start_tunnel: boolean
+  last_error?: string
+  ngrok_domain?: string
+  password_auth_enabled: boolean
+  password_rotated: boolean
+  public_url?: string
+  started_at?: string
+  tunnel_state: TunnelStateKind
 }
 
 export interface RepositoryAuthConfig {
@@ -2496,6 +2566,10 @@ export interface ServerGroupsRequest {
   group_ids: string[]
 }
 
+export interface SetAdminPasswordRequest {
+  new_password: string
+}
+
 export interface SetMcpServerOAuthConfigRequest {
   client_id: string
   client_secret: string
@@ -2512,8 +2586,22 @@ export interface SetPinResponse {
   swap: SwapOutcome
 }
 
+export interface SetSettingRequest {
+  value: string
+}
+
 export interface SetSubscriptionRequest {
   conversation_id?: string
+}
+
+export interface SettingItem {
+  key: string
+  value: string
+}
+
+export interface SettingResponse {
+  key: string
+  value?: string
 }
 
 export interface SetupAdminRequest {
@@ -2525,6 +2613,11 @@ export interface SetupAdminRequest {
 
 export interface SetupStatusResponse {
   needs_setup: boolean
+}
+
+export interface SimpleResponse {
+  message: string
+  success: boolean
 }
 
 export interface Skill {
@@ -2572,6 +2665,11 @@ export type StartInstanceRequest = any
 export interface StreamError {
   code?: string
   message: string
+}
+
+export interface SuccessResponse {
+  message: string
+  success: boolean
 }
 
 export interface SummarizationAdminSettings {
@@ -2750,6 +2848,13 @@ export interface TriggerResponse {
   status: string
 }
 
+export interface TunnelStartResponse {
+  public_url: string
+  started_at: string
+}
+
+export type TunnelStateKind = 'idle' | 'starting' | 'connected' | 'error'
+
 export interface UpdateAssistantRequest {
   description?: string
   enabled?: boolean
@@ -2763,6 +2868,12 @@ export interface UpdateAuthProviderRequest {
   config?: any
   enabled?: boolean
   name?: string
+}
+
+export interface UpdateCheckResponse {
+  available: boolean
+  notes?: string
+  version?: string
 }
 
 export interface UpdateCodeSandboxResourceLimits {
@@ -2822,6 +2933,12 @@ export interface UpdateGroupRequest {
 
 export interface UpdateGroupSystemServersRequest {
   server_ids: string[]
+}
+
+export interface UpdateHostMountPolicyRequest {
+  allow_readwrite?: boolean
+  allowed_prefixes?: string[]
+  enabled?: boolean
 }
 
 export interface UpdateLlmModelRequest {
@@ -2917,6 +3034,13 @@ export interface UpdateProviderRequest {
   config?: any
 }
 
+export interface UpdateRemoteAccessSettingsRequest {
+  auto_start_tunnel?: boolean
+  ngrok_auth_token?: string
+  ngrok_domain?: string
+  password_auth_enabled?: boolean
+}
+
 export interface UpdateRuntimeSettingsRequest {
   auto_start_timeout_secs?: number
   drain_timeout_secs?: number
@@ -2931,6 +3055,17 @@ export interface UpdateSkill {
   when_to_use?: string
 }
 
+export interface UpdateState {
+  available: boolean
+  checking: boolean
+  downloading: boolean
+  error?: string
+  notes?: string
+  progress?: number
+  ready_to_install: boolean
+  version?: string
+}
+
 export interface UpdateStatusResponse {
   checked_at?: string
   current_version: string
@@ -2939,6 +3074,10 @@ export interface UpdateStatusResponse {
   notes?: string
   release_url?: string
   update_available: boolean
+}
+
+export interface UpdateStatusResponse2 {
+  status: UpdateState
 }
 
 export interface UpdateSummarizationAdminSettingsRequest {
@@ -3269,6 +3408,8 @@ export enum Permissions {
   GroupsRead = 'groups::read',
   HardwareMonitor = 'hardware::monitor',
   HardwareRead = 'hardware::read',
+  HostMountManage = 'host_mount::manage',
+  HostMountRead = 'host_mount::read',
   HubAssistantsCreate = 'hub::assistants::create',
   HubAssistantsRead = 'hub::assistants::read',
   HubAssistantsRefresh = 'hub::assistants::refresh',
@@ -3323,6 +3464,8 @@ export enum Permissions {
   ProjectsDelete = 'projects::delete',
   ProjectsEdit = 'projects::edit',
   ProjectsRead = 'projects::read',
+  RemoteAccessManage = 'remote_access::manage',
+  RemoteAccessRead = 'remote_access::read',
   RuntimeSettingsManage = 'llm_local_runtime::settings_manage',
   RuntimeSettingsRead = 'llm_local_runtime::settings_read',
   RuntimeVersionCreate = 'llm_local_runtime::create',
@@ -3391,6 +3534,8 @@ export const PermissionDescriptions: Record<string, string> = {
   GroupsRead: 'View groups and group information',
   HardwareMonitor: 'Monitor real-time hardware usage',
   HardwareRead: 'View hardware information',
+  HostMountManage: 'Configure host-folder mounts on projects/conversations and the host-mount policy.',
+  HostMountRead: 'Read host-folder mount configuration and policy.',
   HubAssistantsCreate: 'Create assistants from hub',
   HubAssistantsRead: 'View hub assistants',
   HubAssistantsRefresh: 'Refresh hub assistants from GitHub',
@@ -3445,6 +3590,8 @@ export const PermissionDescriptions: Record<string, string> = {
   ProjectsDelete: 'Delete chat projects',
   ProjectsEdit: 'Edit chat projects (incl. attach/detach files)',
   ProjectsRead: 'Read chat projects',
+  RemoteAccessManage: 'Save the ngrok auth token / custom domain, toggle auto-start, toggle password authentication, start/stop the tunnel, and issue magic-link login tokens.',
+  RemoteAccessRead: 'Read remote-access settings, tunnel status, and current public URL.',
   RuntimeSettingsManage: 'Modify runtime singleton settings (idle/auto-start/drain)',
   RuntimeSettingsRead: 'Read runtime singleton settings (idle/auto-start/drain)',
   RuntimeVersionCreate: 'Download and register new runtime versions',
@@ -3496,10 +3643,14 @@ export const ApiEndpoints = {
   'AssistantTemplate.list': 'GET /api/assistant-templates',
   'AssistantTemplate.update': 'PUT /api/assistant-templates/{id}',
   'Auth.changePassword': 'POST /api/auth/password',
+  'Auth.getConfig': 'GET /api/auth/config',
   'Auth.linkAccount': 'POST /api/auth/link-account',
   'Auth.listProviders': 'GET /api/auth/providers',
   'Auth.login': 'POST /api/auth/login',
+  'Auth.loginPasswordOnly': 'POST /api/auth/login-password-only',
   'Auth.logout': 'POST /api/auth/logout',
+  'Auth.magicLinkExchange': 'POST /api/auth/magic-link/exchange',
+  'Auth.magicLinkIssue': 'POST /api/auth/magic-link/issue',
   'Auth.me': 'GET /api/auth/me',
   'Auth.refresh': 'POST /api/auth/refresh',
   'Auth.register': 'POST /api/auth/register',
@@ -3539,6 +3690,11 @@ export const ApiEndpoints = {
   'CoreMemory.delete': 'DELETE /api/assistants/{assistant_id}/core-memory/{block_label}',
   'CoreMemory.list': 'GET /api/assistants/{assistant_id}/core-memory',
   'CoreMemory.upsert': 'PUT /api/assistants/core-memory',
+  'DesktopBackend.status': 'GET /api/desktop/backend/status',
+  'DesktopSettings.delete': 'DELETE /api/desktop/settings/{key}',
+  'DesktopSettings.get': 'GET /api/desktop/settings/{key}',
+  'DesktopSettings.getAll': 'GET /api/desktop/settings',
+  'DesktopSettings.set': 'PUT /api/desktop/settings/{key}',
   'File.delete': 'DELETE /api/files/{file_id}',
   'File.download': 'GET /api/files/{file_id}/download',
   'File.downloadVersion': 'GET /api/files/{file_id}/versions/{version}/download',
@@ -3567,6 +3723,12 @@ export const ApiEndpoints = {
   'Hardware.info': 'GET /api/hardware',
   'Hardware.stream': 'GET /api/hardware/usage-stream',
   'Health.check': 'GET /api/health',
+  'HostMount.getConversationMounts': 'GET /api/host-mounts/conversation/{conversation_id}',
+  'HostMount.getPolicy': 'GET /api/host-mounts/policy',
+  'HostMount.getProjectMounts': 'GET /api/host-mounts/project/{project_id}',
+  'HostMount.putConversationMounts': 'PUT /api/host-mounts/conversation/{conversation_id}',
+  'HostMount.putProjectMounts': 'PUT /api/host-mounts/project/{project_id}',
+  'HostMount.updatePolicy': 'PUT /api/host-mounts/policy',
   'Hub.createAssistantFromHub': 'POST /api/hub/assistants/create',
   'Hub.createAssistantTemplateFromHub': 'POST /api/hub/assistant-templates/create',
   'Hub.createMcpServerFromHub': 'POST /api/hub/mcp-servers/create',
@@ -3718,6 +3880,12 @@ export const ApiEndpoints = {
   'Project.update': 'PUT /api/projects/{id}',
   'Project.updateMcpSettings': 'PUT /api/projects/{id}/mcp-settings',
   'Project.uploadAndAttachFile': 'POST /api/projects/{id}/files/upload',
+  'RemoteAccess.getSettings': 'GET /api/remote-access/settings',
+  'RemoteAccess.getStatus': 'GET /api/remote-access/status',
+  'RemoteAccess.setAdminPassword': 'POST /api/remote-access/admin-password',
+  'RemoteAccess.startTunnel': 'POST /api/remote-access/tunnel/start',
+  'RemoteAccess.stopTunnel': 'POST /api/remote-access/tunnel/stop',
+  'RemoteAccess.updateSettings': 'PUT /api/remote-access/settings',
   'RuntimeVersion.checkUpdates': 'GET /api/local-runtime/versions/{engine}/check-updates',
   'RuntimeVersion.delete': 'DELETE /api/local-runtime/versions/{version_id}',
   'RuntimeVersion.download': 'POST /api/local-runtime/versions/download',
@@ -3752,6 +3920,10 @@ export const ApiEndpoints = {
   'SummarizationAdmin.update': 'PUT /api/summarization/settings',
   'SummarizationTest.refresh': 'POST /api/_test/summarization/refresh',
   'Sync.subscribe': 'GET /api/sync/subscribe',
+  'Updater.check': 'POST /api/desktop/updater/check',
+  'Updater.download': 'POST /api/desktop/updater/download',
+  'Updater.install': 'POST /api/desktop/updater/install',
+  'Updater.status': 'GET /api/desktop/updater/status',
   'User.create': 'POST /api/users',
   'User.delete': 'DELETE /api/users/{user_id}',
   'User.get': 'GET /api/users/{user_id}',
@@ -3767,6 +3939,7 @@ export const ApiEndpoints = {
   'UserGroup.list': 'GET /api/groups',
   'UserGroup.removeUser': 'DELETE /api/groups/{user_id}/{group_id}/remove',
   'UserGroup.update': 'POST /api/groups/{group_id}',
+  'Users.changeOwnPassword': 'POST /api/users/me/password',
   'WebSearch.getProviders': 'GET /api/web-search/providers',
   'WebSearch.getSettings': 'GET /api/web-search/settings',
   'WebSearch.updateProvider': 'PUT /api/web-search/providers/{provider}',
@@ -3813,10 +3986,14 @@ export type ApiEndpointParameters = {
   'AssistantTemplate.list': { limit: number; page: number }
   'AssistantTemplate.update': { id: string } & UpdateAssistantRequest
   'Auth.changePassword': ChangePasswordRequest
+  'Auth.getConfig': void
   'Auth.linkAccount': LinkAccountRequest
   'Auth.listProviders': void
   'Auth.login': LoginRequest
+  'Auth.loginPasswordOnly': PasswordOnlyLoginRequest
   'Auth.logout': void
+  'Auth.magicLinkExchange': MagicLinkExchangeRequest
+  'Auth.magicLinkIssue': void
   'Auth.me': void
   'Auth.refresh': RefreshTokenRequest
   'Auth.register': RegisterRequest
@@ -3856,6 +4033,11 @@ export type ApiEndpointParameters = {
   'CoreMemory.delete': { assistant_id: string; block_label: string }
   'CoreMemory.list': { assistant_id: string }
   'CoreMemory.upsert': UpsertCoreMemoryBlockRequest
+  'DesktopBackend.status': void
+  'DesktopSettings.delete': { key: string }
+  'DesktopSettings.get': { key: string }
+  'DesktopSettings.getAll': void
+  'DesktopSettings.set': { key: string } & SetSettingRequest
   'File.delete': { file_id: string }
   'File.download': { file_id: string }
   'File.downloadVersion': { file_id: string; version: string }
@@ -3884,6 +4066,12 @@ export type ApiEndpointParameters = {
   'Hardware.info': void
   'Hardware.stream': void
   'Health.check': void
+  'HostMount.getConversationMounts': { conversation_id: string }
+  'HostMount.getPolicy': void
+  'HostMount.getProjectMounts': { project_id: string }
+  'HostMount.putConversationMounts': { conversation_id: string } & HostMountsBody
+  'HostMount.putProjectMounts': { project_id: string } & HostMountsBody
+  'HostMount.updatePolicy': UpdateHostMountPolicyRequest
   'Hub.createAssistantFromHub': CreateAssistantFromHubRequest
   'Hub.createAssistantTemplateFromHub': CreateAssistantFromHubRequest
   'Hub.createMcpServerFromHub': CreateMcpServerFromHubRequest
@@ -4035,6 +4223,12 @@ export type ApiEndpointParameters = {
   'Project.update': { id: string } & UpdateProjectRequest
   'Project.updateMcpSettings': { id: string } & ProjectMcpSettingsRequest
   'Project.uploadAndAttachFile': { id: string } & FormData
+  'RemoteAccess.getSettings': void
+  'RemoteAccess.getStatus': void
+  'RemoteAccess.setAdminPassword': SetAdminPasswordRequest
+  'RemoteAccess.startTunnel': void
+  'RemoteAccess.stopTunnel': void
+  'RemoteAccess.updateSettings': UpdateRemoteAccessSettingsRequest
   'RuntimeVersion.checkUpdates': { engine: string }
   'RuntimeVersion.delete': { version_id: string; remove_binary?: boolean }
   'RuntimeVersion.download': DownloadVersionRequest
@@ -4069,6 +4263,10 @@ export type ApiEndpointParameters = {
   'SummarizationAdmin.update': UpdateSummarizationAdminSettingsRequest
   'SummarizationTest.refresh': TestRefreshRequest
   'Sync.subscribe': void
+  'Updater.check': void
+  'Updater.download': void
+  'Updater.install': void
+  'Updater.status': void
   'User.create': CreateUserRequest
   'User.delete': { user_id: string }
   'User.get': { user_id: string }
@@ -4084,6 +4282,7 @@ export type ApiEndpointParameters = {
   'UserGroup.list': PaginationQuery
   'UserGroup.removeUser': { user_id: string; group_id: string }
   'UserGroup.update': { group_id: string } & UpdateGroupRequest
+  'Users.changeOwnPassword': ChangePasswordRequest2
   'WebSearch.getProviders': void
   'WebSearch.getSettings': void
   'WebSearch.updateProvider': { provider: string } & UpdateProviderRequest
@@ -4130,10 +4329,14 @@ export type ApiEndpointResponses = {
   'AssistantTemplate.list': AssistantListResponse
   'AssistantTemplate.update': Assistant
   'Auth.changePassword': void
+  'Auth.getConfig': AuthConfigResponse
   'Auth.linkAccount': AuthResponse
   'Auth.listProviders': PublicProvidersResponse
   'Auth.login': AuthResponse
+  'Auth.loginPasswordOnly': AuthResponse
   'Auth.logout': void
+  'Auth.magicLinkExchange': AuthResponse
+  'Auth.magicLinkIssue': MagicLinkIssueResponse
   'Auth.me': MeResponse
   'Auth.refresh': TokenPair
   'Auth.register': AuthResponse
@@ -4173,6 +4376,11 @@ export type ApiEndpointResponses = {
   'CoreMemory.delete': void
   'CoreMemory.list': CoreMemoryBlock[]
   'CoreMemory.upsert': CoreMemoryBlock
+  'DesktopBackend.status': BackendStatusResponse
+  'DesktopSettings.delete': SuccessResponse
+  'DesktopSettings.get': SettingResponse
+  'DesktopSettings.getAll': AllSettingsResponse
+  'DesktopSettings.set': SuccessResponse
   'File.delete': void
   'File.download': Blob
   'File.downloadVersion': Blob
@@ -4201,6 +4409,12 @@ export type ApiEndpointResponses = {
   'Hardware.info': HardwareInfoResponse
   'Hardware.stream': SSEHardwareUsageEvent
   'Health.check': HealthResponse
+  'HostMount.getConversationMounts': HostMountsBody
+  'HostMount.getPolicy': HostMountPolicyResponse
+  'HostMount.getProjectMounts': HostMountsBody
+  'HostMount.putConversationMounts': HostMountsBody
+  'HostMount.putProjectMounts': HostMountsBody
+  'HostMount.updatePolicy': HostMountPolicyResponse
   'Hub.createAssistantFromHub': AssistantFromHubResponse
   'Hub.createAssistantTemplateFromHub': AssistantFromHubResponse
   'Hub.createMcpServerFromHub': McpServerFromHubResponse
@@ -4352,6 +4566,12 @@ export type ApiEndpointResponses = {
   'Project.update': Project
   'Project.updateMcpSettings': ProjectMcpSettingsResponse
   'Project.uploadAndAttachFile': File
+  'RemoteAccess.getSettings': RemoteAccessSettingsResponse
+  'RemoteAccess.getStatus': RemoteAccessStatusResponse
+  'RemoteAccess.setAdminPassword': void
+  'RemoteAccess.startTunnel': TunnelStartResponse
+  'RemoteAccess.stopTunnel': void
+  'RemoteAccess.updateSettings': RemoteAccessSettingsResponse
   'RuntimeVersion.checkUpdates': AvailableUpdatesResponse
   'RuntimeVersion.delete': void
   'RuntimeVersion.download': DownloadVersionStartedResponse
@@ -4386,6 +4606,10 @@ export type ApiEndpointResponses = {
   'SummarizationAdmin.update': SummarizationAdminSettings
   'SummarizationTest.refresh': any
   'Sync.subscribe': SyncSseEvent
+  'Updater.check': UpdateCheckResponse
+  'Updater.download': SimpleResponse
+  'Updater.install': SimpleResponse
+  'Updater.status': UpdateStatusResponse2
   'User.create': User
   'User.delete': void
   'User.get': User
@@ -4401,6 +4625,7 @@ export type ApiEndpointResponses = {
   'UserGroup.list': GroupListResponse
   'UserGroup.removeUser': void
   'UserGroup.update': Group
+  'Users.changeOwnPassword': void
   'WebSearch.getProviders': ProviderCatalogResponse
   'WebSearch.getSettings': WebSearchSettings
   'WebSearch.updateProvider': ProviderCatalogResponse

@@ -6,6 +6,7 @@
 
 import { create } from 'zustand'
 import { open, save } from '@tauri-apps/plugin-dialog'
+import { type StoreProxy } from '@/core/stores'
 
 interface FileFilter {
   name: string
@@ -28,6 +29,12 @@ interface FileDialogState {
     defaultPath?: string
     filters?: FileFilter[]
   }) => Promise<string | null>
+}
+
+declare module '@/core/stores' {
+  interface RegisteredStores {
+    FileDialog: StoreProxy<FileDialogState>
+  }
 }
 
 export const useFileDialogStore = create<FileDialogState>(() => ({

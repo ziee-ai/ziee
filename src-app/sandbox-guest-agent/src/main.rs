@@ -47,6 +47,15 @@ const ROOTFS_MOUNT: &str = "/sandbox-rootfs";
 /// virtio-fs tag the host shares the workspace root under.
 const WORKSPACE_TAG: &str = "workspace";
 const WORKSPACE_MOUNT: &str = "/workspace";
+/// Base dir for host-folder mounts (feature #3). A tmpfs is mounted here (the
+/// guest root is RO), then each extra virtio-fs share at /host-mounts/<i>. MUST
+/// match mac_vm.rs's `GUEST_EXTRA_MOUNTS_DIR`.
+#[cfg(target_os = "linux")]
+const EXTRA_MOUNTS_DIR: &str = "/host-mounts";
+/// Tag prefix for host-folder shares. MUST match the launcher's
+/// `EXTRA_MOUNT_TAG_PREFIX`.
+#[cfg(target_os = "linux")]
+const EXTRA_MOUNT_TAG_PREFIX: &str = "host-mount-";
 
 /// Chunk size for streaming child stdout/stderr.
 const READ_CHUNK: usize = 64 * 1024;
@@ -267,6 +276,27 @@ fn init_mounts() {
             "agent: chmod {WORKSPACE_MOUNT} 1777 failed: {} — sandboxed writes may fail",
             std::io::Error::last_os_error()
         );
+    }
+
+    // Host-folder mounts (feature #3): the launcher shared N folders as
+    // read-only virtio-fs devices (tags host-mount-0..N-1) and told us N via
+    // the ZIEE_EXTRA_MOUNTS env. The guest root is RO, so mount a tmpfs at
+    // /host-mounts to hold the mountpoints, then mount each share at
+    // /host-mounts/<i>. bwrap (argv built by the server) binds these to
+    // /mnt/<full host path>. No-op when N == 0.
+    if let Ok(n) = std::env::var("ZIEE_EXTRA_MOUNTS")
+        .unwrap_or_default()
+        .parse::<usize>()
+    {
+        if n > 0 {
+            mount_fs("tmpfs", EXTRA_MOUNTS_DIR, "tmpfs", 0, Some("size=1m,mode=0755"));
+            for i in 0..n {
+                let tag = format!("{EXTRA_MOUNT_TAG_PREFIX}{i}");
+                let target = format!("{EXTRA_MOUNTS_DIR}/{i}");
+                let _ = std::fs::create_dir_all(&target);
+                mount_fs(&tag, &target, "virtiofs", 0, None);
+            }
+        }
     }
 }
 

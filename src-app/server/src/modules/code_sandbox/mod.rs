@@ -29,6 +29,8 @@ pub mod handlers;
 pub mod runtime_fetch;
 pub mod runtime_mount;
 pub mod models;
+pub mod mount_context_extension;
+pub mod mount_provider;
 pub mod permissions;
 pub mod probes;
 pub mod repository;
