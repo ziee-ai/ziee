@@ -34,6 +34,20 @@ trap 'rm -rf "$WORKDIR"' EXIT
 log()  { printf '[hub-smoke] %s\n' "$*"; }
 fail() { printf '[hub-smoke] FAIL: %s\n' "$*" >&2; exit 1; }
 
+# POST/GET that PRESERVE the response body + HTTP status even on 4xx/5xx.
+# Deliberately NOT `-f`: that flag makes curl discard the error body, which is
+# exactly what used to turn every install failure into an undebuggable empty
+# "install FAILED:" line. Output is the body with the numeric status code on a
+# trailing line; callers split with ${var##*$'\n'} (status) / ${var%$'\n'*} (body).
+api_post() {
+  curl -sS -X POST "${API}$1" "${AUTH[@]}" \
+    -H 'Content-Type: application/json' -d "$2" \
+    -w $'\n%{http_code}' 2>&1 || true
+}
+api_get() {
+  curl -sS "${API}$1" "${AUTH[@]}" -w $'\n%{http_code}' 2>&1 || true
+}
+
 command -v curl >/dev/null || fail "curl is required"
 command -v jq   >/dev/null || fail "jq is required"
 
@@ -50,26 +64,33 @@ done
 [ "$ready" = 1 ] || fail "ziee did not become reachable within 120s"
 log "ziee is up"
 
-# ── 2. bootstrap the first user (becomes admin) + obtain a token ─────────
-# First registered user is granted Administrators on a fresh DB. If the user
-# already exists (re-run against a persistent DB), fall back to login.
-reg_resp="$(curl -fsS -X POST "${API}/auth/register" \
-  -H 'Content-Type: application/json' \
-  -d "{\"username\":\"${ADMIN_USER}\",\"password\":\"${ADMIN_PASS}\",\"email\":\"${ADMIN_EMAIL}\"}" \
-  2>/dev/null || true)"
-
-token="$(printf '%s' "$reg_resp" | jq -r '.token // .access_token // empty' 2>/dev/null || true)"
-
+# ── 2. bootstrap the first ADMIN + obtain a token ────────────────────────
+# install-from-hub requires the admin-only `workflows::install` /
+# `skills::install` permission, so the smoke user must be a real admin —
+# i.e. an Administrators-group member. On a fresh DB that comes from the
+# one-time setup flow (POST /app/setup/admin), NOT /auth/register (which
+# creates a regular Users-group member that gets 403 on install). On a re-run
+# (admin already exists) fall back to login.
+needs_setup="$(curl -fsS "${API}/app/setup/status" 2>/dev/null | jq -r '.needs_setup // false' 2>/dev/null || echo false)"
+token=""
+if [ "$needs_setup" = "true" ]; then
+  log "fresh deployment — creating the first admin via /app/setup/admin"
+  setup_resp="$(curl -sS -X POST "${API}/app/setup/admin" \
+    -H 'Content-Type: application/json' \
+    -d "{\"username\":\"${ADMIN_USER}\",\"email\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASS}\"}" \
+    2>/dev/null || true)"
+  token="$(printf '%s' "$setup_resp" | jq -r '.token // .access_token // empty' 2>/dev/null || true)"
+fi
 if [ -z "$token" ]; then
-  log "register returned no token; trying login"
+  log "admin already exists (or setup returned no token); logging in as ${ADMIN_USER}"
   login_resp="$(curl -fsS -X POST "${API}/auth/login" \
     -H 'Content-Type: application/json' \
-    -d "{\"username\":\"${ADMIN_USER}\",\"password\":\"${ADMIN_PASS}\"}")"
-  token="$(printf '%s' "$login_resp" | jq -r '.token // .access_token // empty')"
+    -d "{\"username\":\"${ADMIN_USER}\",\"password\":\"${ADMIN_PASS}\"}" 2>/dev/null || true)"
+  token="$(printf '%s' "$login_resp" | jq -r '.token // .access_token // empty' 2>/dev/null || true)"
 fi
-[ -n "$token" ] || fail "could not obtain an auth token"
+[ -n "$token" ] || fail "could not obtain an admin auth token"
 AUTH=(-H "Authorization: Bearer ${token}")
-log "authenticated as ${ADMIN_USER}"
+log "authenticated as admin ${ADMIN_USER}"
 
 # ── 3. pull the live hub index ───────────────────────────────────────────
 log "fetching hub index from ${HUB_BASE}/index.json"
@@ -94,21 +115,20 @@ failures=0
 for name in "${WF_NAMES[@]}"; do
   log "=== workflow: ${name} ==="
 
-  install_resp="$(curl -fsS -X POST "${API}/workflows/install-from-hub" \
-    "${AUTH[@]}" -H 'Content-Type: application/json' \
-    -d "{\"hub_id\":\"${name}\"}" 2>/dev/null || true)"
+  install_raw="$(api_post "/workflows/install-from-hub" "{\"hub_id\":\"${name}\"}")"
+  install_code="${install_raw##*$'\n'}"
+  install_resp="${install_raw%$'\n'*}"
 
   wf_id="$(printf '%s' "$install_resp" | jq -r '.id // .workflow.id // empty' 2>/dev/null || true)"
   if [ -z "$wf_id" ]; then
-    log "  install FAILED: ${install_resp:0:400}"
+    log "  install FAILED (HTTP ${install_code}): ${install_resp:0:600}"
     failures=$((failures + 1))
     continue
   fi
   log "  installed → ${wf_id}"
 
-  test_resp="$(curl -fsS -X POST "${API}/workflows/${wf_id}/test" \
-    "${AUTH[@]}" -H 'Content-Type: application/json' -d '{}' \
-    2>/dev/null || true)"
+  test_raw="$(api_post "/workflows/${wf_id}/test" '{}')"
+  test_resp="${test_raw%$'\n'*}"
 
   passed="$(printf '%s' "$test_resp" | jq -r '.passed // empty' 2>/dev/null || true)"
   failed="$(printf '%s' "$test_resp" | jq -r '.failed // empty' 2>/dev/null || true)"
@@ -134,19 +154,20 @@ done
 for name in "${SKILL_NAMES[@]}"; do
   log "=== skill: ${name} ==="
 
-  install_resp="$(curl -fsS -X POST "${API}/skills/install-from-hub" \
-    "${AUTH[@]}" -H 'Content-Type: application/json' \
-    -d "{\"hub_id\":\"${name}\"}" 2>/dev/null || true)"
+  install_raw="$(api_post "/skills/install-from-hub" "{\"hub_id\":\"${name}\"}")"
+  install_code="${install_raw##*$'\n'}"
+  install_resp="${install_raw%$'\n'*}"
 
   skill_id="$(printf '%s' "$install_resp" | jq -r '.skill.id // .id // empty' 2>/dev/null || true)"
   if [ -z "$skill_id" ]; then
-    log "  install FAILED: ${install_resp:0:400}"
+    log "  install FAILED (HTTP ${install_code}): ${install_resp:0:600}"
     failures=$((failures + 1))
     continue
   fi
   log "  installed → ${skill_id}"
 
-  list_resp="$(curl -fsS "${API}/skills" "${AUTH[@]}" 2>/dev/null || true)"
+  list_raw="$(api_get "/skills")"
+  list_resp="${list_raw%$'\n'*}"
   if printf '%s' "$list_resp" | jq -e --arg id "$skill_id" \
        '.skills[]? | select(.id == $id)' >/dev/null 2>&1; then
     log "  verified in GET /skills"
