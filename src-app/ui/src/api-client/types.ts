@@ -205,6 +205,13 @@ export interface CodeSandboxResourceLimits {
   vm_max_concurrent_execs: number
 }
 
+export interface ConfigField {
+  key: string
+  label: string
+  placeholder: string
+  required: boolean
+}
+
 export type ContentBlockDelta = {
   type: 'text_delta'
   delta: string
@@ -1930,6 +1937,20 @@ export interface PromptArgument {
   required?: boolean
 }
 
+export interface ProviderCatalogEntry {
+  api_key_set: boolean
+  config: any
+  config_fields: ConfigField[]
+  configured: boolean
+  display_name: string
+  key: string
+  needs_api_key: boolean
+}
+
+export interface ProviderCatalogResponse {
+  providers: ProviderCatalogEntry[]
+}
+
 export interface ProviderInstancesResponse {
   instances: InstanceResponse[]
   provider_id: string
@@ -2575,7 +2596,7 @@ export interface SyncConnectedData {
   connection_id: string
 }
 
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'file' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'file' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'web_search_settings' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run'
 
 export interface SyncEvent {
   action: SyncAction
@@ -2853,6 +2874,11 @@ export interface UpdateProjectRequest {
   name?: string
 }
 
+export interface UpdateProviderRequest {
+  api_key?: string
+  config?: any
+}
+
 export interface UpdateRuntimeSettingsRequest {
   auto_start_timeout_secs?: number
   drain_timeout_secs?: number
@@ -2898,6 +2924,15 @@ export interface UpdateUserRequest {
   display_name?: string
   is_active?: boolean
   username?: string
+}
+
+export interface UpdateWebSearchSettingsRequest {
+  enabled?: boolean
+  fetch_max_bytes?: number
+  fetch_max_chars?: number
+  max_results?: number
+  provider_chain?: string[]
+  request_timeout_secs?: number
 }
 
 export interface UpdateWorkflow {
@@ -3073,6 +3108,16 @@ export interface VersionUsageEntry {
 export interface VersionUsageResponse {
   unresolved: ModelUsageInfo[]
   versions: VersionUsageEntry[]
+}
+
+export interface WebSearchSettings {
+  enabled: boolean
+  fetch_max_bytes: number
+  fetch_max_chars: number
+  max_results: number
+  provider_chain: string[]
+  request_timeout_secs: number
+  updated_at: string
 }
 
 export interface Workflow {
@@ -3258,6 +3303,8 @@ export enum Permissions {
   UsersRead = 'users::read',
   UsersResetPassword = 'users::reset_password',
   UsersToggleStatus = 'users::toggle_status',
+  WebSearchAdminManage = 'web_search::admin::manage',
+  WebSearchAdminRead = 'web_search::admin::read',
   WorkflowsAssignToGroups = 'workflows::assign_to_groups',
   WorkflowsExecute = 'workflows::execute',
   WorkflowsInstall = 'workflows::install',
@@ -3376,6 +3423,8 @@ export const PermissionDescriptions: Record<string, string> = {
   UsersRead: 'View user information and list users',
   UsersResetPassword: 'Reset user passwords',
   UsersToggleStatus: 'Enable or disable user accounts',
+  WebSearchAdminManage: 'Update web search settings, provider chain, and provider API keys.',
+  WebSearchAdminRead: 'Read web search settings (enable, provider chain, caps).',
   WorkflowsAssignToGroups: 'Manage group assignments for system-scope workflows',
   WorkflowsExecute: 'Kick off a workflow run',
   WorkflowsInstall: 'Install user-scope workflows',
@@ -3672,6 +3721,10 @@ export const ApiEndpoints = {
   'UserGroup.list': 'GET /api/groups',
   'UserGroup.removeUser': 'DELETE /api/groups/{user_id}/{group_id}/remove',
   'UserGroup.update': 'POST /api/groups/{group_id}',
+  'WebSearch.getProviders': 'GET /api/web-search/providers',
+  'WebSearch.getSettings': 'GET /api/web-search/settings',
+  'WebSearch.updateProvider': 'PUT /api/web-search/providers/{provider}',
+  'WebSearch.updateSettings': 'PUT /api/web-search/settings',
   'Workflow.cancelRun': 'POST /api/workflow-runs/{run_id}/cancel',
   'Workflow.delete': 'DELETE /api/workflows/{id}',
   'Workflow.deleteSystem': 'DELETE /api/workflows/system/{id}',
@@ -3981,6 +4034,10 @@ export type ApiEndpointParameters = {
   'UserGroup.list': PaginationQuery
   'UserGroup.removeUser': { user_id: string; group_id: string }
   'UserGroup.update': { group_id: string } & UpdateGroupRequest
+  'WebSearch.getProviders': void
+  'WebSearch.getSettings': void
+  'WebSearch.updateProvider': { provider: string } & UpdateProviderRequest
+  'WebSearch.updateSettings': UpdateWebSearchSettingsRequest
   'Workflow.cancelRun': { run_id: string }
   'Workflow.delete': { id: string }
   'Workflow.deleteSystem': { id: string }
@@ -4290,6 +4347,10 @@ export type ApiEndpointResponses = {
   'UserGroup.list': GroupListResponse
   'UserGroup.removeUser': void
   'UserGroup.update': Group
+  'WebSearch.getProviders': ProviderCatalogResponse
+  'WebSearch.getSettings': WebSearchSettings
+  'WebSearch.updateProvider': ProviderCatalogResponse
+  'WebSearch.updateSettings': WebSearchSettings
   'Workflow.cancelRun': CancelAckResponse
   'Workflow.delete': void
   'Workflow.deleteSystem': void

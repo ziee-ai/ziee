@@ -915,6 +915,89 @@ Mutating handlers call `publish as sync_publish` with
 
 ---
 
+## Web Search + Page Fetch
+
+The `web_search` module exposes web **search** + page **fetch** as a built-in
+MCP server (`web_search.ziee.internal`, loopback JSON-RPC at
+`/api/web-search/mcp`), modeled on `memory_mcp`/`files_mcp`. Two tools:
+`web_search(query, max_results?)` and `fetch_url(url)`. Connected-only;
+degrades silently (tools simply not attached) when offline / unconfigured.
+
+### Provider registry + fallback chain
+
+The *set* of engines lives in **code** — `modules/web_search/providers/mod.rs`
+`catalog()` (v1: `searxng`, `brave`). The DB (`web_search_providers`) only
+stores `{api_key, config}` per registry key, so adding Tavily/Exa/Google-CSE
+is a code-only change (a `SearchProvider` impl + a `catalog()` entry + a
+`build()` arm) — **no migration, no frontend change** (the admin UI renders
+from the descriptor catalog via `GET /api/web-search/providers`).
+
+`search_via_chain` walks `web_search_settings.provider_chain` in order: skip
+unconfigured entries; call `search`; **fall back to the next entry only on
+error/timeout/quota** — a successful (even empty) result is final. The
+`structuredContent.provider` names the engine that served.
+
+### SSRF (two trust boundaries)
+
+Reuses `utils/url_validator.rs`. The untrusted, model-supplied **page-fetch**
+URL uses `PUBLIC_HTTP_OR_HTTPS` (blocks loopback/RFC1918/IMDS; redirects
+re-validated). The admin-configured **SearXNG** base URL is trusted, so it uses
+a custom policy literal that allows private/loopback (a self-hosted SearXNG on
+a LAN is the common case). Brave uses `STRICT`. Fetched content is third-party
+data — the tool descriptions + a system nudge tell the model never to follow
+instructions embedded in it.
+
+### Enablement + keys
+
+The MCP server row is **always registered**; the chat extension
+(`chat_extension/`, order **26** — before the MCP tool-collector at 30) only
+sets the `attach_web_search_mcp` flag (read by `auto_attach_builtin_ids` in
+`mcp/chat_extension/mcp.rs`) when the model is tool-capable, web search is
+`enabled`, and ≥1 chain provider is configured. **Forgetting the two `mcp.rs`
+edits** (`auto_attach_builtin_ids` + `is_builtin_server_id`) is a silent
+failure: the server registers and curl works, but the model never sees the
+tools. Keys are **deployment-wide** (admin-configured, shared; no per-user),
+encrypted at rest via `common::secret` (dual-column + `SecretView` redaction).
+
+### Settings + surfaces
+
+- Singleton `web_search_settings` (enable, `provider_chain TEXT[]`, caps) +
+  per-engine `web_search_providers` (migration `096`); `web_search::use`
+  granted to the Users group (migration `097`); admins hold
+  `web_search::admin::{read,manage}` via `*`.
+- REST: `GET/PUT /api/web-search/settings`, `GET /api/web-search/providers`,
+  `PUT /api/web-search/providers/{provider}`. Sync entity `WebSearchSettings`.
+- Admin page at `/settings/web-search` (`ui/src/modules/web-search/`): global
+  card + reorderable provider-chain editor + generic per-provider config cards.
+
+### Tests
+
+| Tier | Where | Covers |
+|---|---|---|
+| 1 unit | `modules/web_search/{providers,fetch}.rs` + `mcp/chat_extension/mcp.rs` `#[cfg(test)]` | chain dispatch, `is_configured`, readability→markdown extraction + char-truncation, SSRF policy selection, the `auto_attach`/`is_builtin` web_search branches |
+| 2 integration | `tests/web_search/settings_test.rs` | settings GET/PUT, 403 gating, **API key stored-but-never-returned**, chain/caps validation (400) |
+| 3 HTTP handler | `tests/web_search/mcp_test.rs` | JSON-RPC initialize/tools-list, `use`-permission gate, no-provider error, **search via a mock SearXNG**, **fetch via a loopback fixture** |
+
+**Debug-only test seams** (compiled out of release via `cfg!(debug_assertions)`;
+cannot be set in production):
+- `WEB_SEARCH_FETCH_ALLOW_LOOPBACK=1` relaxes the page-fetch policy to
+  `DEV_LOCAL` so a `127.0.0.1` page fixture is reachable. SearXNG tests need no
+  seam (its trusted policy already allows loopback).
+- `WEB_SEARCH_BRAVE_ENDPOINT=<url>` overrides Brave's endpoint (and relaxes its
+  policy to `DEV_LOCAL`) so a loopback mock can stand in for the SaaS — used to
+  drive the live `[searxng→error, brave→serves]` fallback test.
+
+Same pattern as `CODE_SANDBOX_ROOTFS_MIRROR` / `LLM_RUNTIME_*_MIRROR`.
+
+```bash
+# Tier 1
+cargo test --lib -p ziee web_search::
+# Tier 2 + 3 (scoped)
+cargo test --test integration_tests web_search:: -- --test-threads=1
+```
+
+---
+
 ## Documentation Index
 
 ### 📐 Architecture

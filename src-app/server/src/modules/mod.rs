@@ -29,6 +29,7 @@ pub mod skill_mcp;
 pub mod summarization;
 pub mod sync;
 pub mod user;
+pub mod web_search;
 pub mod workflow;
 pub mod workflow_mcp;
 

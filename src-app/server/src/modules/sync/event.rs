@@ -89,6 +89,9 @@ pub enum SyncEntity {
     /// Deployment-wide summarization settings (singleton). Notify-only;
     /// the frontend refetches via the existing REST endpoint.
     SummarizationAdminSettings,
+    /// Deployment-wide web search settings + provider config (singleton).
+    /// Notify-only; the frontend refetches settings + the provider catalog.
+    WebSearchSettings,
 
     // --- Group-scoped user view (delivered to holders of the user read
     // perm; safe because we only NOTIFY — each recipient refetches its own
