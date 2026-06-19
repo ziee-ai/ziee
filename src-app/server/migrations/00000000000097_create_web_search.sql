@@ -85,4 +85,4 @@ COMMENT ON TABLE web_search_providers IS
 -- Admin perms (web_search::admin::read / web_search::admin::manage) are held
 -- by the Administrators group's `*` wildcard (migration 1) — no grant needed.
 -- The user-facing web_search::use perm is granted to the Users group in
--- migration 97.
+-- migration 98 (00000000000098_grant_web_search_permissions_to_users.sql).

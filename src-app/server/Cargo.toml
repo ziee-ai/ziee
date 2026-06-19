@@ -71,6 +71,8 @@ reqwest = { workspace = true, features = ["json", "blocking", "stream"] }
 # web_search page fetch: readability-style extraction + HTML→markdown.
 dom_smoothie.workspace = true
 htmd.workspace = true
+# lit_search: parse arXiv's Atom XML feed (already in the lock, transitive).
+quick-xml = "0.37"
 
 # Server-specific deps (not shared, kept local)
 tower_governor = "0.7"

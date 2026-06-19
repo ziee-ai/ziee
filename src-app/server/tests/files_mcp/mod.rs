@@ -242,12 +242,13 @@ async fn test_tools_list_returns_read_and_write_tools() {
     let body: Value = res.json().await.unwrap();
     let tools = body["result"]["tools"].as_array().expect("tools array");
     let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
-    // 3 read tools + 4 write tools (the read-write upgrade).
-    assert_eq!(names.len(), 7, "3 read + 4 write tools: {names:?}");
+    // 4 read tools (list/read/grep/semantic_search) + 4 write tools.
+    assert_eq!(names.len(), 8, "4 read + 4 write tools: {names:?}");
     for t in [
         "list_files",
         "read_file",
         "grep_files",
+        "semantic_search",
         "create_file",
         "edit_file",
         "edit_file_lines",

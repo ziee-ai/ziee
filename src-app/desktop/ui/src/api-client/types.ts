@@ -233,6 +233,30 @@ export interface ConfigField {
   required: boolean
 }
 
+export interface ConfigFieldInfo {
+  docs_url?: string
+  help?: string
+  key: string
+  label: string
+  placeholder: string
+  required: boolean
+}
+
+export interface ConnectorCatalogEntry {
+  api_key_set: boolean
+  config_fields: ConfigFieldInfo[]
+  configured: boolean
+  display_name: string
+  enabled: boolean
+  key: string
+  key_field?: KeyFieldInfo
+  keyless_note: string
+}
+
+export interface ConnectorCatalogResponse {
+  connectors: ConnectorCatalogEntry[]
+}
+
 export type ContentBlockDelta = {
   type: 'text_delta'
   delta: string
@@ -1247,6 +1271,13 @@ export interface ItemProgress {
   total: number
 }
 
+export interface KeyFieldInfo {
+  docs_url?: string
+  help?: string
+  label: string
+  required: boolean
+}
+
 export interface LinkAccountRequest {
   link_token: string
   password: string
@@ -1301,6 +1332,16 @@ export interface ListToolsResponse {
 
 export interface ListVersionsQuery {
   engine?: string
+}
+
+export interface LitSearchSettings {
+  completeness_estimate_enabled: boolean
+  enabled: boolean
+  enabled_connectors: string[]
+  max_results: number
+  per_source_limit: number
+  request_timeout_secs: number
+  updated_at: string
 }
 
 export interface LlamaCppSettings {
@@ -1722,6 +1763,7 @@ export interface MessageContentDataToolResult {
   name?: string | null
   resource_links?: ResourceLink[] | null
   server_id?: string | null
+  structured_content?: any
   tool_use_id: string
 }
 export interface MessageContentDataElicitationRequest {
@@ -2713,7 +2755,7 @@ export interface SyncConnectedData {
   connection_id: string
 }
 
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'file' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'web_search_settings' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'file' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'web_search_settings' | 'lit_search_settings' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run'
 
 export interface SyncEvent {
   action: SyncAction
@@ -2893,6 +2935,11 @@ export interface UpdateCodeSandboxResourceLimits {
   vm_max_concurrent_execs?: number
 }
 
+export interface UpdateConnectorRequest {
+  api_key?: string
+  config?: any
+}
+
 export interface UpdateConversationMemoryModeRequest {
   memory_mode: string
 }
@@ -2939,6 +2986,15 @@ export interface UpdateHostMountPolicyRequest {
   allow_readwrite?: boolean
   allowed_prefixes?: string[]
   enabled?: boolean
+}
+
+export interface UpdateLitSearchSettingsRequest {
+  completeness_estimate_enabled?: boolean
+  enabled?: boolean
+  enabled_connectors?: string[]
+  max_results?: number
+  per_source_limit?: number
+  request_timeout_secs?: number
 }
 
 export interface UpdateLlmModelRequest {
@@ -3423,6 +3479,8 @@ export enum Permissions {
   HubModelsRead = 'hub::models::read',
   HubModelsRefresh = 'hub::models::refresh',
   HubModelsVersionRead = 'hub::models::read_version',
+  LitSearchAdminManage = 'lit_search::admin::manage',
+  LitSearchAdminRead = 'lit_search::admin::read',
   LlmModelsCreate = 'llm_models::create',
   LlmModelsDelete = 'llm_models::delete',
   LlmModelsDownloadsCancel = 'llm_models::downloads_cancel',
@@ -3549,6 +3607,8 @@ export const PermissionDescriptions: Record<string, string> = {
   HubModelsRead: 'View hub models',
   HubModelsRefresh: 'Refresh hub models from GitHub',
   HubModelsVersionRead: 'View hub models version information',
+  LitSearchAdminManage: 'Update literature search settings, active sources, and source API keys.',
+  LitSearchAdminRead: 'Read literature search settings (enable, active sources, caps).',
   LlmModelsCreate: 'Create new LLM models',
   LlmModelsDelete: 'Delete LLM models',
   LlmModelsDownloadsCancel: 'Cancel active downloads',
@@ -3753,6 +3813,10 @@ export const ApiEndpoints = {
   'Hub.refreshCatalog': 'POST /api/hub/refresh',
   'Hub.refreshMCPServers': 'POST /api/hub/mcp-servers/refresh',
   'Hub.refreshModels': 'POST /api/hub/models/refresh',
+  'LitSearch.getConnectors': 'GET /api/lit-search/connectors',
+  'LitSearch.getSettings': 'GET /api/lit-search/settings',
+  'LitSearch.updateConnector': 'PUT /api/lit-search/connectors/{connector}',
+  'LitSearch.updateSettings': 'PUT /api/lit-search/settings',
   'LlmModel.cancelDownload': 'POST /api/llm-models/downloads/{download_id}/cancel',
   'LlmModel.create': 'POST /api/llm-models',
   'LlmModel.delete': 'DELETE /api/llm-models/{model_id}',
@@ -4096,6 +4160,10 @@ export type ApiEndpointParameters = {
   'Hub.refreshCatalog': void
   'Hub.refreshMCPServers': void
   'Hub.refreshModels': void
+  'LitSearch.getConnectors': void
+  'LitSearch.getSettings': void
+  'LitSearch.updateConnector': { connector: string } & UpdateConnectorRequest
+  'LitSearch.updateSettings': UpdateLitSearchSettingsRequest
   'LlmModel.cancelDownload': { download_id: string }
   'LlmModel.create': CreateLlmModelRequest
   'LlmModel.delete': { model_id: string; delete_file?: boolean; force?: boolean }
@@ -4439,6 +4507,10 @@ export type ApiEndpointResponses = {
   'Hub.refreshCatalog': HubCatalogRefreshResponse
   'Hub.refreshMCPServers': HubRefreshResponse
   'Hub.refreshModels': HubRefreshResponse
+  'LitSearch.getConnectors': ConnectorCatalogResponse
+  'LitSearch.getSettings': LitSearchSettings
+  'LitSearch.updateConnector': ConnectorCatalogResponse
+  'LitSearch.updateSettings': LitSearchSettings
   'LlmModel.cancelDownload': void
   'LlmModel.create': LlmModel
   'LlmModel.delete': void

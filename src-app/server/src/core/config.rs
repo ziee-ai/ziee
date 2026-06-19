@@ -15,6 +15,8 @@ pub struct Config {
     #[serde(default)]
     pub bio_mcp: Option<BioMcpConfig>,
     #[serde(default)]
+    pub lit_search: Option<LitSearchConfig>,
+    #[serde(default)]
     pub secrets: Option<SecretsConfig>,
     /// Per-cache path overrides. Defaults to all-None; `Config::resolve_paths`
     /// fills each unset field with a subdir of `app.data_dir`. Operators
@@ -198,6 +200,36 @@ impl Default for BioMcpConfig {
     fn default() -> Self {
         Self {
             enabled: default_bio_mcp_enabled(),
+        }
+    }
+}
+
+/// Configuration for the `lit_search` built-in MCP server (live scholarly
+/// literature search + open-access full-text fetch).
+///
+/// Connected-only: the connectors query live public APIs (Europe PMC,
+/// Crossref, Semantic Scholar, PubMed, arXiv, CORE), so **query terms egress**.
+/// On by default for connected deployments. IP-sensitive operators turn it off
+/// with `lit_search: { enabled: false }` — a **deploy-level** kill switch that
+/// an admin cannot re-enable (distinct from the runtime admin toggle, the
+/// `lit_search_settings.enabled` row). When false, `init()` returns before the
+/// MCP row upsert, so the tools are never registered.
+#[derive(Debug, Deserialize, Clone)]
+pub struct LitSearchConfig {
+    /// Master switch. When false, the module's `init()` returns early (no MCP
+    /// row upsert). Defaults to true.
+    #[serde(default = "default_lit_search_enabled")]
+    pub enabled: bool,
+}
+
+fn default_lit_search_enabled() -> bool {
+    true
+}
+
+impl Default for LitSearchConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_lit_search_enabled(),
         }
     }
 }

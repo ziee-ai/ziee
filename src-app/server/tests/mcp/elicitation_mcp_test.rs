@@ -204,14 +204,28 @@ async fn ask_user_accept_returns_the_answer_to_the_model() {
         "the multiple-choice schema should reach the client: {data}"
     );
 
-    // With an EMPTY mcp_config, the ONLY tool the loop attached is the
-    // auto-attached built-in ask_user (no third-party server requested) — proves
-    // always-on attach works AND doesn't pull in anything else.
+    // With an EMPTY mcp_config, the loop attaches ONLY auto-attached BUILT-INS
+    // (no third-party server requested). For a tool-capable model that set is:
+    // ask_user (elicitation) + get_tool_result (tool_result), both always-on, plus
+    // literature_search/fetch_paper_fulltext (lit_search, enabled by default).
+    // This proves always-on attach works AND doesn't pull in any third-party tool.
     let tools = first_attached_tool_names(&fx);
-    assert_eq!(tools.len(), 1, "exactly one tool attached, got: {tools:?}");
     assert!(
-        tools[0].ends_with("__ask_user") || tools[0] == "ask_user",
-        "the only attached tool is ask_user, got: {tools:?}"
+        tools.iter().any(|t| t.ends_with("__ask_user") || t == "ask_user"),
+        "ask_user must be auto-attached, got: {tools:?}"
+    );
+    // Every attached tool is a known built-in — nothing external leaked in.
+    const BUILTIN_SUFFIXES: &[&str] = &[
+        "__ask_user",
+        "__get_tool_result",
+        "__literature_search",
+        "__fetch_paper_fulltext",
+    ];
+    assert!(
+        tools
+            .iter()
+            .all(|t| BUILTIN_SUFFIXES.iter().any(|s| t.ends_with(s))),
+        "only built-in tools should attach with an empty mcp_config, got: {tools:?}"
     );
 
     let elicitation_id = data["elicitation_id"].as_str().expect("elicitation_id").to_string();

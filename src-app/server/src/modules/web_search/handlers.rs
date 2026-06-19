@@ -136,9 +136,14 @@ async fn dispatch_tool_call(params: &Value) -> Result<Value, (StatusCode, JsonRp
     };
 
     match result {
-        Ok(v) => Ok(json!({
-            "content": [{ "type": "text", "text": v.to_string() }],
-            "structuredContent": v,
+        // Each tool returns a (readable text rendering, structured value) pair.
+        // The text is what the LLM reads (text-as-text — NOT stringified JSON);
+        // structuredContent is the typed payload the UI renders + the model can
+        // recall via get_tool_result. Both are now persisted (structured_content
+        // on the tool_result block).
+        Ok((text, structured)) => Ok(json!({
+            "content": [{ "type": "text", "text": text }],
+            "structuredContent": structured,
         })),
         Err(e) => Err((StatusCode::OK, JsonRpcError::from_app_error(&e))),
     }
@@ -151,7 +156,10 @@ struct SearchArgs {
     max_results: Option<i64>,
 }
 
-async fn do_search(args: &Value) -> Result<Value, AppError> {
+/// Returns `(readable text digest, structured payload)`. The digest is what the
+/// LLM reads (one line per hit, text-as-text); the structured payload `{ provider,
+/// results }` is the typed copy for the UI / get_tool_result recall.
+async fn do_search(args: &Value) -> Result<(String, Value), AppError> {
     let args: SearchArgs = serde_json::from_value(args.clone())
         .map_err(|e| AppError::bad_request("INVALID_ARGS", e.to_string()))?;
     let q = args.query.trim();
@@ -171,9 +179,30 @@ async fn do_search(args: &Value) -> Result<Value, AppError> {
         .unwrap_or_else(|| settings.max_results.clamp(1, 20) as usize);
 
     let outcome = providers::search_via_chain(q, count, &settings).await?;
-    let results = serde_json::to_value(&outcome.results)
-        .map_err(|e| AppError::internal_error(e.to_string()))?;
-    Ok(json!({ "provider": outcome.provider, "results": results }))
+
+    // Readable digest for the model — one entry per hit, NOT stringified JSON.
+    let mut text = format!(
+        "{} result(s) for \"{}\" (via {}).\n",
+        outcome.results.len(),
+        q,
+        outcome.provider
+    );
+    if outcome.results.is_empty() {
+        text.push_str("No results.\n");
+    } else {
+        for (i, hit) in outcome.results.iter().enumerate() {
+            text.push_str(&format!(
+                "{}. {} — {}\n   {}\n",
+                i + 1,
+                hit.title,
+                hit.url,
+                hit.snippet
+            ));
+        }
+    }
+
+    let structured = json!({ "provider": outcome.provider, "results": outcome.results });
+    Ok((text, structured))
 }
 
 #[derive(Debug, Deserialize)]
@@ -181,7 +210,11 @@ struct FetchArgs {
     url: String,
 }
 
-async fn do_fetch(args: &Value) -> Result<Value, AppError> {
+/// Returns `(readable markdown, structured FetchedPage)`. A fetched page's content
+/// IS text, so it goes in the text channel as readable markdown (title/url header +
+/// body + truncation note) — NOT wrapped in a JSON string. structuredContent is the
+/// typed `FetchedPage` for the UI / get_tool_result recall.
+async fn do_fetch(args: &Value) -> Result<(String, Value), AppError> {
     let args: FetchArgs = serde_json::from_value(args.clone())
         .map_err(|e| AppError::bad_request("INVALID_ARGS", e.to_string()))?;
     let url = args.url.trim();
@@ -202,7 +235,20 @@ async fn do_fetch(args: &Value) -> Result<Value, AppError> {
         settings.request_timeout_secs.max(1) as u64,
     )
     .await?;
-    serde_json::to_value(&page).map_err(|e| AppError::internal_error(e.to_string()))
+
+    let mut text = String::new();
+    if !page.title.is_empty() {
+        text.push_str(&format!("# {}\n", page.title));
+    }
+    text.push_str(&format!("<{}>\n\n", page.final_url));
+    text.push_str(&page.content);
+    if page.truncated {
+        text.push_str("\n\n[content truncated at the configured character cap]");
+    }
+
+    let structured = serde_json::to_value(&page)
+        .map_err(|e| AppError::internal_error(e.to_string()))?;
+    Ok((text, structured))
 }
 
 // ─────────────────────────── Admin REST: settings ───────────────────────────

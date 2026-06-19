@@ -110,12 +110,13 @@ struct AccumulatedToolUse {
 
 /// MCP chat extension
 /// Deterministic ids of the privileged built-in MCP servers to auto-attach this
-/// request. `files`/`memory` attach behind flags set by the file
-/// (`attach_files_mcp`), memory (`attach_memory_mcp`), and web_search
-/// (`attach_web_search_mcp`) chat extensions;
-/// `elicitation` (`ask_user`) attaches whenever the model is tool-capable
-/// (`model_tools_capable`). All are fetched by id OUTSIDE the group-gated
-/// accessibility path — no per-user grant — and only for tool-capable models.
+/// request. `files`/`memory`/`web_search`/`lit_search` attach behind flags set by
+/// the file (`attach_files_mcp`), memory (`attach_memory_mcp`), web_search
+/// (`attach_web_search_mcp`), and lit_search (`attach_lit_search_mcp`) chat
+/// extensions; `elicitation` (`ask_user`) and `tool_result` (`get_tool_result`)
+/// attach whenever the model is tool-capable (`model_tools_capable`). All are
+/// fetched by id OUTSIDE the group-gated accessibility path — no per-user grant —
+/// and only for tool-capable models.
 fn auto_attach_builtin_ids(
     metadata: &std::collections::HashMap<String, serde_json::Value>,
 ) -> Vec<Uuid> {
@@ -148,6 +149,12 @@ fn auto_attach_builtin_ids(
     if flag(crate::modules::web_search::chat_extension::ATTACH_FLAG) {
         ids.push(crate::modules::web_search::web_search_server_id());
     }
+    // `lit_search` attaches behind the flag set by the lit_search chat extension
+    // (`attach_lit_search_mcp`), gated on tool-capable + enabled. Same id-fetch +
+    // `s.enabled` guard.
+    if flag(crate::modules::lit_search::chat_extension::ATTACH_FLAG) {
+        ids.push(crate::modules::lit_search::lit_search_server_id());
+    }
     // `ask_user` is always-on — the assistant may need to ask the user for input
     // in any conversation — but ONLY for tool-capable models: a model that can't
     // call tools can't call `ask_user`, and attaching it would run the full
@@ -166,6 +173,12 @@ fn auto_attach_builtin_ids(
         .unwrap_or(false);
     if tool_capable {
         ids.push(crate::modules::elicitation_mcp::elicitation_mcp_server_id());
+        // `get_tool_result` is always-on for tool-capable models — the model may
+        // need to recall a cleared/truncated tool result (the trimming placeholder
+        // points it here) or read an earlier result's full structuredContent in
+        // ANY tool-using conversation. Read-only, scoped to the caller's own
+        // conversation; approval-bypassed (see is_builtin_server_id).
+        ids.push(crate::modules::tool_result_mcp::tool_result_mcp_server_id());
     }
     ids
 }
@@ -183,11 +196,13 @@ fn is_side_effect_tool(server_id: Uuid, tool_name: &str) -> bool {
         && matches!(tool_name, "remember" | "forget")
 }
 
-/// Privileged built-in servers (files, memory, elicitation). Their tools bypass
-/// the MCP approval flow — they're read-only / save-only / user-prompting and
-/// auto-attached, so a `read_file`/`remember`/`ask_user` call must execute
-/// immediately rather than stall behind a manual-approval prompt the user never
-/// opted into (for `ask_user`, the user answering the form IS the approval).
+/// Privileged built-in servers (files, memory, elicitation, bio, web_search,
+/// lit_search, tool_result). Their tools bypass the MCP approval flow — they're
+/// read-only / save-only / user-prompting and auto-attached, so a
+/// `read_file`/`remember`/`web_search`/`literature_search`/`get_tool_result`/
+/// `ask_user` call must execute immediately rather than stall behind a
+/// manual-approval prompt the user never opted into (for `ask_user`, the user
+/// answering the form IS the approval).
 fn is_builtin_server_id(id: Uuid) -> bool {
     id == crate::modules::files_mcp::files_mcp_server_id()
         || id == crate::modules::memory_mcp::memory_mcp_server_id()
@@ -200,6 +215,12 @@ fn is_builtin_server_id(id: Uuid) -> bool {
         // web_search is approval-bypassed too (read-only search + page fetch,
         // auto-attached); fetched content is treated as untrusted data.
         || id == crate::modules::web_search::web_search_server_id()
+        // tool_result is approval-bypassed (read-only recall of the caller's own
+        // prior tool results, auto-attached for tool-capable models).
+        || id == crate::modules::tool_result_mcp::tool_result_mcp_server_id()
+        // lit_search is approval-bypassed (read-only literature search + OA
+        // full-text fetch, auto-attached); results are treated as untrusted data.
+        || id == crate::modules::lit_search::lit_search_server_id()
 }
 
 ///
@@ -297,6 +318,7 @@ impl McpChatExtension {
                     images: None,
                     resource_links: None,
                     hidden_content: None,
+                    structured_content: None,
                 };
                 tool_results.push(error_result.to_message_content());
                 continue;
@@ -366,6 +388,7 @@ impl McpChatExtension {
                             images: None,
                         resource_links: None,
                         hidden_content: None,
+                        structured_content: None,
                     };
                     tool_results.push(error_result.to_message_content());
                     continue;
@@ -395,6 +418,7 @@ impl McpChatExtension {
                                     images: None,
                             resource_links: None,
                             hidden_content: None,
+                            structured_content: None,
                         };
                         tool_results.push(err_result.to_message_content());
                         continue;
@@ -1247,6 +1271,7 @@ impl ChatExtension for McpChatExtension {
                                     images: None,
                             resource_links: None,
                             hidden_content: None,
+                            structured_content: None,
                         };
                         let msg_content = denied_result.to_message_content();
 
@@ -1737,6 +1762,7 @@ impl ChatExtension for McpChatExtension {
                                     images: None,
                             resource_links: None,
                             hidden_content: None,
+                            structured_content: None,
                         };
                         let msg_content = error_result.to_message_content();
                         // append_content assigns sequence_order atomically (MAX+1) so these
@@ -2151,6 +2177,7 @@ impl ChatExtension for McpChatExtension {
                 images: None,
                 resource_links: None,
                 hidden_content: None,
+                structured_content: None,
             };
             tool_results.push(denial.to_message_content());
         }
@@ -2224,6 +2251,7 @@ impl ChatExtension for McpChatExtension {
                     images: None,
                     resource_links: None,
                     hidden_content: None,
+                    structured_content: None,
                 };
                 tool_results.push(error_result.to_message_content());
                 continue;
@@ -2275,6 +2303,7 @@ impl ChatExtension for McpChatExtension {
                                             images: None,
                                 resource_links: None,
                                 hidden_content: None,
+                                structured_content: None,
                             }, false)
                         }
                         Ok(_guard) => {
@@ -2292,6 +2321,7 @@ impl ChatExtension for McpChatExtension {
                                                             images: None,
                                         resource_links: None,
                                         hidden_content: None,
+                                        structured_content: None,
                                     }, false)
                                 }
                                 Ok(h) => {
@@ -2321,6 +2351,7 @@ impl ChatExtension for McpChatExtension {
                                                                             images: None,
                                                 resource_links: None,
                                                 hidden_content: None,
+                                                structured_content: None,
                                             }, false)
                                         }
                                     }
@@ -2343,6 +2374,7 @@ impl ChatExtension for McpChatExtension {
                             images: None,
                         resource_links: None,
                         hidden_content: None,
+                        structured_content: None,
                     }, false)
                 }
             } else {
@@ -2372,6 +2404,7 @@ impl ChatExtension for McpChatExtension {
                                     images: None,
                             resource_links: None,
                             hidden_content: None,
+                            structured_content: None,
                         }, false)
                     }
                     Ok(session_arc) => {
@@ -3255,6 +3288,9 @@ mod builtin_tests {
         let files = crate::modules::files_mcp::files_mcp_server_id();
         let memory = crate::modules::memory_mcp::memory_mcp_server_id();
         let web = crate::modules::web_search::web_search_server_id();
+        let bio = crate::modules::bio_mcp::bio_mcp_server_id();
+        let lit = crate::modules::lit_search::lit_search_server_id();
+        let tool_result = crate::modules::tool_result_mcp::tool_result_mcp_server_id();
 
         // Non-tool-capable model (no model_tools_capable seeded) → NOTHING
         // auto-attaches. ask_user must NOT be sent to a model that can't call
@@ -3266,46 +3302,60 @@ mod builtin_tests {
         m.insert("model_tools_capable".into(), json!(false));
         assert!(auto_attach_builtin_ids(&m).is_empty());
 
-        // Tool-capable model → ask_user (elicitation) is always attached.
+        // Tool-capable model → the always-on built-ins (elicitation `ask_user` +
+        // `tool_result` `get_tool_result`) are attached even with no flags.
+        let always_on = [elicit, tool_result];
         let mut m = HashMap::new();
         m.insert("model_tools_capable".into(), json!(true));
-        assert_eq!(auto_attach_builtin_ids(&m), vec![elicit]);
+        let base = auto_attach_builtin_ids(&m);
+        assert_eq!(base.len(), 2);
+        assert!(always_on.iter().all(|id| base.contains(id)));
         // The capability flag round-trips as a "true"/"false" string too.
         let mut ms = HashMap::new();
         ms.insert("model_tools_capable".into(), json!("true"));
-        assert_eq!(auto_attach_builtin_ids(&ms), vec![elicit]);
+        let base_s = auto_attach_builtin_ids(&ms);
+        assert_eq!(base_s.len(), 2);
+        assert!(always_on.iter().all(|id| base_s.contains(id)));
 
-        // The flag-gated built-ins add on top of the elicitation id.
+        // The flag-gated built-ins add on top of the always-on pair.
         m.insert("attach_files_mcp".into(), json!("true"));
         let with_files = auto_attach_builtin_ids(&m);
         assert!(with_files.contains(&files) && with_files.contains(&elicit));
-        assert_eq!(with_files.len(), 2);
+        assert_eq!(with_files.len(), 3);
         m.insert("attach_memory_mcp".into(), json!("true"));
         let all = auto_attach_builtin_ids(&m);
         assert!(all.contains(&files) && all.contains(&memory) && all.contains(&elicit));
-        assert_eq!(all.len(), 3);
+        assert_eq!(all.len(), 4);
         // bio attaches on its own flag, on top of the others.
-        let bio = crate::modules::bio_mcp::bio_mcp_server_id();
         m.insert("attach_bio_mcp".into(), json!("true"));
         let with_bio = auto_attach_builtin_ids(&m);
         assert!(with_bio.contains(&bio));
-        assert_eq!(with_bio.len(), 4);
+        assert_eq!(with_bio.len(), 5);
         // web_search adds on top when its flag is set.
         m.insert("attach_web_search_mcp".into(), json!("true"));
-        let all5 = auto_attach_builtin_ids(&m);
+        let with_web = auto_attach_builtin_ids(&m);
+        assert!(with_web.contains(&web));
+        assert_eq!(with_web.len(), 6);
+        // lit_search adds on top when ITS flag is set.
+        m.insert(crate::modules::lit_search::chat_extension::ATTACH_FLAG.into(), json!("true"));
+        let with_lit = auto_attach_builtin_ids(&m);
         assert!(
-            all5.contains(&web)
-                && all5.contains(&bio)
-                && all5.contains(&files)
-                && all5.contains(&memory)
-                && all5.contains(&elicit)
+            with_lit.contains(&lit)
+                && with_lit.contains(&web)
+                && with_lit.contains(&bio)
+                && with_lit.contains(&files)
+                && with_lit.contains(&memory)
+                && with_lit.contains(&elicit)
+                && with_lit.contains(&tool_result)
         );
-        assert_eq!(all5.len(), 5);
-        // A non-"true" flag value is ignored — only elicitation remains.
+        assert_eq!(with_lit.len(), 7);
+        // A non-"true" flag value is ignored — only the always-on pair remains.
         let mut m2: HashMap<String, serde_json::Value> = HashMap::new();
         m2.insert("model_tools_capable".into(), json!(true));
         m2.insert("attach_files_mcp".into(), json!("false"));
-        assert_eq!(auto_attach_builtin_ids(&m2), vec![elicit]);
+        let only_base = auto_attach_builtin_ids(&m2);
+        assert_eq!(only_base.len(), 2);
+        assert!(always_on.iter().all(|id| only_base.contains(id)));
     }
 
     #[test]
@@ -3336,6 +3386,14 @@ mod builtin_tests {
         // web_search is approval-bypassed too (auto-attached, read-only).
         assert!(is_builtin_server_id(
             crate::modules::web_search::web_search_server_id()
+        ));
+        // lit_search (auto-attached, read-only scholarly search/fetch) and
+        // tool_result (read-only recall) are approval-bypassed too.
+        assert!(is_builtin_server_id(
+            crate::modules::lit_search::lit_search_server_id()
+        ));
+        assert!(is_builtin_server_id(
+            crate::modules::tool_result_mcp::tool_result_mcp_server_id()
         ));
         // A third-party server id is NOT a privileged built-in.
         assert!(!is_builtin_server_id(Uuid::new_v4()));
