@@ -269,6 +269,14 @@ pub enum MessageContentDataVariants {
         /// Stripped from API responses by strip_hidden_content_serialize in core/models/content.rs.
         #[serde(skip_serializing_if = "Option::is_none")]
         hidden_content: Option<String>,
+        /// The MCP tool response's `structuredContent`, persisted verbatim. Mirrors
+        /// `McpContentData::ToolResult.structured_content` so the `to_message_content()`
+        /// serde roundtrip preserves it through DB persistence (same requirement as
+        /// `attachment`/`resource_links` above). UI-only — content-type renderers (e.g.
+        /// the literature screening card) read it, and the model recalls it via
+        /// `get_tool_result`; it is NOT forwarded to the LLM by `to_content_block`.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        structured_content: Option<serde_json::Value>,
     },
 
     /// Elicitation request — MCP server asking the user for structured input.

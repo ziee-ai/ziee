@@ -210,6 +210,7 @@ pub(crate) async fn run_ask_user_elicitation(
         images: None,
         resource_links: None,
         hidden_content: None,
+        structured_content: None,
     };
 
     let message = input
@@ -491,6 +492,27 @@ pub async fn execute_tool(
                 content_text
             };
 
+            // Bound the persisted structuredContent the same way `content` is
+            // bounded above: it's stored as JSONB + shipped to the frontend, so a
+            // pathologically large tool payload must not bloat the row/response
+            // unboundedly. Generous ceiling (fits a max-size literature result of
+            // ~200 records); beyond it we DROP it (None) — the readable text
+            // digest still works, only the typed UI copy degrades.
+            const MAX_STRUCTURED_CONTENT_BYTES: usize = 1_000_000;
+            let structured_content = tool_result.structured_content.clone().filter(|sc| {
+                let too_big = serde_json::to_string(sc)
+                    .map(|s| s.len() > MAX_STRUCTURED_CONTENT_BYTES)
+                    .unwrap_or(true);
+                if too_big {
+                    tracing::warn!(
+                        "dropping oversized structuredContent (> {} bytes) from tool '{}'",
+                        MAX_STRUCTURED_CONTENT_BYTES,
+                        tool_name
+                    );
+                }
+                !too_big
+            });
+
             let mcp_result = McpContentData::ToolResult {
                 tool_use_id: String::new(), // Will be set by caller
                 name: Some(tool_name.to_string()),
@@ -501,6 +523,10 @@ pub async fn execute_tool(
                 images: if images.is_empty() { None } else { Some(images) },
                 resource_links: if resource_links.is_empty() { None } else { Some(resource_links) },
                 hidden_content: None, // Set later if resource_links artifacts are saved
+                // Persist the tool response's structuredContent (UI render +
+                // get_tool_result recall; not forwarded to the LLM by
+                // to_content_block). Size-capped just above.
+                structured_content,
             };
             // Bypass the LLM only when at least one content block is exactly
             // user-targeted: audience == ["user"] (single-element array, no
@@ -529,6 +555,7 @@ pub async fn execute_tool(
                 images: None,
                 resource_links: None,
                 hidden_content: None,
+                structured_content: None,
             }, false)
         }
         Err(_) => {
@@ -546,6 +573,7 @@ pub async fn execute_tool(
                 images: None,
                 resource_links: None,
                 hidden_content: None,
+                structured_content: None,
             }, false)
         }
     }

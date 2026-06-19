@@ -1488,12 +1488,13 @@ pub async fn list_system_mcp_servers(
             created_at, updated_at
         FROM mcp_servers
         WHERE is_system = true
-          -- Hide the zero-config built-ins (files, memory, elicitation,
-          -- web_search): they have no editable surface, so they never appear on
-          -- the System MCP page. Excluding them in SQL (not client-side) also
-          -- keeps the pagination total/label honest. The other built-ins
+          -- Hide the built-ins configured elsewhere (files, memory, elicitation,
+          -- web_search, tool_result, lit_search): they have no editable surface on
+          -- this page (lit_search/web_search use their own settings pages), so they
+          -- never appear here. Excluding them in SQL (not client-side) also keeps
+          -- the pagination total/label honest. The other built-ins
           -- (filesystem/fetch/browser/git/code_sandbox) remain visible.
-          AND id NOT IN ($5, $6, $7, $8)
+          AND id NOT IN ($5, $6, $7, $8, $9, $10)
           AND ($3::text IS NULL
                OR name ILIKE '%' || $3 || '%'
                OR display_name ILIKE '%' || $3 || '%'
@@ -1510,6 +1511,8 @@ pub async fn list_system_mcp_servers(
         crate::modules::memory_mcp::memory_mcp_server_id(),
         crate::modules::elicitation_mcp::elicitation_mcp_server_id(),
         crate::modules::web_search::web_search_server_id(),
+        crate::modules::tool_result_mcp::tool_result_mcp_server_id(),
+        crate::modules::lit_search::lit_search_server_id(),
     )
     .fetch_all(pool)
     .await?;
@@ -1555,10 +1558,10 @@ pub async fn list_system_mcp_servers(
         SELECT COUNT(*) as count
         FROM mcp_servers
         WHERE is_system = true
-          -- Match the rows query: exclude the zero-config built-ins (files,
-          -- memory, elicitation, web_search) so the pagination total stays in
-          -- sync with what the page renders.
-          AND id NOT IN ($3, $4, $5, $6)
+          -- Match the rows query: exclude the built-ins configured elsewhere
+          -- (files, memory, elicitation, web_search, tool_result, lit_search) so
+          -- the pagination total stays in sync with what the page renders.
+          AND id NOT IN ($3, $4, $5, $6, $7, $8)
           AND ($1::text IS NULL
                OR name ILIKE '%' || $1 || '%'
                OR display_name ILIKE '%' || $1 || '%'
@@ -1571,6 +1574,8 @@ pub async fn list_system_mcp_servers(
         crate::modules::memory_mcp::memory_mcp_server_id(),
         crate::modules::elicitation_mcp::elicitation_mcp_server_id(),
         crate::modules::web_search::web_search_server_id(),
+        crate::modules::tool_result_mcp::tool_result_mcp_server_id(),
+        crate::modules::lit_search::lit_search_server_id(),
     )
     .fetch_one(pool)
     .await?
@@ -1607,7 +1612,12 @@ pub async fn update_system_mcp_server(
         || existing.id == crate::modules::elicitation_mcp::elicitation_mcp_server_id()
         // web_search is config-elsewhere (web_search_settings + /providers); its
         // mcp row has no editable surface, so it's immutable like memory/files.
-        || existing.id == crate::modules::web_search::web_search_server_id();
+        || existing.id == crate::modules::web_search::web_search_server_id()
+        // lit_search is config-elsewhere too (lit_search_settings + /connectors);
+        // tool_result has no config at all. Both are immutable here (defense in
+        // depth — they're also hidden from the System MCP page listing).
+        || existing.id == crate::modules::lit_search::lit_search_server_id()
+        || existing.id == crate::modules::tool_result_mcp::tool_result_mcp_server_id();
     if is_zero_config_builtin {
         return Err(AppError::bad_request(
             "BUILT_IN_SERVER",

@@ -416,6 +416,11 @@ interface ChatState {
     mobileDrawerOpen: boolean
   }
   displayInRightPanel: <T extends PanelType>(entry: RightPanelTab<T>) => void
+  /** Patch an existing right-panel tab's `data` in place (no-op if the tab is
+   *  gone) and re-persist the conversation snapshot. `displayInRightPanel` only
+   *  upserts/focuses; this is how an open panel (e.g. literature screening)
+   *  saves evolving state so it survives reload. */
+  updateRightPanelTab: <T extends PanelType>(id: string, data: PanelRendererMap[T]) => void
   setActiveRightPanelTab: (id: string) => void
   closeRightPanelTab: (id: string) => void
   closeAllRightPanelTabs: () => void
@@ -1603,6 +1608,24 @@ export const useChatStore = create<ChatState>()(
             mobileDrawerOpen: true,
           },
         }
+      })
+      const { rightPanel, conversation } = get()
+      if (conversation) {
+        savePanelSnapshotForConversation(
+          conversation.id,
+          rightPanel.tabs,
+          rightPanel.activeId,
+        )
+      }
+    },
+
+    updateRightPanelTab: <T extends PanelType>(id: string, data: PanelRendererMap[T]) => {
+      set(state => {
+        const idx = state.rightPanel.tabs.findIndex(t => t.id === id)
+        if (idx === -1) return state
+        const tabs = state.rightPanel.tabs.slice()
+        tabs[idx] = { ...tabs[idx], data: data as RightPanelTab['data'] }
+        return { rightPanel: { ...state.rightPanel, tabs } }
       })
       const { rightPanel, conversation } = get()
       if (conversation) {

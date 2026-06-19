@@ -13,6 +13,7 @@ mod file_rag;
 mod files_mcp;
 mod hardware;
 mod hub;
+mod lit_search;
 mod llm_local_runtime;
 mod llm_model;
 mod llm_provider;
@@ -27,6 +28,7 @@ mod server_update;
 mod skill;
 mod summarization;
 mod sync;
+mod tool_result_mcp;
 mod web_search;
 mod workflow;
 // `remote_access` integration tests live in the desktop crate now —

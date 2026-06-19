@@ -962,8 +962,8 @@ encrypted at rest via `common::secret` (dual-column + `SecretView` redaction).
 ### Settings + surfaces
 
 - Singleton `web_search_settings` (enable, `provider_chain TEXT[]`, caps) +
-  per-engine `web_search_providers` (migration `096`); `web_search::use`
-  granted to the Users group (migration `097`); admins hold
+  per-engine `web_search_providers` (migration `097`); `web_search::use`
+  granted to the Users group (migration `098`); admins hold
   `web_search::admin::{read,manage}` via `*`.
 - REST: `GET/PUT /api/web-search/settings`, `GET /api/web-search/providers`,
   `PUT /api/web-search/providers/{provider}`. Sync entity `WebSearchSettings`.
@@ -994,6 +994,98 @@ Same pattern as `CODE_SANDBOX_ROOTFS_MIRROR` / `LLM_RUNTIME_*_MIRROR`.
 cargo test --lib -p ziee web_search::
 # Tier 2 + 3 (scoped)
 cargo test --test integration_tests web_search:: -- --test-threads=1
+```
+
+---
+
+## Live Literature Search & Screening
+
+The `lit_search` module exposes scholarly literature **search** + open-access
+full-text **fetch** as a built-in MCP server (`lit_search.ziee.internal`,
+loopback JSON-RPC at `/api/lit-search/mcp`), modeled on `web_search`. Two tools:
+`literature_search(query, max_results?, year_from?, year_to?)` and
+`fetch_paper_fulltext(ids, max_papers?)`. Connected-only; an adjunct to (never a
+replacement for) systematic searching — results are untrusted DATA.
+
+### Source registry + UNION aggregation
+
+The *set* of sources lives in **code** — `modules/lit_search/connectors/mod.rs`
+`catalog()` (6: `europepmc`, `crossref`, `semanticscholar`, `pubmed`, `arxiv`,
+`core`). The DB (`lit_search_connectors`) stores only `{api_key, config}` per
+key, so adding a source is a code-only change (a `LitConnector` impl + a
+`catalog()` entry + a `build()` arm). `aggregate_search` fans out to all enabled
+connectors **concurrently** (UNION, not a fallback chain): a failing source
+contributes zero records and lands in `degraded_sources`; the rest still return.
+Then `dedup::merge_by_doi` → `ranking::rank` → `completeness::estimate`. Five
+sources work **keyless** (default-enabled); **CORE** needs a free key
+(default-off, self-skips into `degraded_sources` when enabled-but-unkeyed).
+
+### Full text + the `/lit` sandbox mount
+
+`fetch_paper_fulltext` resolves OA full text (EuropePMC `fullTextXML` / Unpaywall
+PDF→pdfium / arXiv PDF), caches it content-addressed under
+`<app_data>/lit-cache/` with a Postgres index (`lit_fulltext_cache`), and
+hard-links it into a **per-conversation view dir** that `code_sandbox`
+bind-mounts **read-only at `/lit`** (so the model can `cat`/`grep` papers). Status
+vocabulary is exactly `full_text | not_open_access | not_found` (no
+`abstract_only`). Negative rows carry a 6h TTL (transient failures re-resolve);
+`full_text` rows never expire. Paywalled → `not_open_access` (no scraping).
+
+### SSRF (two boundaries)
+
+`connectors/mod.rs::connector_policy()` builds the HTTP client with
+`PUBLIC_HTTP_OR_HTTPS`. For the search connectors (FIXED public hosts) it's
+defense-in-depth; for the **full-text resolver** (which fetches Unpaywall-supplied
+PDF URLs — third-party-controlled hosts) it's a **PRIMARY** SSRF boundary. Do not
+weaken it.
+
+### Enablement, keys, kill switch
+
+- Deploy-level kill switch: `lit_search: { enabled: false }` in config (skips MCP
+  registration entirely — distinct from the runtime `lit_search_settings.enabled`
+  admin toggle, the sole attach gate). Query terms egress to public APIs.
+- Keys are **deployment-wide** (admin-configured, encrypted via `common::secret`);
+  optional keys only raise rate limits, except CORE's required key.
+- Chat extension (`chat_extension/`, order **28** — after web_search/bio_mcp,
+  before the MCP collector at 30) sets `attach_lit_search_mcp`; the two `mcp.rs`
+  edits (`auto_attach_builtin_ids` + `is_builtin_server_id`) are required or the
+  tools register but the model never sees them.
+
+### Settings + surfaces
+
+- Singleton `lit_search_settings` + per-source `lit_search_connectors` +
+  `lit_fulltext_cache` (migration `100`); `lit_search::use` granted to Users
+  (migration `101`); admins hold `lit_search::admin::{read,manage}` via `*`.
+- The built-in MCP row is **hidden from the System MCP page + edit-deny-listed**;
+  config lives only on `/settings/literature` (frontend module `literature`).
+- Screening UX is the chat **right-panel** (`literature` panel renderer);
+  screening state persists in the serializable panel-tab `data` (no server-side
+  tables). Sync entity `LitSearchSettings`.
+
+### Two chat/MCP-core improvements this module shipped (benefit ALL built-in tools)
+
+- **`structured_content` persisted** on `tool_result` blocks (size-capped at 1 MB
+  in `mcp/chat_extension/helpers.rs`; the model reads it only via `get_tool_result`).
+- **`tool_result_mcp`** built-in (`get_tool_result(tool_use_id, offset?, max_chars?)`,
+  loopback `/api/tool-result/mcp`) — exact, paged, read-only recall of a prior
+  result (incl. its `structured_content`), conversation-ownership-scoped. The
+  cleared/truncated placeholder in `clear_old_tool_results` points the model at it.
+- **`web_search` retrofit**: emits a readable text digest + typed
+  `structuredContent`, never stringified JSON in the text channel.
+
+### Debug-only test seams (compiled out of release via `cfg!(debug_assertions)`)
+
+- `LIT_SEARCH_ALLOW_LOOPBACK=1` relaxes the SSRF policy to `DEV_LOCAL`.
+- `LIT_SEARCH_<SOURCE>_ENDPOINT` (e.g. `LIT_SEARCH_EUROPEPMC_ENDPOINT`,
+  `LIT_SEARCH_PUBMED_ESEARCH_ENDPOINT`, `LIT_SEARCH_EPMC_FULLTEXT_BASE`) redirects
+  a connector/resolver at a loopback mock — mirrors web_search's
+  `WEB_SEARCH_BRAVE_ENDPOINT`.
+
+```bash
+# Tier 1
+cargo test --lib -p ziee lit_search:: tool_result_mcp::
+# Tier 2 + 3 (scoped; Tier 3 /lit mount is #[cfg(target_os = "linux")] + rootfs-gated)
+cargo test --test integration_tests lit_search:: tool_result_mcp:: -- --test-threads=1
 ```
 
 ---

@@ -92,6 +92,9 @@ pub enum SyncEntity {
     /// Deployment-wide web search settings + provider config (singleton).
     /// Notify-only; the frontend refetches settings + the provider catalog.
     WebSearchSettings,
+    /// Deployment-wide literature search settings + connector config (singleton).
+    /// Notify-only; the frontend refetches settings + the connector catalog.
+    LitSearchSettings,
 
     // --- Group-scoped user view (delivered to holders of the user read
     // perm; safe because we only NOTIFY — each recipient refetches its own

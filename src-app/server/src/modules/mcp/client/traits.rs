@@ -57,6 +57,13 @@ pub struct ToolResult {
     pub content: Vec<ToolContent>,
     #[serde(default, alias = "isError")]
     pub is_error: bool,
+    /// The tool response's MCP `structuredContent` object, if any. Captured here
+    /// (via the `structuredContent` alias) so the HTTP client — which deserializes
+    /// the whole JSON-RPC `result` into this struct — preserves it; it is then
+    /// persisted on the `tool_result` content block for the UI + `get_tool_result`.
+    /// `#[serde(default)]` keeps responses without it back-compatible.
+    #[serde(default, alias = "structuredContent")]
+    pub structured_content: Option<Value>,
 }
 
 #[async_trait]

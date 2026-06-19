@@ -94,6 +94,14 @@ pub enum McpContentData {
         /// Context injected into LLM messages but never rendered for users (e.g. download URL)
         #[serde(skip_serializing_if = "Option::is_none")]
         hidden_content: Option<String>,
+        /// The MCP tool response's `structuredContent` object, persisted verbatim.
+        /// UI-only: rendered by content-type renderers (e.g. the literature screening
+        /// card) and recallable by the model via the `get_tool_result` tool — it is
+        /// deliberately NOT forwarded to the LLM by `to_content_block` (the model reads
+        /// the `content` text, not this). Absent for tools that return no structured
+        /// output and for rows written before this field existed (back-compat).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        structured_content: Option<serde_json::Value>,
     },
 }
 
@@ -220,6 +228,7 @@ impl McpContentData {
                     images: None,
                     resource_links: None,
                     hidden_content: None,
+                    structured_content: None,
                 })
             }
             _ => None,

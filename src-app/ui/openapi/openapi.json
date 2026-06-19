@@ -15944,6 +15944,162 @@
         ]
       }
     },
+    "/api/assistants/{assistant_id}/core-memory": {
+      "get": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "List the caller's core memory blocks for an assistant",
+        "description": "\n\n**Required Permission:** `memory::core::read`\n\nRead own assistant core memory blocks.",
+        "operationId": "CoreMemory.list",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read own assistant core memory blocks.",
+                        "name": "CoreMemoryRead",
+                        "value": "memory::core::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CoreMemoryBlock"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/core-memory": {
+      "put": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "Create or update a core memory block",
+        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
+        "operationId": "CoreMemory.upsert",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertCoreMemoryBlockRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Upsert / delete own assistant core memory blocks.",
+                        "name": "CoreMemoryWrite",
+                        "value": "memory::core::write"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::write",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreMemoryBlock"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/{assistant_id}/core-memory/{block_label}": {
+      "delete": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "Delete a core memory block",
+        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
+        "operationId": "CoreMemory.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Upsert / delete own assistant core memory blocks.",
+                        "name": "CoreMemoryWrite",
+                        "value": "memory::core::write"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::write",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Deleted"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/workflows": {
       "get": {
         "tags": [
@@ -17266,162 +17422,6 @@
         ]
       }
     },
-    "/api/assistants/{assistant_id}/core-memory": {
-      "get": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "List the caller's core memory blocks for an assistant",
-        "description": "\n\n**Required Permission:** `memory::core::read`\n\nRead own assistant core memory blocks.",
-        "operationId": "CoreMemory.list",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read own assistant core memory blocks.",
-                        "name": "CoreMemoryRead",
-                        "value": "memory::core::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/CoreMemoryBlock"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/assistants/core-memory": {
-      "put": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "Create or update a core memory block",
-        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
-        "operationId": "CoreMemory.upsert",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpsertCoreMemoryBlockRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Upsert / delete own assistant core memory blocks.",
-                        "name": "CoreMemoryWrite",
-                        "value": "memory::core::write"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::write",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CoreMemoryBlock"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/assistants/{assistant_id}/core-memory/{block_label}": {
-      "delete": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "Delete a core memory block",
-        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
-        "operationId": "CoreMemory.delete",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Upsert / delete own assistant core memory blocks.",
-                        "name": "CoreMemoryWrite",
-                        "value": "memory::core::write"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::write",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "204": {
-            "description": "Deleted"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
     "/api/health": {
       "get": {
         "tags": [
@@ -18027,6 +18027,226 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProviderCatalogResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/lit-search/settings": {
+      "get": {
+        "tags": [
+          "LitSearch"
+        ],
+        "summary": "Read literature search settings",
+        "description": "\n\n**Required Permission:** `lit_search::admin::read`\n\nRead literature search settings (enable, active sources, caps).",
+        "operationId": "LitSearch.getSettings",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read literature search settings (enable, active sources, caps).",
+                        "name": "LitSearchAdminRead",
+                        "value": "lit_search::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: lit_search::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide lit_search settings (singleton row, id=TRUE).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LitSearchSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "LitSearch"
+        ],
+        "summary": "Update literature search settings (enable, active connectors, caps, completeness)",
+        "description": "\n\n**Required Permission:** `lit_search::admin::manage`\n\nUpdate literature search settings, active sources, and source API keys.",
+        "operationId": "LitSearch.updateSettings",
+        "requestBody": {
+          "description": "Partial update for `PUT /api/lit-search/settings`. Every field optional →\n absent = leave (matches the web_search peer's DTO shape).",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLitSearchSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update literature search settings, active sources, and source API keys.",
+                        "name": "LitSearchAdminManage",
+                        "value": "lit_search::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: lit_search::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide lit_search settings (singleton row, id=TRUE).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LitSearchSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/lit-search/connectors": {
+      "get": {
+        "tags": [
+          "LitSearch"
+        ],
+        "summary": "List connector catalog (descriptors + configured state)",
+        "description": "\n\n**Required Permission:** `lit_search::admin::read`\n\nRead literature search settings (enable, active sources, caps).",
+        "operationId": "LitSearch.getConnectors",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read literature search settings (enable, active sources, caps).",
+                        "name": "LitSearchAdminRead",
+                        "value": "lit_search::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: lit_search::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorCatalogResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/lit-search/connectors/{connector}": {
+      "put": {
+        "tags": [
+          "LitSearch"
+        ],
+        "summary": "Upsert one connector's API key / config",
+        "description": "\n\n**Required Permission:** `lit_search::admin::manage`\n\nUpdate literature search settings, active sources, and source API keys.",
+        "operationId": "LitSearch.updateConnector",
+        "requestBody": {
+          "description": "Update one connector's config + key. Tri-state key: absent = leave, empty\n string = clear, value = set.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateConnectorRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update literature search settings, active sources, and source API keys.",
+                        "name": "LitSearchAdminManage",
+                        "value": "lit_search::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: lit_search::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorCatalogResponse"
                 }
               }
             }
@@ -18967,6 +19187,112 @@
           "label",
           "required",
           "placeholder"
+        ]
+      },
+      "ConfigFieldInfo": {
+        "description": "One non-secret config field a connector needs — drives the generic admin UI.\n\n These owned-`String` response DTOs are a flattened MERGE of the code-owned\n static descriptor (connectors/mod.rs) with each connector's per-deployment\n runtime state (`enabled` / `configured` / `api_key_set`), assembled at request\n time in `build_catalog`. (web_search serializes its `ProviderDescriptor`\n — a `&'static str` struct — more directly; both `&'static str` and owned\n `String` derive `Serialize`/`JsonSchema` fine, so this is a structural choice,\n not a derive limitation.)",
+        "type": "object",
+        "properties": {
+          "docs_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "help": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "placeholder": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "required",
+          "placeholder"
+        ]
+      },
+      "ConnectorCatalogEntry": {
+        "description": "One catalog entry returned by `GET /api/lit-search/connectors`: the code-owned\n descriptor joined with the stored row's configured/api_key state. The key\n value is NEVER returned — only `api_key_set`.",
+        "type": "object",
+        "properties": {
+          "api_key_set": {
+            "description": "True when an api key is stored (never the value).",
+            "type": "boolean"
+          },
+          "config": {
+            "description": "The stored NON-secret config (e.g. `{ \"mailto\": \"a@b.c\" }`), so the admin\n form can pre-fill + round-trip it (the api key is never included here).\n Without this the form would re-submit empty config fields and wipe them."
+          },
+          "config_fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConfigFieldInfo"
+            }
+          },
+          "configured": {
+            "description": "True when required config + (if required) key are present.",
+            "type": "boolean"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "enabled": {
+            "description": "True when this connector is in `enabled_connectors`.",
+            "type": "boolean"
+          },
+          "key": {
+            "type": "string"
+          },
+          "key_field": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KeyFieldInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "keyless_note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "display_name",
+          "keyless_note",
+          "config_fields",
+          "enabled",
+          "configured",
+          "api_key_set",
+          "config"
+        ]
+      },
+      "ConnectorCatalogResponse": {
+        "type": "object",
+        "properties": {
+          "connectors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectorCatalogEntry"
+            }
+          }
+        },
+        "required": [
+          "connectors"
         ]
       },
       "ContentBlockDelta": {
@@ -23552,6 +23878,34 @@
           }
         ]
       },
+      "KeyFieldInfo": {
+        "description": "The optional/required API key field for a connector — drives the write-only\n key input + \"Get a key\" link in the admin UI.",
+        "type": "object",
+        "properties": {
+          "docs_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "help": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "required",
+          "label"
+        ]
+      },
       "LinkAccountRequest": {
         "type": "object",
         "properties": {
@@ -23793,6 +24147,49 @@
             ]
           }
         }
+      },
+      "LitSearchSettings": {
+        "description": "Deployment-wide lit_search settings (singleton row, id=TRUE).",
+        "type": "object",
+        "properties": {
+          "completeness_estimate_enabled": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "enabled_connectors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "max_results": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "per_source_limit": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "request_timeout_secs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "enabled",
+          "enabled_connectors",
+          "max_results",
+          "per_source_limit",
+          "request_timeout_secs",
+          "completeness_estimate_enabled",
+          "updated_at"
+        ]
       },
       "LlamaCppSettings": {
         "description": "LlamaCpp-specific settings for llama-server configuration",
@@ -25798,6 +26195,9 @@
                   "string",
                   "null"
                 ]
+              },
+              "structured_content": {
+                "description": "The MCP tool response's `structuredContent`, persisted verbatim. Mirrors\n `McpContentData::ToolResult.structured_content` so the `to_message_content()`\n serde roundtrip preserves it through DB persistence (same requirement as\n `attachment`/`resource_links` above). UI-only — content-type renderers (e.g.\n the literature screening card) read it, and the model recalls it via\n `get_tool_result`; it is NOT forwarded to the LLM by `to_content_block`."
               },
               "tool_use_id": {
                 "type": "string"
@@ -30195,6 +30595,11 @@
             "const": "web_search_settings"
           },
           {
+            "description": "Deployment-wide literature search settings + connector config (singleton).\n Notify-only; the frontend refetches settings + the connector catalog.",
+            "type": "string",
+            "const": "lit_search_settings"
+          },
+          {
             "description": "A user's accessible-providers (with enabled models) view changed.",
             "type": "string",
             "const": "user_llm_provider"
@@ -30972,6 +31377,24 @@
           }
         }
       },
+      "UpdateConnectorRequest": {
+        "description": "Update one connector's config + key. Tri-state key: absent = leave, empty\n string = clear, value = set.",
+        "type": "object",
+        "properties": {
+          "api_key": {
+            "description": "API key: omitted = leave, \"\" = clear, non-empty = set.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "config": {
+            "description": "Non-secret config (e.g. `{ \"mailto\": \"a@b.c\" }`).",
+            "default": null
+          }
+        }
+      },
       "UpdateConversationMemoryModeRequest": {
         "type": "object",
         "properties": {
@@ -31161,6 +31584,60 @@
         "required": [
           "server_ids"
         ]
+      },
+      "UpdateLitSearchSettingsRequest": {
+        "description": "Partial update for `PUT /api/lit-search/settings`. Every field optional →\n absent = leave (matches the web_search peer's DTO shape).",
+        "type": "object",
+        "properties": {
+          "completeness_estimate_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null
+          },
+          "enabled_connectors": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "default": null,
+            "items": {
+              "type": "string"
+            }
+          },
+          "max_results": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "default": null
+          },
+          "per_source_limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "default": null
+          },
+          "request_timeout_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "default": null
+          }
+        }
       },
       "UpdateLlmModelRequest": {
         "description": "Request to update an existing LLM model",

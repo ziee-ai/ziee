@@ -1,0 +1,162 @@
+//! Tier 2 — fetch_paper_fulltext: open-access resolution via a mock Europe PMC
+//! fullTextXML server, the content-addressed cache (a second fetch is a hit, no
+//! re-request), the per-conversation `/lit` view symlink, and the
+//! paywalled → not_open_access path.
+
+use std::sync::atomic::Ordering;
+
+use serde_json::json;
+use uuid::Uuid;
+
+use crate::common::test_helpers::create_user_with_permissions;
+use crate::common::{TestServer, TestServerOptions};
+use crate::lit_search::{configure, jsonrpc_conv, start_mock_epmc_fulltext};
+
+fn admin_perms() -> &'static [&'static str] {
+    &["lit_search::admin::read", "lit_search::admin::manage"]
+}
+
+/// Insert a minimal conversation owned by `user_id` (enough for
+/// `get_conversation_user_id` → view linking). Returns the conversation id.
+async fn seed_conversation(server: &TestServer, user_id: &str) -> Uuid {
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    let conv_id = Uuid::new_v4();
+    let uid = Uuid::parse_str(user_id).unwrap();
+    sqlx::query(
+        r#"INSERT INTO conversations (id, user_id, title, active_branch_id, created_at, updated_at)
+           VALUES ($1, $2, 'lit fulltext', NULL, NOW(), NOW())"#,
+    )
+    .bind(conv_id)
+    .bind(uid)
+    .execute(&pool)
+    .await
+    .unwrap();
+    conv_id
+}
+
+#[tokio::test]
+async fn test_fetch_fulltext_caches_and_links_view() {
+    let (epmc, hits) = start_mock_epmc_fulltext().await;
+    let server = TestServer::start_with_options(TestServerOptions {
+        extra_env: vec![
+            ("LIT_SEARCH_ALLOW_LOOPBACK".to_string(), "1".to_string()),
+            ("LIT_SEARCH_EPMC_FULLTEXT_BASE".to_string(), epmc),
+        ],
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(&server, "ls_ft_admin", admin_perms()).await;
+    configure(&server, &admin.token, &["europepmc"]).await;
+    let conv = seed_conversation(&server, &admin.user_id).await;
+
+    // First fetch: PMCID → Europe PMC fullTextXML → full_text, view linked.
+    let res = jsonrpc_conv(
+        &server,
+        &admin.token,
+        &conv.to_string(),
+        "tools/call",
+        json!({ "name": "fetch_paper_fulltext", "arguments": { "ids": ["PMC123456"] } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let sc = &body["result"]["structuredContent"];
+    assert_eq!(sc["lit_dir"], "/lit");
+    let paper = &sc["papers"][0];
+    assert_eq!(paper["status"], "full_text", "body: {body}");
+    assert_eq!(paper["source"], "europepmc");
+    assert!(paper["chars"].as_u64().unwrap_or(0) > 0);
+    assert!(
+        paper["sandbox_path"].as_str().unwrap_or("").starts_with("/lit/"),
+        "owned conversation must get a /lit view path: {paper}"
+    );
+    // The model-facing text carries the extracted body.
+    let text = body["result"]["content"][0]["text"].as_str().unwrap_or("");
+    assert!(text.contains("CRISPR base editing off-target"), "inline full text: {text}");
+    assert_eq!(hits.load(Ordering::SeqCst), 1, "first fetch hits upstream once");
+
+    // Second fetch of the same id → cache hit, NO second upstream request.
+    let res = jsonrpc_conv(
+        &server,
+        &admin.token,
+        &conv.to_string(),
+        "tools/call",
+        json!({ "name": "fetch_paper_fulltext", "arguments": { "ids": ["PMC123456"] } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["result"]["structuredContent"]["papers"][0]["status"], "full_text");
+    assert_eq!(
+        hits.load(Ordering::SeqCst),
+        1,
+        "second fetch must be served from cache (no re-request)"
+    );
+}
+
+#[tokio::test]
+async fn test_fetch_doi_without_mailto_returns_not_found() {
+    // PRECONDITION (deliberate + load-bearing): crossref is enabled but NO
+    // `mailto` is configured (and `find_email` scans BOTH the crossref and pubmed
+    // connector configs — neither has one here). Unpaywall is the only DOI→PDF
+    // path and requires a contact email, so with no mailto that path is SKIPPED
+    // entirely (no live network) and the resolver reports `not_found` — i.e. "OA
+    // status not determined" (re-resolvable once a mailto is set) — rather than
+    // mislabeling the paper as definitively paywalled (`not_open_access`). If a
+    // future change made `configure` set a default mailto, this test would start
+    // hitting live Unpaywall — keep mailto unset here.
+    let server = TestServer::start_with_options(TestServerOptions {
+        extra_env: vec![("LIT_SEARCH_ALLOW_LOOPBACK".to_string(), "1".to_string())],
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(&server, "ls_paywall_admin", admin_perms()).await;
+    configure(&server, &admin.token, &["crossref"]).await; // intentionally no mailto
+    let conv = seed_conversation(&server, &admin.user_id).await;
+
+    let res = jsonrpc_conv(
+        &server,
+        &admin.token,
+        &conv.to_string(),
+        "tools/call",
+        json!({ "name": "fetch_paper_fulltext", "arguments": { "ids": ["10.9999/paywalled.xyz"] } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    assert_eq!(
+        res.json::<serde_json::Value>().await.unwrap()["result"]["structuredContent"]["papers"][0]
+            ["status"],
+        "not_found",
+    );
+}
+
+#[tokio::test]
+async fn test_fetch_empty_ids_is_rejected() {
+    let server = TestServer::start().await;
+    let admin = create_user_with_permissions(&server, "ls_ft_empty_admin", admin_perms()).await;
+    configure(&server, &admin.token, &["europepmc"]).await;
+    let conv = seed_conversation(&server, &admin.user_id).await;
+
+    let res = jsonrpc_conv(
+        &server,
+        &admin.token,
+        &conv.to_string(),
+        "tools/call",
+        json!({ "name": "fetch_paper_fulltext", "arguments": { "ids": ["  "] } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert!(
+        body["error"]["message"].as_str().unwrap_or("").contains("must not be empty"),
+        "blank ids should be rejected: {body}"
+    );
+}

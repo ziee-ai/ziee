@@ -39,6 +39,7 @@ fn test_tool_result_conversion() {
         images: None,
         server_id: None,
         hidden_content: None,
+        structured_content: None,
         resource_links: None,
     };
 
@@ -114,6 +115,7 @@ fn test_tool_result_no_sources_section_appended_to_llm() {
         images: None,
         server_id: None,
         hidden_content: None,
+        structured_content: None,
         resource_links: None,
     };
 
@@ -153,6 +155,7 @@ fn test_tool_result_with_attachment_roundtrip() {
         images: None,
         server_id: None,
         hidden_content: None,
+        structured_content: None,
         resource_links: None,
     };
 
@@ -184,6 +187,7 @@ fn test_resource_link_file_id_roundtrip() {
         images: None,
         server_id: None,
         hidden_content: None,
+        structured_content: None,
         resource_links: Some(vec![ResourceLink {
             uri: "/api/code-sandbox/file/download?filename=plot.R".to_string(),
             name: Some("plot.R".to_string()),

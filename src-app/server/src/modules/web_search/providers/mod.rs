@@ -10,9 +10,7 @@ pub mod brave;
 pub mod searxng;
 
 use async_trait::async_trait;
-use futures_util::StreamExt;
 use serde::Serialize;
-use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::common::AppError;
@@ -23,35 +21,10 @@ use crate::core::Repos;
 /// the page-fetch byte cap).
 pub(super) const MAX_SEARCH_BODY_BYTES: u64 = 4 * 1024 * 1024;
 
-/// Read + deserialize an upstream JSON response with a hard byte cap (reqwest
-/// has no default body limit). Shared by the search providers so neither can
-/// drift into an unbounded `resp.json()`.
-pub(super) async fn read_json_capped<T: DeserializeOwned>(
-    resp: reqwest::Response,
-    max_bytes: u64,
-) -> Result<T, AppError> {
-    if let Some(len) = resp.content_length()
-        && len > max_bytes
-    {
-        return Err(AppError::internal_error(format!(
-            "search response too large: {len} bytes (cap {max_bytes})"
-        )));
-    }
-    let mut stream = resp.bytes_stream();
-    let mut buf: Vec<u8> = Vec::new();
-    while let Some(chunk) = stream.next().await {
-        let chunk =
-            chunk.map_err(|e| AppError::internal_error(format!("search response read failed: {e}")))?;
-        if buf.len() as u64 + chunk.len() as u64 > max_bytes {
-            return Err(AppError::internal_error(format!(
-                "search response exceeds size cap ({max_bytes} bytes)"
-            )));
-        }
-        buf.extend_from_slice(&chunk);
-    }
-    serde_json::from_slice(&buf)
-        .map_err(|e| AppError::internal_error(format!("search response parse failed: {e}")))
-}
+/// Capped JSON reader, lifted to the shared `utils/http_body` helper so the two
+/// outbound-fetch modules (`web_search`, `lit_search`) share ONE copy of this
+/// security control. Re-exported as `super::read_json_capped` for the providers.
+pub(super) use crate::utils::http_body::read_json_capped;
 
 use super::models::WebSearchSettings;
 use super::repository::WebSearchProviderRow;

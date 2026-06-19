@@ -169,6 +169,19 @@ async fn test_search_via_mock_searxng() {
     assert_eq!(sc["results"][0]["snippet"], "a snippet about the query", "body: {body}");
     assert_eq!(sc["results"][0]["title"], "Example Result", "body: {body}");
 
+    // The model-facing TEXT channel is a readable digest, NOT stringified JSON
+    // (the retrofit's whole point). Lock it so a regression to `v.to_string()`
+    // fails here.
+    let text = body["result"]["content"][0]["text"].as_str().unwrap_or("");
+    assert!(
+        !text.trim_start().starts_with('{') && !text.trim_start().starts_with('['),
+        "search text channel must be a readable digest, not stringified JSON: {text}"
+    );
+    assert!(
+        text.contains("Example Result") && text.contains("example.com"),
+        "search digest should name the hits: {text}"
+    );
+
     // max_results is plumbed through end-to-end: the mock returns 2 rows, so
     // capping to 1 must yield exactly 1 result on the wire.
     let res = jsonrpc(
@@ -327,6 +340,14 @@ async fn test_fetch_url_via_loopback_fixture() {
         "extracted markdown should keep the body; got: {body}"
     );
     assert_eq!(sc["title"], "Fixture Title");
+
+    // The model-facing TEXT channel is the page markdown (text-as-text), NOT a
+    // JSON-wrapped blob — lock the retrofit.
+    let text = body["result"]["content"][0]["text"].as_str().unwrap_or("");
+    assert!(
+        text.contains("substantive body") && !text.trim_start().starts_with('{'),
+        "fetch text channel must be readable markdown, not JSON: {text}"
+    );
 }
 
 #[tokio::test]

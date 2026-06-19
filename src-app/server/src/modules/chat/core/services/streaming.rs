@@ -1883,9 +1883,14 @@ const KEEP_LAST_TOOL_RESULTS: usize = 6;
 /// blow the context budget. Truncate any kept result whose text payload
 /// exceeds this; the model can re-call the tool to see the full output.
 const MAX_KEPT_TOOL_RESULT_CHARS: usize = 8000;
-/// Marker appended to a kept-but-truncated tool_result.
-const KEPT_TRUNCATION_MARKER: &str =
-    "\n[…truncated to save context; re-call the tool to see the full result]";
+/// Marker appended to a kept-but-truncated tool_result. `{id}` is the
+/// `tool_use_id`, so the model can recover the FULL result exactly via the
+/// `get_tool_result` tool (a read of stored history — no re-execution).
+fn kept_truncation_marker(tool_use_id: &str) -> String {
+    format!(
+        "\n[…truncated to save context; call get_tool_result(tool_use_id=\"{tool_use_id}\") for the full result]"
+    )
+}
 
 /// Rough char count of a content block's text payload (for token estimation).
 fn block_text_chars(b: &ai_providers::ContentBlock) -> usize {
@@ -1935,11 +1940,16 @@ fn clear_old_tool_results(
     // can blow the budget on their own).
     let clear_until = positions.len().saturating_sub(keep_last);
     for &(mi, bi) in &positions[..clear_until] {
-        if let ai_providers::ContentBlock::ToolResult { content, .. } =
+        if let ai_providers::ContentBlock::ToolResult { content, tool_use_id, .. } =
             &mut messages[mi].content[bi]
         {
+            // Carry the tool_use_id so the model can recover the EXACT result via
+            // get_tool_result (read of stored history; no re-execution).
+            let tid = tool_use_id.clone();
             *content = vec![ai_providers::ContentBlock::Text {
-                text: "[tool result cleared to save context]".to_string(),
+                text: format!(
+                    "[tool result cleared to save context — call get_tool_result(tool_use_id=\"{tid}\") to retrieve the full result]"
+                ),
             }];
         }
     }
@@ -1951,15 +1961,27 @@ fn clear_old_tool_results(
     // to recover the full output. Outbound copy only — stored history is not
     // touched here.
     for &(mi, bi) in &positions[clear_until..] {
-        if let ai_providers::ContentBlock::ToolResult { content, .. } =
+        if let ai_providers::ContentBlock::ToolResult { content, tool_use_id, .. } =
             &mut messages[mi].content[bi]
         {
             let chars: usize =
                 content.iter().map(block_text_chars).sum();
             if chars > MAX_KEPT_TOOL_RESULT_CHARS {
-                *content = vec![ai_providers::ContentBlock::Text {
-                    text: truncate_kept_result(content),
-                }];
+                let tid = tool_use_id.clone();
+                let truncated = truncate_kept_result(content, &tid);
+                // Preserve any Image blocks — only the oversized TEXT is
+                // truncated. Image bytes aren't counted in the char budget
+                // (block_text_chars is text-only), and a tool's returned image
+                // (chart/figure) is usually the valuable part, so dropping it on
+                // a text-size overflow would lose model-relevant content.
+                let images: Vec<ai_providers::ContentBlock> = content
+                    .iter()
+                    .filter(|b| matches!(b, ai_providers::ContentBlock::Image { .. }))
+                    .cloned()
+                    .collect();
+                let mut new_content = vec![ai_providers::ContentBlock::Text { text: truncated }];
+                new_content.extend(images);
+                *content = new_content;
             }
         }
     }
@@ -1970,6 +1992,7 @@ fn clear_old_tool_results(
 /// (truncates on a `char` boundary, not a byte index).
 fn truncate_kept_result(
     content: &[ai_providers::ContentBlock],
+    tool_use_id: &str,
 ) -> String {
     use ai_providers::ContentBlock as CB;
     let mut flat = String::new();
@@ -1985,7 +2008,7 @@ fn truncate_kept_result(
     }
     let kept: String =
         flat.chars().take(MAX_KEPT_TOOL_RESULT_CHARS).collect();
-    format!("{kept}{KEPT_TRUNCATION_MARKER}")
+    format!("{kept}{}", kept_truncation_marker(tool_use_id))
 }
 
 #[cfg(test)]
@@ -2070,7 +2093,7 @@ mod trim_tests {
             assert!(
                 chars
                     <= MAX_KEPT_TOOL_RESULT_CHARS
-                        + KEPT_TRUNCATION_MARKER.chars().count(),
+                        + kept_truncation_marker("k0").chars().count(),
                 "kept result {i} not bounded: {chars} chars",
             );
         }
@@ -2084,7 +2107,7 @@ mod trim_tests {
             .sum();
         let bound = 6
             * (MAX_KEPT_TOOL_RESULT_CHARS
-                + KEPT_TRUNCATION_MARKER.chars().count());
+                + kept_truncation_marker("k0").chars().count());
         assert!(
             total_chars <= bound,
             "post-trim total {total_chars} exceeds bound {bound}",

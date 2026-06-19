@@ -209,4 +209,5 @@ declare_repositories! {
     skill: SkillRepository => crate::modules::skill,
     workflow: WorkflowRepository => crate::modules::workflow,
     web_search: WebSearchRepository => crate::modules::web_search,
+    lit_search: LitSearchRepository => crate::modules::lit_search,
 }

@@ -742,6 +742,24 @@ pub(crate) fn build_bwrap_argv(
     let mut all_ro_binds = extra_ro_binds;
     all_ro_binds.extend(extra_workflow_ro);
 
+    // lit_search: mount this conversation's open-access full-text view read-only
+    // at /lit, so the model can `grep`/`cat`/script over the papers it fetched
+    // via fetch_paper_fulltext (per-conversation — no cross-conversation leakage).
+    // Emitted as `--ro-bind-try` (see the extra_ro_binds loop below), so it's
+    // non-fatal when absent. The Linux backend binds the host path directly; the
+    // macOS/WSL2 VM backends skip it gracefully until the lit-cache dir is shared
+    // into the guest (a follow-up — the host path isn't guest-visible there yet).
+    {
+        let lit_view =
+            crate::modules::lit_search::fulltext::cache::conversation_view_dir(ctx.conversation_id);
+        if lit_view.is_dir() {
+            all_ro_binds.push((
+                lit_view.display().to_string(),
+                crate::modules::lit_search::fulltext::cache::SANDBOX_MOUNT_PATH.to_string(),
+            ));
+        }
+    }
+
     let mut argv = build_hardening_prefix(&HardeningArgvParams {
         caps,
         rootfs_dir,
