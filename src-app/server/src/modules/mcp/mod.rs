@@ -13,6 +13,7 @@ mod routes;
 pub mod runtime_types;
 pub mod sampling;
 pub mod settings;
+pub mod tool_calls;
 mod types;
 pub mod user_policy;
 mod utils;
@@ -82,6 +83,14 @@ impl AppModule for McpModule {
         let health_pool = (*ctx.db_pool).clone();
         tokio::spawn(async move {
             connection_health::run_startup_health_check(health_pool).await;
+        });
+
+        // Periodic retention prune of the mcp_tool_calls history. Reads the
+        // admin-configured window from mcp_user_policy each tick (0 = keep
+        // forever). Fire-and-forget, like the health check.
+        let prune_pool = (*ctx.db_pool).clone();
+        tokio::spawn(async move {
+            tool_calls::prune::run_prune_loop(prune_pool).await;
         });
 
         // Boot-time sanity check on the MCP user policy. If the

@@ -25,6 +25,9 @@ pub struct McpUserPolicy {
     /// Required iff `"stdio" ∈ allowed_transports`; must be in
     /// `code_sandbox::types::KNOWN_FLAVORS`.
     pub user_stdio_sandbox_flavor: Option<String>,
+    /// Days to retain MCP tool-call history (`mcp_tool_calls`) before the
+    /// background prune deletes it. `0` = keep forever (no prune).
+    pub tool_call_retention_days: i32,
     pub updated_at: DateTime<Utc>,
     pub updated_by: Option<Uuid>,
 }
@@ -35,4 +38,9 @@ pub struct McpUserPolicy {
 pub struct UpdateMcpUserPolicyRequest {
     pub allowed_transports: Vec<String>,
     pub user_stdio_sandbox_flavor: Option<String>,
+    /// Days to retain MCP tool-call history; `0` = keep forever. Clamped to
+    /// [0, 3650] on save. Omitted (`None`) keeps the current value, so
+    /// existing PUT callers that don't set it are unaffected.
+    #[serde(default)]
+    pub tool_call_retention_days: Option<i32>,
 }
