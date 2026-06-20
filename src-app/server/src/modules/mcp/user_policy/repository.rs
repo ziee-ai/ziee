@@ -28,6 +28,7 @@ pub async fn load(pool: &PgPool) -> Result<McpUserPolicy, AppError> {
         r#"SELECT
             allowed_transports        AS "allowed_transports!: Vec<String>",
             user_stdio_sandbox_flavor,
+            tool_call_retention_days,
             updated_at,
             updated_by
         FROM mcp_user_policy
@@ -52,6 +53,7 @@ pub async fn load(pool: &PgPool) -> Result<McpUserPolicy, AppError> {
     Ok(McpUserPolicy {
         allowed_transports,
         user_stdio_sandbox_flavor: flavor,
+        tool_call_retention_days: row.tool_call_retention_days,
         updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0)
             .ok_or_else(|| AppError::internal_error("invalid updated_at"))?,
         updated_by: row.updated_by,
@@ -65,18 +67,23 @@ pub async fn save(
     updated_by: Uuid,
     req: UpdateMcpUserPolicyRequest,
 ) -> Result<McpUserPolicy, AppError> {
+    // Copy retention out before `req` is moved into validate(); `None` keeps
+    // the current value via COALESCE below.
+    let retention = req.tool_call_retention_days.map(|d| d.clamp(0, 3650));
     let (allowed, flavor) = validate(req)?;
 
     sqlx::query!(
         r#"UPDATE mcp_user_policy
            SET allowed_transports = $1,
                user_stdio_sandbox_flavor = $2,
+               tool_call_retention_days = COALESCE($4::int, tool_call_retention_days),
                updated_at = now(),
                updated_by = $3
            WHERE id = 1"#,
         &allowed,
         flavor.as_deref(),
         updated_by,
+        retention,
     )
     .execute(pool)
     .await
@@ -165,6 +172,7 @@ mod tests {
         UpdateMcpUserPolicyRequest {
             allowed_transports: allowed.iter().map(|s| (*s).to_string()).collect(),
             user_stdio_sandbox_flavor: flavor.map(str::to_string),
+            tool_call_retention_days: None,
         }
     }
 

@@ -10309,6 +10309,181 @@
         ]
       }
     },
+    "/api/mcp/tool-calls": {
+      "get": {
+        "tags": [
+          "MCP Servers - Tool Calls"
+        ],
+        "summary": "List MCP tool-call history",
+        "description": "List the caller's own MCP tool-call invocations, newest-first. Optional `server_id` / `conversation_id` filters. Owner-scoped.",
+        "operationId": "McpToolCall.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "conversation_id",
+            "description": "Filter to a single conversation.",
+            "schema": {
+              "description": "Filter to a single conversation.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid",
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "is_built_in",
+            "description": "Filter by built-in vs external servers (e.g. `false` to hide built-ins).",
+            "schema": {
+              "description": "Filter by built-in vs external servers (e.g. `false` to hide built-ins).",
+              "type": [
+                "boolean",
+                "null"
+              ],
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "default": 1
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "default": 20
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "server_id",
+            "description": "Filter to a single MCP server.",
+            "schema": {
+              "description": "Filter to a single MCP server.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid",
+              "default": null
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View MCP servers",
+                        "name": "McpServersRead",
+                        "value": "mcp_servers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Paginated list response (mirrors `McpServerListResponse`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpToolCallListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/mcp/tool-calls/{id}": {
+      "get": {
+        "tags": [
+          "MCP Servers - Tool Calls"
+        ],
+        "summary": "Get an MCP tool-call record",
+        "description": "Fetch a single tool-call record by id. Owner-scoped: a row owned by another user returns 404.",
+        "operationId": "McpToolCall.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View MCP servers",
+                        "name": "McpServersRead",
+                        "value": "mcp_servers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One recorded MCP tool-call invocation (a `mcp_tool_calls` row).\n\n `source`/`status` are stored (and surfaced) as their snake_case strings.\n Field ORDER must match the SELECT/RETURNING column list in `repository.rs`\n (`query_as!` maps by name, but keeping them aligned aids review).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpToolCall"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/mcp/servers/{id}/resources": {
       "get": {
         "tags": [
@@ -26152,6 +26327,48 @@
           }
         }
       },
+      "ListToolCallsQuery": {
+        "description": "Query params for the tool-call history list.",
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "description": "Filter to a single conversation.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "default": null
+          },
+          "is_built_in": {
+            "description": "Filter by built-in vs external servers (e.g. `false` to hide built-ins).",
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64",
+            "default": 1
+          },
+          "per_page": {
+            "type": "integer",
+            "format": "int64",
+            "default": 20
+          },
+          "server_id": {
+            "description": "Filter to a single MCP server.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "default": null
+          }
+        }
+      },
       "ListToolsResponse": {
         "type": "object",
         "properties": {
@@ -27616,6 +27833,167 @@
           }
         }
       },
+      "McpToolCall": {
+        "description": "One recorded MCP tool-call invocation (a `mcp_tool_calls` row).\n\n `source`/`status` are stored (and surfaced) as their snake_case strings.\n Field ORDER must match the SELECT/RETURNING column list in `repository.rs`\n (`query_as!` maps by name, but keeping them aligned aids review).",
+        "type": "object",
+        "properties": {
+          "arguments_json": true,
+          "branch_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "content_kinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "conversation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "error_message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "finished_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_built_in": {
+            "type": "boolean"
+          },
+          "is_error": {
+            "type": "boolean"
+          },
+          "message_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "result_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "result_json": true,
+          "server_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "server_name": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string"
+          },
+          "tool_name": {
+            "type": "string"
+          },
+          "tool_use_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id",
+          "server_name",
+          "is_built_in",
+          "user_id",
+          "tool_name",
+          "arguments_json",
+          "source",
+          "status",
+          "is_error",
+          "content_kinds",
+          "result_bytes",
+          "started_at",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "McpToolCallListResponse": {
+        "description": "Paginated list response (mirrors `McpServerListResponse`).",
+        "type": "object",
+        "properties": {
+          "calls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/McpToolCall"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "per_page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total_pages": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "calls",
+          "total",
+          "page",
+          "per_page",
+          "total_pages"
+        ]
+      },
       "McpTransport": {
         "description": "Transport block on an `McpPackage`. The official `server.json`\n schema models this as an `anyOf` over three single-field structs\n (`{type: \"stdio\"}`, `{type: \"streamable-http\"}`, `{type: \"sse\"}`).\n We flatten that to one struct with a single `type` field — round-\n trips all three shapes cleanly.",
         "type": "object",
@@ -27640,6 +28018,11 @@
               "type": "string"
             }
           },
+          "tool_call_retention_days": {
+            "description": "Days to retain MCP tool-call history (`mcp_tool_calls`) before the\n background prune deletes it. `0` = keep forever (no prune).",
+            "type": "integer",
+            "format": "int32"
+          },
           "updated_at": {
             "type": "string",
             "format": "date-time"
@@ -27661,6 +28044,7 @@
         },
         "required": [
           "allowed_transports",
+          "tool_call_retention_days",
           "updated_at"
         ]
       },
@@ -32816,6 +33200,11 @@
             "const": "file"
           },
           {
+            "description": "A recorded MCP tool-call invocation (`mcp_tool_calls`). Emitted\n owner-scoped on Create from the detached recording task in\n `McpSession::call_tool`, so the per-server \"Calls\" tab refreshes live.\n Notify-only; the client refetches via `GET /api/mcp/tool-calls`.",
+            "type": "string",
+            "const": "mcp_tool_call"
+          },
+          {
             "description": "Admin view of an LLM provider (full admin provider table).",
             "type": "string",
             "const": "llm_provider"
@@ -34304,6 +34693,15 @@
             "items": {
               "type": "string"
             }
+          },
+          "tool_call_retention_days": {
+            "description": "Days to retain MCP tool-call history; `0` = keep forever. Clamped to\n [0, 3650] on save. Omitted (`None`) keeps the current value, so\n existing PUT callers that don't set it are unaffected.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "default": null
           },
           "user_stdio_sandbox_flavor": {
             "type": [

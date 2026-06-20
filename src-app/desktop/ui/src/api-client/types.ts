@@ -1400,6 +1400,14 @@ export interface ListSystemServersQuery {
   status?: string
 }
 
+export interface ListToolCallsQuery {
+  conversation_id?: string
+  is_built_in?: boolean
+  page?: number
+  per_page?: number
+  server_id?: string
+}
+
 export interface ListToolsResponse {
   tools: Tool[]
 }
@@ -1704,12 +1712,47 @@ export interface McpSettingsResponse {
   settings?: ConversationMcpSettingsResponse
 }
 
+export interface McpToolCall {
+  arguments_json: any
+  branch_id?: string
+  content_kinds: string[]
+  conversation_id?: string
+  created_at: string
+  duration_ms?: number
+  error_message?: string
+  finished_at?: string
+  id: string
+  is_built_in: boolean
+  is_error: boolean
+  message_id?: string
+  result_bytes: number
+  result_json?: any
+  server_id?: string
+  server_name: string
+  source: string
+  started_at: string
+  status: string
+  tool_name: string
+  tool_use_id?: string
+  updated_at: string
+  user_id: string
+}
+
+export interface McpToolCallListResponse {
+  calls: McpToolCall[]
+  page: number
+  per_page: number
+  total: number
+  total_pages: number
+}
+
 export interface McpTransport {
   type: string
 }
 
 export interface McpUserPolicy {
   allowed_transports: string[]
+  tool_call_retention_days: number
   updated_at: string
   updated_by?: string
   user_stdio_sandbox_flavor?: string
@@ -2838,7 +2881,7 @@ export interface SyncConnectedData {
   connection_id: string
 }
 
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'file' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'web_search_settings' | 'lit_search_settings' | 'bibliography_entry' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'web_search_settings' | 'lit_search_settings' | 'bibliography_entry' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run'
 
 export interface SyncEvent {
   action: SyncAction
@@ -3129,6 +3172,7 @@ export interface UpdateMcpServerRequest {
 
 export interface UpdateMcpUserPolicyRequest {
   allowed_transports: string[]
+  tool_call_retention_days?: number
   user_stdio_sandbox_flavor?: string
 }
 
@@ -4001,6 +4045,8 @@ export const ApiEndpoints = {
   'McpServerSystem.removeServerFromGroup': 'DELETE /api/mcp/system-servers/{id}/groups/{group_id}',
   'McpServerSystem.testConnection': 'POST /api/mcp/system-servers/test-connection',
   'McpServerSystem.update': 'PUT /api/mcp/system-servers/{id}',
+  'McpToolCall.get': 'GET /api/mcp/tool-calls/{id}',
+  'McpToolCall.list': 'GET /api/mcp/tool-calls',
   'McpUserPolicy.get': 'GET /api/mcp/user-policy',
   'McpUserPolicy.update': 'PUT /api/mcp/user-policy',
   'Memory.create': 'POST /api/memories',
@@ -4357,6 +4403,8 @@ export type ApiEndpointParameters = {
   'McpServerSystem.removeServerFromGroup': { id: string; group_id: string }
   'McpServerSystem.testConnection': TestMcpConnectionRequest
   'McpServerSystem.update': { id: string } & UpdateMcpServerRequest
+  'McpToolCall.get': { id: string }
+  'McpToolCall.list': { conversation_id?: string; is_built_in?: boolean; page?: number; per_page?: number; server_id?: string }
   'McpUserPolicy.get': void
   'McpUserPolicy.update': UpdateMcpUserPolicyRequest
   'Memory.create': CreateMemoryRequest
@@ -4713,6 +4761,8 @@ export type ApiEndpointResponses = {
   'McpServerSystem.removeServerFromGroup': void
   'McpServerSystem.testConnection': TestMcpConnectionResponse
   'McpServerSystem.update': McpServer
+  'McpToolCall.get': McpToolCall
+  'McpToolCall.list': McpToolCallListResponse
   'McpUserPolicy.get': McpUserPolicy
   'McpUserPolicy.update': McpUserPolicy
   'Memory.create': UserMemory

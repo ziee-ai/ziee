@@ -20,6 +20,7 @@ use crate::modules::chat::core::models::{Message, MessageContentData};
 use crate::modules::chat::core::types::streaming::ContentBlockDelta;
 use crate::modules::mcp::client::manager::McpSessionManager;
 use crate::modules::mcp::client::session::McpSession;
+use crate::modules::mcp::tool_calls::models::{McpCallContext, McpToolCallSource};
 use crate::modules::mcp::UsageMode;
 use crate::modules::mcp::sampling::{ChatSamplingHandler, acquire_session};
 use crate::modules::mcp::elicitation::models::ElicitationStartedNotification;
@@ -356,7 +357,20 @@ impl McpChatExtension {
                         Ok(h) => {
                             let handler = Arc::new(h);
                             match McpSession::new_with_sampling(server.clone(), handler).await {
-                                Ok(s) => _owned = Some(s),
+                                Ok(mut s) => {
+                                    s.set_call_context(McpCallContext {
+                                        user_id: Some(context.user_id),
+                                        conversation_id: Some(context.conversation_id),
+                                        branch_id: Some(context.branch_id),
+                                        message_id: context.message_id,
+                                        tool_use_id: Some(tool_use_id.clone()),
+                                        source: McpToolCallSource::Sampling,
+                                        server_name: server.name.clone(),
+                                        is_built_in: server.is_built_in,
+                                        ..Default::default()
+                                    });
+                                    _owned = Some(s);
+                                }
                                 Err(e) => {
                                     tracing::warn!(
                                         "[sampling] Failed to create sampling session for '{}': {}",
@@ -408,7 +422,10 @@ impl McpChatExtension {
                         server.id,
                         context.user_id,
                         Some(context.conversation_id),
+                        Some(context.branch_id),
                         context.message_id,
+                        Some(tool_use_id.clone()),
+                        McpToolCallSource::Approval,
                     )
                     .await
                 {
@@ -1485,6 +1502,18 @@ impl ChatExtension for McpChatExtension {
                             tracing::warn!("Always-mode: failed to connect to server {}: {}", server.name, e);
                         }
                         Ok(mut session) => {
+                            // Record always-mode pre-runs (the session is built
+                            // directly, bypassing the manager's stamping).
+                            session.set_call_context(McpCallContext {
+                                user_id: Some(context.user_id),
+                                conversation_id: Some(context.conversation_id),
+                                branch_id: Some(context.branch_id),
+                                message_id: context.message_id,
+                                source: McpToolCallSource::Always,
+                                server_name: server.name.clone(),
+                                is_built_in: server.is_built_in,
+                                ..Default::default()
+                            });
                             let mcp_tools = match session.list_tools().await {
                                 Ok(t) => t,
                                 Err(e) => {
@@ -1569,7 +1598,11 @@ impl ChatExtension for McpChatExtension {
                     *server_id,
                     context.user_id,
                     Some(context.conversation_id),
+                    Some(context.branch_id),
                     context.message_id,
+                    // Tool-collection session (list_tools only); source/tool_use moot.
+                    None,
+                    McpToolCallSource::Always,
                 )
                 .await
             {
@@ -2337,6 +2370,17 @@ impl ChatExtension for McpChatExtension {
                                 Ok(h) => {
                                     match McpSession::new_with_sampling(server.clone(), Arc::new(h)).await {
                                         Ok(mut sampling_session) => {
+                                            sampling_session.set_call_context(McpCallContext {
+                                                user_id: Some(context.user_id),
+                                                conversation_id: Some(context.conversation_id),
+                                                branch_id: Some(context.branch_id),
+                                                message_id: context.message_id,
+                                                tool_use_id: Some(tool_use_id.clone()),
+                                                source: McpToolCallSource::Sampling,
+                                                server_name: server.name.clone(),
+                                                is_built_in: server.is_built_in,
+                                                ..Default::default()
+                                            });
                                             helpers::execute_tool(
                                                 &mut sampling_session,
                                                 &tool_name,
@@ -2395,7 +2439,10 @@ impl ChatExtension for McpChatExtension {
                         server.id,
                         context.user_id,
                         Some(context.conversation_id),
+                        Some(context.branch_id),
                         context.message_id,
+                        Some(tool_use_id.clone()),
+                        McpToolCallSource::Chat,
                     )
                     .await
                 {

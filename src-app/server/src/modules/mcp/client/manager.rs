@@ -10,6 +10,7 @@ use super::session::McpSession;
 use crate::common::AppError;
 use crate::core::{config::Config, Repos};
 use crate::modules::auth::jwt::Claims;
+use crate::modules::mcp::tool_calls::models::{McpCallContext, McpToolCallSource};
 
 /// Process-wide handle to the session manager constructed in
 /// `main.rs`. The event-handler path (`McpSessionCleanupHandler`)
@@ -84,15 +85,21 @@ impl McpSessionManager {
     }
 
     /// Get or create a session with conversation context headers injected.
-    /// For built-in servers, creates an ephemeral (non-pooled) session with
-    /// X-Conversation-Id, X-Message-Id, and a short-lived Authorization JWT.
-    /// For regular servers, delegates to the normal pooled get_or_create.
+    /// Always creates an EPHEMERAL (non-pooled) session — for both built-in
+    /// servers (with X-Conversation-Id / X-Message-Id / a short-lived JWT) and
+    /// regular servers (so parallel tool execution doesn't share one session).
+    /// The ephemerality is what makes stamping `call_ctx` race-free: every
+    /// tool call gets its own freshly-stamped session. `source` records how
+    /// the call was triggered (chat / rest / always / approval / sampling).
     pub async fn get_or_create_with_context(
         &self,
         server_id: Uuid,
         user_id: Uuid,
         conversation_id: Option<Uuid>,
+        branch_id: Option<Uuid>,
         message_id: Option<Uuid>,
+        tool_use_id: Option<String>,
+        source: McpToolCallSource,
     ) -> Result<Arc<RwLock<McpSession>>, AppError> {
         let server = Repos.mcp.get_any_server(server_id).await?
             .ok_or_else(|| AppError::not_found("Server not found"))?;
@@ -100,6 +107,18 @@ impl McpSessionManager {
         if !server.enabled {
             return Err(AppError::bad_request("server_disabled", "Server is disabled"));
         }
+
+        // Recording context stamped onto whichever session we build below.
+        let call_ctx = McpCallContext {
+            user_id: Some(user_id),
+            conversation_id,
+            branch_id,
+            message_id,
+            tool_use_id,
+            source,
+            server_name: server.name.clone(),
+            is_built_in: server.is_built_in,
+        };
 
         // For built-in servers: create ephemeral session with dynamic headers
         if server.is_built_in {
@@ -135,12 +154,14 @@ impl McpSessionManager {
             server_with_ctx.headers = Value::Object(headers);
 
             // Ephemeral session — not stored in the pool
-            let session = McpSession::new(server_with_ctx).await?;
+            let mut session = McpSession::new(server_with_ctx).await?;
+            session.set_call_context(call_ctx);
             return Ok(Arc::new(RwLock::new(session)));
         }
 
         // Non-built-in: create ephemeral session per call (no pool, allows parallel tool execution)
-        let session = McpSession::new(server).await?;
+        let mut session = McpSession::new(server).await?;
+        session.set_call_context(call_ctx);
         Ok(Arc::new(RwLock::new(session)))
     }
 

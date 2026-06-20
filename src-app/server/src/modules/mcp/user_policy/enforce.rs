@@ -119,6 +119,7 @@ mod tests {
         McpUserPolicy {
             allowed_transports: allowed.iter().map(|s| (*s).to_string()).collect(),
             user_stdio_sandbox_flavor: flavor.map(str::to_string),
+            tool_call_retention_days: 90,
             updated_at: Utc::now(),
             updated_by: None,
         }

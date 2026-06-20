@@ -327,6 +327,67 @@ impl McpRepository {
         &self.pool
     }
 
+    // =====================================================
+    // Tool-call history (mcp_tool_calls) — see tool_calls/.
+    // Thin delegators over the free functions, matching the
+    // create_user_server → create_user_mcp_server pattern.
+    // =====================================================
+
+    /// Persist one recorded MCP tool-call invocation.
+    pub async fn record_tool_call(
+        &self,
+        req: super::tool_calls::CreateMcpToolCall,
+    ) -> Result<super::tool_calls::McpToolCall, AppError> {
+        super::tool_calls::repository::insert_call(&self.pool, req).await
+    }
+
+    /// List a user's tool-call history (owner-scoped, paginated, filterable by
+    /// server / conversation / built-in).
+    pub async fn list_tool_calls(
+        &self,
+        user_id: Uuid,
+        server_id: Option<Uuid>,
+        conversation_id: Option<Uuid>,
+        is_built_in: Option<bool>,
+        page: i64,
+        per_page: i64,
+    ) -> Result<super::tool_calls::McpToolCallListResponse, AppError> {
+        let (calls, total) = super::tool_calls::repository::list_calls_for_user(
+            &self.pool,
+            user_id,
+            server_id,
+            conversation_id,
+            is_built_in,
+            page,
+            per_page,
+        )
+        .await?;
+        let per_page = per_page.clamp(1, 200);
+        let total_pages = (total + per_page - 1) / per_page;
+        Ok(super::tool_calls::McpToolCallListResponse {
+            calls,
+            total,
+            page,
+            per_page,
+            total_pages,
+        })
+    }
+
+    /// Fetch a single tool-call row, owner-scoped in SQL (returns None if the
+    /// row isn't owned by `user_id`).
+    pub async fn get_tool_call(
+        &self,
+        id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Option<super::tool_calls::McpToolCall>, AppError> {
+        super::tool_calls::repository::find_call_for_user(&self.pool, id, user_id).await
+    }
+
+    /// Delete tool-call rows older than `cutoff` (retention prune).
+    pub async fn prune_tool_calls(&self, cutoff: time::OffsetDateTime) -> Result<u64, AppError> {
+        super::tool_calls::repository::prune_calls_older_than(&self.pool, cutoff).await
+    }
+
     // User server operations
     pub async fn create_user_server(
         &self,

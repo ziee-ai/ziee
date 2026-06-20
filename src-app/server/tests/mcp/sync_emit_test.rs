@@ -27,7 +27,9 @@
 use std::time::Duration;
 
 use serde_json::json;
+use uuid::Uuid;
 
+use super::fixtures::mock_mcp_server::{MockMcpServer, MockResponse};
 use crate::common::sync_probe::SyncProbe;
 
 const EVENT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -236,4 +238,83 @@ async fn system_mcp_server_mutation_delivers_to_admin_read_and_user_read_holders
     assert_eq!(user_update.id, id);
 
     bystander_probe.expect_silence(SILENCE_WINDOW).await;
+}
+
+// =====================================================
+// mcp_tool_call — OWNER audience (recorded tool invocation)
+// =====================================================
+
+#[tokio::test]
+async fn tool_call_create_is_delivered_to_owner_not_to_other_users() {
+    let server = crate::common::TestServer::start().await;
+    let mock = MockMcpServer::start().await;
+
+    let owner = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "sync_tc_owner",
+        &["mcp_servers::create", "mcp_servers::read"],
+    )
+    .await;
+    // Default-group baseline (profile::read) — enough to subscribe, never sees
+    // the owner-scoped tool-call frame.
+    let other = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "sync_tc_other",
+        &[],
+    )
+    .await;
+
+    mock.on_method(
+        "tools/call",
+        MockResponse::JsonOk(json!({ "content": [{ "type": "text", "text": "ok" }] })),
+    );
+
+    // Register the mock as the owner's server BEFORE opening the probes, so the
+    // `mcp_server` create frame isn't in the captured stream — the only frame
+    // we should observe is the tool-call recording.
+    let server_id = {
+        let res = reqwest::Client::new()
+            .post(server.api_url("/mcp/servers"))
+            .header("Authorization", format!("Bearer {}", owner.token))
+            .json(&json!({
+                "name": "sync_tc_mock",
+                "display_name": "Sync tool-call mock",
+                "transport_type": "http",
+                "url": mock.base_url(),
+                "enabled": true,
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 201);
+        let row: serde_json::Value = res.json().await.unwrap();
+        row["id"].as_str().unwrap().to_string()
+    };
+
+    let mut owner_probe = SyncProbe::open(&server, &owner.token).await;
+    let mut other_probe = SyncProbe::open(&server, &other.token).await;
+
+    // Invoke a tool — the detached recorder writes the row and emits the frame.
+    let status = reqwest::Client::new()
+        .post(server.api_url(&format!("/mcp/servers/{server_id}/tools/echo/call")))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&json!({ "arguments": {} }))
+        .send()
+        .await
+        .unwrap()
+        .status();
+    assert_eq!(status, 200);
+
+    let frame = owner_probe
+        .expect_event("mcp_tool_call", "create", EVENT_TIMEOUT)
+        .await;
+    // SyncFrame.id is the row's UUID as a string; assert it's a real id.
+    assert!(
+        Uuid::parse_str(&frame.id).is_ok() && frame.id != Uuid::nil().to_string(),
+        "frame must carry the new row's id, got {:?}",
+        frame.id
+    );
+
+    // Owner-scoped: an unrelated user observes nothing.
+    other_probe.expect_silence(SILENCE_WINDOW).await;
 }
