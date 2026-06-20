@@ -1141,6 +1141,87 @@ cargo test --test integration_tests lit_search:: tool_result_mcp:: -- --test-thr
 
 ---
 
+## Citation Management + Verification
+
+The `citations` module is a built-in MCP server (`citations.ziee.internal`,
+loopback JSON-RPC at `/api/citations/mcp`) backing a **persistent, verified,
+CSL-JSON bibliography** (a user-level library + per-project reference lists). The
+defining rule is **never invent a citation** — every DOI/PMID must resolve to a
+real record. A reduced scope of the "scientific-writing" feature (drafting/
+editor/manuscript-export were dropped). It reuses `lit_search`'s
+`dedup::normalize_doi`; the resolver is otherwise self-contained (doi.org /
+NCBI / Crossref), using no lit_search connectors.
+
+### Storage
+
+- `bibliography_entries` (migration `102`) — the user library. The full record is
+  **CSL-JSON in a `JSONB` column** (source of truth); scalar columns
+  (`doi`/`pmid`/`pmcid`/`arxiv_id`/`title`/`year`/`citation_key`/`dedup_fingerprint`/
+  `verification_status`) are a projection for indexing/dedup/search. Partial unique
+  indexes on `(user_id,lower(doi))`, `(user_id,pmid)`, and `(user_id,dedup_fingerprint)
+  WHERE doi IS NULL AND pmid IS NULL` are the race-safe dedup guards; GENERATED
+  `content_tsv` for FTS.
+- `project_bibliography` (migration `103`) — M:N link to projects (mirrors
+  `project_files`). One library; a project's list is links, not copies.
+- `citations::use` + `citations::manage` granted to the Users group (migration `104`).
+
+### Resolve + verify (the engine — `resolve.rs` / `verify.rs`)
+
+- **DOI** → doi.org content negotiation (`Accept: application/vnd.citationstyles.csl+json`)
+  → CSL-JSON; **arXiv** → `10.48550/arXiv.<id>` → doi.org; **PMID/PMCID** → NCBI
+  ID-Converter → DOI → doi.org; **title/raw** → Crossref bibliographic query → best
+  title-match → its DOI. 404 ⇒ `not_found` (fabricated).
+- **Status** ∈ `verified | mismatch | not_found | unverified`. `not_found` is reserved
+  for a *supplied id that fails to resolve*; an identifier-less item rests at
+  `unverified` (legitimate — books/theses/datasets), NOT a red flag.
+- **Title-match heuristic** (from the user's `doi-to-ref.js`): normalize + substring
+  OR ≥60% word overlap.
+- **Dedup**: normalized DOI → PMID → exact `dedup_fingerprint` (auto-link) → fuzzy
+  near-match (flagged `possible_duplicate` for review, never auto-merged).
+
+### Tools + REST
+
+- MCP tools (batch-first, `items[]`): `lookup_citations` / `add_citations` /
+  `verify_citations` / `list_citations` / `format_citations` / `remove_citations`.
+  Per-item input is a flexible `CitationInput` — the model sends `id`/`title`/`csl`/`raw`
+  and is **never required to supply a DOI**. Cap = 100 items/call (over-cap errors, no
+  silent truncation). Auto-attached to tool-capable chats via the `citations`
+  chat-extension flag + the two `mcp.rs` edits (`auto_attach_builtin_ids` +
+  `is_builtin_server_id`).
+- REST (`rest.rs`, OpenAPI `Citations.*`): `GET /api/citations`, `POST /api/citations/
+  import|verify`, `GET /api/citations/export|styles`, `DELETE /api/citations/{id}`,
+  `POST/DELETE /api/projects/{project_id}/citations[/{entry_id}]`.
+
+### Format/export (`format.rs` + `csl.rs`)
+
+CSL-JSON / BibTeX (embedded pandoc `-f csljson -t bibtex`, double-braced titles) / RIS
+(pure-Rust writer — pandoc has no RIS *writer*) / CSL-styled text (pandoc `--citeproc`).
+CSL styles bundle from `resources/csl/` via `include_dir!` (CC BY-SA 3.0 + NOTICE; **no
+locales** — pandoc 3.x ships them). With no bundled `.csl`, text uses pandoc's built-in
+default. **Verified pandoc 3.7 readers**: bibtex/biblatex/ris/endnotexml/csljson (NOT
+`.nbib`/MEDLINE).
+
+### Frontend (`ui/src/modules/citations/`)
+
+Settings page at **`/settings/citations`** (`settingsUserPages` slot) — card list +
+verification badges + Import/Verify-all/Export. A project's reference list is a
+`knowledge_kinds` project-extension ("References", next to "Knowledge files"). No editor.
+
+### Debug-only test seams (`cfg!(debug_assertions)`)
+
+`CITATIONS_RESOLVER_ENDPOINT` (doi.org), `CITATIONS_IDCONV_ENDPOINT`,
+`CITATIONS_CROSSREF_ENDPOINT` + `CITATIONS_ALLOW_LOOPBACK=1` — point the resolver at a
+loopback mock for deterministic tests (mirrors `WEB_SEARCH_BRAVE_ENDPOINT`).
+
+```bash
+# Tier 1 (unit)
+cargo test --lib -p ziee citations::
+# Tier 2/3 (integration + MCP + mock-resolve)
+cargo test --test integration_tests citations:: -- --test-threads=1
+```
+
+---
+
 ## Documentation Index
 
 ### 📐 Architecture

@@ -45,6 +45,10 @@ export interface AssistantListResponse {
   total: number
 }
 
+export interface AttachCitationsRequest {
+  entry_ids: string[]
+}
+
 export interface AttachFileRequest {
   file_id: string
 }
@@ -107,6 +111,27 @@ export interface AvailableVersion {
   recommended_backend?: string
   size_bytes?: number
   version: string
+}
+
+export interface BatchReport {
+  results: CitationItemResult[]
+}
+
+export interface BibliographyEntry {
+  title?: string
+  arxiv_id?: string
+  citation_key: string
+  created_at: string
+  csl_json: any
+  doi?: string
+  id: string
+  pmcid?: string
+  pmid?: string
+  source?: string
+  updated_at: string
+  verification_status: VerificationStatus
+  verified_at?: string
+  year?: number
 }
 
 export interface Branch {
@@ -184,6 +209,28 @@ export type ChatStreamSseEvent = {
   kind: 'connected'
 } | {
   kind: 'frame'
+}
+
+export interface CitationInput {
+  title?: string
+  authors?: string[]
+  csl?: any
+  id?: string
+  journal?: string
+  kind?: string
+  raw?: string
+  year?: number
+}
+
+export interface CitationItemResult {
+  citation_key?: string
+  dedup_outcome?: DedupOutcome
+  entry_id?: string
+  input: string
+  mismatch_fields?: string[]
+  possible_duplicate_of?: string
+  reason?: string
+  verification_status: VerificationStatus
 }
 
 export interface CodeSandboxResourceLimits {
@@ -487,6 +534,8 @@ export interface CreateWorkflowFromHubRequest {
   hub_id: string
 }
 
+export type DedupOutcome = 'inserted' | 'linked_existing' | 'possible_duplicate' | 'failed'
+
 export interface DeleteAllResponse {
   deleted: number
 }
@@ -740,6 +789,17 @@ export interface EnvironmentInfo {
   cached_size_bytes?: number
   flavor: string
   mounted: boolean
+}
+
+export interface ExportQuery {
+  format?: string
+  project_id?: string
+  style?: string
+}
+
+export interface ExportResponse {
+  format: string
+  output: string
 }
 
 export interface File {
@@ -1164,6 +1224,11 @@ export type ImageSource = {
   file_id: string
 }
 
+export interface ImportCitationsRequest {
+  items: CitationInput[]
+  project_id?: string
+}
+
 export interface ImportQuery {
   name?: string
   scope?: string
@@ -1262,6 +1327,14 @@ export interface ListAccessibleServersQuery {
 
 export interface ListAuditLogQuery {
   limit?: number
+}
+
+export interface ListCitationsQuery {
+  project_id?: string
+}
+
+export interface ListCitationsResponse {
+  entries: BibliographyEntry[]
 }
 
 export interface ListMemoriesQuery {
@@ -1913,6 +1986,11 @@ export interface ModelUsageInfo {
   provider_id: string
   provider_name: string
   running: boolean
+}
+
+export interface MutationResponse {
+  count?: number
+  ok: boolean
 }
 
 export interface OnboardingProgress {
@@ -2660,6 +2738,10 @@ export interface StreamError {
   message: string
 }
 
+export interface StylesResponse {
+  styles: string[]
+}
+
 export interface SummarizationAdminSettings {
   default_summarization_model_id?: string
   enabled: boolean
@@ -2701,7 +2783,7 @@ export interface SyncConnectedData {
   connection_id: string
 }
 
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'web_search_settings' | 'lit_search_settings' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'web_search_settings' | 'lit_search_settings' | 'bibliography_entry' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run'
 
 export interface SyncEvent {
   action: SyncAction
@@ -3228,6 +3310,12 @@ export interface ValidateWorkflowResponse {
   warnings: ValidateErrorEntry2[]
 }
 
+export type VerificationStatus = 'unverified' | 'verified' | 'mismatch' | 'not_found'
+
+export interface VerifyCitationsRequest {
+  items: CitationInput[]
+}
+
 export interface VersionStatus {
   available: RootfsRelease[]
   conversation_count: number
@@ -3345,6 +3433,8 @@ export enum Permissions {
   AuthProvidersRead = 'auth_providers::read',
   BranchesCreate = 'branches::create',
   BranchesSwitch = 'branches::switch',
+  CitationsManage = 'citations::manage',
+  CitationsUse = 'citations::use',
   CodeSandboxEnvironmentsManage = 'code_sandbox::environments::manage',
   CodeSandboxEnvironmentsRead = 'code_sandbox::environments::read',
   CodeSandboxResourceLimitsManage = 'code_sandbox::resource_limits::manage',
@@ -3469,6 +3559,8 @@ export const PermissionDescriptions: Record<string, string> = {
   AuthProvidersRead: 'List configured auth providers and view their (masked) config.',
   BranchesCreate: 'Create message branches for edit/regenerate',
   BranchesSwitch: 'Switch between conversation branches',
+  CitationsManage: 'Create, import, verify, remove, and organize citations + CSL styles.',
+  CitationsUse: 'Use the citation tools and read your bibliography library.',
   CodeSandboxEnvironmentsManage: 'Trigger pre-fetch + cache management of sandbox rootfs environments.',
   CodeSandboxEnvironmentsRead: 'List rootfs versions and watch install progress.',
   CodeSandboxResourceLimitsManage: 'Update the sandbox memory/CPU/PID caps + per-exec timeout + idle-evict policy.',
@@ -3622,6 +3714,15 @@ export const ApiEndpoints = {
   'Chat.getUserLlmProviders': 'GET /api/chat/llm-providers',
   'ChatStream.setSubscription': 'PUT /api/chat/stream/subscription',
   'ChatStream.subscribe': 'GET /api/chat/stream',
+  'Citations.attachToProject': 'POST /api/projects/{project_id}/citations',
+  'Citations.delete': 'DELETE /api/citations/{id}',
+  'Citations.detachFromProject': 'DELETE /api/projects/{project_id}/citations/{entry_id}',
+  'Citations.export': 'GET /api/citations/export',
+  'Citations.import': 'POST /api/citations/import',
+  'Citations.list': 'GET /api/citations',
+  'Citations.listStyles': 'GET /api/citations/styles',
+  'Citations.reverify': 'POST /api/citations/reverify',
+  'Citations.verify': 'POST /api/citations/verify',
   'CodeSandbox.deleteRootfsVersion': 'DELETE /api/code-sandbox/rootfs/versions/{id}',
   'CodeSandbox.getResourceLimits': 'GET /api/code-sandbox/resource-limits',
   'CodeSandbox.installRootfsVersion': 'POST /api/code-sandbox/rootfs/versions/install',
@@ -3945,6 +4046,15 @@ export type ApiEndpointParameters = {
   'Chat.getUserLlmProviders': void
   'ChatStream.setSubscription': SetSubscriptionRequest
   'ChatStream.subscribe': void
+  'Citations.attachToProject': { project_id: string } & AttachCitationsRequest
+  'Citations.delete': { id: string }
+  'Citations.detachFromProject': { project_id: string; entry_id: string }
+  'Citations.export': { format?: string; project_id?: string; style?: string }
+  'Citations.import': ImportCitationsRequest
+  'Citations.list': { project_id?: string }
+  'Citations.listStyles': void
+  'Citations.reverify': { project_id?: string }
+  'Citations.verify': VerifyCitationsRequest
   'CodeSandbox.deleteRootfsVersion': { id: string }
   'CodeSandbox.getResourceLimits': void
   'CodeSandbox.installRootfsVersion': InstallVersionRequest
@@ -4268,6 +4378,15 @@ export type ApiEndpointResponses = {
   'Chat.getUserLlmProviders': GetUserProvidersResponse2
   'ChatStream.setSubscription': void
   'ChatStream.subscribe': ChatStreamSseEvent
+  'Citations.attachToProject': MutationResponse
+  'Citations.delete': MutationResponse
+  'Citations.detachFromProject': MutationResponse
+  'Citations.export': ExportResponse
+  'Citations.import': BatchReport
+  'Citations.list': ListCitationsResponse
+  'Citations.listStyles': StylesResponse
+  'Citations.reverify': BatchReport
+  'Citations.verify': BatchReport
   'CodeSandbox.deleteRootfsVersion': VersionStatus
   'CodeSandbox.getResourceLimits': CodeSandboxResourceLimits
   'CodeSandbox.installRootfsVersion': InstallTaskState

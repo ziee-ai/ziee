@@ -1,0 +1,120 @@
+import { useState } from 'react'
+import {
+  DownloadOutlined,
+  ImportOutlined,
+  SafetyCertificateOutlined,
+} from '@ant-design/icons'
+import { App, Button, Card, Dropdown, Empty, Space, Spin, Typography } from 'antd'
+import { Permissions } from '@/api-client/types'
+import { usePermission } from '@/core/permissions'
+import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
+import { Stores } from '@/core/stores'
+import { CitationCard } from '../components/CitationCard'
+import { ImportCitationsModal } from '../components/ImportCitationsModal'
+
+const { Text } = Typography
+
+const EXPORT_FORMATS: { key: string; label: string; ext: string; mime: string }[] = [
+  { key: 'text', label: 'Formatted (CSL style)', ext: 'txt', mime: 'text/plain' },
+  { key: 'bibtex', label: 'BibTeX (.bib)', ext: 'bib', mime: 'application/x-bibtex' },
+  { key: 'ris', label: 'RIS (.ris)', ext: 'ris', mime: 'application/x-research-info-systems' },
+  { key: 'csljson', label: 'CSL-JSON (.json)', ext: 'json', mime: 'application/json' },
+]
+
+function download(content: string, filename: string, mime: string) {
+  const blob = new Blob([content], { type: `${mime};charset=utf-8` })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+export function CitationsSettingsPage() {
+  const { message } = App.useApp()
+  const { entries, loading, importing, verifying } = Stores.Citations
+  // Import / Delete require `citations::manage`; Verify-all + Export are `use`.
+  const canManage = usePermission(Permissions.CitationsManage)
+  const [importOpen, setImportOpen] = useState(false)
+
+  const handleVerifyAll = async () => {
+    try {
+      const report = await Stores.Citations.verifyAll()
+      const verified = report.results.filter(
+        r => r.verification_status === 'verified',
+      ).length
+      const bad = report.results.length - verified
+      message.info(`Verified ${verified}; ${bad} need attention.`)
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : 'Verify failed')
+    }
+  }
+
+  const handleExport = async (format: string) => {
+    try {
+      const out = await Stores.Citations.exportLibrary(format)
+      const fmt = EXPORT_FORMATS.find(f => f.key === format)
+      download(out, `citations.${fmt?.ext ?? 'txt'}`, fmt?.mime ?? 'text/plain')
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : 'Export failed')
+    }
+  }
+
+  return (
+    <SettingsPageContainer
+      title="Citations"
+      subtitle="Your verified bibliography library. Import references, verify they resolve to real records, and export in a citation style."
+    >
+      <Card>
+        <Space style={{ marginBottom: 12 }} wrap>
+          {canManage && (
+            <Button
+              type="primary"
+              icon={<ImportOutlined />}
+              loading={importing}
+              onClick={() => setImportOpen(true)}
+            >
+              Import
+            </Button>
+          )}
+          <Button
+            icon={<SafetyCertificateOutlined />}
+            loading={verifying}
+            disabled={entries.length === 0 || !canManage}
+            onClick={handleVerifyAll}
+          >
+            Verify all
+          </Button>
+          <Dropdown
+            disabled={entries.length === 0}
+            menu={{
+              items: EXPORT_FORMATS.map(f => ({ key: f.key, label: f.label })),
+              onClick: ({ key }) => void handleExport(key),
+            }}
+          >
+            <Button icon={<DownloadOutlined />}>Export</Button>
+          </Dropdown>
+          <Text type="secondary">{entries.length} reference(s)</Text>
+        </Space>
+
+        {loading ? (
+          <Spin />
+        ) : entries.length === 0 ? (
+          <Empty description="No citations yet — import some or run a literature search." />
+        ) : (
+          <div>
+            {entries.map(e => (
+              <CitationCard key={e.id} entry={e} canManage={canManage} />
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <ImportCitationsModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+      />
+    </SettingsPageContainer>
+  )
+}
