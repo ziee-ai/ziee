@@ -6,6 +6,7 @@ mod assistant;
 mod auth;
 mod bio_mcp;
 mod chat;
+mod citations;
 mod code_sandbox;
 mod common;
 mod file;

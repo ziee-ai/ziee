@@ -96,6 +96,10 @@ pub enum SyncEntity {
     /// Notify-only; the frontend refetches settings + the connector catalog.
     LitSearchSettings,
 
+    /// A user's bibliography library entry changed (add/import/verify/delete).
+    /// Owner-scoped; notify-only — the client refetches `/api/citations`.
+    BibliographyEntry,
+
     // --- Group-scoped user view (delivered to holders of the user read
     // perm; safe because we only NOTIFY — each recipient refetches its own
     // group-scoped, sanitized view; the only disclosure is "something

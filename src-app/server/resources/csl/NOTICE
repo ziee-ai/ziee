@@ -1,0 +1,14 @@
+Citation Style Language (CSL) styles bundled here are from the official CSL
+styles repository (https://github.com/citation-style-language/styles) and are
+licensed under the Creative Commons Attribution-ShareAlike 3.0 Unported license
+(CC BY-SA 3.0): https://creativecommons.org/licenses/by-sa/3.0/
+
+This product uses the Citation Style Language — https://citationstyles.org/ —
+and preserves the author/contributor metadata inside each .csl file.
+
+To add journal styles, drop the corresponding `<style>.csl` files into this
+directory (e.g. `nature.csl`, `apa.csl`, `vancouver.csl`, `ieee.csl`,
+`american-chemical-society.csl`). They are baked into the binary via
+`include_dir!` (see modules/citations/csl.rs) and listed by
+`GET /api/citations/styles`. With no `.csl` here, the formatter falls back to
+pandoc's built-in default (Chicago author-date), which requires no bundled file.
