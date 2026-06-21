@@ -766,6 +766,7 @@ async fn run_one_fixture(
             model_id: Some(model_id),
             sandbox_flavor,
             run_kind: "test".into(),
+            invocation_source: "manual".into(),
             inputs_json: fixture.inputs.clone(),
         },
     )

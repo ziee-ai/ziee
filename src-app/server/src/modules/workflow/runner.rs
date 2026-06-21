@@ -24,6 +24,7 @@ use crate::common::AppError;
 use crate::modules::workflow::artifact_io;
 use crate::modules::workflow::dispatch::{
     ElicitDispatcher, LlmDispatcher, LlmMapDispatcher, SandboxDispatcher, StepDispatcher,
+    ToolDispatcher,
 };
 use crate::modules::workflow::events::{
     PerRunEmitter, ProgressEmitter, SSEElicitationResolvedData, SSERunCancelledData,
@@ -221,6 +222,10 @@ pub async fn preflight(
             HashMap::new()
         },
         force_mocks,
+        // Defaults; spawn_run overrides after preflight. The /test path keeps
+        // these off (no artifact persistence; the workflow's own log levels).
+        persist_artifacts: false,
+        force_log_capture: false,
     })
 }
 
@@ -567,6 +572,7 @@ async fn run_inner(
                 StepConfig::LlmMap { .. } => Box::new(LlmMapDispatcher::new(provider.clone())),
                 StepConfig::Sandbox { .. } => Box::new(SandboxDispatcher::new()),
                 StepConfig::Elicit { .. } => Box::new(ElicitDispatcher::new()),
+                StepConfig::Tool { .. } => Box::new(ToolDispatcher::new()),
             };
             tokio::select! {
                 r = dispatcher.dispatch(step, ctx, handle.clone(), emit.clone()) => r,
@@ -619,6 +625,43 @@ async fn run_inner(
                             &json,
                         )
                         .await;
+
+                        // A3: durable persistence. When launched standalone
+                        // (REST /run → persist_artifacts=true) copy each collected
+                        // artifact into the user file store so it survives the
+                        // staging-dir GC + shows in Files (created_by="workflow",
+                        // linked to the run). MCP-tool-call runs set
+                        // persist_artifacts=false — the chat extension persists
+                        // their resource_links instead (no double-save).
+                        if ctx.persist_artifacts {
+                            for art in &artifacts {
+                                match tokio::fs::read(&art.host_path).await {
+                                    Ok(bytes) => {
+                                        if let Err(e) =
+                                            crate::modules::file::ingest::ingest_bytes(
+                                                ctx.user_id,
+                                                &bytes,
+                                                &art.filename,
+                                                Some(art.mime_type.clone()),
+                                                "workflow",
+                                                None,
+                                                Some(ctx.run_id),
+                                            )
+                                            .await
+                                        {
+                                            tracing::warn!(
+                                                "workflow: persist artifact '{}' to file store failed: {e}",
+                                                art.filename
+                                            );
+                                        }
+                                    }
+                                    Err(e) => tracing::warn!(
+                                        "workflow: read artifact {} for persistence failed: {e}",
+                                        art.host_path.display()
+                                    ),
+                                }
+                            }
+                        }
                     }
                 }
                 // Persist item progress if any.
@@ -915,6 +958,7 @@ pub async fn spawn_run(
     conversation_id: Option<Uuid>,
     inputs: Value,
     mocks: HashMap<String, Value>,
+    opts: SpawnRunOpts,
 ) -> Result<Uuid, AppError> {
     if !workflow.enabled {
         return Err(AppError::bad_request(
@@ -938,42 +982,13 @@ pub async fn spawn_run(
         workflow.is_dev,
     )?;
 
-    // Snapshot the model from the conversation (Phase 1: a conversation
-    // is required so we have a model to run llm steps with).
-    let conv_id = conversation_id.ok_or_else(|| {
-        AppError::bad_request(
-            "WORKFLOW_NO_MODEL_SOURCE",
-            "Phase 1: workflow runs must carry a conversation_id (used to snapshot the model)",
-        )
-    })?;
-    let conv = crate::core::Repos
-        .chat
-        .core
-        .get_conversation(conv_id, user_id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Conversation"))?;
-    let model_id = conv.model_id.ok_or_else(|| {
-        AppError::bad_request(
-            "WORKFLOW_CONVERSATION_NO_MODEL",
-            "conversation has no model set; cannot snapshot for workflow run",
-        )
-    })?;
-    let model = crate::core::Repos
-        .llm_model
-        .get_by_id(model_id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Model"))?;
-    let model_name = model.name.clone();
-    // Use the model's configured max output (fallback 8192) for llm requests
-    // — same as the chat path's apply_model_params. Hardcoding the 50k
-    // per-call cost cap here exceeds many models' output limits and the
-    // provider rejects the request.
-    let model_max_tokens = model
-        .parameters
-        .max_tokens
-        .and_then(|n| u32::try_from(n).ok())
-        .filter(|n| *n > 0)
-        .unwrap_or(8192);
+    // Resolve the model: an explicit `model_id` (standalone run, access-checked)
+    // wins; otherwise snapshot the conversation's model. The model max output
+    // (fallback 8192) is used for llm requests — same as the chat path's
+    // apply_model_params (the per-call cost cap is enforced post-call, NOT here:
+    // hardcoding 50k exceeds many models' output limits and the provider rejects).
+    let (model_id, model_name, model_max_tokens) =
+        resolve_run_model(user_id, opts.model_id, conversation_id).await?;
 
     let sandbox_flavor = workflow_def.sandbox.as_ref().map(|s| s.flavor.clone());
 
@@ -986,6 +1001,7 @@ pub async fn spawn_run(
             model_id: Some(model_id),
             sandbox_flavor: sandbox_flavor.clone(),
             run_kind: "normal".into(),
+            invocation_source: opts.invocation_source.to_string(),
             inputs_json: inputs.clone(),
         },
     )
@@ -994,7 +1010,7 @@ pub async fn spawn_run(
     let _handle = registry::register(row.id);
 
     let workspace_root = workflow_workspace_root();
-    let ctx = preflight(
+    let mut ctx = preflight(
         pool,
         row.id,
         user_id,
@@ -1013,6 +1029,9 @@ pub async fn spawn_run(
         false, // force_mocks: normal /run path uses the is_dev gate
     )
     .await?;
+    // A1/A3/A7: thread the invocation-path options the runner consumes later.
+    ctx.persist_artifacts = opts.persist_artifacts;
+    ctx.force_log_capture = opts.force_log_capture;
 
     let (provider, _name, _mid, _pid, _params) =
         crate::modules::chat::core::ai_provider::create_provider_from_model_id(model_id, user_id)
@@ -1024,6 +1043,91 @@ pub async fn spawn_run(
     });
 
     Ok(row.id)
+}
+
+/// Options threaded into a run from its invocation path (REST `/run` vs the
+/// `workflow_mcp` tool call).
+pub struct SpawnRunOpts {
+    /// Explicit model for a standalone run; validated + access-checked. `None`
+    /// → snapshot the model from `conversation_id`.
+    pub model_id: Option<Uuid>,
+    /// `"manual"` (workflow page) or `"conversation"` (LLM tool call) — recorded
+    /// on the run for the history view.
+    pub invocation_source: &'static str,
+    /// Persist declared artifacts + tool-result files to the file store on
+    /// completion. `true` on REST `/run`; `false` on `workflow_mcp` (the chat
+    /// extension persists those instead).
+    pub persist_artifacts: bool,
+    /// Force full per-step log capture for this run (the per-run debug toggle).
+    pub force_log_capture: bool,
+}
+
+/// Resolve the model for a run. Precedence: an explicit `model_id` (validated +
+/// access-checked against the user's providers) wins; otherwise snapshot the
+/// conversation's model; otherwise error. Returns `(model_id, name, max_tokens)`.
+async fn resolve_run_model(
+    user_id: Uuid,
+    model_id: Option<Uuid>,
+    conversation_id: Option<Uuid>,
+) -> Result<(Uuid, String, u32), AppError> {
+    let model = if let Some(mid) = model_id {
+        let model = crate::core::Repos
+            .llm_model
+            .get_by_id(mid)
+            .await?
+            .ok_or_else(|| AppError::not_found("Model"))?;
+        if !model.enabled {
+            return Err(AppError::bad_request(
+                "MODEL_DISABLED",
+                "this model is currently disabled and cannot be used",
+            ));
+        }
+        // The run handler is only gated on WorkflowsExecute; without this a
+        // user could name any model_id and bypass provider access control.
+        let has_access = crate::core::Repos
+            .user_group_llm_provider
+            .user_has_access_to_provider(user_id, model.provider_id)
+            .await
+            .map_err(AppError::from)?;
+        if !has_access {
+            return Err(AppError::forbidden(
+                "ACCESS_DENIED",
+                "you do not have access to this model",
+            ));
+        }
+        model
+    } else if let Some(conv_id) = conversation_id {
+        let conv = crate::core::Repos
+            .chat
+            .core
+            .get_conversation(conv_id, user_id)
+            .await?
+            .ok_or_else(|| AppError::not_found("Conversation"))?;
+        let mid = conv.model_id.ok_or_else(|| {
+            AppError::bad_request(
+                "WORKFLOW_CONVERSATION_NO_MODEL",
+                "conversation has no model set; cannot snapshot for workflow run",
+            )
+        })?;
+        crate::core::Repos
+            .llm_model
+            .get_by_id(mid)
+            .await?
+            .ok_or_else(|| AppError::not_found("Model"))?
+    } else {
+        return Err(AppError::bad_request(
+            "WORKFLOW_NO_MODEL_SOURCE",
+            "provide a model_id or a conversation_id to run a workflow",
+        ));
+    };
+    let model_name = model.name.clone();
+    let model_max_tokens = model
+        .parameters
+        .max_tokens
+        .and_then(|n| u32::try_from(n).ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(8192);
+    Ok((model.id, model_name, model_max_tokens))
 }
 
 /// Convenience: lookup the workspace root from the configured

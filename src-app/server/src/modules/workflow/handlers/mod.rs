@@ -212,6 +212,12 @@ pub async fn run_workflow(
         req.conversation_id,
         req.inputs,
         req.mocks,
+        crate::modules::workflow::runner::SpawnRunOpts {
+            model_id: req.model_id,
+            invocation_source: "manual",
+            persist_artifacts: true,
+            force_log_capture: req.capture_logs,
+        },
     )
     .await?;
 
@@ -294,6 +300,106 @@ pub fn get_run_docs(op: TransformOperation) -> TransformOperation {
         .tag("Workflows - Runs")
         .summary("Get a workflow run row")
         .response::<200, Json<WorkflowRun>>()
+}
+
+// ============================================================
+// A4 — run history list
+// ============================================================
+
+pub async fn list_workflow_runs(
+    auth: RequirePermissions<(WorkflowsRead,)>,
+    AxumPath(id): AxumPath<Uuid>,
+) -> ApiResult<Json<crate::modules::workflow::types::WorkflowRunListResponse>> {
+    // Owner-scoped: only the caller's own runs of this workflow. A system
+    // workflow is visible to many users, but its runs are per-user.
+    let runs = repository::list_runs_for_workflow(Repos.pool(), id, auth.user.id, 200).await?;
+    Ok((
+        StatusCode::OK,
+        Json(crate::modules::workflow::types::WorkflowRunListResponse { runs }),
+    ))
+}
+
+pub fn list_workflow_runs_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(WorkflowsRead,)>(op)
+        .id("Workflow.listRuns")
+        .tag("Workflows - Runs")
+        .summary("List a workflow's runs (owner-scoped history)")
+        .response::<200, Json<crate::modules::workflow::types::WorkflowRunListResponse>>()
+}
+
+// ============================================================
+// A5 — delete a run (+ conditional artifact cascade)
+// ============================================================
+
+pub async fn delete_run(
+    auth: RequirePermissions<(WorkflowsExecute,)>,
+    origin: SyncOrigin,
+    AxumPath(run_id): AxumPath<Uuid>,
+) -> ApiResult<()> {
+    let pool = Repos.pool();
+    let row = repository::find_run(pool, run_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("WorkflowRun"))?;
+    if row.user_id != auth.user.id {
+        return Err::<_, (StatusCode, AppError)>((AppError::new(
+            StatusCode::FORBIDDEN,
+            "WORKFLOW_RUN_FORBIDDEN",
+            "workflow run is owned by another user",
+        ))
+        .into());
+    }
+    // Only terminal runs are deletable — cancel an in-flight run first.
+    if !matches!(row.status.as_str(), "completed" | "failed" | "cancelled") {
+        return Err::<_, (StatusCode, AppError)>((AppError::new(
+            StatusCode::CONFLICT,
+            "WORKFLOW_RUN_NOT_TERMINAL",
+            "cancel the run before deleting it",
+        ))
+        .into());
+    }
+    // Cascade artifacts ONLY for a run with no conversation. The run owns (and
+    // deletes) the files IT created (created_by="workflow" + workflow_run_id);
+    // a conversation-run's files belong to the chat context and are kept.
+    if row.conversation_id.is_none() {
+        let storage = crate::modules::file::storage::manager::get_file_storage();
+        for fid in Repos.file.list_ids_by_workflow_run(run_id).await? {
+            match Repos.file.delete(fid, auth.user.id).await {
+                Ok(blob_ids) => {
+                    for blob_id in blob_ids {
+                        let _ = storage.delete_all(auth.user.id, blob_id).await;
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("workflow: delete run artifact {fid} failed: {e}")
+                }
+            }
+        }
+    }
+    // Remove the staged dir (outputs / artifacts / logs on disk).
+    let root = crate::modules::workflow::runner::workflow_workspace_root();
+    let conv_or_run = row.conversation_id.unwrap_or(row.id);
+    let run_dir = root
+        .join(conv_or_run.to_string())
+        .join("workflow")
+        .join(row.id.to_string());
+    let _ = tokio::fs::remove_dir_all(&run_dir).await;
+
+    repository::delete_run_row(pool, run_id).await?;
+    crate::modules::workflow::events::emit_workflow_run(
+        SyncAction::Delete,
+        run_id,
+        auth.user.id,
+        origin.0,
+    );
+    Ok((StatusCode::NO_CONTENT, ()))
+}
+
+pub fn delete_run_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(WorkflowsExecute,)>(op)
+        .id("Workflow.deleteRun")
+        .tag("Workflows - Runs")
+        .summary("Delete a terminal run (+ its artifacts when not tied to a conversation)")
+        .response::<204, ()>()
 }
 
 /// Best-effort removal of a workflow's extracted bundle dir on uninstall.

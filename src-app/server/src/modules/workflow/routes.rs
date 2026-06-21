@@ -69,6 +69,11 @@ pub fn user_routes() -> ApiRouter {
             "/workflows/{id}/run",
             post_with(handlers::run_workflow, handlers::run_workflow_docs),
         )
+        // Run history (A4)
+        .api_route(
+            "/workflows/{id}/runs",
+            get_with(handlers::list_workflow_runs, handlers::list_workflow_runs_docs),
+        )
         // Run lifecycle + read-back
         .api_route(
             "/workflow-runs/{run_id}",
@@ -77,6 +82,11 @@ pub fn user_routes() -> ApiRouter {
         .api_route(
             "/workflow-runs/{run_id}/cancel",
             post_with(handlers::cancel_run, handlers::cancel_run_docs),
+        )
+        // Delete a terminal run (+ conditional artifact cascade) (A5)
+        .api_route(
+            "/workflow-runs/{run_id}",
+            delete_with(handlers::delete_run, handlers::delete_run_docs),
         )
         .api_route(
             "/workflow-runs/{run_id}/events",

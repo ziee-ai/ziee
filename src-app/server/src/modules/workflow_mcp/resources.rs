@@ -364,8 +364,24 @@ fn read_log(
     };
     // H-1 defense-in-depth: confine the resolved log path under the run dir.
     confirm_under_run_dir(run, &path)?;
-    let bytes = std::fs::read(&path)
-        .map_err(|e| AppError::not_found(&format!("log file missing: {e}")))?;
+    let bytes = match std::fs::read(&path) {
+        Ok(b) => b,
+        Err(_) => {
+            // A7: the staging dir was reclaimed — fall back to the durable body
+            // in step_logs_json. The `expose_logs`/`logs_surfaceable` gate is
+            // applied by the caller (resources_read) before reaching here.
+            match run
+                .step_logs_json
+                .get(step_id)
+                .and_then(|m| m.get(kind))
+                .and_then(|e| e.get("body"))
+                .and_then(|b| b.as_str())
+            {
+                Some(s) => s.as_bytes().to_vec(),
+                None => return Err(AppError::not_found("log no longer available")),
+            }
+        }
+    };
     let mime = if kind == "trace" {
         "application/json".to_string()
     } else {

@@ -457,6 +457,8 @@ mod tests {
             is_dev: false,
             mocks: std::collections::HashMap::new(),
             force_mocks: false,
+            persist_artifacts: false,
+            force_log_capture: false,
         }
     }
 

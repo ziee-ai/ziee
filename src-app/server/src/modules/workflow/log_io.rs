@@ -27,11 +27,30 @@ use crate::common::AppError;
 use crate::modules::workflow::types::RunContext;
 use crate::modules::workflow::validate::LogCapture;
 
+/// Per-log body cap (chars) stored in `step_logs_json` for durability.
+pub const LOG_BODY_CAP_CHARS: usize = 256 * 1024;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntryMeta {
     pub path: PathBuf,
     pub size_bytes: u64,
     pub preview: String,
+    /// A7: full captured body (capped at `LOG_BODY_CAP_CHARS`), persisted in
+    /// `step_logs_json` so logs survive the staging-dir GC. `None` for legacy
+    /// rows; a truncated body ends with a marker.
+    #[serde(default)]
+    pub body: Option<String>,
+}
+
+/// Cap a log body for durable storage in `step_logs_json`.
+fn cap_body(body: &str) -> String {
+    if body.chars().count() > LOG_BODY_CAP_CHARS {
+        let mut s: String = body.chars().take(LOG_BODY_CAP_CHARS).collect();
+        s.push_str("\n…[truncated]");
+        s
+    } else {
+        body.to_string()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -63,7 +82,13 @@ pub async fn write_text_log(
     body: &str,
     log_level: LogCapture,
 ) -> Result<Option<LogEntryMeta>, AppError> {
-    if !should_capture(kind, log_level) {
+    // A7b: the per-run debug toggle forces full capture regardless of `log:`.
+    let level = if ctx.force_log_capture {
+        LogCapture::Full
+    } else {
+        log_level
+    };
+    if !should_capture(kind, level) {
         return Ok(None);
     }
     let dir = step_log_dir(ctx, step_id);
@@ -73,14 +98,12 @@ pub async fn write_text_log(
         AppError::internal_error(format!("log_io: write {}: {e}", dest.display()))
     })?;
     let size = body.len() as u64;
-    let preview = body
-        .chars()
-        .take(500)
-        .collect::<String>();
+    let preview = body.chars().take(500).collect::<String>();
     Ok(Some(LogEntryMeta {
         path: dest,
         size_bytes: size,
         preview,
+        body: Some(cap_body(body)),
     }))
 }
 
@@ -93,7 +116,7 @@ pub async fn write_item_log(
     record: &serde_json::Value,
     log_level: LogCapture,
 ) -> Result<Option<LogEntryMeta>, AppError> {
-    if log_level != LogCapture::Full {
+    if !(ctx.force_log_capture || log_level == LogCapture::Full) {
         return Ok(None);
     }
     let dir = step_log_dir(ctx, step_id).join("items");
@@ -104,11 +127,13 @@ pub async fn write_item_log(
     tokio::fs::write(&dest, &bytes).await.map_err(|e| {
         AppError::internal_error(format!("log_io: write {}: {e}", dest.display()))
     })?;
-    let preview = String::from_utf8_lossy(&bytes[..bytes.len().min(500)]).into_owned();
+    let body_str = String::from_utf8_lossy(&bytes).into_owned();
+    let preview = body_str.chars().take(500).collect::<String>();
     Ok(Some(LogEntryMeta {
         path: dest,
         size_bytes: bytes.len() as u64,
         preview,
+        body: Some(cap_body(&body_str)),
     }))
 }
 
@@ -127,11 +152,13 @@ pub async fn write_trace(
     tokio::fs::write(&dest, &bytes).await.map_err(|e| {
         AppError::internal_error(format!("log_io: write {}: {e}", dest.display()))
     })?;
-    let preview = String::from_utf8_lossy(&bytes[..bytes.len().min(500)]).into_owned();
+    let body_str = String::from_utf8_lossy(&bytes).into_owned();
+    let preview = body_str.chars().take(500).collect::<String>();
     Ok(LogEntryMeta {
         path: dest,
         size_bytes: bytes.len() as u64,
         preview,
+        body: Some(cap_body(&body_str)),
     })
 }
 
@@ -178,6 +205,8 @@ mod tests {
             is_dev: false,
             mocks: std::collections::HashMap::new(),
             force_mocks: false,
+            persist_artifacts: false,
+            force_log_capture: false,
         }
     }
 

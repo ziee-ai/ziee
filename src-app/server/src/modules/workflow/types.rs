@@ -55,6 +55,20 @@ pub struct WorkflowRunRequest {
     pub inputs: serde_json::Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub conversation_id: Option<Uuid>,
+    /// Explicit model for a standalone (no-conversation) run, picked in the
+    /// Run dialog. When set, it wins over the conversation's model and is
+    /// access-checked against the user's providers (the run handler is only
+    /// gated on `WorkflowsExecute`, so this is the per-model authorization).
+    /// When unset, the model is snapshotted from `conversation_id` (legacy
+    /// path). A run with neither is rejected (`WORKFLOW_NO_MODEL_SOURCE`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_id: Option<Uuid>,
+    /// Opt-in: force full per-step log capture (prompt / raw_output / stderr /
+    /// items) for THIS run regardless of the workflow's per-step `log:` levels,
+    /// so a manually-launched run is debuggable in the run history. Off by
+    /// default. The captured logs are surfaced to the run owner only.
+    #[serde(default)]
+    pub capture_logs: bool,
     /// Per-step canned responses, keyed by step id. ONLY honored when the
     /// workflow's `is_dev = true` (the route handler rejects mocks for
     /// published workflows with 403). Lets dev iteration + `tests/` fixtures
@@ -67,6 +81,26 @@ pub struct WorkflowRunRequest {
 pub struct WorkflowRunStartResponse {
     pub run_id: Uuid,
     pub status: String,
+}
+
+/// Lightweight run-history row (A4) — excludes the heavy JSONB blobs the full
+/// `WorkflowRun` carries; backs `GET /workflows/{id}/runs`.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct WorkflowRunSummary {
+    pub id: Uuid,
+    pub workflow_id: Uuid,
+    pub status: String,
+    /// `"manual"` (workflow page) or `"conversation"` (LLM tool call).
+    pub invocation_source: String,
+    pub conversation_id: Option<Uuid>,
+    pub model_id: Option<Uuid>,
+    pub total_tokens: i64,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct WorkflowRunListResponse {
+    pub runs: Vec<WorkflowRunSummary>,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -104,6 +138,7 @@ pub enum StepKindTag {
     LlmMap,
     Sandbox,
     Elicit,
+    Tool,
 }
 
 impl StepKindTag {
@@ -113,6 +148,7 @@ impl StepKindTag {
             StepKindTag::LlmMap => "llm_map",
             StepKindTag::Sandbox => "sandbox",
             StepKindTag::Elicit => "elicit",
+            StepKindTag::Tool => "tool",
         }
     }
 }
@@ -213,6 +249,16 @@ pub struct RunContext {
     /// See plan §3 (`/test` "tests/ files providing mocks still run them in
     /// test-mode without spending tokens").
     pub force_mocks: bool,
+    /// When `true`, the runner persists this run's declared `expose: artifact`
+    /// outputs / collected artifacts + tool-result files to the user file store
+    /// on completion (durable + visible in Files). Set on the REST `/run` path;
+    /// `false` on the `workflow_mcp` tool-call path (the chat extension persists
+    /// those instead). See A3.
+    pub persist_artifacts: bool,
+    /// When `true`, every step captures full logs (prompt/raw_output/stderr/
+    /// items) regardless of its declared `log:` level — the per-run "Capture
+    /// debug logs" toggle. See A7.
+    pub force_log_capture: bool,
 }
 
 impl RunContext {

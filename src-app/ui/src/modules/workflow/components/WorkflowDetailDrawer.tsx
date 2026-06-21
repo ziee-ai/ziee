@@ -23,6 +23,7 @@ import { Stores } from '@/core/stores'
 import { DryRunPreviewDialog } from './DryRunPreviewDialog'
 import { WorkflowRunDialog } from './WorkflowRunDialog'
 import { WorkflowRunProgressView } from './WorkflowRunProgressView'
+import { WorkflowRunsList } from './WorkflowRunsList'
 import { WorkflowScopeBadge } from './WorkflowScopeBadge'
 import { WorkflowTestsPanel } from './WorkflowTestsPanel'
 import { parseWorkflowIr } from './workflowIr'
@@ -199,6 +200,16 @@ export function WorkflowDetailDrawer() {
               description="Step details available after running"
             />
           )}
+        </div>
+
+        <div className="border-t pt-3">
+          <Text strong className="block mb-2">
+            Runs
+          </Text>
+          <WorkflowRunsList
+            workflowId={workflow.id}
+            onSelectRun={setActiveRunId}
+          />
         </div>
       </div>
 

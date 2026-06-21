@@ -181,6 +181,17 @@ pub enum StepConfig {
         #[serde(default = "default_elicit_timeout_ms")]
         timeout_ms: u32,
     },
+    /// Call an MCP tool on an accessible server (A6). `server` is a stable
+    /// NAME resolved at run time against the running user's accessible servers
+    /// (built-ins by name, or own/group-assigned). `arguments` is a templated
+    /// JSON object rendered against the run context (type-preserving for
+    /// whole-value `{{ ref }}` substitutions).
+    Tool {
+        server: String,
+        tool: String,
+        #[serde(default)]
+        arguments: serde_json::Value,
+    },
 }
 
 impl StepConfig {
@@ -190,6 +201,7 @@ impl StepConfig {
             StepConfig::LlmMap { .. } => "llm_map",
             StepConfig::Sandbox { .. } => "sandbox",
             StepConfig::Elicit { .. } => "elicit",
+            StepConfig::Tool { .. } => "tool",
         }
     }
 }
@@ -544,6 +556,24 @@ fn check_steps_shape(workflow: &WorkflowDef) -> Vec<ValidationError> {
                 ));
             }
         }
+        if let StepConfig::Tool { server, tool, .. } = &s.config {
+            if server.trim().is_empty() {
+                out.push(ValidationError::at(
+                    "semantic",
+                    "WORKFLOW_TOOL_NO_SERVER",
+                    "tool step has empty server:",
+                    &s.id,
+                ));
+            }
+            if tool.trim().is_empty() {
+                out.push(ValidationError::at(
+                    "semantic",
+                    "WORKFLOW_TOOL_NO_TOOL",
+                    "tool step has empty tool:",
+                    &s.id,
+                ));
+            }
+        }
         if let StepConfig::Elicit { timeout_ms, .. } = &s.config {
             if *timeout_ms > ELICIT_TIMEOUT_HARD_CAP_MS {
                 out.push(ValidationError::at(
@@ -778,6 +808,9 @@ fn check_template_refs(workflow: &WorkflowDef) -> Vec<ValidationError> {
             }
             // Elicit's prompt is the shared StepDef.message, scanned below.
             StepConfig::Elicit { .. } => Vec::new(),
+            // Tool `arguments` refs resolve at run time; static collection is a
+            // follow-up.
+            StepConfig::Tool { .. } => Vec::new(),
         };
         for (loc, body, item_var) in bodies {
             check(&loc, body, item_var);
@@ -991,6 +1024,42 @@ outputs:
         assert!(
             errs.iter().any(|e| e.code == "WORKFLOW_SANDBOX_NO_RUN"),
             "expected WORKFLOW_SANDBOX_NO_RUN for whitespace-only run, got: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn tool_step_parses_with_kind_tool() {
+        let yaml = r#"
+steps:
+  - id: search
+    kind: tool
+    server: web_search
+    tool: web_search
+    arguments:
+      query: "{{ inputs.topic }}"
+inputs:
+  - name: topic
+    required: true
+"#;
+        let wf = parse_workflow_yaml(yaml).expect("parse");
+        assert_eq!(wf.steps[0].config.kind_str(), "tool");
+    }
+
+    #[test]
+    fn tool_step_empty_server_rejected() {
+        let yaml = r#"
+steps:
+  - id: search
+    kind: tool
+    server: "  "
+    tool: web_search
+"#;
+        let wf = parse_workflow_yaml(yaml).expect("parse");
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(
+            errs.iter().any(|e| e.code == "WORKFLOW_TOOL_NO_SERVER"),
+            "expected WORKFLOW_TOOL_NO_SERVER, got: {errs:?}"
         );
     }
 

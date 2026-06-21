@@ -1,4 +1,4 @@
-import { Alert, App, Form, Input, Modal, Switch, Typography } from 'antd'
+import { Alert, App, Form, Input, Modal, Select, Switch, Typography } from 'antd'
 import { useEffect, useMemo, useState } from 'react'
 import type { Workflow } from '@/api-client/types'
 import { Stores } from '@/core/stores'
@@ -32,6 +32,25 @@ export function WorkflowRunDialog({
   const [jsonInputs, setJsonInputs] = useState('{}')
   const [submitting, setSubmitting] = useState(false)
   const [jsonError, setJsonError] = useState<string | null>(null)
+  const [modelId, setModelId] = useState<string | undefined>(undefined)
+  const [captureLogs, setCaptureLogs] = useState(false)
+
+  const { providers, selectedModelId } = Stores.ModelPicker
+
+  // Grouped model options from the user's accessible providers (used for a
+  // standalone run, where the model isn't snapshotted from a conversation).
+  const modelOptions = useMemo(
+    () =>
+      (providers || [])
+        .map(p => ({
+          label: p.name,
+          options: (p.llm_models || [])
+            .filter(m => m.enabled)
+            .map(m => ({ label: m.display_name || m.name, value: m.id })),
+        }))
+        .filter(g => g.options.length > 0),
+    [providers],
+  )
 
   const { inputs } = useMemo(() => parseWorkflowIr(workflow), [workflow])
   const structured = inputs.length > 0
@@ -44,7 +63,9 @@ export function WorkflowRunDialog({
     form.resetFields()
     setJsonInputs('{}')
     setJsonError(null)
-  }, [open, workflow.id, form])
+    setModelId(selectedModelId ?? undefined)
+    setCaptureLogs(false)
+  }, [open, workflow.id, form, selectedModelId])
 
   const handleRun = async () => {
     let inputValues: Record<string, unknown> = {}
@@ -65,12 +86,20 @@ export function WorkflowRunDialog({
       }
     }
 
+    if (!conversationId && !modelId) {
+      message.error('Select a model to run this workflow')
+      return
+    }
+
     setSubmitting(true)
     try {
       const res = await Stores.Workflow.run(
         workflow.id,
         inputValues,
         conversationId,
+        undefined,
+        modelId,
+        captureLogs,
       )
       message.success('Workflow run started')
       onStarted(res.run_id)
@@ -124,6 +153,26 @@ export function WorkflowRunDialog({
           {jsonError && <Alert type="error" title={jsonError} showIcon />}
         </div>
       )}
+      {!conversationId && (
+        <div className="mt-3 flex flex-col gap-1">
+          <Text className="text-xs">Model</Text>
+          <Select
+            value={modelId}
+            onChange={setModelId}
+            options={modelOptions}
+            placeholder="Select a model"
+            showSearch
+            optionFilterProp="label"
+            popupMatchSelectWidth={false}
+          />
+        </div>
+      )}
+      <div className="mt-2 flex items-center gap-2">
+        <Switch checked={captureLogs} onChange={setCaptureLogs} size="small" />
+        <Text type="secondary" className="text-xs">
+          Capture debug logs (prompts + raw output) for this run
+        </Text>
+      </div>
       {conversationId && (
         <div className="mt-2 flex items-center gap-2">
           <Switch checked disabled size="small" />

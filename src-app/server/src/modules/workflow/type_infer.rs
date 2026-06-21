@@ -104,6 +104,9 @@ pub fn infer_step_output_type(step: &StepDef) -> InferredType {
             InferredType::Unknown
         }
         StepConfig::Elicit { schema, .. } => infer_from_json_schema(schema),
+        // Tool output is the MCP result (structuredContent or text) — no
+        // static shape guarantee.
+        StepConfig::Tool { .. } => InferredType::Unknown,
     }
 }
 
