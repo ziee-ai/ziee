@@ -187,10 +187,22 @@ pub struct ItemProgress {
 /// duration of an elicit step's wait.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PendingElicitationRecord {
+    /// The owning run. Mirrors `SSEElicitationRequiredData.run_id` so the
+    /// page-reload snapshot (which deserializes this record) has the same shape
+    /// as the live SSE frame. `#[serde(default)]` so an in-flight elicit row
+    /// written before this field existed still deserializes (→ nil, harmless —
+    /// the submit handler takes run_id from the URL path, not this record).
+    #[serde(default)]
+    pub run_id: Uuid,
     pub elicitation_id: Uuid,
     pub step_id: String,
     pub message: String,
     pub schema: serde_json::Value,
+    /// D2: rendered seed data for the form (see `StepConfig::Elicit.data`).
+    /// `None` when the step declares no `data:`. Rides the existing
+    /// `pending_elicitation_json` JSONB column — no migration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data: Option<serde_json::Value>,
     pub deadline_at: DateTime<Utc>,
 }
 
@@ -259,6 +271,12 @@ pub struct RunContext {
     /// items) regardless of its declared `log:` level — the per-run "Capture
     /// debug logs" toggle. See A7.
     pub force_log_capture: bool,
+    /// E7: running total of durable log-body bytes stored in `step_logs_json`
+    /// across the whole run. The per-log cap (`LOG_BODY_CAP_CHARS`) bounds each
+    /// body; this aggregate cap (`RUN_LOG_BODY_CAP_CHARS`) bounds the run so a
+    /// many-step debug-capture run can't bloat the row. `AtomicU64` so the
+    /// immutable-`&RunContext` log_io writers can bump it.
+    pub total_log_bytes: std::sync::atomic::AtomicU64,
 }
 
 impl RunContext {

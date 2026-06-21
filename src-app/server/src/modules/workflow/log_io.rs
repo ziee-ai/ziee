@@ -30,6 +30,26 @@ use crate::modules::workflow::validate::LogCapture;
 /// Per-log body cap (chars) stored in `step_logs_json` for durability.
 pub const LOG_BODY_CAP_CHARS: usize = 256 * 1024;
 
+/// E7: per-RUN aggregate cap on durable log-body chars. The per-log cap above
+/// bounds each body; this bounds the whole run (≤ ~16 bodies at the per-log
+/// max) so a many-step debug-capture run can't bloat `step_logs_json`. Beyond
+/// it, a marker is stored instead of the body.
+pub const RUN_LOG_BODY_CAP_CHARS: usize = 4 * 1024 * 1024;
+
+/// Cap a body for durable storage honoring BOTH the per-log cap and the
+/// per-run aggregate budget (E7). Returns a marker once the run budget is
+/// spent; otherwise the per-log-capped body, charging its length to the run.
+fn cap_body_run(ctx: &RunContext, body: &str) -> Option<String> {
+    use std::sync::atomic::Ordering;
+    if ctx.total_log_bytes.load(Ordering::Relaxed) as usize >= RUN_LOG_BODY_CAP_CHARS {
+        return Some("…[run log cap reached]".to_string());
+    }
+    let capped = cap_body(body);
+    ctx.total_log_bytes
+        .fetch_add(capped.chars().count() as u64, Ordering::Relaxed);
+    Some(capped)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntryMeta {
     pub path: PathBuf,
@@ -103,7 +123,7 @@ pub async fn write_text_log(
         path: dest,
         size_bytes: size,
         preview,
-        body: Some(cap_body(body)),
+        body: cap_body_run(ctx, body),
     }))
 }
 
@@ -133,7 +153,7 @@ pub async fn write_item_log(
         path: dest,
         size_bytes: bytes.len() as u64,
         preview,
-        body: Some(cap_body(&body_str)),
+        body: cap_body_run(ctx, &body_str),
     }))
 }
 
@@ -207,6 +227,7 @@ mod tests {
             force_mocks: false,
             persist_artifacts: false,
             force_log_capture: false,
+            total_log_bytes: std::sync::atomic::AtomicU64::new(0),
         }
     }
 
@@ -244,5 +265,34 @@ mod tests {
         };
         let m = write_trace(&ctx, "s", &trace).await.unwrap();
         assert!(m.path.exists());
+    }
+
+    #[tokio::test]
+    async fn run_log_cap_marks_body_once_budget_spent() {
+        // E7: once the per-run aggregate budget is spent, durable bodies become
+        // a marker (the file on disk is still written; only the stored body caps).
+        let tmp = tempdir().unwrap();
+        let ctx = fake_ctx(tmp.path().to_path_buf());
+        ctx.total_log_bytes.store(
+            RUN_LOG_BODY_CAP_CHARS as u64,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        let meta = write_text_log(&ctx, "s", "prompt", "some prompt body", LogCapture::Full)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(meta.body.as_deref(), Some("…[run log cap reached]"));
+    }
+
+    #[tokio::test]
+    async fn run_log_cap_allows_and_charges_under_budget() {
+        let tmp = tempdir().unwrap();
+        let ctx = fake_ctx(tmp.path().to_path_buf());
+        let meta = write_text_log(&ctx, "s", "prompt", "hello", LogCapture::Full)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(meta.body.as_deref(), Some("hello"));
+        assert!(ctx.total_log_bytes.load(std::sync::atomic::Ordering::Relaxed) >= 5);
     }
 }

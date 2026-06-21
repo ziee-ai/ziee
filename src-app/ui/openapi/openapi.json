@@ -16594,6 +16594,56 @@
         ]
       }
     },
+    "/api/workflows/{id}/runs": {
+      "get": {
+        "tags": [
+          "Workflows - Runs"
+        ],
+        "summary": "List a workflow's runs (owner-scoped history)",
+        "description": "\n\n**Required Permission:** `workflows::read`\n\nView installed workflows",
+        "operationId": "Workflow.listRuns",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View installed workflows",
+                        "name": "WorkflowsRead",
+                        "value": "workflows::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: workflows::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunListResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/workflow-runs/{run_id}": {
       "get": {
         "tags": [
@@ -16635,6 +16685,47 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Workflows - Runs"
+        ],
+        "summary": "Delete a terminal run (+ its artifacts when not tied to a conversation)",
+        "description": "\n\n**Required Permission:** `workflows::execute`\n\nKick off a workflow run",
+        "operationId": "Workflow.deleteRun",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Kick off a workflow run",
+                        "name": "WorkflowsExecute",
+                        "value": "workflows::execute"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: workflows::execute",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "no content"
           }
         },
         "security": [
@@ -30266,6 +30357,9 @@
       "SSEElicitationRequiredData": {
         "type": "object",
         "properties": {
+          "data": {
+            "description": "D2: rendered seed data the FE form pre-fills with (see\n `StepConfig::Elicit.data`). `None` when the step declares no `data:`."
+          },
           "deadline_at": {
             "type": "string",
             "format": "date-time"
@@ -34872,10 +34966,29 @@
           "updated_at"
         ]
       },
+      "WorkflowRunListResponse": {
+        "type": "object",
+        "properties": {
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowRunSummary"
+            }
+          }
+        },
+        "required": [
+          "runs"
+        ]
+      },
       "WorkflowRunRequest": {
         "description": "Body of `POST /api/workflows/{id}/run`.",
         "type": "object",
         "properties": {
+          "capture_logs": {
+            "description": "Opt-in: force full per-step log capture (prompt / raw_output / stderr /\n items) for THIS run regardless of the workflow's per-step `log:` levels,\n so a manually-launched run is debuggable in the run history. Off by\n default. The captured logs are surfaced to the run owner only.",
+            "type": "boolean",
+            "default": false
+          },
           "conversation_id": {
             "type": [
               "string",
@@ -34891,6 +35004,14 @@
             "type": "object",
             "additionalProperties": true,
             "default": {}
+          },
+          "model_id": {
+            "description": "Explicit model for a standalone (no-conversation) run, picked in the\n Run dialog. When set, it wins over the conversation's model and is\n access-checked against the user's providers (the run handler is only\n gated on `WorkflowsExecute`, so this is the per-model authorization).\n When unset, the model is snapshotted from `conversation_id` (legacy\n path). A run with neither is rejected (`WORKFLOW_NO_MODEL_SOURCE`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -34908,6 +35029,57 @@
         "required": [
           "run_id",
           "status"
+        ]
+      },
+      "WorkflowRunSummary": {
+        "description": "Lightweight run-history row (A4) — excludes the heavy JSONB blobs the full\n `WorkflowRun` carries; backs `GET /workflows/{id}/runs`.",
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "invocation_source": {
+            "description": "`\"manual\"` (workflow page) or `\"conversation\"` (LLM tool call).",
+            "type": "string"
+          },
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "total_tokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "workflow_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id",
+          "workflow_id",
+          "status",
+          "invocation_source",
+          "total_tokens",
+          "created_at"
         ]
       }
     }

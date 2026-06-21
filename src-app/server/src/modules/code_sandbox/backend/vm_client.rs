@@ -5,6 +5,7 @@
 //! `SandboxRunResult`, applying the same 1 MiB output cap as the Linux backend
 //! and a host-side read-timeout backstop (a wedged agent can't hang the turn).
 
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use sandbox_vm_protocol::{encode, Decoder, ExecRequest, Frame};
@@ -16,9 +17,32 @@ use crate::modules::code_sandbox::sandbox::{SandboxRunResult, OUTPUT_CAP_BYTES};
 /// Run one command on a connected control stream. Transport-agnostic: the
 /// caller (mac unix socket / WSL2 TCP) connects and hands the stream in.
 pub async fn run_on_stream<S>(
+    stream: S,
+    req: ExecRequest,
+    timeout_secs: u64,
+) -> Result<SandboxRunResult, AppError>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    // No artifact write-back (WSL2 + the test raw-exec path). The macOS backend
+    // calls `run_on_stream_collecting` with the RW-mount → host-dir mapping.
+    run_on_stream_collecting(stream, req, timeout_secs, &[]).await
+}
+
+/// Like [`run_on_stream`] but, in addition to streaming stdout/stderr, receives
+/// any `ArtifactFile` frames the guest emits (the macOS libkrun virtio-fs
+/// CREATE-EPERM workaround) and writes each into the matching host artifact dir.
+///
+/// `artifact_host_dirs[i]` is the real host directory backing
+/// `ExecRequest::collect_artifacts[i]` (the guest tmpfs the agent walks). A
+/// frame's `rel_path` is joined under that dir; the host writes its OWN fs (no
+/// virtio-fs involved), so the file actually lands and `collect_step_artifacts`
+/// then finds it.
+pub async fn run_on_stream_collecting<S>(
     mut stream: S,
     req: ExecRequest,
     timeout_secs: u64,
+    artifact_host_dirs: &[PathBuf],
 ) -> Result<SandboxRunResult, AppError>
 where
     S: AsyncRead + AsyncWrite + Unpin,
@@ -65,6 +89,13 @@ where
                     done = true;
                     break;
                 }
+                Ok(Some(Frame::ArtifactFile {
+                    mount_index,
+                    rel_path,
+                    data,
+                })) => {
+                    write_artifact(artifact_host_dirs, mount_index, &rel_path, &data);
+                }
                 Ok(Some(Frame::Exec(_))) => {} // not expected from the guest
                 Ok(Some(Frame::Shutdown)) => {} // host-only frame; ignore if echoed
                 // Long-lived frames don't belong on a one-shot Exec
@@ -99,6 +130,48 @@ where
         duration_ms: started.elapsed().as_millis() as u64,
         timed_out,
     })
+}
+
+/// Write one streamed artifact into its host dir. `rel_path` is guest-supplied
+/// (the bytes a sandboxed process wrote), so it is UNTRUSTED: reject absolute
+/// paths, any `..` component, and confine the resolved write under the host
+/// dir. Best-effort — a malformed entry is logged + skipped, never fatal (the
+/// runner's `collect_step_artifacts` re-walks the host dir afterward and also
+/// re-checks path safety).
+fn write_artifact(host_dirs: &[PathBuf], mount_index: u32, rel_path: &str, data: &[u8]) {
+    let Some(base) = host_dirs.get(mount_index as usize) else {
+        tracing::warn!(
+            mount_index,
+            "vm_client: ArtifactFile for unknown mount index; dropping"
+        );
+        return;
+    };
+    let rel = Path::new(rel_path);
+    if rel.is_absolute()
+        || rel
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir | std::path::Component::RootDir))
+    {
+        tracing::warn!(%rel_path, "vm_client: rejecting unsafe artifact rel_path");
+        return;
+    }
+    let dest = base.join(rel);
+    // Defense-in-depth: the joined path must still be under base.
+    if !dest.starts_with(base) {
+        tracing::warn!(%rel_path, "vm_client: artifact escaped its mount dir; dropping");
+        return;
+    }
+    if let Some(parent) = dest.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            tracing::warn!(path = %parent.display(), "vm_client: mkdir artifact parent failed: {e}");
+            return;
+        }
+    }
+    if let Err(e) = std::fs::write(&dest, data) {
+        tracing::warn!(path = %dest.display(), "vm_client: write artifact failed: {e}");
+    } else {
+        tracing::debug!(path = %dest.display(), bytes = data.len(), "vm_client: wrote streamed artifact");
+    }
 }
 
 fn append_capped(buf: &mut Vec<u8>, chunk: &[u8], truncated: &mut bool) {

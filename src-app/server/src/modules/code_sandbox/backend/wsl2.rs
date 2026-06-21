@@ -1038,6 +1038,11 @@ impl SandboxBackend for Wsl2Backend {
                 pids_max: limits.pids_max as u64,
                 cpu_max: limits.cpu_max.clone(),
             }),
+            // The artifact-streaming write-back is a macOS-libkrun-only
+            // workaround for virtio-fs CREATE-EPERM. On WSL2 the RW binds use
+            // the rsync'd distro filesystem directly (no virtio-fs), so RW
+            // writes land; leave this empty (the agent no-ops on empty).
+            collect_artifacts: Vec::new(),
         };
 
         // Up to 2 attempts: a dead/unreachable distro (connect fails — the
@@ -1223,6 +1228,7 @@ impl SandboxBackend for Wsl2Backend {
             // injecting one.
             seccomp_fd: None,
             cgroup: None,
+            collect_artifacts: Vec::new(),
         };
         let secs = timeout.as_secs().max(1);
         let _permit = distro

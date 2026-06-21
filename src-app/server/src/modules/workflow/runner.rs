@@ -226,6 +226,7 @@ pub async fn preflight(
         // these off (no artifact persistence; the workflow's own log levels).
         persist_artifacts: false,
         force_log_capture: false,
+        total_log_bytes: std::sync::atomic::AtomicU64::new(0),
     })
 }
 
@@ -1070,6 +1071,21 @@ async fn resolve_run_model(
     model_id: Option<Uuid>,
     conversation_id: Option<Uuid>,
 ) -> Result<(Uuid, String, u32), AppError> {
+    // SECURITY: whenever a conversation_id is supplied, verify the caller OWNS
+    // it BEFORE it's used as a workspace key. The conversation-model branch
+    // below re-fetches it, but the explicit-`model_id` path would otherwise
+    // thread an unverified conversation_id straight through to `preflight`,
+    // where it names the sandbox workspace dir — a foreign id would mount the
+    // victim's workspace into this run's sandbox steps.
+    if let Some(conv_id) = conversation_id {
+        crate::core::Repos
+            .chat
+            .core
+            .get_conversation(conv_id, user_id)
+            .await?
+            .ok_or_else(|| AppError::not_found("Conversation"))?;
+    }
+
     let model = if let Some(mid) = model_id {
         let model = crate::core::Repos
             .llm_model
@@ -1109,11 +1125,26 @@ async fn resolve_run_model(
                 "conversation has no model set; cannot snapshot for workflow run",
             )
         })?;
-        crate::core::Repos
+        let model = crate::core::Repos
             .llm_model
             .get_by_id(mid)
             .await?
-            .ok_or_else(|| AppError::not_found("Model"))?
+            .ok_or_else(|| AppError::not_found("Model"))?;
+        // E3: defense-in-depth — re-check provider access on the conversation
+        // path too (mirrors the explicit-model_id branch). A model that became
+        // inaccessible after the conversation was created must not be re-run.
+        let has_access = crate::core::Repos
+            .user_group_llm_provider
+            .user_has_access_to_provider(user_id, model.provider_id)
+            .await
+            .map_err(AppError::from)?;
+        if !has_access {
+            return Err(AppError::forbidden(
+                "ACCESS_DENIED",
+                "you do not have access to this model",
+            ));
+        }
+        model
     } else {
         return Err(AppError::bad_request(
             "WORKFLOW_NO_MODEL_SOURCE",

@@ -19,6 +19,7 @@ const SOURCE_COLOR: Record<string, string> = {
   always: 'purple',
   approval: 'gold',
   sampling: 'cyan',
+  workflow: 'magenta',
 }
 
 /**

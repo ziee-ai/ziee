@@ -1024,6 +1024,46 @@ impl StepDispatcher for ToolDispatcher {
             Err(e) => return StepResult::Failed { error: e.to_string(), tokens_used: 0 },
         };
 
+        // E8: reject a server OR a specific tool the user disabled in THIS
+        // conversation's mcp_settings (conversation-invoked runs only — a
+        // standalone run has no conversation, so the toggle doesn't apply).
+        // Matches the set the chat LLM would be allowed to call. NB: the chat
+        // path's own non-enforcement of disabled_servers is a separate latent
+        // bug, out of scope here.
+        if let Some(conv_id) = ctx.conversation_id {
+            // Fail CLOSED: a DB error resolving the toggle must NOT let a
+            // possibly-disabled tool through — this is a security gate.
+            let settings = match crate::core::repository::Repos
+                .mcp_settings
+                .get(crate::modules::mcp::settings::models::McpScope::Conversation(conv_id))
+                .await
+            {
+                Ok(s) => s,
+                Err(e) => {
+                    return StepResult::Failed {
+                        error: format!("tool: could not resolve server policy: {e}"),
+                        tokens_used: 0,
+                    };
+                }
+            };
+            if let Some(settings) = settings {
+                let disabled: Vec<
+                    crate::modules::mcp::chat_extension::approval::models::DisabledServer,
+                > = serde_json::from_value(settings.disabled_servers).unwrap_or_default();
+                if disabled.iter().any(|d| {
+                    d.server_id == server_id
+                        && (d.is_server_disabled() || d.is_tool_disabled(&tool_name))
+                }) {
+                    return StepResult::Failed {
+                        error: format!(
+                            "tool '{tool_name}' on server '{server_name}' is disabled in this conversation"
+                        ),
+                        tokens_used: 0,
+                    };
+                }
+            }
+        }
+
         let args = match render_tool_arguments(&arguments, ctx) {
             Ok(v) => v,
             Err(e) => {
@@ -1044,7 +1084,15 @@ impl StepDispatcher for ToolDispatcher {
             }
         };
         let session = match manager
-            .get_or_create_with_context(server_id, ctx.user_id, ctx.conversation_id, None)
+            .get_or_create_with_context(
+                server_id,
+                ctx.user_id,
+                ctx.conversation_id,
+                None, // branch_id
+                None, // message_id — a workflow run has no chat message
+                None, // tool_use_id — not an LLM ContentBlock::ToolUse
+                crate::modules::mcp::tool_calls::models::McpToolCallSource::Workflow,
+            )
             .await
         {
             Ok(s) => s,
@@ -1058,6 +1106,8 @@ impl StepDispatcher for ToolDispatcher {
 
         let call = async {
             let mut guard = session.write().await;
+            // E4: link the recorded mcp_tool_calls row to this run.
+            guard.set_workflow_run(ctx.run_id);
             guard.call_tool(&tool_name, args, None, None, None).await
         };
         let result = tokio::select! {
@@ -1089,6 +1139,73 @@ impl StepDispatcher for ToolDispatcher {
             };
         }
 
+        // C3/C4/E9: persist any `resource_link` files the tool returned into
+        // durable file-store artifacts (created_by="workflow", linked to the run
+        // via workflow_run_id for the A5 cascade). Mirrors the chat path
+        // (mcp/chat_extension/mcp.rs): `is_saved:true` links are referenced,
+        // `ziee://<host_path>` links from trusted built-ins are read off disk
+        // behind path-confinement, and http:// loopback links are fetched with a
+        // short-lived JWT (E9 — the dispatcher passes the manager's secret).
+        let mut tool_files: Vec<Value> = Vec::new();
+        {
+            let mut links: Vec<crate::modules::mcp::chat_extension::content::ResourceLink> =
+                tool_result
+                    .content
+                    .iter()
+                    .filter(|b| {
+                        b.content.get("type").and_then(|t| t.as_str()) == Some("resource_link")
+                    })
+                    .filter_map(|b| {
+                        crate::modules::mcp::resource_link::parse_resource_link_block(&b.content)
+                    })
+                    .collect();
+            if !links.is_empty() {
+                // `ziee://` reads are confined to (a) this run's OWN workflow
+                // staging dir, and (b) the code_sandbox workspace for this run's
+                // key (the common producer, get_resource_link). Including (a)
+                // means artifacts still persist in a deployment where
+                // code_sandbox isn't initialized (else allowed_roots would be
+                // empty and every ziee:// link would be silently dropped).
+                let sandbox_key = ctx.conversation_id.unwrap_or(ctx.run_id);
+                let mut allowed_roots: Vec<std::path::PathBuf> =
+                    vec![ctx.sandbox_workspace.clone()];
+                if let Some(s) = crate::modules::code_sandbox::config::get_state() {
+                    allowed_roots.push(s.workspace_root.join(sandbox_key.to_string()));
+                }
+                let (is_built_in, headers) =
+                    match crate::core::repository::Repos.mcp.get_any_server(server_id).await {
+                        Ok(Some(s)) => (s.is_built_in, s.headers),
+                        _ => (false, serde_json::json!({})),
+                    };
+                let outcome = crate::modules::mcp::resource_link::persist_links(
+                    &mut links,
+                    ctx.user_id,
+                    ctx.conversation_id,
+                    None, // message_id
+                    "workflow",
+                    Some(ctx.run_id), // C4: link each ingested file to the run
+                    server_id,
+                    is_built_in,
+                    &headers,
+                    &allowed_roots,
+                    Some(manager.jwt_secret()), // E9
+                )
+                .await
+                .unwrap_or_default();
+                for art in &outcome.saved {
+                    tool_files.push(serde_json::json!({
+                        "file_id": art.file_id,
+                        "filename": art.filename,
+                        "mime_type": art.mime_type,
+                        "uri": format!("/api/files/{}", art.file_id),
+                    }));
+                }
+                for (name, uri) in &outcome.referenced {
+                    tool_files.push(serde_json::json!({ "filename": name, "uri": uri }));
+                }
+            }
+        }
+
         // Capture: structuredContent → JSON; else concatenated text blocks
         // (best-effort JSON sniff so a JSON-returning tool stays typed).
         let (value, parsed_as) = if let Some(sc) = tool_result.structured_content.clone() {
@@ -1100,6 +1217,26 @@ impl StepDispatcher for ToolDispatcher {
             } else {
                 (Value::String(text), ParsedAs::Text)
             }
+        };
+
+        // Surface persisted files to downstream steps as `output.files[]`
+        // ({{ step.output.files[0].uri }}). Merge into an object result; wrap a
+        // scalar/text result so the files stay addressable without clobbering it.
+        let (value, parsed_as) = if tool_files.is_empty() {
+            (value, parsed_as)
+        } else if let Value::Object(mut map) = value {
+            let key = if map.contains_key("files") {
+                "_ziee_files"
+            } else {
+                "files"
+            };
+            map.insert(key.to_string(), Value::Array(tool_files));
+            (Value::Object(map), ParsedAs::Json)
+        } else {
+            (
+                serde_json::json!({ "output": value, "files": tool_files }),
+                ParsedAs::Json,
+            )
         };
 
         let meta =
@@ -1153,11 +1290,12 @@ impl StepDispatcher for ElicitDispatcher {
         emit: Arc<dyn ProgressEmitter>,
     ) -> StepResult {
         let started = Instant::now();
-        let (schema, timeout_ms) = match &step.config {
+        let (schema, data_tpl, timeout_ms) = match &step.config {
             StepConfig::Elicit {
                 schema,
+                data,
                 timeout_ms,
-            } => (schema.clone(), *timeout_ms),
+            } => (schema.clone(), data.clone(), *timeout_ms),
             _ => {
                 return StepResult::Failed {
                     error: "ElicitDispatcher called on non-elicit step".into(),
@@ -1184,6 +1322,22 @@ impl StepDispatcher for ElicitDispatcher {
                     tokens_used: 0,
                 };
             }
+        };
+
+        // D2: render the optional `data:` seed with the SAME type-preserving
+        // renderer as `tool` arguments (a whole-value `{{ ref }}` → native JSON),
+        // so a prior step's output (e.g. an AI screening table) pre-fills the form.
+        let data = match data_tpl {
+            Some(d) => match render_tool_arguments(&d, ctx) {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    return StepResult::Failed {
+                        error: format!("elicit data render: {e}"),
+                        tokens_used: 0,
+                    };
+                }
+            },
+            None => None,
         };
 
         let elicitation_id = Uuid::new_v4();
@@ -1214,6 +1368,7 @@ impl StepDispatcher for ElicitDispatcher {
             &step.id,
             &message,
             &schema,
+            data.as_ref(),
             deadline,
         )
         .await
@@ -1233,6 +1388,7 @@ impl StepDispatcher for ElicitDispatcher {
                 elicitation_id,
                 message,
                 schema: schema.clone(),
+                data: data.clone(),
                 deadline_at: deadline,
             },
         ));
@@ -1279,9 +1435,10 @@ impl StepDispatcher for ElicitDispatcher {
             }
         };
 
-        // Loose schema-shape check (full jsonschema-rs lands in a future
-        // patch; for Phase 1 we accept any non-null JSON value — the form
-        // FE side enforces the schema before posting).
+        // E5: full jsonschema validation runs at the SUBMIT handler
+        // (handlers/elicit.rs `validate_response_shape` → 422 on mismatch), so a
+        // delivered response already conforms. This null-guard is just the
+        // post-handler fallback (a null can only arrive via a non-handler path).
         if value.is_null() {
             let _ = clear_pending(ctx).await;
             return StepResult::Failed {
@@ -1329,19 +1486,23 @@ impl StepDispatcher for ElicitDispatcher {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn persist_pending(
     ctx: &RunContext,
     elicitation_id: Uuid,
     step_id: &str,
     message: &str,
     schema: &Value,
+    data: Option<&Value>,
     deadline: chrono::DateTime<chrono::Utc>,
 ) -> Result<(), AppError> {
     let record = crate::modules::workflow::types::PendingElicitationRecord {
+        run_id: ctx.run_id,
         elicitation_id,
         step_id: step_id.into(),
         message: message.into(),
         schema: schema.clone(),
+        data: data.cloned(),
         deadline_at: deadline,
     };
     let json = serde_json::to_value(&record)
@@ -1394,6 +1555,7 @@ mod tests {
             force_mocks: false,
             persist_artifacts: false,
             force_log_capture: false,
+            total_log_bytes: std::sync::atomic::AtomicU64::new(0),
         }
     }
 

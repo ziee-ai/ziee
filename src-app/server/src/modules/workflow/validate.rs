@@ -178,6 +178,13 @@ pub enum StepConfig {
         // deserializes as missing). The workflow-definition.schema.json
         // already models `message` as a top-level step field for elicit.
         schema: serde_json::Value,
+        /// D2: optional seed for the elicit form, template-rendered against the
+        /// run context with the SAME type-preserving renderer as `tool`
+        /// arguments (a whole-value `{{ ref }}` resolves to its native JSON
+        /// type). Lets a prior step's output (e.g. an AI screening table)
+        /// pre-fill the reviewer's form. Surfaced on the pending record + SSE.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        data: Option<serde_json::Value>,
         #[serde(default = "default_elicit_timeout_ms")]
         timeout_ms: u32,
     },
@@ -542,6 +549,20 @@ fn check_steps_shape(workflow: &WorkflowDef) -> Vec<ValidationError> {
                     &s.id,
                 ));
             }
+        }
+        // E6: the `tools:` field on llm/llm_map is dead (never read — the
+        // LlmDispatcher builds its ChatRequest with no tools). Reject it with a
+        // clear pointer to the `tool` step kind instead of silently ignoring it.
+        if let StepConfig::Llm { tools, .. } | StepConfig::LlmMap { tools, .. } = &s.config
+            && !tools.is_empty()
+        {
+            out.push(ValidationError::at(
+                "semantic",
+                "WORKFLOW_DEAD_TOOLS_FIELD",
+                "`tools:` on an llm/llm_map step does nothing — use a separate \
+                 `kind: tool` step to call an MCP tool",
+                &s.id,
+            ));
         }
         if let StepConfig::Sandbox { run, .. } = &s.config {
             // Reject empty OR whitespace-only `run:` (a `run: "   "` would
@@ -1101,6 +1122,48 @@ steps:
             errs.iter().any(|e| e.code == "WORKFLOW_ELICIT_NO_MESSAGE"),
             "expected WORKFLOW_ELICIT_NO_MESSAGE, got: {errs:?}"
         );
+    }
+
+    #[test]
+    fn dead_tools_field_on_llm_rejected() {
+        // E6: `tools:` on an llm step is dead — must be rejected with a clear code.
+        let yaml = r#"
+steps:
+  - id: gen
+    kind: llm
+    prompt: "hi"
+    tools: ["web_search"]
+"#;
+        let wf = parse_workflow_yaml(yaml).expect("parse");
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(
+            errs.iter().any(|e| e.code == "WORKFLOW_DEAD_TOOLS_FIELD"),
+            "expected WORKFLOW_DEAD_TOOLS_FIELD, got: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn elicit_step_with_data_seed_parses() {
+        // D2: the optional `data:` seed deserializes onto the elicit config.
+        let yaml = r#"
+steps:
+  - id: review
+    kind: elicit
+    message: "Review"
+    schema:
+      type: object
+    data: "{{ inputs.seed }}"
+inputs:
+  - name: seed
+"#;
+        let wf = parse_workflow_yaml(yaml).expect("parse");
+        match &wf.steps[0].config {
+            StepConfig::Elicit { data, .. } => {
+                assert!(data.is_some(), "data seed should parse onto the elicit config");
+            }
+            other => panic!("expected elicit config, got {other:?}"),
+        }
     }
 
     #[test]

@@ -9,20 +9,20 @@ import {
   Switch,
   Typography,
 } from 'antd'
+import type { FormInstance } from 'antd/es/form'
 import { useState } from 'react'
 import type { SSEElicitationRequiredData } from '@/api-client/types'
+import { EditableArrayTable } from './EditableArrayTable'
+import {
+  type ElicitObjectSchema,
+  type FieldSchema,
+  fieldRules,
+  isTableProperty,
+  listRules,
+  validateTableValue,
+} from './workflowElicitSchema'
 
 const { Text } = Typography
-
-interface FieldSchema {
-  type?: string
-  title?: string
-  description?: string
-  default?: unknown
-  minimum?: number
-  maximum?: number
-  enum?: string[]
-}
 
 interface WorkflowElicitFormProps {
   elicitation: SSEElicitationRequiredData
@@ -34,11 +34,38 @@ function renderField(
   name: string,
   field: FieldSchema,
   required: boolean,
+  form: FormInstance,
+  disabled: boolean,
 ): React.ReactNode {
   const label = field.title || name
-  const rules = required
-    ? [{ required: true, message: `${label} is required` }]
-    : undefined
+  const rules = fieldRules(field, required, label)
+
+  // Array-of-objects (or an explicit ui.widget==='table') → editable table.
+  // The table's own `Form.List name={name}` owns the binding + the
+  // array-level (minItems/maxItems) validation, so we render only the
+  // label/description chrome here (a binding Form.Item would double-bind
+  // the same path). Per-cell rules live inside the table.
+  if (isTableProperty(field)) {
+    return (
+      <div key={name} className="mb-4">
+        <div className="mb-1">
+          <Text className="text-sm">{label}</Text>
+        </div>
+        {field.description && (
+          <Text type="secondary" className="text-xs block mb-1">
+            {field.description}
+          </Text>
+        )}
+        <EditableArrayTable
+          name={name}
+          schema={field}
+          form={form}
+          disabled={disabled}
+          listRules={listRules(field, required, label)}
+        />
+      </div>
+    )
+  }
 
   if (field.enum) {
     return (
@@ -46,10 +73,12 @@ function renderField(
         key={name}
         name={name}
         label={label}
-        rules={rules}
+        rules={rules.length > 0 ? rules : undefined}
         extra={field.description}
       >
-        <Select options={field.enum.map(v => ({ value: v, label: v }))} />
+        <Select
+          options={field.enum.map(v => ({ value: v, label: String(v) }))}
+        />
       </Form.Item>
     )
   }
@@ -72,7 +101,7 @@ function renderField(
         key={name}
         name={name}
         label={label}
-        rules={rules}
+        rules={rules.length > 0 ? rules : undefined}
         extra={field.description}
       >
         <InputNumber
@@ -89,7 +118,7 @@ function renderField(
       key={name}
       name={name}
       label={label}
-      rules={rules}
+      rules={rules.length > 0 ? rules : undefined}
       extra={field.description}
     >
       <Input />
@@ -107,10 +136,7 @@ export function WorkflowElicitForm({
   onSubmit,
 }: WorkflowElicitFormProps) {
   const [form] = Form.useForm()
-  const schema = (elicitation.schema ?? {}) as {
-    properties?: Record<string, FieldSchema>
-    required?: string[]
-  }
+  const schema = (elicitation.schema ?? {}) as ElicitObjectSchema
   const properties = schema.properties ?? {}
   const required = new Set(schema.required ?? [])
 
@@ -119,6 +145,22 @@ export function WorkflowElicitForm({
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields()
+      // E5 parity for VIRTUAL tables: `validateFields()` only checks MOUNTED
+      // cells, so off-screen rows of a virtualized table escape per-cell rules.
+      // Re-check each table property's full (Form.List-preserved) array.
+      for (const [name, field] of Object.entries(properties)) {
+        if (isTableProperty(field)) {
+          const err = validateTableValue(
+            (values as Record<string, unknown>)[name],
+            field.items,
+            field.title || name,
+          )
+          if (err) {
+            setError(err)
+            return
+          }
+        }
+      }
       setError(null)
       onSubmit(values)
     } catch {
@@ -126,8 +168,15 @@ export function WorkflowElicitForm({
     }
   }
 
+  // Seed initial values from each property's `default`, but PREFER a value
+  // supplied in `elicitation.data` (keyed by property name) when present.
+  // Keeps working when `data` is absent.
+  const seed = (elicitation.data ?? {}) as Record<string, unknown>
   const initialValues = Object.fromEntries(
-    Object.entries(properties).map(([k, f]) => [k, f.default]),
+    Object.entries(properties).map(([k, f]) => [
+      k,
+      k in seed ? seed[k] : f.default,
+    ]),
   )
 
   return (
@@ -147,7 +196,7 @@ export function WorkflowElicitForm({
             disabled={submitting}
           >
             {Object.entries(properties).map(([name, field]) =>
-              renderField(name, field, required.has(name)),
+              renderField(name, field, required.has(name), form, submitting),
             )}
           </Form>
           {error && (

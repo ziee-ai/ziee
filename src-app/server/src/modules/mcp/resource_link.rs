@@ -284,12 +284,11 @@ pub async fn persist_links(
     allowed_roots: &[PathBuf],
     jwt_secret: Option<&str>,
 ) -> Result<PersistOutcome, AppError> {
-    // Integration hook for feat/workflow-standalone-runs: once migration 103
-    // (files.workflow_run_id) + Repos.file.set_workflow_run_id land on main, link each
-    // newly-ingested file to the producing run here (A5 cascade-delete: only files the run
-    // CREATED are cascade-deletable). No-op on this branch — the column/repo method don't
-    // exist yet — so the param is intentionally unused for now.
-    let _ = workflow_run_id;
+    // C4: on this branch `files.workflow_run_id` + `Repos.file.set_workflow_run_id`
+    // exist, so each newly-ingested file is linked to the producing run below (after
+    // the save loop populates `outcome.saved`). A5 cascade-delete removes ONLY the
+    // files a run CREATED — never the `is_saved:true` files it merely referenced.
+    // The chat path passes `workflow_run_id = None`, so this is a no-op there.
 
     let mut outcome = PersistOutcome::default();
 
@@ -501,6 +500,20 @@ pub async fn persist_links(
             // rewrite it to the authenticated /api path. HTTP-fetched links keep their URI.
             if is_ziee_host_path(&l.uri) {
                 l.uri = format!("/api/files/{}", art.file_id);
+            }
+        }
+    }
+
+    // C4: link each run-created file to the producing workflow run so the A5
+    // delete-cascade can find them. Only `outcome.saved` (files this call
+    // CREATED) — never the referenced `is_saved:true` files.
+    if let Some(run) = workflow_run_id {
+        for art in &outcome.saved {
+            if let Err(e) = Repos.file.set_workflow_run_id(art.file_id, run).await {
+                tracing::warn!(
+                    "failed to link file {} to workflow run {run}: {e}",
+                    art.file_id
+                );
             }
         }
     }

@@ -7,9 +7,12 @@
 -- AND cascade-cleanable when the run is deleted).
 
 ALTER TABLE workflow_runs
-    ADD COLUMN invocation_source VARCHAR(20) NOT NULL DEFAULT 'manual';
+    ADD COLUMN invocation_source VARCHAR(20) NOT NULL DEFAULT 'manual'
+        CHECK (invocation_source IN ('manual', 'conversation', 'agent', 'mcp_tool'));
 -- 'manual'        → launched from the workflow page (REST POST /run)
 -- 'conversation'  → launched by the LLM as an MCP tool mid-conversation
+-- 'agent'/'mcp_tool' → reserved for future callers (E2: pre-accepted so a new
+--                      caller needs no migration; not emitted yet)
 
 ALTER TABLE files
     ADD COLUMN workflow_run_id UUID REFERENCES workflow_runs(id) ON DELETE SET NULL;

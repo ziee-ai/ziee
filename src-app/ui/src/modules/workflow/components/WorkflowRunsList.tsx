@@ -15,6 +15,15 @@ const STATUS_COLOR: Record<string, string> = {
   pending: 'gold',
 }
 
+// Trigger-source label. Covers the values migration 106's CHECK admits
+// (manual | conversation | agent | mcp_tool); falls back to "Workflow page".
+const INVOCATION_SOURCE_LABEL: Record<string, string> = {
+  manual: 'Workflow page',
+  conversation: 'Conversation',
+  agent: 'Agent',
+  mcp_tool: 'MCP tool',
+}
+
 /**
  * Per-workflow run history (A4). Lists the caller's own runs of a workflow with
  * a status + trigger badge; clicking a run opens the live progress view, and
@@ -98,9 +107,7 @@ export function WorkflowRunsList({
               {run.status}
             </Tag>
             <Tag className="!m-0 text-xs">
-              {run.invocation_source === 'conversation'
-                ? 'Conversation'
-                : 'Workflow page'}
+              {INVOCATION_SOURCE_LABEL[run.invocation_source] ?? 'Workflow page'}
             </Tag>
             <Text type="secondary" className="text-xs">
               {new Date(run.created_at).toLocaleString()}

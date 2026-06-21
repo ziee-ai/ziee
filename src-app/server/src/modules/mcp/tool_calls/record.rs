@@ -239,6 +239,7 @@ pub fn build_record(
         started_at,
         finished_at: Some(started_at + time::Duration::milliseconds(elapsed_ms)),
         duration_ms: Some(elapsed_ms),
+        workflow_run_id: ctx.workflow_run_id,
     })
 }
 
@@ -371,6 +372,25 @@ mod tests {
         let boom: Result<ToolResult, AppError> = Err(AppError::internal_error("boom"));
         let rec = build_record(Uuid::nil(), &ctx, "t", &args, &boom, started, 1).unwrap();
         assert_eq!(rec.status, McpToolCallStatus::Failed);
+    }
+
+    #[test]
+    fn build_record_carries_workflow_run_id() {
+        // E4: a workflow-dispatched tool call records its run link.
+        let mut ctx = ctx_with_owner();
+        let run = Uuid::from_u128(0x1234_5678);
+        ctx.workflow_run_id = Some(run);
+        let rec = build_record(
+            Uuid::nil(),
+            &ctx,
+            "t",
+            &json!({}),
+            &ok_result(vec![block(json!({"type":"text","text":"ok"}))], false),
+            time::OffsetDateTime::UNIX_EPOCH,
+            1,
+        )
+        .unwrap();
+        assert_eq!(rec.workflow_run_id, Some(run));
     }
 
     #[test]
