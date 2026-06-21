@@ -85,9 +85,16 @@ test.describe('Workflows - run history (Runs tab) (real LLM)', () => {
     await goToWorkflowsSettingsPage(page, baseURL)
     await openWorkflowCard(page, 'e2e-history-wf')
 
-    // Run once.
-    await page.getByRole('button', { name: 'Run', exact: true }).first().click()
-    await expect(page.getByText(/^Run /)).toBeVisible({ timeout: 10000 })
+    // Run once. The drawer Run button has a PlayCircle icon → accessible name
+    // "play-circle Run"; match the trailing "Run" (the dialog OK button below
+    // is a plain exact "Run").
+    await page.getByRole('button', { name: /Run$/ }).first().click()
+    // The Run dialog (a Modal titled "Run <workflow>") opened — target it by
+    // dialog role + name, not getByText(/^Run /), which also matches the
+    // drawer's "Run tests" button text behind the modal (strict-mode clash).
+    await expect(page.getByRole('dialog', { name: /^Run / })).toBeVisible({
+      timeout: 10000,
+    })
     const topicField = page.getByLabel('topic')
     if (await topicField.count()) {
       await topicField.first().fill('photosynthesis')
@@ -98,10 +105,11 @@ test.describe('Workflows - run history (Runs tab) (real LLM)', () => {
     await page.getByRole('option', { name: /Claude Haiku 4\.5/ }).first().click()
     await page.getByRole('button', { name: 'Run', exact: true }).last().click()
 
-    // Wait for the run to complete.
-    await expect(page.getByText('completed', { exact: true })).toBeVisible({
-      timeout: 60000,
-    })
+    // Wait for the run to complete. Both the run-level status Tag and the
+    // step's status Tag read "completed", so target the first (the header tag).
+    await expect(
+      page.getByText('completed', { exact: true }).first(),
+    ).toBeVisible({ timeout: 60000 })
 
     // The Runs section lists the run with the "Workflow page" source badge.
     await expect(page.getByText('Runs', { exact: true })).toBeVisible()
@@ -113,9 +121,13 @@ test.describe('Workflows - run history (Runs tab) (real LLM)', () => {
     await page.getByText('Workflow page', { exact: true }).first().click()
     await expect(page.getByText('Run progress')).toBeVisible({ timeout: 10000 })
 
-    // Delete the run from the Runs list → Popconfirm → confirm.
+    // Delete the run from the Runs list → Popconfirm → confirm. The per-row
+    // delete is an icon-only Button whose accessible name is exactly "delete"
+    // (the DeleteOutlined icon's aria-label). Match it exactly so we don't grab
+    // the drawer's workflow "delete Delete" button (which a bare /delete/i would
+    // hit first in DOM order, deleting the workflow instead of the run).
     const deleteBtn = page
-      .getByRole('button', { name: /remove run|delete run|delete/i })
+      .getByRole('button', { name: 'delete', exact: true })
       .first()
     await deleteBtn.click()
     // Popconfirm: "Delete this run?" with an OK button labeled "Delete".

@@ -148,9 +148,15 @@ test.describe('Workflows - elicit rich editable table (real LLM snapshot)', () =
     await expect(page.getByText(/input required/i)).toBeVisible({
       timeout: 15000,
     })
-    // The seeded titles appear (the table pre-filled from `data:`).
-    await expect(page.getByText('Paper A')).toBeVisible({ timeout: 10000 })
-    await expect(page.getByText('Paper C')).toBeVisible()
+    // The seeded titles appear (the table pre-filled from `data:`). The
+    // `title` cells are editable `<Input>`s, so the seeded text is the input
+    // VALUE, not page text — assert on the table ROW (its accessible name
+    // includes the cell values), not getByText (which would match the run
+    // view's truncated step-output JSON preview, missing the last row).
+    await expect(page.getByRole('row', { name: /Paper A/ })).toBeVisible({
+      timeout: 10000,
+    })
+    await expect(page.getByRole('row', { name: /Paper C/ })).toBeVisible()
 
     // Bulk-toggle: select all rows, then "Set include on" for the bulk column.
     // The header checkbox selects every row.
@@ -178,9 +184,11 @@ test.describe('Workflows - elicit rich editable table (real LLM snapshot)', () =
     // Submit the form → the run resumes.
     await page.getByRole('button', { name: 'Submit', exact: true }).click()
 
-    // After resume the single elicit-after step completes the run.
-    await expect(page.getByText('completed', { exact: true })).toBeVisible({
-      timeout: 30000,
-    })
+    // After resume the single elicit-after step completes the run. Both the
+    // run-level status Tag and the step's status Tag read "completed", so
+    // target the first (the run-level header tag) to avoid a strict-mode clash.
+    await expect(
+      page.getByText('completed', { exact: true }).first(),
+    ).toBeVisible({ timeout: 30000 })
   })
 })

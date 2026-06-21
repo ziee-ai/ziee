@@ -92,9 +92,17 @@ test.describe('Workflows - run a standalone workflow (real LLM)', () => {
     // card shows the name. Open it.
     await openWorkflowCard(page, 'e2e-run-summarize')
 
-    // Click Run → the Run dialog opens.
-    await page.getByRole('button', { name: 'Run', exact: true }).first().click()
-    await expect(page.getByText(/^Run /)).toBeVisible({ timeout: 10000 })
+    // Click the drawer Run button → the Run dialog opens. The drawer button
+    // has a PlayCircle icon, so its accessible name is "play-circle Run" (the
+    // icon's aria-label is concatenated); match the trailing "Run" rather than
+    // exact. The dialog's own OK button below is a plain "Run" (exact).
+    await page.getByRole('button', { name: /Run$/ }).first().click()
+    // Assert the Run dialog (a Modal titled "Run <workflow>") opened — target
+    // it by dialog role + name, not getByText(/^Run /): the latter also matches
+    // the drawer's "Run tests" button text behind the modal (strict-mode clash).
+    await expect(page.getByRole('dialog', { name: /^Run / })).toBeVisible({
+      timeout: 10000,
+    })
 
     // Provide the required `topic` input. With structured inputs the field is
     // labeled by the input name; fall back to the free-form JSON editor.
@@ -129,8 +137,10 @@ test.describe('Workflows - run a standalone workflow (real LLM)', () => {
     // The run-progress view appears and streams to completion. The status tag
     // transitions to "completed"; allow a generous budget for the real call.
     await expect(page.getByText('Run progress')).toBeVisible({ timeout: 15000 })
-    await expect(page.getByText('completed', { exact: true })).toBeVisible({
-      timeout: 60000,
-    })
+    // Both the run-level status Tag and the (single) step's status Tag read
+    // "completed", so target the first (the run-level header tag).
+    await expect(
+      page.getByText('completed', { exact: true }).first(),
+    ).toBeVisible({ timeout: 60000 })
   })
 })

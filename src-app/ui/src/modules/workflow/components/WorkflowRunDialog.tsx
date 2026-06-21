@@ -155,8 +155,11 @@ export function WorkflowRunDialog({
       )}
       {!conversationId && (
         <div className="mt-3 flex flex-col gap-1">
-          <Text className="text-xs">Model</Text>
+          <Text className="text-xs" id="workflow-run-model-label">
+            Model
+          </Text>
           <Select
+            aria-label="Model"
             value={modelId}
             onChange={setModelId}
             options={modelOptions}

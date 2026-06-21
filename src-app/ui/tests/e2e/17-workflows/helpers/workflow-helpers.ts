@@ -7,7 +7,7 @@ import { gzipSync } from 'node:zlib'
  * the projects tests can read these at a glance.
  *
  * Routes (from `src/modules/workflow/module.tsx`):
- *   - user list:  `/workflows`                  (perm: workflows::read)
+ *   - user list:  `/settings/workflows`         (perm: workflows::read; A2 moved it under settings)
  *   - admin page: `/settings/workflows-admin`   (perm: workflows::manage_system)
  *
  * Both pages render their title via `SettingsPageContainer`, which emits
@@ -21,7 +21,7 @@ import { gzipSync } from 'node:zlib'
 // component has mounted and the store hydration the next assertions
 // need is already in flight.
 export async function goToWorkflowsPage(page: Page, baseURL: string) {
-  await page.goto(`${baseURL}/workflows`)
+  await page.goto(`${baseURL}/settings/workflows`)
   await page
     .getByRole('heading', { level: 4, name: 'Workflows', exact: true })
     .first()
