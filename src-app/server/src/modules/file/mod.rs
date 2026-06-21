@@ -13,6 +13,7 @@ pub mod available_files;
 pub mod chat_extension;
 pub mod config;
 pub mod handlers;
+pub mod ingest;
 pub mod models;
 pub mod permissions;
 pub mod processing;

@@ -83,11 +83,9 @@ pub async fn submit_elicit(
     }
 
     // Validate the response against the persisted schema (plan §3:
-    // "Validated against the schema → 422 on mismatch"). Lightweight
-    // structural check — type + required-keys — covers the simple object
-    // schemas elicit uses ({proceed: boolean, ...}). A full JSON Schema
-    // engine (jsonschema-rs) is a future upgrade; not pulled in as a
-    // dependency for this single call site.
+    // "Validated against the schema → 422 on mismatch"). E5: full JSON-Schema
+    // validation via `validate_response_shape` (enum/pattern/const/nested/…),
+    // falling back to a structural check only for a malformed authoring schema.
     if let Err(msg) = validate_response_shape(&pending.schema, &req.response) {
         return Err::<_, (StatusCode, AppError)>((AppError::new(
             StatusCode::UNPROCESSABLE_ENTITY,
@@ -124,14 +122,44 @@ pub async fn submit_elicit(
     }
 }
 
-/// Lightweight structural validation of a value against a JSON Schema.
-/// Checks the top-level `type` + `required` keys + each declared
-/// property's primitive type + array `minItems` / `maxItems`. Not a full
-/// JSON Schema engine — sufficient for the simple object schemas elicit
-/// steps use AND for the `matches_schema:` assertion mode in workflow
-/// `tests/*.yaml` fixtures (B6 — see plan §7). Shared rather than
-/// duplicated so the two call sites stay in lockstep.
+/// Validate a value against a JSON Schema. E5: a full JSON-Schema engine (the
+/// `jsonschema` crate — `enum` / `pattern` / `const` / nested objects+arrays /
+/// `oneOf` / `minItems` / …). On a malformed AUTHORING schema (one that doesn't
+/// compile as JSON Schema) it falls back to the lightweight structural check
+/// below, so a bad schema never crashes or blocks the responder. Shared by the
+/// elicit submit handler (422 on mismatch) and the `matches_schema:`
+/// test-assertion mode (B6) so both stay in lockstep.
 pub(crate) fn validate_response_shape(
+    schema: &serde_json::Value,
+    response: &serde_json::Value,
+) -> Result<(), String> {
+    // A non-object schema (`true`, absent, …) carries no constraints.
+    if !schema.is_object() {
+        return Ok(());
+    }
+    match jsonschema::validator_for(schema) {
+        Ok(validator) => {
+            // Collect up to 5 errors so the reviewer sees actionable detail
+            // without an unbounded message.
+            let msgs: Vec<String> = validator
+                .iter_errors(response)
+                .take(5)
+                .map(|e| e.to_string())
+                .collect();
+            if msgs.is_empty() {
+                Ok(())
+            } else {
+                Err(msgs.join("; "))
+            }
+        }
+        Err(_) => validate_response_shape_lightweight(schema, response),
+    }
+}
+
+/// Lightweight structural fallback: top-level `type` + `required` keys + each
+/// declared property's primitive type + array `minItems`/`maxItems`. Used only
+/// when the schema isn't valid JSON Schema (so `validator_for` fails).
+fn validate_response_shape_lightweight(
     schema: &serde_json::Value,
     response: &serde_json::Value,
 ) -> Result<(), String> {
@@ -229,4 +257,64 @@ pub fn submit_elicit_docs(op: TransformOperation) -> TransformOperation {
         .response_with::<403, (), _>(|r| r.description("Forbidden"))
         .response_with::<404, (), _>(|r| r.description("Run not found"))
         .response_with::<410, (), _>(|r| r.description("Elicitation already resolved"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn full_jsonschema_enforces_enum_required_and_type() {
+        // E5: the jsonschema engine enforces enum/type/required — beyond the old
+        // lightweight structural check.
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "decision": { "type": "string", "enum": ["include", "exclude"] },
+                "score": { "type": "number" }
+            },
+            "required": ["decision"]
+        });
+        assert!(
+            validate_response_shape(&schema, &json!({"decision": "include", "score": 0.9})).is_ok()
+        );
+        // enum violation
+        assert!(validate_response_shape(&schema, &json!({"decision": "maybe"})).is_err());
+        // type violation
+        assert!(
+            validate_response_shape(&schema, &json!({"decision": "include", "score": "hi"}))
+                .is_err()
+        );
+        // missing required
+        assert!(validate_response_shape(&schema, &json!({"score": 1})).is_err());
+    }
+
+    #[test]
+    fn nested_array_of_objects_validated() {
+        // The edited-table case: rows are array-of-object; full jsonschema
+        // recurses into items (the old lightweight check did not).
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "rows": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": { "include": { "type": "boolean" } },
+                        "required": ["include"]
+                    }
+                }
+            }
+        });
+        assert!(validate_response_shape(&schema, &json!({"rows": [{"include": true}]})).is_ok());
+        // nested per-row type violation
+        assert!(validate_response_shape(&schema, &json!({"rows": [{"include": "yes"}]})).is_err());
+    }
+
+    #[test]
+    fn non_object_schema_is_permissive() {
+        // A `true` / non-object schema carries no constraints.
+        assert!(validate_response_shape(&json!(true), &json!({"anything": 1})).is_ok());
+    }
 }

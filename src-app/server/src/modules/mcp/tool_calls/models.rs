@@ -49,6 +49,8 @@ pub enum McpToolCallSource {
     Approval,
     /// A tool call made by a sampling-capable session.
     Sampling,
+    /// A tool call made by a workflow `tool` step (the workflow ToolDispatcher).
+    Workflow,
 }
 
 impl McpToolCallSource {
@@ -59,6 +61,7 @@ impl McpToolCallSource {
             McpToolCallSource::Always => "always",
             McpToolCallSource::Approval => "approval",
             McpToolCallSource::Sampling => "sampling",
+            McpToolCallSource::Workflow => "workflow",
         }
     }
 }
@@ -120,6 +123,8 @@ pub struct CreateMcpToolCall {
     pub started_at: time::OffsetDateTime,
     pub finished_at: Option<time::OffsetDateTime>,
     pub duration_ms: Option<i64>,
+    /// E4: set when a workflow `tool` step made this call (else `None`).
+    pub workflow_run_id: Option<Uuid>,
 }
 
 /// Paginated list response (mirrors `McpServerListResponse`).
@@ -146,4 +151,8 @@ pub struct McpCallContext {
     pub source: McpToolCallSource,
     pub server_name: String,
     pub is_built_in: bool,
+    /// E4: the workflow run this call belongs to, when made by a workflow
+    /// `tool` step. Stamped post-creation via `McpSession::set_workflow_run`
+    /// (so the ~5 other `get_or_create_with_context` call sites are untouched).
+    pub workflow_run_id: Option<Uuid>,
 }

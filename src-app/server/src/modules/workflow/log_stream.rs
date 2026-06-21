@@ -74,13 +74,31 @@ pub async fn read_log(
         base.join(&kind)
     };
 
-    let bytes = tokio::fs::read(&path).await.map_err(|e| {
-        AppError::new(
-            StatusCode::NOT_FOUND,
-            "WORKFLOW_LOG_MISSING",
-            format!("log file missing: {e}"),
-        )
-    })?;
+    let bytes = match tokio::fs::read(&path).await {
+        Ok(b) => b,
+        Err(_) => {
+            // A7: the staging dir was reclaimed (server restart / 30-day reaper)
+            // — fall back to the durable body persisted in step_logs_json. Same
+            // owner gate already applied above.
+            match row
+                .step_logs_json
+                .get(&step_id)
+                .and_then(|m| m.get(&kind))
+                .and_then(|e| e.get("body"))
+                .and_then(|b| b.as_str())
+            {
+                Some(s) => s.as_bytes().to_vec(),
+                None => {
+                    return Err::<_, (StatusCode, AppError)>((AppError::new(
+                        StatusCode::NOT_FOUND,
+                        "WORKFLOW_LOG_MISSING",
+                        "log no longer available",
+                    ))
+                    .into());
+                }
+            }
+        }
+    };
     let total_len = bytes.len() as u64;
     let body = Body::from(bytes);
     let ct = if kind == "trace" {

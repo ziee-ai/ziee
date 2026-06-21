@@ -16,7 +16,7 @@
 
 use axum::{
     body::Body,
-    extract::State,
+    extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::Response,
     routing::{get, post},
@@ -91,6 +91,12 @@ struct MockState {
     /// Own base URL (e.g. `http://127.0.0.1:PORT/`) for building the absolute
     /// `resource_metadata` URL in the `WWW-Authenticate` challenge.
     base_url: String,
+    /// Byte-download fixtures served at `GET /download/{name}`, keyed by name.
+    /// Used by the workflow `tool`-step `resource_link is_saved:false` path —
+    /// the tool returns a `resource_link` whose `uri` points at this route and
+    /// `persist_links` fetches the bytes over HTTP. Value is `(content_type,
+    /// bytes)`.
+    downloads: Mutex<HashMap<String, (String, Vec<u8>)>>,
 }
 
 #[derive(Debug, Clone)]
@@ -132,6 +138,7 @@ impl MockMcpServer {
             oauth_expected_client: Mutex::new(None),
             force_401_on_next_get: Mutex::new(false),
             base_url: base_url.clone(),
+            downloads: Mutex::new(HashMap::new()),
         });
 
         let app = Router::new()
@@ -139,6 +146,7 @@ impl MockMcpServer {
             .route("/.well-known/oauth-protected-resource", get(handle_prm))
             .route("/.well-known/oauth-authorization-server", get(handle_as_metadata))
             .route("/token", post(handle_token))
+            .route("/download/{name}", get(handle_download))
             .with_state(state.clone());
 
         let handle = tokio::spawn(async move {
@@ -162,6 +170,25 @@ impl MockMcpServer {
             .entry(method.to_string())
             .or_default()
             .push(response);
+    }
+
+    /// Register a byte-download fixture served at `GET /download/{name}`.
+    /// The workflow `tool`-step `resource_link is_saved:false` path fetches
+    /// these over HTTP via `persist_links`. Returns nothing; use
+    /// [`download_url`](Self::download_url) to build the `resource_link` `uri`.
+    pub fn on_download(&self, name: &str, content_type: &str, bytes: &[u8]) {
+        self.state
+            .downloads
+            .lock()
+            .unwrap()
+            .insert(name.to_string(), (content_type.to_string(), bytes.to_vec()));
+    }
+
+    /// Absolute URL of a registered download fixture
+    /// (`http://127.0.0.1:PORT/download/{name}`). Use this as the `uri` of a
+    /// `resource_link` content block so the dispatcher fetches the bytes.
+    pub fn download_url(&self, name: &str) -> String {
+        format!("{}download/{}", self.base_url, name)
     }
 
     /// Queue a response for a **resume** GET (one that carries
@@ -506,6 +533,26 @@ async fn handle_token(
         "token_type": "Bearer",
         "expires_in": 3600,
     }))
+}
+
+/// Serve a registered byte-download fixture (the `resource_link is_saved:false`
+/// fetch target). 404 if the name isn't registered.
+async fn handle_download(
+    State(state): State<Arc<MockState>>,
+    Path(name): Path<String>,
+) -> Response {
+    let entry = state.downloads.lock().unwrap().get(&name).cloned();
+    match entry {
+        Some((content_type, bytes)) => Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", content_type)
+            .body(Body::from(bytes))
+            .unwrap(),
+        None => Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Body::from(""))
+            .unwrap(),
+    }
 }
 
 /// Build a 200 application/json response from a JSON value.

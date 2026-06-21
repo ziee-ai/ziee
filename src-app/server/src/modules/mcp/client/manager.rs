@@ -118,6 +118,9 @@ impl McpSessionManager {
             source,
             server_name: server.name.clone(),
             is_built_in: server.is_built_in,
+            // Stamped post-creation by the workflow dispatcher (set_workflow_run);
+            // every other caller leaves it None.
+            workflow_run_id: None,
         };
 
         // For built-in servers: create ephemeral session with dynamic headers
@@ -163,6 +166,14 @@ impl McpSessionManager {
         let mut session = McpSession::new(server).await?;
         session.set_call_context(call_ctx);
         Ok(Arc::new(RwLock::new(session)))
+    }
+
+    /// The deployment JWT secret. Used by the workflow `ToolDispatcher` (E9) so
+    /// it can pass a secret to `resource_link::persist_links` — letting a tool's
+    /// token-based `http://` loopback resource_links be fetched + persisted, not
+    /// just in-process `ziee://` host-path links.
+    pub fn jwt_secret(&self) -> &str {
+        &self.config.jwt.secret
     }
 
     /// Generate a short-lived JWT for internal service-to-service calls.

@@ -16,11 +16,16 @@
 
 mod access_and_durability;
 mod elicit;
+mod elicit_data_seeding;
 mod install_from_hub;
 mod real_llm;
+mod real_stack;
+mod run_history_and_delete;
 mod run_mocked;
+mod run_model;
 mod sandbox_run;
 mod system_endpoints;
+mod tool_step;
 mod validate_and_dry_run;
 
 use std::io::Write;
@@ -306,6 +311,102 @@ pub async fn stub_conversation(
     .await;
     let conv_id = Uuid::parse_str(conv["id"].as_str().unwrap()).unwrap();
     (stub, conv_id)
+}
+
+/// A user with the workflow permissions PLUS `mcp_servers::{create,read}` so
+/// the same user can both register the in-process `MockMcpServer` as a user MCP
+/// server AND run a workflow whose `tool` step calls it. Mirrors
+/// `workflow_user` with the extra MCP grants the A6 tool-step tests need.
+pub async fn workflow_tool_user(
+    server: &TestServer,
+    name: &str,
+) -> crate::common::test_helpers::TestUser {
+    create_user_with_permissions(
+        server,
+        name,
+        &[
+            "workflows::read",
+            "workflows::install",
+            "workflows::manage",
+            "workflows::execute",
+            "mcp_servers::create",
+            "mcp_servers::read",
+        ],
+    )
+    .await
+}
+
+/// Register the in-process `MockMcpServer` (`tests/mcp/fixtures`) as a
+/// user-owned HTTP MCP server. Returns `(server_id, server_name)` — the name is
+/// what a `tool` step's `server:` field references (resolved at run time against
+/// the user's accessible set). 201 expected.
+pub async fn register_mock_as_user_server(
+    server: &TestServer,
+    token: &str,
+    name: &str,
+    url: &str,
+) -> (String, String) {
+    let res = reqwest::Client::new()
+        .post(server.api_url("/mcp/servers"))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&serde_json::json!({
+            "name": name,
+            "display_name": "Workflow tool-step mock",
+            "transport_type": "http",
+            "url": url,
+            "enabled": true,
+        }))
+        .send()
+        .await
+        .expect("register mock server");
+    let status = res.status();
+    let body = res.text().await.unwrap_or_default();
+    assert_eq!(status, 201, "register mock server: {status}: {body}");
+    let row: Json = serde_json::from_str(&body).expect("parse mcp server row");
+    (
+        row["id"].as_str().expect("server id").to_string(),
+        name.to_string(),
+    )
+}
+
+/// Create a stub model + grant `user_id` access, returning
+/// `(stub_guard, model_id)` WITHOUT a conversation. Keep the guard alive for
+/// the run's duration (the runner snapshots the model at run start). Used by the
+/// A1 standalone-run + A6 tool-step tests that run with an explicit `model_id`
+/// and `conversation_id = None`.
+pub async fn stub_model_for(
+    server: &TestServer,
+    user_id: &str,
+) -> (crate::common::stub_engine::StubEngine, Uuid) {
+    let (stub, model) = crate::chat::helpers::create_stub_model(server, user_id).await;
+    let model_id = Uuid::parse_str(model["id"].as_str().expect("model id")).unwrap();
+    (stub, model_id)
+}
+
+/// Open a small pool on the per-test DB for direct-SQL assertions.
+pub async fn db_pool(server: &TestServer) -> sqlx::PgPool {
+    sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .expect("connect test db")
+}
+
+/// Count `files` rows linked to a run (`workflow_run_id = run_id`) with a given
+/// `created_by`. The A3/A6/A5 durable-artifact + delete tests assert on this.
+pub async fn count_files_for_run(
+    pool: &sqlx::PgPool,
+    run_id: Uuid,
+    created_by: &str,
+) -> i64 {
+    sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM files WHERE workflow_run_id = $1 AND created_by = $2",
+    )
+    .bind(run_id)
+    .bind(created_by)
+    .fetch_one(pool)
+    .await
+    .expect("count files for run")
 }
 
 /// Poll GET /workflow-runs/{run_id} until terminal (completed / failed /

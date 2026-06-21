@@ -1,15 +1,18 @@
 //! Real-LLM, multi-kind workflow run. Drives a COMPLEX workflow end-to-end
-//! against a REAL provider (Groq/Anthropic/etc. from tests/.env.test) — no
-//! mocks for the llm steps — exercising `llm` + `llm_map` (fan-out) +
+//! against a REAL provider (Groq-first; see `get_or_create_groq_first_model`) —
+//! no mocks for the llm steps — exercising `llm` + `llm_map` (fan-out) +
 //! `elicit` (answered mid-run) + a downstream `llm` in a single DAG, and
 //! asserts it actually completes with real model output.
 //!
-//! Soft-skips (eprintln + early return) when no provider key is set, the
-//! same pattern as tests/project/injection_test.rs — with tests/.env.test
-//! sourced it RUNS (per `feedback_no_ignore_unless_platform`).
+//! NO soft-skip: the Groq-first helper PANICS if no provider key is set
+//! (`feedback_no_ignore_unless_platform` — `tests/.env.test` ships working LLM
+//! keys, so a real-LLM test must RUN, not silently pass). Prefer Groq
+//! (`llama-3.3-70b-versatile`) — cheap + tool-capable; falls back to
+//! ANTHROPIC/OPENAI/GEMINI only when no Groq key is present.
 //!
 //! Sandbox (`kind: sandbox`) steps are covered separately in a rootfs-gated
-//! test — they need a code_sandbox rootfs that isn't in the default suite.
+//! test (`real_stack.rs` combines all kinds incl. sandbox) — they need a
+//! code_sandbox rootfs that isn't in the default suite.
 
 use std::time::Duration;
 
@@ -66,12 +69,6 @@ outputs:
     expose: full
 "#;
 
-fn have_provider_key() -> bool {
-    ["ANTHROPIC_API_KEY", "GROQ_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY"]
-        .iter()
-        .any(|k| std::env::var(k).is_ok())
-}
-
 /// Poll GET /workflow-runs/{id} until `pending_elicitation_json` is set,
 /// returning the elicitation_id. Panics if the run terminates first.
 async fn wait_for_elicitation(server: &TestServer, token: &str, run_id: Uuid) -> Uuid {
@@ -104,20 +101,14 @@ async fn wait_for_elicitation(server: &TestServer, token: &str, run_id: Uuid) ->
 
 #[tokio::test]
 async fn real_llm_complex_workflow_llm_map_and_elicit_completes() {
-    if !have_provider_key() {
-        eprintln!(
-            "Skipping real_llm_complex_workflow — no provider key \
-             (ANTHROPIC/GROQ/OPENAI/GEMINI). Source tests/.env.test to run."
-        );
-        return;
-    }
-
     let server = TestServer::start().await;
     let user = workflow_user(&server, "wf_real_llm_user").await;
 
-    // Real provider + model (Groq/Anthropic/… from the env), granted to the
-    // user, then a conversation bound to it (the run snapshots its model).
-    let model = crate::chat::helpers::get_or_create_test_model(&server, &user.user_id).await;
+    // Real provider + model — Groq-first (cheap, tool-capable
+    // `llama-3.3-70b-versatile`), granted to the user, then a conversation
+    // bound to it (the run snapshots its model). PANICS if no provider key is
+    // set (NO soft-skip): `tests/.env.test` ships keys, so this must RUN.
+    let model = crate::chat::helpers::get_or_create_groq_first_model(&server, &user.user_id).await;
     let model_id = Uuid::parse_str(model["id"].as_str().expect("model id")).expect("uuid");
     let conv = crate::chat::helpers::create_conversation(
         &server,

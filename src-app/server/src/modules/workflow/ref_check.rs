@@ -156,7 +156,20 @@ pub fn check_typed_refs(workflow: &WorkflowDef) -> Vec<ValidationError> {
                     check_body(&format!("{}.stdin", s.id), st, &mut out);
                 }
             }
-            StepConfig::Elicit { .. } => {}
+            StepConfig::Elicit { data, .. } => {
+                // D2: the `data:` seed is template-rendered (like tool
+                // arguments) — scan the serialized blob for unknown refs.
+                if let Some(d) = data {
+                    check_body(&format!("{}.data", s.id), &d.to_string(), &mut out);
+                }
+            }
+            StepConfig::Tool { arguments, .. } => {
+                // Scan the serialized arguments for `{{ }}` refs. Locations are
+                // approximate (the whole arguments blob), but unknown step/input
+                // refs are still surfaced as typed-ref diagnostics.
+                let serialized = arguments.to_string();
+                check_body(&format!("{}.arguments", s.id), &serialized, &mut out);
+            }
         }
         if let Some(msg) = &s.message {
             check_body(&format!("{}.message", s.id), msg, &mut out);

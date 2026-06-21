@@ -137,5 +137,8 @@ pub struct CreateWorkflowRun {
     pub model_id: Option<Uuid>,
     pub sandbox_flavor: Option<String>,
     pub run_kind: String,
+    /// `"manual"` (REST /run, workflow page) or `"conversation"` (LLM tool
+    /// call). Drives the run-history "trigger" badge.
+    pub invocation_source: String,
     pub inputs_json: serde_json::Value,
 }

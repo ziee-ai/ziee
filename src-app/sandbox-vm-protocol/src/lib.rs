@@ -80,6 +80,20 @@ pub struct ExecRequest {
     /// host owns the policy so it stays single-source (and config-driven later).
     #[serde(default)]
     pub cgroup: Option<CgroupLimits>,
+    /// Guest-local artifact-collection dirs (macOS libkrun virtio-fs CREATE-EPERM
+    /// workaround). For each entry, the agent provisions a **guest-local writable
+    /// dir** (under the guest's `/tmp` tmpfs) at that path BEFORE running bwrap
+    /// (so a sandboxed `open(O_CREAT)` succeeds — virtio-fs RW binds fail CREATE
+    /// with EPERM on libkrun's broken credential switching; see
+    /// `docker/sbx-releases#51`, `containers/podman#27679`). The
+    /// bwrap argv binds these tmpfs dirs (not virtio-fs paths) as the RW mounts.
+    /// AFTER the command exits, the agent walks each dir and streams every regular
+    /// file back as an [`Frame::ArtifactFile`] (with `mount_index` = the entry's
+    /// position in this vec) BEFORE [`Frame::Exit`]; the host writes them into the
+    /// real host artifact dir. Empty for non-macOS backends and chat-side execs →
+    /// byte-identical behavior.
+    #[serde(default)]
+    pub collect_artifacts: Vec<String>,
 }
 
 /// cgroup v2 resource limits the guest agent applies per exec. Values mirror
@@ -219,6 +233,23 @@ pub enum Frame {
     Ping,
     /// either direction: response to `Ping`.
     Pong,
+
+    // ---- one-shot artifact write-back (tag 15) ----
+    /// guest → host: one collected artifact file from a guest-local
+    /// artifact-collection tmpfs dir (see `ExecRequest::collect_artifacts`).
+    /// Emitted in the one-shot path AFTER the command exits and BEFORE
+    /// `Exit`. `mount_index` is the dir's index in `collect_artifacts`;
+    /// `rel_path` is the file's path relative to that dir (forward-slash,
+    /// no leading slash); `data` is the file's full contents (capped by the
+    /// guest at [`MAX_FRAME_PAYLOAD`] per file). The host writes `data` to
+    /// `<host_artifact_dir for mount_index>/<rel_path>` on its OWN
+    /// filesystem (which works — only the guest's virtio-fs CREATE is broken).
+    /// Wire payload: `[u32 BE mount_index][u32 BE rel_path_len][rel_path utf8][data]`.
+    ArtifactFile {
+        mount_index: u32,
+        rel_path: String,
+        data: Vec<u8>,
+    },
 }
 
 const TAG_EXEC: u8 = 1;
@@ -235,6 +266,7 @@ const TAG_PROCESS_EXIT: u8 = 11;
 const TAG_KILL_PROCESS: u8 = 12;
 const TAG_PING: u8 = 13;
 const TAG_PONG: u8 = 14;
+const TAG_ARTIFACT_FILE: u8 = 15;
 
 /// Length of the `u64 BE` handle prefix on `Stdin`/`ProcessStdout`/
 /// `ProcessStderr` payloads.
@@ -299,6 +331,14 @@ pub fn encode(frame: &Frame) -> Vec<u8> {
         ),
         Frame::Ping => (TAG_PING, Vec::new()),
         Frame::Pong => (TAG_PONG, Vec::new()),
+        Frame::ArtifactFile {
+            mount_index,
+            rel_path,
+            data,
+        } => (
+            TAG_ARTIFACT_FILE,
+            encode_artifact_file(*mount_index, rel_path, data),
+        ),
     };
     let mut out = Vec::with_capacity(HEADER_LEN + payload.len());
     out.push(tag);
@@ -314,6 +354,39 @@ fn encode_handle_bytes(handle: u64, bytes: &[u8]) -> Vec<u8> {
     payload.extend_from_slice(&handle.to_be_bytes());
     payload.extend_from_slice(bytes);
     payload
+}
+
+/// Pack `[u32 BE mount_index][u32 BE rel_path_len][rel_path utf8][data]`
+/// for the `ArtifactFile` frame.
+fn encode_artifact_file(mount_index: u32, rel_path: &str, data: &[u8]) -> Vec<u8> {
+    let rel = rel_path.as_bytes();
+    let mut payload = Vec::with_capacity(8 + rel.len() + data.len());
+    payload.extend_from_slice(&mount_index.to_be_bytes());
+    payload.extend_from_slice(&(rel.len() as u32).to_be_bytes());
+    payload.extend_from_slice(rel);
+    payload.extend_from_slice(data);
+    payload
+}
+
+/// Inverse of [`encode_artifact_file`]. Returns `BadJson` on a truncated /
+/// malformed payload (re-using the existing payload-shape error).
+fn decode_artifact_file(payload: &[u8]) -> Result<(u32, String, Vec<u8>), ProtocolError> {
+    if payload.len() < 8 {
+        return Err(ProtocolError::BadJson);
+    }
+    let mount_index = u32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]);
+    let rel_len = u32::from_be_bytes([payload[4], payload[5], payload[6], payload[7]]) as usize;
+    let rel_start: usize = 8;
+    let rel_end = rel_start
+        .checked_add(rel_len)
+        .ok_or(ProtocolError::BadJson)?;
+    if payload.len() < rel_end {
+        return Err(ProtocolError::BadJson);
+    }
+    let rel_path =
+        String::from_utf8(payload[rel_start..rel_end].to_vec()).map_err(|_| ProtocolError::BadJson)?;
+    let data = payload[rel_end..].to_vec();
+    Ok((mount_index, rel_path, data))
 }
 
 /// Inverse of [`encode_handle_bytes`]: split out the handle prefix and
@@ -401,6 +474,14 @@ impl Decoder {
             ),
             TAG_PING => Frame::Ping,
             TAG_PONG => Frame::Pong,
+            TAG_ARTIFACT_FILE => {
+                let (mount_index, rel_path, data) = decode_artifact_file(&payload)?;
+                Frame::ArtifactFile {
+                    mount_index,
+                    rel_path,
+                    data,
+                }
+            }
             other => return Err(ProtocolError::UnknownTag(other)),
         };
         Ok(Some(frame))
@@ -420,6 +501,7 @@ mod tests {
             timeout_ms: 600_000,
             seccomp_fd: Some(10),
             cgroup: Some(CgroupLimits::default_policy()),
+            collect_artifacts: vec!["/artifacts-out/0".into()],
         })
     }
 
@@ -432,6 +514,21 @@ mod tests {
             Frame::Exit(ExitStatus { code: 0, timed_out: false }),
             Frame::Exit(ExitStatus { code: -1, timed_out: true }),
             Frame::Shutdown,
+            Frame::ArtifactFile {
+                mount_index: 0,
+                rel_path: "upper.txt".into(),
+                data: b"ABC".to_vec(),
+            },
+            Frame::ArtifactFile {
+                mount_index: 3,
+                rel_path: "nested/dir/file.bin".into(),
+                data: vec![0, 1, 2, 255, 254],
+            },
+            Frame::ArtifactFile {
+                mount_index: 1,
+                rel_path: "empty".into(),
+                data: Vec::new(),
+            },
         ] {
             let mut d = Decoder::new();
             d.feed(&encode(&frame));
@@ -542,6 +639,54 @@ mod tests {
     }
 
     #[test]
+    fn artifact_file_byte_layout_is_index_len_path_data() {
+        // [u32 mount_index][u32 rel_path_len][rel_path][data]
+        let frame = Frame::ArtifactFile {
+            mount_index: 0x0102_0304,
+            rel_path: "a/b".into(),
+            data: vec![0xAA, 0xBB],
+        };
+        let wire = encode(&frame);
+        // tag(1) + len(4) + index(4) + pathlen(4) + path(3) + data(2) = 18
+        assert_eq!(wire.len(), 1 + 4 + 4 + 4 + 3 + 2);
+        assert_eq!(wire[0], TAG_ARTIFACT_FILE);
+        assert_eq!(&wire[1..5], &((4 + 4 + 3 + 2) as u32).to_be_bytes()); // payload len = 13
+        assert_eq!(&wire[5..9], &0x0102_0304u32.to_be_bytes()); // mount_index
+        assert_eq!(&wire[9..13], &3u32.to_be_bytes()); // rel_path_len
+        assert_eq!(&wire[13..16], b"a/b");
+        assert_eq!(&wire[16..], &[0xAAu8, 0xBB]);
+    }
+
+    #[test]
+    fn rejects_artifact_file_shorter_than_header() {
+        // A TAG_ARTIFACT_FILE frame with a 3-byte payload (< the 8-byte
+        // index+len header) → decoder must reject, not panic.
+        let payload = vec![0u8, 1, 2];
+        let mut bytes = vec![TAG_ARTIFACT_FILE];
+        bytes.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+        bytes.extend_from_slice(&payload);
+        let mut d = Decoder::new();
+        d.feed(&bytes);
+        assert_eq!(d.next_frame(), Err(ProtocolError::BadJson));
+    }
+
+    #[test]
+    fn rejects_artifact_file_truncated_rel_path() {
+        // rel_path_len claims 100 bytes but the payload only has 2 after
+        // the header → reject.
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&0u32.to_be_bytes()); // mount_index
+        payload.extend_from_slice(&100u32.to_be_bytes()); // rel_path_len (lie)
+        payload.extend_from_slice(b"ab"); // only 2 bytes
+        let mut bytes = vec![TAG_ARTIFACT_FILE];
+        bytes.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+        bytes.extend_from_slice(&payload);
+        let mut d = Decoder::new();
+        d.feed(&bytes);
+        assert_eq!(d.next_frame(), Err(ProtocolError::BadJson));
+    }
+
+    #[test]
     fn rejects_handle_frame_shorter_than_eight_bytes() {
         // Hand-craft a TAG_STDIN frame with a 3-byte payload (less than the
         // 8-byte handle prefix) → decoder must reject, not panic.
@@ -564,7 +709,7 @@ mod tests {
             TAG_EXEC, TAG_STDOUT, TAG_STDERR, TAG_EXIT, TAG_SHUTDOWN,
             TAG_START_PROCESS, TAG_STARTED, TAG_STDIN, TAG_PROCESS_STDOUT,
             TAG_PROCESS_STDERR, TAG_PROCESS_EXIT, TAG_KILL_PROCESS,
-            TAG_PING, TAG_PONG,
+            TAG_PING, TAG_PONG, TAG_ARTIFACT_FILE,
         ];
         let mut seen = std::collections::HashSet::new();
         for t in tags {

@@ -2437,6 +2437,7 @@ export type SSEDownloadProgressEvent = {
 }
 
 export interface SSEElicitationRequiredData {
+  data?: any
   deadline_at: string
   elicitation_id: string
   message: string
@@ -3405,15 +3406,32 @@ export interface WorkflowRun {
   workflow_id: string
 }
 
+export interface WorkflowRunListResponse {
+  runs: WorkflowRunSummary[]
+}
+
 export interface WorkflowRunRequest {
+  capture_logs?: boolean
   conversation_id?: string
   inputs?: any
   mocks?: any
+  model_id?: string
 }
 
 export interface WorkflowRunStartResponse {
   run_id: string
   status: string
+}
+
+export interface WorkflowRunSummary {
+  conversation_id?: string
+  created_at: string
+  id: string
+  invocation_source: string
+  model_id?: string
+  status: string
+  total_tokens: number
+  workflow_id: string
 }
 
 // =============================================================================
@@ -3985,6 +4003,7 @@ export const ApiEndpoints = {
   'WebSearch.updateSettings': 'PUT /api/web-search/settings',
   'Workflow.cancelRun': 'POST /api/workflow-runs/{run_id}/cancel',
   'Workflow.delete': 'DELETE /api/workflows/{id}',
+  'Workflow.deleteRun': 'DELETE /api/workflow-runs/{run_id}',
   'Workflow.deleteSystem': 'DELETE /api/workflows/system/{id}',
   'Workflow.dryRun': 'POST /api/workflows/{id}/dry-run',
   'Workflow.get': 'GET /api/workflows/{id}',
@@ -3993,6 +4012,7 @@ export const ApiEndpoints = {
   'Workflow.import': 'POST /api/workflows/import',
   'Workflow.importSystem': 'POST /api/workflows/system/import',
   'Workflow.list': 'GET /api/workflows',
+  'Workflow.listRuns': 'GET /api/workflows/{id}/runs',
   'Workflow.listSystem': 'GET /api/workflows/system',
   'Workflow.readArtifact': 'GET /api/workflow-runs/{run_id}/artifact/{step_id}/{filename}',
   'Workflow.readLog': 'GET /api/workflow-runs/{run_id}/logs/{step_id}/{kind}',
@@ -4317,6 +4337,7 @@ export type ApiEndpointParameters = {
   'WebSearch.updateSettings': UpdateWebSearchSettingsRequest
   'Workflow.cancelRun': { run_id: string }
   'Workflow.delete': { id: string }
+  'Workflow.deleteRun': { run_id: string }
   'Workflow.deleteSystem': { id: string }
   'Workflow.dryRun': { id: string } & DryRunRequest
   'Workflow.get': { id: string }
@@ -4325,6 +4346,7 @@ export type ApiEndpointParameters = {
   'Workflow.import': { name?: string; scope?: string } & FormData
   'Workflow.importSystem': { name?: string; scope?: string } & FormData
   'Workflow.list': void
+  'Workflow.listRuns': { id: string }
   'Workflow.listSystem': void
   'Workflow.readArtifact': { run_id: string; step_id: string; filename: string }
   'Workflow.readLog': { run_id: string; step_id: string; kind: string }
@@ -4649,6 +4671,7 @@ export type ApiEndpointResponses = {
   'WebSearch.updateSettings': WebSearchSettings
   'Workflow.cancelRun': CancelAckResponse
   'Workflow.delete': void
+  'Workflow.deleteRun': void
   'Workflow.deleteSystem': void
   'Workflow.dryRun': DryRunResult
   'Workflow.get': Workflow
@@ -4657,6 +4680,7 @@ export type ApiEndpointResponses = {
   'Workflow.import': Workflow
   'Workflow.importSystem': Workflow
   'Workflow.list': WorkflowListResponse
+  'Workflow.listRuns': WorkflowRunListResponse
   'Workflow.listSystem': WorkflowListResponse
   'Workflow.readArtifact': any
   'Workflow.readLog': any

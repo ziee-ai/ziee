@@ -43,6 +43,8 @@ interface WorkflowState {
     inputs: any,
     conversationId?: string,
     mocks?: any,
+    modelId?: string,
+    captureLogs?: boolean,
   ) => Promise<WorkflowRunStartResponse>
   deleteWorkflow: (id: string) => Promise<void>
   getWorkflow: (id: string) => Promise<Workflow>
@@ -172,12 +174,16 @@ export const useWorkflowStore = create<WorkflowState>()(
           inputs: any,
           conversationId?: string,
           mocks?: any,
+          modelId?: string,
+          captureLogs?: boolean,
         ): Promise<WorkflowRunStartResponse> => {
           return await ApiClient.Workflow.run({
             id,
             inputs,
             ...(conversationId ? { conversation_id: conversationId } : {}),
             ...(mocks ? { mocks } : {}),
+            ...(modelId ? { model_id: modelId } : {}),
+            ...(captureLogs ? { capture_logs: true } : {}),
           })
         },
 

@@ -60,6 +60,18 @@ const EXTRA_MOUNT_TAG_PREFIX: &str = "host-mount-";
 /// Chunk size for streaming child stdout/stderr.
 const READ_CHUNK: usize = 64 * 1024;
 
+/// Per-file cap on a streamed artifact (mirrors the runner's
+/// `PER_FILE_ARTIFACT_CAP_BYTES` so the guest never streams a file the host
+/// would only reject; also keeps each frame under `MAX_FRAME_PAYLOAD`).
+#[cfg(target_os = "linux")]
+const ARTIFACT_PER_FILE_CAP_BYTES: u64 = 10 * 1024 * 1024;
+
+/// Total cap across all streamed artifacts for one exec (mirrors the runner's
+/// `PER_RUN_ARTIFACT_CAP_BYTES`). A defense-in-depth backstop — the host also
+/// caps downstream.
+#[cfg(target_os = "linux")]
+const ARTIFACT_TOTAL_CAP_BYTES: u64 = 100 * 1024 * 1024;
+
 // Non-Linux stub so the bin can compile in a cargo workspace check
 // from a Mac/Windows host. Cross-compile to Linux for the real build.
 #[cfg(not(target_os = "linux"))]
@@ -417,6 +429,14 @@ where
         "agent: running bwrap"
     );
 
+    // macOS libkrun virtio-fs CREATE-EPERM workaround: provision each requested
+    // artifact-collection dir (under the guest's already-writable /tmp tmpfs)
+    // BEFORE bwrap runs, so a sandboxed `open(O_CREAT)`/`mkdir` there succeeds
+    // (a virtio-fs RW bind would fail CREATE with EPERM on libkrun). The bwrap
+    // argv binds THESE dirs as the RW mounts; we walk + stream them back after
+    // exit. No-op for the common (empty) case.
+    provision_artifact_tmpfs(&req.collect_artifacts);
+
     // Single writer task owns the write half; stdout/stderr readers + the exit
     // funnel frames through this channel so concurrent writes are serialized.
     let (tx, mut frame_rx) = mpsc::unbounded_channel::<Frame>();
@@ -532,10 +552,137 @@ where
     // Make sure all output is flushed before Exit.
     let _ = out_task.await;
     let _ = err_task.await;
+
+    // macOS virtio-fs CREATE-EPERM workaround: walk each artifact-collection
+    // tmpfs dir and stream its files back to the host (which writes them to the
+    // real host artifact dir — the host's own fs, which works). Sent BEFORE
+    // Exit so the host has every file before it tears down + collects. No-op
+    // for the common (empty) case → byte-identical to prior releases.
+    stream_collected_artifacts(&req.collect_artifacts, &tx);
+
     let _ = tx.send(Frame::Exit(ExitStatus { code, timed_out }));
     drop(tx);
     let _ = writer.await;
     Ok(())
+}
+
+/// Provision each artifact-collection dir so a sandboxed `open(O_CREAT)`/`mkdir`
+/// succeeds (libkrun virtio-fs CREATE fails EPERM — these dirs live UNDER the
+/// guest's already-writable `/tmp` tmpfs, NOT on the RO virtio-fs root, so the
+/// `mkdir` lands and the bwrap RW bind to it can be created in place). chmod
+/// 1777 so bwrap's uid-1001 workload can write files. Best-effort + Linux-only;
+/// a failure just means the dir behaves like the (broken) virtio-fs bind would
+/// have — no worse than before.
+#[cfg(target_os = "linux")]
+fn provision_artifact_tmpfs(dirs: &[String]) {
+    for dir in dirs {
+        if let Err(e) = std::fs::create_dir_all(dir) {
+            tracing::warn!("agent: mkdir artifact dir {dir} failed: {e}");
+            continue;
+        }
+        let c = std::ffi::CString::new(dir.as_str()).unwrap();
+        let rc = unsafe { libc::chmod(c.as_ptr(), 0o1777) };
+        if rc != 0 {
+            tracing::warn!(
+                "agent: chmod {dir} 1777 failed: {} — sandboxed artifact writes may fail",
+                std::io::Error::last_os_error()
+            );
+        } else {
+            tracing::info!("agent: provisioned artifact dir {dir}");
+        }
+    }
+}
+
+/// Walk each artifact-collection tmpfs dir and send one `ArtifactFile` frame per
+/// regular file. `mount_index` is the dir's position in `dirs`. Respects a
+/// per-file + cumulative cap (mirrors the host runner's caps). Best-effort:
+/// errors are logged + the file skipped; we never fail the exec over artifacts.
+#[cfg(target_os = "linux")]
+fn stream_collected_artifacts(dirs: &[String], tx: &mpsc::UnboundedSender<Frame>) {
+    let mut total: u64 = 0;
+    for (mount_index, dir) in dirs.iter().enumerate() {
+        let root = std::path::Path::new(dir);
+        if !root.is_dir() {
+            continue;
+        }
+        walk_artifacts(root, root, mount_index as u32, tx, &mut total);
+    }
+}
+
+/// Recursive walk for `stream_collected_artifacts`. Sends regular files;
+/// rejects symlinks + oversize files; bails the whole walk once the cumulative
+/// cap is crossed (the host re-caps downstream anyway).
+#[cfg(target_os = "linux")]
+fn walk_artifacts(
+    root: &std::path::Path,
+    cur: &std::path::Path,
+    mount_index: u32,
+    tx: &mpsc::UnboundedSender<Frame>,
+    total: &mut u64,
+) {
+    let rd = match std::fs::read_dir(cur) {
+        Ok(rd) => rd,
+        Err(e) => {
+            tracing::warn!("agent: read_dir artifact {} failed: {e}", cur.display());
+            return;
+        }
+    };
+    for entry in rd.flatten() {
+        let path = entry.path();
+        let md = match entry.metadata() {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::warn!("agent: stat artifact {} failed: {e}", path.display());
+                continue;
+            }
+        };
+        if md.file_type().is_symlink() {
+            // Defense-in-depth: never follow/stream a symlink (the host also
+            // rejects them).
+            continue;
+        }
+        if md.is_dir() {
+            walk_artifacts(root, &path, mount_index, tx, total);
+            continue;
+        }
+        if !md.is_file() {
+            continue;
+        }
+        if md.len() > ARTIFACT_PER_FILE_CAP_BYTES {
+            tracing::warn!(
+                "agent: skipping oversize artifact {} ({} bytes)",
+                path.display(),
+                md.len()
+            );
+            continue;
+        }
+        if total.saturating_add(md.len()) > ARTIFACT_TOTAL_CAP_BYTES {
+            tracing::warn!(
+                "agent: artifact total cap reached; not streaming {}",
+                path.display()
+            );
+            return;
+        }
+        let rel = match path.strip_prefix(root) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        // Forward-slash, no leading slash (the host joins it onto the host dir).
+        let rel_path = rel.to_string_lossy().replace('\\', "/");
+        let data = match std::fs::read(&path) {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::warn!("agent: read artifact {} failed: {e}", path.display());
+                continue;
+            }
+        };
+        *total = total.saturating_add(data.len() as u64);
+        let _ = tx.send(Frame::ArtifactFile {
+            mount_index,
+            rel_path,
+            data,
+        });
+    }
 }
 
 /// Long-lived multi-process loop. Each `StartProcess` registers a new

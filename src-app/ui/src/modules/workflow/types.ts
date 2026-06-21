@@ -3,6 +3,7 @@ import type {
   useSystemWorkflowStore,
   useWorkflowDrawerStore,
   useWorkflowRunStore,
+  useWorkflowRunsStore,
   useWorkflowStore,
 } from '@/modules/workflow/stores'
 
@@ -13,6 +14,7 @@ declare module '@/core/stores' {
       ReturnType<typeof useSystemWorkflowStore.getState>
     >
     WorkflowRun: StoreProxy<ReturnType<typeof useWorkflowRunStore.getState>>
+    WorkflowRuns: StoreProxy<ReturnType<typeof useWorkflowRunsStore.getState>>
     WorkflowDrawer: StoreProxy<
       ReturnType<typeof useWorkflowDrawerStore.getState>
     >
