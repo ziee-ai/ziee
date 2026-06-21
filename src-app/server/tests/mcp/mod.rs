@@ -19,6 +19,7 @@ mod mcp_extension_test;
 mod mcp_loop_settings_test;
 mod mcp_sampling_test;
 mod mcp_streaming_workflow_test;
+mod resource_link_test;
 
 use crate::common::test_helpers::{self};
 use serde_json::json;

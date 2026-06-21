@@ -145,7 +145,13 @@ pub fn capture_result(result: &ToolResult) -> ResultCapture {
 
     // Redact secrets + strip inline bytes, then cap the overall size so a huge
     // tool result can't bloat the row (mirrors the chat path's result caps).
-    let sanitized = sanitize_value(full);
+    let mut sanitized = sanitize_value(full);
+    // Guard #3 (resource_link `ziee://`): this capture runs BEFORE the chat path's scrub
+    // (`helpers::execute_tool`), so blank any host-path `ziee://` string here — otherwise a
+    // raw host filesystem path (e.g. from `code_sandbox::get_resource_link`) would be
+    // persisted into the queryable tool-call history. Only absolute host paths are blanked;
+    // `ziee://workflow-runs/...` resource handles are preserved.
+    crate::modules::mcp::resource_link::scrub_ziee_in_value(&mut sanitized);
     let result_json = match serde_json::to_string(&sanitized) {
         Ok(s) if s.len() > MAX_RESULT_BYTES => json!({ "_truncated": true, "_bytes": s.len() }),
         _ => sanitized,
@@ -271,6 +277,31 @@ mod tests {
         let capped = cap_arguments(&big);
         assert_eq!(capped["_truncated"], json!(true));
         assert!(capped["_bytes"].as_u64().unwrap() as usize > MAX_ARGS_BYTES);
+    }
+
+    #[test]
+    fn capture_scrubs_ziee_host_paths_keeps_workflow_handles() {
+        // A code_sandbox-style resource_link result captured BEFORE the chat scrub: the raw
+        // `ziee://<host_path>` must not be persisted into the queryable history.
+        let result = ToolResult {
+            content: vec![block(json!({
+                "type": "resource_link",
+                "uri": "ziee:///Users/x/.ziee/sandboxes/c/out.csv",
+                "name": "out.csv",
+            }))],
+            is_error: false,
+            structured_content: Some(json!({
+                "uri": "ziee:///Users/x/.ziee/sandboxes/c/out.csv",
+                "wf": "ziee://workflow-runs/r1/outputs/x",
+            })),
+        };
+        let cap = capture_result(&result);
+        let serialized = serde_json::to_string(&cap.result_json).unwrap();
+        // No absolute host-path ziee:// survives (content + structured_content).
+        assert!(!serialized.contains("ziee:///"), "host path leaked: {serialized}");
+        // workflow_mcp logical handle is preserved (not a host path).
+        assert!(serialized.contains("ziee://workflow-runs/"), "workflow handle dropped");
+        assert_eq!(cap.result_json["content"][0]["uri"], json!(""));
     }
 
     #[test]

@@ -413,26 +413,27 @@ pub async fn execute_tool(
                     }
                     "resource_link" => {
                         // MCP resource_link: a reference to a persisted resource (not inline content)
-                        if let Some(uri) = item.content.get("uri").and_then(|v| v.as_str()) {
-                            let name = item.content.get("name").and_then(|v| v.as_str()).unwrap_or("file");
-                            resource_links.push(super::content::ResourceLink {
-                                uri: uri.to_string(),
-                                name: item.content.get("name").and_then(|v| v.as_str()).map(String::from),
-                                mime_type: item.content.get("mimeType").and_then(|v| v.as_str()).map(String::from),
-                                size: item.content.get("size").and_then(|v| v.as_i64()),
-                                is_saved: item.content.get("is_saved").and_then(|v| v.as_bool()),
-                                // Set for already-saved attachments (the tool emits it); workspace
-                                // artifacts get it stamped later, after the save pipeline runs.
-                                file_id: item.content.get("file_id")
-                                    .and_then(|v| v.as_str())
-                                    .and_then(|s| uuid::Uuid::parse_str(s).ok()),
-                                version_id: item.content.get("version_id")
-                                    .and_then(|v| v.as_str())
-                                    .and_then(|s| uuid::Uuid::parse_str(s).ok()),
-                                version: item.content.get("version").and_then(|v| v.as_i64()).map(|n| n as i32),
-                            });
+                        if let Some(link) =
+                            crate::modules::mcp::resource_link::parse_resource_link_block(&item.content)
+                        {
+                            let name = link.name.clone().unwrap_or_else(|| "file".to_string());
+                            // Guard #3 (defense in depth): never echo a raw `ziee://` host
+                            // path into the LLM-facing confirmation. On the happy path the
+                            // tool-result content is overwritten after the save pipeline
+                            // (mcp::resource_link::persist_links + the artifact-info rewrite);
+                            // this placeholder also covers the save-failure path.
+                            let uri_for_text =
+                                if crate::modules::mcp::resource_link::is_ziee_host_path(&link.uri) {
+                                    "(saved server-side; appears as a file attachment)".to_string()
+                                } else {
+                                    link.uri.clone()
+                                };
+                            resource_links.push(link);
                             // Provide the LLM with a readable confirmation so it doesn't retry
-                            text_parts.push(format!("resource_link available — name: {}, uri: {}", name, uri));
+                            text_parts.push(format!(
+                                "resource_link available — name: {}, uri: {}",
+                                name, uri_for_text
+                            ));
                         }
                     }
                     "image" => {
@@ -499,7 +500,7 @@ pub async fn execute_tool(
             // ~200 records); beyond it we DROP it (None) — the readable text
             // digest still works, only the typed UI copy degrades.
             const MAX_STRUCTURED_CONTENT_BYTES: usize = 1_000_000;
-            let structured_content = tool_result.structured_content.clone().filter(|sc| {
+            let mut structured_content = tool_result.structured_content.clone().filter(|sc| {
                 let too_big = serde_json::to_string(sc)
                     .map(|s| s.len() > MAX_STRUCTURED_CONTENT_BYTES)
                     .unwrap_or(true);
@@ -512,6 +513,26 @@ pub async fn execute_tool(
                 }
                 !too_big
             });
+
+            // Guard #3 (defense in depth): a raw `ziee://<host_path>` must never persist into
+            // the tool result the browser reads / `get_tool_result` recalls.
+            //   - `structured_content` is display/recall-only (never used to ingest), so scrub
+            //     it unconditionally here — this closes the `get_resource_link` →
+            //     `structuredContent` host-path disclosure.
+            //   - `resource_links` carry the raw `ziee://` that `persist_links` needs to
+            //     INGEST, so they're rewritten/blanked there on the normal path. But
+            //     `persist_links` is skipped for ERROR results, so blank any leftover
+            //     `ziee://` link here when the tool errored (the file was never produced).
+            if let Some(sc) = structured_content.as_mut() {
+                crate::modules::mcp::resource_link::scrub_ziee_in_value(sc);
+            }
+            if tool_result.is_error {
+                for l in resource_links.iter_mut() {
+                    if crate::modules::mcp::resource_link::is_ziee_host_path(&l.uri) {
+                        l.uri = String::new();
+                    }
+                }
+            }
 
             let mcp_result = McpContentData::ToolResult {
                 tool_use_id: String::new(), // Will be set by caller

@@ -390,9 +390,10 @@ pub async fn list_files(ctx: &SandboxContext) -> Result<serde_json::Value, AppEr
 }
 
 // ------------------------------------------------------------------
-// get_resource_link: JWT-signed URL for user attachments, plain URL
-// for workspace artifacts. Returns an MCP `resource_link` content
-// block shape.
+// get_resource_link: JWT-signed download-with-token URL for user
+// attachments (already in the file store), `ziee://<host_abs_path>` for
+// transient workspace artifacts (read off disk + ingested server-side).
+// Returns an MCP `resource_link` content block shape.
 // ------------------------------------------------------------------
 
 pub async fn get_resource_link(
@@ -465,13 +466,20 @@ pub async fn get_resource_link(
         .essence_str()
         .to_string();
     let name = save_as.unwrap_or(filename).to_string();
-    let url = format!(
-        "{origin}/api/code-sandbox/file/download?filename={}",
-        urlencoding_encode(filename)
-    );
+    // Transient workspace artifact: emit a `ziee://<host_abs_path>` URI. `path`
+    // (above) is the canonicalized HOST path of the file — the same one the
+    // `/api/code-sandbox/file/download` endpoint would read. In-process consumers
+    // (the chat MCP save path + the workflow tool dispatcher) read the bytes
+    // straight off disk via `mcp::resource_link::persist_links` — no loopback HTTP
+    // hop, no JWT. That helper treats the raw path as a trusted-emitter-only,
+    // read-once hint: it confines the path under the conversation/run workspace,
+    // ingests the bytes into the file store, and replaces the URI with
+    // `/api/files/{id}` BEFORE anything reaches the client/LLM (the raw host path
+    // never leaves the server).
+    let uri = format!("ziee://{}", path.display());
     Ok(json!({
         "type": "resource_link",
-        "uri": url,
+        "uri": uri,
         "name": name,
         "mimeType": mime,
         "description": "Sandbox workspace artifact",
@@ -520,21 +528,6 @@ fn sign_download_token(file_id: Uuid, user_id: Uuid) -> Result<String, AppError>
             format!("sign download token: {e}"),
         )
     })
-}
-
-/// Minimal RFC-3986 percent-encoder for the filename query param. We
-/// avoid pulling the `urlencoding` crate just for this one site.
-fn urlencoding_encode(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for b in s.bytes() {
-        match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(b as char);
-            }
-            _ => out.push_str(&format!("%{b:02X}")),
-        }
-    }
-    out
 }
 
 // =====================================================================

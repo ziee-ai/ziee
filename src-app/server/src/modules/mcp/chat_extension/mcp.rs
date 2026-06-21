@@ -500,354 +500,105 @@ impl McpChatExtension {
                 }
             }
 
-            // Generic resource_link handling: fetch-and-save any resource_links returned by a tool.
-            // Works uniformly for built-in servers (short-lived JWT auth) and external MCP servers
-            // (server-configured headers). Runs the full processing pipeline (text extraction,
-            // thumbnails) and creates a permanent DB artifact visible to the user.
-            // Exception: is_saved=true links already exist in originals storage — skip all processing.
-            let mut saved_artifacts: Vec<(Uuid, String, Option<String>)> = Vec::new(); // (artifact_id, display_name, download_url)
-            let mut saved_file_urls: Vec<(String, String)> = Vec::new(); // (display_name, download_url) for is_saved links
-            // (link_index, artifact_id) for workspace artifacts saved by this
-            // pipeline. Applied back onto resource_links[i].file_id after the loop
-            // so the browser inline preview can fetch via the authenticated,
-            // same-origin /api/files/{id}/... path (the tool-emitted absolute
-            // loopback URI is unreachable from the browser).
-            // (link_idx, file_id, version, version_id) — version/version_id pin
-            // the inline preview's resource_link to the exact artifact version.
-            let mut artifact_file_ids: Vec<(usize, Uuid, i32, Uuid)> = Vec::new();
-            if let McpContentData::ToolResult { ref resource_links, is_error, .. } = result
+            // Persist any resource_links the tool returned into durable file-store
+            // artifacts via the shared consumer. It handles every URI shape uniformly:
+            // is_saved links are referenced (not re-saved), `ziee://<host_path>` links
+            // from trusted in-process tools are read off disk behind path-confinement
+            // guards, and external / loopback links are fetched over HTTP. It stamps
+            // file_id/version onto each saved link and strips raw host paths before it
+            // returns. saved_artifacts: (artifact_id, display_name, download_url);
+            // saved_file_urls: (display_name, download_url) for is_saved links.
+            let mut saved_artifacts: Vec<(Uuid, String, Option<String>)> = Vec::new();
+            let mut saved_file_urls: Vec<(String, String)> = Vec::new();
+            if let McpContentData::ToolResult { resource_links: Some(ref mut links), is_error, .. } = result
                 && !is_error.unwrap_or(false)
-                    && let Some(links) = resource_links {
-                        for (link_idx, link) in links.iter().enumerate() {
+            {
+                // `ziee://` reads are confined to this conversation's sandbox workspace
+                // (code_sandbox is the only is_saved:false producer today). Empty when the
+                // sandbox is uninitialized → a stray ziee:// link simply fails confinement.
+                let allowed_roots: Vec<std::path::PathBuf> =
+                    crate::modules::code_sandbox::config::get_state()
+                        .map(|s| vec![s.workspace_root.join(context.conversation_id.to_string())])
+                        .unwrap_or_default();
 
-                        // is_saved=true: file already exists in originals storage.
-                        // URI is a download-with-token URL — skip fetch/process/save pipeline.
-                        if link.is_saved == Some(true) {
-                            let name = link.name.as_deref().unwrap_or("file").to_string();
-                            saved_file_urls.push((name, link.uri.clone()));
-                            continue;
-                        }
+                let outcome = crate::modules::mcp::resource_link::persist_links(
+                    links,
+                    context.user_id,
+                    Some(context.conversation_id),
+                    context.message_id,
+                    "mcp",
+                    None, // workflow_run_id: chat path, not a workflow run
+                    server.id,
+                    server.is_built_in,
+                    &server.headers,
+                    &allowed_roots,
+                    Some(self.config.jwt.secret.as_str()),
+                )
+                .await
+                .unwrap_or_default();
 
-                        use crate::modules::file::models::FileCreateData;
-                        use crate::modules::file::processing::ProcessingManager;
-                        use crate::modules::file::storage::manager::get_file_storage;
+                // is_saved:true links pass straight through to the hidden-content list.
+                saved_file_urls = outcome.referenced;
 
-                        // Build auth headers appropriate for the server type
-                        let mut fetch_headers = reqwest::header::HeaderMap::new();
-                        if server.is_built_in {
-                            match McpSessionManager::generate_short_lived_jwt(
-                                context.user_id, &self.config.jwt.secret, 10
-                            ) {
-                                Ok(token) => {
-                                    if let Ok(hval) = reqwest::header::HeaderValue::from_str(
-                                        &format!("Bearer {}", token)
-                                    ) {
-                                        fetch_headers.insert(reqwest::header::AUTHORIZATION, hval);
-                                    }
-                                    if let Ok(hval) = reqwest::header::HeaderValue::from_str(
-                                        &context.conversation_id.to_string()
-                                    ) {
-                                        fetch_headers.insert(
-                                            reqwest::header::HeaderName::from_static("x-conversation-id"),
-                                            hval,
-                                        );
-                                    }
-                                }
-                                Err(e) => {
-                                    tracing::warn!("Failed to generate JWT for resource_link fetch: {}", e);
-                                }
-                            }
-                        } else if let Some(headers_map) = server.headers.as_object() {
-                            for (key, value) in headers_map.iter() {
-                                if let Some(val_str) = value.as_str()
-                                    && let (Ok(hname), Ok(hval)) = (
-                                        reqwest::header::HeaderName::from_bytes(key.as_bytes()),
-                                        reqwest::header::HeaderValue::from_str(val_str),
-                                    ) {
-                                        fetch_headers.insert(hname, hval);
-                                    }
-                            }
-                        }
+                // For each newly-ingested artifact: emit the per-artifact SSE event and
+                // mint a token-signed download URL the LLM can hand to another tool.
+                for art in &outcome.saved {
+                    helpers::send_artifact_created_event(
+                        tx,
+                        &tool_use_id,
+                        &art.file_id.to_string(),
+                        &art.filename,
+                        art.mime_type.as_deref(),
+                        art.size,
+                    )
+                    .await;
 
-                        match reqwest::Client::builder()
-                            .default_headers(fetch_headers)
-                            .build()
-                        {
-                            Ok(client) => {
-                                match client.get(&link.uri).send().await {
-                                    Ok(response) if response.status().is_success() => {
-                                        let content_type_mime = response
-                                            .headers()
-                                            .get(reqwest::header::CONTENT_TYPE)
-                                            .and_then(|v| v.to_str().ok())
-                                            .and_then(|s| s.split(';').next())
-                                            .map(|s| s.trim().to_string());
+                    let download_url = {
+                        use crate::modules::file::types::{DownloadTokenClaims, DOWNLOAD_TOKEN_AUDIENCE};
+                        use jsonwebtoken::{encode, EncodingKey, Header as JwtHeader};
+                        let now = chrono::Utc::now().timestamp() as usize;
+                        let claims = DownloadTokenClaims {
+                            file_id: art.file_id.to_string(),
+                            user_id: context.user_id.to_string(),
+                            version: None,
+                            exp: now + 3600,
+                            iat: now,
+                            iss: self.config.jwt.issuer.clone(),
+                            aud: DOWNLOAD_TOKEN_AUDIENCE.to_string(),
+                        };
+                        // Root the tool-to-tool download URL at the SAME origin
+                        // get_resource_link uses (public_base_url when set, else the pinned
+                        // 127.0.0.1 loopback) — NOT self.config.server.host, which may be a
+                        // bind address unreachable by the MCP server the LLM passes it to.
+                        let origin = file_download_origin(
+                            self.config.code_sandbox.as_ref(),
+                            self.config.server.port,
+                        );
+                        encode(
+                            &JwtHeader::default(),
+                            &claims,
+                            &EncodingKey::from_secret(self.config.jwt.secret.as_bytes()),
+                        )
+                        .ok()
+                        .map(|token| {
+                            build_artifact_download_url(
+                                &origin,
+                                &self.config.server.api_prefix,
+                                art.file_id,
+                                &token,
+                            )
+                        })
+                    };
+                    saved_artifacts.push((art.file_id, art.filename.clone(), download_url));
+                }
+            }
 
-                                        match response.bytes().await {
-                                            Ok(bytes) => {
-                                                let bytes = bytes.to_vec();
-                                                let display_name =
-                                                    link.name.as_deref().unwrap_or("file");
-                                                // Canonical extension (rsplit + lowercase) — MUST match how
-                                                // the download/read paths derive the blob key. Path::extension
-                                                // would save dotfiles / no-extension names (`.bashrc`,
-                                                // `Makefile`) as `…​.bin` but load them as `…​.bashrc` → 404.
-                                                let ext =
-                                                    crate::modules::file::utils::extension_of(display_name);
-                                                let mime_type = content_type_mime.or_else(|| {
-                                                    mime_guess::from_ext(&ext)
-                                                        .first()
-                                                        .map(|m| m.to_string())
-                                                });
-                                                let mime_type_str = mime_type
-                                                    .as_deref()
-                                                    .unwrap_or("application/octet-stream");
-
-                                                let processing_result = ProcessingManager::new()
-                                                    .process_file(&bytes, mime_type_str)
-                                                    .await
-                                                    .unwrap_or_default();
-
-                                                let artifact_id = Uuid::new_v4();
-                                                let storage = get_file_storage();
-
-                                                match storage
-                                                    .save_original(
-                                                        context.user_id,
-                                                        artifact_id,
-                                                        &ext,
-                                                        &bytes,
-                                                    )
-                                                    .await
-                                                {
-                                                    Ok(_) => {
-                                                        for (n, text) in processing_result
-                                                            .text_pages
-                                                            .iter()
-                                                            .enumerate()
-                                                        {
-                                                            let _ = storage
-                                                                .save_text_page(
-                                                                    context.user_id,
-                                                                    artifact_id,
-                                                                    (n + 1) as u32,
-                                                                    text,
-                                                                )
-                                                                .await;
-                                                        }
-                                                        if let Some(thumb) = processing_result
-                                                            .thumbnails
-                                                            .first()
-                                                        {
-                                                            let _ = storage
-                                                                .save_image(
-                                                                    context.user_id,
-                                                                    artifact_id,
-                                                                    1,
-                                                                    true,
-                                                                    thumb,
-                                                                )
-                                                                .await;
-                                                        }
-                                                        for (n, img) in processing_result
-                                                            .images
-                                                            .iter()
-                                                            .enumerate()
-                                                        {
-                                                            let _ = storage
-                                                                .save_image(
-                                                                    context.user_id,
-                                                                    artifact_id,
-                                                                    (n + 1) as u32,
-                                                                    false,
-                                                                    img,
-                                                                )
-                                                                .await;
-                                                        }
-
-                                                        let file_size = bytes.len() as i64;
-                                                        // Real checksum: version-back's no-op check compares the
-                                                        // workspace bytes' checksum to the base version's. A `None`
-                                                        // base never matches → every staged artifact would spuriously
-                                                        // version-back even when unchanged.
-                                                        let checksum =
-                                                            storage.calculate_checksum(&bytes);
-                                                        match Repos
-                                                            .file
-                                                            .create(FileCreateData {
-                                                                id: artifact_id,
-                                                                user_id: context.user_id,
-                                                                filename: display_name
-                                                                    .to_string(),
-                                                                file_size,
-                                                                mime_type: mime_type.clone(),
-                                                                checksum: Some(checksum),
-                                                                has_thumbnail:
-                                                                    !processing_result
-                                                                        .thumbnails
-                                                                        .is_empty(),
-                                                                preview_page_count:
-                                                                    processing_result
-                                                                        .images
-                                                                        .len()
-                                                                        as i32,
-                                                                text_page_count:
-                                                                    processing_result
-                                                                        .text_pages
-                                                                        .len()
-                                                                        as i32,
-                                                                processing_metadata:
-                                                                    serde_json::to_value(
-                                                                        &processing_result
-                                                                            .metadata,
-                                                                    )
-                                                                    .unwrap_or_default(),
-                                                                source_message_id:
-                                                                    context.message_id,
-                                                                created_by: "mcp".to_string(),
-                                                            })
-                                                            .await
-                                                        {
-                                                            Ok(file) => {
-                                                                helpers::send_artifact_created_event(
-                                                                    tx,
-                                                                    &tool_use_id,
-                                                                    &artifact_id.to_string(),
-                                                                    display_name,
-                                                                    mime_type.as_deref(),
-                                                                    file_size,
-                                                                )
-                                                                .await;
-
-                                                                // Notify the user's OTHER devices a new file exists
-                                                                // (cross-device sync), mirroring files_mcp's create
-                                                                // path — send_artifact_created_event above only reaches
-                                                                // THIS conversation's SSE stream.
-                                                                crate::modules::file::sync::publish_file_changed(
-                                                                    context.user_id,
-                                                                    artifact_id,
-                                                                );
-
-                                                                // No FileAttachment block is emitted for artifacts: the
-                                                                // inline preview (resource_link, stamped after the loop)
-                                                                // is the single UI view. Record index→(file_id, version,
-                                                                // version_id) so it can pin the exact version created here.
-                                                                artifact_file_ids.push((
-                                                                    link_idx,
-                                                                    artifact_id,
-                                                                    file.version,
-                                                                    file.current_version_id,
-                                                                ));
-
-                                                                tracing::info!(
-                                                                    "Artifact saved from resource_link: file_id={}, filename={}",
-                                                                    artifact_id, display_name
-                                                                );
-                                                                let download_url = {
-                                                                    use jsonwebtoken::{encode, EncodingKey, Header as JwtHeader};
-                                                                    use crate::modules::file::types::{DownloadTokenClaims, DOWNLOAD_TOKEN_AUDIENCE};
-                                                                    let now = chrono::Utc::now().timestamp() as usize;
-                                                                    let claims = DownloadTokenClaims {
-                                                                        file_id: artifact_id.to_string(),
-                                                                        user_id: context.user_id.to_string(),
-                                                                        version: None,
-                                                                        exp: now + 3600,
-                                                                        iat: now,
-                                                                        iss: self.config.jwt.issuer.clone(),
-                                                                        aud: DOWNLOAD_TOKEN_AUDIENCE.to_string(),
-                                                                    };
-                                                                    // Root the tool-to-tool download URL at the SAME origin
-                                                                    // get_resource_link uses (public_base_url when set, else the
-                                                                    // pinned 127.0.0.1 loopback) — NOT self.config.server.host,
-                                                                    // which may be 0.0.0.0 / a bind address unreachable by the
-                                                                    // (possibly remote) MCP server the LLM passes this URL to.
-                                                                    let origin = file_download_origin(
-                                                                        self.config.code_sandbox.as_ref(),
-                                                                        self.config.server.port,
-                                                                    );
-                                                                    encode(
-                                                                        &JwtHeader::default(),
-                                                                        &claims,
-                                                                        &EncodingKey::from_secret(self.config.jwt.secret.as_bytes()),
-                                                                    )
-                                                                    .ok()
-                                                                    .map(|token| build_artifact_download_url(
-                                                                        &origin,
-                                                                        &self.config.server.api_prefix,
-                                                                        artifact_id,
-                                                                        &token,
-                                                                    ))
-                                                                };
-                                                                saved_artifacts.push((artifact_id, display_name.to_string(), download_url));
-                                                            }
-                                                            Err(e) => {
-                                                                tracing::error!(
-                                                                    "Failed to create file DB record for resource_link: {}",
-                                                                    e
-                                                                );
-                                                            }
-                                                        }
-                                                    }
-                                                    Err(e) => {
-                                                        tracing::error!(
-                                                            "Failed to save artifact original: {}",
-                                                            e
-                                                        );
-                                                    }
-                                                }
-                                            }
-                                            Err(e) => {
-                                                tracing::warn!(
-                                                    "Failed to read resource_link response body: {}",
-                                                    e
-                                                );
-                                            }
-                                        }
-                                    }
-                                    Ok(response) => {
-                                        tracing::error!(
-                                            "resource_link fetch returned HTTP {} for '{}': artifact NOT saved",
-                                            response.status(),
-                                            link.uri
-                                        );
-                                    }
-                                    Err(e) => {
-                                        tracing::error!(
-                                            "Failed to fetch resource_link '{}': {} — artifact NOT saved",
-                                            link.uri, e
-                                        );
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                tracing::error!(
-                                    "Failed to build HTTP client for resource_link fetch: {}",
-                                    e
-                                );
-                            }
-                        }
-                        } // end for link in links
-                    }
-
-            // Update tool result content with the saved artifact info so the LLM knows the file_ids.
-            // Also set hidden_content with token-based download URLs — included in LLM messages
-            // but stripped from browser API responses.
-            // saved_file_urls holds download-with-token URLs for is_saved=true links (no pipeline needed).
+            // Update tool result content with the saved artifact info so the LLM knows the
+            // file_ids. Also set hidden_content with token-based download URLs — included in
+            // LLM messages but stripped from browser API responses. (file_id/version are
+            // already stamped onto each resource_link by persist_links above.)
             if (!saved_artifacts.is_empty() || !saved_file_urls.is_empty())
-                && let McpContentData::ToolResult { ref mut content, ref mut hidden_content, ref mut resource_links, .. } = result {
-                    // Stamp each saved artifact's file_id onto its resource_link so
-                    // the UI inline preview fetches the content via the authenticated
-                    // /api/files/{id}/... path instead of the unreachable absolute
-                    // loopback URI emitted by the tool.
-                    if let Some(links) = resource_links {
-                        for (idx, fid, ver, ver_id) in &artifact_file_ids {
-                            if let Some(l) = links.get_mut(*idx) {
-                                l.file_id = Some(*fid);
-                                l.version = Some(*ver);
-                                l.version_id = Some(*ver_id);
-                            }
-                        }
-                    }
+                && let McpContentData::ToolResult { ref mut content, ref mut hidden_content, .. } = result {
                     if !saved_artifacts.is_empty() {
                         let file_descriptions: Vec<String> = saved_artifacts
                             .iter()
@@ -2495,354 +2246,105 @@ impl ChatExtension for McpChatExtension {
                 .await;
             }
 
-            // Generic resource_link handling: fetch-and-save any resource_links returned by a tool.
-            // Works uniformly for built-in servers (short-lived JWT auth) and external MCP servers
-            // (server-configured headers). Runs the full processing pipeline (text extraction,
-            // thumbnails) and creates a permanent DB artifact visible to the user.
-            // Exception: is_saved=true links already exist in originals storage — skip all processing.
-            let mut saved_artifacts: Vec<(Uuid, String, Option<String>)> = Vec::new(); // (artifact_id, display_name, download_url)
-            let mut saved_file_urls: Vec<(String, String)> = Vec::new(); // (display_name, download_url) for is_saved links
-            // (link_index, artifact_id) for workspace artifacts saved by this
-            // pipeline. Applied back onto resource_links[i].file_id after the loop
-            // so the browser inline preview can fetch via the authenticated,
-            // same-origin /api/files/{id}/... path (the tool-emitted absolute
-            // loopback URI is unreachable from the browser).
-            // (link_idx, file_id, version, version_id) — version/version_id pin
-            // the inline preview's resource_link to the exact artifact version.
-            let mut artifact_file_ids: Vec<(usize, Uuid, i32, Uuid)> = Vec::new();
-            if let McpContentData::ToolResult { ref resource_links, is_error, .. } = result
+            // Persist any resource_links the tool returned into durable file-store
+            // artifacts via the shared consumer. It handles every URI shape uniformly:
+            // is_saved links are referenced (not re-saved), `ziee://<host_path>` links
+            // from trusted in-process tools are read off disk behind path-confinement
+            // guards, and external / loopback links are fetched over HTTP. It stamps
+            // file_id/version onto each saved link and strips raw host paths before it
+            // returns. saved_artifacts: (artifact_id, display_name, download_url);
+            // saved_file_urls: (display_name, download_url) for is_saved links.
+            let mut saved_artifacts: Vec<(Uuid, String, Option<String>)> = Vec::new();
+            let mut saved_file_urls: Vec<(String, String)> = Vec::new();
+            if let McpContentData::ToolResult { resource_links: Some(ref mut links), is_error, .. } = result
                 && !is_error.unwrap_or(false)
-                    && let Some(links) = resource_links {
-                        for (link_idx, link) in links.iter().enumerate() {
+            {
+                // `ziee://` reads are confined to this conversation's sandbox workspace
+                // (code_sandbox is the only is_saved:false producer today). Empty when the
+                // sandbox is uninitialized → a stray ziee:// link simply fails confinement.
+                let allowed_roots: Vec<std::path::PathBuf> =
+                    crate::modules::code_sandbox::config::get_state()
+                        .map(|s| vec![s.workspace_root.join(context.conversation_id.to_string())])
+                        .unwrap_or_default();
 
-                        // is_saved=true: file already exists in originals storage.
-                        // URI is a download-with-token URL — skip fetch/process/save pipeline.
-                        if link.is_saved == Some(true) {
-                            let name = link.name.as_deref().unwrap_or("file").to_string();
-                            saved_file_urls.push((name, link.uri.clone()));
-                            continue;
-                        }
+                let outcome = crate::modules::mcp::resource_link::persist_links(
+                    links,
+                    context.user_id,
+                    Some(context.conversation_id),
+                    context.message_id,
+                    "mcp",
+                    None, // workflow_run_id: chat path, not a workflow run
+                    server.id,
+                    server.is_built_in,
+                    &server.headers,
+                    &allowed_roots,
+                    Some(self.config.jwt.secret.as_str()),
+                )
+                .await
+                .unwrap_or_default();
 
-                        use crate::modules::file::models::FileCreateData;
-                        use crate::modules::file::processing::ProcessingManager;
-                        use crate::modules::file::storage::manager::get_file_storage;
+                // is_saved:true links pass straight through to the hidden-content list.
+                saved_file_urls = outcome.referenced;
 
-                        // Build auth headers appropriate for the server type
-                        let mut fetch_headers = reqwest::header::HeaderMap::new();
-                        if server.is_built_in {
-                            match McpSessionManager::generate_short_lived_jwt(
-                                context.user_id, &self.config.jwt.secret, 10
-                            ) {
-                                Ok(token) => {
-                                    if let Ok(hval) = reqwest::header::HeaderValue::from_str(
-                                        &format!("Bearer {}", token)
-                                    ) {
-                                        fetch_headers.insert(reqwest::header::AUTHORIZATION, hval);
-                                    }
-                                    if let Ok(hval) = reqwest::header::HeaderValue::from_str(
-                                        &context.conversation_id.to_string()
-                                    ) {
-                                        fetch_headers.insert(
-                                            reqwest::header::HeaderName::from_static("x-conversation-id"),
-                                            hval,
-                                        );
-                                    }
-                                }
-                                Err(e) => {
-                                    tracing::warn!("Failed to generate JWT for resource_link fetch: {}", e);
-                                }
-                            }
-                        } else if let Some(headers_map) = server.headers.as_object() {
-                            for (key, value) in headers_map.iter() {
-                                if let Some(val_str) = value.as_str()
-                                    && let (Ok(hname), Ok(hval)) = (
-                                        reqwest::header::HeaderName::from_bytes(key.as_bytes()),
-                                        reqwest::header::HeaderValue::from_str(val_str),
-                                    ) {
-                                        fetch_headers.insert(hname, hval);
-                                    }
-                            }
-                        }
+                // For each newly-ingested artifact: emit the per-artifact SSE event and
+                // mint a token-signed download URL the LLM can hand to another tool.
+                for art in &outcome.saved {
+                    helpers::send_artifact_created_event(
+                        tx,
+                        &tool_use_id,
+                        &art.file_id.to_string(),
+                        &art.filename,
+                        art.mime_type.as_deref(),
+                        art.size,
+                    )
+                    .await;
 
-                        match reqwest::Client::builder()
-                            .default_headers(fetch_headers)
-                            .build()
-                        {
-                            Ok(client) => {
-                                match client.get(&link.uri).send().await {
-                                    Ok(response) if response.status().is_success() => {
-                                        let content_type_mime = response
-                                            .headers()
-                                            .get(reqwest::header::CONTENT_TYPE)
-                                            .and_then(|v| v.to_str().ok())
-                                            .and_then(|s| s.split(';').next())
-                                            .map(|s| s.trim().to_string());
+                    let download_url = {
+                        use crate::modules::file::types::{DownloadTokenClaims, DOWNLOAD_TOKEN_AUDIENCE};
+                        use jsonwebtoken::{encode, EncodingKey, Header as JwtHeader};
+                        let now = chrono::Utc::now().timestamp() as usize;
+                        let claims = DownloadTokenClaims {
+                            file_id: art.file_id.to_string(),
+                            user_id: context.user_id.to_string(),
+                            version: None,
+                            exp: now + 3600,
+                            iat: now,
+                            iss: self.config.jwt.issuer.clone(),
+                            aud: DOWNLOAD_TOKEN_AUDIENCE.to_string(),
+                        };
+                        // Root the tool-to-tool download URL at the SAME origin
+                        // get_resource_link uses (public_base_url when set, else the pinned
+                        // 127.0.0.1 loopback) — NOT self.config.server.host, which may be a
+                        // bind address unreachable by the MCP server the LLM passes it to.
+                        let origin = file_download_origin(
+                            self.config.code_sandbox.as_ref(),
+                            self.config.server.port,
+                        );
+                        encode(
+                            &JwtHeader::default(),
+                            &claims,
+                            &EncodingKey::from_secret(self.config.jwt.secret.as_bytes()),
+                        )
+                        .ok()
+                        .map(|token| {
+                            build_artifact_download_url(
+                                &origin,
+                                &self.config.server.api_prefix,
+                                art.file_id,
+                                &token,
+                            )
+                        })
+                    };
+                    saved_artifacts.push((art.file_id, art.filename.clone(), download_url));
+                }
+            }
 
-                                        match response.bytes().await {
-                                            Ok(bytes) => {
-                                                let bytes = bytes.to_vec();
-                                                let display_name =
-                                                    link.name.as_deref().unwrap_or("file");
-                                                // Canonical extension (rsplit + lowercase) — MUST match how
-                                                // the download/read paths derive the blob key. Path::extension
-                                                // would save dotfiles / no-extension names (`.bashrc`,
-                                                // `Makefile`) as `…​.bin` but load them as `…​.bashrc` → 404.
-                                                let ext =
-                                                    crate::modules::file::utils::extension_of(display_name);
-                                                let mime_type = content_type_mime.or_else(|| {
-                                                    mime_guess::from_ext(&ext)
-                                                        .first()
-                                                        .map(|m| m.to_string())
-                                                });
-                                                let mime_type_str = mime_type
-                                                    .as_deref()
-                                                    .unwrap_or("application/octet-stream");
-
-                                                let processing_result = ProcessingManager::new()
-                                                    .process_file(&bytes, mime_type_str)
-                                                    .await
-                                                    .unwrap_or_default();
-
-                                                let artifact_id = Uuid::new_v4();
-                                                let storage = get_file_storage();
-
-                                                match storage
-                                                    .save_original(
-                                                        context.user_id,
-                                                        artifact_id,
-                                                        &ext,
-                                                        &bytes,
-                                                    )
-                                                    .await
-                                                {
-                                                    Ok(_) => {
-                                                        for (n, text) in processing_result
-                                                            .text_pages
-                                                            .iter()
-                                                            .enumerate()
-                                                        {
-                                                            let _ = storage
-                                                                .save_text_page(
-                                                                    context.user_id,
-                                                                    artifact_id,
-                                                                    (n + 1) as u32,
-                                                                    text,
-                                                                )
-                                                                .await;
-                                                        }
-                                                        if let Some(thumb) = processing_result
-                                                            .thumbnails
-                                                            .first()
-                                                        {
-                                                            let _ = storage
-                                                                .save_image(
-                                                                    context.user_id,
-                                                                    artifact_id,
-                                                                    1,
-                                                                    true,
-                                                                    thumb,
-                                                                )
-                                                                .await;
-                                                        }
-                                                        for (n, img) in processing_result
-                                                            .images
-                                                            .iter()
-                                                            .enumerate()
-                                                        {
-                                                            let _ = storage
-                                                                .save_image(
-                                                                    context.user_id,
-                                                                    artifact_id,
-                                                                    (n + 1) as u32,
-                                                                    false,
-                                                                    img,
-                                                                )
-                                                                .await;
-                                                        }
-
-                                                        let file_size = bytes.len() as i64;
-                                                        // Real checksum: version-back's no-op check compares the
-                                                        // workspace bytes' checksum to the base version's. A `None`
-                                                        // base never matches → every staged artifact would spuriously
-                                                        // version-back even when unchanged.
-                                                        let checksum =
-                                                            storage.calculate_checksum(&bytes);
-                                                        match Repos
-                                                            .file
-                                                            .create(FileCreateData {
-                                                                id: artifact_id,
-                                                                user_id: context.user_id,
-                                                                filename: display_name
-                                                                    .to_string(),
-                                                                file_size,
-                                                                mime_type: mime_type.clone(),
-                                                                checksum: Some(checksum),
-                                                                has_thumbnail:
-                                                                    !processing_result
-                                                                        .thumbnails
-                                                                        .is_empty(),
-                                                                preview_page_count:
-                                                                    processing_result
-                                                                        .images
-                                                                        .len()
-                                                                        as i32,
-                                                                text_page_count:
-                                                                    processing_result
-                                                                        .text_pages
-                                                                        .len()
-                                                                        as i32,
-                                                                processing_metadata:
-                                                                    serde_json::to_value(
-                                                                        &processing_result
-                                                                            .metadata,
-                                                                    )
-                                                                    .unwrap_or_default(),
-                                                                source_message_id:
-                                                                    context.message_id,
-                                                                created_by: "mcp".to_string(),
-                                                            })
-                                                            .await
-                                                        {
-                                                            Ok(file) => {
-                                                                helpers::send_artifact_created_event(
-                                                                    tx,
-                                                                    &tool_use_id,
-                                                                    &artifact_id.to_string(),
-                                                                    display_name,
-                                                                    mime_type.as_deref(),
-                                                                    file_size,
-                                                                )
-                                                                .await;
-
-                                                                // Notify the user's OTHER devices a new file exists
-                                                                // (cross-device sync), mirroring files_mcp's create
-                                                                // path — send_artifact_created_event above only reaches
-                                                                // THIS conversation's SSE stream.
-                                                                crate::modules::file::sync::publish_file_changed(
-                                                                    context.user_id,
-                                                                    artifact_id,
-                                                                );
-
-                                                                // No FileAttachment block is emitted for artifacts: the
-                                                                // inline preview (resource_link, stamped after the loop)
-                                                                // is the single UI view. Record index→(file_id, version,
-                                                                // version_id) so it can pin the exact version created here.
-                                                                artifact_file_ids.push((
-                                                                    link_idx,
-                                                                    artifact_id,
-                                                                    file.version,
-                                                                    file.current_version_id,
-                                                                ));
-
-                                                                tracing::info!(
-                                                                    "Artifact saved from resource_link: file_id={}, filename={}",
-                                                                    artifact_id, display_name
-                                                                );
-                                                                let download_url = {
-                                                                    use jsonwebtoken::{encode, EncodingKey, Header as JwtHeader};
-                                                                    use crate::modules::file::types::{DownloadTokenClaims, DOWNLOAD_TOKEN_AUDIENCE};
-                                                                    let now = chrono::Utc::now().timestamp() as usize;
-                                                                    let claims = DownloadTokenClaims {
-                                                                        file_id: artifact_id.to_string(),
-                                                                        user_id: context.user_id.to_string(),
-                                                                        version: None,
-                                                                        exp: now + 3600,
-                                                                        iat: now,
-                                                                        iss: self.config.jwt.issuer.clone(),
-                                                                        aud: DOWNLOAD_TOKEN_AUDIENCE.to_string(),
-                                                                    };
-                                                                    // Root the tool-to-tool download URL at the SAME origin
-                                                                    // get_resource_link uses (public_base_url when set, else the
-                                                                    // pinned 127.0.0.1 loopback) — NOT self.config.server.host,
-                                                                    // which may be 0.0.0.0 / a bind address unreachable by the
-                                                                    // (possibly remote) MCP server the LLM passes this URL to.
-                                                                    let origin = file_download_origin(
-                                                                        self.config.code_sandbox.as_ref(),
-                                                                        self.config.server.port,
-                                                                    );
-                                                                    encode(
-                                                                        &JwtHeader::default(),
-                                                                        &claims,
-                                                                        &EncodingKey::from_secret(self.config.jwt.secret.as_bytes()),
-                                                                    )
-                                                                    .ok()
-                                                                    .map(|token| build_artifact_download_url(
-                                                                        &origin,
-                                                                        &self.config.server.api_prefix,
-                                                                        artifact_id,
-                                                                        &token,
-                                                                    ))
-                                                                };
-                                                                saved_artifacts.push((artifact_id, display_name.to_string(), download_url));
-                                                            }
-                                                            Err(e) => {
-                                                                tracing::error!(
-                                                                    "Failed to create file DB record for resource_link: {}",
-                                                                    e
-                                                                );
-                                                            }
-                                                        }
-                                                    }
-                                                    Err(e) => {
-                                                        tracing::error!(
-                                                            "Failed to save artifact original: {}",
-                                                            e
-                                                        );
-                                                    }
-                                                }
-                                            }
-                                            Err(e) => {
-                                                tracing::warn!(
-                                                    "Failed to read resource_link response body: {}",
-                                                    e
-                                                );
-                                            }
-                                        }
-                                    }
-                                    Ok(response) => {
-                                        tracing::error!(
-                                            "resource_link fetch returned HTTP {} for '{}': artifact NOT saved",
-                                            response.status(),
-                                            link.uri
-                                        );
-                                    }
-                                    Err(e) => {
-                                        tracing::error!(
-                                            "Failed to fetch resource_link '{}': {} — artifact NOT saved",
-                                            link.uri, e
-                                        );
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                tracing::error!(
-                                    "Failed to build HTTP client for resource_link fetch: {}",
-                                    e
-                                );
-                            }
-                        }
-                        } // end for link in links
-                    }
-
-            // Update tool result content with the saved artifact info so the LLM knows the file_ids.
-            // Also set hidden_content with token-based download URLs — included in LLM messages
-            // but stripped from browser API responses.
-            // saved_file_urls holds download-with-token URLs for is_saved=true links (no pipeline needed).
+            // Update tool result content with the saved artifact info so the LLM knows the
+            // file_ids. Also set hidden_content with token-based download URLs — included in
+            // LLM messages but stripped from browser API responses. (file_id/version are
+            // already stamped onto each resource_link by persist_links above.)
             if (!saved_artifacts.is_empty() || !saved_file_urls.is_empty())
-                && let McpContentData::ToolResult { ref mut content, ref mut hidden_content, ref mut resource_links, .. } = result {
-                    // Stamp each saved artifact's file_id onto its resource_link so
-                    // the UI inline preview fetches the content via the authenticated
-                    // /api/files/{id}/... path instead of the unreachable absolute
-                    // loopback URI emitted by the tool.
-                    if let Some(links) = resource_links {
-                        for (idx, fid, ver, ver_id) in &artifact_file_ids {
-                            if let Some(l) = links.get_mut(*idx) {
-                                l.file_id = Some(*fid);
-                                l.version = Some(*ver);
-                                l.version_id = Some(*ver_id);
-                            }
-                        }
-                    }
+                && let McpContentData::ToolResult { ref mut content, ref mut hidden_content, .. } = result {
                     if !saved_artifacts.is_empty() {
                         let file_descriptions: Vec<String> = saved_artifacts
                             .iter()
