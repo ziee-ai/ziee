@@ -28,8 +28,16 @@ export default defineConfig({
   // Retry on CI only
   retries: process.env.CI ? 2 : 0,
 
-  // Each test gets its own isolated infrastructure (backend + Vite + database)
-  workers: 8,
+  // Each test spins up its OWN full stack (a fresh `cargo run` backend + Vite +
+  // Postgres). High parallelism therefore saturates the CPU while many servers
+  // cold-boot at once, which widens the per-test readiness window and triggers
+  // SSE/connection churn — the dominant source of e2e flakiness. Default to 1
+  // (the validated-stable value, paired with the deep readiness gate in
+  // tests/fixtures/test-context.ts); raise via PLAYWRIGHT_WORKERS on beefier CI
+  // once a higher count is validated.
+  workers: process.env.PLAYWRIGHT_WORKERS
+    ? Number(process.env.PLAYWRIGHT_WORKERS)
+    : 1,
 
   // Reporter to use
   reporter: [
