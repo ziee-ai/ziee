@@ -1116,8 +1116,11 @@ pub(crate) fn tool_definitions() -> Value {
                 WORKING DIRECTORY: Commands run in /home/sandboxuser (this is also $HOME) — \
                 your writable, per-conversation workspace. Create, read, and write files here; \
                 they persist across calls within this conversation. Do NOT `cd /root` or to \
-                other absolute paths: /root does not exist and the rest of the filesystem is \
-                read-only. Use relative paths (e.g. ./out.png) or paths under /home/sandboxuser.\n\
+                other absolute paths: /root does not exist and the rest of the rootfs is \
+                read-only. /tmp is writable but EPHEMERAL scratch — cleared after the command \
+                and not retrievable (get_resource_link cannot return it), so write any file you \
+                intend to keep, share, or link into /home/sandboxuser, not /tmp. Use relative \
+                paths (e.g. ./out.png) or paths under /home/sandboxuser.\n\
                 FILES: Conversation attachments are staged in /home/sandboxuser under their \
                 original filenames, so a bare filename (e.g. data.csv) resolves there.\n\
                 MOUNTED FOLDERS: Folders the user has mounted from their machine appear under \
@@ -1251,6 +1254,11 @@ pub(crate) fn tool_definitions() -> Value {
                 (`is_saved: true`).\n\
                 \n\
                 Use a plain filename (e.g., 'report.pdf' or 'data.csv').\n\
+                \n\
+                The file MUST be in the working directory (/home/sandboxuser) — files written \
+                elsewhere (e.g. /tmp scratch) or in read-only mounted /mnt/<host path> folders \
+                cannot be returned. If a command wrote its output to /tmp, move it into \
+                /home/sandboxuser first.\n\
                 \n\
                 IMPORTANT: When passing the file to another tool, copy the returned `uri` \
                 VERBATIM into that tool's file/URL argument. Do NOT invent or guess a URL, \

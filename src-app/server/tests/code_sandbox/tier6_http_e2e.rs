@@ -384,7 +384,7 @@ async fn e2e_list_files_shows_written_files_hides_dotfiles() {
 }
 
 #[tokio::test]
-async fn e2e_get_resource_link_for_workspace_artifact_returns_signed_url() {
+async fn e2e_get_resource_link_for_workspace_artifact_returns_ziee_uri() {
     let Some(server) = enabled_test_server().await else { return };
     let (_user_id, jwt, conv_id) = setup_user_and_conv(&server).await;
     tool_call(&server, &jwt, conv_id, "write_file", json!({"filename":"art.txt","content":"x"})).await;
@@ -401,18 +401,21 @@ async fn e2e_get_resource_link_for_workspace_artifact_returns_signed_url() {
     let link = &body["result"]["structuredContent"];
     assert_eq!(link["type"].as_str().unwrap(), "resource_link");
     let uri = link["uri"].as_str().expect("uri");
-    assert!(uri.starts_with("http://127.0.0.1"), "uri must be loopback: {uri}");
-    assert!(uri.contains("/api/code-sandbox/file/download"), "uri: {uri}");
-    assert!(uri.contains("filename=art.txt"), "uri: {uri}");
+    // Transient workspace artifacts now emit `ziee://<host_abs_path>` — a read-once,
+    // in-process hint that the chat/workflow consumer reads off disk + ingests, then
+    // strips (rewrites to /api/files/{id}). This raw MCP call sees it pre-stripping.
+    assert!(uri.starts_with("ziee://"), "transient artifact uri must be ziee://: {uri}");
+    assert!(uri.ends_with("art.txt"), "uri must point at the artifact file: {uri}");
     assert!(!link["is_saved"].as_bool().unwrap(), "workspace artifact is NOT saved");
 }
 
-/// Same flow, but with `code_sandbox.public_base_url` configured: the returned
-/// resource_link URI must be rooted at that public origin (the URL handed to a
-/// possibly-remote MCP server) and must NOT contain the loopback host. This is
-/// the deployment shape where the artifact→another-tool bug surfaced.
+/// Same flow with `code_sandbox.public_base_url` configured. Transient workspace
+/// artifacts are now consumed in-process off disk via `ziee://<host_abs_path>`, so the
+/// public origin is irrelevant to them: the URI must be `ziee://` and must NOT embed the
+/// public host. (public_base_url still roots the download-with-token URL of is_saved:true
+/// user attachments, which take the other branch of get_resource_link.)
 #[tokio::test]
-async fn e2e_get_resource_link_uses_public_base_url_when_configured() {
+async fn e2e_get_resource_link_transient_artifact_ignores_public_base_url() {
     use crate::code_sandbox::harness::github_fetch_server_options;
     let Some(mut opts) = github_fetch_server_options(Vec::new()) else { return };
     opts.sandbox_public_base_url = Some("https://public.example.test".to_string());
@@ -431,12 +434,12 @@ async fn e2e_get_resource_link_uses_public_base_url_when_configured() {
     let link = &body["result"]["structuredContent"];
     assert_eq!(link["type"].as_str().unwrap(), "resource_link");
     let uri = link["uri"].as_str().expect("uri");
+    assert!(uri.starts_with("ziee://"), "transient artifact uri must be ziee://: {uri}");
     assert!(
-        uri.starts_with("https://public.example.test/api/code-sandbox/file/download"),
-        "uri must be rooted at public_base_url: {uri}"
+        !uri.contains("public.example.test"),
+        "ziee:// uri must not embed the public origin: {uri}"
     );
-    assert!(!uri.contains("127.0.0.1"), "uri must not contain loopback: {uri}");
-    assert!(uri.contains("filename=art.txt"), "uri: {uri}");
+    assert!(uri.ends_with("art.txt"), "uri: {uri}");
 }
 
 #[tokio::test]

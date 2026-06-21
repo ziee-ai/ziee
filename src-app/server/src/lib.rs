@@ -104,6 +104,17 @@ pub use modules::code_sandbox::backend::{active as sandbox_backend, RawExecResul
 #[doc(hidden)]
 pub use modules::mcp::chat_extension::content::{McpContentData, ResourceLink, RichFile};
 
+// Re-export the shared resource_link consumer for integration tests (the
+// in-process callers — chat extension + workflow dispatcher — reach it via
+// `crate::modules::mcp::resource_link`, but `modules` is private to the lib).
+// `init_file_storage` lets an in-process test point the global file store at a temp
+// dir before driving `persist_links` directly (the spawned test server inits its own
+// store in its own process; `init_repositories` is already re-exported above).
+#[doc(hidden)]
+pub use modules::file::storage::manager::{get_file_storage, init_file_storage};
+#[doc(hidden)]
+pub use modules::mcp::resource_link::{persist_links, PersistOutcome, PersistedArtifact};
+
 // Re-export memory + summarization engines for integration tests
 // (tier 5 real-LLM tests need to invoke the pipelines directly).
 #[doc(hidden)]

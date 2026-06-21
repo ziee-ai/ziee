@@ -1090,6 +1090,60 @@ cargo test --test integration_tests lit_search:: tool_result_mcp:: -- --test-thr
 
 ---
 
+## MCP tool-result file persistence (`resource_link` + `ziee://`)
+
+A `tool` result can carry a `resource_link` content block pointing at a **file** the tool
+produced (chart / PDF / CSV). `modules/mcp/resource_link.rs::persist_links` is the single
+in-process consumer that turns those links into durable file-store artifacts. It is called
+by the chat MCP path (both `chat_extension/mcp.rs` save sites) and is call-ready for the
+workflow tool dispatcher.
+
+Per link it dispatches on the URI:
+- `is_saved == Some(true)` — already in the store; referenced, never re-saved.
+- `ziee://<host_abs_path>` — a **trusted in-process** tool (e.g. `code_sandbox::get_resource_link`
+  for a transient workspace artifact) placed a file on the host; the bytes are read straight
+  off disk (no JWT/HTTP) behind three guards, ingested, and the URI rewritten to
+  `/api/files/{id}`.
+- else (`is_saved:false`/`None`, an HTTP URL) — fetched over HTTP (built-in JWT or external
+  headers), ingested; skipped when no `jwt_secret` (the dispatcher passes `None`).
+
+**The three `ziee://` guards (security-critical):**
+1. **Trusted-emitter only** — `is_trusted_resource_emitter(server_id)` (all deterministic
+   built-in ids; a SUPERSET of the approval-bypass `is_builtin_server_id`, adding
+   code_sandbox/skill/workflow). External/user servers are never honored.
+2. **Confine + canonicalize** — `confine_under_roots`: canonicalize (resolve symlinks),
+   require the path under an `allowed_root` (the per-conversation sandbox workspace for chat;
+   the run workspace for the dispatcher). Plus a non-absolute reject.
+3. **Strip-before-client** — saved links' URIs become `/api/files/{id}`; any *unsaved*
+   host-path `ziee://` link (failed/rejected/untrusted) has its URI blanked; and
+   `structured_content` is scrubbed of `ziee://<host-path>` strings at capture
+   (`helpers::execute_tool`, defense-in-depth for the `get_resource_link` →
+   `structuredContent` channel that's persisted + shipped + recalled via `tool_result_mcp`).
+   The single `is_ziee_host_path` predicate (absolute remainder) drives every blank/scrub
+   decision, so `ziee://workflow-runs/...` handles are **preserved**. The raw host path
+   never reaches the browser/LLM.
+
+### `ziee://` scheme registry — TWO distinct in-tree meanings (do not conflate)
+- `ziee://<absolute-host-path>` — **this** consumer scheme (a host file to ingest). Always
+  absolute; consumed only by `persist_links`.
+- `ziee://workflow-runs/<run>/...` — `workflow_mcp`'s logical **resource** handle, served as
+  an MCP `resource` block (NOT a `resource_link`), parsed by `workflow_mcp/resources.rs`. Its
+  remainder is relative, so `persist_links`' non-absolute reject rejects it even if one ever
+  reached it. Keep the two dialects distinct when adding either.
+
+### Cross-session note
+`persist_links` accepts `workflow_run_id: Option<Uuid>` but does NOT persist the FK on `main`
+(needs `file::ingest`/migration `files.workflow_run_id`/`set_workflow_run_id`, which live in
+the workflow-standalone-runs branch). `created_by="workflow"` is the run-provenance value
+(see migration 34's vocabulary).
+
+```bash
+cargo test --lib -p ziee mcp::resource_link::
+cargo test --test integration_tests mcp::resource_link -- --test-threads=1
+```
+
+---
+
 ## Documentation Index
 
 ### 📐 Architecture
