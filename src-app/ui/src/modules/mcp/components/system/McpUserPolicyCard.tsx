@@ -5,6 +5,7 @@ import {
   Card,
   Checkbox,
   Flex,
+  InputNumber,
   Select,
   Typography,
 } from 'antd'
@@ -56,6 +57,9 @@ export function McpUserPolicyCard() {
 
   const [transports, setTransports] = useState<string[]>(allowedTransports)
   const [flavor, setFlavor] = useState<string | null>(userStdioSandboxFlavor)
+  const [retentionDays, setRetentionDays] = useState<number>(
+    policy?.tool_call_retention_days ?? 90,
+  )
   const [saving, setSaving] = useState(false)
   // Shared catalog — lazy-loaded by the store on first access (see
   // SandboxFlavors.store.ts), reused by McpServerDrawer too.
@@ -70,6 +74,7 @@ export function McpUserPolicyCard() {
   useEffect(() => {
     setTransports(allowedTransports)
     setFlavor(userStdioSandboxFlavor)
+    setRetentionDays(policy?.tool_call_retention_days ?? 90)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [policy])
 
@@ -91,6 +96,7 @@ export function McpUserPolicyCard() {
         user_stdio_sandbox_flavor: stdioAllowed
           ? flavor ?? undefined
           : undefined,
+        tool_call_retention_days: retentionDays,
       })
       message.success('MCP user policy updated')
     } catch (err: any) {
@@ -156,6 +162,26 @@ export function McpUserPolicyCard() {
             />
           </div>
         )}
+
+        <div>
+          <Text strong>Tool-call history retention</Text>
+          <Paragraph type="secondary" className="!mb-1 !mt-1 !text-xs">
+            Days to keep the MCP tool-call history (shown in each server's
+            “Calls” tab) before a background job prunes it. Set to 0 to keep
+            it forever.
+          </Paragraph>
+          <Flex align="center" gap={8}>
+            <InputNumber
+              min={0}
+              max={3650}
+              value={retentionDays}
+              onChange={v => setRetentionDays(typeof v === 'number' ? v : 90)}
+              disabled={!canEdit}
+              data-testid="mcp-tool-call-retention-days"
+            />
+            <Text type="secondary">days</Text>
+          </Flex>
+        </div>
 
         <Flex justify="end">
           <Can permission={Permissions.McpUserPolicyEdit}>

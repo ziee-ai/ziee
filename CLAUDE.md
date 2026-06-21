@@ -848,12 +848,13 @@ nothing sensitive.
 
 `src-app/server/src/modules/sync/{mod,event,registry,handlers,extractor}.rs`.
 
-- **`event.rs::audience_kind`** is the single, auditable authorization table:
-  each `SyncEntity` maps to `Owner(user_id)` | `Permission(&str)` |
-  `Everyone`. The `match` is **exhaustive**, so a new entity can't compile
-  without an explicit audience (a new entity can never silently default to a
-  broadcast). The perm string MUST equal the read-perm gating the client's
-  refetch endpoint.
+- **No central audience table.** Each emitting handler picks the `Audience`
+  explicitly at the `publish(entity, action, id, audience, origin)` call site —
+  `Audience::owner(user_id)` / `perm::<P>()` / `any_of::<L>()` / `all_of::<L>()`
+  / `everyone()`. Adding a `SyncEntity` variant does NOT force an audience at
+  compile time; the author must choose the correct audience at every emit site
+  (owner-scope by default; never `everyone()` for per-user data). The perm used
+  MUST equal the read-perm gating the client's refetch endpoint.
 - **`registry.rs`** — per-user keyed connection pool (NOT the global
   broadcast pool used by download/hardware SSE). Caps: `512` global / `12`
   per-user / `1024` bounded channel depth (a stalled reader is pruned →
@@ -886,24 +887,28 @@ Mutating handlers call `publish as sync_publish` with
 
 ### Frontend
 
-`src-app/ui/src/core/sync/` (SyncClient SSE loop + epoch-guarded reconnect,
-`registry.ts`, `connection.ts` header holder) + per-module
-`src-app/ui/src/modules/*/sync.ts` calling
-`registerSync('<entity>', { onEvent, onResync, requiredPermission })`.
+`src-app/ui/src/core/sync/` = `SyncClient.ts` (SSE loop + epoch-guarded
+reconnect), `connection.ts` (header holder), `types.ts`, `index.ts`. There is
+**no** `registry.ts`, **no** per-module `sync.ts`, and **no** `registerSync`.
+Each module's Zustand store subscribes DIRECTLY in its `__init__.__store__` to
+`sync:<entity>` (+ `sync:reconnect`) and refetches.
 
 - The SyncClient re-emits each frame onto the existing EventBus as a
-  per-entity `sync:<entity>` event; each module's `registerSync` handler
-  refetches its store (per-surface policy lives in the handler).
-- **`ENTITY_COVERAGE`** is a `Record<SyncEntity, 'handled' | 'backend-only'>`
-  — a new generated entity is a COMPILE error until given a decision;
-  `assertSyncCoverage()` fails loudly in dev if a `'handled'` entity has no
-  handler.
-- **`requiredPermission`** gates BOTH `onEvent` and `onResync` (the latter
-  fires for all handlers on reconnect regardless of the server audience), so
-  a non-admin's reconnect never hits an admin endpoint → 403 (the `no-403`
-  E2E gate). Set it on every entity whose refetch is permission-gated (use
-  `{ allOf: [...] }` when a reload hits multiple gated endpoints, e.g. the
-  admin provider reload fetches both providers and models).
+  per-entity `sync:<entity>` event; each store's `sync:<entity>` subscription
+  refetches it (per-surface policy lives in the subscription). The generated
+  `SyncEntity` TS union (`api-client/types.ts`) auto-derives the
+  `sync:${entity}` EventBus key (`core/sync/types.ts`), so a new backend entity
+  becomes a valid event key on the next OpenAPI regen.
+- **No compile-time coverage gate** (no `ENTITY_COVERAGE`, no
+  `assertSyncCoverage()`). Coverage is by convention: a store that cares about
+  an entity subscribes to its `sync:<entity>` (~28 stores do today).
+- **No-403 reconnect rule** is enforced by the store SELF-GATING its refetch:
+  the `sync:<entity>` / `sync:reconnect` handler calls
+  `hasPermissionNow(Permissions.X)` and returns early if the user lacks it
+  (`sync:reconnect` fires for every store on reconnect regardless of server
+  audience). The perm checked MUST equal the read-perm the refetch endpoint
+  enforces. Examples: `mcp/stores/McpServer.store.ts:228-248`,
+  `SystemMcpServer.store.ts:170-176`.
 
 ### Tests
 
@@ -912,6 +917,52 @@ Mutating handlers call `publish as sync_publish` with
 | unit | `modules/sync/{registry,event}.rs` `#[cfg(test)]` | audience routing isolation, self-echo skip, caps→429, snapshot refresh, lagging-conn prune, batch session delivery, the audience table + notify-only wire format |
 | integration | `server/tests/sync/subscribe_test.rs` | subscribe auth-gate (401) + SSE handshake |
 | E2E | `ui/tests/e2e/13-sync/` (`--workers=1`) | cross-device delivery without reload; cross-user isolation (A's 2nd device = positive control) |
+
+---
+
+## MCP Tool-Call History
+
+Every MCP tool-call invocation is recorded to `mcp_tool_calls` (migration 103) —
+the MCP analog of `workflow_runs`. Owner-scoped, surfaced per-server in the
+McpServerDrawer "Calls" tab, with realtime refresh + time-based auto-pruning.
+
+### Recording (the chokepoint)
+
+Recording happens once, inside **`McpSession::call_tool`**
+(`mcp/client/session.rs`), via an `McpCallContext` stamped onto the (ephemeral)
+session at creation — so all paths (chat / rest / always / approval / sampling,
+incl. built-ins) record without per-call-site duplication. The manager
+(`get_or_create_with_context`, now `+ source`) stamps the chat/REST sessions;
+the 3 `new_with_sampling` sites stamp via `set_call_context`. The insert is
+**fire-and-forget** (`tokio::spawn`) so a DB hiccup can't fail the tool call;
+an unstamped (pooled, non-tool-call) session records nothing. `ask_user` is
+intercepted before `call_tool` and is correctly never recorded. The full
+`ToolResult` is stored in `result_json` with base64 bytes stripped to
+`{_stripped,_bytes}` references (only on binary content blocks), secret-keyed
+values redacted, and the whole serialized result capped at 1 MiB; args are
+likewise redacted + capped at 16 KiB (mirrors the chat path's result caps).
+
+### Surfaces
+
+- Table `mcp_tool_calls` (FKs from `tool_use_approvals`; terminal status
+  `completed|failed|timeout|cancelled`; `source` enum; `is_built_in` flag).
+- REST `GET /api/mcp/tool-calls?page&per_page&server_id&conversation_id` +
+  `GET /api/mcp/tool-calls/{id}`, gated `mcp_servers::read` (held by Users),
+  owner-scoped (cross-user single-row → 404). Code in `mcp/tool_calls/`.
+- Owner-scoped sync entity `McpToolCall` (Create emitted from the record task,
+  `origin=None`); the `McpToolCalls` store refetches on `sync:mcp_tool_call`.
+- Retention: `mcp_user_policy.tool_call_retention_days` (admin-configurable on
+  the existing User-MCP-policy card; 0 = keep forever); a boot-time prune loop
+  (`mcp/tool_calls/prune.rs`, ~6 h) deletes older rows.
+
+### Tests
+
+- Unit: `mcp/tool_calls/record.rs` `#[cfg(test)]` (arg cap, byte-strip, status map).
+- Integration: `tests/mcp/tool_call_history_test.rs` (record via REST +
+  `MockMcpServer`, error path, owner-scope/404, perm-gate 403, retention
+  roundtrip) + `tests/mcp/sync_emit_test.rs` (owner-scoped emit via `SyncProbe`).
+- E2E: `ui/tests/e2e/07-mcp/mcp-tool-call-history.spec.ts` +
+  `13-sync/mcp-tool-call-sync.spec.ts` (live cross-device delivery).
 
 ---
 
@@ -1140,6 +1191,87 @@ the workflow-standalone-runs branch). `created_by="workflow"` is the run-provena
 ```bash
 cargo test --lib -p ziee mcp::resource_link::
 cargo test --test integration_tests mcp::resource_link -- --test-threads=1
+```
+
+---
+
+## Citation Management + Verification
+
+The `citations` module is a built-in MCP server (`citations.ziee.internal`,
+loopback JSON-RPC at `/api/citations/mcp`) backing a **persistent, verified,
+CSL-JSON bibliography** (a user-level library + per-project reference lists). The
+defining rule is **never invent a citation** — every DOI/PMID must resolve to a
+real record. A reduced scope of the "scientific-writing" feature (drafting/
+editor/manuscript-export were dropped). It reuses `lit_search`'s
+`dedup::normalize_doi`; the resolver is otherwise self-contained (doi.org /
+NCBI / Crossref), using no lit_search connectors.
+
+### Storage
+
+- `bibliography_entries` (migration `102`) — the user library. The full record is
+  **CSL-JSON in a `JSONB` column** (source of truth); scalar columns
+  (`doi`/`pmid`/`pmcid`/`arxiv_id`/`title`/`year`/`citation_key`/`dedup_fingerprint`/
+  `verification_status`) are a projection for indexing/dedup/search. Partial unique
+  indexes on `(user_id,lower(doi))`, `(user_id,pmid)`, and `(user_id,dedup_fingerprint)
+  WHERE doi IS NULL AND pmid IS NULL` are the race-safe dedup guards; GENERATED
+  `content_tsv` for FTS.
+- `project_bibliography` (migration `103`) — M:N link to projects (mirrors
+  `project_files`). One library; a project's list is links, not copies.
+- `citations::use` + `citations::manage` granted to the Users group (migration `104`).
+
+### Resolve + verify (the engine — `resolve.rs` / `verify.rs`)
+
+- **DOI** → doi.org content negotiation (`Accept: application/vnd.citationstyles.csl+json`)
+  → CSL-JSON; **arXiv** → `10.48550/arXiv.<id>` → doi.org; **PMID/PMCID** → NCBI
+  ID-Converter → DOI → doi.org; **title/raw** → Crossref bibliographic query → best
+  title-match → its DOI. 404 ⇒ `not_found` (fabricated).
+- **Status** ∈ `verified | mismatch | not_found | unverified`. `not_found` is reserved
+  for a *supplied id that fails to resolve*; an identifier-less item rests at
+  `unverified` (legitimate — books/theses/datasets), NOT a red flag.
+- **Title-match heuristic** (from the user's `doi-to-ref.js`): normalize + substring
+  OR ≥60% word overlap.
+- **Dedup**: normalized DOI → PMID → exact `dedup_fingerprint` (auto-link) → fuzzy
+  near-match (flagged `possible_duplicate` for review, never auto-merged).
+
+### Tools + REST
+
+- MCP tools (batch-first, `items[]`): `lookup_citations` / `add_citations` /
+  `verify_citations` / `list_citations` / `format_citations` / `remove_citations`.
+  Per-item input is a flexible `CitationInput` — the model sends `id`/`title`/`csl`/`raw`
+  and is **never required to supply a DOI**. Cap = 100 items/call (over-cap errors, no
+  silent truncation). Auto-attached to tool-capable chats via the `citations`
+  chat-extension flag + the two `mcp.rs` edits (`auto_attach_builtin_ids` +
+  `is_builtin_server_id`).
+- REST (`rest.rs`, OpenAPI `Citations.*`): `GET /api/citations`, `POST /api/citations/
+  import|verify`, `GET /api/citations/export|styles`, `DELETE /api/citations/{id}`,
+  `POST/DELETE /api/projects/{project_id}/citations[/{entry_id}]`.
+
+### Format/export (`format.rs` + `csl.rs`)
+
+CSL-JSON / BibTeX (embedded pandoc `-f csljson -t bibtex`, double-braced titles) / RIS
+(pure-Rust writer — pandoc has no RIS *writer*) / CSL-styled text (pandoc `--citeproc`).
+CSL styles bundle from `resources/csl/` via `include_dir!` (CC BY-SA 3.0 + NOTICE; **no
+locales** — pandoc 3.x ships them). With no bundled `.csl`, text uses pandoc's built-in
+default. **Verified pandoc 3.7 readers**: bibtex/biblatex/ris/endnotexml/csljson (NOT
+`.nbib`/MEDLINE).
+
+### Frontend (`ui/src/modules/citations/`)
+
+Settings page at **`/settings/citations`** (`settingsUserPages` slot) — card list +
+verification badges + Import/Verify-all/Export. A project's reference list is a
+`knowledge_kinds` project-extension ("References", next to "Knowledge files"). No editor.
+
+### Debug-only test seams (`cfg!(debug_assertions)`)
+
+`CITATIONS_RESOLVER_ENDPOINT` (doi.org), `CITATIONS_IDCONV_ENDPOINT`,
+`CITATIONS_CROSSREF_ENDPOINT` + `CITATIONS_ALLOW_LOOPBACK=1` — point the resolver at a
+loopback mock for deterministic tests (mirrors `WEB_SEARCH_BRAVE_ENDPOINT`).
+
+```bash
+# Tier 1 (unit)
+cargo test --lib -p ziee citations::
+# Tier 2/3 (integration + MCP + mock-resolve)
+cargo test --test integration_tests citations:: -- --test-threads=1
 ```
 
 ---

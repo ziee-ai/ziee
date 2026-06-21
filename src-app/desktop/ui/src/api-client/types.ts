@@ -49,6 +49,10 @@ export interface AssistantListResponse {
   total: number
 }
 
+export interface AttachCitationsRequest {
+  entry_ids: string[]
+}
+
 export interface AttachFileRequest {
   file_id: string
 }
@@ -123,6 +127,27 @@ export interface BackendStatusResponse {
   ready: boolean
   running: boolean
   version: string
+}
+
+export interface BatchReport {
+  results: CitationItemResult[]
+}
+
+export interface BibliographyEntry {
+  title?: string
+  arxiv_id?: string
+  citation_key: string
+  created_at: string
+  csl_json: any
+  doi?: string
+  id: string
+  pmcid?: string
+  pmid?: string
+  source?: string
+  updated_at: string
+  verification_status: VerificationStatus
+  verified_at?: string
+  year?: number
 }
 
 export interface Branch {
@@ -207,6 +232,28 @@ export type ChatStreamSseEvent = {
   kind: 'frame'
 }
 
+export interface CitationInput {
+  title?: string
+  authors?: string[]
+  csl?: any
+  id?: string
+  journal?: string
+  kind?: string
+  raw?: string
+  year?: number
+}
+
+export interface CitationItemResult {
+  citation_key?: string
+  dedup_outcome?: DedupOutcome
+  entry_id?: string
+  input: string
+  mismatch_fields?: string[]
+  possible_duplicate_of?: string
+  reason?: string
+  verification_status: VerificationStatus
+}
+
 export interface CodeSandboxResourceLimits {
   address_space_bytes: number
   cpu_max: string
@@ -244,6 +291,7 @@ export interface ConfigFieldInfo {
 
 export interface ConnectorCatalogEntry {
   api_key_set: boolean
+  config: any
   config_fields: ConfigFieldInfo[]
   configured: boolean
   display_name: string
@@ -507,6 +555,8 @@ export interface CreateWorkflowFromHubRequest {
   hub_id: string
 }
 
+export type DedupOutcome = 'inserted' | 'linked_existing' | 'possible_duplicate' | 'failed'
+
 export interface DeleteAllResponse {
   deleted: number
 }
@@ -760,6 +810,17 @@ export interface EnvironmentInfo {
   cached_size_bytes?: number
   flavor: string
   mounted: boolean
+}
+
+export interface ExportQuery {
+  format?: string
+  project_id?: string
+  style?: string
+}
+
+export interface ExportResponse {
+  format: string
+  output: string
 }
 
 export interface File {
@@ -1194,6 +1255,11 @@ export type ImageSource = {
   file_id: string
 }
 
+export interface ImportCitationsRequest {
+  items: CitationInput[]
+  project_id?: string
+}
+
 export interface ImportQuery {
   name?: string
   scope?: string
@@ -1294,6 +1360,14 @@ export interface ListAuditLogQuery {
   limit?: number
 }
 
+export interface ListCitationsQuery {
+  project_id?: string
+}
+
+export interface ListCitationsResponse {
+  entries: BibliographyEntry[]
+}
+
 export interface ListMemoriesQuery {
   kind?: string
   limit?: number
@@ -1324,6 +1398,14 @@ export interface ListSystemServersQuery {
   per_page?: number
   search?: string
   status?: string
+}
+
+export interface ListToolCallsQuery {
+  conversation_id?: string
+  is_built_in?: boolean
+  page?: number
+  per_page?: number
+  server_id?: string
 }
 
 export interface ListToolsResponse {
@@ -1630,12 +1712,47 @@ export interface McpSettingsResponse {
   settings?: ConversationMcpSettingsResponse
 }
 
+export interface McpToolCall {
+  arguments_json: any
+  branch_id?: string
+  content_kinds: string[]
+  conversation_id?: string
+  created_at: string
+  duration_ms?: number
+  error_message?: string
+  finished_at?: string
+  id: string
+  is_built_in: boolean
+  is_error: boolean
+  message_id?: string
+  result_bytes: number
+  result_json?: any
+  server_id?: string
+  server_name: string
+  source: string
+  started_at: string
+  status: string
+  tool_name: string
+  tool_use_id?: string
+  updated_at: string
+  user_id: string
+}
+
+export interface McpToolCallListResponse {
+  calls: McpToolCall[]
+  page: number
+  per_page: number
+  total: number
+  total_pages: number
+}
+
 export interface McpTransport {
   type: string
 }
 
 export interface McpUserPolicy {
   allowed_transports: string[]
+  tool_call_retention_days: number
   updated_at: string
   updated_by?: string
   user_stdio_sandbox_flavor?: string
@@ -1914,6 +2031,11 @@ export interface ModelUsageInfo {
 export interface MountEntry {
   host_path: string
   read_only?: boolean
+}
+
+export interface MutationResponse {
+  count?: number
+  ok: boolean
 }
 
 export interface OnboardingProgress {
@@ -2709,6 +2831,10 @@ export interface StreamError {
   message: string
 }
 
+export interface StylesResponse {
+  styles: string[]
+}
+
 export interface SuccessResponse {
   message: string
   success: boolean
@@ -2755,7 +2881,7 @@ export interface SyncConnectedData {
   connection_id: string
 }
 
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'file' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'web_search_settings' | 'lit_search_settings' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'code_sandbox_settings' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'web_search_settings' | 'lit_search_settings' | 'bibliography_entry' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run'
 
 export interface SyncEvent {
   action: SyncAction
@@ -3046,6 +3172,7 @@ export interface UpdateMcpServerRequest {
 
 export interface UpdateMcpUserPolicyRequest {
   allowed_transports: string[]
+  tool_call_retention_days?: number
   user_stdio_sandbox_flavor?: string
 }
 
@@ -3322,6 +3449,12 @@ export interface ValidateWorkflowResponse {
   warnings: ValidateErrorEntry2[]
 }
 
+export type VerificationStatus = 'unverified' | 'verified' | 'mismatch' | 'not_found'
+
+export interface VerifyCitationsRequest {
+  items: CitationInput[]
+}
+
 export interface VersionStatus {
   available: RootfsRelease[]
   conversation_count: number
@@ -3439,6 +3572,8 @@ export enum Permissions {
   AuthProvidersRead = 'auth_providers::read',
   BranchesCreate = 'branches::create',
   BranchesSwitch = 'branches::switch',
+  CitationsManage = 'citations::manage',
+  CitationsUse = 'citations::use',
   CodeSandboxEnvironmentsManage = 'code_sandbox::environments::manage',
   CodeSandboxEnvironmentsRead = 'code_sandbox::environments::read',
   CodeSandboxResourceLimitsManage = 'code_sandbox::resource_limits::manage',
@@ -3567,6 +3702,8 @@ export const PermissionDescriptions: Record<string, string> = {
   AuthProvidersRead: 'List configured auth providers and view their (masked) config.',
   BranchesCreate: 'Create message branches for edit/regenerate',
   BranchesSwitch: 'Switch between conversation branches',
+  CitationsManage: 'Create, import, verify, remove, and organize citations + CSL styles.',
+  CitationsUse: 'Use the citation tools and read your bibliography library.',
   CodeSandboxEnvironmentsManage: 'Trigger pre-fetch + cache management of sandbox rootfs environments.',
   CodeSandboxEnvironmentsRead: 'List rootfs versions and watch install progress.',
   CodeSandboxResourceLimitsManage: 'Update the sandbox memory/CPU/PID caps + per-exec timeout + idle-evict policy.',
@@ -3728,6 +3865,15 @@ export const ApiEndpoints = {
   'Chat.getUserLlmProviders': 'GET /api/chat/llm-providers',
   'ChatStream.setSubscription': 'PUT /api/chat/stream/subscription',
   'ChatStream.subscribe': 'GET /api/chat/stream',
+  'Citations.attachToProject': 'POST /api/projects/{project_id}/citations',
+  'Citations.delete': 'DELETE /api/citations/{id}',
+  'Citations.detachFromProject': 'DELETE /api/projects/{project_id}/citations/{entry_id}',
+  'Citations.export': 'GET /api/citations/export',
+  'Citations.import': 'POST /api/citations/import',
+  'Citations.list': 'GET /api/citations',
+  'Citations.listStyles': 'GET /api/citations/styles',
+  'Citations.reverify': 'POST /api/citations/reverify',
+  'Citations.verify': 'POST /api/citations/verify',
   'CodeSandbox.deleteRootfsVersion': 'DELETE /api/code-sandbox/rootfs/versions/{id}',
   'CodeSandbox.getResourceLimits': 'GET /api/code-sandbox/resource-limits',
   'CodeSandbox.installRootfsVersion': 'POST /api/code-sandbox/rootfs/versions/install',
@@ -3899,6 +4045,8 @@ export const ApiEndpoints = {
   'McpServerSystem.removeServerFromGroup': 'DELETE /api/mcp/system-servers/{id}/groups/{group_id}',
   'McpServerSystem.testConnection': 'POST /api/mcp/system-servers/test-connection',
   'McpServerSystem.update': 'PUT /api/mcp/system-servers/{id}',
+  'McpToolCall.get': 'GET /api/mcp/tool-calls/{id}',
+  'McpToolCall.list': 'GET /api/mcp/tool-calls',
   'McpUserPolicy.get': 'GET /api/mcp/user-policy',
   'McpUserPolicy.update': 'PUT /api/mcp/user-policy',
   'Memory.create': 'POST /api/memories',
@@ -4075,6 +4223,15 @@ export type ApiEndpointParameters = {
   'Chat.getUserLlmProviders': void
   'ChatStream.setSubscription': SetSubscriptionRequest
   'ChatStream.subscribe': void
+  'Citations.attachToProject': { project_id: string } & AttachCitationsRequest
+  'Citations.delete': { id: string }
+  'Citations.detachFromProject': { project_id: string; entry_id: string }
+  'Citations.export': { format?: string; project_id?: string; style?: string }
+  'Citations.import': ImportCitationsRequest
+  'Citations.list': { project_id?: string }
+  'Citations.listStyles': void
+  'Citations.reverify': { project_id?: string }
+  'Citations.verify': VerifyCitationsRequest
   'CodeSandbox.deleteRootfsVersion': { id: string }
   'CodeSandbox.getResourceLimits': void
   'CodeSandbox.installRootfsVersion': InstallVersionRequest
@@ -4246,6 +4403,8 @@ export type ApiEndpointParameters = {
   'McpServerSystem.removeServerFromGroup': { id: string; group_id: string }
   'McpServerSystem.testConnection': TestMcpConnectionRequest
   'McpServerSystem.update': { id: string } & UpdateMcpServerRequest
+  'McpToolCall.get': { id: string }
+  'McpToolCall.list': { conversation_id?: string; is_built_in?: boolean; page?: number; per_page?: number; server_id?: string }
   'McpUserPolicy.get': void
   'McpUserPolicy.update': UpdateMcpUserPolicyRequest
   'Memory.create': CreateMemoryRequest
@@ -4422,6 +4581,15 @@ export type ApiEndpointResponses = {
   'Chat.getUserLlmProviders': GetUserProvidersResponse2
   'ChatStream.setSubscription': void
   'ChatStream.subscribe': ChatStreamSseEvent
+  'Citations.attachToProject': MutationResponse
+  'Citations.delete': MutationResponse
+  'Citations.detachFromProject': MutationResponse
+  'Citations.export': ExportResponse
+  'Citations.import': BatchReport
+  'Citations.list': ListCitationsResponse
+  'Citations.listStyles': StylesResponse
+  'Citations.reverify': BatchReport
+  'Citations.verify': BatchReport
   'CodeSandbox.deleteRootfsVersion': VersionStatus
   'CodeSandbox.getResourceLimits': CodeSandboxResourceLimits
   'CodeSandbox.installRootfsVersion': InstallTaskState
@@ -4593,6 +4761,8 @@ export type ApiEndpointResponses = {
   'McpServerSystem.removeServerFromGroup': void
   'McpServerSystem.testConnection': TestMcpConnectionResponse
   'McpServerSystem.update': McpServer
+  'McpToolCall.get': McpToolCall
+  'McpToolCall.list': McpToolCallListResponse
   'McpUserPolicy.get': McpUserPolicy
   'McpUserPolicy.update': McpUserPolicy
   'Memory.create': UserMemory

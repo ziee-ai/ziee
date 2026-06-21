@@ -25,6 +25,7 @@ use super::super::{
     client::manager::McpSessionManager,
     permissions::*,
     runtime_types::*,
+    tool_calls::models::McpToolCallSource,
 };
 
 // =====================================================
@@ -86,7 +87,7 @@ pub async fn list_server_tools(
     }
 
     // Get or create session
-    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None).await?;
+    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None, None, None, McpToolCallSource::Rest).await?;
 
     // List tools
     let mut session = session.write().await;
@@ -117,7 +118,7 @@ pub async fn call_server_tool(
     }
 
     // Get session
-    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None).await?;
+    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None, None, None, McpToolCallSource::Rest).await?;
 
     // Call tool
     let mut session = session.write().await;
@@ -153,7 +154,7 @@ pub async fn list_server_resources(
     }
 
     // Get session
-    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None).await?;
+    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None, None, None, McpToolCallSource::Rest).await?;
 
     // List resources
     let mut session = session.write().await;
@@ -184,7 +185,7 @@ pub async fn read_server_resource(
     }
 
     // Get session
-    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None).await?;
+    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None, None, None, McpToolCallSource::Rest).await?;
 
     // Read resource
     let mut session = session.write().await;
@@ -292,7 +293,7 @@ pub async fn list_server_prompts(
         }
     }
 
-    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None).await?;
+    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None, None, None, McpToolCallSource::Rest).await?;
     let mut session = session.write().await;
     let prompts = session.list_prompts().await?;
 
@@ -313,7 +314,7 @@ pub async fn get_server_prompt(
         }
     }
 
-    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None).await?;
+    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None, None, None, McpToolCallSource::Rest).await?;
     let mut session = session.write().await;
     let prompt = session.get_prompt(&request.name, request.arguments).await?;
 
@@ -357,7 +358,7 @@ pub async fn ping_server(
         }
     }
 
-    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None).await?;
+    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None, None, None, McpToolCallSource::Rest).await?;
     let mut session = session.write().await;
     session.ping().await?;
 

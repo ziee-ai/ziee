@@ -9,9 +9,11 @@ import {
   App,
   Divider,
   Flex,
+  Tabs,
   Tooltip,
 } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
+import { McpToolCallsTab } from '@/modules/mcp/components/common/McpToolCallsTab'
 import { useEffect, useMemo, useState } from 'react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -980,8 +982,7 @@ export function McpServerDrawer() {
     </Flex>
   )
 
-  return (
-    <Drawer open={open} onClose={handleClose} title={titleNode} size={600}>
+  const detailsBody = (
       <div className="flex flex-col gap-4">
         {/* Surface the last probe's failure reason at the top of
             the body as an Alert so it can't be missed. Previously
@@ -1402,6 +1403,28 @@ export function McpServerDrawer() {
           )}
         </div>
       </div>
+  )
+
+  // In edit mode, surface a per-server tool-call history tab beside the form.
+  // Create mode has no server id yet, so just render the form.
+  const isEditMode = mode === 'edit' || mode === 'edit-system'
+  return (
+    <Drawer open={open} onClose={handleClose} title={titleNode} size={600}>
+      {isEditMode && editingServer ? (
+        <Tabs
+          defaultActiveKey="details"
+          items={[
+            { key: 'details', label: 'Details', children: detailsBody },
+            {
+              key: 'calls',
+              label: 'Calls',
+              children: <McpToolCallsTab serverId={editingServer.id} />,
+            },
+          ]}
+        />
+      ) : (
+        detailsBody
+      )}
     </Drawer>
   )
 }

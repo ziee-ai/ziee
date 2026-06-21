@@ -12,6 +12,7 @@ import {
   useMcpComposerStore,
   useMcpServerDrawerStore,
   useMcpStore,
+  useMcpToolCallsStore,
   useSystemMcpServersStore,
 } from '@/modules/mcp/stores'
 import { useGroupSystemMcpServersWidgetStore } from '@/modules/mcp/widgets/GroupSystemMcpServersWidget.store'
@@ -108,6 +109,12 @@ export default createModule({
     {
       name: 'McpComposer',
       store: useMcpComposerStore,
+    },
+    {
+      // Per-server tool-call history (mcp_tool_calls), shown in the
+      // McpServerDrawer "Calls" tab. Refetches live on sync:mcp_tool_call.
+      name: 'McpToolCalls',
+      store: useMcpToolCallsStore,
     },
     {
       name: 'ProjectMcpSettings',

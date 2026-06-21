@@ -7,6 +7,7 @@ use aide::axum::{
 };
 
 use super::handlers::*;
+use super::tool_calls::handlers as tool_call_handlers;
 use super::user_policy::handlers as user_policy_handlers;
 
 // =====================================================
@@ -56,6 +57,21 @@ pub fn user_routes() -> ApiRouter {
         .api_route(
             "/mcp/servers/{id}/tools/{name}/call",
             post_with(runtime::call_server_tool, runtime::call_server_tool_docs),
+        )
+        // Tool-call history (mcp_tool_calls): the caller's own invocations.
+        .api_route(
+            "/mcp/tool-calls",
+            get_with(
+                tool_call_handlers::list_tool_calls,
+                tool_call_handlers::list_tool_calls_docs,
+            ),
+        )
+        .api_route(
+            "/mcp/tool-calls/{id}",
+            get_with(
+                tool_call_handlers::get_tool_call,
+                tool_call_handlers::get_tool_call_docs,
+            ),
         )
         .api_route(
             "/mcp/servers/{id}/resources",

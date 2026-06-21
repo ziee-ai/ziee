@@ -54,6 +54,11 @@ pub enum SyncEntity {
     /// the stable file_id; the recipient refetches the file + its versions (if
     /// open in a panel).
     File,
+    /// A recorded MCP tool-call invocation (`mcp_tool_calls`). Emitted
+    /// owner-scoped on Create from the detached recording task in
+    /// `McpSession::call_tool`, so the per-server "Calls" tab refreshes live.
+    /// Notify-only; the client refetches via `GET /api/mcp/tool-calls`.
+    McpToolCall,
 
     // --- Admin-permission-scoped (delivered to holders of the read perm) ---
     /// Admin view of an LLM provider (full admin provider table).
@@ -95,6 +100,10 @@ pub enum SyncEntity {
     /// Deployment-wide literature search settings + connector config (singleton).
     /// Notify-only; the frontend refetches settings + the connector catalog.
     LitSearchSettings,
+
+    /// A user's bibliography library entry changed (add/import/verify/delete).
+    /// Owner-scoped; notify-only — the client refetches `/api/citations`.
+    BibliographyEntry,
 
     // --- Group-scoped user view (delivered to holders of the user read
     // perm; safe because we only NOTIFY — each recipient refetches its own

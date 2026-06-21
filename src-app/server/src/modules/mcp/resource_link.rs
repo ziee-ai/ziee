@@ -88,6 +88,7 @@ pub fn is_trusted_resource_emitter(server_id: Uuid) -> bool {
         || server_id == crate::modules::web_search::web_search_server_id()
         || server_id == crate::modules::tool_result_mcp::tool_result_mcp_server_id()
         || server_id == crate::modules::lit_search::lit_search_server_id()
+        || server_id == crate::modules::citations::citations_server_id()
         || server_id == crate::modules::code_sandbox::code_sandbox_server_id()
         || server_id == crate::modules::skill_mcp::skill_mcp_server_id()
         || server_id == crate::modules::workflow_mcp::workflow_mcp_server_id()

@@ -20,6 +20,7 @@ use crate::modules::chat::core::models::{Message, MessageContentData};
 use crate::modules::chat::core::types::streaming::ContentBlockDelta;
 use crate::modules::mcp::client::manager::McpSessionManager;
 use crate::modules::mcp::client::session::McpSession;
+use crate::modules::mcp::tool_calls::models::{McpCallContext, McpToolCallSource};
 use crate::modules::mcp::UsageMode;
 use crate::modules::mcp::sampling::{ChatSamplingHandler, acquire_session};
 use crate::modules::mcp::elicitation::models::ElicitationStartedNotification;
@@ -155,6 +156,12 @@ fn auto_attach_builtin_ids(
     if flag(crate::modules::lit_search::chat_extension::ATTACH_FLAG) {
         ids.push(crate::modules::lit_search::lit_search_server_id());
     }
+    // `citations` attaches behind the flag set by the citations chat extension
+    // (`attach_citations_mcp`), gated on tool-capable. Per-user library, always
+    // available — no admin enable / provider gate.
+    if flag(crate::modules::citations::chat_extension::ATTACH_FLAG) {
+        ids.push(crate::modules::citations::citations_server_id());
+    }
     // `ask_user` is always-on — the assistant may need to ask the user for input
     // in any conversation — but ONLY for tool-capable models: a model that can't
     // call tools can't call `ask_user`, and attaching it would run the full
@@ -221,6 +228,10 @@ fn is_builtin_server_id(id: Uuid) -> bool {
         // lit_search is approval-bypassed (read-only literature search + OA
         // full-text fetch, auto-attached); results are treated as untrusted data.
         || id == crate::modules::lit_search::lit_search_server_id()
+        // citations is auto-attached for tool-capable chats; writes operate ONLY
+        // on the caller's own verified library and never invent data (fabricated
+        // DOIs return not_found), so it is approval-bypassed like the others.
+        || id == crate::modules::citations::citations_server_id()
 }
 
 ///
@@ -346,7 +357,20 @@ impl McpChatExtension {
                         Ok(h) => {
                             let handler = Arc::new(h);
                             match McpSession::new_with_sampling(server.clone(), handler).await {
-                                Ok(s) => _owned = Some(s),
+                                Ok(mut s) => {
+                                    s.set_call_context(McpCallContext {
+                                        user_id: Some(context.user_id),
+                                        conversation_id: Some(context.conversation_id),
+                                        branch_id: Some(context.branch_id),
+                                        message_id: context.message_id,
+                                        tool_use_id: Some(tool_use_id.clone()),
+                                        source: McpToolCallSource::Sampling,
+                                        server_name: server.name.clone(),
+                                        is_built_in: server.is_built_in,
+                                        ..Default::default()
+                                    });
+                                    _owned = Some(s);
+                                }
                                 Err(e) => {
                                     tracing::warn!(
                                         "[sampling] Failed to create sampling session for '{}': {}",
@@ -398,7 +422,10 @@ impl McpChatExtension {
                         server.id,
                         context.user_id,
                         Some(context.conversation_id),
+                        Some(context.branch_id),
                         context.message_id,
+                        Some(tool_use_id.clone()),
+                        McpToolCallSource::Approval,
                     )
                     .await
                 {
@@ -1226,6 +1253,18 @@ impl ChatExtension for McpChatExtension {
                             tracing::warn!("Always-mode: failed to connect to server {}: {}", server.name, e);
                         }
                         Ok(mut session) => {
+                            // Record always-mode pre-runs (the session is built
+                            // directly, bypassing the manager's stamping).
+                            session.set_call_context(McpCallContext {
+                                user_id: Some(context.user_id),
+                                conversation_id: Some(context.conversation_id),
+                                branch_id: Some(context.branch_id),
+                                message_id: context.message_id,
+                                source: McpToolCallSource::Always,
+                                server_name: server.name.clone(),
+                                is_built_in: server.is_built_in,
+                                ..Default::default()
+                            });
                             let mcp_tools = match session.list_tools().await {
                                 Ok(t) => t,
                                 Err(e) => {
@@ -1310,7 +1349,11 @@ impl ChatExtension for McpChatExtension {
                     *server_id,
                     context.user_id,
                     Some(context.conversation_id),
+                    Some(context.branch_id),
                     context.message_id,
+                    // Tool-collection session (list_tools only); source/tool_use moot.
+                    None,
+                    McpToolCallSource::Always,
                 )
                 .await
             {
@@ -2078,6 +2121,17 @@ impl ChatExtension for McpChatExtension {
                                 Ok(h) => {
                                     match McpSession::new_with_sampling(server.clone(), Arc::new(h)).await {
                                         Ok(mut sampling_session) => {
+                                            sampling_session.set_call_context(McpCallContext {
+                                                user_id: Some(context.user_id),
+                                                conversation_id: Some(context.conversation_id),
+                                                branch_id: Some(context.branch_id),
+                                                message_id: context.message_id,
+                                                tool_use_id: Some(tool_use_id.clone()),
+                                                source: McpToolCallSource::Sampling,
+                                                server_name: server.name.clone(),
+                                                is_built_in: server.is_built_in,
+                                                ..Default::default()
+                                            });
                                             helpers::execute_tool(
                                                 &mut sampling_session,
                                                 &tool_name,
@@ -2136,7 +2190,10 @@ impl ChatExtension for McpChatExtension {
                         server.id,
                         context.user_id,
                         Some(context.conversation_id),
+                        Some(context.branch_id),
                         context.message_id,
+                        Some(tool_use_id.clone()),
+                        McpToolCallSource::Chat,
                     )
                     .await
                 {
@@ -2792,6 +2849,7 @@ mod builtin_tests {
         let web = crate::modules::web_search::web_search_server_id();
         let bio = crate::modules::bio_mcp::bio_mcp_server_id();
         let lit = crate::modules::lit_search::lit_search_server_id();
+        let citations = crate::modules::citations::citations_server_id();
         let tool_result = crate::modules::tool_result_mcp::tool_result_mcp_server_id();
 
         // Non-tool-capable model (no model_tools_capable seeded) → NOTHING
@@ -2851,6 +2909,13 @@ mod builtin_tests {
                 && with_lit.contains(&tool_result)
         );
         assert_eq!(with_lit.len(), 7);
+        // citations adds on top when ITS flag is set (the two mcp.rs edits — the
+        // documented silent-failure footgun if forgotten).
+        m.insert(crate::modules::citations::chat_extension::ATTACH_FLAG.into(), json!("true"));
+        let with_cit = auto_attach_builtin_ids(&m);
+        assert!(with_cit.contains(&citations), "citations flag must attach its server id");
+        assert!(with_cit.contains(&lit) && with_cit.contains(&web));
+        assert_eq!(with_cit.len(), 8);
         // A non-"true" flag value is ignored — only the always-on pair remains.
         let mut m2: HashMap<String, serde_json::Value> = HashMap::new();
         m2.insert("model_tools_capable".into(), json!(true));
@@ -2896,6 +2961,11 @@ mod builtin_tests {
         ));
         assert!(is_builtin_server_id(
             crate::modules::tool_result_mcp::tool_result_mcp_server_id()
+        ));
+        // citations (auto-attached; writes operate only on the caller's own
+        // verified library) is approval-bypassed too.
+        assert!(is_builtin_server_id(
+            crate::modules::citations::citations_server_id()
         ));
         // A third-party server id is NOT a privileged built-in.
         assert!(!is_builtin_server_id(Uuid::new_v4()));

@@ -2,10 +2,10 @@
 //!
 //! Exposes a per-user SSE stream (`GET /api/sync/subscribe`) that pushes
 //! lightweight `{entity, action, id}` change notifications. Mutating
-//! handlers call [`publish`]; the central audience table in `event.rs`
-//! decides who receives each event, and the per-user keyed `registry`
-//! routes delivery + suppresses self-echo. Notify-and-refetch only — no
-//! row data crosses the wire; clients refetch via the existing
+//! handlers call [`publish`] with an explicit `Audience` chosen at the call
+//! site (there is NO central audience table — see `event.rs`); the per-user
+//! keyed `registry` routes delivery + suppresses self-echo. Notify-and-refetch
+//! only — no row data crosses the wire; clients refetch via the existing
 //! permission-checked REST endpoints.
 
 use aide::axum::ApiRouter;
