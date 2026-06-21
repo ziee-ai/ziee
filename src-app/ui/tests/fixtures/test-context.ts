@@ -387,8 +387,11 @@ bio_mcp:
       }
     })
 
-    // Wait for backend to be ready (120 seconds for cargo compilation on first run)
-    const backendReady = await waitForServer(
+    // Wait for backend to be STABLY ready (120s budget covers cargo compilation
+    // on first run). Deep gate (not just a single 200): a cold-loading server
+    // answers /api/health while still churning, and SSE streams opened in that
+    // window get reset → flaky `waitFor` timeouts. Require a stable, fast window.
+    const backendReady = await waitForServerStable(
       `http://127.0.0.1:${backendPort}/api/health`,
       120,
     )
@@ -647,6 +650,86 @@ async function waitForServer(
     await new Promise(resolve => setTimeout(resolve, 1000))
   }
   return false
+}
+
+/**
+ * Deep readiness gate (vs `waitForServer`, which returns on the FIRST non-5xx
+ * response — i.e. the instant the server binds).
+ *
+ * A freshly `cargo run` backend answers `/api/health` while still churning
+ * through cold-load (module init settling, background `tokio::spawn`ed work,
+ * embedded-binary/hub-seed handling). SSE streams (`/api/sync/subscribe`,
+ * chat-stream) opened during that busy window get reset client-side
+ * (`stream ended; reconnecting`), and a test whose `waitFor` depends on
+ * SSE-delivered data then times out. Health stays answerable the whole time, so
+ * a single 200 is not a reliable "ready" signal.
+ *
+ * This gate instead requires an UNINTERRUPTED window of `consecutive` health
+ * checks that are BOTH successful (<500) AND fast (<= `fastMs`) — a slow or
+ * dropped probe means the event loop is still saturated, which is precisely when
+ * SSE churns. Any blip resets the streak. Returns false on timeout.
+ */
+async function waitForServerStable(
+  url: string,
+  maxSeconds: number,
+  opts: {
+    consecutive?: number
+    intervalMs?: number
+    fastMs?: number
+    abortMs?: number
+    stabilizeSeconds?: number
+  } = {},
+): Promise<boolean> {
+  const consecutive = opts.consecutive ?? 6
+  const intervalMs = opts.intervalMs ?? 250
+  const fastMs = opts.fastMs ?? 800
+  const abortMs = opts.abortMs ?? 3000
+  // Once bound, only spend up to this long chasing the stable window before
+  // proceeding best-effort — so an over-strict window can never become a NEW
+  // "failed to start". (Distinct from the overall budget, which also covers the
+  // cargo compile/boot wait before the port opens.)
+  const stabilizeSeconds = opts.stabilizeSeconds ?? 30
+  const deadline = Date.now() + maxSeconds * 1000
+
+  let streak = 0
+  let boundAt = 0 // timestamp the server first answered (<500)
+
+  while (Date.now() < deadline) {
+    const start = Date.now()
+    let status = 0
+    let elapsed = abortMs
+    try {
+      const ac = new AbortController()
+      const timer = setTimeout(() => ac.abort(), abortMs)
+      const res = await fetch(url, { signal: ac.signal })
+      clearTimeout(timer)
+      status = res.status
+      elapsed = Date.now() - start
+    } catch {
+      // ECONNREFUSED (not bound yet) or aborted (too slow)
+    }
+
+    const bound = status > 0 && status < 500
+    if (bound && boundAt === 0) boundAt = Date.now()
+    streak = bound && elapsed <= fastMs ? streak + 1 : 0
+    if (streak >= consecutive) return true // stable, fast window achieved
+
+    // Best-effort fallback: a server that's BOUND but stays jittery past
+    // `stabilizeSeconds` is still usable — proceed (don't hard-fail). This keeps
+    // the gate strictly >= the old single-200 gate, never worse.
+    if (boundAt > 0 && Date.now() - boundAt >= stabilizeSeconds * 1000) {
+      console.log(
+        `⚠️  backend bound but never reached a stable fast-health window in ${stabilizeSeconds}s; proceeding best-effort`,
+      )
+      return true
+    }
+
+    // Poll slowly while waiting for the port (cargo compile/boot); once bound,
+    // poll at `intervalMs` to measure the stability window quickly.
+    await new Promise(resolve => setTimeout(resolve, boundAt > 0 ? intervalMs : 500))
+  }
+  // Budget elapsed: usable iff the server ever bound.
+  return boundAt > 0
 }
 
 async function killProcessOnPort(port: number): Promise<void> {
