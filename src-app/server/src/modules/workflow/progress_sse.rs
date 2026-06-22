@@ -32,6 +32,9 @@ pub async fn subscribe(
     auth: RequirePermissions<(WorkflowsRead,)>,
     AxumPath(run_id): AxumPath<Uuid>,
 ) -> ApiResult<Sse<impl Stream<Item = Result<Event, Infallible>>>> {
+    // Opportunistically reclaim any orphaned run handles (a runner that panicked
+    // without unregistering). Cheap; this is the safety net `reap_stale` documents.
+    registry::reap_stale();
     // Auth: caller must own the run.
     let row = repository::find_run(Repos.pool(), run_id)
         .await

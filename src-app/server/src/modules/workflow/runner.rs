@@ -5,8 +5,16 @@
 //! via `StepDispatcher`, persists per-step metadata via repository
 //! helpers, emits per-step events via the registry's mpsc fan-out.
 //!
-//! Wall-clock cap: 30 min via `tokio::time::timeout` wrapping the
-//! whole runner future.
+//! Wall-clock cap: a LIVE deadline (`deadline_watcher` raced against the
+//! runner future via `select!`), seeded from the workflow's `max_runtime_secs`
+//! (default `RUN_WALL_CLOCK` = 30 min; `0` = unbounded) and adjustable mid-run
+//! via `PUT /workflow-runs/{id}/timeout`. The per-run token + output-byte caps
+//! remain the resource backstops. NOTE: the chat/`workflow_mcp` blocking-wait
+//! (`await_terminal`) TRACKS this same live timeout — a bounded run is capped at
+//! its own deadline (+ slack), and an UNBOUNDED run (`max_runtime_secs:0`) is
+//! honored there too, bounded only by the no-progress (crashed-runner) guard.
+//! The synchronous `/test` path is the one exception: it keeps a fixed
+//! `RUN_WALL_CLOCK` cap (it mocks every step and must return promptly).
 
 #![allow(dead_code)]
 
@@ -43,10 +51,17 @@ use crate::modules::workflow::validate::{
     OutputDef, StepConfig, StepDef, WorkflowDef, parse_workflow_yaml, topo_sort_steps,
 };
 
-/// Global per-run wall-clock cap (30 min). The workflow runner stays
-/// inside this; any LLM call or sandbox exec that takes longer fails
-/// the run with a `wall_clock_exceeded` error message.
+/// Default per-run wall-clock cap (30 min). Used when a workflow does NOT declare
+/// `max_runtime_secs`, and as the fixed cap on the `/test` path. The live cap is
+/// otherwise enforced by `deadline_watcher` against `handle.timeout_secs` (which a
+/// workflow's `max_runtime_secs` / `PUT .../timeout` set; `0` = unbounded).
 pub const RUN_WALL_CLOCK: std::time::Duration = std::time::Duration::from_secs(30 * 60);
+
+/// Hard ceiling for a workflow-declared / live-set timeout (7 days). Generous
+/// enough for long runs on a user-owned machine while preventing
+/// `Instant + Duration` overflow in `deadline_watcher`. `0` (unbounded) bypasses
+/// the deadline entirely, so it is never clamped to this.
+pub const MAX_RUN_TIMEOUT_SECS: u64 = 7 * 24 * 60 * 60;
 
 /// Liveness-heartbeat cadence. While a run is in-flight the runner bumps
 /// `workflow_runs.updated_at` this often so the workflow_mcp tool path's
@@ -327,6 +342,39 @@ async fn run_mock_step(ctx: &mut RunContext, step_id: &str, mock: Value) -> Step
 /// events. Returns Ok on terminal status; the only Err it returns is
 /// catastrophic (e.g. failed to mark status — the runner already wrote
 /// `failed` in that case).
+/// Resolve when the run's LIVE wall-clock deadline passes. Re-reads `timeout_secs`
+/// each loop so a mid-run `PUT /workflow-runs/{id}/timeout` (extend / shorten) is
+/// honored within the recheck interval; `0` means UNBOUNDED (never resolves).
+/// Returns the timeout (secs) that fired, for the failure message.
+async fn deadline_watcher(
+    started: Instant,
+    timeout_secs: Arc<std::sync::atomic::AtomicU64>,
+) -> u64 {
+    const RECHECK: std::time::Duration = std::time::Duration::from_secs(30);
+    loop {
+        let secs = timeout_secs.load(std::sync::atomic::Ordering::Relaxed);
+        if secs == 0 {
+            // Unbounded — sleep and re-check (the cap may later be set to a bound).
+            tokio::time::sleep(RECHECK).await;
+            continue;
+        }
+        let Some(deadline) = started.checked_add(std::time::Duration::from_secs(secs)) else {
+            // Pathological `secs` that would overflow the Instant → unbounded.
+            // (set_timeout / max_runtime_secs are clamped to MAX_RUN_TIMEOUT_SECS,
+            // so this is belt-and-suspenders.)
+            tokio::time::sleep(RECHECK).await;
+            continue;
+        };
+        let now = Instant::now();
+        if now >= deadline {
+            return secs;
+        }
+        // Wake at the deadline OR the recheck interval, whichever is sooner, so a
+        // live shorten/extend takes effect promptly.
+        tokio::time::sleep(deadline.saturating_duration_since(now).min(RECHECK)).await;
+    }
+}
+
 pub async fn run_workflow(
     pool: PgPool,
     mut ctx: RunContext,
@@ -344,6 +392,18 @@ pub async fn run_workflow(
         }
     };
     let emit: Arc<dyn ProgressEmitter> = Arc::new(PerRunEmitter { run_id });
+
+    // Effective wall-clock cap: the workflow's `max_runtime_secs` (Some(0) =
+    // unbounded) else the engine default. Stored on the handle so the deadline
+    // watcher below — and a live `PUT .../timeout` — both read the same value.
+    let effective_timeout = match workflow_def.max_runtime_secs {
+        Some(0) => 0, // unbounded
+        Some(s) => s.min(MAX_RUN_TIMEOUT_SECS),
+        None => RUN_WALL_CLOCK.as_secs(),
+    };
+    handle
+        .timeout_secs
+        .store(effective_timeout, std::sync::atomic::Ordering::Relaxed);
 
     // Liveness heartbeat: bump `updated_at` every HEARTBEAT_INTERVAL so the
     // workflow_mcp no-progress guard sees a live runner even during a long
@@ -378,22 +438,19 @@ pub async fn run_workflow(
     }
     let _heartbeat_guard = AbortOnDrop(heartbeat);
 
-    // Wrap the entire run in the wall-clock timeout.
-    let outcome = tokio::time::timeout(
-        RUN_WALL_CLOCK,
-        run_inner(&pool, &mut ctx, &workflow_def, provider, handle.clone(), emit.clone()),
-    )
-    .await;
-
-    let total_tokens = ctx.total_tokens;
-
-    let final_outcome = match outcome {
-        Ok(r) => r,
-        Err(_) => RunInnerOutcome::Failed {
-            error: "workflow runner wall-clock timeout (30 min)".into(),
+    // Run under a LIVE, adjustable wall-clock deadline (vs the old fixed
+    // `tokio::time::timeout`, whose deadline can't be extended). `select!` drops
+    // `run_inner` on deadline exactly as the timeout wrapper did. `0` = unbounded.
+    let final_outcome = tokio::select! {
+        biased;
+        r = run_inner(&pool, &mut ctx, &workflow_def, provider, handle.clone(), emit.clone()) => r,
+        secs = deadline_watcher(started, handle.timeout_secs.clone()) => RunInnerOutcome::Failed {
+            error: format!("workflow runner wall-clock timeout ({secs}s)"),
             failed_at_step: None,
         },
     };
+
+    let total_tokens = ctx.total_tokens;
 
     match final_outcome {
         RunInnerOutcome::Completed { outputs_preview } => {
@@ -877,6 +934,11 @@ pub async fn run_for_test(
     };
     let emit: Arc<dyn ProgressEmitter> = Arc::new(PerRunEmitter { run_id });
 
+    // The synchronous `/test` path keeps a FIXED `RUN_WALL_CLOCK` cap (NOT the
+    // live/dynamic `deadline_watcher` used by the fire-and-forget `/run` path):
+    // a test run mocks every llm step and must return promptly to the caller,
+    // so the workflow-declared `max_runtime_secs` / live `set_timeout` are
+    // intentionally ignored here.
     let outcome = tokio::time::timeout(
         RUN_WALL_CLOCK,
         run_inner(pool, &mut ctx, workflow_def, provider, handle.clone(), emit.clone()),
@@ -922,7 +984,10 @@ pub async fn run_for_test(
             }
         }
         Err(_) => {
-            let err = "workflow test runner wall-clock timeout (30 min)".to_string();
+            let err = format!(
+                "workflow test runner wall-clock timeout ({}s)",
+                RUN_WALL_CLOCK.as_secs()
+            );
             let _ =
                 repository::mark_status(pool, run_id, WorkflowRunStatus::Failed, Some(&err)).await;
             TestRunOutcome {
@@ -1223,5 +1288,38 @@ mod tests {
         assert_eq!(PER_STEP_TOKEN_CAP, 2_000_000);
         assert_eq!(PER_RUN_TOKEN_CAP, 5_000_000);
         assert_eq!(PER_RUN_OUTPUT_ARTIFACT_CAP_BYTES, 100 * 1024 * 1024);
+    }
+
+    #[test]
+    fn max_run_timeout_ceiling_is_seven_days() {
+        assert_eq!(MAX_RUN_TIMEOUT_SECS, 7 * 24 * 60 * 60);
+        // The default (used when a workflow declares no max_runtime_secs) is the
+        // 30-min wall-clock, well under the ceiling.
+        assert!(RUN_WALL_CLOCK.as_secs() < MAX_RUN_TIMEOUT_SECS);
+    }
+
+    #[tokio::test]
+    async fn deadline_watcher_fires_after_its_bound_and_returns_it() {
+        // Real-time (no tokio test-util): a 1s bound fires within the 5s guard.
+        let started = Instant::now();
+        let secs = Arc::new(std::sync::atomic::AtomicU64::new(1));
+        let fired = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            deadline_watcher(started, secs),
+        )
+        .await
+        .expect("watcher must fire within the guard");
+        assert_eq!(fired, 1);
+    }
+
+    #[tokio::test]
+    async fn deadline_watcher_unbounded_does_not_fire() {
+        // `0` = unbounded: the watcher must still be pending after a short wait.
+        let started = Instant::now();
+        let secs = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let h = tokio::spawn(async move { deadline_watcher(started, secs).await });
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        assert!(!h.is_finished(), "unbounded watcher must not fire");
+        h.abort();
     }
 }

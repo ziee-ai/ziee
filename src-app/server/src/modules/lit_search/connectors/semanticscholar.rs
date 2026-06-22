@@ -81,49 +81,165 @@ struct S2Pdf {
     url: Option<String>,
 }
 
+/// Map one S2 paper → a `LitRecord` (None when it has no usable title). Shared by
+/// the search path and the reference-snowball path (`fetch_references`).
+fn map_paper(p: S2Paper) -> Option<LitRecord> {
+    let title = p.title.filter(|t| !t.trim().is_empty())?;
+    let ids = p.external_ids;
+    let doi = ids.as_ref().and_then(|i| i.doi.clone()).filter(|d| !d.is_empty());
+    let pmid = ids.as_ref().and_then(|i| i.pubmed.clone()).filter(|p| !p.is_empty());
+    // Emptiness-filtered like doi/pmid: an `"ArXiv": ""` must NOT flag a
+    // preprint (it would bias dedup's is_preprint merge + the digest label).
+    let is_arxiv = ids
+        .as_ref()
+        .and_then(|i| i.arxiv.as_deref())
+        .map(|a| !a.trim().is_empty())
+        .unwrap_or(false);
+    let is_preprint = is_arxiv
+        || p.publication_types
+            .as_ref()
+            .map(|v| v.iter().any(|t| t.eq_ignore_ascii_case("Preprint")))
+            .unwrap_or(false);
+    let authors = p.authors.into_iter().filter_map(|a| a.name).collect();
+    let url = p
+        .open_access_pdf
+        .and_then(|pdf| pdf.url)
+        .filter(|u| !u.is_empty())
+        .or_else(|| doi.as_deref().map(|d| format!("https://doi.org/{d}")));
+    Some(LitRecord {
+        doi,
+        pmid,
+        title,
+        abstract_text: p.r#abstract.filter(|a| !a.is_empty()),
+        authors,
+        year: p.year,
+        venue: p.venue.filter(|v| !v.is_empty()),
+        url,
+        source: "semanticscholar".into(),
+        source_ids: vec![format!("semanticscholar:{}", p.paper_id)],
+        cited_by_count: p.citation_count,
+        is_preprint,
+        relevance: 0.0,
+    })
+}
+
 fn map_results(resp: S2Response) -> Vec<LitRecord> {
-    resp.data
-        .into_iter()
-        .filter_map(|p| {
-            let title = p.title.filter(|t| !t.trim().is_empty())?;
-            let ids = p.external_ids;
-            let doi = ids.as_ref().and_then(|i| i.doi.clone()).filter(|d| !d.is_empty());
-            let pmid = ids.as_ref().and_then(|i| i.pubmed.clone()).filter(|p| !p.is_empty());
-            // Emptiness-filtered like doi/pmid: an `"ArXiv": ""` must NOT flag a
-            // preprint (it would bias dedup's is_preprint merge + the digest label).
-            let is_arxiv = ids
-                .as_ref()
-                .and_then(|i| i.arxiv.as_deref())
-                .map(|a| !a.trim().is_empty())
-                .unwrap_or(false);
-            let is_preprint = is_arxiv
-                || p.publication_types
-                    .as_ref()
-                    .map(|v| v.iter().any(|t| t.eq_ignore_ascii_case("Preprint")))
-                    .unwrap_or(false);
-            let authors = p.authors.into_iter().filter_map(|a| a.name).collect();
-            let url = p
-                .open_access_pdf
-                .and_then(|pdf| pdf.url)
-                .filter(|u| !u.is_empty())
-                .or_else(|| doi.as_deref().map(|d| format!("https://doi.org/{d}")));
-            Some(LitRecord {
-                doi,
-                pmid,
-                title,
-                abstract_text: p.r#abstract.filter(|a| !a.is_empty()),
-                authors,
-                year: p.year,
-                venue: p.venue.filter(|v| !v.is_empty()),
-                url,
-                source: "semanticscholar".into(),
-                source_ids: vec![format!("semanticscholar:{}", p.paper_id)],
-                cited_by_count: p.citation_count,
-                is_preprint,
-                relevance: 0.0,
-            })
-        })
-        .collect()
+    resp.data.into_iter().filter_map(map_paper).collect()
+}
+
+const PAPER_BASE: &str = "https://api.semanticscholar.org/graph/v1/paper";
+
+#[derive(Deserialize)]
+struct S2RefResponse {
+    #[serde(default)]
+    data: Vec<S2RefItem>,
+}
+
+#[derive(Deserialize)]
+struct S2RefItem {
+    #[serde(rename = "citedPaper", default)]
+    cited_paper: Option<S2Paper>,
+    #[serde(rename = "citingPaper", default)]
+    citing_paper: Option<S2Paper>,
+}
+
+/// Map a raw id (DOI / PMID / PMCID / arXiv) to the Semantic Scholar paper-id
+/// form (`DOI:…` / `PMID:…` / `PMCID:…` / `ARXIV:…`), reusing the shared id
+/// detector. The id SUFFIX is percent-encoded (via the shared `encode_path_id`)
+/// so a `?`/`#`/`..` in a model-supplied id can't corrupt the request path; the
+/// `DOI:`/`PMID:`/`PMCID:`/`ARXIV:` prefix colon stays literal (S2 requires it).
+fn s2_paper_id(raw: &str) -> Option<String> {
+    use crate::modules::lit_search::fulltext::resolvers::{encode_path_id, parse_id};
+    let ids = parse_id(raw);
+    if let Some(d) = ids.doi {
+        Some(format!("DOI:{}", encode_path_id(&d)))
+    } else if let Some(p) = ids.pmid {
+        Some(format!("PMID:{}", encode_path_id(&p)))
+    } else if let Some(pmc) = ids.pmcid {
+        // S2 accepts the `PMCID:` paper-id form (e.g. PMCID:PMC1234567).
+        Some(format!("PMCID:{}", encode_path_id(&pmc)))
+    } else {
+        ids.arxiv_id.map(|a| format!("ARXIV:{}", encode_path_id(&a)))
+    }
+}
+
+/// Citation snowballing via the S2 graph API: for each id, fetch the works it
+/// CITES (`forward = false`, the references) or the works that CITE it
+/// (`forward = true`). Best-effort per id — a failing/rate-limited id is skipped,
+/// never failing the whole call. Returns up to `limit` mapped records (caller
+/// dedups). Keyless works (shared pool); an `x-api-key` raises the rate.
+pub async fn fetch_references(
+    ids: &[String],
+    forward: bool,
+    limit: usize,
+    api_key: Option<&str>,
+    timeout: Duration,
+) -> Result<FetchReferencesResult, AppError> {
+    let client = build_client()?;
+    let path = if forward { "citations" } else { "references" };
+    let base = endpoint(PAPER_BASE, "LIT_SEARCH_S2_PAPER_ENDPOINT");
+    let mut out: Vec<LitRecord> = Vec::new();
+    // Whether ANY seed's request/parse failed (rate-limit / network / bad body).
+    // Surfaced so the caller can flag the source as degraded — otherwise an
+    // all-429 snowball is indistinguishable from a genuinely-uncited paper.
+    let mut any_failed = false;
+    for raw in ids {
+        if out.len() >= limit {
+            break;
+        }
+        let Some(s2id) = s2_paper_id(raw) else { continue };
+        let per = (limit - out.len()).min(100).to_string();
+        let url = format!("{base}/{s2id}/{path}");
+        let mut req = client
+            .get(&url)
+            .query(&[("fields", FIELDS), ("limit", per.as_str())])
+            .header("Accept", "application/json")
+            .timeout(timeout);
+        if let Some(k) = api_key {
+            req = req.header("x-api-key", k);
+        }
+        let resp = match req.send().await {
+            Ok(r) if r.status().is_success() => r,
+            Ok(r) => {
+                tracing::warn!("semanticscholar {path} for '{raw}' → HTTP {}", r.status());
+                any_failed = true;
+                continue;
+            }
+            Err(e) => {
+                tracing::warn!("semanticscholar {path} for '{raw}' failed: {e}");
+                any_failed = true;
+                continue;
+            }
+        };
+        let parsed: S2RefResponse = match read_json_capped(resp, MAX_BODY_BYTES).await {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!("semanticscholar {path} parse for '{raw}' failed: {e}");
+                any_failed = true;
+                continue;
+            }
+        };
+        for item in parsed.data {
+            let paper = if forward { item.citing_paper } else { item.cited_paper };
+            if let Some(rec) = paper.and_then(map_paper) {
+                out.push(rec);
+            }
+            if out.len() >= limit {
+                break;
+            }
+        }
+    }
+    Ok(FetchReferencesResult {
+        records: out,
+        any_failed,
+    })
+}
+
+/// Result of a snowball fetch: the records + whether any seed's request failed
+/// (so the caller can record `semanticscholar` as a degraded source).
+pub struct FetchReferencesResult {
+    pub records: Vec<LitRecord>,
+    pub any_failed: bool,
 }
 
 #[async_trait]
@@ -220,5 +336,40 @@ mod tests {
         assert!(recs[0].is_preprint, "ArXiv id present → preprint");
         assert_eq!(recs[0].authors, vec!["Jane Smith"]);
         assert_eq!(recs[0].source_ids, vec!["semanticscholar:abc"]);
+    }
+
+    #[test]
+    fn s2_paper_id_prefixes_by_kind_and_keeps_slash() {
+        // DOI (with a literal slash, which the S2 path tolerates) → DOI:<encoded>.
+        assert_eq!(s2_paper_id("10.1038/abc").as_deref(), Some("DOI:10.1038/abc"));
+        // Bare digits → PMID.
+        assert_eq!(s2_paper_id("12345").as_deref(), Some("PMID:12345"));
+        // arXiv id → ARXIV: (the new-style id is kept verbatim; '.' is unreserved).
+        assert_eq!(s2_paper_id("arxiv:2201.00001").as_deref(), Some("ARXIV:2201.00001"));
+        // PMCID → PMCID: (S2 accepts the PMC… form).
+        assert_eq!(s2_paper_id("PMC1234567").as_deref(), Some("PMCID:PMC1234567"));
+    }
+
+    #[test]
+    fn s2_paper_id_percent_encodes_path_delimiters() {
+        // The HIGH-severity guard: a model-supplied DOI containing `?`/`#`/space
+        // (all legal in DOIs) must be percent-encoded so it can't truncate the
+        // path or change the endpoint segment. `parse_id` accepts any `10.`-prefixed
+        // string as a DOI, so these reach the URL builder.
+        let id = s2_paper_id("10.1/x?a=b#frag z").unwrap();
+        assert!(id.starts_with("DOI:"), "prefix preserved: {id}");
+        assert!(!id.contains('?'), "raw '?' must be encoded: {id}");
+        assert!(!id.contains('#'), "raw '#' must be encoded: {id}");
+        assert!(!id.contains(' '), "raw space must be encoded: {id}");
+        assert!(id.contains("%3F") && id.contains("%23") && id.contains("%20"));
+    }
+
+    #[test]
+    fn map_paper_filters_empty_title() {
+        let p: S2Paper = serde_json::from_value(serde_json::json!({
+            "paperId": "x", "title": "  ", "authors": []
+        }))
+        .unwrap();
+        assert!(map_paper(p).is_none(), "blank title → dropped");
     }
 }

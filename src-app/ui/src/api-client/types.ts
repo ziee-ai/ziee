@@ -167,11 +167,6 @@ export interface CallToolResponse {
   is_error: boolean
 }
 
-export interface CancelAckResponse {
-  run_id: string
-  status: string
-}
-
 export interface Catalog {
   generated_at?: string
   hub_version: string
@@ -2314,6 +2309,11 @@ export interface RotateProxyTokenResponse {
   provider: LlmProvider
 }
 
+export interface RunActionAck {
+  run_id: string
+  status: string
+}
+
 export interface RuntimeSettings {
   auto_start_timeout_secs: number
   created_at: string
@@ -2679,6 +2679,10 @@ export interface SetPinResponse {
 
 export interface SetSubscriptionRequest {
   conversation_id?: string
+}
+
+export interface SetTimeoutRequest {
+  timeout_secs: number
 }
 
 export interface SetupAdminRequest {
@@ -4018,6 +4022,7 @@ export const ApiEndpoints = {
   'Workflow.readLog': 'GET /api/workflow-runs/{run_id}/logs/{step_id}/{kind}',
   'Workflow.readOutput': 'GET /api/workflow-runs/{run_id}/output/{step_id}',
   'Workflow.run': 'POST /api/workflows/{id}/run',
+  'Workflow.setRunTimeout': 'PUT /api/workflow-runs/{run_id}/timeout',
   'Workflow.submitElicit': 'POST /api/workflow-runs/{run_id}/elicit/{elicitation_id}',
   'Workflow.subscribeRunEvents': 'GET /api/workflow-runs/{run_id}/events',
   'Workflow.test': 'POST /api/workflows/{id}/test',
@@ -4352,6 +4357,7 @@ export type ApiEndpointParameters = {
   'Workflow.readLog': { run_id: string; step_id: string; kind: string }
   'Workflow.readOutput': { run_id: string; step_id: string }
   'Workflow.run': { id: string } & WorkflowRunRequest
+  'Workflow.setRunTimeout': { run_id: string } & SetTimeoutRequest
   'Workflow.submitElicit': { run_id: string; elicitation_id: string } & ElicitationResponseRequest
   'Workflow.subscribeRunEvents': { run_id: string }
   'Workflow.test': { id: string } & TestWorkflowRequest
@@ -4669,7 +4675,7 @@ export type ApiEndpointResponses = {
   'WebSearch.getSettings': WebSearchSettings
   'WebSearch.updateProvider': ProviderCatalogResponse
   'WebSearch.updateSettings': WebSearchSettings
-  'Workflow.cancelRun': CancelAckResponse
+  'Workflow.cancelRun': RunActionAck
   'Workflow.delete': void
   'Workflow.deleteRun': void
   'Workflow.deleteSystem': void
@@ -4686,6 +4692,7 @@ export type ApiEndpointResponses = {
   'Workflow.readLog': any
   'Workflow.readOutput': any
   'Workflow.run': WorkflowRunStartResponse
+  'Workflow.setRunTimeout': RunActionAck
   'Workflow.submitElicit': ElicitAckResponse
   'Workflow.subscribeRunEvents': SSEWorkflowRunEvent
   'Workflow.test': TestRunResponse

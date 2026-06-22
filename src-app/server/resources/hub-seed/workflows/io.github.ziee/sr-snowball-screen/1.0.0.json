@@ -1,0 +1,23 @@
+{
+  "$schema": "/schemas/2026-06-12/workflow.schema.json",
+  "name": "io.github.ziee/sr-snowball-screen",
+  "version": "1.0.0",
+  "description": "Citation snowballing: chase the references of the included set and AI-screen the new candidates.",
+  "tags": [
+    "systematic-review",
+    "literature",
+    "snowball",
+    "lit-search",
+    "llm-map"
+  ],
+  "license": "MIT",
+  "author": "ziee",
+  "bundle": {
+    "url": "workflows/io.github.ziee/sr-snowball-screen/1.0.0.tar.gz",
+    "sha256": "a72bea8ba96f8931793fd5ed7327eb49c96984f7af7bd5fc76bb5d7ac3ae2b93",
+    "size_bytes": 1298,
+    "file_count": 1,
+    "entry_point": "workflow.yaml"
+  },
+  "dependencies": []
+}

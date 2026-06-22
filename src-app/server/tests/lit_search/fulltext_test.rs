@@ -40,7 +40,7 @@ async fn test_fetch_fulltext_caches_and_links_view() {
     let server = TestServer::start_with_options(TestServerOptions {
         extra_env: vec![
             ("LIT_SEARCH_ALLOW_LOOPBACK".to_string(), "1".to_string()),
-            ("LIT_SEARCH_EPMC_FULLTEXT_BASE".to_string(), epmc),
+            ("LIT_SEARCH_EUROPEPMC_FULLTEXT_ENDPOINT".to_string(), epmc),
         ],
         ..Default::default()
     })
@@ -99,6 +99,76 @@ async fn test_fetch_fulltext_caches_and_links_view() {
 }
 
 #[tokio::test]
+async fn test_verify_quote_verified_after_fetch() {
+    // Fetch full text (populating the content-addressed cache), then verify_quote
+    // exercises the POSITIVE (verified) + absent (not_found) deterministic paths.
+    let (epmc, _hits) = start_mock_epmc_fulltext().await;
+    let server = TestServer::start_with_options(TestServerOptions {
+        extra_env: vec![
+            ("LIT_SEARCH_ALLOW_LOOPBACK".to_string(), "1".to_string()),
+            ("LIT_SEARCH_EUROPEPMC_FULLTEXT_ENDPOINT".to_string(), epmc),
+        ],
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(&server, "ls_vq_admin", admin_perms()).await;
+    configure(&server, &admin.token, &["europepmc"]).await;
+    let conv = seed_conversation(&server, &admin.user_id).await;
+
+    // Populate the cache for PMC123456.
+    let res = jsonrpc_conv(
+        &server,
+        &admin.token,
+        &conv.to_string(),
+        "tools/call",
+        json!({ "name": "fetch_paper_fulltext", "arguments": { "ids": ["PMC123456"] } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+
+    // A verbatim span of the cached full text → verified.
+    let res = jsonrpc_conv(
+        &server,
+        &admin.token,
+        &conv.to_string(),
+        "tools/call",
+        json!({ "name": "verify_quote", "arguments": {
+            "id": "PMC123456",
+            "quote": "CRISPR base editing off-target effects"
+        }}),
+    )
+    .send()
+    .await
+    .unwrap();
+    let body: serde_json::Value = res.json().await.unwrap();
+    let sc = &body["result"]["structuredContent"];
+    assert_eq!(sc["status"], "verified", "verbatim span present in cached full text: {body}");
+    assert_eq!(sc["verified"], true);
+
+    // A span that is NOT in the paper → not_found (cached, but the quote is absent).
+    let res = jsonrpc_conv(
+        &server,
+        &admin.token,
+        &conv.to_string(),
+        "tools/call",
+        json!({ "name": "verify_quote", "arguments": {
+            "id": "PMC123456",
+            "quote": "a sentence that does not appear anywhere in this paper"
+        }}),
+    )
+    .send()
+    .await
+    .unwrap();
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(
+        body["result"]["structuredContent"]["status"], "not_found",
+        "an absent quote in a cached paper is not_found: {body}"
+    );
+}
+
+#[tokio::test]
 async fn test_fetch_doi_without_mailto_returns_not_found() {
     // PRECONDITION (deliberate + load-bearing): crossref is enabled but NO
     // `mailto` is configured (and `find_email` scans BOTH the crossref and pubmed
@@ -129,11 +199,13 @@ async fn test_fetch_doi_without_mailto_returns_not_found() {
     .await
     .unwrap();
     assert_eq!(res.status(), 200);
-    assert_eq!(
-        res.json::<serde_json::Value>().await.unwrap()["result"]["structuredContent"]["papers"][0]
-            ["status"],
-        "not_found",
-    );
+    let paper =
+        res.json::<serde_json::Value>().await.unwrap()["result"]["structuredContent"]["papers"][0].clone();
+    assert_eq!(paper["status"], "not_found");
+    // A non-OA paper MUST still carry an (empty) `text` key — a workflow
+    // `{{ paper.text }}` reference would raise MissingField otherwise, failing the
+    // whole extract llm_map (which `on_error: skip` does NOT catch).
+    assert_eq!(paper["text"], "", "every paper carries a text key (empty for non-OA): {paper}");
 }
 
 #[tokio::test]

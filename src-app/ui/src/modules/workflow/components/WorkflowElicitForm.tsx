@@ -90,6 +90,7 @@ function renderField(
         label={label}
         valuePropName="checked"
         extra={field.description}
+        rules={rules.length > 0 ? rules : undefined}
       >
         <Switch />
       </Form.Item>
@@ -171,12 +172,19 @@ export function WorkflowElicitForm({
   // Seed initial values from each property's `default`, but PREFER a value
   // supplied in `elicitation.data` (keyed by property name) when present.
   // Keeps working when `data` is absent.
+  //
+  // A seeded ARRAY may contain `null` elements — e.g. an `llm_map` step's
+  // `on_error: skip` materializes a skipped item as null. A null has no editable
+  // table row and its required cells would silently block submit, so drop nulls
+  // from array seeds (synthesis/downstream consumers already ignore them).
   const seed = (elicitation.data ?? {}) as Record<string, unknown>
+  const seedValue = (k: string, fallback: unknown) => {
+    if (!(k in seed)) return fallback
+    const v = seed[k]
+    return Array.isArray(v) ? v.filter(el => el !== null && el !== undefined) : v
+  }
   const initialValues = Object.fromEntries(
-    Object.entries(properties).map(([k, f]) => [
-      k,
-      k in seed ? seed[k] : f.default,
-    ]),
+    Object.entries(properties).map(([k, f]) => [k, seedValue(k, f.default)]),
   )
 
   return (

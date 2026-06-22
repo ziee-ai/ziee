@@ -1,0 +1,23 @@
+{
+  "$schema": "/schemas/2026-06-12/workflow.schema.json",
+  "name": "io.github.ziee/sr-extract-synthesize",
+  "version": "1.0.0",
+  "description": "On the finalized included set: fetch open-access full text, extract quote-grounded study data, and write a cited evidence synthesis.",
+  "tags": [
+    "systematic-review",
+    "extraction",
+    "synthesis",
+    "full-text",
+    "lit-search"
+  ],
+  "license": "MIT",
+  "author": "ziee",
+  "bundle": {
+    "url": "workflows/io.github.ziee/sr-extract-synthesize/1.0.0.tar.gz",
+    "sha256": "d1705dadede6aee59a23e625d54e989b6259e0d5e0e577817579329e6c37a760",
+    "size_bytes": 3166,
+    "file_count": 1,
+    "entry_point": "workflow.yaml"
+  },
+  "dependencies": []
+}

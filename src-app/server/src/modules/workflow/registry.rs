@@ -48,10 +48,19 @@ pub struct PendingElicit {
     pub tx: oneshot::Sender<serde_json::Value>,
 }
 
+/// Default effective run timeout (seconds) — mirrors `runner::RUN_WALL_CLOCK`.
+/// The runner overrides this per run from the workflow's `max_runtime_secs`
+/// (or the engine default) right after `register`; `0` means UNBOUNDED.
+pub const DEFAULT_RUN_TIMEOUT_SECS: u64 = 30 * 60;
+
 pub struct RunHandle {
     /// Signalled by `cancel()` — any `tokio::select!` waiting on
     /// `cancel.notified()` returns immediately.
     pub cancel: Arc<Notify>,
+    /// Live-adjustable wall-clock cap (seconds; `0` = unbounded). Read by the
+    /// runner's deadline watcher each tick, so `PUT .../timeout` takes effect
+    /// mid-run. In-memory only — runs don't survive a restart.
+    pub timeout_secs: Arc<std::sync::atomic::AtomicU64>,
     /// Once `cancel` has fired, this stays true so a future entrant
     /// into a step's select! arm exits without waiting forever (Notify
     /// is "edge"-shaped — waiters added after the notify_waiters() call
@@ -66,6 +75,7 @@ impl RunHandle {
     fn new() -> Self {
         Self {
             cancel: Arc::new(Notify::new()),
+            timeout_secs: Arc::new(std::sync::atomic::AtomicU64::new(DEFAULT_RUN_TIMEOUT_SECS)),
             cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             clients: Arc::new(Mutex::new(HashMap::new())),
             pending_elicitation: Arc::new(Mutex::new(None)),
@@ -109,6 +119,19 @@ pub fn unregister(run_id: Uuid) {
 
 pub fn get(run_id: Uuid) -> Option<Arc<RunHandle>> {
     RUN_HANDLES.get(&run_id).map(|r| r.value().clone())
+}
+
+/// Set the live wall-clock cap (seconds; `0` = unbounded) for an in-flight run.
+/// The runner's deadline watcher honors the new value within its recheck
+/// interval. Returns `false` if the handle has already exited.
+pub fn set_timeout(run_id: Uuid, secs: u64) -> bool {
+    if let Some(h) = get(run_id) {
+        h.timeout_secs
+            .store(secs, std::sync::atomic::Ordering::Relaxed);
+        true
+    } else {
+        false
+    }
 }
 
 /// Fire the cancel signal for `run_id`. Idempotent — repeat calls
@@ -240,19 +263,34 @@ pub fn submit_elicitation_response(
 // Maintenance — periodic reap of orphaned handles
 // ============================================================
 
-/// Maximum age for an idle (no clients, no recent runner activity)
-/// run handle before being reaped. Wide enough to cover long elicits
-/// and slow LLM streams (30 min wall-clock + buffer).
-pub const HANDLE_TTL: Duration = Duration::from_secs(45 * 60);
+/// Grace buffer added to a run's own effective timeout before its handle is
+/// considered orphaned (the runner panicked without removing itself). Replaces
+/// the old fixed 45-min TTL, which would wrongly reap a long / unbounded run's
+/// still-live handle (breaking `set_timeout`/`cancel`/SSE for it).
+pub const HANDLE_TTL_BUFFER: Duration = Duration::from_secs(15 * 60);
 
-/// Walk the registry, drop any handle older than `HANDLE_TTL` (the
-/// runner forgot to remove itself — likely panicked). Cheap; called
-/// from the per-run SSE subscribe path opportunistically.
+/// Walk the registry, drop any handle whose age exceeds its OWN effective
+/// timeout + a grace buffer (the runner forgot to remove itself — likely
+/// panicked). An UNBOUNDED run (`timeout_secs == 0`) is never reaped this way —
+/// only the startup sweep / explicit unregister clears it. Cheap; called from
+/// the per-run SSE subscribe path opportunistically.
 pub fn reap_stale() {
     let now = Instant::now();
     let stale: Vec<Uuid> = RUN_HANDLES
         .iter()
-        .filter(|e| now.duration_since(e.value().created_at) > HANDLE_TTL)
+        .filter(|e| {
+            let h = e.value();
+            // Clamp to the engine ceiling (belt-and-suspenders, matching
+            // `await_terminal`) so a writer that skipped the clamp can't park a
+            // handle here for an absurd duration. 0 = unbounded → never reaped.
+            let secs = h
+                .timeout_secs
+                .load(std::sync::atomic::Ordering::Relaxed)
+                .min(crate::modules::workflow::runner::MAX_RUN_TIMEOUT_SECS);
+            secs != 0
+                && now.duration_since(h.created_at)
+                    > Duration::from_secs(secs) + HANDLE_TTL_BUFFER
+        })
         .map(|e| *e.key())
         .collect();
     for id in stale {
@@ -336,6 +374,34 @@ mod tests {
         assert_eq!(err, "stale");
         // Original is still pending.
         submit_elicitation_response(run_id, eid, serde_json::json!(2)).unwrap();
+        unregister(run_id);
+    }
+
+    #[test]
+    fn set_timeout_updates_the_live_value_and_reports_missing() {
+        let run_id = Uuid::new_v4();
+        let h = register(run_id);
+        assert_eq!(
+            h.timeout_secs.load(std::sync::atomic::Ordering::Relaxed),
+            DEFAULT_RUN_TIMEOUT_SECS
+        );
+        assert!(set_timeout(run_id, 0)); // unbounded
+        assert_eq!(h.timeout_secs.load(std::sync::atomic::Ordering::Relaxed), 0);
+        assert!(set_timeout(run_id, 7200));
+        assert_eq!(h.timeout_secs.load(std::sync::atomic::Ordering::Relaxed), 7200);
+        unregister(run_id);
+        // Gone handle → false (terminal run).
+        assert!(!set_timeout(run_id, 60));
+    }
+
+    #[test]
+    fn reap_stale_never_reaps_an_unbounded_handle() {
+        let run_id = Uuid::new_v4();
+        let h = register(run_id);
+        // Mark unbounded; even an "old" handle must survive the reaper.
+        h.timeout_secs.store(0, std::sync::atomic::Ordering::Relaxed);
+        reap_stale();
+        assert!(get(run_id).is_some(), "unbounded handle must not be reaped");
         unregister(run_id);
     }
 }

@@ -51,7 +51,7 @@ impl LitSearchRepository {
                 created_at, updated_at
             ) VALUES (
                 $1, NULL, 'lit_search', 'Literature Search',
-                'Built-in scholarly literature search + open-access full text (literature_search / fetch_paper_fulltext)',
+                'Built-in scholarly literature search + screening (literature_search / fetch_paper_fulltext / dedup_records / verify_quote / fetch_references)',
                 true, true, true,
                 'http', $2, '{}'::jsonb,
                 60, false, 'auto', 4,

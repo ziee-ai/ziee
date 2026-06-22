@@ -1,6 +1,7 @@
-import { StopOutlined } from '@ant-design/icons'
+import { FileSearchOutlined, StopOutlined } from '@ant-design/icons'
 import {
   Alert,
+  App,
   Button,
   Progress,
   Space,
@@ -9,7 +10,8 @@ import {
   Tag,
   Typography,
 } from 'antd'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { ApiClient } from '@/api-client'
 import { Stores } from '@/core/stores'
 import type { StepProgress } from '@/modules/workflow/stores/WorkflowRun.store'
 import { StepArtifacts } from './StepArtifacts'
@@ -45,9 +47,11 @@ function stepStatus(s: StepProgress): 'wait' | 'process' | 'finish' | 'error' {
 export function WorkflowRunProgressView({
   runId,
 }: WorkflowRunProgressViewProps) {
+  const { message } = App.useApp()
   const run = Stores.WorkflowRun.runs[runId]
   const cancelling = Stores.WorkflowRun.cancelling[runId] ?? false
   const submittingElicit = Stores.WorkflowRun.submittingElicit[runId] ?? false
+  const [removingTimeout, setRemovingTimeout] = useState(false)
 
   useEffect(() => {
     Stores.WorkflowRun.subscribe(runId)
@@ -95,6 +99,53 @@ export function WorkflowRunProgressView({
             Cancel
           </Button>
         )}
+        {/* Lift the wall-clock cap mid-run (e.g. a long literature pass on your
+            own machine). The per-run token/byte caps still apply. */}
+        {!terminal && (
+          <Button
+            size="small"
+            loading={removingTimeout}
+            disabled={removingTimeout}
+            onClick={async () => {
+              setRemovingTimeout(true)
+              try {
+                const r = await ApiClient.Workflow.setRunTimeout({ run_id: runId, timeout_secs: 0 })
+                if (r?.status === 'updated') {
+                  message.success('Timeout removed — this run is no longer wall-clock limited')
+                } else {
+                  message.info('Run already finished — nothing to update')
+                }
+              } catch (e) {
+                message.error(e instanceof Error ? e.message : 'Failed to update timeout')
+              } finally {
+                setRemovingTimeout(false)
+              }
+            }}
+          >
+            Remove timeout
+          </Button>
+        )}
+        {/* SR Search/Snowball-&-Screen runs have a `screen` step — surface the
+            AI-screened candidate set in the literature screening panel. */}
+        {run.status === 'completed' && run.stepOrder.includes('screen') && (
+          <Button
+            size="small"
+            icon={<FileSearchOutlined />}
+            onClick={async () => {
+              try {
+                const { openWorkflowScreening } = await import(
+                  '@/modules/literature/workflowBridge'
+                )
+                const opened = await openWorkflowScreening(runId)
+                if (!opened) message.info('This run produced no screening candidates')
+              } catch {
+                message.error('Could not open the screening panel')
+              }
+            }}
+          >
+            Open in screening
+          </Button>
+        )}
       </Space>
 
       {run.error && <Alert type="error" title={run.error} showIcon />}
@@ -124,7 +175,7 @@ export function WorkflowRunProgressView({
               {s.stepKind && <Tag className="text-xs !m-0">{s.stepKind}</Tag>}
             </Space>
           ),
-          description: (
+          content: (
             <div className="flex flex-col gap-1">
               {s.itemProgress && s.itemProgress.total > 0 && (
                 <Progress

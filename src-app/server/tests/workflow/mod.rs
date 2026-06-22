@@ -24,6 +24,7 @@ mod run_history_and_delete;
 mod run_mocked;
 mod run_model;
 mod sandbox_run;
+mod sr_workflow;
 mod system_endpoints;
 mod tool_step;
 mod validate_and_dry_run;

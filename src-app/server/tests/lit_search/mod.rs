@@ -184,11 +184,48 @@ pub async fn start_mock_s2_flaky()
     (format!("http://127.0.0.1:{port}"), hits)
 }
 
+/// Mock Semantic Scholar paper-graph (references/citations) endpoint for the
+/// `fetch_references` snowball tool. A wildcard route serves ANY
+/// `/{s2id}/references|citations` path (so an embedded DOI slash in the s2id
+/// doesn't break routing) with one cited + one citing paper, so the same mock
+/// drives both directions. Returns the base url.
+/// Set `LIT_SEARCH_S2_PAPER_ENDPOINT=<base>`.
+pub async fn start_mock_s2_paper() -> String {
+    use axum::{Json, Router, routing::get};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let app = Router::new().route(
+        "/{*rest}",
+        get(|| async {
+            Json(json!({
+                "data": [{
+                    "citedPaper": {
+                        "paperId": "ref-1", "title": "A Cited Reference",
+                        "abstract": "the referenced work", "year": 2019, "venue": "Nature",
+                        "externalIds": { "DOI": "10.9/cited", "PubMed": "555" },
+                        "citationCount": 12, "authors": [{ "name": "Ref Author" }]
+                    },
+                    "citingPaper": {
+                        "paperId": "cit-1", "title": "A Citing Paper",
+                        "abstract": "the citing work", "year": 2023, "venue": "Cell",
+                        "externalIds": { "DOI": "10.9/citing", "PubMed": "556" },
+                        "citationCount": 1, "authors": [{ "name": "Cite Author" }]
+                    }
+                }]
+            }))
+        }),
+    );
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app.into_make_service()).await;
+    });
+    format!("http://127.0.0.1:{port}")
+}
+
 /// Mock Europe PMC fullTextXML server. Serves `/{source}/{id}/fullTextXML`
 /// (source ∈ MED/PMC) with a JATS body whose text is recognizable post-strip,
 /// and counts hits (so a cache-hit test can prove the second fetch did NOT
 /// re-request upstream). Returns (base_url, hit_counter).
-/// Set `LIT_SEARCH_EPMC_FULLTEXT_BASE=<base>`.
+/// Set `LIT_SEARCH_EUROPEPMC_FULLTEXT_ENDPOINT=<base>`.
 pub async fn start_mock_epmc_fulltext()
 -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
     use axum::{Router, response::Html, routing::get};

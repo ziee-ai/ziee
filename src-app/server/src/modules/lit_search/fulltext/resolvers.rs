@@ -107,7 +107,7 @@ const EPMC_BASE: &str = "https://www.ebi.ac.uk/europepmc/webservices/rest";
 /// literal slash) and the unreserved set; encodes everything else — crucially
 /// the `#`/`?`/space/`<`/`>` chars that are legal in DOIs but would otherwise be
 /// parsed as query/fragment delimiters and silently fetch the wrong paper.
-fn encode_path_id(s: &str) -> String {
+pub(crate) fn encode_path_id(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
         match b {
@@ -199,7 +199,7 @@ async fn epmc_pmid_to_pmcid(
     struct ResultItem {
         pmcid: Option<String>,
     }
-    let base = endpoint(EPMC_BASE, "LIT_SEARCH_EPMC_FULLTEXT_BASE");
+    let base = endpoint(EPMC_BASE, "LIT_SEARCH_EUROPEPMC_FULLTEXT_ENDPOINT");
     let url = format!("{base}/search");
     let resp = client
         .get(&url)
@@ -231,7 +231,7 @@ async fn epmc_fulltext(
     id: &str,
     timeout: Duration,
 ) -> Option<String> {
-    let base = endpoint(EPMC_BASE, "LIT_SEARCH_EPMC_FULLTEXT_BASE");
+    let base = endpoint(EPMC_BASE, "LIT_SEARCH_EUROPEPMC_FULLTEXT_ENDPOINT");
     let url = format!("{base}/{source}/{}/fullTextXML", encode_path_id(id));
     let resp = client.get(&url).timeout(timeout).send().await.ok()?;
     if !resp.status().is_success() {

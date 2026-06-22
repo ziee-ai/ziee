@@ -217,11 +217,131 @@ async fn dispatch_tool_call(
             require_write("rewrite_file")?;
             rewrite_file(user_id, &files, message_id, &call.arguments).await
         }
+        "convert_document" => {
+            require_write("convert_document")?;
+            convert_document(user_id, message_id, &call.arguments).await
+        }
         other => Err(AppError::bad_request(
             "UNKNOWN_TOOL",
             format!("files tool: {other}"),
         )),
     }
+}
+
+// ── convert_document (Markdown → PDF, saved to the file store) ───────────────
+
+#[derive(Debug, Deserialize)]
+struct ConvertArgs {
+    markdown: String,
+    #[serde(default)]
+    filename: Option<String>,
+}
+
+/// Sanitize a caller-supplied filename into a safe `"<stem>.pdf"`: drop any path
+/// component (so `"a/b/report.pdf"` → `"report.pdf"` and `"../../etc/passwd"` →
+/// `"passwd.pdf"`), keep filename-safe chars, cap the stem length, and default an
+/// empty/whitespace name to `"document"`. Pure so it's unit-testable.
+fn sanitize_pdf_filename(raw: Option<String>) -> String {
+    let raw = raw.unwrap_or_else(|| "document".into());
+    let base = raw.rsplit(['/', '\\']).next().unwrap_or("document");
+    // Strip a trailing ".pdf" of ANY case (so "report.PDF" doesn't become
+    // "report.PDF.pdf"). Use `get()` (returns None on a non-char-boundary)
+    // rather than byte-slicing, which would PANIC on a multibyte model-supplied
+    // filename whose cut lands mid-codepoint (e.g. "😀x").
+    let base = match base.get(base.len().saturating_sub(4)..) {
+        Some(suffix) if suffix.eq_ignore_ascii_case(".pdf") => {
+            base.get(..base.len() - 4).unwrap_or(base)
+        }
+        _ => base,
+    };
+    let stem: String = base
+        .chars()
+        .filter(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | ' ' | '.'))
+        .take(80)
+        .collect();
+    let stem = if stem.trim().is_empty() {
+        "document".to_string()
+    } else {
+        stem.trim().to_string()
+    };
+    format!("{stem}.pdf")
+}
+
+/// Render Markdown to a PDF (in-process, embedded pandoc + typst) and save it to
+/// the user's file store — mirrors `create_file`'s save tail. Generic capability:
+/// the SR `review_report` is Markdown; the model calls this on demand to produce a
+/// PDF. Files-store save (not `ziee://`) so there's no workspace-confinement coupling.
+async fn convert_document(
+    user_id: Uuid,
+    message_id: Option<Uuid>,
+    args: &Value,
+) -> Result<Value, AppError> {
+    let a: ConvertArgs = serde_json::from_value(args.clone())
+        .map_err(|e| AppError::bad_request("INVALID_ARGS", e.to_string()))?;
+    if a.markdown.trim().is_empty() {
+        return Err(AppError::bad_request("INVALID_ARGS", "markdown must not be empty"));
+    }
+    let filename = sanitize_pdf_filename(a.filename);
+
+    // Render via a scratch dir; always clean it up.
+    let tmp = std::env::temp_dir().join(format!("ziee-convert-{}", Uuid::new_v4()));
+    tokio::fs::create_dir_all(&tmp)
+        .await
+        .map_err(|e| AppError::internal_error(format!("convert: mkdir: {e}")))?;
+    let md_path = tmp.join("input.md");
+    let pdf_path = tmp.join("output.pdf");
+    let render = async {
+        tokio::fs::write(&md_path, a.markdown.as_bytes())
+            .await
+            .map_err(|e| AppError::internal_error(format!("convert: write: {e}")))?;
+        crate::modules::file::utils::pandoc::convert_to_pdf(&md_path, &pdf_path).await?;
+        tokio::fs::read(&pdf_path)
+            .await
+            .map_err(|e| AppError::internal_error(format!("convert: read pdf: {e}")))
+    }
+    .await;
+    let _ = tokio::fs::remove_dir_all(&tmp).await;
+    let bytes = render?;
+
+    // Save to the file store (same path create_file uses).
+    let file_id = Uuid::new_v4();
+    let saved = process_and_save(user_id, file_id, &filename, None, &bytes).await?;
+    let file = Repos
+        .file
+        .create(FileCreateData {
+            id: file_id,
+            user_id,
+            filename: filename.clone(),
+            file_size: saved.file_size,
+            mime_type: saved.mime_type,
+            checksum: Some(saved.checksum),
+            has_thumbnail: saved.has_thumbnail,
+            preview_page_count: saved.preview_page_count,
+            text_page_count: saved.text_page_count,
+            processing_metadata: saved.processing_metadata,
+            source_message_id: message_id,
+            created_by: "mcp".to_string(),
+        })
+        .await?;
+    crate::modules::file::sync::publish_file_changed(user_id, file.id);
+    crate::modules::file_rag::ingest::spawn_index(user_id, &file);
+    Ok(text_result(
+        format!("Converted to PDF and saved '{}' (id {}).", file.filename, file.id),
+        Some(json!({
+            "file_id": file.id,
+            "version": file.version,
+            "content": [{
+                "type": "resource_link",
+                "uri": format!("/api/files/{}", file.id),
+                "name": file.filename,
+                "mimeType": file.mime_type,
+                "is_saved": true,
+                "file_id": file.id,
+                "version_id": file.current_version_id,
+                "version": file.version,
+            }],
+        })),
+    ))
 }
 
 fn text_result(text: impl Into<String>, structured: Option<Value>) -> Value {
@@ -994,5 +1114,53 @@ async fn rewrite_file(
     // Ensure the target is text-editable (rejects binary).
     let _ = load_head_text(user_id, &file).await?;
     commit_text_version(user_id, &file, a.content, message_id).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sanitize_pdf_filename;
+
+    #[test]
+    fn sanitize_pdf_filename_strips_path_and_coerces_extension() {
+        // Path components are dropped (the basename wins) — no directory escape.
+        assert_eq!(sanitize_pdf_filename(Some("a/b/report.pdf".into())), "report.pdf");
+        assert_eq!(sanitize_pdf_filename(Some("../../etc/passwd".into())), "passwd.pdf");
+        assert_eq!(sanitize_pdf_filename(Some("c:\\win\\notes".into())), "notes.pdf");
+        // A bare name gains the .pdf extension; an existing .pdf isn't doubled
+        // (regardless of case).
+        assert_eq!(sanitize_pdf_filename(Some("summary".into())), "summary.pdf");
+        assert_eq!(sanitize_pdf_filename(Some("summary.pdf".into())), "summary.pdf");
+        assert_eq!(sanitize_pdf_filename(Some("report.PDF".into())), "report.pdf");
+    }
+
+    #[test]
+    fn sanitize_pdf_filename_does_not_panic_on_multibyte() {
+        // A cut near a `.pdf` byte boundary must not land mid-UTF-8-codepoint.
+        assert_eq!(sanitize_pdf_filename(Some("😀x".into())), "x.pdf");
+        assert_eq!(sanitize_pdf_filename(Some("résumé.PDF".into())), "résumé.pdf");
+        // A 4-byte emoji alone (len 4) — get(0..) == the whole emoji, not ".pdf".
+        assert_eq!(sanitize_pdf_filename(Some("😀".into())), "document.pdf");
+    }
+
+    #[test]
+    fn sanitize_pdf_filename_defaults_empty_and_filters_unsafe_chars() {
+        assert_eq!(sanitize_pdf_filename(None), "document.pdf");
+        assert_eq!(sanitize_pdf_filename(Some("".into())), "document.pdf");
+        assert_eq!(sanitize_pdf_filename(Some("   ".into())), "document.pdf");
+        // Filename-unsafe characters are dropped; safe ones (- _ space .) survive.
+        assert_eq!(
+            sanitize_pdf_filename(Some("my <bad>:report*?.pdf".into())),
+            "my badreport.pdf"
+        );
+    }
+
+    #[test]
+    fn sanitize_pdf_filename_caps_length() {
+        let long = "a".repeat(500);
+        let out = sanitize_pdf_filename(Some(long));
+        // 80-char stem cap + ".pdf".
+        assert_eq!(out.len(), 84);
+        assert!(out.ends_with(".pdf"));
+    }
 }
 

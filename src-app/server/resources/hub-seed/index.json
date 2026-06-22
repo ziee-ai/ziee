@@ -41,7 +41,7 @@
       "name": "io.github.phibya/deep-researcher",
       "category": "assistant",
       "title": "Deep Researcher",
-      "summary": "Multi-step research assistant. Pinned to a future ziee-chat that ships the parallel sub-agent runtime.",
+      "summary": "Multi-step research assistant. Pinned to a future ziee that ships the parallel sub-agent runtime.",
       "tags": [
         "research",
         "analysis",
@@ -197,7 +197,7 @@
       "name": "io.github.phibya/deepseek-r1-70b",
       "category": "model",
       "title": "DeepSeek-R1 70B",
-      "summary": "Large reasoning model. Flagged as requiring a future ziee-chat for its tensor-parallel runtime support.",
+      "summary": "Large reasoning model. Flagged as requiring a future ziee for its tensor-parallel runtime support.",
       "tags": [
         "reasoning",
         "large",
@@ -286,7 +286,7 @@
       "name": "io.github.phibya/qwen2.5-coder-7b-instruct",
       "category": "model",
       "title": "Qwen2.5-Coder 7B",
-      "summary": "Alibaba's Qwen2.5-Coder 7B — code generation, completion, and reasoning across 40+ languages.",
+      "summary": "Alibaba's Qwen2.5-Coder 7B \u2014 code generation, completion, and reasoning across 40+ languages.",
       "tags": [
         "code",
         "instruct",
@@ -477,7 +477,7 @@
       "name": "io.github.ziee/effective-prompting",
       "category": "skill",
       "title": "Effective Prompting",
-      "summary": "Model-agnostic techniques for clearer, more reliable LLM prompts — structure, output shaping, few-shot, and hallucination control.",
+      "summary": "Model-agnostic techniques for clearer, more reliable LLM prompts \u2014 structure, output shaping, few-shot, and hallucination control.",
       "tags": [
         "prompting",
         "prompt-engineering",
@@ -490,6 +490,60 @@
       "min_ziee_version": null,
       "version": "1.0.0",
       "manifest_path": "skills/io.github.ziee/effective-prompting/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/sr-search-screen",
+      "category": "workflow",
+      "title": "SR: Search & Screen",
+      "summary": "Search the literature and AI first-pass screen the deduped candidates into the screening panel.",
+      "tags": [
+        "systematic-review",
+        "literature",
+        "screening",
+        "lit-search",
+        "llm-map"
+      ],
+      "verified": true,
+      "added_at": "2026-06-21",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "workflows/io.github.ziee/sr-search-screen/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/sr-snowball-screen",
+      "category": "workflow",
+      "title": "SR: Snowball & Screen",
+      "summary": "Citation snowballing: chase the references of the included set and AI-screen the new candidates.",
+      "tags": [
+        "systematic-review",
+        "literature",
+        "snowball",
+        "lit-search",
+        "llm-map"
+      ],
+      "verified": true,
+      "added_at": "2026-06-21",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "workflows/io.github.ziee/sr-snowball-screen/1.0.0.json"
+    },
+    {
+      "name": "io.github.ziee/sr-extract-synthesize",
+      "category": "workflow",
+      "title": "SR: Extract & Synthesize",
+      "summary": "On the finalized included set: fetch open-access full text, extract quote-grounded study data, and write a cited evidence synthesis.",
+      "tags": [
+        "systematic-review",
+        "extraction",
+        "synthesis",
+        "full-text",
+        "lit-search"
+      ],
+      "verified": true,
+      "added_at": "2026-06-21",
+      "min_ziee_version": null,
+      "version": "1.0.0",
+      "manifest_path": "workflows/io.github.ziee/sr-extract-synthesize/1.0.0.json"
     }
   ]
 }

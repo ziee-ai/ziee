@@ -26,6 +26,11 @@
       "default": "on_error",
       "description": "Workflow-level default for log resource exposure. Per-step override available via step.expose_logs."
     },
+    "max_runtime_secs": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Wall-clock cap for the whole run, in seconds. Omit = engine default (RUN_WALL_CLOCK, 30 min). 0 = unbounded (no wall-clock cap; the per-run token + output-byte caps still apply). Live-adjustable while running via PUT /workflow-runs/{id}/timeout."
+    },
     "inputs": {
       "type": "array",
       "default": [],
@@ -88,7 +93,7 @@
         },
         "kind": {
           "type": "string",
-          "enum": ["llm", "llm_map", "sandbox", "elicit"],
+          "enum": ["llm", "llm_map", "sandbox", "elicit", "tool"],
           "default": "llm"
         },
         "depends_on": {
@@ -134,6 +139,10 @@
         "prompt_file": { "type": ["string", "null"] },
         "output_format": { "type": "string", "enum": ["text", "json"], "default": "text" },
         "tools": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "server": { "type": ["string", "null"], "description": "kind: tool — the MCP server (stable name, e.g. lit_search / citations) to call." },
+        "tool": { "type": ["string", "null"], "description": "kind: tool — the tool name to invoke on `server`." },
+        "arguments": { "type": ["object", "null"], "description": "kind: tool — templated arguments object passed to the tool ({{ }} refs resolve to native JSON)." },
+        "data": { "type": ["object", "null"], "description": "kind: elicit — optional template-rendered seed object pre-filling the form (a whole-value {{ ref }} resolves to its native JSON, e.g. seeding an editable table from a prior step's output)." },
         "for_each": { "type": ["string", "null"] },
         "item_var": { "type": ["string", "null"] },
         "max_parallel": { "type": "integer", "minimum": 1, "maximum": 20, "default": 5 },
@@ -141,7 +150,7 @@
         "max_retries": { "type": "integer", "minimum": 0, "maximum": 10, "default": 2 },
         "run": { "type": ["string", "null"], "minLength": 1 },
         "stdin": { "type": ["string", "null"] },
-        "timeout_ms": { "type": "integer", "minimum": 100, "maximum": 600000, "default": 30000 },
+        "timeout_ms": { "type": "integer", "minimum": 100, "maximum": 1800000, "description": "Per-step timeout (ms). Honored ONLY by elicit steps (default 300000 = 5 min; max 1800000 = 30 min, the engine's ELICIT_TIMEOUT_HARD_CAP_MS — the human review window). sandbox steps are bounded by the code-sandbox engine's own default wall-clock and IGNORE this field; llm / llm_map / tool steps have no per-step timeout (the whole run is bounded by max_runtime_secs)." },
         "schema": { "type": ["object", "null"] }
       },
       "additionalProperties": false,
@@ -172,6 +181,10 @@
         {
           "if": { "properties": { "kind": { "const": "elicit" } } },
           "then": { "required": ["message", "schema"] }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "tool" } } },
+          "then": { "required": ["server", "tool"] }
         }
       ]
     }
