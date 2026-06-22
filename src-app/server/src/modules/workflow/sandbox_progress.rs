@@ -191,6 +191,34 @@ async fn persist_tracks(pool: &PgPool, run_id: Uuid, tracks: &HashMap<String, Pr
     }
 }
 
+/// Ingest one raw `$ZIEE_PROGRESS` line into the live coalescing state: parse it,
+/// then either update the track (latest-wins per id) or bump `dropped` — a
+/// malformed line, or a NEW id beyond [`MAX_TRACKS_PER_STEP`] (existing ids keep
+/// updating after the cap). Pure (no IO / timer) so the coalesce/cap/drop policy
+/// is unit-testable on its own. (P2.5)
+fn ingest_line(
+    bytes: &[u8],
+    tracks: &mut HashMap<String, ProgressTrack>,
+    changed: &mut HashSet<String>,
+    dropped: &mut u64,
+) {
+    let s = String::from_utf8_lossy(bytes);
+    match parse_progress_line(&s) {
+        ParsedLine::Track(t) => {
+            let id = t.id.clone();
+            // Track cap: drop NEW ids beyond the cap (existing ids keep updating).
+            if !tracks.contains_key(&id) && tracks.len() >= MAX_TRACKS_PER_STEP {
+                *dropped += 1;
+            } else {
+                tracks.insert(id.clone(), t);
+                changed.insert(id);
+            }
+        }
+        ParsedLine::Dropped => *dropped += 1,
+        ParsedLine::Empty => {}
+    }
+}
+
 /// Drain the sandbox step's `$ZIEE_PROGRESS` lines (delivered as raw `Vec<u8>`
 /// from the transport seam), parse each leniently, coalesce per track id, and
 /// flush batched `StepProgress` events on a throttle. Ends when the sender is
@@ -217,24 +245,7 @@ pub async fn run_progress_consumer(
     loop {
         tokio::select! {
             line = rx.recv() => match line {
-                Some(bytes) => {
-                    let s = String::from_utf8_lossy(&bytes);
-                    match parse_progress_line(&s) {
-                        ParsedLine::Track(t) => {
-                            let id = t.id.clone();
-                            // Track cap: drop NEW ids beyond the cap (existing
-                            // ids keep updating).
-                            if !tracks.contains_key(&id) && tracks.len() >= MAX_TRACKS_PER_STEP {
-                                dropped += 1;
-                            } else {
-                                tracks.insert(id.clone(), t);
-                                changed.insert(id);
-                            }
-                        }
-                        ParsedLine::Dropped => dropped += 1,
-                        ParsedLine::Empty => {}
-                    }
-                }
+                Some(bytes) => ingest_line(&bytes, &mut tracks, &mut changed, &mut dropped),
                 None => break, // sender dropped → exec done
             },
             _ = tick.tick() => {
@@ -386,5 +397,108 @@ mod tests {
         } else {
             panic!("expected status");
         }
+    }
+
+    // ---- consumer coalesce / cap / drop / flush policy (no DB, no timer) ----
+
+    use crate::modules::workflow::events::{ProgressEmitter, SSEWorkflowRunEvent};
+    use std::sync::{Arc, Mutex};
+
+    /// Minimal in-memory `ProgressEmitter` capturing every frame.
+    struct VecEmitter(Mutex<Vec<SSEWorkflowRunEvent>>);
+    impl ProgressEmitter for VecEmitter {
+        fn emit(&self, ev: SSEWorkflowRunEvent) {
+            self.0.lock().unwrap().push(ev);
+        }
+    }
+
+    fn empty_state() -> (HashMap<String, ProgressTrack>, HashSet<String>, u64) {
+        (HashMap::new(), HashSet::new(), 0)
+    }
+
+    #[test]
+    fn ingest_coalesces_same_id_latest_wins() {
+        let (mut tracks, mut changed, mut dropped) = empty_state();
+        ingest_line(br#"{"type":"bar","id":"dl","fraction":0.1}"#, &mut tracks, &mut changed, &mut dropped);
+        ingest_line(br#"{"type":"bar","id":"dl","fraction":0.9}"#, &mut tracks, &mut changed, &mut dropped);
+        assert_eq!(tracks.len(), 1, "same id coalesces to one track");
+        assert_eq!(changed.len(), 1);
+        assert_eq!(dropped, 0);
+        assert_eq!(
+            tracks["dl"].kind,
+            ProgressKind::Bar { fraction: 0.9 },
+            "latest value wins"
+        );
+    }
+
+    #[test]
+    fn ingest_caps_new_track_ids_and_counts_dropped() {
+        let (mut tracks, mut changed, mut dropped) = empty_state();
+        for i in 0..(MAX_TRACKS_PER_STEP + 5) {
+            let line = format!(r#"{{"type":"bar","id":"t{i}","fraction":0.5}}"#);
+            ingest_line(line.as_bytes(), &mut tracks, &mut changed, &mut dropped);
+        }
+        assert_eq!(tracks.len(), MAX_TRACKS_PER_STEP, "track map capped");
+        assert_eq!(dropped, 5, "5 over-cap NEW ids dropped");
+        // An id already in the map still updates after the cap is hit.
+        ingest_line(br#"{"type":"bar","id":"t0","fraction":0.99}"#, &mut tracks, &mut changed, &mut dropped);
+        assert_eq!(tracks["t0"].kind, ProgressKind::Bar { fraction: 0.99 });
+        assert_eq!(dropped, 5, "updating an existing capped-in id is not a drop");
+    }
+
+    #[test]
+    fn ingest_counts_malformed_and_ignores_empty() {
+        let (mut tracks, mut changed, mut dropped) = empty_state();
+        ingest_line(br#"{"type":"bar"}"#, &mut tracks, &mut changed, &mut dropped); // missing fraction
+        ingest_line(b"   ", &mut tracks, &mut changed, &mut dropped); // whitespace only
+        assert!(tracks.is_empty());
+        assert!(changed.is_empty());
+        assert_eq!(dropped, 1, "only the malformed line counts as dropped");
+    }
+
+    #[test]
+    fn flush_emits_changed_batch_then_evicts_done() {
+        let mut tracks: HashMap<String, ProgressTrack> = HashMap::new();
+        let mut changed: HashSet<String> = HashSet::new();
+        // one in-flight + one done track, both pending in `changed`.
+        tracks.insert(
+            "a".into(),
+            ProgressTrack { id: "a".into(), label: None, done: false, kind: ProgressKind::Bar { fraction: 0.3 } },
+        );
+        tracks.insert(
+            "b".into(),
+            ProgressTrack { id: "b".into(), label: None, done: true, kind: ProgressKind::Bar { fraction: 1.0 } },
+        );
+        changed.insert("a".into());
+        changed.insert("b".into());
+
+        let cap = Arc::new(VecEmitter(Mutex::new(Vec::new())));
+        let emit: Arc<dyn ProgressEmitter> = cap.clone();
+        let emitted = flush(&emit, Uuid::nil(), "step", &mut tracks, &mut changed);
+
+        assert!(emitted, "flush emitted a frame");
+        assert!(changed.is_empty(), "changed drained after flush");
+        assert!(tracks.contains_key("a"), "in-flight track retained");
+        assert!(!tracks.contains_key("b"), "done track evicted after delivery");
+
+        let events = cap.0.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            SSEWorkflowRunEvent::StepProgress(d) => {
+                assert_eq!(d.step_id, "step");
+                assert_eq!(d.tracks.len(), 2, "both changed tracks delivered once in the batch");
+            }
+            other => panic!("expected StepProgress, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn flush_noop_when_nothing_changed() {
+        let mut tracks: HashMap<String, ProgressTrack> = HashMap::new();
+        let mut changed: HashSet<String> = HashSet::new();
+        let cap = Arc::new(VecEmitter(Mutex::new(Vec::new())));
+        let emit: Arc<dyn ProgressEmitter> = cap.clone();
+        assert!(!flush(&emit, Uuid::nil(), "step", &mut tracks, &mut changed));
+        assert!(cap.0.lock().unwrap().is_empty(), "no frame emitted for an empty change set");
     }
 }
