@@ -52,14 +52,17 @@ pub async fn sweep_at_boot(
                 Ok(u) => u,
                 Err(_) => continue,
             };
-            // Check status — non-terminal still gets cleaned (the row
-            // was just flipped to `failed`).
-            let still_running = match repository::find_run(pool, run_id).await {
-                Ok(Some(r)) => matches!(r.status.as_str(), "pending" | "running"),
+            // Check status. A `pending`/`running` orphan was just flipped to
+            // `failed` by `fail_orphaned_runs`, so its dir is GC'd here. A
+            // `waiting` run is a DURABLE elicit gate: `fail_orphaned_runs`
+            // spared it, and its `outputs/` is the resume checkpoint — KEEP it
+            // so `resume_run` can rehydrate after the user submits.
+            let keep_dir = match repository::find_run(pool, run_id).await {
+                Ok(Some(r)) => matches!(r.status.as_str(), "pending" | "running" | "waiting"),
                 Ok(None) => false,
                 Err(_) => false,
             };
-            if !still_running {
+            if !keep_dir {
                 let _ = std::fs::remove_dir_all(run_entry.path());
                 removed += 1;
             }

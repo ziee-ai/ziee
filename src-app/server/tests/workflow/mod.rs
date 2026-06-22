@@ -21,6 +21,7 @@ mod install_from_hub;
 mod permissions_gating;
 mod real_llm;
 mod real_stack;
+mod resume;
 mod run_history_and_delete;
 mod run_mocked;
 mod run_model;
