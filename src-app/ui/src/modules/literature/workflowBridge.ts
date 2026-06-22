@@ -96,6 +96,18 @@ export async function openWorkflowScreening(runId: string): Promise<boolean> {
     }
   }
 
+  // If the run is SUSPENDED on the `sr-review` screening gate (`waiting`,
+  // pending step `screen_review`), carry the run + elicitation so the panel can
+  // resume the run on "Submit screening". For a completed run, these stay unset
+  // (read-only view).
+  const pending = run?.pending_elicitation_json as
+    | { elicitation_id?: string; step_id?: string }
+    | undefined
+  const gateElicitationId =
+    run?.status === 'waiting' && pending?.step_id === 'screen_review'
+      ? pending?.elicitation_id
+      : undefined
+
   const query = cand.query || 'Systematic review'
   const sessionId = `wf-sr:${runId}`
   const data: LiteratureScreeningData = {
@@ -108,6 +120,8 @@ export async function openWorkflowScreening(runId: string): Promise<boolean> {
     completeness: cand.completeness ?? null,
     decisions,
     reasons,
+    runId: gateElicitationId ? runId : undefined,
+    elicitationId: gateElicitationId,
   }
   Stores.Chat.__state.displayInRightPanel({
     id: sessionId,

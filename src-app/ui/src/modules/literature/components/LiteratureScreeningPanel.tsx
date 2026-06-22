@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { DownloadOutlined } from '@ant-design/icons'
-import { Alert, Button, Checkbox, Dropdown, Input, List, Segmented, Space, Tag, Typography } from 'antd'
+import { App, Alert, Button, Checkbox, Dropdown, Input, List, Segmented, Space, Tag, Typography } from 'antd'
+import { ApiClient } from '@/api-client'
 import { Stores } from '@/core/stores'
 import {
   type LiteratureRecord,
@@ -18,9 +19,11 @@ import { downloadText, toBibtex, toCsv, toRis } from '../utils/citationFormats'
  */
 export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
   const { records, decisions, reasons, query, completeness, identified, afterDedup, degradedSources } = data
+  const { message } = App.useApp()
 
   // Transient UI-only state — never persisted to the tab snapshot.
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [submitting, setSubmitting] = useState(false)
   // Exclusion-reason DRAFTS: typed locally per keystroke (cheap), flushed to the
   // persisted snapshot on blur — so we don't re-serialize the whole records array
   // to localStorage on every character.
@@ -123,6 +126,52 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
     else downloadText('screening.csv', 'text/csv', toCsv(set, decisions, mergedReasons))
   }
 
+  // When opened from a SUSPENDED `sr-review` screening gate, resume the run:
+  // derive `included_ids` from the Include decisions and submit the gate's
+  // elicitation. Reads the FRESHEST tab data (decisions persist asynchronously),
+  // and submits the API directly so we get success/error feedback here (the run
+  // view stays in sync via the SSE `elicitationResolved` event).
+  const submitScreening = async () => {
+    if (!data.runId || !data.elicitationId) return
+    setSubmitting(true)
+    try {
+      const cur =
+        (Stores.Chat.__state.rightPanel.tabs.find(t => t.id === data.sessionId)?.data as
+          | LiteratureScreeningData
+          | undefined) ?? data
+      const mergedReasons = { ...cur.reasons, ...reasonDrafts }
+      const includedIds: string[] = []
+      const decisionsOut: Array<{ id: string; decision: string; reason: string; confidence: number }> = []
+      for (const r of cur.records) {
+        // Only records with a resolvable identifier can be fetched downstream.
+        const id = r.doi || (r.pmid != null ? String(r.pmid) : '')
+        if (!id) continue
+        const decision = (cur.decisions[recordKey(r)] ?? 'unscreened') === 'include' ? 'include' : 'exclude'
+        if (decision === 'include') includedIds.push(id)
+        decisionsOut.push({ id, decision, reason: mergedReasons[recordKey(r)] ?? '', confidence: r.relevance ?? 0 })
+      }
+      if (includedIds.length === 0) {
+        message.warning('Mark at least one study as Include before continuing the review.')
+        return
+      }
+      await ApiClient.Workflow.submitElicit({
+        run_id: data.runId,
+        elicitation_id: data.elicitationId,
+        response: { included_ids: includedIds, decisions: decisionsOut, approved: true },
+      })
+      message.success(
+        `Screening submitted — the review is continuing with ${includedIds.length} included stud${includedIds.length === 1 ? 'y' : 'ies'}.`,
+      )
+      // The gate is resolved; clear the handle so this becomes a read-only record
+      // (hides the button + prevents a resubmit).
+      persist(() => ({ runId: undefined, elicitationId: undefined }))
+    } catch (e) {
+      message.error(`Could not submit screening: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   return (
     <div className="p-3 space-y-3 overflow-y-auto">
       <Typography.Title level={5} className="!mb-0">
@@ -153,6 +202,34 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
           showIcon
           title={`Saturation estimate: ${completeness.estimate.toUpperCase()}`}
           description={completeness.caveat}
+        />
+      )}
+
+      {/* Resume affordance: shown only when opened from a SUSPENDED sr-review
+          screening gate. The run stays paused until submitted (survives reload),
+          so the human can screen across sessions, then continue. */}
+      {data.runId && data.elicitationId && (
+        <Alert
+          type="warning"
+          showIcon
+          title="This review is paused for your screening"
+          description={
+            <div className="flex flex-col items-start gap-2">
+              <Typography.Text className="text-xs">
+                Mark studies Include / Exclude below, then submit to resume the review on the
+                included set. You can return to this later — the run stays paused.
+              </Typography.Text>
+              <Button
+                type="primary"
+                size="small"
+                loading={submitting}
+                disabled={records.length === 0}
+                onClick={() => void submitScreening()}
+              >
+                Submit screening &amp; continue ({counts.include} included)
+              </Button>
+            </div>
+          }
         />
       )}
 

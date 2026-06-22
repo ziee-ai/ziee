@@ -185,27 +185,39 @@ export function WorkflowRunProgressView({
             Remove timeout
           </Button>
         )}
-        {/* SR Search/Snowball-&-Screen runs have a `screen` step — surface the
-            AI-screened candidate set in the literature screening panel. */}
-        {run.status === 'completed' && run.stepOrder.includes('screen') && (
-          <Button
-            size="small"
-            icon={<FileSearchOutlined />}
-            onClick={async () => {
-              try {
-                const { openWorkflowScreening } = await import(
-                  '@/modules/literature/workflowBridge'
-                )
-                const opened = await openWorkflowScreening(runId)
-                if (!opened) message.info('This run produced no screening candidates')
-              } catch {
-                message.error('Could not open the screening panel')
-              }
-            }}
-          >
-            Open in screening
-          </Button>
-        )}
+        {/* SR runs have a `screen` step — surface the AI-screened candidate set in
+            the literature screening panel. For a COMPLETED run this is a read-only
+            view; for an `sr-review` run SUSPENDED on its `screen_review` gate, the
+            panel is the place to screen + resume (the run stays paused until then). */}
+        {(run.status === 'completed' ||
+          (run.status === 'waiting' &&
+            run.pendingElicitation?.step_id === 'screen_review')) &&
+          run.stepOrder.includes('screen') && (
+            <Button
+              size="small"
+              type={run.status === 'waiting' ? 'primary' : 'default'}
+              icon={<FileSearchOutlined />}
+              onClick={async () => {
+                try {
+                  const { openWorkflowScreening } = await import(
+                    '@/modules/literature/workflowBridge'
+                  )
+                  const opened = await openWorkflowScreening(runId)
+                  if (!opened) {
+                    message.info(
+                      run.status === 'waiting'
+                        ? 'Open a conversation to screen this run in the literature panel.'
+                        : 'This run produced no screening candidates',
+                    )
+                  }
+                } catch {
+                  message.error('Could not open the screening panel')
+                }
+              }}
+            >
+              {run.status === 'waiting' ? 'Screen in panel' : 'Open in screening'}
+            </Button>
+          )}
       </Space>
 
       {run.error && <Alert type="error" title={run.error} showIcon />}
