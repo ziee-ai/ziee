@@ -44,9 +44,6 @@ use uuid::Uuid;
 
 use crate::common::AppError;
 use crate::core::repository::Repos;
-use crate::modules::file::models::FileCreateData;
-use crate::modules::file::processing::ProcessingManager;
-use crate::modules::file::storage::manager::get_file_storage;
 use crate::modules::mcp::chat_extension::content::ResourceLink;
 use crate::modules::mcp::client::manager::McpSessionManager;
 
@@ -177,9 +174,9 @@ pub fn scrub_ziee_in_value(value: &mut serde_json::Value) {
     }
 }
 
-/// Process `bytes` and persist them as a new `File` owned by `user_id`. Mirrors the chat
-/// artifact-save tail exactly: ProcessingManager → `save_original` + text/image
-/// derivatives → `Repos.file.create` → `publish_file_changed`.
+/// Process `bytes` and persist them as a new `File` owned by `user_id` via the shared
+/// `file::ingest::ingest_bytes` save tail (processing pipeline → `save_original` +
+/// text/image derivatives → `Repos.file.create` → `publish_file_changed`).
 ///
 /// Returns `(file_id, version, version_id, mime_type, size)`.
 async fn save_bytes_as_artifact(
@@ -190,74 +187,30 @@ async fn save_bytes_as_artifact(
     message_id: Option<Uuid>,
     created_by: &str,
 ) -> Result<(Uuid, i32, Uuid, Option<String>, i64), AppError> {
-    // Canonical extension (rsplit + lowercase) — MUST match how the download/read paths
-    // derive the blob key. `Path::extension` would save dotfiles / no-extension names
-    // (`.bashrc`, `Makefile`) as `….bin` but load them as `….bashrc` → 404.
-    let ext = crate::modules::file::utils::extension_of(display_name);
-    let mime_type =
-        content_type_mime.or_else(|| mime_guess::from_ext(&ext).first().map(|m| m.to_string()));
-    let mime_type_str = mime_type.as_deref().unwrap_or("application/octet-stream");
-
-    let processing_result = ProcessingManager::new()
-        .process_file(bytes, mime_type_str)
-        .await
-        .unwrap_or_default();
-
-    let artifact_id = Uuid::new_v4();
-    let storage = get_file_storage();
-    storage
-        .save_original(user_id, artifact_id, &ext, bytes)
-        .await?;
-    for (n, text) in processing_result.text_pages.iter().enumerate() {
-        let _ = storage
-            .save_text_page(user_id, artifact_id, (n + 1) as u32, text)
-            .await;
-    }
-    if let Some(thumb) = processing_result.thumbnails.first() {
-        let _ = storage
-            .save_image(user_id, artifact_id, 1, true, thumb)
-            .await;
-    }
-    for (n, img) in processing_result.images.iter().enumerate() {
-        let _ = storage
-            .save_image(user_id, artifact_id, (n + 1) as u32, false, img)
-            .await;
-    }
-
-    let file_size = bytes.len() as i64;
-    // Real checksum: version-back's no-op check compares the workspace bytes' checksum to
-    // the base version's. A `None` base never matches → every staged artifact would
-    // spuriously version-back even when unchanged.
-    let checksum = storage.calculate_checksum(bytes);
-    let file = Repos
-        .file
-        .create(FileCreateData {
-            id: artifact_id,
-            user_id,
-            filename: display_name.to_string(),
-            file_size,
-            mime_type: mime_type.clone(),
-            checksum: Some(checksum),
-            has_thumbnail: !processing_result.thumbnails.is_empty(),
-            preview_page_count: processing_result.images.len() as i32,
-            text_page_count: processing_result.text_pages.len() as i32,
-            processing_metadata: serde_json::to_value(&processing_result.metadata)
-                .unwrap_or_default(),
-            source_message_id: message_id,
-            created_by: created_by.to_string(),
-        })
-        .await?;
-
-    // Notify the user's OTHER devices a new file exists (cross-device sync), mirroring
-    // files_mcp's create path.
-    crate::modules::file::sync::publish_file_changed(user_id, artifact_id);
+    // E1: the save tail (canonical-extension keying, processing pipeline, blob
+    // store, `files`/`file_versions` rows, real checksum, and the cross-device
+    // `publish_file_changed` sync) is the SHARED `file::ingest::ingest_bytes` —
+    // ONE persistence path across the chat resource_link save, the workflow
+    // tool-step save, and run-artifact collection. `workflow_run_id` is `None`
+    // here: `persist_links` links the producing run itself, after the save loop
+    // populates `outcome.saved` (so the A5 cascade owns only run-created files).
+    let file = crate::modules::file::ingest::ingest_bytes(
+        user_id,
+        bytes,
+        display_name,
+        content_type_mime,
+        created_by,
+        message_id,
+        None,
+    )
+    .await?;
 
     Ok((
-        artifact_id,
+        file.id,
         file.version,
         file.current_version_id,
-        mime_type,
-        file_size,
+        file.mime_type.clone(),
+        file.file_size,
     ))
 }
 
@@ -268,8 +221,10 @@ async fn save_bytes_as_artifact(
 /// `file_id`/`version`/`version_id` are stamped back onto each saved link, and `ziee://`
 /// URIs are rewritten to `/api/files/{id}` (guard #3) before this returns.
 ///
-/// `workflow_run_id` is accepted for a forward-compatible signature; on this branch it is
-/// NOT persisted (see the integration hook below).
+/// When `workflow_run_id` is `Some`, each newly-ingested (run-created) file is linked to
+/// that run via `Repos.file.set_workflow_run_id` after the save loop, so the A5 cascade
+/// deletes only files the run CREATED (never `is_saved:true` files it referenced). The chat
+/// path passes `None`.
 #[allow(clippy::too_many_arguments)]
 pub async fn persist_links(
     links: &mut [ResourceLink],

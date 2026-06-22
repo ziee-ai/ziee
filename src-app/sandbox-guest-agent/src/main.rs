@@ -29,7 +29,7 @@ use std::time::Duration;
 
 use sandbox_vm_protocol::{
     encode, CgroupLimits, Decoder, ExitStatus, Frame, KillProcessRequest, ProcessExitStatus,
-    ProcessRequest, StartedAck, PROTOCOL_VERSION,
+    ProcessRequest, StartedAck, PROGRESS_GUEST_FIFO_PATH, PROGRESS_MAX_LINE_BYTES, PROTOCOL_VERSION,
 };
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -485,6 +485,25 @@ where
         _ => None,
     };
 
+    // Live-progress FIFO (workflow sandbox step). When the host set
+    // `req.progress`, create the named pipe at the guest-local path (NOT
+    // virtio-fs — libkrun's virtio-fs has an mkfifo EPERM bug) BEFORE spawning
+    // bwrap, because the host-built argv `--bind`s it onto `/ziee/progress`. The
+    // reader forwards each newline-trimmed line as a `Frame::ProcessProgress`
+    // (using `request_id` as the handle); it ends when the bwrap child exits
+    // (the guard's drop unlinks the FIFO + aborts the reader).
+    let progress = if req.progress {
+        match ProgressFifo::spawn(req.request_id, tx.clone()) {
+            Ok(p) => Some(p),
+            Err(e) => {
+                tracing::warn!("agent: progress FIFO setup failed: {e}; bwrap bind will fail");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     let spawned = cmd.spawn();
     // The child holds its own dup of the read fd; close ours so the writer's
     // EOF is observed once it finishes.
@@ -552,6 +571,10 @@ where
     // Make sure all output is flushed before Exit.
     let _ = out_task.await;
     let _ = err_task.await;
+    // Stop the progress reader + unlink the FIFO BEFORE dropping `tx`: the
+    // bwrap child has exited so no further `$ZIEE_PROGRESS` writes arrive, and
+    // we don't want an orphaned reader holding the writer half of `tx`.
+    drop(progress);
 
     // macOS virtio-fs CREATE-EPERM workaround: walk each artifact-collection
     // tmpfs dir and stream its files back to the host (which writes them to the
@@ -1000,6 +1023,152 @@ async fn pump_handle<R: AsyncReadExt + Unpin>(
                 }
             }
             Err(_) => break,
+        }
+    }
+}
+
+/// Live-progress FIFO, guest side. Mirrors the Linux host's `ProgressFifo`:
+/// create the named pipe at the fixed guest-local path, open the read end
+/// `O_RDWR|O_NONBLOCK` (so it never sees EOF between the sandbox's writes), and
+/// forward each newline-trimmed line as a `Frame::ProcessProgress` to the
+/// connection's writer channel. Drop signals stop, aborts the reader, and
+/// unlinks the FIFO so no orphaned reader survives the exec.
+#[cfg(target_os = "linux")]
+struct ProgressFifo {
+    stop: Arc<std::sync::atomic::AtomicBool>,
+    reader: Option<tokio::task::JoinHandle<()>>,
+}
+
+#[cfg(target_os = "linux")]
+impl ProgressFifo {
+    fn spawn(handle: u64, tx: mpsc::UnboundedSender<Frame>) -> std::io::Result<Self> {
+        use std::os::fd::FromRawFd;
+
+        let c_path = std::ffi::CString::new(PROGRESS_GUEST_FIFO_PATH).unwrap();
+        // Remove any stale FIFO at the fixed path (prior exec on this guest).
+        let _ = std::fs::remove_file(PROGRESS_GUEST_FIFO_PATH);
+        // SAFETY: c_path is a valid NUL-terminated CString for the call.
+        if unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) } < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        // O_RDWR keeps our own writer ref so the read end never hits EOF while
+        // the sandbox opens/closes the FIFO per `echo`. O_NONBLOCK + AsyncFd =
+        // readiness-driven async reads. O_CLOEXEC so the fd doesn't leak into
+        // the bwrap child (it reaches the FIFO via the bind, not an inherited fd).
+        // SAFETY: c_path valid; -1 on error (checked).
+        let fd = unsafe {
+            libc::open(
+                c_path.as_ptr(),
+                libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC,
+            )
+        };
+        if fd < 0 {
+            let err = std::io::Error::last_os_error();
+            let _ = std::fs::remove_file(PROGRESS_GUEST_FIFO_PATH);
+            return Err(err);
+        }
+
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stop_reader = stop.clone();
+        // SAFETY: we just opened `fd` (O_CLOEXEC, O_NONBLOCK) and own it; the
+        // reader task closes it via AsyncFd::Drop on exit.
+        let owned = unsafe { std::os::fd::OwnedFd::from_raw_fd(fd) };
+        let reader = tokio::spawn(progress_reader_loop(owned, tx, handle, stop_reader));
+        Ok(Self {
+            stop,
+            reader: Some(reader),
+        })
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Drop for ProgressFifo {
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::SeqCst);
+        if let Some(h) = self.reader.take() {
+            h.abort();
+        }
+        let _ = std::fs::remove_file(PROGRESS_GUEST_FIFO_PATH);
+    }
+}
+
+/// Read newline-delimited progress lines off the FIFO fd and forward each
+/// (newline-trimmed) line as a `Frame::ProcessProgress { handle, bytes }`. A
+/// single FIFO `write()` under `PROGRESS_MAX_LINE_BYTES` (= PIPE_BUF) is atomic,
+/// so lines don't interleave; over-cap lines are DROPPED. Ends when `stop` is
+/// set (aborted on drop) or `tx` is closed.
+#[cfg(target_os = "linux")]
+async fn progress_reader_loop(
+    fd: std::os::fd::OwnedFd,
+    tx: mpsc::UnboundedSender<Frame>,
+    handle: u64,
+    stop: Arc<std::sync::atomic::AtomicBool>,
+) {
+    use std::os::fd::AsRawFd;
+    use tokio::io::unix::AsyncFd;
+
+    let async_fd = match AsyncFd::new(fd) {
+        Ok(a) => a,
+        Err(e) => {
+            tracing::warn!("agent: progress AsyncFd::new failed: {e}");
+            return;
+        }
+    };
+
+    let mut pending: Vec<u8> = Vec::with_capacity(256);
+    let mut overflowed = false;
+    let mut buf = [0u8; 8 * 1024];
+
+    loop {
+        if stop.load(std::sync::atomic::Ordering::SeqCst) || tx.is_closed() {
+            return;
+        }
+        let mut guard = match async_fd.readable().await {
+            Ok(g) => g,
+            Err(_) => return,
+        };
+        loop {
+            let raw = async_fd.get_ref().as_raw_fd();
+            // SAFETY: raw is valid (owned by async_fd); buf is a valid buffer.
+            let n = unsafe {
+                libc::read(raw, buf.as_mut_ptr() as *mut libc::c_void, buf.len())
+            };
+            if n > 0 {
+                for &byte in &buf[..n as usize] {
+                    if byte == b'\n' {
+                        if !overflowed && !pending.is_empty() {
+                            let _ = tx.send(Frame::ProcessProgress {
+                                handle,
+                                bytes: std::mem::take(&mut pending),
+                            });
+                        } else {
+                            pending.clear();
+                        }
+                        overflowed = false;
+                    } else if !overflowed {
+                        pending.push(byte);
+                        if pending.len() > PROGRESS_MAX_LINE_BYTES {
+                            pending.clear();
+                            overflowed = true;
+                        }
+                    }
+                }
+                continue;
+            }
+            if n == 0 {
+                guard.clear_ready();
+                break;
+            }
+            let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+            if errno == libc::EAGAIN || errno == libc::EWOULDBLOCK {
+                guard.clear_ready();
+                break;
+            }
+            if errno == libc::EINTR {
+                continue;
+            }
+            tracing::warn!("agent: progress read errno {errno}; ending");
+            return;
         }
     }
 }

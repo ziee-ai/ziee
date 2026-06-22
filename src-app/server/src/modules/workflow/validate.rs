@@ -112,6 +112,14 @@ pub struct StepDef {
     pub depends_on: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+    /// Author-facing, template-rendered label of what this step does
+    /// ("Search the web for {{ inputs.topic }}"). Surfaced as the step
+    /// title in the run progress UI for every kind. Distinct from
+    /// `message` (the elicit prompt / dynamic status line). Optional;
+    /// capped at `MAX_STEP_DESCRIPTION_CHARS`. Ref-checked at install
+    /// like `message`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     #[serde(default)]
     pub log: LogCapture,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -224,6 +232,8 @@ fn default_max_parallel() -> u32 {
     5
 }
 pub const MAX_PARALLEL_HARD_CAP: u32 = 20;
+/// Max chars for a step's `description` template (raw, pre-render).
+pub const MAX_STEP_DESCRIPTION_CHARS: usize = 200;
 fn default_sandbox_timeout_ms() -> u32 {
     30_000
 }
@@ -528,6 +538,23 @@ fn check_steps_shape(workflow: &WorkflowDef) -> Vec<ValidationError> {
                 format!("duplicate step id '{}'", s.id),
                 &s.id,
             ));
+        }
+        // Step description cap (the raw template, pre-render). Keeps the
+        // progress-UI label bounded; the rendered string is also capped FE-side.
+        if let Some(desc) = s.description.as_deref() {
+            if desc.chars().count() > MAX_STEP_DESCRIPTION_CHARS {
+                out.push(ValidationError::at(
+                    "semantic",
+                    "WORKFLOW_STEP_DESCRIPTION_TOO_LONG",
+                    format!(
+                        "step '{}' description is {} chars (max {})",
+                        s.id,
+                        desc.chars().count(),
+                        MAX_STEP_DESCRIPTION_CHARS
+                    ),
+                    &s.id,
+                ));
+            }
         }
         // Prompt vs prompt_file mutual exclusion (defense in depth on
         // top of #[serde(flatten)] which doesn't enforce oneOf).
@@ -859,6 +886,11 @@ fn check_template_refs(workflow: &WorkflowDef) -> Vec<ValidationError> {
         // so item_var is not in scope there.
         if let Some(msg) = s.message.as_deref() {
             check(&format!("{}.message", s.id), msg, None);
+        }
+        // `description` renders at step-start too (full ctx) + at run-start
+        // (inputs only); same scope as message — no item_var.
+        if let Some(desc) = s.description.as_deref() {
+            check(&format!("{}.description", s.id), desc, None);
         }
     }
     for o in &workflow.outputs {
@@ -1255,6 +1287,61 @@ outputs:
     }
 
     #[test]
+    fn accepts_step_description_with_input_ref() {
+        let yaml = r#"
+inputs:
+  - name: topic
+    required: true
+steps:
+  - id: g
+    kind: llm
+    prompt: "x"
+    description: "Summarize {{ inputs.topic }}"
+"#;
+        let wf = parse_workflow_yaml(yaml).unwrap();
+        // The field is captured (not silently dropped) + valid.
+        assert_eq!(
+            wf.steps[0].description.as_deref(),
+            Some("Summarize {{ inputs.topic }}")
+        );
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(!errs
+            .iter()
+            .any(|e| e.code == "WORKFLOW_STEP_DESCRIPTION_TOO_LONG"));
+        assert!(!errs.iter().any(|e| e.code == "WORKFLOW_UNKNOWN_INPUT_REF"));
+    }
+
+    #[test]
+    fn rejects_overlong_step_description() {
+        let long = "x".repeat(MAX_STEP_DESCRIPTION_CHARS + 1);
+        let yaml = format!(
+            "steps:\n  - id: g\n    kind: llm\n    prompt: \"x\"\n    description: \"{long}\"\n"
+        );
+        let wf = parse_workflow_yaml(&yaml).unwrap();
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(errs
+            .iter()
+            .any(|e| e.code == "WORKFLOW_STEP_DESCRIPTION_TOO_LONG"));
+    }
+
+    #[test]
+    fn rejects_bad_ref_in_step_description() {
+        let yaml = r#"
+steps:
+  - id: g
+    kind: llm
+    prompt: "x"
+    description: "uses {{ nope.output }}"
+"#;
+        let wf = parse_workflow_yaml(yaml).unwrap();
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(errs.iter().any(|e| e.code == "WORKFLOW_UNKNOWN_STEP_REF"));
+    }
+
+    #[test]
     fn llm_map_item_var_is_valid_in_its_prompt() {
         // Regression: the per-item binding (`item_var`) must be a valid head
         // inside the llm_map step's own prompt — `{{ aspect }}` and
@@ -1375,6 +1462,76 @@ steps:
         let tmp = tempdir().unwrap();
         let errs = validate_collecting(&wf, tmp.path(), false);
         assert!(errs.iter().any(|e| e.code == "WORKFLOW_PROMPT_FILE_UNSAFE"));
+    }
+
+    #[test]
+    fn prompt_file_missing_in_bundle_is_reported() {
+        // S6: a SAFE, bundle-relative prompt_file that doesn't exist in the
+        // bundle → WORKFLOW_PROMPT_FILE_MISSING (canonicalize fails). Distinct
+        // from the cheap textual `..`/`/` reject (WORKFLOW_PROMPT_FILE_UNSAFE).
+        let yaml = r#"
+steps:
+  - id: g
+    kind: llm
+    prompt_file: "prompts/nope.md"
+"#;
+        let wf = parse_workflow_yaml(yaml).unwrap();
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(
+            errs.iter().any(|e| e.code == "WORKFLOW_PROMPT_FILE_MISSING"),
+            "absent prompt_file must trip MISSING: {errs:?}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn prompt_file_escaping_bundle_via_symlink_is_reported() {
+        // S6: a relative, dotdot-free prompt_file that CANONICALIZES outside
+        // the bundle (via a symlink) trips the post-canonicalize confinement
+        // guard WORKFLOW_PROMPT_FILE_ESCAPE — distinct from the textual reject.
+        use std::os::unix::fs::symlink;
+        let outside = tempdir().unwrap();
+        let target = outside.path().join("secret.md");
+        std::fs::write(&target, b"secret").unwrap();
+
+        let bundle = tempdir().unwrap();
+        // bundle/escape.md -> <outside>/secret.md (resolves outside the bundle).
+        symlink(&target, bundle.path().join("escape.md")).unwrap();
+
+        let yaml = r#"
+steps:
+  - id: g
+    kind: llm
+    prompt_file: "escape.md"
+"#;
+        let wf = parse_workflow_yaml(yaml).unwrap();
+        let errs = validate_collecting(&wf, bundle.path(), false);
+        assert!(
+            errs.iter().any(|e| e.code == "WORKFLOW_PROMPT_FILE_ESCAPE"),
+            "a prompt_file symlink escaping the bundle must trip ESCAPE: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn rejects_unsafe_artifact_path() {
+        // S6: a step artifact decl whose path escapes the workspace →
+        // WORKFLOW_ARTIFACT_PATH_UNSAFE.
+        let yaml = r#"
+steps:
+  - id: g
+    kind: llm
+    prompt: "x"
+    artifacts:
+      - path: "../escape.txt"
+"#;
+        let wf = parse_workflow_yaml(yaml).unwrap();
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(
+            errs.iter().any(|e| e.code == "WORKFLOW_ARTIFACT_PATH_UNSAFE"),
+            "unsafe artifact path must trip ARTIFACT_PATH_UNSAFE: {errs:?}"
+        );
     }
 
     #[test]

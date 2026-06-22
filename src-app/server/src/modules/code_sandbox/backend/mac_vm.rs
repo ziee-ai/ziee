@@ -695,7 +695,7 @@ impl SandboxBackend for MacVmBackend {
         timeout_secs: Option<u64>,
         flavor: &str,
     ) -> Result<SandboxRunResult, AppError> {
-        self.run_with_mounts(state, ctx, command, timeout_secs, flavor, &[])
+        self.run_with_mounts(state, ctx, command, timeout_secs, flavor, &[], None)
             .await
     }
 
@@ -713,6 +713,7 @@ impl SandboxBackend for MacVmBackend {
         timeout_secs: Option<u64>,
         flavor: &str,
         extra_mounts: &[crate::modules::code_sandbox::workflow_staging::StagedMount],
+        progress_tx: Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>,
     ) -> Result<SandboxRunResult, AppError> {
         use crate::modules::code_sandbox::workflow_staging::StagedMount;
 
@@ -818,6 +819,14 @@ impl SandboxBackend for MacVmBackend {
         // shared-policy BPF and pipes it to that fd. Passing GUEST_WORKSPACE_MOUNT
         // as the attachment root (Gb) makes attachment binds resolve to guest
         // paths under /workspace, not the host workspace_root.
+        // Live-progress: when a sink is requested, tell the agent to provision
+        // the FIFO guest-side (`progress: true`) and bind its guest-local path
+        // (NOT a virtio-fs path — libkrun's virtio-fs has an mkfifo EPERM bug)
+        // onto `/ziee/progress`. The agent reads it + forwards each line as a
+        // `Frame::ProcessProgress`, which `run_on_stream` routes to `progress_tx`.
+        let want_progress = progress_tx.is_some();
+        let progress_fifo_src = want_progress
+            .then(|| sandbox_vm_protocol::PROGRESS_GUEST_FIFO_PATH);
         let req = ExecRequest {
             protocol_version: PROTOCOL_VERSION,
             request_id: REQ_COUNTER.fetch_add(1, Ordering::Relaxed),
@@ -834,9 +843,11 @@ impl SandboxBackend for MacVmBackend {
                 Some(GUEST_SECCOMP_FD),
                 &limits,
                 &guest_mounts,
+                progress_fifo_src,
             ),
             timeout_ms: secs * 1000,
             seccomp_fd: Some(GUEST_SECCOMP_FD),
+            progress: want_progress,
             // In-guest cgroup v2 limits (the agent applies them; prlimit in
             // the argv is the backstop). Source from §6 config: memory /
             // pids / cpu mirror the host argv literals on the same row.
@@ -874,6 +885,7 @@ impl SandboxBackend for MacVmBackend {
                         stream,
                         req.clone(),
                         secs,
+                        progress_tx.clone(),
                         &artifact_host_dirs,
                     )
                     .await;
@@ -933,6 +945,8 @@ impl SandboxBackend for MacVmBackend {
             // synthesize this via the agent's pipe — see the helper.
             seccomp_fd: None,
             cgroup: None,
+            // Tier-4 raw-argv harness never exercises live progress.
+            progress: false,
             collect_artifacts: Vec::new(),
         };
         let secs = timeout.as_secs().max(1);

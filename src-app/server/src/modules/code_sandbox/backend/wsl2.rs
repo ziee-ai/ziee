@@ -931,7 +931,7 @@ impl SandboxBackend for Wsl2Backend {
         timeout_secs: Option<u64>,
         flavor: &str,
     ) -> Result<SandboxRunResult, AppError> {
-        self.run_with_mounts(state, ctx, command, timeout_secs, flavor, &[])
+        self.run_with_mounts(state, ctx, command, timeout_secs, flavor, &[], None)
             .await
     }
 
@@ -949,6 +949,7 @@ impl SandboxBackend for Wsl2Backend {
         timeout_secs: Option<u64>,
         flavor: &str,
         extra_mounts: &[crate::modules::code_sandbox::workflow_staging::StagedMount],
+        progress_tx: Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>,
     ) -> Result<SandboxRunResult, AppError> {
         use crate::modules::code_sandbox::workflow_staging::StagedMount;
 
@@ -1007,6 +1008,13 @@ impl SandboxBackend for Wsl2Backend {
             files: ctx.files.clone(),
         };
         let secs = timeout_secs.unwrap_or(limits.timeout_secs.max(1) as u64);
+        // Live-progress: when a sink is requested, the agent provisions the FIFO
+        // guest-side (`progress: true`) at the guest-local path and bwrap binds
+        // it onto `/ziee/progress`; the agent's reader forwards each line as a
+        // `Frame::ProcessProgress`, routed to `progress_tx` by `run_on_stream`.
+        let want_progress = progress_tx.is_some();
+        let progress_fifo_src = want_progress
+            .then(|| sandbox_vm_protocol::PROGRESS_GUEST_FIFO_PATH);
         let req = ExecRequest {
             protocol_version: PROTOCOL_VERSION,
             request_id: REQ_COUNTER.fetch_add(1, Ordering::Relaxed),
@@ -1023,9 +1031,11 @@ impl SandboxBackend for Wsl2Backend {
                 Some(GUEST_SECCOMP_FD),
                 &limits,
                 &guest_mounts,
+                progress_fifo_src,
             ),
             timeout_ms: secs * 1000,
             seccomp_fd: Some(GUEST_SECCOMP_FD),
+            progress: want_progress,
             // In-guest cgroup v2 (the agent applies it; prlimit is the backstop).
             // Graceful degradation is handled agent-side: if cgroup v2
             // delegation is missing, `GuestCgroup::create` logs a warn
@@ -1063,7 +1073,17 @@ impl SandboxBackend for Wsl2Backend {
             let vm_id = self.vm_id()?;
             let result = match hvsocket::connect(vm_id, h.vsock_port).await {
                 Ok(stream) => {
-                    let r = super::vm_client::run_on_stream(stream, req.clone(), secs).await;
+                    // WSL2 copies artifacts out via rsync (not the ArtifactFile
+                    // frame), so pass no artifact dirs — but DO forward live
+                    // progress (`progress_tx`) for the workflow sandbox step.
+                    let r = super::vm_client::run_on_stream_collecting(
+                        stream,
+                        req.clone(),
+                        secs,
+                        progress_tx.clone(),
+                        &[],
+                    )
+                    .await;
                     *h.last_used.lock().await = Instant::now();
                     r
                 }
@@ -1228,6 +1248,8 @@ impl SandboxBackend for Wsl2Backend {
             // injecting one.
             seccomp_fd: None,
             cgroup: None,
+            // Tier-4 raw-argv harness never exercises live progress.
+            progress: false,
             collect_artifacts: Vec::new(),
         };
         let secs = timeout.as_secs().max(1);

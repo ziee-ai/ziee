@@ -1,11 +1,12 @@
 import { DeleteOutlined } from '@ant-design/icons'
 import { App, Button, Empty, List, Popconfirm, Space, Tag, Typography } from 'antd'
 import { useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 
-const { Text } = Typography
+const { Text, Link } = Typography
 
 const STATUS_COLOR: Record<string, string> = {
   completed: 'green',
@@ -39,6 +40,7 @@ export function WorkflowRunsList({
   onSelectRun: (runId: string) => void
 }) {
   const { message } = App.useApp()
+  const navigate = useNavigate()
   const canExecute = usePermission(Permissions.WorkflowsExecute)
   const { runs, loading, deleting } = Stores.WorkflowRuns
 
@@ -106,9 +108,28 @@ export function WorkflowRunsList({
             <Tag color={STATUS_COLOR[run.status] || 'default'} className="!m-0">
               {run.status}
             </Tag>
-            <Tag className="!m-0 text-xs">
-              {INVOCATION_SOURCE_LABEL[run.invocation_source] ?? 'Workflow page'}
-            </Tag>
+            {run.invocation_source === 'conversation' && run.conversation_id ? (
+              // Conversation-launched run: a Typography.Link (accessible
+              // <a role="link">, the codebase's inline-nav idiom — cf.
+              // DownloadItem) inside the badge opens the originating
+              // conversation. stopPropagation so the click navigates instead of
+              // firing the List.Item's open-progress onClick.
+              <Tag className="!m-0 text-xs">
+                <Link
+                  className="text-xs"
+                  onClick={e => {
+                    e.stopPropagation()
+                    navigate(`/chat/${run.conversation_id}`)
+                  }}
+                >
+                  {INVOCATION_SOURCE_LABEL.conversation}
+                </Link>
+              </Tag>
+            ) : (
+              <Tag className="!m-0 text-xs">
+                {INVOCATION_SOURCE_LABEL[run.invocation_source] ?? 'Workflow page'}
+              </Tag>
+            )}
             <Text type="secondary" className="text-xs">
               {new Date(run.created_at).toLocaleString()}
             </Text>

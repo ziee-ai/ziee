@@ -173,17 +173,14 @@ impl StepDispatcher for LlmDispatcher {
         // Capture raw LLM response (gated).
         let _ = log_io::write_text_log(ctx, &step.id, "raw_output", &text, step.log).await;
 
-        let (value, parsed_as) = match output_format {
-            OutputFormat::Text => (Value::String(text.clone()), ParsedAs::Text),
-            OutputFormat::Json => match serde_json::from_str::<Value>(&text) {
-                Ok(v) => (v, ParsedAs::Json),
-                Err(e) => {
-                    return StepResult::Failed {
-                        error: format!("expected JSON output, parse failed: {e}"),
-                        tokens_used: tokens,
-                    };
-                }
-            },
+        let (value, parsed_as) = match parse_llm_output(&text, output_format) {
+            Ok(vp) => vp,
+            Err(error) => {
+                return StepResult::Failed {
+                    error,
+                    tokens_used: tokens,
+                };
+            }
         };
 
         // Write output file + register meta on ctx.
@@ -385,13 +382,7 @@ impl StepDispatcher for LlmMapDispatcher {
         // Initial progress event.
         ctx.step_item_progress.insert(
             step.id.clone(),
-            ItemProgress {
-                completed: 0,
-                total,
-                failed: 0,
-                skipped: 0,
-                tokens_so_far: 0,
-            },
+            item_progress(0, total, 0, 0, 0),
         );
         emit.emit(SSEWorkflowRunEvent::StepItemProgress(SSEStepItemProgressData {
             run_id: ctx.run_id,
@@ -490,13 +481,12 @@ impl StepDispatcher for LlmMapDispatcher {
                 // run row + any live SSE client reflect what completed before
                 // the cancel (the cancelled count is derivable as
                 // total - completed - failed - skipped).
-                let progress = ItemProgress {
-                    completed,
-                    total,
-                    failed,
-                    skipped,
-                    tokens_so_far: total_tokens,
-                };
+                let progress = item_progress(completed, total, failed, skipped, total_tokens);
+                tracing::info!(
+                    step = %step.id,
+                    cancelled = cancelled_so_far(&progress),
+                    "llm_map step cancelled mid-drain"
+                );
                 ctx.step_item_progress
                     .insert(step.id.clone(), progress.clone());
                 emit.emit(SSEWorkflowRunEvent::StepItemProgress(SSEStepItemProgressData {
@@ -541,13 +531,7 @@ impl StepDispatcher for LlmMapDispatcher {
                 }
             }
             // Emit per-item progress update.
-            let progress = ItemProgress {
-                completed,
-                total,
-                failed,
-                skipped,
-                tokens_so_far: total_tokens,
-            };
+            let progress = item_progress(completed, total, failed, skipped, total_tokens);
             ctx.step_item_progress
                 .insert(step.id.clone(), progress.clone());
             emit.emit(SSEWorkflowRunEvent::StepItemProgress(SSEStepItemProgressData {
@@ -617,6 +601,51 @@ fn classify_item_error(on_error: OnError) -> (bool, Option<Value>) {
     }
 }
 
+/// Map a raw LLM response into a typed step value per the declared output
+/// format (E6). `OutputFormat::Json` with unparseable text is a step failure;
+/// `Text` always succeeds. Factored from the inline `match` so the parse-fail
+/// branch is unit-testable without a real LLM call.
+fn parse_llm_output(text: &str, output_format: OutputFormat) -> Result<(Value, ParsedAs), String> {
+    match output_format {
+        OutputFormat::Text => Ok((Value::String(text.to_string()), ParsedAs::Text)),
+        OutputFormat::Json => serde_json::from_str::<Value>(text)
+            .map(|v| (v, ParsedAs::Json))
+            .map_err(|e| format!("expected JSON output, parse failed: {e}")),
+    }
+}
+
+/// Build the per-item progress snapshot for an llm_map fan-out. Used both for
+/// the running per-item updates and for the partial-progress snapshot taken
+/// when the step is cancelled mid-drain (E4) — the cancelled count is
+/// derivable as `total - completed - failed - skipped`. Factored so the
+/// snapshot bookkeeping is unit-testable without racing a real fan-out.
+fn item_progress(
+    completed: u32,
+    total: u32,
+    failed: u32,
+    skipped: u32,
+    tokens_so_far: u64,
+) -> ItemProgress {
+    ItemProgress {
+        completed,
+        total,
+        failed,
+        skipped,
+        tokens_so_far,
+    }
+}
+
+/// Items neither completed, failed, nor skipped when an llm_map step is
+/// cancelled mid-drain — the "cancelled" count the snapshot leaves derivable
+/// (`total - completed - failed - skipped`, saturating). Pure, so the
+/// derivation is unit-testable.
+fn cancelled_so_far(p: &ItemProgress) -> u32 {
+    p.total
+        .saturating_sub(p.completed)
+        .saturating_sub(p.failed)
+        .saturating_sub(p.skipped)
+}
+
 fn other_type_name(v: &Value) -> &'static str {
     match v {
         Value::Null => "null",
@@ -655,7 +684,6 @@ impl StepDispatcher for SandboxDispatcher {
         cancel: Arc<registry::RunHandle>,
         emit: Arc<dyn ProgressEmitter>,
     ) -> StepResult {
-        let _ = emit;
         let started = Instant::now();
 
         let (run, stdin, _timeout_ms) = match &step.config {
@@ -780,13 +808,47 @@ impl StepDispatcher for SandboxDispatcher {
             files: Arc::new(Vec::new()),
         };
 
+        // Live progress (P2): a per-step sink feeds the consumer, which parses
+        // `$ZIEE_PROGRESS` lines, coalesces per track, and emits `StepProgress`.
+        // The sink is moved into the exec; when the exec future completes (or is
+        // dropped on cancel) the sender drops, the consumer's `rx` closes, it
+        // does a final flush, and ends.
+        let progress_pool = crate::core::repository::Repos.pool().clone();
+        let (progress_tx, progress_rx) =
+            tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+        let progress_consumer =
+            tokio::spawn(crate::modules::workflow::sandbox_progress::run_progress_consumer(
+                progress_rx,
+                emit.clone(),
+                progress_pool.clone(),
+                ctx.run_id,
+                step.id.clone(),
+            ));
+
         // Dispatch — wrapping in select! gives us prompt cancel via
         // future-drop (kill_on_drop(true) is already set on the sandbox
         // Command).
         let result = tokio::select! {
-            r = execute_command_with_mounts(&sb_ctx, &cmd, &flavor, &mounts) => r,
-            _ = cancel.await_cancel() => return StepResult::Cancelled,
+            r = execute_command_with_mounts(
+                &sb_ctx, &cmd, &flavor, &mounts, Some(progress_tx),
+            ) => r,
+            _ = cancel.await_cancel() => {
+                // P2.8: tear the consumer down so no progress frames fire after
+                // cancel (the exec future drops here, killing the sandbox), and
+                // clear the live-progress slot ourselves (the aborted consumer
+                // can't run its own end-clear).
+                progress_consumer.abort();
+                let _ = crate::modules::workflow::repository::clear_step_progress(
+                    &progress_pool,
+                    ctx.run_id,
+                )
+                .await;
+                return StepResult::Cancelled;
+            }
         };
+        // Exec finished → the sink dropped inside it → drain + flush + clear the
+        // consumer before we move on.
+        let _ = progress_consumer.await;
 
         let response = match result {
             Ok(v) => v,
@@ -1588,6 +1650,35 @@ mod tests {
         assert_eq!(out["list"], serde_json::json!(["a", "b"]));
         assert_eq!(out["label"], serde_json::json!("about quantum batteries"));
         assert_eq!(out["literal"], serde_json::json!(20));
+    }
+
+    #[test]
+    fn parse_llm_output_text_json_and_failure() {
+        // E6: Text always succeeds; valid JSON parses; invalid JSON under
+        // OutputFormat::Json is a step failure (the factored decision).
+        let (v, p) = parse_llm_output("hello", OutputFormat::Text).unwrap();
+        assert!(matches!(p, ParsedAs::Text));
+        assert_eq!(v, Value::String("hello".into()));
+
+        let (v, p) = parse_llm_output(r#"{"a":1}"#, OutputFormat::Json).unwrap();
+        assert!(matches!(p, ParsedAs::Json));
+        assert_eq!(v["a"], serde_json::json!(1));
+
+        let err = parse_llm_output("not json", OutputFormat::Json).unwrap_err();
+        assert!(err.contains("parse failed"), "json-parse-fail message: {err}");
+    }
+
+    #[test]
+    fn item_progress_snapshot_and_cancelled_count() {
+        // E4: the cancel-mid-drain snapshot records completed/failed/skipped +
+        // tokens, and `cancelled_so_far` (the production derivation logged at
+        // the cancel site) reports the items still in-flight/unstarted.
+        let p = item_progress(4, 10, 1, 2, 1234);
+        assert_eq!((p.completed, p.total, p.failed, p.skipped), (4, 10, 1, 2));
+        assert_eq!(p.tokens_so_far, 1234);
+        assert_eq!(cancelled_so_far(&p), 3, "3 items in-flight/unstarted at cancel");
+        // Saturating: an over-counted snapshot never underflows to a huge u32.
+        assert_eq!(cancelled_so_far(&item_progress(10, 5, 0, 0, 0)), 0);
     }
 
     #[test]

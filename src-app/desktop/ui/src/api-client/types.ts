@@ -2116,6 +2116,34 @@ export interface ProbeFailure2 {
   reason: string
 }
 
+export type ProgressKind = {
+  type: 'status'
+  message: string
+} | {
+  type: 'bar'
+  fraction: number
+} | {
+  type: 'counter'
+  current: number
+  total: number
+  unit?: string | null
+} | {
+  type: 'log'
+  line: string
+} | {
+  type: 'phase'
+  index?: number | null
+  name: string
+  total?: number | null
+}
+
+export interface ProgressTrack {
+  done?: boolean
+  id?: string
+  kind: ProgressKind
+  label?: string
+}
+
 export interface Project {
   description?: string
   created_at: string
@@ -2637,6 +2665,7 @@ export interface SSERunStartedData {
   model_id?: string
   run_id: string
   sandbox_flavor?: string
+  step_manifest?: SSEStepManifestItem[]
   total_steps: number
   workflow_id: string
 }
@@ -2650,7 +2679,9 @@ export interface SSESnapshotData {
   step_artifacts_json: any
   step_item_progress_json: any
   step_logs_json: any
+  step_manifest?: SSEStepManifestItem[]
   step_outputs_json: any
+  step_progress_json?: any
   total_tokens: number
 }
 
@@ -2675,7 +2706,20 @@ export interface SSEStepItemProgressData {
   step_id: string
 }
 
+export interface SSEStepManifestItem {
+  description?: string
+  id: string
+  kind: string
+}
+
+export interface SSEStepProgressData {
+  run_id: string
+  step_id: string
+  tracks: ProgressTrack[]
+}
+
 export interface SSEStepStartedData {
+  description?: string
   message?: string
   run_id: string
   step_id: string
@@ -2690,6 +2734,7 @@ export type SSEWorkflowRunEvent = {
   runStarted: SSERunStartedData
   stepStarted: SSEStepStartedData
   stepItemProgress: SSEStepItemProgressData
+  stepProgress: SSEStepProgressData
   stepCompleted: SSEStepCompletedData
   stepFailed: SSEStepFailedData
   elicitationRequired: SSEElicitationRequiredData
@@ -3543,6 +3588,7 @@ export interface WorkflowRun {
   step_item_progress_json: any
   step_logs_json: any
   step_outputs_json: any
+  step_progress_json?: any
   total_tokens: number
   updated_at: string
   user_id: string

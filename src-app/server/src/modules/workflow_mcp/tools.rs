@@ -901,6 +901,7 @@ mod tests {
             step_artifacts_json: json!({}),
             pending_elicitation_json: None,
             final_output_json: Some(final_json),
+            step_progress_json: None,
             status: "completed".into(),
             current_step: None,
             error_message: None,

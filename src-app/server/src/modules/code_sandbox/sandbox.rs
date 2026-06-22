@@ -78,7 +78,7 @@ pub async fn run_in_sandbox(
     timeout_secs: Option<u64>,
     flavor: &str,
 ) -> Result<SandboxRunResult, AppError> {
-    run_in_sandbox_with_mounts(state, ctx, command, timeout_secs, flavor, &[]).await
+    run_in_sandbox_with_mounts(state, ctx, command, timeout_secs, flavor, &[], None).await
 }
 
 /// `run_in_sandbox` with per-call extra mounts (B4 workflow runner
@@ -105,6 +105,11 @@ pub async fn run_in_sandbox_with_mounts(
     timeout_secs: Option<u64>,
     flavor: &str,
     extra_mounts: &[crate::modules::code_sandbox::workflow_staging::StagedMount],
+    // Live-progress sink (workflow sandbox step only). When `Some`, a host FIFO
+    // is created + bound onto `/ziee/progress` in the sandbox; a reader task
+    // forwards each newline-trimmed line (one raw progress write) to this
+    // sender. `None` (every chat/MCP exec) → no FIFO, no `$ZIEE_PROGRESS`.
+    progress_tx: Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>,
 ) -> Result<SandboxRunResult, AppError> {
     use crate::modules::code_sandbox::{cgroup, runtime_mount};
 
@@ -175,6 +180,24 @@ pub async fn run_in_sandbox_with_mounts(
         SeccompMode::NotLinked | SeccompMode::Disabled => None,
     };
 
+    // Live-progress FIFO (workflow sandbox step). On the Linux backend bwrap
+    // runs directly on the host, so the HOST owns the FIFO: create it, bind it
+    // into the sandbox via the argv, and read it host-side, forwarding each
+    // line to `progress_tx`. The FIFO lives under the per-conversation
+    // workspace's parent (a host-local fs — virtio-fs's mkfifo bug is a
+    // VM-only concern). `ProgressFifo` cleans up (unlinks the FIFO + ends the
+    // reader) on drop at function return / cancel.
+    let progress_fifo = match &progress_tx {
+        Some(tx) => match ProgressFifo::spawn(ctx.conversation_id, tx.clone()) {
+            Ok(f) => Some(f),
+            Err(e) => {
+                tracing::warn!("progress FIFO setup failed: {e}; continuing without live progress");
+                None
+            }
+        },
+        None => None,
+    };
+
     let argv = build_bwrap_argv(
         &caps,
         &state.workspace_root,
@@ -187,6 +210,7 @@ pub async fn run_in_sandbox_with_mounts(
         seccomp_pipe.as_ref().map(|p| p.target_fd()),
         &limits,
         extra_mounts,
+        progress_fifo.as_ref().map(|f| f.fifo_path_str()),
     );
 
     let started = Instant::now();
@@ -300,6 +324,10 @@ pub async fn run_in_sandbox_with_mounts(
     // Best-effort cgroup cleanup happens via Drop.
     drop(cgroup_scope);
     drop(seccomp_pipe);
+    // Stop the progress reader + unlink the FIFO (no orphaned reader). The
+    // bwrap child has exited, so no further writes will arrive; the reader's
+    // remaining buffered lines have already been forwarded.
+    drop(progress_fifo);
 
     tracing::info!(
         exit_code = status,
@@ -370,6 +398,15 @@ pub(crate) struct HardeningArgvParams<'a> {
     pub extra_setenv: &'a [(String, String)],
     pub extra_ro_binds: &'a [(String, String)],
     pub extra_rw_binds: &'a [(String, String)],
+    /// Live-progress FIFO source path (workflow sandbox step only). When
+    /// `Some`, the FIFO at this path is `--bind`-bound onto
+    /// [`sandbox_vm_protocol::PROGRESS_SANDBOX_PATH`] inside the sandbox and
+    /// `$ZIEE_PROGRESS` is set to that path, so step code can
+    /// `echo … > "$ZIEE_PROGRESS"`. For the Linux backend this is a host path
+    /// (the host creates + reads the FIFO); for the VM backends it's the
+    /// guest-local [`sandbox_vm_protocol::PROGRESS_GUEST_FIFO_PATH`] (the agent
+    /// creates + reads it). `None` (every chat/MCP exec) → no bind, no setenv.
+    pub progress_fifo_src: Option<&'a str>,
 }
 
 /// Build the shared hardening prefix: every flag from `--clearenv`
@@ -584,6 +621,23 @@ pub(crate) fn build_hardening_prefix(p: &HardeningArgvParams) -> Vec<String> {
         argv.push(sandbox_dst.clone());
     }
 
+    // Live-progress FIFO (workflow sandbox step). Bind the (already-created)
+    // FIFO onto `/ziee/progress` inside the sandbox and expose its path via
+    // `$ZIEE_PROGRESS`. The FIFO is a normal named pipe on a guest-local fs
+    // (NOT virtio-fs — libkrun's virtio-fs has an mkfifo EPERM bug), so the
+    // bwrap mount namespace can `--bind` it across the boundary and the
+    // writer/reader share the same kernel pipe. `--bind` (not `--bind-try`):
+    // the FIFO MUST exist — the caller (host) or agent (guest) creates it
+    // before this argv runs, so a missing FIFO is a bug, not a no-op.
+    if let Some(fifo) = p.progress_fifo_src {
+        argv.push("--bind".into());
+        argv.push(fifo.to_string());
+        argv.push(sandbox_vm_protocol::PROGRESS_SANDBOX_PATH.into());
+        argv.push("--setenv".into());
+        argv.push("ZIEE_PROGRESS".into());
+        argv.push(sandbox_vm_protocol::PROGRESS_SANDBOX_PATH.into());
+    }
+
     // Optional seccomp filter on a well-known fd we'll dup2 to.
     if let Some(fd) = p.seccomp_fd {
         argv.push("--seccomp".into());
@@ -665,6 +719,12 @@ pub(crate) fn build_bwrap_argv(
     // every tier-4 test) pass `&[]` and behavior is byte-identical to
     // the pre-B4 argv.
     extra_mounts: &[crate::modules::code_sandbox::workflow_staging::StagedMount],
+    // Live-progress FIFO source path (workflow sandbox step only). `Some(path)`
+    // binds that FIFO onto `/ziee/progress` + sets `$ZIEE_PROGRESS`; the Linux
+    // backend passes a host FIFO path, the VM backends the guest-local FIFO
+    // path the agent creates. `None` (every chat/MCP exec, every tier-4 test)
+    // → byte-identical to the pre-progress argv.
+    progress_fifo_src: Option<&str>,
 ) -> Vec<String> {
     // SECURITY (kept here for archaeology — the actual --clearenv flag
     // ships from `build_hardening_prefix`):
@@ -771,6 +831,7 @@ pub(crate) fn build_bwrap_argv(
         extra_setenv: &[],
         extra_ro_binds: &all_ro_binds,
         extra_rw_binds: &extra_workflow_rw,
+        progress_fifo_src,
     });
 
     // Wrap user code in `prlimit` so per-call rlimits apply to the
@@ -1046,6 +1107,223 @@ impl Drop for SeccompPipe {
 }
 
 // --------------------------------------------------------------------
+// Live-progress FIFO (per-call; workflow sandbox step only). The HOST
+// owns the FIFO on the Linux backend (bwrap runs on the host): create the
+// named pipe, bind it onto `/ziee/progress` in the sandbox via the argv,
+// and read it host-side, forwarding each newline-trimmed line (one raw
+// FIFO `write()` under PIPE_BUF) to `progress_tx`. Mirrors the VM-side
+// reader the guest agent runs (which forwards via `Frame::ProcessProgress`).
+//
+// TODO(linux-verify): this whole `linux_bwrap` host path is
+// `#[cfg(target_os = "linux")]`, so it is NOT compiled by the macOS dev
+// host's `cargo check` and NOT exercised by macOS tests. It has only been
+// reviewed by eye + type-checked via a (reverted) temporary cfg relaxation.
+// Before relying on the bwrap progress path in production it MUST get a real
+// Linux build + a Tier-4/6 sandbox test (CI runs on Linux). Open items to
+// confirm on Linux: (1) bwrap auto-creates the `/ziee/progress` mountpoint +
+// `/ziee` parent for a `--bind` whose SOURCE is a FIFO (vs a regular file);
+// (2) the `O_RDWR` writer-ref keeps the read end from EOF-ing between the
+// sandbox's per-`echo` open/close cycles under bwrap's user-ns mapping.
+// macOS (`mac_vm`) is the path verifiable on THIS machine (agent FIFO over
+// vsock); focus verification there first.
+// --------------------------------------------------------------------
+
+#[cfg(target_os = "linux")]
+pub(crate) struct ProgressFifo {
+    fifo_path: PathBuf,
+    fifo_path_str: String,
+    stop: Arc<std::sync::atomic::AtomicBool>,
+    reader: Option<tokio::task::JoinHandle<()>>,
+}
+
+#[cfg(target_os = "linux")]
+impl ProgressFifo {
+    /// Create the FIFO + spawn the reader task. The FIFO lives under the
+    /// process temp dir (a host-local fs) at a per-conversation-unique path;
+    /// `mkfifo` mode 0600 so only the server uid can open it (the sandboxed
+    /// uid 1001 reaches it only through the bwrap `--bind`, which preserves
+    /// the bind-source perms but runs as the same kernel user namespace
+    /// mapping — the workspace bind already grants write).
+    fn spawn(
+        conversation_id: Uuid,
+        tx: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+    ) -> Result<Self, AppError> {
+        use std::os::unix::ffi::OsStrExt;
+
+        // Unique name: pid + conversation_id avoids collisions across
+        // concurrent execs / processes sharing the temp dir.
+        let fifo_path = std::env::temp_dir().join(format!(
+            "ziee-progress-{}-{}.fifo",
+            std::process::id(),
+            conversation_id
+        ));
+        // Best-effort unlink of any stale FIFO at this path (a prior crash).
+        let _ = std::fs::remove_file(&fifo_path);
+
+        let c_path = std::ffi::CString::new(fifo_path.as_os_str().as_bytes())
+            .map_err(|e| AppError::internal_error(format!("progress FIFO path: {e}")))?;
+        // SAFETY: c_path is a valid NUL-terminated CString living for the call.
+        if unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) } < 0 {
+            return Err(AppError::internal_error(format!(
+                "mkfifo {}: {}",
+                fifo_path.display(),
+                std::io::Error::last_os_error()
+            )));
+        }
+
+        // Open the read end with O_RDWR (NOT O_RDONLY): holding our own writer
+        // reference means the read end never observes EOF when the sandbox's
+        // writers come and go between lines — the reader stays alive across
+        // multiple `echo > $ZIEE_PROGRESS` invocations and only ends when we
+        // signal stop on drop. O_NONBLOCK + AsyncFd gives readiness-driven
+        // async reads; O_CLOEXEC so the fd doesn't leak into the bwrap child
+        // (bwrap reaches the FIFO via the `--bind` path, not an inherited fd).
+        // SAFETY: open with a valid path; returns -1 on error (checked).
+        let fd = unsafe {
+            libc::open(
+                c_path.as_ptr(),
+                libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC,
+            )
+        };
+        if fd < 0 {
+            let err = std::io::Error::last_os_error();
+            let _ = std::fs::remove_file(&fifo_path);
+            return Err(AppError::internal_error(format!(
+                "open progress FIFO {}: {err}",
+                fifo_path.display()
+            )));
+        }
+
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stop_reader = stop.clone();
+        // SAFETY: we own `fd` (just opened, O_CLOEXEC, O_NONBLOCK) and hand it
+        // to the reader task, which closes it via AsyncFd::Drop on exit.
+        let owned = unsafe { <std::os::fd::OwnedFd as std::os::fd::FromRawFd>::from_raw_fd(fd) };
+        let reader = tokio::spawn(progress_reader_loop(owned, tx, stop_reader));
+
+        let fifo_path_str = fifo_path.to_string_lossy().into_owned();
+        Ok(Self {
+            fifo_path,
+            fifo_path_str,
+            stop,
+            reader: Some(reader),
+        })
+    }
+
+    /// The host FIFO path the bwrap argv `--bind`s onto `/ziee/progress`.
+    fn fifo_path_str(&self) -> &str {
+        &self.fifo_path_str
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Drop for ProgressFifo {
+    fn drop(&mut self) {
+        // Signal the reader to stop, then abort it (it's parked on readiness;
+        // abort is the prompt teardown). The AsyncFd closes the held fd.
+        self.stop.store(true, std::sync::atomic::Ordering::SeqCst);
+        if let Some(h) = self.reader.take() {
+            h.abort();
+        }
+        // Unlink the FIFO (no orphaned pipe on disk).
+        let _ = std::fs::remove_file(&self.fifo_path);
+    }
+}
+
+/// Read newline-delimited progress lines off the FIFO fd and forward each
+/// (newline-trimmed) line to `tx`. A single FIFO `write()` under PIPE_BUF is
+/// atomic, so lines don't interleave; lines longer than
+/// [`sandbox_vm_protocol::PROGRESS_MAX_LINE_BYTES`] are DROPPED (a torn/over-cap
+/// write can't be trusted). Ends when `stop` is set (task is aborted on drop)
+/// or `tx` is closed (consumer gone).
+#[cfg(target_os = "linux")]
+async fn progress_reader_loop(
+    fd: std::os::fd::OwnedFd,
+    tx: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+    stop: Arc<std::sync::atomic::AtomicBool>,
+) {
+    use std::os::fd::AsRawFd;
+    use tokio::io::unix::AsyncFd;
+
+    let async_fd = match AsyncFd::new(fd) {
+        Ok(a) => a,
+        Err(e) => {
+            tracing::warn!("progress reader: AsyncFd::new failed: {e}");
+            return;
+        }
+    };
+
+    // Accumulator for partial lines across reads. Bounded so a writer that
+    // never emits a newline can't grow it unboundedly — once it exceeds the
+    // per-line cap we discard until the next newline.
+    let mut pending: Vec<u8> = Vec::with_capacity(256);
+    let mut overflowed = false;
+    let mut buf = [0u8; 8 * 1024];
+
+    loop {
+        if stop.load(std::sync::atomic::Ordering::SeqCst) || tx.is_closed() {
+            return;
+        }
+        let mut guard = match async_fd.readable().await {
+            Ok(g) => g,
+            Err(_) => return,
+        };
+        // Drain everything currently readable.
+        loop {
+            let raw = async_fd.get_ref().as_raw_fd();
+            // SAFETY: raw is a valid fd owned by `async_fd`; buf is a valid
+            // mutable buffer of `buf.len()` bytes.
+            let n = unsafe {
+                libc::read(raw, buf.as_mut_ptr() as *mut libc::c_void, buf.len())
+            };
+            if n > 0 {
+                let chunk = &buf[..n as usize];
+                for &byte in chunk {
+                    if byte == b'\n' {
+                        if !overflowed && !pending.is_empty() {
+                            // One complete line. Forward a copy; the consumer
+                            // owns it. Ignore send errors (consumer gone → the
+                            // top-of-loop `tx.is_closed()` ends us next pass).
+                            let _ = tx.send(std::mem::take(&mut pending));
+                        } else {
+                            pending.clear();
+                        }
+                        overflowed = false;
+                    } else if !overflowed {
+                        pending.push(byte);
+                        if pending.len() > sandbox_vm_protocol::PROGRESS_MAX_LINE_BYTES {
+                            // Over the atomic-write cap → can't trust this
+                            // line; drop until the next newline.
+                            pending.clear();
+                            overflowed = true;
+                        }
+                    }
+                }
+                continue;
+            }
+            if n == 0 {
+                // EOF — can't happen while we hold the O_RDWR writer ref, but
+                // treat defensively as "no more for now".
+                guard.clear_ready();
+                break;
+            }
+            // n < 0: EAGAIN means drained; anything else, stop reading this
+            // readiness cycle and re-await.
+            let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+            if errno == libc::EAGAIN || errno == libc::EWOULDBLOCK {
+                guard.clear_ready();
+                break;
+            }
+            if errno == libc::EINTR {
+                continue;
+            }
+            tracing::warn!("progress reader: read errno {errno}; ending");
+            return;
+        }
+    }
+}
+
+// --------------------------------------------------------------------
 // Capped stdout/stderr capture.
 // --------------------------------------------------------------------
 
@@ -1212,6 +1490,7 @@ mod tests {
             None,
             &fake_limits(),
             &[],
+            None,
         );
 
         let clearenv = argv
@@ -1268,6 +1547,7 @@ mod tests {
             None,
             &fake_limits(),
             &[],
+            None,
         );
 
         // PATH prepends the three persistent bin dirs ahead of the rootfs dirs.
@@ -1316,6 +1596,7 @@ mod tests {
             None,
             &fake_limits(),
             &[],
+            None,
         );
         // There should be at least one `--` before the prlimit wrapper.
         let prlimit_idx = argv
@@ -1350,6 +1631,7 @@ mod tests {
             None,
             &fake_limits(),
             &[],
+            None,
         );
         // Must use --dev-bind /proc /proc, NOT --proc /proc.
         assert!(argv.windows(3).any(|w| w == ["--dev-bind", "/proc", "/proc"]));
@@ -1383,6 +1665,7 @@ mod tests {
             None,
             &fake_limits(),
             &[],
+            None,
         );
         assert!(argv.iter().any(|a| a == "--unshare-pid"));
         assert!(argv.windows(2).any(|w| w == ["--proc", "/proc"]));
@@ -1412,6 +1695,7 @@ mod tests {
                 None,
                 &fake_limits(),
                 &[],
+                None,
             );
             for masked in ["/proc/sysrq-trigger", "/proc/kcore", "/proc/kallsyms", "/proc/kmsg"] {
                 assert!(
@@ -1444,6 +1728,7 @@ mod tests {
             None,
             &fake_limits(),
             &[],
+            None,
         );
         // The bind source is the empty-regular-file passed in (NOT /dev/null —
         // that's a char device on a `nodev` mount, which bash's `open()`
@@ -1506,6 +1791,7 @@ mod tests {
             None,
             &fake_limits(),
             &[],
+            None,
         );
 
         // Attachments emit `--ro-bind-try <host> /home/sandboxuser/<dest>`.
@@ -1545,6 +1831,7 @@ mod tests {
             None,
             &fake_limits(),
             &[],
+            None,
         );
 
         let dests: Vec<&str> = argv
@@ -1582,6 +1869,7 @@ mod tests {
             None,
             &fake_limits(),
             &[],
+            None,
         );
 
         let must_have = [
@@ -1637,6 +1925,7 @@ mod tests {
             None,
             &fake_limits(),
             &[],
+            None,
         );
         assert!(!argv_without.iter().any(|a| a == "--seccomp"));
 
@@ -1652,6 +1941,7 @@ mod tests {
             Some(7),
             &fake_limits(),
             &[],
+            None,
         );
         assert!(argv_with.windows(2).any(|w| w == ["--seccomp", "7"]));
     }
@@ -1690,6 +1980,7 @@ mod tests {
             None,
             &fake_limits(),
             &mounts,
+            None,
         );
         // ReadOnly → `--ro-bind-try` window.
         assert!(
@@ -1733,6 +2024,7 @@ mod tests {
             None,
             &fake_limits(),
             &[],
+            None,
         );
         // No --bind for `/home/sandboxuser/workflow/*` (the workflow
         // namespace). The base `--bind workspace /home/sandboxuser`
@@ -1763,6 +2055,7 @@ mod tests {
             None,
             &fake_limits(),
             &[],
+            None,
         );
         let s = argv.join(" ");
         assert!(s.contains("/usr/bin/prlimit"));
@@ -1820,6 +2113,7 @@ mod tests {
             extra_setenv: env,
             extra_ro_binds: binds,
             extra_rw_binds: &[],
+            progress_fifo_src: None,
         }
     }
 

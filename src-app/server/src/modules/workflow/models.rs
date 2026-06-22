@@ -121,6 +121,10 @@ pub struct WorkflowRun {
     pub step_artifacts_json: serde_json::Value,
     pub pending_elicitation_json: Option<serde_json::Value>,
     pub final_output_json: Option<serde_json::Value>,
+    /// P2.6: the running sandbox step's live progress track map
+    /// (`{ id -> ProgressTrack }`), or NULL when no step is streaming progress.
+    /// Drives Snapshot rehydration of in-flight bars after a refresh.
+    pub step_progress_json: Option<serde_json::Value>,
     pub status: String,
     pub current_step: Option<String>,
     pub error_message: Option<String>,

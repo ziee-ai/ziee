@@ -1182,11 +1182,15 @@ Per link it dispatches on the URI:
   remainder is relative, so `persist_links`' non-absolute reject rejects it even if one ever
   reached it. Keep the two dialects distinct when adding either.
 
-### Cross-session note
-`persist_links` accepts `workflow_run_id: Option<Uuid>` but does NOT persist the FK on `main`
-(needs `file::ingest`/migration `files.workflow_run_id`/`set_workflow_run_id`, which live in
-the workflow-standalone-runs branch). `created_by="workflow"` is the run-provenance value
-(see migration 34's vocabulary).
+### Run-link note
+`persist_links` accepts `workflow_run_id: Option<Uuid>` and, when `Some`, links each
+newly-ingested (run-created) file to the run via `Repos.file.set_workflow_run_id` after the
+save loop — so the A5 cascade deletes only files a run CREATED, never `is_saved:true` files it
+referenced. The workflow `ToolDispatcher` passes `Some(run_id)`; the chat path passes `None`.
+(`files.workflow_run_id` + `set_workflow_run_id` are present as of PR #110.) The shared save
+tail is `file::ingest::ingest_bytes` — one path for the chat resource_link save, the workflow
+tool-step save, and run-artifact collection. `created_by="workflow"` is the run-provenance
+value (see migration 34's vocabulary).
 
 ```bash
 cargo test --lib -p ziee mcp::resource_link::

@@ -11,6 +11,7 @@ import type {
   SSEStepCompletedData,
   SSEStepFailedData,
   SSEStepItemProgressData,
+  SSEStepProgressData,
   SSEStepStartedData,
 } from '@/api-client/types'
 
@@ -25,6 +26,7 @@ export interface RunProgressHandlers {
   runStarted?: (d: SSERunStartedData) => void
   stepStarted?: (d: SSEStepStartedData) => void
   stepItemProgress?: (d: SSEStepItemProgressData) => void
+  stepProgress?: (d: SSEStepProgressData) => void
   stepCompleted?: (d: SSEStepCompletedData) => void
   stepFailed?: (d: SSEStepFailedData) => void
   elicitationRequired?: (d: SSEElicitationRequiredData) => void
@@ -111,6 +113,7 @@ export function subscribeRunProgress(
         stepStarted: (d: SSEStepStartedData) => handlers.stepStarted?.(d),
         stepItemProgress: (d: SSEStepItemProgressData) =>
           handlers.stepItemProgress?.(d),
+        stepProgress: (d: SSEStepProgressData) => handlers.stepProgress?.(d),
         stepCompleted: (d: SSEStepCompletedData) => handlers.stepCompleted?.(d),
         stepFailed: (d: SSEStepFailedData) => handlers.stepFailed?.(d),
         elicitationRequired: (d: SSEElicitationRequiredData) =>
