@@ -166,6 +166,143 @@ pub async fn create_test_model_with_config(
     model
 }
 
+/// Probe whether Groq's chat endpoint is actually REACHABLE + the key valid
+/// from this host. Some networks/regions return a 403 "Access denied" from
+/// `api.groq.com` even with a present key — in that case Groq-first must fall
+/// through to a working provider rather than fail a real-LLM test. A 200/400
+/// (any non-auth response) means the key + network are fine.
+async fn groq_reachable() -> bool {
+    let key = match std::env::var("GROQ_API_KEY") {
+        Ok(k) if !k.is_empty() => k,
+        _ => return false,
+    };
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    let resp = client
+        .post("https://api.groq.com/openai/v1/chat/completions")
+        .header("Authorization", format!("Bearer {key}"))
+        .json(&json!({
+            "model": "llama-3.3-70b-versatile",
+            "messages": [{ "role": "user", "content": "hi" }],
+            "max_tokens": 1,
+        }))
+        .send()
+        .await;
+    match resp {
+        // 401/403 → key blocked / network-denied → NOT usable.
+        Ok(r) => !matches!(r.status().as_u16(), 401 | 403),
+        // Network failure → treat as unreachable, fall through.
+        Err(_) => false,
+    }
+}
+
+/// Like `get_or_create_test_model`, but deterministically PREFERS Groq
+/// (`GROQ_API_KEY` + a reachable Groq endpoint → `llama-3.3-70b-versatile`, a
+/// cheap, tool-capable model) and falls back to ANTHROPIC → OPENAI → GEMINI
+/// when no Groq key is present OR Groq is network-blocked from this host. The
+/// created model is granted to `user_id`.
+///
+/// IMPORTANT — this NEVER soft-skips: if NO provider key is set at all it
+/// PANICS with an actionable message. Callers that use it are asserting that a
+/// real LLM run executes (per `feedback_no_ignore_unless_platform`); a missing
+/// key is an environment misconfiguration (source `tests/.env.test`), not a
+/// reason to silently pass.
+///
+/// The returned model is marked `capabilities.tools = true` so auto-attached
+/// built-in MCP servers (workflow / web_search / …) actually reach the model
+/// (per `project_real_llm_tool_test_capability`).
+pub async fn get_or_create_groq_first_model(
+    server: &crate::common::TestServer,
+    user_id: &str,
+) -> Value {
+    // Groq-first, then the other tool-capable providers. The model names mirror
+    // `get_or_create_test_model`'s per-provider defaults. `(env_var,
+    // provider_name, model_name, display_name)`. Groq is only selected when its
+    // endpoint is actually reachable (the key can be present but blocked).
+    let (env_var, provider_name, model_name, display_name) =
+        if groq_reachable().await {
+            ("GROQ_API_KEY", "Groq", "llama-3.3-70b-versatile", "Llama 3.3 70B")
+        } else if std::env::var("ANTHROPIC_API_KEY").is_ok() {
+            (
+                "ANTHROPIC_API_KEY",
+                "Anthropic",
+                "claude-opus-4-1-20250805",
+                "Claude Opus 4.1",
+            )
+        } else if std::env::var("OPENAI_API_KEY").is_ok() {
+            ("OPENAI_API_KEY", "OpenAI", "gpt-4o", "GPT-4o")
+        } else if std::env::var("GEMINI_API_KEY").is_ok() {
+            (
+                "GEMINI_API_KEY",
+                "Google Gemini",
+                "models/gemini-2.0-flash",
+                "Gemini 2.0 Flash",
+            )
+        } else {
+            panic!(
+                "get_or_create_groq_first_model: NO usable provider API key \
+                 (Groq unreachable/unset, and none of ANTHROPIC_API_KEY, \
+                 OPENAI_API_KEY, GEMINI_API_KEY set). Source \
+                 src-app/server/tests/.env.test before running real-LLM \
+                 workflow tests — this test deliberately does NOT soft-skip."
+            );
+        };
+    eprintln!("get_or_create_groq_first_model: selected provider '{provider_name}' ({model_name})");
+
+    // Reuse the same provider-selection plumbing as `create_test_model_with_config`.
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        server,
+        "groq_first_admin",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_providers::read",
+            "llm_providers::edit",
+        ],
+    )
+    .await;
+    let provider = configure_provider_with_api_key(server, &admin.token, provider_name, env_var).await;
+
+    // Create the model with `capabilities.tools = true` so an auto-attached
+    // built-in MCP server (workflow / web_search / …) actually reaches the model
+    // (per `project_real_llm_tool_test_capability`). This is the one thing the
+    // shared `create_test_model_with_config` does NOT set, so we create directly
+    // here rather than through it.
+    let payload = json!({
+        "provider_id": provider["id"],
+        "name": model_name,
+        "display_name": display_name,
+        "description": format!("{} model for real-LLM workflow testing", provider_name),
+        "enabled": true,
+        "engine_type": "none",
+        "file_format": "gguf",
+        "capabilities": { "chat": true, "completion": true, "embedding": false, "tools": true }
+    });
+    let response = reqwest::Client::new()
+        .post(server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+    let status = response.status();
+    if status != StatusCode::CREATED {
+        let error_body = response.text().await.unwrap();
+        panic!(
+            "get_or_create_groq_first_model: model create failed for provider \
+             '{provider_name}'. Status: {status}, Body: {error_body}"
+        );
+    }
+    let model: Value = response.json().await.unwrap();
+    ensure_user_has_model_access(server, user_id, &model).await;
+    model
+}
+
 pub async fn get_or_create_test_model(
     server: &crate::common::TestServer,
     user_id: &str,

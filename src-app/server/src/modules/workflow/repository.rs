@@ -9,6 +9,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use super::models::{CreateWorkflow, CreateWorkflowRun, Workflow, WorkflowRun, WorkflowRunStatus};
+use super::types::WorkflowRunSummary;
 use crate::common::AppError;
 
 pub struct WorkflowRepository {
@@ -379,9 +380,9 @@ pub async fn insert_run(
         r#"
         INSERT INTO workflow_runs (
             workflow_id, conversation_id, user_id, model_id, sandbox_flavor,
-            run_kind, inputs_json
+            run_kind, invocation_source, inputs_json
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING
             id,
             workflow_id,
@@ -411,6 +412,7 @@ pub async fn insert_run(
         request.model_id,
         request.sandbox_flavor,
         request.run_kind,
+        request.invocation_source,
         request.inputs_json,
     )
     .fetch_one(pool)
@@ -943,6 +945,45 @@ pub async fn remove_workflow_group(
 /// Recent runs owned by `user_id`, newest first, capped at `limit`.
 /// Backs `workflow_mcp::resources::list` (recency-bounded resource
 /// listing). B5.
+/// A4: per-workflow run history for the owner (newest first, capped).
+pub async fn list_runs_for_workflow(
+    pool: &PgPool,
+    workflow_id: Uuid,
+    user_id: Uuid,
+    limit: i64,
+) -> Result<Vec<WorkflowRunSummary>, AppError> {
+    let rows = sqlx::query_as!(
+        WorkflowRunSummary,
+        r#"
+        SELECT id, workflow_id, status, invocation_source,
+               conversation_id, model_id, total_tokens,
+               created_at as "created_at: _"
+        FROM workflow_runs
+        WHERE workflow_id = $1 AND user_id = $2
+        ORDER BY created_at DESC
+        LIMIT $3
+        "#,
+        workflow_id,
+        user_id,
+        limit,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(rows)
+}
+
+/// A5: hard-delete a run row. The `files.workflow_run_id` FK is
+/// `ON DELETE SET NULL`, so any still-linked files survive — the handler's
+/// cascade removes the run-owned ones first when there's no conversation.
+pub async fn delete_run_row(pool: &PgPool, run_id: Uuid) -> Result<(), AppError> {
+    sqlx::query!("DELETE FROM workflow_runs WHERE id = $1", run_id)
+        .execute(pool)
+        .await
+        .map_err(AppError::database_error)?;
+    Ok(())
+}
+
 pub async fn list_runs_for_user(
     pool: &PgPool,
     user_id: Uuid,

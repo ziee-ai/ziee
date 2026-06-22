@@ -51,6 +51,14 @@ const GUEST_WORKSPACE_MOUNT: &str = "/workspace";
 // at `/host-mounts/<i>` (mounted by the agent); bwrap binds it to
 // `/mnt/<full host path>`. MUST match the agent + launcher constants.
 const GUEST_EXTRA_MOUNTS_DIR: &str = "/host-mounts";
+// Base dir for the guest-local artifact-collection dirs (macOS libkrun
+// virtio-fs CREATE-EPERM workaround). Each RW StagedMount gets its own
+// `<base>/<i>` dir UNDER the guest's already-writable `/tmp` tmpfs (so the
+// agent can `mkdir` it without touching the RO guest root); bwrap binds THAT
+// (not the broken virtio-fs path), and after exit the agent streams the files
+// back over the vsock protocol. The host writes them into the real host
+// artifact dir. The path is carried per-exec in `ExecRequest::collect_artifacts`.
+const GUEST_ARTIFACTS_OUT_DIR: &str = "/tmp/ziee-artifacts-out";
 const GUEST_BWRAP_PATH: &str = "/usr/bin/bwrap";
 const GUEST_AGENT_PATH: &str = "/usr/bin/ziee-sandbox-agent";
 // Fixed fd the agent dup2's the seccomp BPF pipe to in the bwrap child; the
@@ -747,6 +755,7 @@ impl SandboxBackend for MacVmBackend {
         } else {
             short_key_digest(&host_folder_paths.join("\u{0}"))
         };
+        use crate::modules::code_sandbox::workflow_staging::StageMode;
         let mut guest_mounts: Vec<StagedMount> = Vec::with_capacity(extra_mounts.len());
         for (i, m) in host_folders.iter().enumerate() {
             guest_mounts.push(StagedMount {
@@ -755,15 +764,40 @@ impl SandboxBackend for MacVmBackend {
                 sandbox_path: m.sandbox_path.clone(),
             });
         }
+        // Workspace-internal mounts. RO mounts map to their /workspace/... guest
+        // path (virtio-fs READS work). RW mounts (the workflow runner's per-step
+        // `artifacts/<step>` dirs) CANNOT use the virtio-fs path: a sandboxed
+        // `open(O_CREAT)` there fails EPERM on libkrun. Instead each RW mount
+        // gets a guest-local tmpfs dir (`/artifacts-out/<idx>`) that the agent
+        // provisions; bwrap binds THAT, and after exit the agent streams the
+        // files back over vsock. We remember `idx → host_path` so the receiving
+        // side writes them into the real host artifact dir (the host's own fs).
+        let mut collect_artifacts: Vec<String> = Vec::new();
+        let mut artifact_host_dirs: Vec<PathBuf> = Vec::new();
         for m in extra_mounts
             .iter()
             .filter(|m| m.host_path.starts_with(&state.workspace_root))
         {
-            guest_mounts.push(StagedMount {
-                mode: m.mode,
-                host_path: guest_workspace_path(state, &m.host_path),
-                sandbox_path: m.sandbox_path.clone(),
-            });
+            match m.mode {
+                StageMode::ReadOnly => {
+                    guest_mounts.push(StagedMount {
+                        mode: m.mode,
+                        host_path: guest_workspace_path(state, &m.host_path),
+                        sandbox_path: m.sandbox_path.clone(),
+                    });
+                }
+                StageMode::ReadWrite => {
+                    let idx = collect_artifacts.len();
+                    let guest_tmpfs = format!("{GUEST_ARTIFACTS_OUT_DIR}/{idx}");
+                    collect_artifacts.push(guest_tmpfs.clone());
+                    artifact_host_dirs.push(m.host_path.clone());
+                    guest_mounts.push(StagedMount {
+                        mode: m.mode,
+                        host_path: PathBuf::from(guest_tmpfs),
+                        sandbox_path: m.sandbox_path.clone(),
+                    });
+                }
+            }
         }
 
         // Build the bwrap argv with GUEST paths so the agent can exec it
@@ -823,6 +857,9 @@ impl SandboxBackend for MacVmBackend {
                 pids_max: limits.pids_max as u64,
                 cpu_max: limits.cpu_max.clone(),
             }),
+            // RW (artifact) mounts → guest-local tmpfs dirs the agent streams
+            // back. Empty for the no-RW-mount path → byte-identical exec.
+            collect_artifacts: collect_artifacts.clone(),
         };
 
         // Up to 2 attempts: a dead/unreachable VM (connect fails — the command
@@ -844,11 +881,12 @@ impl SandboxBackend for MacVmBackend {
 
             match UnixStream::connect(&vm.socket_path).await {
                 Ok(stream) => {
-                    let result = super::vm_client::run_on_stream(
+                    let result = super::vm_client::run_on_stream_collecting(
                         stream,
                         req.clone(),
                         secs,
                         progress_tx.clone(),
+                        &artifact_host_dirs,
                     )
                     .await;
                     *vm.last_used.lock().await = Instant::now();
@@ -909,6 +947,7 @@ impl SandboxBackend for MacVmBackend {
             cgroup: None,
             // Tier-4 raw-argv harness never exercises live progress.
             progress: false,
+            collect_artifacts: Vec::new(),
         };
         let secs = timeout.as_secs().max(1);
         let _permit = vm.sem.acquire().await.expect("VM semaphore never closed");
@@ -917,7 +956,7 @@ impl SandboxBackend for MacVmBackend {
         let stream = UnixStream::connect(&vm.socket_path)
             .await
             .map_err(|e| AppError::internal_error(format!("connect test-VM socket: {e}")))?;
-        let run = super::vm_client::run_on_stream(stream, req, secs, None).await?;
+        let run = super::vm_client::run_on_stream(stream, req, secs).await?;
         Ok(super::RawExecResult {
             exit_code: run.exit_code,
             stdout: run.stdout.into_bytes(),

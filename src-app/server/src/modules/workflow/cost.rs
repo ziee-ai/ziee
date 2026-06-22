@@ -79,7 +79,7 @@ pub fn estimate_static(workflow: &WorkflowDef) -> (u64, u64, u64) {
         max_calls += match &step.config {
             StepConfig::Llm { .. } => 1,
             StepConfig::LlmMap { max_parallel, .. } => *max_parallel as u64,
-            StepConfig::Sandbox { .. } | StepConfig::Elicit { .. } => 0,
+            StepConfig::Sandbox { .. } | StepConfig::Elicit { .. } | StepConfig::Tool { .. } => 0,
         };
     }
     let max_tokens = max_calls.saturating_mul(PER_CALL_TOKEN_CEILING);
@@ -110,7 +110,9 @@ pub fn dry_run(workflow: &WorkflowDef, inputs: &serde_json::Map<String, Value>) 
                     None => (*max_parallel as u64, true),
                 }
             }
-            StepConfig::Sandbox { .. } | StepConfig::Elicit { .. } => (0u64, false),
+            StepConfig::Sandbox { .. } | StepConfig::Elicit { .. } | StepConfig::Tool { .. } => {
+                (0u64, false)
+            }
         };
         total_calls += est_calls;
         steps.push(DryRunStep {

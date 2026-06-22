@@ -174,6 +174,10 @@ pub struct SSEElicitationRequiredData {
     pub elicitation_id: Uuid,
     pub message: String,
     pub schema: serde_json::Value,
+    /// D2: rendered seed data the FE form pre-fills with (see
+    /// `StepConfig::Elicit.data`). `None` when the step declares no `data:`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data: Option<serde_json::Value>,
     pub deadline_at: DateTime<Utc>,
 }
 

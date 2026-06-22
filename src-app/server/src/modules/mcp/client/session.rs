@@ -118,6 +118,14 @@ impl McpSession {
         self.call_ctx = ctx;
     }
 
+    /// Stamp the workflow run that owns this session's tool calls (E4). Called
+    /// by the workflow `ToolDispatcher` after `get_or_create_with_context`, so
+    /// the recorded `mcp_tool_calls` row links back to the run — without adding
+    /// a param to the manager method every other caller would pass `None` for.
+    pub fn set_workflow_run(&mut self, run_id: Uuid) {
+        self.call_ctx.workflow_run_id = Some(run_id);
+    }
+
     /// Record a finished tool call to the `mcp_tool_calls` history, then emit
     /// an owner-scoped sync event. Fire-and-forget: a DB hiccup must NEVER
     /// fail the tool call, so we `tokio::spawn` and only log on error. Skips

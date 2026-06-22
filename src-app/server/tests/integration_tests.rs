@@ -32,6 +32,7 @@ mod sync;
 mod tool_result_mcp;
 mod web_search;
 mod workflow;
+mod workflow_mcp;
 // `remote_access` integration tests live in the desktop crate now —
 // they exercise endpoints served only by the ziee-desktop binary
 // and are physically located at

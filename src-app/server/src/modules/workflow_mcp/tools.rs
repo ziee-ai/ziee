@@ -276,6 +276,14 @@ pub async fn call_tool(
         conversation_id,
         inputs,
         Default::default(),
+        runner::SpawnRunOpts {
+            model_id: None,
+            invocation_source: "conversation",
+            // The chat extension persists this run's resource_link artifacts
+            // (created_by="mcp"); the runner must not double-save them.
+            persist_artifacts: false,
+            force_log_capture: false,
+        },
     )
     .await?;
 

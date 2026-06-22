@@ -92,6 +92,35 @@ impl FileRepository {
             .ok_or_else(|| AppError::internal_error("file vanished after create"))
     }
 
+    /// Link a file to the workflow run that produced it (A3). Lets the
+    /// run-delete cascade (A5) find a run's files, and the run history surface
+    /// them. Nullable FK (`ON DELETE SET NULL`) — deleting the run keeps the
+    /// file unless the cascade explicitly removes it.
+    pub async fn set_workflow_run_id(
+        &self,
+        file_id: Uuid,
+        run_id: Uuid,
+    ) -> Result<(), AppError> {
+        sqlx::query!(
+            "UPDATE files SET workflow_run_id = $1, updated_at = NOW() WHERE id = $2",
+            run_id,
+            file_id,
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(())
+    }
+
+    /// A5: file ids produced by a workflow run (for the delete cascade).
+    pub async fn list_ids_by_workflow_run(&self, run_id: Uuid) -> Result<Vec<Uuid>, AppError> {
+        let rows = sqlx::query!("SELECT id FROM files WHERE workflow_run_id = $1", run_id)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(AppError::database_error)?;
+        Ok(rows.into_iter().map(|r| r.id).collect())
+    }
+
     /// Get file by ID (internal use). Returns the head view.
     pub async fn get_by_id(&self, file_id: Uuid) -> Result<Option<File>, AppError> {
         let file = sqlx::query_as!(

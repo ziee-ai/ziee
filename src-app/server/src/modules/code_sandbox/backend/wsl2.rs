@@ -1048,6 +1048,11 @@ impl SandboxBackend for Wsl2Backend {
                 pids_max: limits.pids_max as u64,
                 cpu_max: limits.cpu_max.clone(),
             }),
+            // The artifact-streaming write-back is a macOS-libkrun-only
+            // workaround for virtio-fs CREATE-EPERM. On WSL2 the RW binds use
+            // the rsync'd distro filesystem directly (no virtio-fs), so RW
+            // writes land; leave this empty (the agent no-ops on empty).
+            collect_artifacts: Vec::new(),
         };
 
         // Up to 2 attempts: a dead/unreachable distro (connect fails — the
@@ -1068,11 +1073,15 @@ impl SandboxBackend for Wsl2Backend {
             let vm_id = self.vm_id()?;
             let result = match hvsocket::connect(vm_id, h.vsock_port).await {
                 Ok(stream) => {
-                    let r = super::vm_client::run_on_stream(
+                    // WSL2 copies artifacts out via rsync (not the ArtifactFile
+                    // frame), so pass no artifact dirs — but DO forward live
+                    // progress (`progress_tx`) for the workflow sandbox step.
+                    let r = super::vm_client::run_on_stream_collecting(
                         stream,
                         req.clone(),
                         secs,
                         progress_tx.clone(),
+                        &[],
                     )
                     .await;
                     *h.last_used.lock().await = Instant::now();
@@ -1241,6 +1250,7 @@ impl SandboxBackend for Wsl2Backend {
             cgroup: None,
             // Tier-4 raw-argv harness never exercises live progress.
             progress: false,
+            collect_artifacts: Vec::new(),
         };
         let secs = timeout.as_secs().max(1);
         let _permit = distro
@@ -1258,7 +1268,7 @@ impl SandboxBackend for Wsl2Backend {
                     distro.vsock_port
                 ))
             })?;
-        let run = super::vm_client::run_on_stream(stream, req, secs, None).await?;
+        let run = super::vm_client::run_on_stream(stream, req, secs).await?;
         Ok(super::RawExecResult {
             exit_code: run.exit_code,
             stdout: run.stdout.into_bytes(),

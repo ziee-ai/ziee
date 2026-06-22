@@ -906,6 +906,396 @@ fn shell_escape_single(s: &str) -> String {
 }
 
 // ============================================================
+// Tool dispatcher (A6 — call an MCP tool on an accessible server)
+// ============================================================
+
+pub struct ToolDispatcher;
+
+impl ToolDispatcher {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for ToolDispatcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Render a tool `arguments` JSON value against `ctx`. A string that is exactly
+/// a single `{{ ref }}` resolves to its NATIVE JSON type (number/array/object
+/// pass through typed); a string with surrounding text does interpolation;
+/// literals pass through. Arrays/objects recurse.
+pub(crate) fn render_tool_arguments(args: &Value, ctx: &RunContext) -> Result<Value, String> {
+    match args {
+        Value::String(s) => {
+            let trimmed = s.trim();
+            let whole_value_ref = trimmed.starts_with("{{")
+                && trimmed.ends_with("}}")
+                && trimmed.matches("{{").count() == 1;
+            if whole_value_ref {
+                let rendered = crate::modules::workflow::template::render(s, ctx)
+                    .map_err(|e| e.to_string())?;
+                // Native type when the rendered text is valid JSON; else string.
+                Ok(serde_json::from_str::<Value>(&rendered).unwrap_or(Value::String(rendered)))
+            } else if s.contains("{{") {
+                let rendered = crate::modules::workflow::template::render(s, ctx)
+                    .map_err(|e| e.to_string())?;
+                Ok(Value::String(rendered))
+            } else {
+                Ok(args.clone())
+            }
+        }
+        Value::Array(a) => {
+            let mut out = Vec::with_capacity(a.len());
+            for e in a {
+                out.push(render_tool_arguments(e, ctx)?);
+            }
+            Ok(Value::Array(out))
+        }
+        Value::Object(m) => {
+            let mut out = serde_json::Map::new();
+            for (k, v) in m {
+                out.insert(k.clone(), render_tool_arguments(v, ctx)?);
+            }
+            Ok(Value::Object(out))
+        }
+        other => Ok(other.clone()),
+    }
+}
+
+/// Concatenate the `text` content blocks of a tool result.
+fn tool_result_text(result: &crate::modules::mcp::client::traits::ToolResult) -> String {
+    let mut parts = Vec::new();
+    for c in &result.content {
+        if c.content.get("type").and_then(|v| v.as_str()) == Some("text") {
+            if let Some(t) = c.content.get("text").and_then(|v| v.as_str()) {
+                parts.push(t.to_string());
+            }
+        }
+    }
+    parts.join("\n")
+}
+
+/// Resolve a `tool` step's `server` NAME to a server id the running user may
+/// call. Built-ins resolve by stable name (their OWN permission still gates the
+/// call); user/system servers resolve within the user's accessible enabled set.
+pub(crate) async fn resolve_tool_server(
+    user_id: Uuid,
+    server_name: &str,
+) -> Result<Uuid, AppError> {
+    use crate::core::Repos;
+    let builtin = match server_name {
+        "web_search" => Some(crate::modules::web_search::web_search_server_id()),
+        "bio" => Some(crate::modules::bio_mcp::bio_mcp_server_id()),
+        "lit_search" => Some(crate::modules::lit_search::lit_search_server_id()),
+        "memory" => Some(crate::modules::memory_mcp::memory_mcp_server_id()),
+        "files" => Some(crate::modules::files_mcp::files_mcp_server_id()),
+        "code_sandbox" => Some(crate::modules::code_sandbox::code_sandbox_server_id()),
+        _ => None,
+    };
+    if let Some(id) = builtin {
+        // Built-in: allowed iff registered + enabled. The server's own
+        // permission (bio::query / web_search::use / ...) gates the call.
+        match Repos.mcp.get_any_server(id).await? {
+            Some(s) if s.enabled => return Ok(id),
+            _ => {
+                return Err(AppError::forbidden(
+                    "WORKFLOW_TOOL_SERVER_NOT_ACCESSIBLE",
+                    format!("built-in server '{server_name}' is not enabled"),
+                ));
+            }
+        }
+    }
+    // User-owned / group-assigned system server, by name (enabled + accessible).
+    let servers = crate::modules::mcp::chat_extension::helpers::get_all_accessible_config(
+        Repos.pool(),
+        user_id,
+    )
+    .await?;
+    if let Some(s) = servers
+        .into_iter()
+        .find(|s| s.name == server_name && s.enabled)
+    {
+        return Ok(s.id);
+    }
+    Err(AppError::forbidden(
+        "WORKFLOW_TOOL_SERVER_NOT_ACCESSIBLE",
+        format!("server '{server_name}' is not accessible to this user"),
+    ))
+}
+
+#[async_trait]
+impl StepDispatcher for ToolDispatcher {
+    async fn dispatch(
+        &self,
+        step: &StepDef,
+        ctx: &mut RunContext,
+        cancel: Arc<registry::RunHandle>,
+        emit: Arc<dyn ProgressEmitter>,
+    ) -> StepResult {
+        let _ = emit;
+        let started = Instant::now();
+
+        let (server_name, tool_name, arguments) = match &step.config {
+            StepConfig::Tool {
+                server,
+                tool,
+                arguments,
+            } => (server.clone(), tool.clone(), arguments.clone()),
+            _ => {
+                return StepResult::Failed {
+                    error: "ToolDispatcher called on non-tool step".into(),
+                    tokens_used: 0,
+                };
+            }
+        };
+
+        let server_id = match resolve_tool_server(ctx.user_id, &server_name).await {
+            Ok(id) => id,
+            Err(e) => return StepResult::Failed { error: e.to_string(), tokens_used: 0 },
+        };
+
+        // E8: reject a server OR a specific tool the user disabled in THIS
+        // conversation's mcp_settings (conversation-invoked runs only — a
+        // standalone run has no conversation, so the toggle doesn't apply).
+        // Matches the set the chat LLM would be allowed to call. NB: the chat
+        // path's own non-enforcement of disabled_servers is a separate latent
+        // bug, out of scope here.
+        if let Some(conv_id) = ctx.conversation_id {
+            // Fail CLOSED: a DB error resolving the toggle must NOT let a
+            // possibly-disabled tool through — this is a security gate.
+            let settings = match crate::core::repository::Repos
+                .mcp_settings
+                .get(crate::modules::mcp::settings::models::McpScope::Conversation(conv_id))
+                .await
+            {
+                Ok(s) => s,
+                Err(e) => {
+                    return StepResult::Failed {
+                        error: format!("tool: could not resolve server policy: {e}"),
+                        tokens_used: 0,
+                    };
+                }
+            };
+            if let Some(settings) = settings {
+                let disabled: Vec<
+                    crate::modules::mcp::chat_extension::approval::models::DisabledServer,
+                > = serde_json::from_value(settings.disabled_servers).unwrap_or_default();
+                if disabled.iter().any(|d| {
+                    d.server_id == server_id
+                        && (d.is_server_disabled() || d.is_tool_disabled(&tool_name))
+                }) {
+                    return StepResult::Failed {
+                        error: format!(
+                            "tool '{tool_name}' on server '{server_name}' is disabled in this conversation"
+                        ),
+                        tokens_used: 0,
+                    };
+                }
+            }
+        }
+
+        let args = match render_tool_arguments(&arguments, ctx) {
+            Ok(v) => v,
+            Err(e) => {
+                return StepResult::Failed {
+                    error: format!("arguments: render failed: {e}"),
+                    tokens_used: 0,
+                };
+            }
+        };
+
+        let manager = match crate::modules::mcp::client::manager::global() {
+            Some(m) => m,
+            None => {
+                return StepResult::Failed {
+                    error: "MCP session manager not initialized".into(),
+                    tokens_used: 0,
+                };
+            }
+        };
+        let session = match manager
+            .get_or_create_with_context(
+                server_id,
+                ctx.user_id,
+                ctx.conversation_id,
+                None, // branch_id
+                None, // message_id — a workflow run has no chat message
+                None, // tool_use_id — not an LLM ContentBlock::ToolUse
+                crate::modules::mcp::tool_calls::models::McpToolCallSource::Workflow,
+            )
+            .await
+        {
+            Ok(s) => s,
+            Err(e) => {
+                return StepResult::Failed {
+                    error: format!("tool: open session: {e}"),
+                    tokens_used: 0,
+                };
+            }
+        };
+
+        let call = async {
+            let mut guard = session.write().await;
+            // E4: link the recorded mcp_tool_calls row to this run.
+            guard.set_workflow_run(ctx.run_id);
+            guard.call_tool(&tool_name, args, None, None, None).await
+        };
+        let result = tokio::select! {
+            r = call => r,
+            _ = cancel.await_cancel() => return StepResult::Cancelled,
+        };
+        let tool_result = match result {
+            Ok(r) => r,
+            Err(e) => {
+                return StepResult::Failed {
+                    error: format!("tool '{tool_name}': {e}"),
+                    tokens_used: 0,
+                };
+            }
+        };
+
+        // Log the raw result (gated).
+        let raw = serde_json::to_string(&tool_result.content).unwrap_or_default();
+        let _ = log_io::write_text_log(ctx, &step.id, "raw_output", &raw, step.log).await;
+
+        if tool_result.is_error {
+            let msg = tool_result_text(&tool_result);
+            return StepResult::Failed {
+                error: format!(
+                    "tool '{tool_name}' returned an error: {}",
+                    msg.chars().take(500).collect::<String>()
+                ),
+                tokens_used: 0,
+            };
+        }
+
+        // C3/C4/E9: persist any `resource_link` files the tool returned into
+        // durable file-store artifacts (created_by="workflow", linked to the run
+        // via workflow_run_id for the A5 cascade). Mirrors the chat path
+        // (mcp/chat_extension/mcp.rs): `is_saved:true` links are referenced,
+        // `ziee://<host_path>` links from trusted built-ins are read off disk
+        // behind path-confinement, and http:// loopback links are fetched with a
+        // short-lived JWT (E9 — the dispatcher passes the manager's secret).
+        let mut tool_files: Vec<Value> = Vec::new();
+        {
+            let mut links: Vec<crate::modules::mcp::chat_extension::content::ResourceLink> =
+                tool_result
+                    .content
+                    .iter()
+                    .filter(|b| {
+                        b.content.get("type").and_then(|t| t.as_str()) == Some("resource_link")
+                    })
+                    .filter_map(|b| {
+                        crate::modules::mcp::resource_link::parse_resource_link_block(&b.content)
+                    })
+                    .collect();
+            if !links.is_empty() {
+                // `ziee://` reads are confined to (a) this run's OWN workflow
+                // staging dir, and (b) the code_sandbox workspace for this run's
+                // key (the common producer, get_resource_link). Including (a)
+                // means artifacts still persist in a deployment where
+                // code_sandbox isn't initialized (else allowed_roots would be
+                // empty and every ziee:// link would be silently dropped).
+                let sandbox_key = ctx.conversation_id.unwrap_or(ctx.run_id);
+                let mut allowed_roots: Vec<std::path::PathBuf> =
+                    vec![ctx.sandbox_workspace.clone()];
+                if let Some(s) = crate::modules::code_sandbox::config::get_state() {
+                    allowed_roots.push(s.workspace_root.join(sandbox_key.to_string()));
+                }
+                let (is_built_in, headers) =
+                    match crate::core::repository::Repos.mcp.get_any_server(server_id).await {
+                        Ok(Some(s)) => (s.is_built_in, s.headers),
+                        _ => (false, serde_json::json!({})),
+                    };
+                let outcome = crate::modules::mcp::resource_link::persist_links(
+                    &mut links,
+                    ctx.user_id,
+                    ctx.conversation_id,
+                    None, // message_id
+                    "workflow",
+                    Some(ctx.run_id), // C4: link each ingested file to the run
+                    server_id,
+                    is_built_in,
+                    &headers,
+                    &allowed_roots,
+                    Some(manager.jwt_secret()), // E9
+                )
+                .await
+                .unwrap_or_default();
+                for art in &outcome.saved {
+                    tool_files.push(serde_json::json!({
+                        "file_id": art.file_id,
+                        "filename": art.filename,
+                        "mime_type": art.mime_type,
+                        "uri": format!("/api/files/{}", art.file_id),
+                    }));
+                }
+                for (name, uri) in &outcome.referenced {
+                    tool_files.push(serde_json::json!({ "filename": name, "uri": uri }));
+                }
+            }
+        }
+
+        // Capture: structuredContent → JSON; else concatenated text blocks
+        // (best-effort JSON sniff so a JSON-returning tool stays typed).
+        let (value, parsed_as) = if let Some(sc) = tool_result.structured_content.clone() {
+            (sc, ParsedAs::Json)
+        } else {
+            let text = tool_result_text(&tool_result);
+            if let Ok(v) = serde_json::from_str::<Value>(text.trim()) {
+                (v, ParsedAs::Json)
+            } else {
+                (Value::String(text), ParsedAs::Text)
+            }
+        };
+
+        // Surface persisted files to downstream steps as `output.files[]`
+        // ({{ step.output.files[0].uri }}). Merge into an object result; wrap a
+        // scalar/text result so the files stay addressable without clobbering it.
+        let (value, parsed_as) = if tool_files.is_empty() {
+            (value, parsed_as)
+        } else if let Value::Object(mut map) = value {
+            let key = if map.contains_key("files") {
+                "_ziee_files"
+            } else {
+                "files"
+            };
+            map.insert(key.to_string(), Value::Array(tool_files));
+            (Value::Object(map), ParsedAs::Json)
+        } else {
+            (
+                serde_json::json!({ "output": value, "files": tool_files }),
+                ParsedAs::Json,
+            )
+        };
+
+        let meta =
+            match file_io::write_step_output(ctx, &step.id, &value, parsed_as, StepKindTag::Tool)
+                .await
+            {
+                Ok(m) => m,
+                Err(e) => {
+                    return StepResult::Failed {
+                        error: format!("persist step output: {e}"),
+                        tokens_used: 0,
+                    };
+                }
+            };
+        ctx.step_outputs.insert(step.id.clone(), meta);
+
+        StepResult::Completed {
+            output: value,
+            parsed_as,
+            tokens_used: 0,
+            ms_elapsed: started.elapsed().as_millis() as u64,
+        }
+    }
+}
+
+// ============================================================
 // Elicit dispatcher (§4.6)
 // ============================================================
 
@@ -933,11 +1323,12 @@ impl StepDispatcher for ElicitDispatcher {
         emit: Arc<dyn ProgressEmitter>,
     ) -> StepResult {
         let started = Instant::now();
-        let (schema, timeout_ms) = match &step.config {
+        let (schema, data_tpl, timeout_ms) = match &step.config {
             StepConfig::Elicit {
                 schema,
+                data,
                 timeout_ms,
-            } => (schema.clone(), *timeout_ms),
+            } => (schema.clone(), data.clone(), *timeout_ms),
             _ => {
                 return StepResult::Failed {
                     error: "ElicitDispatcher called on non-elicit step".into(),
@@ -964,6 +1355,22 @@ impl StepDispatcher for ElicitDispatcher {
                     tokens_used: 0,
                 };
             }
+        };
+
+        // D2: render the optional `data:` seed with the SAME type-preserving
+        // renderer as `tool` arguments (a whole-value `{{ ref }}` → native JSON),
+        // so a prior step's output (e.g. an AI screening table) pre-fills the form.
+        let data = match data_tpl {
+            Some(d) => match render_tool_arguments(&d, ctx) {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    return StepResult::Failed {
+                        error: format!("elicit data render: {e}"),
+                        tokens_used: 0,
+                    };
+                }
+            },
+            None => None,
         };
 
         let elicitation_id = Uuid::new_v4();
@@ -994,6 +1401,7 @@ impl StepDispatcher for ElicitDispatcher {
             &step.id,
             &message,
             &schema,
+            data.as_ref(),
             deadline,
         )
         .await
@@ -1013,6 +1421,7 @@ impl StepDispatcher for ElicitDispatcher {
                 elicitation_id,
                 message,
                 schema: schema.clone(),
+                data: data.clone(),
                 deadline_at: deadline,
             },
         ));
@@ -1059,9 +1468,10 @@ impl StepDispatcher for ElicitDispatcher {
             }
         };
 
-        // Loose schema-shape check (full jsonschema-rs lands in a future
-        // patch; for Phase 1 we accept any non-null JSON value — the form
-        // FE side enforces the schema before posting).
+        // E5: full jsonschema validation runs at the SUBMIT handler
+        // (handlers/elicit.rs `validate_response_shape` → 422 on mismatch), so a
+        // delivered response already conforms. This null-guard is just the
+        // post-handler fallback (a null can only arrive via a non-handler path).
         if value.is_null() {
             let _ = clear_pending(ctx).await;
             return StepResult::Failed {
@@ -1109,19 +1519,23 @@ impl StepDispatcher for ElicitDispatcher {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn persist_pending(
     ctx: &RunContext,
     elicitation_id: Uuid,
     step_id: &str,
     message: &str,
     schema: &Value,
+    data: Option<&Value>,
     deadline: chrono::DateTime<chrono::Utc>,
 ) -> Result<(), AppError> {
     let record = crate::modules::workflow::types::PendingElicitationRecord {
+        run_id: ctx.run_id,
         elicitation_id,
         step_id: step_id.into(),
         message: message.into(),
         schema: schema.clone(),
+        data: data.cloned(),
         deadline_at: deadline,
     };
     let json = serde_json::to_value(&record)
@@ -1172,7 +1586,61 @@ mod tests {
             is_dev: false,
             mocks: HashMap::new(),
             force_mocks: false,
+            persist_artifacts: false,
+            force_log_capture: false,
+            total_log_bytes: std::sync::atomic::AtomicU64::new(0),
         }
+    }
+
+    fn ctx_with_inputs(pairs: &[(&str, Value)]) -> RunContext {
+        let mut ctx = bare_ctx();
+        for (k, v) in pairs {
+            ctx.inputs.insert(k.to_string(), v.clone());
+        }
+        ctx
+    }
+
+    #[test]
+    fn render_tool_arguments_preserves_native_types() {
+        let ctx = ctx_with_inputs(&[
+            ("topic", Value::String("quantum batteries".into())),
+            ("n", serde_json::json!(10)),
+            ("items", serde_json::json!(["a", "b"])),
+        ]);
+        let args = serde_json::json!({
+            "query": "{{ inputs.topic }}",        // whole-value → string
+            "max_results": "{{ inputs.n }}",      // whole-value → NUMBER (not "10")
+            "list": "{{ inputs.items }}",         // whole-value → ARRAY
+            "label": "about {{ inputs.topic }}",  // embedded → interpolated string
+            "literal": 20                          // literal passthrough
+        });
+        let out = render_tool_arguments(&args, &ctx).unwrap();
+        assert_eq!(out["query"], serde_json::json!("quantum batteries"));
+        assert_eq!(out["max_results"], serde_json::json!(10));
+        assert_eq!(out["list"], serde_json::json!(["a", "b"]));
+        assert_eq!(out["label"], serde_json::json!("about quantum batteries"));
+        assert_eq!(out["literal"], serde_json::json!(20));
+    }
+
+    #[test]
+    fn tool_result_text_concatenates_text_blocks() {
+        use crate::modules::mcp::client::traits::{ToolContent, ToolResult};
+        let r = ToolResult {
+            content: vec![
+                ToolContent {
+                    content: serde_json::json!({"type": "text", "text": "hello"}),
+                },
+                ToolContent {
+                    content: serde_json::json!({"type": "image", "data": "x"}),
+                },
+                ToolContent {
+                    content: serde_json::json!({"type": "text", "text": "world"}),
+                },
+            ],
+            is_error: false,
+            structured_content: None,
+        };
+        assert_eq!(tool_result_text(&r), "hello\nworld");
     }
 
     /// H4: llm_map per-item prompt rendering over OBJECT items binds the

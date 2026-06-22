@@ -352,6 +352,9 @@ mod tests {
             is_dev: false,
             mocks: std::collections::HashMap::new(),
             force_mocks: false,
+            persist_artifacts: false,
+            force_log_capture: false,
+            total_log_bytes: std::sync::atomic::AtomicU64::new(0),
         };
         assert!(artifact_host_path(&ctx, "s", "../../etc/passwd").is_err());
         assert!(artifact_host_path(&ctx, "s", "/abs").is_err());

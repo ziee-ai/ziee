@@ -1,11 +1,11 @@
 import { NodeIndexOutlined } from '@ant-design/icons'
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
-import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import {
   useSystemWorkflowStore,
   useWorkflowDrawerStore,
+  useWorkflowRunsStore,
   useWorkflowRunStore,
   useWorkflowStore,
 } from '@/modules/workflow/stores'
@@ -36,15 +36,18 @@ export default createModule({
     { name: 'Workflow', store: useWorkflowStore },
     { name: 'SystemWorkflow', store: useSystemWorkflowStore },
     { name: 'WorkflowRun', store: useWorkflowRunStore },
+    { name: 'WorkflowRuns', store: useWorkflowRunsStore },
     { name: 'WorkflowDrawer', store: useWorkflowDrawerStore },
   ],
   routes: [
     {
-      path: '/workflows',
+      // A2: workflows live under Settings (mirrors the MCP user page); no
+      // top-level sidebar entry anymore.
+      path: '/settings/workflows',
       element: WorkflowsList,
       requiresAuth: true,
       permission: Permissions.WorkflowsRead,
-      layout: AppLayoutDef,
+      layout: SettingsLayoutDef,
     },
     {
       path: '/settings/workflows-admin',
@@ -55,13 +58,13 @@ export default createModule({
     },
   ],
   slots: {
-    sidebarNavigation: [
+    settingsUserPages: [
       {
         id: 'workflows',
         icon: <NodeIndexOutlined />,
         label: 'Workflows',
-        path: '/workflows',
-        order: 85,
+        path: 'workflows',
+        order: 26,
         permission: Permissions.WorkflowsRead,
       },
     ],

@@ -27,11 +27,50 @@ use crate::common::AppError;
 use crate::modules::workflow::types::RunContext;
 use crate::modules::workflow::validate::LogCapture;
 
+/// Per-log body cap (chars) stored in `step_logs_json` for durability.
+pub const LOG_BODY_CAP_CHARS: usize = 256 * 1024;
+
+/// E7: per-RUN aggregate cap on durable log-body chars. The per-log cap above
+/// bounds each body; this bounds the whole run (≤ ~16 bodies at the per-log
+/// max) so a many-step debug-capture run can't bloat `step_logs_json`. Beyond
+/// it, a marker is stored instead of the body.
+pub const RUN_LOG_BODY_CAP_CHARS: usize = 4 * 1024 * 1024;
+
+/// Cap a body for durable storage honoring BOTH the per-log cap and the
+/// per-run aggregate budget (E7). Returns a marker once the run budget is
+/// spent; otherwise the per-log-capped body, charging its length to the run.
+fn cap_body_run(ctx: &RunContext, body: &str) -> Option<String> {
+    use std::sync::atomic::Ordering;
+    if ctx.total_log_bytes.load(Ordering::Relaxed) as usize >= RUN_LOG_BODY_CAP_CHARS {
+        return Some("…[run log cap reached]".to_string());
+    }
+    let capped = cap_body(body);
+    ctx.total_log_bytes
+        .fetch_add(capped.chars().count() as u64, Ordering::Relaxed);
+    Some(capped)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntryMeta {
     pub path: PathBuf,
     pub size_bytes: u64,
     pub preview: String,
+    /// A7: full captured body (capped at `LOG_BODY_CAP_CHARS`), persisted in
+    /// `step_logs_json` so logs survive the staging-dir GC. `None` for legacy
+    /// rows; a truncated body ends with a marker.
+    #[serde(default)]
+    pub body: Option<String>,
+}
+
+/// Cap a log body for durable storage in `step_logs_json`.
+fn cap_body(body: &str) -> String {
+    if body.chars().count() > LOG_BODY_CAP_CHARS {
+        let mut s: String = body.chars().take(LOG_BODY_CAP_CHARS).collect();
+        s.push_str("\n…[truncated]");
+        s
+    } else {
+        body.to_string()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -63,7 +102,13 @@ pub async fn write_text_log(
     body: &str,
     log_level: LogCapture,
 ) -> Result<Option<LogEntryMeta>, AppError> {
-    if !should_capture(kind, log_level) {
+    // A7b: the per-run debug toggle forces full capture regardless of `log:`.
+    let level = if ctx.force_log_capture {
+        LogCapture::Full
+    } else {
+        log_level
+    };
+    if !should_capture(kind, level) {
         return Ok(None);
     }
     let dir = step_log_dir(ctx, step_id);
@@ -73,14 +118,12 @@ pub async fn write_text_log(
         AppError::internal_error(format!("log_io: write {}: {e}", dest.display()))
     })?;
     let size = body.len() as u64;
-    let preview = body
-        .chars()
-        .take(500)
-        .collect::<String>();
+    let preview = body.chars().take(500).collect::<String>();
     Ok(Some(LogEntryMeta {
         path: dest,
         size_bytes: size,
         preview,
+        body: cap_body_run(ctx, body),
     }))
 }
 
@@ -93,7 +136,7 @@ pub async fn write_item_log(
     record: &serde_json::Value,
     log_level: LogCapture,
 ) -> Result<Option<LogEntryMeta>, AppError> {
-    if log_level != LogCapture::Full {
+    if !(ctx.force_log_capture || log_level == LogCapture::Full) {
         return Ok(None);
     }
     let dir = step_log_dir(ctx, step_id).join("items");
@@ -104,11 +147,13 @@ pub async fn write_item_log(
     tokio::fs::write(&dest, &bytes).await.map_err(|e| {
         AppError::internal_error(format!("log_io: write {}: {e}", dest.display()))
     })?;
-    let preview = String::from_utf8_lossy(&bytes[..bytes.len().min(500)]).into_owned();
+    let body_str = String::from_utf8_lossy(&bytes).into_owned();
+    let preview = body_str.chars().take(500).collect::<String>();
     Ok(Some(LogEntryMeta {
         path: dest,
         size_bytes: bytes.len() as u64,
         preview,
+        body: cap_body_run(ctx, &body_str),
     }))
 }
 
@@ -127,11 +172,13 @@ pub async fn write_trace(
     tokio::fs::write(&dest, &bytes).await.map_err(|e| {
         AppError::internal_error(format!("log_io: write {}: {e}", dest.display()))
     })?;
-    let preview = String::from_utf8_lossy(&bytes[..bytes.len().min(500)]).into_owned();
+    let body_str = String::from_utf8_lossy(&bytes).into_owned();
+    let preview = body_str.chars().take(500).collect::<String>();
     Ok(LogEntryMeta {
         path: dest,
         size_bytes: bytes.len() as u64,
         preview,
+        body: Some(cap_body(&body_str)),
     })
 }
 
@@ -178,6 +225,9 @@ mod tests {
             is_dev: false,
             mocks: std::collections::HashMap::new(),
             force_mocks: false,
+            persist_artifacts: false,
+            force_log_capture: false,
+            total_log_bytes: std::sync::atomic::AtomicU64::new(0),
         }
     }
 
@@ -215,5 +265,34 @@ mod tests {
         };
         let m = write_trace(&ctx, "s", &trace).await.unwrap();
         assert!(m.path.exists());
+    }
+
+    #[tokio::test]
+    async fn run_log_cap_marks_body_once_budget_spent() {
+        // E7: once the per-run aggregate budget is spent, durable bodies become
+        // a marker (the file on disk is still written; only the stored body caps).
+        let tmp = tempdir().unwrap();
+        let ctx = fake_ctx(tmp.path().to_path_buf());
+        ctx.total_log_bytes.store(
+            RUN_LOG_BODY_CAP_CHARS as u64,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        let meta = write_text_log(&ctx, "s", "prompt", "some prompt body", LogCapture::Full)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(meta.body.as_deref(), Some("…[run log cap reached]"));
+    }
+
+    #[tokio::test]
+    async fn run_log_cap_allows_and_charges_under_budget() {
+        let tmp = tempdir().unwrap();
+        let ctx = fake_ctx(tmp.path().to_path_buf());
+        let meta = write_text_log(&ctx, "s", "prompt", "hello", LogCapture::Full)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(meta.body.as_deref(), Some("hello"));
+        assert!(ctx.total_log_bytes.load(std::sync::atomic::Ordering::Relaxed) >= 5);
     }
 }
