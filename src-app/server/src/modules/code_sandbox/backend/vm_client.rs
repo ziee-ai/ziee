@@ -16,6 +16,11 @@ use crate::modules::code_sandbox::sandbox::{SandboxRunResult, OUTPUT_CAP_BYTES};
 
 /// Run one command on a connected control stream. Transport-agnostic: the
 /// caller (mac unix socket / WSL2 TCP) connects and hands the stream in.
+///
+/// The simple wrapper: NO live-progress sink and NO artifact write-back (the
+/// chat/MCP + WSL2 + test raw-exec paths). The workflow sandbox step instead
+/// calls [`run_on_stream_collecting`] directly with a `progress_tx` sink and
+/// the RW-mount → host-dir mapping.
 pub async fn run_on_stream<S>(
     stream: S,
     req: ExecRequest,
@@ -24,9 +29,7 @@ pub async fn run_on_stream<S>(
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
-    // No artifact write-back (WSL2 + the test raw-exec path). The macOS backend
-    // calls `run_on_stream_collecting` with the RW-mount → host-dir mapping.
-    run_on_stream_collecting(stream, req, timeout_secs, &[]).await
+    run_on_stream_collecting(stream, req, timeout_secs, None, &[]).await
 }
 
 /// Like [`run_on_stream`] but, in addition to streaming stdout/stderr, receives
@@ -42,6 +45,7 @@ pub async fn run_on_stream_collecting<S>(
     mut stream: S,
     req: ExecRequest,
     timeout_secs: u64,
+    progress_tx: Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>,
     artifact_host_dirs: &[PathBuf],
 ) -> Result<SandboxRunResult, AppError>
 where
@@ -98,7 +102,16 @@ where
                 }
                 Ok(Some(Frame::Exec(_))) => {} // not expected from the guest
                 Ok(Some(Frame::Shutdown)) => {} // host-only frame; ignore if echoed
-                // Long-lived frames don't belong on a one-shot Exec
+                // Live-progress line from the guest agent's FIFO reader
+                // (workflow sandbox step). Forward the raw bytes (one
+                // newline-trimmed line) to the sink. Ignored when no sink is
+                // wired (stray frame on a non-progress exec).
+                Ok(Some(Frame::ProcessProgress { bytes, .. })) => {
+                    if let Some(tx) = progress_tx.as_ref() {
+                        let _ = tx.send(bytes);
+                    }
+                }
+                // Other long-lived frames don't belong on a one-shot Exec
                 // connection; the guest only emits them when the host
                 // sent StartProcess first. Ignore defensively.
                 Ok(Some(

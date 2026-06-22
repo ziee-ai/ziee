@@ -10,6 +10,7 @@ import {
   Typography,
 } from 'antd'
 import { useEffect } from 'react'
+import type { ProgressTrack } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 import type { StepProgress } from '@/modules/workflow/stores/WorkflowRun.store'
 import { StepArtifacts } from './StepArtifacts'
@@ -33,6 +34,61 @@ function stepStatus(s: StepProgress): 'wait' | 'process' | 'finish' | 'error' {
       return 'error'
     default:
       return 'wait'
+  }
+}
+
+/** How many parallel tracks to render before collapsing to "+N more". */
+const TRACK_DISPLAY_CAP = 12
+
+/** Render one live sandbox-progress track (P2) by its kind. All strings are
+ *  plaintext — React escapes them (the UI owns rendering, never the author). */
+function TrackWidget({ track }: { track: ProgressTrack }) {
+  const k = track.kind
+  const label = track.label
+  switch (k.type) {
+    case 'bar':
+      return (
+        <Progress
+          size="small"
+          percent={Math.round(k.fraction * 100)}
+          format={label ? () => label : undefined}
+        />
+      )
+    case 'counter': {
+      const pct = k.total > 0 ? Math.round((k.current / k.total) * 100) : 0
+      return (
+        <Progress
+          size="small"
+          percent={pct}
+          format={() =>
+            `${k.current}/${k.total}${k.unit ? ` ${k.unit}` : ''}` +
+            (label ? ` · ${label}` : '')
+          }
+        />
+      )
+    }
+    case 'status':
+      return (
+        <Text type="secondary" className="text-xs">
+          {label ? `${label}: ` : ''}
+          {k.message}
+        </Text>
+      )
+    case 'log':
+      return (
+        <Text type="secondary" className="text-xs font-mono" ellipsis>
+          {k.line}
+        </Text>
+      )
+    case 'phase':
+      return (
+        <Text type="secondary" className="text-xs">
+          {k.name}
+          {k.index != null && k.total != null ? ` (${k.index}/${k.total})` : ''}
+        </Text>
+      )
+    default:
+      return null
   }
 }
 
@@ -120,12 +176,26 @@ export function WorkflowRunProgressView({
           status: stepStatus(s),
           title: (
             <Space size={8}>
-              <Text>{s.message || s.stepId}</Text>
+              <Text>{s.description || s.message || s.stepId}</Text>
               {s.stepKind && <Tag className="text-xs !m-0">{s.stepKind}</Tag>}
             </Space>
           ),
           description: (
             <div className="flex flex-col gap-1">
+              {s.tracks && Object.keys(s.tracks).length > 0 && (
+                <div className="flex flex-col gap-0.5">
+                  {Object.values(s.tracks)
+                    .slice(0, TRACK_DISPLAY_CAP)
+                    .map((t, i) => (
+                      <TrackWidget key={t.id || `_${i}`} track={t} />
+                    ))}
+                  {Object.keys(s.tracks).length > TRACK_DISPLAY_CAP && (
+                    <Text type="secondary" className="text-xs">
+                      +{Object.keys(s.tracks).length - TRACK_DISPLAY_CAP} more
+                    </Text>
+                  )}
+                </div>
+              )}
               {s.itemProgress && s.itemProgress.total > 0 && (
                 <Progress
                   size="small"

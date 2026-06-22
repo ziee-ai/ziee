@@ -100,6 +100,11 @@
           "type": ["string", "null"],
           "description": "Author-defined UI status string. Template-rendered at step start."
         },
+        "description": {
+          "type": ["string", "null"],
+          "maxLength": 200,
+          "description": "Human-readable label of what this step does, shown as the step title in the run progress UI (every kind). Template-rendered against inputs (run-start) + full context (step-start). Distinct from `message` (the elicit prompt / dynamic status line)."
+        },
         "log": {
           "type": "string",
           "enum": ["off", "stderr", "full"],

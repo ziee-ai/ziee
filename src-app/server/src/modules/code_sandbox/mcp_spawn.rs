@@ -367,6 +367,9 @@ async fn spawn_on_linux_host(
             extra_setenv: &req.extra_setenv,
             extra_ro_binds: &extra_ro_binds,
             extra_rw_binds: &[],
+            // Long-lived MCP servers don't surface live progress (no
+            // workflow sandbox step routes through this path).
+            progress_fifo_src: None,
         },
         Path::new(&guest_command),
         &{

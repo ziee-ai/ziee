@@ -24,6 +24,7 @@ mod real_stack;
 mod run_history_and_delete;
 mod run_mocked;
 mod run_model;
+mod sandbox_progress;
 mod sandbox_run;
 mod status_machine;
 mod stream_access;

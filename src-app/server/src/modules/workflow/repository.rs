@@ -398,6 +398,7 @@ pub async fn insert_run(
             step_artifacts_json as "step_artifacts_json: _",
             pending_elicitation_json as "pending_elicitation_json: _",
             final_output_json as "final_output_json: _",
+            step_progress_json as "step_progress_json: _",
             status,
             current_step,
             error_message,
@@ -495,6 +496,40 @@ pub async fn persist_step_meta(
         // to i64::MAX rather than wrapping negative.
         i64::try_from(total_tokens_delta).unwrap_or(i64::MAX),
         current_step,
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(())
+}
+
+/// P2.6: replace the running sandbox step's live progress track map on the run
+/// row (the whole coalesced `{id->ProgressTrack}` object, written on the
+/// dispatcher's throttle flush). The Snapshot reads it so a refresh rehydrates
+/// in-flight bars. Cleared by [`clear_step_progress`] when the step ends.
+pub async fn set_step_progress(
+    pool: &PgPool,
+    run_id: Uuid,
+    tracks_json: &serde_json::Value,
+) -> Result<(), AppError> {
+    sqlx::query!(
+        r#"UPDATE workflow_runs SET step_progress_json = $2, updated_at = NOW() WHERE id = $1"#,
+        run_id,
+        tracks_json,
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(())
+}
+
+/// P2.6: clear live progress when the running step terminates
+/// (completed / failed / cancelled) — only the current step's tracks are ever
+/// stored, so this resets the slot for the next step.
+pub async fn clear_step_progress(pool: &PgPool, run_id: Uuid) -> Result<(), AppError> {
+    sqlx::query!(
+        r#"UPDATE workflow_runs SET step_progress_json = NULL WHERE id = $1"#,
+        run_id,
     )
     .execute(pool)
     .await
@@ -729,6 +764,7 @@ pub async fn find_run(pool: &PgPool, run_id: Uuid) -> Result<Option<WorkflowRun>
             step_artifacts_json as "step_artifacts_json: _",
             pending_elicitation_json as "pending_elicitation_json: _",
             final_output_json as "final_output_json: _",
+            step_progress_json as "step_progress_json: _",
             status,
             current_step,
             error_message,
@@ -971,6 +1007,7 @@ pub async fn list_runs_for_user(
             step_artifacts_json as "step_artifacts_json: _",
             pending_elicitation_json as "pending_elicitation_json: _",
             final_output_json as "final_output_json: _",
+            step_progress_json as "step_progress_json: _",
             status,
             current_step,
             error_message,

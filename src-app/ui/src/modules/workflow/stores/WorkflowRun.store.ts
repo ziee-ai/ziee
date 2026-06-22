@@ -4,7 +4,9 @@ import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
 import type {
   ItemProgress,
+  ProgressTrack,
   SSEElicitationRequiredData,
+  SSEStepManifestItem,
 } from '@/api-client/types'
 import {
   type RunProgressSubscription,
@@ -41,8 +43,14 @@ export interface StepProgress {
   stepKind?: string
   stepIndex?: number
   message?: string
+  /** Author-facing step label (P1). Manifest seeds the inputs-rendered value;
+   *  `stepStarted` upgrades it to the full-context render. */
+  description?: string
   status: 'pending' | 'running' | 'completed' | 'failed'
   itemProgress?: ItemProgress
+  /** Live sandbox-step progress tracks (P2), keyed by track id ("" = default).
+   *  Hydrated from the snapshot's `step_progress_json` + `stepProgress` deltas. */
+  tracks?: Record<string, ProgressTrack>
   outputPreview?: string
   error?: string
   tokensUsed?: number
@@ -100,6 +108,20 @@ function ensureStep(view: RunView, stepId: string): StepProgress {
   return view.steps[stepId]
 }
 
+/** Seed the full pipeline from the SSE manifest (P1 Option B) so a (re)connect
+ *  renders every step up front — pending ones included — in topo order. Fills
+ *  kind + description without overwriting values a live event already set. */
+function seedManifest(view: RunView, manifest?: SSEStepManifestItem[] | null) {
+  if (!manifest) return
+  for (const item of manifest) {
+    const s = ensureStep(view, item.id)
+    if (s.stepKind === undefined) s.stepKind = item.kind
+    if (s.description === undefined && item.description != null) {
+      s.description = item.description
+    }
+  }
+}
+
 function blankView(runId: string): RunView {
   return {
     runId,
@@ -138,6 +160,14 @@ export const useWorkflowRunStore = create<WorkflowRunState>()(
                 v.totalTokens = d.total_tokens
                 v.currentStep = d.current_step ?? undefined
                 v.pendingElicitation = d.pending_elicitation_json ?? undefined
+                // P1: seed the full pipeline (pending steps incl.) up front.
+                seedManifest(v, d.step_manifest)
+                // P2: rehydrate the running step's in-flight tracks after a
+                // refresh/reconnect (they belong to `current_step`).
+                if (d.step_progress_json && d.current_step) {
+                  const s = ensureStep(v, d.current_step)
+                  s.tracks = d.step_progress_json as Record<string, ProgressTrack>
+                }
                 // Hydrate per-step output + artifact metadata so a
                 // freshly-mounted view (or a reconnect) renders the
                 // "Show full output" expander + artifact blocks without
@@ -174,6 +204,8 @@ export const useWorkflowRunStore = create<WorkflowRunState>()(
                 const v = draft.runs[runId] ?? blankView(runId)
                 v.totalSteps = d.total_steps
                 v.status = 'running'
+                // P1: live first-paint of the full pipeline.
+                seedManifest(v, d.step_manifest)
                 draft.runs[runId] = v
               })
             },
@@ -185,6 +217,9 @@ export const useWorkflowRunStore = create<WorkflowRunState>()(
                 s.stepKind = d.step_kind
                 s.stepIndex = d.step_index
                 s.message = d.message ?? undefined
+                // P1: upgrade the label to the full-context render (keep the
+                // inputs-rendered manifest value if this step omits one).
+                if (d.description != null) s.description = d.description
                 v.totalSteps = d.total_steps
                 v.currentStep = d.step_id
                 draft.runs[runId] = v
@@ -195,6 +230,21 @@ export const useWorkflowRunStore = create<WorkflowRunState>()(
                 const v = draft.runs[runId] ?? blankView(runId)
                 const s = ensureStep(v, d.step_id)
                 s.itemProgress = d.progress
+                draft.runs[runId] = v
+              })
+            },
+            stepProgress: d => {
+              set(draft => {
+                const v = draft.runs[runId] ?? blankView(runId)
+                const s = ensureStep(v, d.step_id)
+                if (!s.tracks) s.tracks = {}
+                for (const t of d.tracks) {
+                  const id = t.id ?? ''
+                  // `done` tracks were delivered once + evicted backend-side;
+                  // drop them here too so live + refresh stay consistent.
+                  if (t.done) delete s.tracks[id]
+                  else s.tracks[id] = t
+                }
                 draft.runs[runId] = v
               })
             },

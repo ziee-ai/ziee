@@ -111,9 +111,15 @@ pub trait SandboxBackend: Send + Sync {
         timeout_secs: Option<u64>,
         flavor: &str,
         _extra_mounts: &[crate::modules::code_sandbox::workflow_staging::StagedMount],
+        // Live-progress sink (workflow sandbox step). When `Some`, the backend
+        // binds the `/ziee/progress` FIFO into the sandbox and forwards each
+        // newline-trimmed line (one raw FIFO write) to this sender. The Linux
+        // backend reads a host FIFO; the VM backends route the agent's
+        // `Frame::ProcessProgress`. `None` for every chat/MCP exec.
+        _progress_tx: Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>,
     ) -> Result<SandboxRunResult, AppError> {
-        // Default: behave like `run`, ignoring extra mounts (VM backends).
-        // Linux backend overrides to actually wire the mounts.
+        // Default: behave like `run`, ignoring extra mounts + progress (VM
+        // backends override). Linux backend overrides to actually wire both.
         self.run(state, ctx, command, timeout_secs, flavor).await
     }
 

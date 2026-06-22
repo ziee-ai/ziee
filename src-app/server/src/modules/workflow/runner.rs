@@ -29,7 +29,7 @@ use crate::modules::workflow::dispatch::{
 use crate::modules::workflow::events::{
     PerRunEmitter, ProgressEmitter, SSEElicitationResolvedData, SSERunCancelledData,
     SSERunCompletedData, SSERunFailedData, SSERunStartedData, SSEStepCompletedData,
-    SSEStepFailedData, SSEStepStartedData, SSEWorkflowRunEvent,
+    SSEStepFailedData, SSEStepManifestItem, SSEStepStartedData, SSEWorkflowRunEvent,
 };
 use crate::modules::workflow::file_io;
 use crate::modules::workflow::log_io::{self, StepTrace};
@@ -483,6 +483,27 @@ enum RunInnerOutcome {
     Failed { error: String, failed_at_step: Option<String> },
 }
 
+/// Build the pipeline manifest for the live first-paint (Part 1, D4 Option B):
+/// each step's `description` rendered against the current context — at
+/// run-start that's inputs only (`step_outputs` is empty), so a description
+/// referencing a not-yet-run step's output fails to render and falls back to
+/// the raw template. The FE upgrades each label to the full-context render on
+/// `StepStarted`.
+fn build_step_manifest(workflow: &WorkflowDef, ctx: &RunContext) -> Vec<SSEStepManifestItem> {
+    workflow
+        .steps
+        .iter()
+        .map(|s| SSEStepManifestItem {
+            id: s.id.clone(),
+            kind: s.config.kind_str().to_string(),
+            description: s.description.as_deref().map(|d| {
+                crate::modules::workflow::template::render(d, ctx)
+                    .unwrap_or_else(|_| d.to_string())
+            }),
+        })
+        .collect()
+}
+
 /// Run the inner workflow future under a wall-clock cap (E7). Factored from
 /// the inline `tokio::time::timeout` so the timeout→Failed mapping is
 /// unit-testable behind an injectable `Duration`. On elapse the run is failed
@@ -516,6 +537,7 @@ async fn run_inner(
         sandbox_flavor: ctx.sandbox_flavor.clone(),
         total_steps: workflow.steps.len() as u32,
         conversation_id: ctx.conversation_id,
+        step_manifest: build_step_manifest(workflow, ctx),
     }));
     crate::modules::workflow::events::emit_workflow_run(
         crate::modules::sync::SyncAction::Create,
@@ -550,6 +572,12 @@ async fn run_inner(
             .as_deref()
             .and_then(|m| crate::modules::workflow::template::render(m, ctx).ok());
 
+        // Full-context render (inputs + completed step outputs); fall back to
+        // the raw template so the row always shows a label.
+        let description_rendered = step.description.as_deref().map(|d| {
+            crate::modules::workflow::template::render(d, ctx).unwrap_or_else(|_| d.to_string())
+        });
+
         emit.emit(SSEWorkflowRunEvent::StepStarted(SSEStepStartedData {
             run_id: ctx.run_id,
             step_id: step.id.clone(),
@@ -557,6 +585,7 @@ async fn run_inner(
             step_index: i as u32,
             total_steps,
             message: message_rendered,
+            description: description_rendered,
         }));
 
         // Mock short-circuit. Honor a per-run `mocks[step.id]` from the
