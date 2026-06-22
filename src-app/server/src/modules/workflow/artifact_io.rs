@@ -268,6 +268,7 @@ pub fn artifact_host_path(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
 
     #[test]
     fn glob_matches_star() {
@@ -359,5 +360,93 @@ mod tests {
         assert!(artifact_host_path(&ctx, "s", "../../etc/passwd").is_err());
         assert!(artifact_host_path(&ctx, "s", "/abs").is_err());
         assert!(artifact_host_path(&ctx, "s", "ok.md").is_ok());
+    }
+
+    /// Build a minimal RunContext whose `artifacts_dir` points at `dir`
+    /// (the only fields `collect_step_artifacts` reads are `artifacts_dir`
+    /// + `total_output_bytes`).
+    fn ctx_with_artifacts_dir(artifacts_dir: PathBuf) -> RunContext {
+        RunContext {
+            run_id: uuid::Uuid::nil(),
+            user_id: uuid::Uuid::nil(),
+            conversation_id: None,
+            workflow_id: uuid::Uuid::nil(),
+            inputs: Default::default(),
+            step_outputs: Default::default(),
+            step_item_progress: Default::default(),
+            extracted_path: PathBuf::from("/tmp"),
+            sandbox_workspace: PathBuf::from("/tmp"),
+            outputs_dir: PathBuf::from("/tmp"),
+            artifacts_dir,
+            inputs_dir: PathBuf::from("/tmp"),
+            model_id: uuid::Uuid::nil(),
+            model_name: "m".into(),
+            model_max_tokens: 8192,
+            sandbox_flavor: None,
+            total_tokens: 0,
+            total_output_bytes: 0,
+            is_dev: false,
+            mocks: std::collections::HashMap::new(),
+            force_mocks: false,
+            persist_artifacts: false,
+            force_log_capture: false,
+            total_log_bytes: std::sync::atomic::AtomicU64::new(0),
+        }
+    }
+
+    /// Parse a 1-step llm workflow and return its single StepDef (no artifact
+    /// decls → collect=all).
+    fn single_step(id: &str) -> crate::modules::workflow::validate::WorkflowDef {
+        crate::modules::workflow::validate::parse_workflow_yaml(&format!(
+            "steps:\n  - id: {id}\n    kind: llm\n    prompt: x\n"
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn per_run_cap_trips_before_buffering() {
+        // E5: once the run's cumulative output+artifact bytes would cross
+        // PER_RUN_ARTIFACT_CAP_BYTES, the walk returns Err
+        // (WORKFLOW_ARTIFACT_RUN_CAP) instead of collecting — checked against
+        // metadata size, so no huge buffer is needed to exercise it.
+        let tmp = tempdir().unwrap();
+        let step_dir = tmp.path().join("s");
+        std::fs::create_dir_all(&step_dir).unwrap();
+        std::fs::write(step_dir.join("small.txt"), b"0123456789").unwrap(); // 10 bytes
+
+        let wf = single_step("s");
+        let mut ctx = ctx_with_artifacts_dir(tmp.path().to_path_buf());
+        // Start 5 bytes below the cap → the 10-byte file crosses it.
+        ctx.total_output_bytes = PER_RUN_ARTIFACT_CAP_BYTES - 5;
+
+        let err = collect_step_artifacts(&ctx, &wf.steps[0]).unwrap_err();
+        assert_eq!(err.error_code(), "WORKFLOW_ARTIFACT_RUN_CAP", "{err:?}");
+        assert_eq!(err.status_code(), 422);
+    }
+
+    #[test]
+    fn per_file_cap_skips_oversize_without_error() {
+        // E5: a single file over PER_FILE_ARTIFACT_CAP_BYTES is SKIPPED (a
+        // warn, not an error); smaller siblings are still collected. Uses a
+        // sparse file (set_len) so we don't allocate 10 MiB on disk.
+        let tmp = tempdir().unwrap();
+        let step_dir = tmp.path().join("s");
+        std::fs::create_dir_all(&step_dir).unwrap();
+        let big = std::fs::File::create(step_dir.join("big.bin")).unwrap();
+        big.set_len(PER_FILE_ARTIFACT_CAP_BYTES + 1).unwrap();
+        std::fs::write(step_dir.join("ok.txt"), b"hi").unwrap();
+
+        let wf = single_step("s");
+        let ctx = ctx_with_artifacts_dir(tmp.path().to_path_buf());
+        let metas = collect_step_artifacts(&ctx, &wf.steps[0]).unwrap();
+
+        assert!(
+            metas.iter().any(|m| m.filename == "ok.txt"),
+            "small file collected: {metas:?}"
+        );
+        assert!(
+            !metas.iter().any(|m| m.filename == "big.bin"),
+            "oversize file must be skipped: {metas:?}"
+        );
     }
 }

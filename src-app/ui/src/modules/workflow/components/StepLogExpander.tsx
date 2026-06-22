@@ -7,7 +7,7 @@ const { Paragraph } = Typography
 interface StepLogExpanderProps {
   runId: string
   stepId: string
-  /** Log kind: 'prompt' | 'raw_output' | 'stderr' (per the log endpoint). */
+  /** Log kind: 'prompt' | 'raw_output' | 'stderr' | 'trace' (per the log endpoint). */
   kind: string
   label: string
 }
