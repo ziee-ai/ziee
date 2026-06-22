@@ -348,3 +348,101 @@ async fn sr_snowball_screen_runs_and_surfaces_screening_outputs() {
     assert_eq!(ai[0]["decision"], "include");
     assert_eq!(ai[1]["decision"], "exclude");
 }
+
+// A minimal workflow whose ONLY step is a REAL lit_search tool call (not mocked).
+const REAL_LIT_SEARCH_WORKFLOW: &str = r#"$schema: "/schemas/2026-06-12/workflow-definition.schema.json"
+inputs:
+  - name: query
+    required: true
+steps:
+  - id: search
+    kind: tool
+    message: "Searching for {{ inputs.query }}"
+    server: lit_search
+    tool: literature_search
+    arguments:
+      query: "{{ inputs.query }}"
+outputs:
+  - name: results
+    from: "{{ search.output }}"
+    expose: full
+"#;
+
+/// PROVES a workflow `tool` step ACTUALLY invokes the lit_search MCP server and
+/// searches — this is NOT mocked. The `search` step runs the real path
+/// (ToolDispatcher → the `lit_search` built-in → the connectors), with the
+/// europepmc + crossref connectors pointed at loopback MOCK UPSTREAMS (the same
+/// `LIT_SEARCH_*_ENDPOINT` seams + mock servers the direct `literature_search` MCP
+/// test uses). The step output must carry the UNION-deduped result (4 raw records
+/// → 3 after the shared DOI collapses) with per-source `identified` counts — which
+/// can ONLY appear if the workflow genuinely called out to search and ran the real
+/// aggregate→dedup pipeline. (The durable-gate test above mocks the tool steps to
+/// isolate the gate mechanics; THIS test covers the real tool→MCP→search path.)
+#[tokio::test]
+async fn tool_step_really_calls_lit_search_mcp_and_searches() {
+    use crate::common::TestServerOptions;
+    use crate::common::test_helpers::create_user_with_permissions;
+    use crate::lit_search::{configure, start_mock_crossref, start_mock_europepmc};
+
+    // Mock upstreams FIRST — their ports go into the endpoint seams.
+    let epmc = start_mock_europepmc().await;
+    let crossref = start_mock_crossref().await;
+    let server = crate::common::TestServer::start_with_options(TestServerOptions {
+        extra_env: vec![
+            ("LIT_SEARCH_ALLOW_LOOPBACK".to_string(), "1".to_string()),
+            ("LIT_SEARCH_EUROPEPMC_ENDPOINT".to_string(), format!("{epmc}/search")),
+            ("LIT_SEARCH_CROSSREF_ENDPOINT".to_string(), format!("{crossref}/works")),
+        ],
+        ..Default::default()
+    })
+    .await;
+
+    // One user: enable lit_search (admin), call the tool (use), and run workflows.
+    let user = create_user_with_permissions(
+        &server,
+        "wf_real_litsearch",
+        &[
+            "workflows::read",
+            "workflows::install",
+            "workflows::manage",
+            "workflows::execute",
+            "lit_search::use",
+            "lit_search::admin::read",
+            "lit_search::admin::manage",
+        ],
+    )
+    .await;
+    configure(&server, &user.token, &["europepmc", "crossref"]).await;
+
+    let (_stub, conv_id) = stub_conversation(&server, &user.user_id, &user.token).await;
+    let wf =
+        import_dev_workflow(&server, &user.token, "real-litsearch", REAL_LIT_SEARCH_WORKFLOW).await;
+    let wf_id = wf["id"].as_str().expect("workflow id").to_string();
+
+    // NO `mocks` — the `search` step really calls lit_search → the mock upstreams.
+    let run = run_workflow(
+        &server,
+        &user.token,
+        &wf_id,
+        json!({ "inputs": { "query": "crispr" }, "conversation_id": conv_id.to_string() }),
+    )
+    .await;
+    let run_id = Uuid::parse_str(run["run_id"].as_str().expect("run_id")).unwrap();
+    let final_run = poll_run(&server, &user.token, run_id).await;
+    assert_eq!(
+        final_run["status"], "completed",
+        "the real lit_search tool-step run should complete: {final_run}"
+    );
+
+    // The step output IS the real union-deduped search result from the mock
+    // upstreams (mirrors the direct literature_search MCP test's assertions).
+    let out = read_step_output(&server, &user.token, run_id, "search").await;
+    assert_eq!(out["identified"]["europepmc"], 2, "europepmc upstream was queried: {out}");
+    assert_eq!(out["identified"]["crossref"], 2, "crossref upstream was queried: {out}");
+    assert_eq!(out["after_dedup"], 3, "the shared DOI collapsed 4→3 via real dedup: {out}");
+    assert_eq!(
+        out["records"].as_array().map(|r| r.len()),
+        Some(3),
+        "3 deduped records reached the workflow output: {out}"
+    );
+}
