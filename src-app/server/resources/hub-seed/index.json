@@ -492,22 +492,22 @@
       "manifest_path": "skills/io.github.ziee/effective-prompting/1.0.0.json"
     },
     {
-      "name": "io.github.ziee/sr-search-screen",
+      "name": "io.github.ziee/sr-review",
       "category": "workflow",
-      "title": "SR: Search & Screen",
-      "summary": "Search the literature and AI first-pass screen the deduped candidates into the screening panel.",
+      "title": "SR: Systematic Review (durable)",
+      "summary": "End-to-end systematic review in one durable run: search + LLM auto-expansion + AI screen, a human screening gate, open-access full-text extraction, a human review gate, and a cited evidence synthesis.",
       "tags": [
         "systematic-review",
         "literature",
         "screening",
-        "lit-search",
-        "llm-map"
+        "synthesis",
+        "lit-search"
       ],
       "verified": true,
-      "added_at": "2026-06-21",
+      "added_at": "2026-06-22",
       "min_ziee_version": null,
       "version": "1.0.0",
-      "manifest_path": "workflows/io.github.ziee/sr-search-screen/1.0.0.json"
+      "manifest_path": "workflows/io.github.ziee/sr-review/1.0.0.json"
     },
     {
       "name": "io.github.ziee/sr-snowball-screen",
@@ -526,24 +526,6 @@
       "min_ziee_version": null,
       "version": "1.0.0",
       "manifest_path": "workflows/io.github.ziee/sr-snowball-screen/1.0.0.json"
-    },
-    {
-      "name": "io.github.ziee/sr-extract-synthesize",
-      "category": "workflow",
-      "title": "SR: Extract & Synthesize",
-      "summary": "On the finalized included set: fetch open-access full text, extract quote-grounded study data, and write a cited evidence synthesis.",
-      "tags": [
-        "systematic-review",
-        "extraction",
-        "synthesis",
-        "full-text",
-        "lit-search"
-      ],
-      "verified": true,
-      "added_at": "2026-06-21",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "workflows/io.github.ziee/sr-extract-synthesize/1.0.0.json"
     }
   ]
 }

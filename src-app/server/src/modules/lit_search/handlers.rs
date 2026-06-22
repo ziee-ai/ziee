@@ -117,7 +117,15 @@ async fn dispatch_tool_call(
 
 #[derive(Debug, Deserialize)]
 struct SearchArgs {
-    query: String,
+    /// Single query (the common case).
+    #[serde(default)]
+    query: Option<String>,
+    /// Batch form: search several queries and return their merged (dedup→rank)
+    /// union. Used by the SR auto-expansion rounds so one tool step can run the
+    /// LLM's N derived queries. An empty list is a NO-OP (empty result) — that is
+    /// what lets a skipped auto-expansion round cost nothing.
+    #[serde(default)]
+    queries: Option<Vec<String>>,
     #[serde(default)]
     max_results: Option<i64>,
     #[serde(default)]
@@ -131,12 +139,35 @@ struct SearchArgs {
 // one exception is `do_fetch_fulltext`, whose envelope is bespoke (multi-paper
 // text + a `lit_dir`/`note` structuredContent) and is built inline.
 async fn do_search(args: &Value) -> Result<Value, AppError> {
+    use chrono::Datelike;
     let args: SearchArgs = serde_json::from_value(args.clone())
         .map_err(|e| AppError::bad_request("INVALID_ARGS", e.to_string()))?;
-    let q = args.query.trim();
-    if q.is_empty() {
+
+    // Resolve the query list. `queries` (batch) takes precedence over `query`
+    // (single); empty strings are dropped. Batch mode with no usable query is a
+    // NO-OP (empty result) — this is what makes a skipped SR auto-expansion round
+    // free. Single-query mode keeps the strict "must not be empty" error.
+    let (queries, batch_mode): (Vec<String>, bool) = if let Some(qs) = &args.queries {
+        (
+            qs.iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
+            true,
+        )
+    } else if let Some(q) = &args.query {
+        let q = q.trim().to_string();
+        (if q.is_empty() { vec![] } else { vec![q] }, false)
+    } else {
+        return Err(AppError::bad_request("VALIDATION_ERROR", "query or queries is required"));
+    };
+    if queries.is_empty() {
+        if batch_mode {
+            let empty = empty_result(String::new());
+            let structured = serde_json::to_value(&empty)
+                .map_err(|e| AppError::internal_error(e.to_string()))?;
+            return Ok(tool_result(build_digest(&empty), structured));
+        }
         return Err(AppError::bad_request("VALIDATION_ERROR", "query must not be empty"));
     }
+
     // Reject an inverted year range (otherwise it silently yields zero results).
     if let (Some(from), Some(to)) = (args.year_from, args.year_to)
         && from > to
@@ -164,7 +195,44 @@ async fn do_search(args: &Value) -> Result<Value, AppError> {
     if settings.max_results > settings.per_source_limit {
         settings.per_source_limit = settings.max_results.min(100);
     }
-    let result = connectors::aggregate_search(q, args.year_from, args.year_to, &settings).await?;
+
+    // Single query: the connector's own dedup→rank→cap result is final (no extra
+    // work — preserves the common-path behavior exactly). Multiple queries: run
+    // each and merge the union (dedup→rank→cap), mirroring `aggregate_search`'s tail.
+    let result = if queries.len() == 1 {
+        connectors::aggregate_search(&queries[0], args.year_from, args.year_to, &settings).await?
+    } else {
+        let mut all: Vec<super::models::LitRecord> = Vec::new();
+        let mut identified: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+        let mut degraded: Vec<String> = Vec::new();
+        for q in &queries {
+            let r = connectors::aggregate_search(q, args.year_from, args.year_to, &settings).await?;
+            for (k, v) in r.identified {
+                *identified.entry(k).or_insert(0) += v;
+            }
+            degraded.extend(r.degraded_sources);
+            all.extend(r.records);
+        }
+        let mut records = super::dedup::merge_by_doi(all);
+        super::ranking::rank(&mut records, &queries.join(" "), chrono::Utc::now().year());
+        let after_dedup = records.len();
+        records.truncate(settings.max_results.clamp(1, 200) as usize);
+        degraded.sort();
+        degraded.dedup();
+        let completeness = if settings.completeness_estimate_enabled {
+            Some(super::completeness::estimate(&records, &identified))
+        } else {
+            None
+        };
+        AggregateResult {
+            query: queries.join(" | "),
+            records,
+            identified,
+            after_dedup,
+            degraded_sources: degraded,
+            completeness,
+        }
+    };
     let digest = build_digest(&result);
     let structured =
         serde_json::to_value(&result).map_err(|e| AppError::internal_error(e.to_string()))?;
@@ -306,6 +374,21 @@ fn tool_result(text: String, structured: Value) -> Value {
         "content": [{ "type": "text", "text": text }],
         "structuredContent": structured,
     })
+}
+
+/// An empty `AggregateResult` — the NO-OP return for a batch `literature_search`
+/// with no usable queries, or `fetch_references` with no ids (e.g. a skipped SR
+/// auto-expansion round). Returning empty instead of erroring keeps a skipped
+/// round a clean no-op rather than an `on_error` path.
+fn empty_result(query: String) -> AggregateResult {
+    AggregateResult {
+        query,
+        records: vec![],
+        identified: std::collections::BTreeMap::new(),
+        after_dedup: 0,
+        degraded_sources: vec![],
+        completeness: None,
+    }
 }
 
 // ─────────────────────── dedup_records / verify_quote / fetch_references ──────
@@ -521,8 +604,15 @@ async fn do_fetch_references(args: &Value) -> Result<Value, AppError> {
         .filter(|s| !s.is_empty())
         .take(MAX_SNOWBALL_SEEDS)
         .collect();
+    // Empty ids = a NO-OP (e.g. an SR auto-expansion round the LLM chose not to
+    // snowball). Return an empty result rather than erroring, so the round is a
+    // clean no-op instead of an `on_error: skip` path. Returns before the
+    // enabled/connector gates — an empty snowball is a no-op regardless.
     if ids.is_empty() {
-        return Err(AppError::bad_request("VALIDATION_ERROR", "ids must not be empty"));
+        let empty = empty_result("references of 0 paper(s)".to_string());
+        let structured =
+            serde_json::to_value(&empty).map_err(|e| AppError::internal_error(e.to_string()))?;
+        return Ok(tool_result(build_digest(&empty), structured));
     }
     let forward = match args.direction.as_deref() {
         Some("forward") => true,
@@ -938,5 +1028,46 @@ mod tests {
     #[test]
     fn empty_quote_never_matches() {
         assert!(!quote_in_text("anything", "   "));
+    }
+
+    // ── batch/empty no-op paths (the SR auto-expansion early-stop substrate) ──
+    // These resolve + return BEFORE any DB/network call, so they're pure units.
+
+    #[tokio::test]
+    async fn search_empty_queries_batch_is_noop() {
+        let out = do_search(&json!({ "queries": [] }))
+            .await
+            .expect("empty batch must be a no-op, not an error");
+        let recs = out["structuredContent"]["records"].as_array().unwrap();
+        assert!(recs.is_empty(), "empty batch returns zero records");
+        assert_eq!(out["structuredContent"]["after_dedup"], json!(0));
+    }
+
+    #[tokio::test]
+    async fn search_queries_all_blank_is_noop() {
+        // Whitespace-only entries are dropped → empty → no-op (not an error).
+        let out = do_search(&json!({ "queries": ["  ", ""] }))
+            .await
+            .expect("all-blank batch must be a no-op");
+        assert!(out["structuredContent"]["records"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn search_single_empty_query_still_errors() {
+        // Back-compat: single-query mode keeps the strict empty-query error.
+        assert!(do_search(&json!({ "query": "" })).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn search_no_query_field_errors() {
+        assert!(do_search(&json!({})).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn fetch_references_empty_ids_is_noop() {
+        let out = do_fetch_references(&json!({ "ids": [] }))
+            .await
+            .expect("empty ids must be a no-op, not an error");
+        assert!(out["structuredContent"]["records"].as_array().unwrap().is_empty());
     }
 }

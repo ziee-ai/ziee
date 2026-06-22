@@ -1700,10 +1700,10 @@ steps:
     fn sr_seed_workflows_parse_and_validate() {
         let yamls = [
             (
-                "sr-search-screen",
+                "sr-review",
                 include_str!(concat!(
                     env!("CARGO_MANIFEST_DIR"),
-                    "/resources/hub-seed/workflows/io.github.ziee/sr-search-screen/workflow.yaml"
+                    "/resources/hub-seed/workflows/io.github.ziee/sr-review/workflow.yaml"
                 )),
             ),
             (
@@ -1711,13 +1711,6 @@ steps:
                 include_str!(concat!(
                     env!("CARGO_MANIFEST_DIR"),
                     "/resources/hub-seed/workflows/io.github.ziee/sr-snowball-screen/workflow.yaml"
-                )),
-            ),
-            (
-                "sr-extract-synthesize",
-                include_str!(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/resources/hub-seed/workflows/io.github.ziee/sr-extract-synthesize/workflow.yaml"
                 )),
             ),
         ];
@@ -1798,8 +1791,7 @@ steps:
                 )
             };
         }
-        sr!("sr-search-screen");
+        sr!("sr-review");
         sr!("sr-snowball-screen");
-        sr!("sr-extract-synthesize");
     }
 }

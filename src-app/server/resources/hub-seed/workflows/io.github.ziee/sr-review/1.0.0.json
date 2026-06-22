@@ -1,0 +1,20 @@
+{
+  "$schema": "/schemas/2026-06-12/workflow.schema.json",
+  "name": "io.github.ziee/sr-review",
+  "version": "1.0.0",
+  "description": "Durable systematic review in one workflow: search + 3 LLM auto-expansion rounds + AI screen → human screening gate → open-access full-text extraction → human review → cited evidence synthesis. Both human gates suspend indefinitely and survive restarts.",
+  "tags": [
+    "systematic-review",
+    "literature",
+    "screening",
+    "synthesis",
+    "lit-search"
+  ],
+  "license": "MIT",
+  "author": "ziee",
+  "bundle": {
+    "url": "workflows/io.github.ziee/sr-review/1.0.0.tar.gz",
+    "entry_point": "workflow.yaml"
+  },
+  "dependencies": []
+}
