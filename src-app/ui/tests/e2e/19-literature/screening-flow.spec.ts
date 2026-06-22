@@ -58,8 +58,10 @@ test.describe('Literature screening flow', () => {
     await expect(reason).toBeVisible()
     await reason.fill('out of scope')
 
-    // Export → CSV download.
-    await page.getByRole('button', { name: /Export/ }).click()
+    // Export → CSV download. Scope to the PANEL's export button ("Export all" /
+    // "Export included") — a bare /Export/ also matches the chat-conversation
+    // export button (chat/extensions/export), present in the conversation.
+    await page.getByRole('button', { name: /Export (all|included)/ }).click()
     const download = page.waitForEvent('download')
     await page.getByRole('menuitem', { name: 'Export CSV' }).click()
     const file = await download

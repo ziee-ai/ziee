@@ -168,7 +168,10 @@ test.describe('Literature search admin settings', () => {
     await gotoLiterature(page, baseURL)
 
     await expect(page.getByText('Enable literature search')).toBeVisible()
-    await expect(page.getByText('Europe PMC')).toBeVisible()
+    // `exact` — the connector's name renders in the divider header AND inside its
+    // keyless_note paragraph, so a substring match resolves to 2 elements (matches
+    // the CORE assertion just below, which already scopes with exact).
+    await expect(page.getByText('Europe PMC', { exact: true })).toBeVisible()
     await expect(page.getByText('CORE', { exact: true })).toBeVisible()
     // CORE (required key, unset) shows the "Needs key" tag.
     await expect(page.getByText('Needs key')).toBeVisible()
@@ -240,7 +243,11 @@ test.describe('Literature search admin settings', () => {
     await expect(page.getByLabel('Contact email')).toHaveValue('stored@example.org')
 
     // Saving WITHOUT retyping must round-trip it — not wipe it to '' (the bug).
-    // (Touch the field so the form is dirty / Save is enabled, then restore.)
+    // Save is dirty-gated (`disabled={!canManage || !dirty}`), and re-`fill`ing the
+    // SAME value doesn't fire antd's `onValuesChange` → Save stays disabled and the
+    // click times out. Clear then restore the stored value to force `dirty`, while
+    // still verifying the save round-trips the stored value (not '').
+    await page.getByLabel('Contact email').fill('')
     await page.getByLabel('Contact email').fill('stored@example.org')
     await page
       .locator('form')
