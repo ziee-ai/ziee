@@ -1608,8 +1608,9 @@ steps:
     }
 
     /// The vendored SR hub workflows must parse + pass install-time validation
-    /// (serde shape + semantic + template ref-check). Guards the authored
-    /// `resources/hub-seed/workflows/io.github.ziee/sr-*` bundles.
+    /// (serde shape + semantic + template ref-check). Reads the committed loose
+    /// `workflow.yaml` source — the seed stores these as source; `build.rs`
+    /// (`build_helper/hub_seed.rs`) packs them into the bundle tarball at build.
     #[test]
     fn sr_seed_workflows_parse_and_validate() {
         let yamls = [
@@ -1643,15 +1644,18 @@ steps:
         }
     }
 
-    /// Each SR bundle must be internally consistent: the manifest's sha256/size
-    /// match the shipped `.tar.gz`, AND the loose `workflow.yaml` (the in-tree
-    /// source the test above reads) is byte-identical to the one packed inside
-    /// the tarball. Catches a re-tar that forgot to refresh the manifest, or an
-    /// edited yaml that wasn't re-packed.
+    /// The build-time packer (`build_helper/hub_seed.rs`) tars the committed
+    /// source `workflow.yaml` into the bundle `.tar.gz` and rewrites the
+    /// manifest's sha256/size into the BAKED seed (`binaries/hub-seed/`, the
+    /// `include_dir!` source). Assert that baked pair is self-consistent and
+    /// packs the committed source verbatim — a regression net for the packer
+    /// that makes bundle↔manifest drift impossible by construction. (The baked
+    /// dir is populated by `build.rs` before this crate compiles, same as the
+    /// `include_dir!` in `hub_manager.rs`.)
     #[test]
     fn sr_seed_bundles_are_internally_consistent() {
         use sha2::{Digest, Sha256};
-        fn check(name: &str, tar_gz: &[u8], manifest: &str, loose_yaml: &str) {
+        fn check(name: &str, tar_gz: &[u8], manifest: &str, source_yaml: &str) {
             let m: serde_json::Value =
                 serde_json::from_str(manifest).unwrap_or_else(|e| panic!("{name}: manifest: {e}"));
             let want_sha = m["bundle"]["sha256"].as_str().expect("manifest sha256");
@@ -1661,8 +1665,12 @@ steps:
                 h.update(tar_gz);
                 h.finalize().iter().map(|b| format!("{b:02x}")).collect()
             };
-            assert_eq!(got_sha, want_sha, "{name}: tar.gz sha256 != manifest");
-            assert_eq!(tar_gz.len() as u64, want_size, "{name}: tar.gz size != manifest");
+            assert_eq!(got_sha, want_sha, "{name}: baked tar.gz sha256 != baked manifest");
+            assert_eq!(
+                tar_gz.len() as u64,
+                want_size,
+                "{name}: baked tar.gz size != baked manifest"
+            );
 
             let gz = flate2::read::GzDecoder::new(tar_gz);
             let mut ar = tar::Archive::new(gz);
@@ -1676,8 +1684,9 @@ steps:
                     packed = Some(s);
                 }
             }
-            let packed = packed.unwrap_or_else(|| panic!("{name}: no workflow.yaml in tarball"));
-            assert_eq!(packed, loose_yaml, "{name}: packed workflow.yaml != loose source");
+            let packed =
+                packed.unwrap_or_else(|| panic!("{name}: no workflow.yaml in baked tarball"));
+            assert_eq!(packed, source_yaml, "{name}: packed workflow.yaml != committed source");
         }
         macro_rules! sr {
             ($n:literal) => {
@@ -1685,13 +1694,13 @@ steps:
                     $n,
                     include_bytes!(concat!(
                         env!("CARGO_MANIFEST_DIR"),
-                        "/resources/hub-seed/workflows/io.github.ziee/",
+                        "/binaries/hub-seed/workflows/io.github.ziee/",
                         $n,
                         "/1.0.0.tar.gz"
                     )),
                     include_str!(concat!(
                         env!("CARGO_MANIFEST_DIR"),
-                        "/resources/hub-seed/workflows/io.github.ziee/",
+                        "/binaries/hub-seed/workflows/io.github.ziee/",
                         $n,
                         "/1.0.0.json"
                     )),

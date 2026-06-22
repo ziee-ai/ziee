@@ -14,9 +14,6 @@
   "author": "ziee",
   "bundle": {
     "url": "workflows/io.github.ziee/sr-search-screen/1.0.0.tar.gz",
-    "sha256": "d7105f4a76d17e9e2e65937adb83772de0d3072e156cc0138458adb6ab0f2566",
-    "size_bytes": 1429,
-    "file_count": 1,
     "entry_point": "workflow.yaml"
   },
   "dependencies": []

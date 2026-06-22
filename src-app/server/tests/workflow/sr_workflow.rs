@@ -15,8 +15,9 @@ use super::{
     import_dev_workflow, plain_server, poll_run, run_workflow, stub_conversation, workflow_user,
 };
 
-/// The vendored seed workflow.yaml — the test runs the SHIPPED definition, so a
-/// drift between the bundle and this assertion is caught.
+/// The vendored seed workflow source — the committed `workflow.yaml` (the seed
+/// stores these as source; `build.rs` packs them into the bundle tarball at
+/// build time). The test imports the exact definition that ships.
 const SR_SEARCH_SCREEN_YAML: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/resources/hub-seed/workflows/io.github.ziee/sr-search-screen/workflow.yaml"
@@ -146,13 +147,9 @@ const SR_SNOWBALL_SCREEN_YAML: &str = include_str!(concat!(
 async fn sr_snowball_screen_runs_and_surfaces_screening_outputs() {
     let server = plain_server().await;
     let user = workflow_user(&server, "wf_sr_snow_user").await;
-    let wf = import_dev_workflow(
-        &server,
-        &user.token,
-        "sr-snowball-screen",
-        SR_SNOWBALL_SCREEN_YAML,
-    )
-    .await;
+    let wf =
+        import_dev_workflow(&server, &user.token, "sr-snowball-screen", SR_SNOWBALL_SCREEN_YAML)
+            .await;
     let wf_id = wf["id"].as_str().expect("workflow id").to_string();
     let (_stub, conv_id) = stub_conversation(&server, &user.user_id, &user.token).await;
 
