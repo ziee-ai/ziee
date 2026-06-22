@@ -58,7 +58,11 @@ impl SandboxBackend for LinuxBwrapBackend {
         timeout_secs: Option<u64>,
         flavor: &str,
         extra_mounts: &[crate::modules::code_sandbox::workflow_staging::StagedMount],
+        progress_tx: Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>,
     ) -> Result<SandboxRunResult, AppError> {
+        // bwrap runs directly on the host, so the host owns the progress FIFO
+        // (created + read inside `run_in_sandbox_with_mounts`). Thread the sink
+        // straight through.
         sandbox::run_in_sandbox_with_mounts(
             state,
             ctx,
@@ -66,6 +70,7 @@ impl SandboxBackend for LinuxBwrapBackend {
             timeout_secs,
             flavor,
             extra_mounts,
+            progress_tx,
         )
         .await
     }

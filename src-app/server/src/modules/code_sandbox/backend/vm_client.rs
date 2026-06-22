@@ -15,10 +15,17 @@ use crate::modules::code_sandbox::sandbox::{SandboxRunResult, OUTPUT_CAP_BYTES};
 
 /// Run one command on a connected control stream. Transport-agnostic: the
 /// caller (mac unix socket / WSL2 TCP) connects and hands the stream in.
+///
+/// `progress_tx` is the live-progress sink (workflow sandbox step). When the
+/// agent provisioned the `/ziee/progress` FIFO (because `req.progress` was set),
+/// it forwards each newline-trimmed line as a `Frame::ProcessProgress`; we
+/// route the `bytes` straight to this sender. `None` (every chat/MCP exec) →
+/// any stray progress frame is ignored defensively.
 pub async fn run_on_stream<S>(
     mut stream: S,
     req: ExecRequest,
     timeout_secs: u64,
+    progress_tx: Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>,
 ) -> Result<SandboxRunResult, AppError>
 where
     S: AsyncRead + AsyncWrite + Unpin,
@@ -67,7 +74,16 @@ where
                 }
                 Ok(Some(Frame::Exec(_))) => {} // not expected from the guest
                 Ok(Some(Frame::Shutdown)) => {} // host-only frame; ignore if echoed
-                // Long-lived frames don't belong on a one-shot Exec
+                // Live-progress line from the guest agent's FIFO reader
+                // (workflow sandbox step). Forward the raw bytes (one
+                // newline-trimmed line) to the sink. Ignored when no sink is
+                // wired (stray frame on a non-progress exec).
+                Ok(Some(Frame::ProcessProgress { bytes, .. })) => {
+                    if let Some(tx) = progress_tx.as_ref() {
+                        let _ = tx.send(bytes);
+                    }
+                }
+                // Other long-lived frames don't belong on a one-shot Exec
                 // connection; the guest only emits them when the host
                 // sent StartProcess first. Ignore defensively.
                 Ok(Some(

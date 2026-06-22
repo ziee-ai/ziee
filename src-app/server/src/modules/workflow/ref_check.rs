@@ -161,6 +161,9 @@ pub fn check_typed_refs(workflow: &WorkflowDef) -> Vec<ValidationError> {
         if let Some(msg) = &s.message {
             check_body(&format!("{}.message", s.id), msg, &mut out);
         }
+        if let Some(desc) = &s.description {
+            check_body(&format!("{}.description", s.id), desc, &mut out);
+        }
     }
     for o in &workflow.outputs {
         check_body(&format!("outputs[{}].from", o.name), &o.from, &mut out);

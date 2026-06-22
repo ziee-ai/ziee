@@ -655,7 +655,6 @@ impl StepDispatcher for SandboxDispatcher {
         cancel: Arc<registry::RunHandle>,
         emit: Arc<dyn ProgressEmitter>,
     ) -> StepResult {
-        let _ = emit;
         let started = Instant::now();
 
         let (run, stdin, _timeout_ms) = match &step.config {
@@ -780,13 +779,47 @@ impl StepDispatcher for SandboxDispatcher {
             files: Arc::new(Vec::new()),
         };
 
+        // Live progress (P2): a per-step sink feeds the consumer, which parses
+        // `$ZIEE_PROGRESS` lines, coalesces per track, and emits `StepProgress`.
+        // The sink is moved into the exec; when the exec future completes (or is
+        // dropped on cancel) the sender drops, the consumer's `rx` closes, it
+        // does a final flush, and ends.
+        let progress_pool = crate::core::repository::Repos.pool().clone();
+        let (progress_tx, progress_rx) =
+            tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+        let progress_consumer =
+            tokio::spawn(crate::modules::workflow::sandbox_progress::run_progress_consumer(
+                progress_rx,
+                emit.clone(),
+                progress_pool.clone(),
+                ctx.run_id,
+                step.id.clone(),
+            ));
+
         // Dispatch — wrapping in select! gives us prompt cancel via
         // future-drop (kill_on_drop(true) is already set on the sandbox
         // Command).
         let result = tokio::select! {
-            r = execute_command_with_mounts(&sb_ctx, &cmd, &flavor, &mounts) => r,
-            _ = cancel.await_cancel() => return StepResult::Cancelled,
+            r = execute_command_with_mounts(
+                &sb_ctx, &cmd, &flavor, &mounts, Some(progress_tx),
+            ) => r,
+            _ = cancel.await_cancel() => {
+                // P2.8: tear the consumer down so no progress frames fire after
+                // cancel (the exec future drops here, killing the sandbox), and
+                // clear the live-progress slot ourselves (the aborted consumer
+                // can't run its own end-clear).
+                progress_consumer.abort();
+                let _ = crate::modules::workflow::repository::clear_step_progress(
+                    &progress_pool,
+                    ctx.run_id,
+                )
+                .await;
+                return StepResult::Cancelled;
+            }
         };
+        // Exec finished → the sink dropped inside it → drain + flush + clear the
+        // consumer before we move on.
+        let _ = progress_consumer.await;
 
         let response = match result {
             Ok(v) => v,

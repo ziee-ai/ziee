@@ -48,6 +48,27 @@ use serde::{Deserialize, Serialize};
 /// `UnknownTag`, so PROTOCOL_VERSION stays at 1.
 pub const PROTOCOL_VERSION: u32 = 1;
 
+/// Path the sandbox step's code writes live-progress lines to (the value of
+/// `$ZIEE_PROGRESS`). `build_bwrap_argv` binds the host/guest progress FIFO
+/// onto this path inside the bwrap mount namespace and `--setenv`s it. Fixed so
+/// the argv builder + the agent + the runtime contract all agree.
+pub const PROGRESS_SANDBOX_PATH: &str = "/ziee/progress";
+
+/// Guest-local FIFO path the agent creates and the host-built bwrap argv binds
+/// to [`PROGRESS_SANDBOX_PATH`]. MUST live on a guest-local filesystem (the
+/// agent's `/tmp` tmpfs) — libkrun virtio-fs has an `O_CREAT`/`mkfifo` EPERM
+/// bug on macOS, so the FIFO cannot live on the virtio-fs-shared workspace.
+/// The Linux backend uses its own per-exec host path instead (the FIFO is
+/// host-local there); this constant is only the VM-backend (agent) location.
+pub const PROGRESS_GUEST_FIFO_PATH: &str = "/tmp/.ziee-progress.fifo";
+
+/// Per-line cap on a progress FIFO `write()`. A single FIFO write below
+/// `PIPE_BUF` (4096 on Linux) is atomic, so concurrent writers can't interleave
+/// partial lines. Lines longer than this are dropped (not forwarded) rather
+/// than risking a torn/interleaved frame. Shared host+agent so both readers
+/// enforce the same boundary.
+pub const PROGRESS_MAX_LINE_BYTES: usize = 4096;
+
 /// Request to run one command in the sandbox. `argv` is the complete bwrap
 /// argv produced by the host (already pointing at *guest* paths for the rootfs
 /// mount + workspace); the agent execs `bwrap_path` with it verbatim.
@@ -80,6 +101,15 @@ pub struct ExecRequest {
     /// host owns the policy so it stays single-source (and config-driven later).
     #[serde(default)]
     pub cgroup: Option<CgroupLimits>,
+    /// If true, the agent creates the progress FIFO at
+    /// [`PROGRESS_GUEST_FIFO_PATH`] before spawning bwrap, reads it line-by-line,
+    /// and forwards each line as a [`Frame::ProcessProgress`] (using
+    /// `request_id` as the handle). The host-built argv already binds that FIFO
+    /// onto [`PROGRESS_SANDBOX_PATH`] + sets `$ZIEE_PROGRESS`. `false` (default)
+    /// → no FIFO, no `$ZIEE_PROGRESS` (every chat/MCP exec; only the workflow
+    /// sandbox step opts in). Older agents lacking the field see `false`.
+    #[serde(default)]
+    pub progress: bool,
 }
 
 /// cgroup v2 resource limits the guest agent applies per exec. Values mirror
@@ -219,6 +249,12 @@ pub enum Frame {
     Ping,
     /// either direction: response to `Ping`.
     Pong,
+    /// guest → host: a live-progress line for process `handle`, read from the
+    /// sandbox step's `$ZIEE_PROGRESS` FIFO. Same byte-frame shape as
+    /// `ProcessStdout`, but the host parses it as `progress.v1`, not step
+    /// output. (Tag 15 — additive; coordinate the tag value when rebasing onto
+    /// a branch that already added a tag 15.)
+    ProcessProgress { handle: u64, bytes: Vec<u8> },
 }
 
 const TAG_EXEC: u8 = 1;
@@ -235,6 +271,7 @@ const TAG_PROCESS_EXIT: u8 = 11;
 const TAG_KILL_PROCESS: u8 = 12;
 const TAG_PING: u8 = 13;
 const TAG_PONG: u8 = 14;
+const TAG_PROGRESS: u8 = 15;
 
 /// Length of the `u64 BE` handle prefix on `Stdin`/`ProcessStdout`/
 /// `ProcessStderr` payloads.
@@ -299,6 +336,9 @@ pub fn encode(frame: &Frame) -> Vec<u8> {
         ),
         Frame::Ping => (TAG_PING, Vec::new()),
         Frame::Pong => (TAG_PONG, Vec::new()),
+        Frame::ProcessProgress { handle, bytes } => {
+            (TAG_PROGRESS, encode_handle_bytes(*handle, bytes))
+        }
     };
     let mut out = Vec::with_capacity(HEADER_LEN + payload.len());
     out.push(tag);
@@ -401,6 +441,10 @@ impl Decoder {
             ),
             TAG_PING => Frame::Ping,
             TAG_PONG => Frame::Pong,
+            TAG_PROGRESS => {
+                let (handle, bytes) = decode_handle_bytes(&payload)?;
+                Frame::ProcessProgress { handle, bytes }
+            }
             other => return Err(ProtocolError::UnknownTag(other)),
         };
         Ok(Some(frame))
@@ -420,6 +464,7 @@ mod tests {
             timeout_ms: 600_000,
             seccomp_fd: Some(10),
             cgroup: Some(CgroupLimits::default_policy()),
+            progress: false,
         })
     }
 
@@ -439,6 +484,18 @@ mod tests {
             assert_eq!(decoded, frame);
             assert!(d.next_frame().unwrap().is_none(), "no trailing frame");
         }
+    }
+
+    #[test]
+    fn roundtrips_process_progress() {
+        let frame = Frame::ProcessProgress {
+            handle: 7,
+            bytes: br#"{"type":"bar","fraction":0.42}"#.to_vec(),
+        };
+        let mut d = Decoder::new();
+        d.feed(&encode(&frame));
+        assert_eq!(d.next_frame().unwrap(), Some(frame));
+        assert!(d.next_frame().unwrap().is_none());
     }
 
     #[test]

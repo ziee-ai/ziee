@@ -22,18 +22,23 @@ pub async fn execute_command(
     command: &str,
     flavor: &str,
 ) -> Result<serde_json::Value, AppError> {
-    execute_command_with_mounts(ctx, command, flavor, &[]).await
+    execute_command_with_mounts(ctx, command, flavor, &[], None).await
 }
 
 /// `execute_command` with additional per-call bwrap binds (workflow
-/// runner integration; B4). Mounts are partitioned by mode in
-/// `build_bwrap_argv` (RO → `--ro-bind`, RW → `--bind`). The chat-side
-/// `execute_command` calls this with `&[]`.
+/// runner integration; B4) + an optional live-progress sink. Mounts are
+/// partitioned by mode in `build_bwrap_argv` (RO → `--ro-bind`, RW →
+/// `--bind`). When `progress_tx` is `Some`, the `/ziee/progress` FIFO is bound
+/// into the sandbox and each newline-trimmed line code writes to
+/// `$ZIEE_PROGRESS` (one raw FIFO `write()`) is forwarded to the sender — the
+/// seam the workflow dispatcher consumes. The chat/MCP-side `execute_command`
+/// calls this with `&[]` + `None`.
 pub async fn execute_command_with_mounts(
     ctx: &SandboxContext,
     command: &str,
     flavor: &str,
     extra_mounts: &[StagedMount],
+    progress_tx: Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>,
 ) -> Result<serde_json::Value, AppError> {
     let state = config::get_state().ok_or_else(|| {
         AppError::new(
@@ -137,6 +142,7 @@ pub async fn execute_command_with_mounts(
             Some(DEFAULT_TIMEOUT_SECS),
             flavor,
             &all_mounts,
+            progress_tx,
         )
         .await?;
 

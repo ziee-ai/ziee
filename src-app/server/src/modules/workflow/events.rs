@@ -15,7 +15,7 @@
 
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::modules::sync::{
@@ -79,6 +79,18 @@ pub struct SSEConnectedData {
     pub run_id: Uuid,
 }
 
+/// One step in the pipeline manifest the FE renders up front (Part 1, D4
+/// Option B). `description` is rendered against inputs (best-effort) for
+/// pending steps; the FE upgrades it to the full-context render on
+/// `StepStarted`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SSEStepManifestItem {
+    pub id: String,
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct SSESnapshotData {
     pub run_id: Uuid,
@@ -91,6 +103,16 @@ pub struct SSESnapshotData {
     pub step_artifacts_json: serde_json::Value,
     pub pending_elicitation_json: Option<serde_json::Value>,
     pub final_output_json: Option<serde_json::Value>,
+    /// P2.6: the running sandbox step's live track map (`{ id -> ProgressTrack }`)
+    /// so a (re)connecting client rehydrates in-flight bars. `None` when no step
+    /// is currently streaming progress.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub step_progress_json: Option<serde_json::Value>,
+    /// The full pipeline (topo order) so a (re)connecting client renders all
+    /// steps up front — pending ones included. Rebuilt from the run's
+    /// compiled IR. Empty for legacy/in-flight rows without a manifest.
+    #[serde(default)]
+    pub step_manifest: Vec<SSEStepManifestItem>,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -101,6 +123,10 @@ pub struct SSERunStartedData {
     pub sandbox_flavor: Option<String>,
     pub total_steps: u32,
     pub conversation_id: Option<Uuid>,
+    /// The full pipeline manifest for live first-paint (descriptions rendered
+    /// against inputs). Mirrors `SSESnapshotData.step_manifest`.
+    #[serde(default)]
+    pub step_manifest: Vec<SSEStepManifestItem>,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -111,6 +137,10 @@ pub struct SSEStepStartedData {
     pub step_index: u32,
     pub total_steps: u32,
     pub message: Option<String>,
+    /// Full-context render of the step's `description` (inputs + completed
+    /// step outputs). The FE upgrades the manifest row's label to this.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -179,6 +209,61 @@ pub struct SSERunFailedData {
     pub failed_at_step: Option<String>,
 }
 
+/// The typed `progress.v1` payload of one live track (P2.2/P2.3). The author
+/// writes this FLAT (`{ "type":"bar", "fraction":0.4 }`); the sandbox-progress
+/// parser maps it into this nested form (kind under `kind`). All strings are
+/// plaintext (the FE renders them escaped).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ProgressKind {
+    Status {
+        message: String,
+    },
+    Bar {
+        /// Clamped to [0,1] by the parser.
+        fraction: f64,
+    },
+    Counter {
+        current: f64,
+        total: f64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        unit: Option<String>,
+    },
+    Log {
+        line: String,
+    },
+    Phase {
+        name: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        index: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        total: Option<u32>,
+    },
+}
+
+/// One live progress track inside a sandbox step. `id` keys parallel substeps
+/// (empty string = the step's single/default track); `done` finalizes/removes
+/// it. Persisted in `step_progress_json` (the running step's track map) and
+/// streamed on `StepProgress`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct ProgressTrack {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub done: bool,
+    pub kind: ProgressKind,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct SSEStepProgressData {
+    pub run_id: Uuid,
+    pub step_id: String,
+    /// The tracks that changed in this throttle flush (P2.5 coalesce → batch).
+    pub tracks: Vec<ProgressTrack>,
+}
+
 crate::sse_event_enum! {
     #[derive(Debug, Clone, Serialize, JsonSchema)]
     pub enum SSEWorkflowRunEvent {
@@ -187,6 +272,7 @@ crate::sse_event_enum! {
         RunStarted(SSERunStartedData),
         StepStarted(SSEStepStartedData),
         StepItemProgress(SSEStepItemProgressData),
+        StepProgress(SSEStepProgressData),
         StepCompleted(SSEStepCompletedData),
         StepFailed(SSEStepFailedData),
         ElicitationRequired(SSEElicitationRequiredData),

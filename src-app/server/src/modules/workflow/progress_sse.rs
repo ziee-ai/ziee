@@ -22,8 +22,33 @@ use crate::common::{ApiResult, AppError};
 use crate::core::Repos;
 use crate::modules::permissions::extractors::RequirePermissions;
 use crate::modules::workflow::events::{
-    SSEConnectedData, SSESnapshotData, SSEWorkflowRunEvent,
+    SSEConnectedData, SSESnapshotData, SSEStepManifestItem, SSEWorkflowRunEvent,
 };
+
+/// Build the pipeline manifest for the Snapshot from the run's persisted
+/// compiled IR (topo order, raw `description` templates). Raw is the
+/// reconnect/replay baseline; the FE upgrades each label as `StepStarted`
+/// frames arrive (and `step_manifest_json`, when persisted, supersedes raw —
+/// P2.6 follow-up). Empty for legacy rows without a compiled IR.
+fn snapshot_manifest(compiled_ir_json: &Option<serde_json::Value>) -> Vec<SSEStepManifestItem> {
+    compiled_ir_json
+        .as_ref()
+        .and_then(|v| {
+            serde_json::from_value::<crate::modules::workflow::compiled::WorkflowIr>(v.clone()).ok()
+        })
+        .map(|ir| {
+            ir.topo_order
+                .iter()
+                .filter_map(|&i| ir.steps.get(i))
+                .map(|s| SSEStepManifestItem {
+                    id: s.id.clone(),
+                    kind: s.kind.clone(),
+                    description: s.description.clone(),
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
 use crate::modules::workflow::permissions::WorkflowsRead;
 use crate::modules::workflow::registry;
 use crate::modules::workflow::repository;
@@ -53,6 +78,14 @@ pub async fn subscribe(
         ));
     }
 
+    // The pipeline manifest comes from the run's workflow version (immutable
+    // per version → replay-safe). Best-effort: an empty manifest just means
+    // the FE falls back to building structure from its own workflow copy.
+    let step_manifest = match repository::find_by_id(Repos.pool(), row.workflow_id).await {
+        Ok(Some(wf)) => snapshot_manifest(&wf.compiled_ir_json),
+        _ => Vec::new(),
+    };
+
     // Snapshot first.
     let snapshot = SSEWorkflowRunEvent::Snapshot(SSESnapshotData {
         run_id,
@@ -65,6 +98,8 @@ pub async fn subscribe(
         step_artifacts_json: row.step_artifacts_json.clone(),
         pending_elicitation_json: row.pending_elicitation_json.clone(),
         final_output_json: row.final_output_json.clone(),
+        step_progress_json: row.step_progress_json.clone(),
+        step_manifest,
     });
 
     let terminal = matches!(row.status.as_str(), "completed" | "failed" | "cancelled");

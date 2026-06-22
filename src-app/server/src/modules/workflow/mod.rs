@@ -33,6 +33,7 @@ pub mod registry;
 pub mod repository;
 pub mod routes;
 pub mod runner;
+pub mod sandbox_progress;
 pub mod startup_sweep;
 pub mod template;
 pub mod test_runner;

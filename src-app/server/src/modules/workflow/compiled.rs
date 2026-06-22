@@ -94,6 +94,12 @@ pub struct IrStep {
     pub est_calls: u64,
     /// `true` when this step is a `sandbox` step (touches the sandbox).
     pub uses_sandbox: bool,
+    /// Author-facing step label (the RAW `description` template). Persisted
+    /// in `compiled_ir_json` so the run replays its own labels and the FE can
+    /// render the pipeline manifest up front. Rendered at run-time (run-start
+    /// vs inputs, step-start vs full ctx). `None` when the step omits it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 /// One declared output, compiled.
@@ -156,6 +162,7 @@ pub fn compile(workflow: &WorkflowDef) -> WorkflowIr {
                 output_type: IrType::from(&infer_step_output_type(s)),
                 est_calls,
                 uses_sandbox: matches!(s.config, StepConfig::Sandbox { .. }),
+                description: s.description.clone(),
             }
         })
         .collect();
@@ -200,6 +207,33 @@ mod tests {
 
     fn wf(yaml: &str) -> WorkflowDef {
         parse_workflow_yaml(yaml).expect("parse")
+    }
+
+    #[test]
+    fn compile_carries_step_description_into_ir() {
+        let w = wf(r#"
+inputs:
+  - name: topic
+    required: true
+steps:
+  - id: gen
+    kind: llm
+    prompt: "x"
+    description: "Summarize {{ inputs.topic }}"
+  - id: plain
+    kind: llm
+    prompt: "y"
+    depends_on: [gen]
+"#);
+        let ir = compile(&w);
+        let gen_step = ir.steps.iter().find(|s| s.id == "gen").unwrap();
+        // Raw template preserved (rendered later at run-time).
+        assert_eq!(
+            gen_step.description.as_deref(),
+            Some("Summarize {{ inputs.topic }}")
+        );
+        let plain = ir.steps.iter().find(|s| s.id == "plain").unwrap();
+        assert_eq!(plain.description, None);
     }
 
     #[test]
