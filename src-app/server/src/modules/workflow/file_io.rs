@@ -31,6 +31,37 @@ pub const PREVIEW_CAP_BYTES: usize = 500;
 /// Hard cap on a single step's output file size (plan §4.4).
 pub const STEP_OUTPUT_CAP_BYTES: u64 = 10 * 1024 * 1024;
 
+/// Durable resume (E1): dev-run `mocks` live only in the `/run` request
+/// (`RunContext.mocks`), so a run that suspends on a `timeout_ms: 0` gate would
+/// lose them and dispatch its post-gate steps to a REAL provider on resume.
+/// Persist them into a `mocks.json` sidecar in the (sweep-spared) run workspace
+/// at run start; `resume_run` reloads it via [`read_mocks`]. No-op for an empty
+/// map (the normal non-dev path — published runs carry no mocks).
+pub async fn write_mocks(ctx: &RunContext) -> Result<(), AppError> {
+    if ctx.mocks.is_empty() {
+        return Ok(());
+    }
+    let path = ctx.sandbox_workspace.join("mocks.json");
+    let bytes = serde_json::to_vec(&ctx.mocks)
+        .map_err(|e| AppError::internal_error(format!("serialize mocks: {e}")))?;
+    tokio::fs::write(&path, &bytes)
+        .await
+        .map_err(|e| AppError::internal_error(format!("write mocks.json: {e}")))?;
+    Ok(())
+}
+
+/// Reload the `mocks.json` sidecar written by [`write_mocks`] (resume path).
+/// Returns an empty map when absent/unreadable (a non-dev or no-mock run).
+pub async fn read_mocks(
+    sandbox_workspace: &std::path::Path,
+) -> std::collections::HashMap<String, Value> {
+    let path = sandbox_workspace.join("mocks.json");
+    match tokio::fs::read(&path).await {
+        Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_default(),
+        Err(_) => std::collections::HashMap::new(),
+    }
+}
+
 /// Write `value` into `<ctx.outputs_dir>/<step_id>.{json|txt}` atomically.
 /// Returns the `OutputMeta` the caller persists into
 /// `step_outputs_json`.

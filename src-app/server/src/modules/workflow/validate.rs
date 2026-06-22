@@ -193,6 +193,11 @@ pub enum StepConfig {
         /// pre-fill the reviewer's form. Surfaced on the pending record + SSE.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         data: Option<serde_json::Value>,
+        /// How long to wait for the human to submit, in ms. `0` = no timeout:
+        /// the run parks indefinitely (a durable human gate that survives an
+        /// app restart via durable resume). Any non-zero value is capped at
+        /// `ELICIT_TIMEOUT_HARD_CAP_MS` (30 min). Default 5 min — unbounded
+        /// must be explicit.
         #[serde(default = "default_elicit_timeout_ms")]
         timeout_ms: u32,
     },
@@ -623,7 +628,9 @@ fn check_steps_shape(workflow: &WorkflowDef) -> Vec<ValidationError> {
             }
         }
         if let StepConfig::Elicit { timeout_ms, .. } = &s.config {
-            if *timeout_ms > ELICIT_TIMEOUT_HARD_CAP_MS {
+            // `0` is the explicit "no timeout / wait indefinitely" sentinel and
+            // is always allowed; only a non-zero value is bounded by the cap.
+            if *timeout_ms != 0 && *timeout_ms > ELICIT_TIMEOUT_HARD_CAP_MS {
                 out.push(ValidationError::at(
                     "semantic",
                     "WORKFLOW_ELICIT_TIMEOUT_CAP",
@@ -1153,6 +1160,84 @@ steps:
         assert!(
             errs.iter().any(|e| e.code == "WORKFLOW_ELICIT_NO_MESSAGE"),
             "expected WORKFLOW_ELICIT_NO_MESSAGE, got: {errs:?}"
+        );
+    }
+
+    /// Change A: `timeout_ms: 0` is the explicit "no timeout / wait indefinitely"
+    /// sentinel (a durable gate) and must validate — NOT be treated as exceeding
+    /// any bound.
+    #[test]
+    fn elicit_timeout_zero_validates() {
+        let yaml = r#"
+steps:
+  - id: confirm
+    kind: elicit
+    message: "proceed?"
+    schema:
+      type: object
+      properties:
+        ok: { type: boolean }
+      required: [ok]
+    timeout_ms: 0
+"#;
+        let wf = parse_workflow_yaml(yaml).expect("parse");
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(
+            !errs.iter().any(|e| e.code == "WORKFLOW_ELICIT_TIMEOUT_CAP"),
+            "timeout_ms: 0 (unbounded) must NOT trip the cap check, got: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn elicit_timeout_over_cap_rejected() {
+        let yaml = format!(
+            r#"
+steps:
+  - id: confirm
+    kind: elicit
+    message: "proceed?"
+    schema:
+      type: object
+      properties:
+        ok: {{ type: boolean }}
+      required: [ok]
+    timeout_ms: {}
+"#,
+            ELICIT_TIMEOUT_HARD_CAP_MS + 1
+        );
+        let wf = parse_workflow_yaml(&yaml).expect("parse");
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(
+            errs.iter().any(|e| e.code == "WORKFLOW_ELICIT_TIMEOUT_CAP"),
+            "a non-zero timeout over the 30-min cap must be rejected, got: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn elicit_timeout_at_cap_accepted() {
+        let yaml = format!(
+            r#"
+steps:
+  - id: confirm
+    kind: elicit
+    message: "proceed?"
+    schema:
+      type: object
+      properties:
+        ok: {{ type: boolean }}
+      required: [ok]
+    timeout_ms: {}
+"#,
+            ELICIT_TIMEOUT_HARD_CAP_MS
+        );
+        let wf = parse_workflow_yaml(&yaml).expect("parse");
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(
+            !errs.iter().any(|e| e.code == "WORKFLOW_ELICIT_TIMEOUT_CAP"),
+            "a timeout exactly at the cap must be accepted, got: {errs:?}"
         );
     }
 

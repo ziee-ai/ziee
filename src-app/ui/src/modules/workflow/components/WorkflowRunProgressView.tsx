@@ -126,7 +126,11 @@ export function WorkflowRunProgressView({
         ? 'red'
         : run.status === 'cancelled'
           ? 'default'
-          : 'blue'
+          : // `waiting` = durably paused on a human gate (non-terminal); flag it
+            // distinctly from the active `running`/`pending` blue.
+            run.status === 'waiting'
+            ? 'gold'
+            : 'blue'
 
   return (
     <div className="flex flex-col gap-3">
