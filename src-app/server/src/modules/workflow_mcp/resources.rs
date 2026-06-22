@@ -214,8 +214,12 @@ pub async fn resources_read(
             // Gate by expose_logs.
             let def = workflow_def_for_run(pool, &run).await.ok();
             if !logs_surfaceable(def.as_ref(), &step_id) {
-                return Err(AppError::not_found(
-                    "log resource excluded by expose_logs: never",
+                // Refusal, not a missing resource — the log may well exist on
+                // disk; the workflow's `expose_logs` policy forbids surfacing it
+                // to the chat LLM. (`not_found` rendered "…never not found".)
+                return Err(AppError::forbidden(
+                    "WORKFLOW_LOG_NOT_EXPOSED",
+                    "log resource excluded by the workflow's expose_logs setting",
                 ));
             }
             read_log(&run, &step_id, &kind)?

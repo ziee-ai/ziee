@@ -142,5 +142,15 @@ test.describe('Workflows - run a standalone workflow (real LLM)', () => {
     await expect(
       page.getByText('completed', { exact: true }).first(),
     ).toBeVisible({ timeout: 60000 })
+
+    // A7: a completed LLM step surfaces its per-step log expanders — "Show
+    // prompt" (an llm step has a prompt) and "Show trace" (trace.json is
+    // written on completion). This guards the durable-log viewers against an
+    // antd render-trap and confirms the trace affordance shows for a completed
+    // step (it is correctly hidden for failed steps).
+    await expect(page.getByText('Show prompt').first()).toBeVisible({
+      timeout: 10000,
+    })
+    await expect(page.getByText('Show trace').first()).toBeVisible()
   })
 })
