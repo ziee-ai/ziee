@@ -323,4 +323,9 @@ pub enum StepResult {
         tokens_used: u64,
     },
     Cancelled,
+    /// Durable resume: the step parked the run on an indefinite (`timeout_ms:
+    /// 0`) human `elicit` gate. The runner exits to `waiting` WITHOUT marking a
+    /// terminal status; it re-spawns (resume_run) when the user submits. No
+    /// output is written until the response is consumed on resume.
+    Suspended,
 }

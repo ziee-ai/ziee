@@ -66,6 +66,13 @@ pub struct RunHandle {
     /// is "edge"-shaped — waiters added after the notify_waiters() call
     /// would otherwise block).
     pub cancelled: Arc<std::sync::atomic::AtomicBool>,
+    /// Durable resume: true while a runner task is resident on this handle;
+    /// false for a handle that exists ONLY to hold SSE clients (a run that
+    /// SUSPENDED on a `timeout_ms: 0` gate keeps its handle so subscribers stay
+    /// attached, but has no runner until `resume_run`). `resume_run`'s
+    /// idempotency guard + `submit_elicit`'s hot/cold branch key on this rather
+    /// than mere handle presence (a subscriber alone creates a handle).
+    pub has_runner: Arc<std::sync::atomic::AtomicBool>,
     pub clients: Arc<Mutex<HashMap<ClientId, ClientSender>>>,
     pub pending_elicitation: Arc<Mutex<Option<PendingElicit>>>,
     pub created_at: Instant,
@@ -77,10 +84,16 @@ impl RunHandle {
             cancel: Arc::new(Notify::new()),
             timeout_secs: Arc::new(std::sync::atomic::AtomicU64::new(DEFAULT_RUN_TIMEOUT_SECS)),
             cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            has_runner: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             clients: Arc::new(Mutex::new(HashMap::new())),
             pending_elicitation: Arc::new(Mutex::new(None)),
             created_at: Instant::now(),
         }
+    }
+
+    /// True when a runner task is resident (vs a clients-only handle).
+    pub fn has_runner(&self) -> bool {
+        self.has_runner.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     pub fn is_cancelled(&self) -> bool {
@@ -108,13 +121,39 @@ pub static RUN_HANDLES: Lazy<DashMap<Uuid, Arc<RunHandle>>> = Lazy::new(DashMap:
 pub const MAX_CLIENTS_PER_RUN: usize = 32;
 
 pub fn register(run_id: Uuid) -> Arc<RunHandle> {
-    let handle = Arc::new(RunHandle::new());
-    RUN_HANDLES.insert(run_id, handle.clone());
+    // Get-or-create: a cold subscriber may have already created a clients-only
+    // handle for this run (durable resume); reuse it so its SSE clients stay
+    // attached across the suspend → resume boundary. Mark a runner resident.
+    let handle = RUN_HANDLES
+        .entry(run_id)
+        .or_insert_with(|| Arc::new(RunHandle::new()))
+        .value()
+        .clone();
+    handle
+        .has_runner
+        .store(true, std::sync::atomic::Ordering::Relaxed);
     handle
 }
 
 pub fn unregister(run_id: Uuid) {
     RUN_HANDLES.remove(&run_id);
+}
+
+/// Durable resume: the runner suspended on a `timeout_ms: 0` gate. Clear the
+/// runner-resident flag but KEEP the handle so subscribers' SSE streams stay
+/// attached (and `resume_run` reuses the same handle + clients). The handle is
+/// reaped by TTL if the run never resumes / is never reopened.
+pub fn set_no_runner(run_id: Uuid) {
+    if let Some(h) = get(run_id) {
+        h.has_runner
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+/// True when a runner task is currently resident for this run (vs a
+/// clients-only handle or no handle at all).
+pub fn runner_resident(run_id: Uuid) -> bool {
+    get(run_id).map(|h| h.has_runner()).unwrap_or(false)
 }
 
 pub fn get(run_id: Uuid) -> Option<Arc<RunHandle>> {
@@ -152,7 +191,15 @@ pub fn cancel(run_id: Uuid) -> bool {
 // ============================================================
 
 pub fn register_client(run_id: Uuid, tx: ClientSender) -> Result<ClientId, &'static str> {
-    let handle = get(run_id).ok_or("run not active")?;
+    // Create-if-absent: a client may subscribe to a SUSPENDED (cold, `waiting`)
+    // run that has no resident runner — it still needs its snapshot + a live
+    // stream that `resume_run` later emits to. The created handle is
+    // clients-only (`has_runner` stays false) until a runner adopts it.
+    let handle = RUN_HANDLES
+        .entry(run_id)
+        .or_insert_with(|| Arc::new(RunHandle::new()))
+        .value()
+        .clone();
     let mut clients = handle.clients.lock().map_err(|_| "client map poisoned")?;
     if clients.len() >= MAX_CLIENTS_PER_RUN {
         return Err("too many subscribers");

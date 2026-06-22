@@ -35,6 +35,7 @@ use crate::modules::workflow::events::{
 use crate::modules::workflow::file_io;
 use crate::modules::workflow::log_io;
 use crate::modules::workflow::registry;
+use crate::modules::workflow::repository;
 use crate::modules::workflow::types::{
     ItemProgress, OutputMeta, ParsedAs, RunContext, StepKindTag, StepResult,
 };
@@ -1366,6 +1367,38 @@ impl StepDispatcher for ElicitDispatcher {
                 };
             }
         };
+
+        // === DURABLE RESUME (Change B) ===
+        // If a response was submitted while no runner was resident (a cold
+        // `timeout_ms: 0` gate, e.g. post-restart), `submit_elicit` persisted it
+        // on the run row + spawned this resume. Consume it here instead of
+        // re-presenting the gate. Stored shape: `{ step_id, elicitation_id,
+        // response }`; consumed only for THIS step, exactly once.
+        {
+            let pool = crate::core::Repos.pool();
+            if let Ok(Some(resp_json)) = repository::get_elicit_response(pool, ctx.run_id).await
+                && resp_json.get("step_id").and_then(|v| v.as_str()) == Some(step.id.as_str())
+            {
+                let eid = resp_json
+                    .get("elicitation_id")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| Uuid::parse_str(s).ok())
+                    .unwrap_or_else(Uuid::new_v4);
+                let value = resp_json.get("response").cloned().unwrap_or(Value::Null);
+                // Flip `waiting` → `running` (continuing the burst) and clear
+                // the durable response so it is consumed exactly once.
+                let _ = repository::mark_status(
+                    pool,
+                    ctx.run_id,
+                    crate::modules::workflow::models::WorkflowRunStatus::Running,
+                    None,
+                )
+                .await;
+                let _ = repository::set_elicit_response(pool, ctx.run_id, None).await;
+                return finish_elicit(ctx, &step.id, &emit, eid, value, started).await;
+            }
+        }
+
         // The elicitation prompt is the shared `StepDef.message` field.
         let message_tpl = match step.message.as_deref() {
             Some(m) => m.to_string(),
@@ -1404,9 +1437,69 @@ impl StepDispatcher for ElicitDispatcher {
         };
 
         let elicitation_id = Uuid::new_v4();
-        let deadline = chrono::Utc::now()
-            + chrono::Duration::milliseconds(timeout_ms as i64);
+        // `timeout_ms == 0` is the "no timeout — wait indefinitely" sentinel: a
+        // DURABLE gate. Rather than hold a resident task (which the fixed run
+        // wall-clock would kill at 30 min, and which wouldn't survive a
+        // restart), we persist the pending record, flip the run to `waiting`,
+        // and SUSPEND below — it resumes when the user submits (`submit_elicit`
+        // → `resume_run`). A far-future `deadline_at` keeps the submit handler's
+        // deadline check passing however long the human takes.
+        let deadline = if timeout_ms == 0 {
+            chrono::Utc::now() + chrono::Duration::days(365 * 100)
+        } else {
+            chrono::Utc::now() + chrono::Duration::milliseconds(timeout_ms as i64)
+        };
 
+        if timeout_ms == 0 {
+            // DURABLE GATE → SUSPEND. No registry slot (no resident task to
+            // deliver to). Persist the pending record (a reload / resume
+            // re-renders the form), mark `waiting`, emit, and return Suspended.
+            //
+            // v1 scope note: this targets STANDALONE runs (REST `/run`, fire-
+            // and-forget). A run invoked FROM CHAT via `workflow_mcp` blocks in
+            // `await_terminal`, whose no-progress guard treats a stale
+            // `updated_at` as a crash — a suspended run has no heartbeat, so a
+            // chat-invoked `timeout_ms: 0` gate is cancelled after ~5 min. That
+            // is acceptable for v1 (the blocking-tool model can't wait days);
+            // durable, human-paced reviews run standalone.
+            if let Err(e) = persist_pending(
+                ctx,
+                elicitation_id,
+                &step.id,
+                &message,
+                &schema,
+                data.as_ref(),
+                deadline,
+            )
+            .await
+            {
+                return StepResult::Failed {
+                    error: format!("persist pending elicit: {e}"),
+                    tokens_used: 0,
+                };
+            }
+            let _ = repository::mark_status(
+                crate::core::Repos.pool(),
+                ctx.run_id,
+                crate::modules::workflow::models::WorkflowRunStatus::Waiting,
+                None,
+            )
+            .await;
+            emit.emit(SSEWorkflowRunEvent::ElicitationRequired(
+                SSEElicitationRequiredData {
+                    run_id: ctx.run_id,
+                    step_id: step.id.clone(),
+                    elicitation_id,
+                    message,
+                    schema: schema.clone(),
+                    data: data.clone(),
+                    deadline_at: deadline,
+                },
+            ));
+            return StepResult::Suspended;
+        }
+
+        // BOUNDED GATE (`timeout_ms > 0`) → resident park (unchanged behavior).
         // M3: set the in-memory registry slot FIRST (synchronous), THEN
         // persist to DB, THEN emit. The `/elicit` handler validates the
         // elicitation_id against the DB record and delivers via the registry
@@ -1456,6 +1549,7 @@ impl StepDispatcher for ElicitDispatcher {
             },
         ));
 
+        // `timeout_ms > 0` here (the `== 0` durable case suspended above).
         let deadline_inst =
             std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms as u64);
 
@@ -1498,54 +1592,69 @@ impl StepDispatcher for ElicitDispatcher {
             }
         };
 
-        // E5: full jsonschema validation runs at the SUBMIT handler
-        // (handlers/elicit.rs `validate_response_shape` → 422 on mismatch), so a
-        // delivered response already conforms. This null-guard is just the
-        // post-handler fallback (a null can only arrive via a non-handler path).
-        if value.is_null() {
+        finish_elicit(ctx, &step.id, &emit, elicitation_id, value, started).await
+    }
+}
+
+/// Shared elicit-resolution tail: validate non-null, write the response as the
+/// step output, clear the pending record, emit `ElicitationResolved`, and return
+/// `Completed`. Called by both the resident-park resolve path and the durable
+/// resume-consume path (Change B), so they stay in lockstep.
+async fn finish_elicit(
+    ctx: &mut RunContext,
+    step_id: &str,
+    emit: &Arc<dyn ProgressEmitter>,
+    elicitation_id: Uuid,
+    value: Value,
+    started: Instant,
+) -> StepResult {
+    // E5: full jsonschema validation runs at the SUBMIT handler
+    // (handlers/elicit.rs `validate_response_shape` → 422 on mismatch), so a
+    // delivered response already conforms. This null-guard is the post-handler
+    // fallback (a null can only arrive via a non-handler path).
+    if value.is_null() {
+        let _ = clear_pending(ctx).await;
+        return StepResult::Failed {
+            error: "elicit response was null".into(),
+            tokens_used: 0,
+        };
+    }
+
+    let meta = match file_io::write_step_output(
+        ctx,
+        step_id,
+        &value,
+        ParsedAs::Json,
+        StepKindTag::Elicit,
+    )
+    .await
+    {
+        Ok(m) => m,
+        Err(e) => {
             let _ = clear_pending(ctx).await;
             return StepResult::Failed {
-                error: "elicit response was null".into(),
+                error: format!("persist elicit output: {e}"),
                 tokens_used: 0,
             };
         }
+    };
+    ctx.step_outputs.insert(step_id.to_string(), meta);
 
-        let meta = match file_io::write_step_output(
-            ctx,
-            &step.id,
-            &value,
-            ParsedAs::Json,
-            StepKindTag::Elicit,
-        )
-        .await
-        {
-            Ok(m) => m,
-            Err(e) => {
-                let _ = clear_pending(ctx).await;
-                return StepResult::Failed {
-                    error: format!("persist elicit output: {e}"),
-                    tokens_used: 0,
-                };
-            }
-        };
-        ctx.step_outputs.insert(step.id.clone(), meta);
+    let _ = clear_pending(ctx).await;
+    emit.emit(SSEWorkflowRunEvent::ElicitationResolved(
+        SSEElicitationResolvedData {
+            run_id: ctx.run_id,
+            step_id: step_id.to_string(),
+            elicitation_id,
+            resolved_by: "user".into(),
+        },
+    ));
 
-        let _ = clear_pending(ctx).await;
-        emit.emit(SSEWorkflowRunEvent::ElicitationResolved(
-            SSEElicitationResolvedData {
-                run_id: ctx.run_id,
-                step_id: step.id.clone(),
-                elicitation_id,
-                resolved_by: "user".into(),
-            },
-        ));
-
-        StepResult::Completed {
-            output: value,
-            parsed_as: ParsedAs::Json,
-            tokens_used: 0,
-            ms_elapsed: started.elapsed().as_millis() as u64,
-        }
+    StepResult::Completed {
+        output: value,
+        parsed_as: ParsedAs::Json,
+        tokens_used: 0,
+        ms_elapsed: started.elapsed().as_millis() as u64,
     }
 }
 

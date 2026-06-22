@@ -643,6 +643,46 @@ pub async fn set_pending_elicitation(
     Ok(())
 }
 
+/// Durable resume: persist a user-submitted elicit response on the run row so
+/// a freshly-spawned `resume_run` consumes it at the elicit step instead of
+/// re-parking. Stored as `{ step_id, elicitation_id, response }`; cleared
+/// (`None`) once consumed. Only ever set transiently on a cold `waiting` run.
+pub async fn set_elicit_response(
+    pool: &PgPool,
+    run_id: Uuid,
+    value: Option<serde_json::Value>,
+) -> Result<(), AppError> {
+    sqlx::query!(
+        r#"
+        UPDATE workflow_runs
+        SET elicit_response_json = $2,
+            updated_at = NOW()
+        WHERE id = $1
+        "#,
+        run_id,
+        value,
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(())
+}
+
+/// Read the durable elicit response (if any) for a run.
+pub async fn get_elicit_response(
+    pool: &PgPool,
+    run_id: Uuid,
+) -> Result<Option<serde_json::Value>, AppError> {
+    let row = sqlx::query!(
+        r#"SELECT elicit_response_json as "elicit_response_json: serde_json::Value" FROM workflow_runs WHERE id = $1"#,
+        run_id,
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(row.and_then(|r| r.elicit_response_json))
+}
+
 pub async fn set_final_output(
     pool: &PgPool,
     run_id: Uuid,
@@ -709,7 +749,7 @@ pub async fn cancel_cas(
         SET status = 'cancelled',
             error_message = 'cancelled by user',
             updated_at = NOW()
-        WHERE id = $1 AND status IN ('pending', 'running')
+        WHERE id = $1 AND status IN ('pending', 'running', 'waiting')
         RETURNING status
         "#,
         run_id,

@@ -84,6 +84,10 @@ pub struct ConversationWorkflowOverride {
 pub enum WorkflowRunStatus {
     Pending,
     Running,
+    /// Non-terminal: parked on an `elicit` human gate with no resident runner.
+    /// Spared by the boot sweep and resumed lazily when the human submits
+    /// (durable resume).
+    Waiting,
     Completed,
     Failed,
     Cancelled,
@@ -94,10 +98,21 @@ impl WorkflowRunStatus {
         match self {
             WorkflowRunStatus::Pending => "pending",
             WorkflowRunStatus::Running => "running",
+            WorkflowRunStatus::Waiting => "waiting",
             WorkflowRunStatus::Completed => "completed",
             WorkflowRunStatus::Failed => "failed",
             WorkflowRunStatus::Cancelled => "cancelled",
         }
+    }
+
+    /// A run in a terminal state will never transition again.
+    pub fn is_terminal(&self) -> bool {
+        matches!(
+            self,
+            WorkflowRunStatus::Completed
+                | WorkflowRunStatus::Failed
+                | WorkflowRunStatus::Cancelled
+        )
     }
 }
 
@@ -145,4 +160,25 @@ pub struct CreateWorkflowRun {
     /// call). Drives the run-history "trigger" badge.
     pub invocation_source: String,
     pub inputs_json: serde_json::Value,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn waiting_status_roundtrips_and_is_non_terminal() {
+        // Change B: the durable-resume `waiting` status serializes as "waiting"
+        // (matching the migration-110 CHECK + the SQL status filters) and is
+        // classified non-terminal so the boot sweep / cancel paths treat it as
+        // resumable, not done.
+        assert_eq!(WorkflowRunStatus::Waiting.as_str(), "waiting");
+        assert!(!WorkflowRunStatus::Waiting.is_terminal());
+        // Sanity: the terminal trio is terminal; the in-flight trio is not.
+        assert!(WorkflowRunStatus::Completed.is_terminal());
+        assert!(WorkflowRunStatus::Failed.is_terminal());
+        assert!(WorkflowRunStatus::Cancelled.is_terminal());
+        assert!(!WorkflowRunStatus::Pending.is_terminal());
+        assert!(!WorkflowRunStatus::Running.is_terminal());
+    }
 }

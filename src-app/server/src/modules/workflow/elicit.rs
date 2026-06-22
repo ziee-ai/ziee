@@ -24,6 +24,7 @@ use crate::modules::permissions::extractors::RequirePermissions;
 use crate::modules::workflow::permissions::WorkflowsExecute;
 use crate::modules::workflow::registry;
 use crate::modules::workflow::repository;
+use crate::modules::workflow::runner;
 use crate::modules::workflow::types::{
     ElicitationResponseRequest, PendingElicitationRecord,
 };
@@ -94,32 +95,66 @@ pub async fn submit_elicit(
         )).into());
     }
 
-    // Forward to the runner.
-    match registry::submit_elicitation_response(run_id, elicitation_id, req.response) {
-        Ok(()) => Ok((
+    let response = req.response;
+    let ack = || {
+        Ok((
             StatusCode::OK,
             Json(ElicitAckResponse {
                 status: "delivered".into(),
                 run_id,
                 elicitation_id,
             }),
-        )),
-        Err("stale") => Err::<_, (StatusCode, AppError)>((AppError::new(
-            StatusCode::GONE,
-            "WORKFLOW_ELICIT_STALE",
-            "elicitation_id no longer pending",
-        )).into()),
-        Err("none") => Err::<_, (StatusCode, AppError)>((AppError::new(
-            StatusCode::GONE,
-            "WORKFLOW_ELICIT_STALE",
-            "no pending elicitation",
-        )).into()),
-        Err(other) => Err::<_, (StatusCode, AppError)>((AppError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "WORKFLOW_ELICIT_DELIVER_FAILED",
-            format!("submit elicit: {other}"),
-        )).into()),
+        ))
+    };
+
+    // HOT path: a runner task is RESIDENT and parked on the in-memory slot (a
+    // bounded `timeout_ms>0` gate, or any gate while the app stayed up — a
+    // clients-only SSE handle does NOT count, so key on `runner_resident`).
+    // Deliver through the slot.
+    if registry::runner_resident(run_id) {
+        return match registry::submit_elicitation_response(run_id, elicitation_id, response) {
+            Ok(()) => ack(),
+            Err("stale") => Err::<_, (StatusCode, AppError)>((AppError::new(
+                StatusCode::GONE,
+                "WORKFLOW_ELICIT_STALE",
+                "elicitation_id no longer pending",
+            ))
+            .into()),
+            Err("none") => Err::<_, (StatusCode, AppError)>((AppError::new(
+                StatusCode::GONE,
+                "WORKFLOW_ELICIT_STALE",
+                "no pending elicitation",
+            ))
+            .into()),
+            Err(other) => Err::<_, (StatusCode, AppError)>((AppError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "WORKFLOW_ELICIT_DELIVER_FAILED",
+                format!("submit elicit: {other}"),
+            ))
+            .into()),
+        };
     }
+
+    // COLD path: no resident runner — a durable `timeout_ms: 0` gate that
+    // SUSPENDED (possibly across a restart). Persist the response durably and
+    // spawn a resume runner that consumes it at the gate (Change B). Only a
+    // parked `waiting` run resumes; anything else is stale.
+    if row.status != "waiting" {
+        return Err::<_, (StatusCode, AppError)>((AppError::new(
+            StatusCode::GONE,
+            "WORKFLOW_ELICIT_STALE",
+            "run is not awaiting input",
+        ))
+        .into());
+    }
+    let payload = serde_json::json!({
+        "step_id": pending.step_id,
+        "elicitation_id": elicitation_id,
+        "response": response,
+    });
+    repository::set_elicit_response(Repos.pool(), run_id, Some(payload)).await?;
+    runner::resume_run(Repos.pool(), run_id).await?;
+    ack()
 }
 
 /// Validate a value against a JSON Schema. E5: a full JSON-Schema engine (the

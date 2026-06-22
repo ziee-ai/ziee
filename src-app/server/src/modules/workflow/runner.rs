@@ -524,6 +524,31 @@ pub async fn run_workflow(
                 None,
             );
         }
+        RunInnerOutcome::Suspended { at_step } => {
+            // Durable elicit gate (`timeout_ms: 0`). Status is already `waiting`
+            // (set by the dispatcher). Do NOT mark terminal and do NOT emit a
+            // terminal event. KEEP the workspace intact — `outputs/` is the
+            // resume checkpoint and `resume_run` re-stages the rest. The
+            // heartbeat guard aborts on return; unregister so a later submit
+            // triggers `resume_run` (which no-ops if a handle is resident).
+            tracing::info!(
+                run_id = %run_id,
+                step = %at_step,
+                "workflow: suspended on durable elicit gate (status=waiting)"
+            );
+            crate::modules::workflow::events::emit_workflow_run(
+                crate::modules::sync::SyncAction::Update,
+                run_id,
+                user_id,
+                None,
+            );
+            // KEEP the handle (don't unregister): clear the runner-resident flag
+            // so subscribers' SSE streams stay attached and `resume_run` reuses
+            // this handle + its clients when the human submits. The heartbeat
+            // guard drops on return.
+            registry::set_no_runner(run_id);
+            return;
+        }
     }
 
     // Cleanup the EPHEMERAL scratch (the bundle copy + staged stdin) to
@@ -546,6 +571,10 @@ enum RunInnerOutcome {
     Completed { outputs_preview: Value },
     Cancelled { cancelled_at_step: Option<String> },
     Failed { error: String, failed_at_step: Option<String> },
+    /// Durable resume: the run parked on an indefinite (`timeout_ms: 0`) elicit
+    /// gate. The dispatcher already set status `waiting`; the runner exits
+    /// WITHOUT a terminal transition and re-spawns (`resume_run`) on submit.
+    Suspended { at_step: String },
 }
 
 /// Build the pipeline manifest for the live first-paint (Part 1, D4 Option B):
@@ -577,22 +606,41 @@ async fn run_inner(
     handle: Arc<registry::RunHandle>,
     emit: Arc<dyn ProgressEmitter>,
 ) -> RunInnerOutcome {
+    // Durable resume: `resume_run` preloads completed-step outputs into
+    // `ctx.step_outputs`; a fresh run starts empty. Used to skip the run-start
+    // emit (the run already exists) and, in the loop below, to skip already-
+    // completed steps.
+    let is_resume = !ctx.step_outputs.is_empty();
+
+    // No-op on resume (`mark_running` only promotes `pending`; a resumed run is
+    // `waiting`). The status flips back to `running` when the gate is consumed.
     let _ = repository::mark_running(pool, ctx.run_id).await;
-    emit.emit(SSEWorkflowRunEvent::RunStarted(SSERunStartedData {
-        run_id: ctx.run_id,
-        workflow_id: ctx.workflow_id,
-        model_id: Some(ctx.model_id),
-        sandbox_flavor: ctx.sandbox_flavor.clone(),
-        total_steps: workflow.steps.len() as u32,
-        conversation_id: ctx.conversation_id,
-        step_manifest: build_step_manifest(workflow, ctx),
-    }));
-    crate::modules::workflow::events::emit_workflow_run(
-        crate::modules::sync::SyncAction::Create,
-        ctx.run_id,
-        ctx.user_id,
-        None,
-    );
+    if is_resume {
+        // The run already exists; a (re)subscribing client rebuilds full state
+        // from the DB Snapshot. Nudge list views to refetch.
+        crate::modules::workflow::events::emit_workflow_run(
+            crate::modules::sync::SyncAction::Update,
+            ctx.run_id,
+            ctx.user_id,
+            None,
+        );
+    } else {
+        emit.emit(SSEWorkflowRunEvent::RunStarted(SSERunStartedData {
+            run_id: ctx.run_id,
+            workflow_id: ctx.workflow_id,
+            model_id: Some(ctx.model_id),
+            sandbox_flavor: ctx.sandbox_flavor.clone(),
+            total_steps: workflow.steps.len() as u32,
+            conversation_id: ctx.conversation_id,
+            step_manifest: build_step_manifest(workflow, ctx),
+        }));
+        crate::modules::workflow::events::emit_workflow_run(
+            crate::modules::sync::SyncAction::Create,
+            ctx.run_id,
+            ctx.user_id,
+            None,
+        );
+    }
 
     let order = match topo_sort_steps(workflow) {
         Ok(o) => o,
@@ -613,6 +661,30 @@ async fn run_inner(
             return RunInnerOutcome::Cancelled {
                 cancelled_at_step: Some(step.id.clone()),
             };
+        }
+
+        // Durable resume: a step whose output was already persisted (rehydrated
+        // into `ctx.step_outputs` by `resume_run`) is skipped — re-running it
+        // would re-spend tokens / re-fire side effects. The elicit gate we're
+        // resuming AT has no persisted output yet (it's written only when the
+        // response is consumed), so it is NOT skipped — it dispatches and the
+        // ElicitDispatcher consumes the durable submitted response. Emit a
+        // StepCompleted so live subscribers mark it done (reconnects rebuild
+        // from the DB Snapshot regardless).
+        if is_resume && ctx.step_outputs.contains_key(&step.id) {
+            let preview = ctx
+                .step_outputs
+                .get(&step.id)
+                .map(|m| m.preview.clone())
+                .unwrap_or_default();
+            emit.emit(SSEWorkflowRunEvent::StepCompleted(SSEStepCompletedData {
+                run_id: ctx.run_id,
+                step_id: step.id.clone(),
+                output_preview: preview,
+                tokens_used: 0,
+                ms_elapsed: 0,
+            }));
+            continue;
         }
 
         let message_rendered = step
@@ -839,6 +911,15 @@ async fn run_inner(
                     cancelled_at_step: Some(step.id.clone()),
                 };
             }
+            StepResult::Suspended => {
+                // Durable elicit gate (`timeout_ms: 0`): the dispatcher persisted
+                // the pending record + flipped status to `waiting`. Exit the DAG
+                // WITHOUT a terminal transition; `run_workflow` keeps the
+                // workspace and unregisters so a later submit re-spawns us.
+                return RunInnerOutcome::Suspended {
+                    at_step: step.id.clone(),
+                };
+            }
         }
 
         // Check DB-side cancel flip between steps (cheap safety net).
@@ -1032,6 +1113,22 @@ pub async fn run_for_test(
                 outputs: Default::default(),
             }
         }
+        Ok(RunInnerOutcome::Suspended { at_step }) => {
+            // The synchronous /test path cannot resume across a submit; a
+            // durable (`timeout_ms: 0`) elicit must be mocked in a test fixture.
+            let err = format!(
+                "test run suspended on durable elicit gate '{at_step}'; \
+                 mock the elicit step (timeout_ms:0 gates can't run synchronously)"
+            );
+            let _ =
+                repository::mark_status(pool, run_id, WorkflowRunStatus::Failed, Some(&err)).await;
+            TestRunOutcome {
+                run_id,
+                status: WorkflowRunStatus::Failed,
+                error: Some(err),
+                outputs: Default::default(),
+            }
+        }
         Err(_) => {
             let err = format!(
                 "workflow test runner wall-clock timeout ({}s)",
@@ -1148,6 +1245,11 @@ pub async fn spawn_run(
     ctx.persist_artifacts = opts.persist_artifacts;
     ctx.force_log_capture = opts.force_log_capture;
 
+    // E1: persist dev mocks into the (sweep-spared) workspace so a durable-gate
+    // suspend → resume keeps them — `resume_run` rebuilds the ctx WITHOUT the
+    // original /run request body. No-op when empty (the normal published path).
+    let _ = file_io::write_mocks(&ctx).await;
+
     let (provider, _name, _mid, _pid, _params) =
         crate::modules::chat::core::ai_provider::create_provider_from_model_id(model_id, user_id)
             .await?;
@@ -1158,6 +1260,131 @@ pub async fn spawn_run(
     });
 
     Ok(row.id)
+}
+
+/// Durable resume (Change B): re-spawn a runner for a `waiting` run parked on an
+/// indefinite (`timeout_ms: 0`) elicit gate. Reuses the existing `workflow_runs`
+/// row (no new row), rehydrates completed-step outputs + the token/byte caps
+/// from the persisted row, reloads dev mocks from the workspace sidecar, then
+/// runs the SAME `run_workflow` path — whose loop skips already-completed steps
+/// and whose ElicitDispatcher consumes the durable submitted response at the
+/// gate. Idempotent: a no-op if a runner is already resident.
+///
+/// Invoked lazily by `elicit::submit_elicit` when a submit lands on a run with
+/// no live registry handle (post-restart cold gate). Fire-and-forget: spawns
+/// the runner task and returns.
+pub async fn resume_run(pool: &PgPool, run_id: Uuid) -> Result<(), AppError> {
+    // Idempotency: a resident runner already owns this run (hot path / a racing
+    // duplicate submit). A clients-only handle (a cold subscriber's SSE) does
+    // NOT count — we still need to resume — so key on `runner_resident`, not
+    // mere handle presence.
+    if registry::runner_resident(run_id) {
+        return Ok(());
+    }
+
+    let run = repository::find_run(pool, run_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("WorkflowRun"))?;
+    // Only a parked durable gate resumes. Anything else (already running /
+    // terminal) is nothing to do.
+    if run.status != "waiting" {
+        return Ok(());
+    }
+
+    let workflow = repository::find_by_id(pool, run.workflow_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Workflow"))?;
+
+    // Parse + validate the on-disk workflow.yaml (same as spawn_run).
+    let wf_yaml_path = PathBuf::from(&workflow.extracted_path).join(&workflow.entry_point);
+    let content = tokio::fs::read_to_string(&wf_yaml_path).await.map_err(|e| {
+        AppError::internal_error(format!(
+            "workflow resume: read workflow.yaml at {}: {e}",
+            wf_yaml_path.display()
+        ))
+    })?;
+    let workflow_def = crate::modules::workflow::validate::parse_workflow_yaml(&content)?;
+    crate::modules::workflow::validate::validate_for_install(
+        &workflow_def,
+        std::path::Path::new(&workflow.extracted_path),
+        workflow.is_dev,
+    )?;
+
+    // The run's model was chosen at launch; re-resolve it (re-checks provider
+    // access — a model that became inaccessible can't be resumed).
+    let model_id = run.model_id.ok_or_else(|| {
+        AppError::internal_error("workflow resume: run row has no model_id")
+    })?;
+    let (model_id, model_name, model_max_tokens) =
+        resolve_run_model(run.user_id, Some(model_id), run.conversation_id).await?;
+
+    let sandbox_flavor = workflow_def.sandbox.as_ref().map(|s| s.flavor.clone());
+
+    let _handle = registry::register(run_id);
+
+    let workspace_root = workflow_workspace_root();
+    let mut ctx = preflight(
+        pool,
+        run_id,
+        run.user_id,
+        run.conversation_id,
+        workflow.id,
+        run.inputs_json.clone(),
+        &workflow_def,
+        PathBuf::from(&workflow.extracted_path),
+        workspace_root,
+        model_id,
+        model_name,
+        model_max_tokens,
+        sandbox_flavor,
+        workflow.is_dev,
+        HashMap::new(), // mocks reloaded from the workspace sidecar below
+        false,
+    )
+    .await?;
+    // Resumed standalone runs persist their (post-gate) artifacts like /run.
+    ctx.persist_artifacts = true;
+    // E1: reload dev mocks so post-gate steps stay deterministic across resume.
+    if workflow.is_dev {
+        ctx.mocks = file_io::read_mocks(&ctx.sandbox_workspace).await;
+    }
+    // Rehydrate completed-step outputs + caps so downstream `{{ step.output }}`
+    // resolves and the per-run token/byte caps stay enforced across resume.
+    rehydrate_ctx(&mut ctx, &run);
+
+    let (provider, _name, _mid, _pid, _params) =
+        crate::modules::chat::core::ai_provider::create_provider_from_model_id(
+            model_id,
+            run.user_id,
+        )
+        .await?;
+
+    let pool_for_task = pool.clone();
+    tokio::spawn(async move {
+        run_workflow(pool_for_task, ctx, workflow_def, provider).await;
+    });
+
+    Ok(())
+}
+
+/// Restore a resumed run's in-memory state from its persisted row: completed
+/// steps' `OutputMeta` (so downstream templates resolve without re-running),
+/// the cumulative output-byte tally, and the token total — keeping the per-run
+/// caps enforced across the resume boundary.
+fn rehydrate_ctx(ctx: &mut RunContext, run: &crate::modules::workflow::models::WorkflowRun) {
+    if let Value::Object(map) = &run.step_outputs_json {
+        for (step_id, meta_json) in map {
+            if let Ok(meta) =
+                serde_json::from_value::<crate::modules::workflow::types::OutputMeta>(
+                    meta_json.clone(),
+                )
+            {
+                ctx.total_output_bytes = ctx.total_output_bytes.saturating_add(meta.size_bytes);
+                ctx.step_outputs.insert(step_id.clone(), meta);
+            }
+        }
+    }
+    ctx.total_tokens = u64::try_from(run.total_tokens).unwrap_or(0);
 }
 
 /// Options threaded into a run from its invocation path (REST `/run` vs the
