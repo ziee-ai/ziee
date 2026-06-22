@@ -141,14 +141,18 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
           | undefined) ?? data
       const mergedReasons = { ...cur.reasons, ...reasonDrafts }
       const includedIds: string[] = []
-      const decisionsOut: Array<{ id: string; decision: string; reason: string; confidence: number }> = []
+      // The gate's `decisions` items accept {id, decision, reason}; omit
+      // `confidence` (the schema bounds it to [0,1] and a record's relevance score
+      // may exceed 1). `decisions` is an optional audit record — only
+      // `included_ids` drives the downstream full-text fetch.
+      const decisionsOut: Array<{ id: string; decision: string; reason: string }> = []
       for (const r of cur.records) {
         // Only records with a resolvable identifier can be fetched downstream.
         const id = r.doi || (r.pmid != null ? String(r.pmid) : '')
         if (!id) continue
         const decision = (cur.decisions[recordKey(r)] ?? 'unscreened') === 'include' ? 'include' : 'exclude'
         if (decision === 'include') includedIds.push(id)
-        decisionsOut.push({ id, decision, reason: mergedReasons[recordKey(r)] ?? '', confidence: r.relevance ?? 0 })
+        decisionsOut.push({ id, decision, reason: mergedReasons[recordKey(r)] ?? '' })
       }
       if (includedIds.length === 0) {
         message.warning('Mark at least one study as Include before continuing the review.')
