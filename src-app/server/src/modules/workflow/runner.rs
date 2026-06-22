@@ -378,22 +378,16 @@ pub async fn run_workflow(
     }
     let _heartbeat_guard = AbortOnDrop(heartbeat);
 
-    // Wrap the entire run in the wall-clock timeout.
-    let outcome = tokio::time::timeout(
+    // Wrap the entire run in the wall-clock timeout (factored into
+    // `run_with_wall_clock` so the timeout→Failed mapping is unit-testable
+    // behind an injectable Duration — E7).
+    let final_outcome = run_with_wall_clock(
         RUN_WALL_CLOCK,
         run_inner(&pool, &mut ctx, &workflow_def, provider, handle.clone(), emit.clone()),
     )
     .await;
 
     let total_tokens = ctx.total_tokens;
-
-    let final_outcome = match outcome {
-        Ok(r) => r,
-        Err(_) => RunInnerOutcome::Failed {
-            error: "workflow runner wall-clock timeout (30 min)".into(),
-            failed_at_step: None,
-        },
-    };
 
     match final_outcome {
         RunInnerOutcome::Completed { outputs_preview } => {
@@ -487,6 +481,23 @@ enum RunInnerOutcome {
     Completed { outputs_preview: Value },
     Cancelled { cancelled_at_step: Option<String> },
     Failed { error: String, failed_at_step: Option<String> },
+}
+
+/// Run the inner workflow future under a wall-clock cap (E7). Factored from
+/// the inline `tokio::time::timeout` so the timeout→Failed mapping is
+/// unit-testable behind an injectable `Duration`. On elapse the run is failed
+/// with the wall-clock message; otherwise the inner outcome passes through.
+async fn run_with_wall_clock<F>(dur: std::time::Duration, fut: F) -> RunInnerOutcome
+where
+    F: std::future::Future<Output = RunInnerOutcome>,
+{
+    match tokio::time::timeout(dur, fut).await {
+        Ok(r) => r,
+        Err(_) => RunInnerOutcome::Failed {
+            error: "workflow runner wall-clock timeout (30 min)".into(),
+            failed_at_step: None,
+        },
+    }
 }
 
 async fn run_inner(
@@ -687,6 +698,12 @@ async fn run_inner(
                 };
                 let _ = log_io::write_trace(ctx, &step.id, &trace).await;
 
+                // A7: persist the captured logs into step_logs_json so they
+                // survive the staging-dir GC (read_log's durable DB fallback).
+                if let Some(logs) = log_io::snapshot_step_logs(ctx, &step.id).await {
+                    let _ = repository::persist_step_logs(pool, ctx.run_id, &step.id, &logs).await;
+                }
+
                 let preview = ctx
                     .step_outputs
                     .get(&step.id)
@@ -723,12 +740,24 @@ async fn run_inner(
                     error: error.clone(),
                     tokens_used,
                 }));
+                // A7: a failed step writes no trace, but persist whatever
+                // prompt/raw_output/stderr was captured so the failure stays
+                // debuggable after the staging dir is GC'd.
+                if let Some(logs) = log_io::snapshot_step_logs(ctx, &step.id).await {
+                    let _ = repository::persist_step_logs(pool, ctx.run_id, &step.id, &logs).await;
+                }
                 return RunInnerOutcome::Failed {
                     error: format!("step '{}' failed: {error}", step.id),
                     failed_at_step: Some(step.id.clone()),
                 };
             }
             StepResult::Cancelled => {
+                // A7: a cancelled step may have written a prompt (and partial
+                // output) before the cancel landed — persist what was captured
+                // so the cancelled run stays debuggable after staging-dir GC.
+                if let Some(logs) = log_io::snapshot_step_logs(ctx, &step.id).await {
+                    let _ = repository::persist_step_logs(pool, ctx.run_id, &step.id, &logs).await;
+                }
                 return RunInnerOutcome::Cancelled {
                     cancelled_at_step: Some(step.id.clone()),
                 };
@@ -1223,5 +1252,46 @@ mod tests {
         assert_eq!(PER_STEP_TOKEN_CAP, 2_000_000);
         assert_eq!(PER_RUN_TOKEN_CAP, 5_000_000);
         assert_eq!(PER_RUN_OUTPUT_ARTIFACT_CAP_BYTES, 100 * 1024 * 1024);
+    }
+
+    #[tokio::test]
+    async fn wall_clock_times_out_to_failed() {
+        // E7: a run future that outlives the cap is mapped to Failed with the
+        // wall-clock message (the injectable-Duration seam keeps the test fast).
+        let out = run_with_wall_clock(std::time::Duration::from_millis(20), async {
+            tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            RunInnerOutcome::Completed {
+                outputs_preview: Value::Null,
+            }
+        })
+        .await;
+        match out {
+            RunInnerOutcome::Failed { error, .. } => {
+                assert!(error.contains("wall-clock"), "got: {error}")
+            }
+            _ => panic!("expected Failed on wall-clock elapse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn wall_clock_passes_through_a_fast_run() {
+        // Under the cap, the inner outcome is returned unchanged.
+        let out = run_with_wall_clock(std::time::Duration::from_secs(60), async {
+            RunInnerOutcome::Failed {
+                error: "inner".into(),
+                failed_at_step: Some("s".into()),
+            }
+        })
+        .await;
+        match out {
+            RunInnerOutcome::Failed {
+                error,
+                failed_at_step,
+            } => {
+                assert_eq!(error, "inner");
+                assert_eq!(failed_at_step.as_deref(), Some("s"));
+            }
+            _ => panic!("expected the inner outcome to pass through"),
+        }
     }
 }

@@ -1343,6 +1343,76 @@ steps:
     }
 
     #[test]
+    fn prompt_file_missing_in_bundle_is_reported() {
+        // S6: a SAFE, bundle-relative prompt_file that doesn't exist in the
+        // bundle → WORKFLOW_PROMPT_FILE_MISSING (canonicalize fails). Distinct
+        // from the cheap textual `..`/`/` reject (WORKFLOW_PROMPT_FILE_UNSAFE).
+        let yaml = r#"
+steps:
+  - id: g
+    kind: llm
+    prompt_file: "prompts/nope.md"
+"#;
+        let wf = parse_workflow_yaml(yaml).unwrap();
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(
+            errs.iter().any(|e| e.code == "WORKFLOW_PROMPT_FILE_MISSING"),
+            "absent prompt_file must trip MISSING: {errs:?}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn prompt_file_escaping_bundle_via_symlink_is_reported() {
+        // S6: a relative, dotdot-free prompt_file that CANONICALIZES outside
+        // the bundle (via a symlink) trips the post-canonicalize confinement
+        // guard WORKFLOW_PROMPT_FILE_ESCAPE — distinct from the textual reject.
+        use std::os::unix::fs::symlink;
+        let outside = tempdir().unwrap();
+        let target = outside.path().join("secret.md");
+        std::fs::write(&target, b"secret").unwrap();
+
+        let bundle = tempdir().unwrap();
+        // bundle/escape.md -> <outside>/secret.md (resolves outside the bundle).
+        symlink(&target, bundle.path().join("escape.md")).unwrap();
+
+        let yaml = r#"
+steps:
+  - id: g
+    kind: llm
+    prompt_file: "escape.md"
+"#;
+        let wf = parse_workflow_yaml(yaml).unwrap();
+        let errs = validate_collecting(&wf, bundle.path(), false);
+        assert!(
+            errs.iter().any(|e| e.code == "WORKFLOW_PROMPT_FILE_ESCAPE"),
+            "a prompt_file symlink escaping the bundle must trip ESCAPE: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn rejects_unsafe_artifact_path() {
+        // S6: a step artifact decl whose path escapes the workspace →
+        // WORKFLOW_ARTIFACT_PATH_UNSAFE.
+        let yaml = r#"
+steps:
+  - id: g
+    kind: llm
+    prompt: "x"
+    artifacts:
+      - path: "../escape.txt"
+"#;
+        let wf = parse_workflow_yaml(yaml).unwrap();
+        let tmp = tempdir().unwrap();
+        let errs = validate_collecting(&wf, tmp.path(), false);
+        assert!(
+            errs.iter().any(|e| e.code == "WORKFLOW_ARTIFACT_PATH_UNSAFE"),
+            "unsafe artifact path must trip ARTIFACT_PATH_UNSAFE: {errs:?}"
+        );
+    }
+
+    #[test]
     fn rejects_unknown_flavor() {
         let yaml = r#"
 sandbox:

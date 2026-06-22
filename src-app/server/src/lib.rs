@@ -148,6 +148,43 @@ pub mod mcp {
     pub use crate::modules::mcp::McpRepository;
 }
 
+// Re-export the workflow_mcp built-in-server registration surface for the
+// Tier-2 repository idempotency tests (mirrors the `code_sandbox` block above:
+// `ziee::code_sandbox::CodeSandboxRepository`).
+#[doc(hidden)]
+pub mod workflow_mcp {
+    pub use crate::modules::workflow_mcp::{workflow_mcp_server_id, WorkflowMcpRepository};
+}
+
+// Re-export the workflow run-status-machine surface for the Tier-2 status-
+// machine tests (D1–D5): the REAL `mark_status` CAS, the `mark_running` /
+// `cancel_cas` / `heartbeat` per-transition guards, the `persist_step_meta`
+// jsonb-merge, and a chrono-free wrapper over the startup-sweep orphan flip —
+// so the tests exercise the real fns rather than transcribed SQL.
+#[doc(hidden)]
+pub mod workflow {
+    pub use crate::modules::workflow::models::WorkflowRunStatus;
+    pub use crate::modules::workflow::repository::{
+        cancel_cas, heartbeat, mark_running, mark_status, persist_step_meta,
+    };
+    // The run staging root, so a test can delete a run's on-disk logs to
+    // exercise read_log's durable step_logs_json fallback (A7 GC recovery).
+    pub use crate::modules::workflow::runner::workflow_workspace_root;
+
+    /// Test-only wrapper over `repository::fail_orphaned_runs` taking the cutoff
+    /// as unix-epoch seconds, so the integration-test crate (which has no `time`
+    /// crate in scope) can drive the real orphan-flip without naming
+    /// `time::OffsetDateTime`.
+    pub async fn fail_orphaned_runs_before_unix(
+        pool: &sqlx::PgPool,
+        cutoff_unix_secs: i64,
+    ) -> Result<u64, crate::common::AppError> {
+        let cutoff = time::OffsetDateTime::from_unix_timestamp(cutoff_unix_secs)
+            .expect("valid unix timestamp");
+        crate::modules::workflow::repository::fail_orphaned_runs(pool, cutoff).await
+    }
+}
+
 // Private pure helpers that integration tests unit-test directly (wire-format
 // grouping). Kept out of the public docs; the ai_providers
 // wire types are re-exported too because that crate is a dependency of `ziee` but

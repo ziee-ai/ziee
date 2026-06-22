@@ -20,6 +20,9 @@
 //! this whole module needs NO real LLM key — the conversation only supplies the
 //! model SNAPSHOT (a stub model), never a real token.
 
+mod resources_test;
+mod upsert_test;
+
 use serde_json::{Value as Json, json};
 use uuid::Uuid;
 

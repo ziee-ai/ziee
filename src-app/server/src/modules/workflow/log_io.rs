@@ -119,11 +119,16 @@ pub async fn write_text_log(
     })?;
     let size = body.len() as u64;
     let preview = body.chars().take(500).collect::<String>();
+    // The full body is on disk (above); this returned meta is currently
+    // discarded by callers. The DURABLE body (with the per-run E7 budget) is
+    // produced later by `snapshot_step_logs`, which is the sole writer of
+    // step_logs_json — so DON'T charge the run budget here (it would
+    // double-count against the snapshot). Per-log cap only.
     Ok(Some(LogEntryMeta {
         path: dest,
         size_bytes: size,
         preview,
-        body: cap_body_run(ctx, body),
+        body: Some(cap_body(body)),
     }))
 }
 
@@ -149,11 +154,13 @@ pub async fn write_item_log(
     })?;
     let body_str = String::from_utf8_lossy(&bytes).into_owned();
     let preview = body_str.chars().take(500).collect::<String>();
+    // Discarded by callers; the durable, run-budgeted body is produced by
+    // `snapshot_step_logs`. Per-log cap only (don't charge the run budget here).
     Ok(Some(LogEntryMeta {
         path: dest,
         size_bytes: bytes.len() as u64,
         preview,
-        body: cap_body_run(ctx, &body_str),
+        body: Some(cap_body(&body_str)),
     }))
 }
 
@@ -180,6 +187,58 @@ pub async fn write_trace(
         preview,
         body: Some(cap_body(&body_str)),
     })
+}
+
+/// Build a `step_logs_json` entry value (`{path, size_bytes, preview, body}`)
+/// from a captured log file's content. The body is run through `cap_body_run`
+/// so it honors BOTH the per-log cap AND the per-run aggregate budget (E7) —
+/// `snapshot_step_logs` is the sole writer of durable bodies, so the run-level
+/// accounting (`ctx.total_log_bytes`) is charged here, not at write time.
+fn log_entry_value(ctx: &RunContext, path: PathBuf, content: &str) -> serde_json::Value {
+    let meta = LogEntryMeta {
+        path,
+        size_bytes: content.len() as u64,
+        preview: content.chars().take(500).collect::<String>(),
+        body: cap_body_run(ctx, content),
+    };
+    serde_json::to_value(meta).unwrap_or(serde_json::Value::Null)
+}
+
+/// A7 durability: snapshot a step's on-disk captured logs into the
+/// `step_logs_json[step]` shape (`{kind: {path, size_bytes, preview, body}}`)
+/// so `read_log`'s DB fallback can serve them after the staging dir is
+/// reclaimed (server restart / 30-day reaper). The kind keys match what
+/// `read_log` looks up: `prompt` / `raw_output` / `stderr` / `trace` (the
+/// on-disk `trace.json`). Per-item `items/<N>` logs are deliberately NOT
+/// persisted here — no reader serves them from the DB (the `items` resource is
+/// a live dir-index), so storing them would be write-only data that needlessly
+/// spends the per-run log budget. Returns `None` when nothing was captured.
+/// Called by the runner after a step reaches a terminal state;
+/// `persist_step_logs` writes the result.
+pub async fn snapshot_step_logs(ctx: &RunContext, step_id: &str) -> Option<serde_json::Value> {
+    let dir = step_log_dir(ctx, step_id);
+    let mut map = serde_json::Map::new();
+
+    // Text logs + the always-on trace. (`trace` is keyed `trace` but stored on
+    // disk as `trace.json` — mirror `read_log`'s mapping.)
+    for (kind, file) in [
+        ("prompt", "prompt"),
+        ("raw_output", "raw_output"),
+        ("stderr", "stderr"),
+        ("trace", "trace.json"),
+    ] {
+        let path = dir.join(file);
+        if let Ok(bytes) = tokio::fs::read(&path).await {
+            let content = String::from_utf8_lossy(&bytes);
+            map.insert(kind.to_string(), log_entry_value(ctx, path, &content));
+        }
+    }
+
+    if map.is_empty() {
+        None
+    } else {
+        Some(serde_json::Value::Object(map))
+    }
 }
 
 /// Should this `(kind, level)` pair be captured?
@@ -269,30 +328,40 @@ mod tests {
 
     #[tokio::test]
     async fn run_log_cap_marks_body_once_budget_spent() {
-        // E7: once the per-run aggregate budget is spent, durable bodies become
-        // a marker (the file on disk is still written; only the stored body caps).
+        // E7: once the per-run aggregate budget is spent, the DURABLE body
+        // snapshotted into step_logs_json becomes a marker (the on-disk file is
+        // untouched). The run budget is charged where the durable body is
+        // produced — `snapshot_step_logs` (via `cap_body_run`), NOT
+        // `write_text_log` (whose returned meta is discarded by callers).
         let tmp = tempdir().unwrap();
         let ctx = fake_ctx(tmp.path().to_path_buf());
+        // A real prompt log lands on disk...
+        write_text_log(&ctx, "s", "prompt", "some prompt body", LogCapture::Full)
+            .await
+            .unwrap();
+        // ...but the run budget is already spent, so the snapshot stores a marker.
         ctx.total_log_bytes.store(
             RUN_LOG_BODY_CAP_CHARS as u64,
             std::sync::atomic::Ordering::Relaxed,
         );
-        let meta = write_text_log(&ctx, "s", "prompt", "some prompt body", LogCapture::Full)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(meta.body.as_deref(), Some("…[run log cap reached]"));
+        let logs = snapshot_step_logs(&ctx, "s").await.expect("logs captured");
+        assert_eq!(
+            logs["prompt"]["body"].as_str(),
+            Some("…[run log cap reached]"),
+            "durable body must be the run-cap marker: {logs}"
+        );
     }
 
     #[tokio::test]
     async fn run_log_cap_allows_and_charges_under_budget() {
         let tmp = tempdir().unwrap();
         let ctx = fake_ctx(tmp.path().to_path_buf());
-        let meta = write_text_log(&ctx, "s", "prompt", "hello", LogCapture::Full)
+        write_text_log(&ctx, "s", "prompt", "hello", LogCapture::Full)
             .await
-            .unwrap()
             .unwrap();
-        assert_eq!(meta.body.as_deref(), Some("hello"));
+        // The snapshot persists the real body AND charges the per-run budget.
+        let logs = snapshot_step_logs(&ctx, "s").await.expect("logs captured");
+        assert_eq!(logs["prompt"]["body"].as_str(), Some("hello"), "{logs}");
         assert!(ctx.total_log_bytes.load(std::sync::atomic::Ordering::Relaxed) >= 5);
     }
 }

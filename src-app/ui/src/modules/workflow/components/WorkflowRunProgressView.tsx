@@ -190,6 +190,24 @@ export function WorkflowRunProgressView({
                     kind="raw_output"
                     label="Show raw output"
                   />
+                  {/* stderr is only produced by sandbox steps. */}
+                  {s.stepKind === 'sandbox' && (
+                    <StepLogExpander
+                      runId={runId}
+                      stepId={s.stepId}
+                      kind="stderr"
+                      label="Show stderr"
+                    />
+                  )}
+                  {/* trace.json is written only on completion, never on failure. */}
+                  {s.status === 'completed' && (
+                    <StepLogExpander
+                      runId={runId}
+                      stepId={s.stepId}
+                      kind="trace"
+                      label="Show trace"
+                    />
+                  )}
                 </Space>
               )}
             </div>
