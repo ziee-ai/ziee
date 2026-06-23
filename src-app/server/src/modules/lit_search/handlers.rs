@@ -106,6 +106,7 @@ async fn dispatch_tool_call(
         "literature_search" => do_search(&call.arguments).await,
         "fetch_paper_fulltext" => do_fetch_fulltext(user_id, conversation_id, &call.arguments).await,
         "dedup_records" => do_dedup_records(&call.arguments).await,
+        "select_included" => do_select_included(&call.arguments).await,
         "verify_quote" => do_verify_quote(&call.arguments).await,
         "fetch_references" => do_fetch_references(&call.arguments).await,
         other => {
@@ -478,6 +479,64 @@ async fn do_dedup_records(args: &Value) -> Result<Value, AppError> {
         obj.insert("dropped".into(), json!(dropped));
         obj.insert("union_capped".into(), json!(union_capped));
     }
+    Ok(tool_result(digest, structured))
+}
+
+#[derive(Debug, Deserialize)]
+struct SelectIncludedArgs {
+    /// Screening decisions — objects carrying `id` + `decision`
+    /// ("include"/"exclude"). A `null` element (a skipped llm_map item) is fine.
+    decisions: Vec<Value>,
+    /// Which `decision` value counts as included (default "include").
+    #[serde(default)]
+    include_value: Option<String>,
+}
+
+/// Pure: gather the identifiers of the INCLUDED studies from a screening-decisions
+/// array — the deterministic "the LLM screened, now collect the included set" step
+/// (no LLM, no I/O). Turns an AI `screen` (llm_map) output into the deduped id list
+/// `fetch_paper_fulltext` consumes, plus PRISMA include/exclude counts.
+async fn do_select_included(args: &Value) -> Result<Value, AppError> {
+    let args: SelectIncludedArgs = serde_json::from_value(args.clone())
+        .map_err(|e| AppError::bad_request("INVALID_ARGS", e.to_string()))?;
+    let include = args.include_value.as_deref().unwrap_or("include");
+
+    let mut included_ids: Vec<String> = Vec::new();
+    let mut excluded = 0usize;
+    let mut skipped = 0usize;
+    for d in &args.decisions {
+        let Some(obj) = d.as_object() else {
+            // null (a dropped llm_map item) or a non-object record → not a decision.
+            skipped += 1;
+            continue;
+        };
+        let decision = obj.get("decision").and_then(|v| v.as_str()).unwrap_or("");
+        if decision == include {
+            if let Some(id) = obj.get("id").and_then(|v| v.as_str()) {
+                let id = id.trim();
+                if !id.is_empty() {
+                    included_ids.push(id.to_string());
+                }
+            }
+        } else {
+            excluded += 1;
+        }
+    }
+    // Dedup ids (an id can repeat across decisions), preserving first-seen order.
+    let mut seen = std::collections::HashSet::new();
+    included_ids.retain(|id| seen.insert(id.clone()));
+    let included = included_ids.len();
+
+    let digest = format!(
+        "Selected {included} included stud{} for full-text retrieval ({excluded} excluded, {skipped} skipped).",
+        if included == 1 { "y" } else { "ies" },
+    );
+    let structured = json!({
+        "included_ids": included_ids,
+        "included": included,
+        "excluded": excluded,
+        "skipped": skipped,
+    });
     Ok(tool_result(digest, structured))
 }
 
@@ -1069,5 +1128,26 @@ mod tests {
             .await
             .expect("empty ids must be a no-op, not an error");
         assert!(out["structuredContent"]["records"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn select_included_collects_dedups_and_counts() {
+        // Includes (with a dup id) + an exclude + a null (dropped llm_map item).
+        let out = do_select_included(&json!({
+            "decisions": [
+                { "id": "10.1/a", "decision": "include", "reason": "on-topic" },
+                { "id": "10.2/b", "decision": "exclude", "reason": "off-topic" },
+                { "id": "10.1/a", "decision": "include" },
+                null,
+                { "id": "10.3/c", "decision": "include" }
+            ]
+        }))
+        .await
+        .expect("ok");
+        let sc = &out["structuredContent"];
+        assert_eq!(sc["included_ids"], json!(["10.1/a", "10.3/c"]), "deduped includes: {sc}");
+        assert_eq!(sc["included"], 2, "unique included studies");
+        assert_eq!(sc["excluded"], 1);
+        assert_eq!(sc["skipped"], 1, "the null decision is skipped");
     }
 }

@@ -53,6 +53,22 @@ pub fn tool_list() -> Value {
                 }
             },
             {
+                "name": "select_included",
+                "description": "From an AI screening-decisions array (each item carrying `id` + `decision`), collect the identifiers of the INCLUDED studies. Pure + deterministic — no search, no model. Returns `included_ids` (deduped) plus PRISMA include/exclude/skipped counts. Use it to turn first-pass screening decisions into the id list to fetch full text for.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "decisions": {
+                            "type": "array",
+                            "items": { "type": "object" },
+                            "description": "Screening decisions; each carries `id` + `decision` ('include'/'exclude'). Null/empty items are ignored."
+                        },
+                        "include_value": { "type": "string", "description": "Which `decision` value counts as included (default 'include')." }
+                    },
+                    "required": ["decisions"]
+                }
+            },
+            {
                 "name": "verify_quote",
                 "description": "Verify that a QUOTE is a verbatim span of a paper's open-access full text (the paper must already be cached via fetch_paper_fulltext). Deterministic substring check (whitespace/hyphenation-normalized) — NO model judgment. Returns verified=true only when the quote is genuinely present; use this to reject hallucinated/over-stated extractions before relying on them. status: 'verified' | 'not_found' (full text checked, quote absent) | 'not_open_access' (paper fetched but paywalled — nothing to check) | 'not_cached' (fetch the paper first).",
                 "inputSchema": {

@@ -19,8 +19,6 @@
 //! Assertions are SHAPE-based (real output is non-deterministic): an array of
 //! decisions, rows with the expected keys, non-empty markdown — never exact text.
 
-use std::time::Duration;
-
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -324,48 +322,6 @@ outputs:
 
 // ──────────────────────────────── END-TO-END ────────────────────────────────
 
-/// Poll until the run is `waiting` on a gate with an `elicitation_id` other than
-/// `exclude` (skips the stale prior gate during the resume window).
-async fn poll_until_waiting(server: &TestServer, token: &str, run_id: Uuid, exclude: Option<Uuid>) -> Uuid {
-    let deadline = std::time::Instant::now() + Duration::from_secs(180);
-    loop {
-        let run: Value = reqwest::Client::new()
-            .get(server.api_url(&format!("/workflow-runs/{run_id}")))
-            .header("Authorization", format!("Bearer {token}"))
-            .send()
-            .await
-            .expect("get run")
-            .json()
-            .await
-            .expect("parse run");
-        if run["status"] == "waiting" {
-            if let Some(id) = run["pending_elicitation_json"]["elicitation_id"].as_str() {
-                let eid = Uuid::parse_str(id).expect("eid uuid");
-                if exclude != Some(eid) {
-                    return eid;
-                }
-            }
-        } else if matches!(run["status"].as_str().unwrap_or(""), "failed" | "cancelled" | "completed") {
-            panic!("run reached terminal before the expected gate: {run}");
-        }
-        if std::time::Instant::now() >= deadline {
-            panic!("run never reached a fresh waiting gate within 180s: {run}");
-        }
-        tokio::time::sleep(Duration::from_millis(500)).await;
-    }
-}
-
-async fn submit_elicit(server: &TestServer, token: &str, run_id: Uuid, eid: Uuid, response: Value) {
-    let r = reqwest::Client::new()
-        .post(server.api_url(&format!("/workflow-runs/{run_id}/elicit/{eid}")))
-        .header("Authorization", format!("Bearer {token}"))
-        .json(&json!({ "response": response }))
-        .send()
-        .await
-        .expect("submit elicit");
-    assert_eq!(r.status(), 200, "elicit submit 200");
-}
-
 fn rec(doi: &str, title: &str) -> Value {
     json!({
         "doi": doi, "pmid": null, "title": title, "abstract_text": "A study abstract.",
@@ -382,8 +338,8 @@ fn agg(records: Vec<Value>) -> Value {
 
 /// END-TO-END: the REAL `sr-review` workflow with its TOOL steps mocked tiny and
 /// its LLM steps (expand×3, screen, extract, synthesize) running REAL via Groq.
-/// Drives both durable gates and asserts the real LLM steps produced valid output.
-/// Bounded fan-out (3 candidates, 2 papers) keeps spend to ~9 short calls.
+/// No human gates — the run completes UNATTENDED. Bounded fan-out (3 candidates,
+/// 2 papers) keeps spend to ~9 short calls.
 #[tokio::test]
 async fn real_llm_sr_review_end_to_end_completes() {
     let server = TestServer::start().await;
@@ -402,6 +358,7 @@ async fn real_llm_sr_review_end_to_end_completes() {
             rec("10.2/b", "Prime editing fidelity"),
             rec("10.3/c", "Off-target detection methods")
         ]),
+        "select_included": {"included_ids": ["10.1/a", "10.3/c"], "included": 2, "excluded": 1, "skipped": 0},
         "fetch": {"papers": [
             {"id": "10.1/a", "status": "full_text", "text": "A randomized trial of 200 patients found base editing reduced off-target mutations by 47%."},
             {"id": "10.3/c", "status": "full_text", "text": "A method paper describing GUIDE-seq detection of off-target edits."}
@@ -417,33 +374,7 @@ async fn real_llm_sr_review_end_to_end_completes() {
     .await;
     let run_id = Uuid::parse_str(run["run_id"].as_str().unwrap()).unwrap();
 
-    // Gate 1 — screening (after the real `screen` llm_map). Submit the included set.
-    let eid1 = poll_until_waiting(&server, &user.token, run_id, None).await;
-    submit_elicit(
-        &server,
-        &user.token,
-        run_id,
-        eid1,
-        json!({ "included_ids": ["10.1/a", "10.3/c"], "approved": true }),
-    )
-    .await;
-
-    // Gate 2 — extraction review (after the real `extract` llm_map). Approve.
-    let eid2 = poll_until_waiting(&server, &user.token, run_id, Some(eid1)).await;
-    submit_elicit(
-        &server,
-        &user.token,
-        run_id,
-        eid2,
-        json!({
-            "approved": true,
-            "extractions": [
-                {"id": "10.1/a", "effect": "47% reduction", "confidence": 0.8, "quote": "reduced off-target mutations by 47%"}
-            ]
-        }),
-    )
-    .await;
-
+    // No human gates — the run completes unattended.
     let final_run = poll_run(&server, &user.token, run_id).await;
     assert_eq!(final_run["status"], "completed", "real-LLM sr-review completes: {final_run}");
 
