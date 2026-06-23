@@ -59,14 +59,6 @@ export interface LiteratureScreeningData {
   decisions: Record<string, ScreeningDecision>
   /** record key → optional exclusion reason */
   reasons: Record<string, string>
-  /** When opened from a SUSPENDED `sr-review` screening gate: the run +
-   *  elicitation to resume. The panel's "Submit screening" button derives
-   *  `included_ids` from the include decisions and calls `submit_elicit` to
-   *  continue the run. Both persist with the tab (survive reload), so the human
-   *  can screen across sessions before resuming. Absent for a completed run
-   *  (read-only view) or a non-workflow screening session. */
-  runId?: string
-  elicitationId?: string
 }
 
 declare module '@/modules/chat/core/stores/Chat.store' {
