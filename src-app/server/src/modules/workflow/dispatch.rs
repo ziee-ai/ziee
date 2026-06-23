@@ -1020,6 +1020,7 @@ pub(crate) async fn resolve_tool_server(
         "web_search" => Some(crate::modules::web_search::web_search_server_id()),
         "bio" => Some(crate::modules::bio_mcp::bio_mcp_server_id()),
         "lit_search" => Some(crate::modules::lit_search::lit_search_server_id()),
+        "citations" => Some(crate::modules::citations::citations_server_id()),
         "memory" => Some(crate::modules::memory_mcp::memory_mcp_server_id()),
         "files" => Some(crate::modules::files_mcp::files_mcp_server_id()),
         "code_sandbox" => Some(crate::modules::code_sandbox::code_sandbox_server_id()),

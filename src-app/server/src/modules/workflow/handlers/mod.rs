@@ -14,7 +14,7 @@ use axum::extract::Path as AxumPath;
 use axum::http::StatusCode;
 use axum::Json;
 use schemars::JsonSchema;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::common::{ApiResult, AppError};
@@ -242,7 +242,7 @@ pub fn run_workflow_docs(op: TransformOperation) -> TransformOperation {
 pub async fn cancel_run(
     auth: RequirePermissions<(WorkflowsExecute,)>,
     AxumPath(run_id): AxumPath<Uuid>,
-) -> ApiResult<Json<CancelAckResponse>> {
+) -> ApiResult<Json<RunActionAck>> {
     let pool = Repos.pool();
     let row = repository::find_run(pool, run_id)
         .await?
@@ -256,7 +256,7 @@ pub async fn cancel_run(
     }
     let prior = repository::cancel_cas(pool, run_id).await?;
     let _ = registry::cancel(run_id);
-    let body = CancelAckResponse {
+    let body = RunActionAck {
         status: prior.unwrap_or_else(|| "already_terminal".to_string()),
         run_id,
     };
@@ -268,13 +268,67 @@ pub fn cancel_run_docs(op: TransformOperation) -> TransformOperation {
         .id("Workflow.cancelRun")
         .tag("Workflows - Runs")
         .summary("Cancel an in-flight run")
-        .response::<200, Json<CancelAckResponse>>()
+        .response::<200, Json<RunActionAck>>()
 }
 
+/// Acknowledgement for an in-flight-run action (cancel / set-timeout). `status`
+/// is the action-specific outcome string ("cancelled" / "updated" /
+/// "already_terminal"); shared intentionally by both endpoints.
 #[derive(Debug, Serialize, JsonSchema)]
-pub struct CancelAckResponse {
+pub struct RunActionAck {
     pub status: String,
     pub run_id: Uuid,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SetTimeoutRequest {
+    /// New wall-clock cap in seconds; `0` = unbounded (no timeout). Named to
+    /// match the `timeout_secs` used across the rest of the timeout surface.
+    pub timeout_secs: u64,
+}
+
+/// Change an in-flight run's wall-clock timeout LIVE (extend / shorten / lift).
+/// The runner's deadline watcher honors the new value within its recheck
+/// interval. The per-run token + output-byte caps stay as resource backstops.
+pub async fn set_run_timeout(
+    auth: RequirePermissions<(WorkflowsExecute,)>,
+    AxumPath(run_id): AxumPath<Uuid>,
+    Json(req): Json<SetTimeoutRequest>,
+) -> ApiResult<Json<RunActionAck>> {
+    let pool = Repos.pool();
+    let row = repository::find_run(pool, run_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("WorkflowRun"))?;
+    if row.user_id != auth.user.id {
+        return Err::<_, (StatusCode, AppError)>((AppError::new(
+            StatusCode::FORBIDDEN,
+            "WORKFLOW_RUN_FORBIDDEN",
+            "workflow run is owned by another user",
+        ))
+        .into());
+    }
+    // Clamp to the engine ceiling (0 = unbounded stays 0) — guards the
+    // `deadline_watcher` Instant arithmetic against a pathological value.
+    let secs = if req.timeout_secs == 0 {
+        0
+    } else {
+        req.timeout_secs
+            .min(crate::modules::workflow::runner::MAX_RUN_TIMEOUT_SECS)
+    };
+    let applied = registry::set_timeout(run_id, secs);
+    let body = RunActionAck {
+        status: if applied { "updated".into() } else { "already_terminal".into() },
+        run_id,
+    };
+    Ok((StatusCode::OK, Json(body)))
+}
+
+pub fn set_run_timeout_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(WorkflowsExecute,)>(op)
+        .id("Workflow.setRunTimeout")
+        .tag("Workflows - Runs")
+        .summary("Change an in-flight run's wall-clock timeout (secs; 0 = unbounded)")
+        .response::<200, Json<RunActionAck>>()
 }
 
 pub async fn get_run(

@@ -122,6 +122,11 @@ pub async fn fetch_paper_fulltext(
             papers.push(json!({
                 "id": raw, "status": entry.status, "source": entry.source,
                 "chars": chars, "sandbox_path": sandbox_path,
+                // The (capped) full text in structuredContent so a WORKFLOW tool
+                // step can extract from it — a tool step captures structuredContent
+                // and drops the model-facing `content` channel. Chat clients ignore
+                // this (they read the inline `content`).
+                "text": capped,
             }));
             continue;
         }
@@ -137,6 +142,12 @@ pub async fn fetch_paper_fulltext(
         };
         papers.push(json!({
             "id": raw, "status": status, "source": entry.source, "chars": chars,
+            // Always emit `text` (empty here — no OA full text) so a workflow
+            // `{{ paper.text }}` reference resolves for EVERY paper. Without this
+            // key the template engine raises MissingField, which (unlike an LLM
+            // error) `on_error: skip` does NOT catch — it would fail the whole
+            // llm_map step. Downstream prompts must treat empty text as "skip".
+            "text": "",
         }));
     }
 

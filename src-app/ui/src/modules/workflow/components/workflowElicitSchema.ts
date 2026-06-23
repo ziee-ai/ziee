@@ -41,6 +41,7 @@ export interface FieldSchema {
   minimum?: number
   maximum?: number
   enum?: unknown[]
+  const?: unknown
   pattern?: string
   minLength?: number
   maxLength?: number
@@ -115,6 +116,22 @@ export function fieldRules(
         return matchesJsType(value, field.type!)
           ? Promise.resolve()
           : Promise.reject(new Error(`${label} must be a ${field.type}`))
+      },
+    })
+  }
+
+  if (field.const !== undefined) {
+    // JSON-schema `const`: the value must equal the fixed constant (e.g. an
+    // `approved: { const: true }` confirmation gate). Presence is owned by the
+    // `required` rule; this rule rejects a present-but-wrong value (a false
+    // Switch) so the form blocks submit, in parity with the backend's 422.
+    const expected = field.const
+    rules.push({
+      validator: (_r, value) => {
+        if (isEmpty(value)) return Promise.resolve()
+        return value === expected
+          ? Promise.resolve()
+          : Promise.reject(new Error(`${label} must be ${JSON.stringify(expected)}`))
       },
     })
   }

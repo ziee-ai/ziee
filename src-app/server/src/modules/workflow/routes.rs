@@ -83,6 +83,11 @@ pub fn user_routes() -> ApiRouter {
             "/workflow-runs/{run_id}/cancel",
             post_with(handlers::cancel_run, handlers::cancel_run_docs),
         )
+        // Change an in-flight run's wall-clock timeout live (0 = unbounded)
+        .api_route(
+            "/workflow-runs/{run_id}/timeout",
+            put_with(handlers::set_run_timeout, handlers::set_run_timeout_docs),
+        )
         // Delete a terminal run (+ conditional artifact cascade) (A5)
         .api_route(
             "/workflow-runs/{run_id}",

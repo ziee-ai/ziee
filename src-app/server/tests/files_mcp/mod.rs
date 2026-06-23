@@ -242,8 +242,9 @@ async fn test_tools_list_returns_read_and_write_tools() {
     let body: Value = res.json().await.unwrap();
     let tools = body["result"]["tools"].as_array().expect("tools array");
     let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
-    // 4 read tools (list/read/grep/semantic_search) + 4 write tools.
-    assert_eq!(names.len(), 8, "4 read + 4 write tools: {names:?}");
+    // 4 read tools (list/read/grep/semantic_search) + 5 write tools
+    // (create/edit/edit_lines/rewrite + convert_document).
+    assert_eq!(names.len(), 9, "4 read + 5 write tools: {names:?}");
     for t in [
         "list_files",
         "read_file",
@@ -253,6 +254,7 @@ async fn test_tools_list_returns_read_and_write_tools() {
         "edit_file",
         "edit_file_lines",
         "rewrite_file",
+        "convert_document",
     ] {
         assert!(names.contains(&t), "missing tool {t}; got {names:?}");
     }
@@ -433,6 +435,38 @@ async fn test_read_file_missing_target_errors() {
         err["message"].as_str().unwrap().contains("id")
             && err["message"].as_str().unwrap().contains("name"),
         "message tells the model to pass id or name; err={err}"
+    );
+}
+
+/// convert_document rejects empty/whitespace markdown BEFORE any pandoc render
+/// (infra-free validation) → invalid_params, not a server error.
+#[tokio::test]
+async fn test_convert_document_empty_markdown_errors() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "files_mcp_convert_empty").await;
+    let (conv_id, _ids) = project_conversation_with_files(
+        &server,
+        &user,
+        "convert-empty-project",
+        &[("only.txt", "content")],
+    )
+    .await;
+    let conv_uuid = Uuid::parse_str(&conv_id).unwrap();
+
+    let body = call_tool(
+        &server,
+        &user,
+        conv_uuid,
+        "convert_document",
+        json!({ "markdown": "   " }),
+    )
+    .await;
+    let err = &body["error"];
+    assert!(err.is_object(), "empty markdown must error; body={body}");
+    assert_eq!(err["code"].as_i64().unwrap(), INVALID_PARAMS, "client-class error");
+    assert!(
+        err["message"].as_str().unwrap_or("").contains("markdown"),
+        "message names the empty markdown arg; err={err}"
     );
 }
 

@@ -59,6 +59,13 @@ pub struct WorkflowDef {
     pub schema_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sandbox: Option<SandboxDecl>,
+    /// Workflow-declared wall-clock cap in seconds. `None` → the engine default
+    /// (`RUN_WALL_CLOCK`). `Some(0)` → UNBOUNDED (no wall-clock — for long runs on
+    /// a user-owned machine). The effective value is live-adjustable per run via
+    /// `PUT /workflow-runs/{id}/timeout`. The per-run token + output-byte caps stay
+    /// as the resource backstops regardless.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_runtime_secs: Option<u64>,
     #[serde(default = "default_expose_logs")]
     pub expose_logs: ExposeLogs,
     #[serde(default)]
@@ -861,11 +868,23 @@ fn check_template_refs(workflow: &WorkflowDef) -> Vec<ValidationError> {
                 }
                 v
             }
-            // Elicit's prompt is the shared StepDef.message, scanned below.
-            StepConfig::Elicit { .. } => Vec::new(),
-            // Tool `arguments` refs resolve at run time; static collection is a
-            // follow-up.
-            StepConfig::Tool { .. } => Vec::new(),
+            // Elicit's prompt is the shared StepDef.message, scanned below; its
+            // `data:` seed is template-rendered, so scan every string in it.
+            StepConfig::Elicit { data, .. } => data
+                .as_ref()
+                .map(|d| {
+                    collect_template_strings(d)
+                        .into_iter()
+                        .map(|s_ref| (format!("{}.data", s.id), s_ref, None))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default(),
+            // Tool `arguments` is a templated JSON value — scan every string in it
+            // so a typo'd `{{ ref }}` is caught at install, not at run time.
+            StepConfig::Tool { arguments, .. } => collect_template_strings(arguments)
+                .into_iter()
+                .map(|s_ref| (format!("{}.arguments", s.id), s_ref, None))
+                .collect(),
         };
         for (loc, body, item_var) in bodies {
             check(&loc, body, item_var);
@@ -884,6 +903,22 @@ fn check_template_refs(workflow: &WorkflowDef) -> Vec<ValidationError> {
     for o in &workflow.outputs {
         check(&format!("outputs[{}].from", o.name), &o.from, None);
     }
+    out
+}
+
+/// Collect every string leaf in a JSON value (recursively through arrays +
+/// objects). Used to scan `tool.arguments` / `elicit.data` for `{{ }}` refs.
+fn collect_template_strings(v: &serde_json::Value) -> Vec<&str> {
+    fn walk<'a>(v: &'a serde_json::Value, out: &mut Vec<&'a str>) {
+        match v {
+            serde_json::Value::String(s) => out.push(s.as_str()),
+            serde_json::Value::Array(a) => a.iter().for_each(|x| walk(x, out)),
+            serde_json::Value::Object(m) => m.values().for_each(|x| walk(x, out)),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    walk(v, &mut out);
     out
 }
 
@@ -1655,5 +1690,98 @@ steps:
         let pos_b = order.iter().position(|&i| wf.steps[i].id == "b").unwrap();
         let pos_c = order.iter().position(|&i| wf.steps[i].id == "c").unwrap();
         assert!(pos_a < pos_b && pos_b < pos_c);
+    }
+
+    /// The vendored SR hub workflows must parse + pass install-time validation
+    /// (serde shape + semantic + template ref-check). Reads the committed loose
+    /// `workflow.yaml` source — the seed stores these as source; `build.rs`
+    /// (`build_helper/hub_seed.rs`) packs them into the bundle tarball at build.
+    #[test]
+    fn sr_seed_workflows_parse_and_validate() {
+        let yamls = [(
+            "sr-review",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/resources/hub-seed/workflows/io.github.ziee/sr-review/workflow.yaml"
+            )),
+        )];
+        for (name, yaml) in yamls {
+            let wf = parse_workflow_yaml(yaml)
+                .unwrap_or_else(|e| panic!("{name}: parse failed: {e:?}"));
+            validate_for_install(&wf, std::path::Path::new("/tmp/sr"), false)
+                .unwrap_or_else(|e| panic!("{name}: validate failed: {e:?}"));
+        }
+    }
+
+    /// The build-time packer (`build_helper/hub_seed.rs`) tars the committed
+    /// source `workflow.yaml` into the bundle `.tar.gz` and rewrites the
+    /// manifest's sha256/size into the BAKED seed (`binaries/hub-seed/`, the
+    /// `include_dir!` source). Assert that baked pair is self-consistent and
+    /// packs the committed source verbatim — a regression net for the packer
+    /// that makes bundle↔manifest drift impossible by construction. (The baked
+    /// dir is populated by `build.rs` before this crate compiles, same as the
+    /// `include_dir!` in `hub_manager.rs`.)
+    #[test]
+    fn sr_seed_bundles_are_internally_consistent() {
+        use sha2::{Digest, Sha256};
+        fn check(name: &str, tar_gz: &[u8], manifest: &str, source_yaml: &str) {
+            let m: serde_json::Value =
+                serde_json::from_str(manifest).unwrap_or_else(|e| panic!("{name}: manifest: {e}"));
+            let want_sha = m["bundle"]["sha256"].as_str().expect("manifest sha256");
+            let want_size = m["bundle"]["size_bytes"].as_u64().expect("manifest size_bytes");
+            let got_sha: String = {
+                let mut h = Sha256::new();
+                h.update(tar_gz);
+                h.finalize().iter().map(|b| format!("{b:02x}")).collect()
+            };
+            assert_eq!(got_sha, want_sha, "{name}: baked tar.gz sha256 != baked manifest");
+            assert_eq!(
+                tar_gz.len() as u64,
+                want_size,
+                "{name}: baked tar.gz size != baked manifest"
+            );
+
+            let gz = flate2::read::GzDecoder::new(tar_gz);
+            let mut ar = tar::Archive::new(gz);
+            let mut packed: Option<String> = None;
+            for entry in ar.entries().expect("tar entries") {
+                let mut e = entry.expect("tar entry");
+                let path = e.path().expect("entry path").to_string_lossy().into_owned();
+                if path == "workflow.yaml" {
+                    let mut s = String::new();
+                    std::io::Read::read_to_string(&mut e, &mut s).expect("read packed yaml");
+                    packed = Some(s);
+                }
+            }
+            let packed =
+                packed.unwrap_or_else(|| panic!("{name}: no workflow.yaml in baked tarball"));
+            assert_eq!(packed, source_yaml, "{name}: packed workflow.yaml != committed source");
+        }
+        macro_rules! sr {
+            ($n:literal) => {
+                check(
+                    $n,
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/binaries/hub-seed/workflows/io.github.ziee/",
+                        $n,
+                        "/1.0.0.tar.gz"
+                    )),
+                    include_str!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/binaries/hub-seed/workflows/io.github.ziee/",
+                        $n,
+                        "/1.0.0.json"
+                    )),
+                    include_str!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/resources/hub-seed/workflows/io.github.ziee/",
+                        $n,
+                        "/workflow.yaml"
+                    )),
+                )
+            };
+        }
+        sr!("sr-review");
     }
 }

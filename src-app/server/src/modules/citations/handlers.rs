@@ -278,29 +278,52 @@ async fn dispatch_tool_call(
             } else {
                 None
             };
-            let ids: Vec<Uuid> = call
+            // Inline path: when `items` (a raw CSL-JSON array) is supplied, format
+            // those directly — NO DB load and NO library write (lets a workflow
+            // export from its own state). Otherwise load saved entries by
+            // `ids` / `project_id`.
+            let inline: Vec<Value> = call
                 .arguments
-                .get("ids")
+                .get("items")
                 .and_then(|v| v.as_array())
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|v| v.as_str())
-                        .filter_map(|s| Uuid::parse_str(s).ok())
-                        .collect()
-                })
+                .map(|a| a.iter().filter(|v| v.is_object()).cloned().collect())
                 .unwrap_or_default();
-            let entries = if ids.is_empty() {
-                repo.list_entries(user_id, project_id).await.map_err(internal)?
+            if inline.len() > MAX_BATCH_ITEMS {
+                return Err((
+                    StatusCode::OK,
+                    JsonRpcError::invalid_params(format!(
+                        "too many items ({}); cap is {MAX_BATCH_ITEMS}. Split into batches.",
+                        inline.len()
+                    )),
+                ));
+            }
+            let items: Vec<Value> = if !inline.is_empty() {
+                inline
             } else {
-                let mut v = Vec::new();
-                for id in ids {
-                    if let Some(e) = repo.get_entry(user_id, id).await.map_err(internal)? {
-                        v.push(e);
+                let ids: Vec<Uuid> = call
+                    .arguments
+                    .get("ids")
+                    .and_then(|v| v.as_array())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|v| v.as_str())
+                            .filter_map(|s| Uuid::parse_str(s).ok())
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let entries = if ids.is_empty() {
+                    repo.list_entries(user_id, project_id).await.map_err(internal)?
+                } else {
+                    let mut v = Vec::new();
+                    for id in ids {
+                        if let Some(e) = repo.get_entry(user_id, id).await.map_err(internal)? {
+                            v.push(e);
+                        }
                     }
-                }
-                v
+                    v
+                };
+                entries.iter().map(|e| e.csl_json.clone()).collect()
             };
-            let items: Vec<Value> = entries.iter().map(|e| e.csl_json.clone()).collect();
             let n = items.len();
             let output = format::export(items, fmt, style_path).await.map_err(internal)?;
             Ok(tool_result(
