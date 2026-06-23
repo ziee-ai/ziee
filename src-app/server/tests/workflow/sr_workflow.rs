@@ -446,3 +446,174 @@ async fn tool_step_really_calls_lit_search_mcp_and_searches() {
         "3 deduped records reached the workflow output: {out}"
     );
 }
+
+const REAL_SNOWBALL_WORKFLOW: &str = r#"$schema: "/schemas/2026-06-12/workflow-definition.schema.json"
+inputs:
+  - name: seed_ids
+    required: true
+steps:
+  - id: snowball
+    kind: tool
+    message: "Snowballing references"
+    server: lit_search
+    tool: fetch_references
+    arguments:
+      ids: "{{ inputs.seed_ids }}"
+      direction: backward
+outputs:
+  - name: results
+    from: "{{ snowball.output }}"
+    expose: full
+"#;
+
+/// PROVES a workflow `tool` step REALLY calls lit_search `fetch_references`
+/// (citation snowballing via Semantic Scholar) — not mocked. The S2 paper-graph is
+/// a loopback MOCK upstream (`LIT_SEARCH_S2_PAPER_ENDPOINT`); the step output must
+/// carry the CITED work (10.9/cited) and NOT the citing paper (backward direction)
+/// — which only the real S2 fetch + dedup path produces.
+#[tokio::test]
+async fn tool_step_really_calls_lit_search_fetch_references() {
+    use crate::common::TestServerOptions;
+    use crate::common::test_helpers::create_user_with_permissions;
+    use crate::lit_search::{configure, start_mock_s2_paper};
+
+    let s2 = start_mock_s2_paper().await;
+    let server = crate::common::TestServer::start_with_options(TestServerOptions {
+        extra_env: vec![
+            ("LIT_SEARCH_ALLOW_LOOPBACK".to_string(), "1".to_string()),
+            ("LIT_SEARCH_S2_PAPER_ENDPOINT".to_string(), s2),
+        ],
+        ..Default::default()
+    })
+    .await;
+    let user = create_user_with_permissions(
+        &server,
+        "wf_real_snowball",
+        &[
+            "workflows::read",
+            "workflows::install",
+            "workflows::manage",
+            "workflows::execute",
+            "lit_search::use",
+            "lit_search::admin::read",
+            "lit_search::admin::manage",
+        ],
+    )
+    .await;
+    configure(&server, &user.token, &["semanticscholar"]).await;
+    let (_stub, conv_id) = stub_conversation(&server, &user.user_id, &user.token).await;
+    let wf =
+        import_dev_workflow(&server, &user.token, "real-snowball", REAL_SNOWBALL_WORKFLOW).await;
+    let wf_id = wf["id"].as_str().expect("workflow id").to_string();
+
+    let run = run_workflow(
+        &server,
+        &user.token,
+        &wf_id,
+        json!({ "inputs": { "seed_ids": ["10.1234/seed"] }, "conversation_id": conv_id.to_string() }),
+    )
+    .await;
+    let run_id = Uuid::parse_str(run["run_id"].as_str().expect("run_id")).unwrap();
+    let final_run = poll_run(&server, &user.token, run_id).await;
+    assert_eq!(
+        final_run["status"], "completed",
+        "the real fetch_references run should complete: {final_run}"
+    );
+
+    let out = read_step_output(&server, &user.token, run_id, "snowball").await;
+    let recs = out["records"].as_array().expect("records array");
+    assert!(
+        recs.iter().any(|r| r["doi"] == "10.9/cited"),
+        "backward snowball returned the cited reference via the real S2 fetch: {out}"
+    );
+    assert!(
+        !recs.iter().any(|r| r["doi"] == "10.9/citing"),
+        "backward direction must exclude the citing paper: {out}"
+    );
+}
+
+const REAL_FULLTEXT_WORKFLOW: &str = r#"$schema: "/schemas/2026-06-12/workflow-definition.schema.json"
+inputs:
+  - name: ids
+    required: true
+steps:
+  - id: fetch
+    kind: tool
+    message: "Fetching full text"
+    server: lit_search
+    tool: fetch_paper_fulltext
+    arguments:
+      ids: "{{ inputs.ids }}"
+outputs:
+  - name: results
+    from: "{{ fetch.output }}"
+    expose: full
+"#;
+
+/// PROVES a workflow `tool` step REALLY calls lit_search `fetch_paper_fulltext`
+/// and resolves open-access full text — not mocked. Europe PMC's fullTextXML is a
+/// loopback MOCK upstream (`LIT_SEARCH_EUROPEPMC_FULLTEXT_ENDPOINT`); the run is
+/// conversation-bound, so the tool resolves the OA text and the step output reports
+/// `status: full_text` with a non-empty char count — only the real resolve+extract
+/// path yields that.
+#[tokio::test]
+async fn tool_step_really_calls_lit_search_fetch_fulltext() {
+    use std::sync::atomic::Ordering;
+
+    use crate::common::TestServerOptions;
+    use crate::common::test_helpers::create_user_with_permissions;
+    use crate::lit_search::{configure, start_mock_epmc_fulltext};
+
+    let (epmc, hits) = start_mock_epmc_fulltext().await;
+    let server = crate::common::TestServer::start_with_options(TestServerOptions {
+        extra_env: vec![
+            ("LIT_SEARCH_ALLOW_LOOPBACK".to_string(), "1".to_string()),
+            ("LIT_SEARCH_EUROPEPMC_FULLTEXT_ENDPOINT".to_string(), epmc),
+        ],
+        ..Default::default()
+    })
+    .await;
+    let user = create_user_with_permissions(
+        &server,
+        "wf_real_fulltext",
+        &[
+            "workflows::read",
+            "workflows::install",
+            "workflows::manage",
+            "workflows::execute",
+            "lit_search::use",
+            "lit_search::admin::read",
+            "lit_search::admin::manage",
+        ],
+    )
+    .await;
+    configure(&server, &user.token, &["europepmc"]).await;
+    let (_stub, conv_id) = stub_conversation(&server, &user.user_id, &user.token).await;
+    let wf =
+        import_dev_workflow(&server, &user.token, "real-fulltext", REAL_FULLTEXT_WORKFLOW).await;
+    let wf_id = wf["id"].as_str().expect("workflow id").to_string();
+
+    let run = run_workflow(
+        &server,
+        &user.token,
+        &wf_id,
+        json!({ "inputs": { "ids": ["PMC123456"] }, "conversation_id": conv_id.to_string() }),
+    )
+    .await;
+    let run_id = Uuid::parse_str(run["run_id"].as_str().expect("run_id")).unwrap();
+    let final_run = poll_run(&server, &user.token, run_id).await;
+    assert_eq!(
+        final_run["status"], "completed",
+        "the real fetch_paper_fulltext run should complete: {final_run}"
+    );
+
+    let out = read_step_output(&server, &user.token, run_id, "fetch").await;
+    let paper = &out["papers"][0];
+    assert_eq!(paper["status"], "full_text", "real OA full text resolved: {out}");
+    assert_eq!(paper["source"], "europepmc", "resolved from the (mock) europepmc upstream: {out}");
+    assert!(
+        paper["chars"].as_u64().unwrap_or(0) > 0,
+        "non-empty extracted text reached the workflow output: {out}"
+    );
+    assert_eq!(hits.load(Ordering::SeqCst), 1, "the workflow actually hit the upstream once");
+}
