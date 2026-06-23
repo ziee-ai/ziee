@@ -187,37 +187,42 @@ export function WorkflowRunProgressView({
         )}
         {/* SR runs have a `screen` step — surface the AI-screened candidate set in
             the literature screening panel. For a COMPLETED run this is a read-only
-            view; for an `sr-review` run SUSPENDED on its `screen_review` gate, the
-            panel is the place to screen + resume (the run stays paused until then). */}
-        {(run.status === 'completed' ||
-          (run.status === 'waiting' &&
-            run.pendingElicitation?.step_id === 'screen_review')) &&
-          run.stepOrder.includes('screen') && (
-            <Button
-              size="small"
-              type={run.status === 'waiting' ? 'primary' : 'default'}
-              icon={<FileSearchOutlined />}
-              onClick={async () => {
-                try {
-                  const { openWorkflowScreening } = await import(
-                    '@/modules/literature/workflowBridge'
-                  )
-                  const opened = await openWorkflowScreening(runId)
-                  if (!opened) {
-                    message.info(
-                      run.status === 'waiting'
-                        ? 'Open a conversation to screen this run in the literature panel.'
-                        : 'This run produced no screening candidates',
+            view; while an `sr-review` run is PENDING on its `screen_review` gate, the
+            panel is the place to screen + resume. Key on the PENDING step, NOT the
+            run status: a live run holds `pending_elicitation` while its status still
+            reads `running` (the durable `waiting` status lags the subscriber), and a
+            snapshot reconnect may lack `stepOrder`. */}
+        {(() => {
+          const screening = run.pendingElicitation?.step_id === 'screen_review'
+          return (
+            ((run.status === 'completed' && run.stepOrder.includes('screen')) || screening) && (
+              <Button
+                size="small"
+                type={screening ? 'primary' : 'default'}
+                icon={<FileSearchOutlined />}
+                onClick={async () => {
+                  try {
+                    const { openWorkflowScreening } = await import(
+                      '@/modules/literature/workflowBridge'
                     )
+                    const opened = await openWorkflowScreening(runId)
+                    if (!opened) {
+                      message.info(
+                        screening
+                          ? 'Open a conversation to screen this run in the literature panel.'
+                          : 'This run produced no screening candidates',
+                      )
+                    }
+                  } catch {
+                    message.error('Could not open the screening panel')
                   }
-                } catch {
-                  message.error('Could not open the screening panel')
-                }
-              }}
-            >
-              {run.status === 'waiting' ? 'Screen in panel' : 'Open in screening'}
-            </Button>
-          )}
+                }}
+              >
+                {screening ? 'Screen in panel' : 'Open in screening'}
+              </Button>
+            )
+          )
+        })()}
       </Space>
 
       {run.error && <Alert type="error" title={run.error} showIcon />}
