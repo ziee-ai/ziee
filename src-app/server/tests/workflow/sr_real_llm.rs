@@ -121,12 +121,21 @@ outputs:
     let final_run = poll_run(&server, &user.token, run_id).await;
     assert_eq!(final_run["status"], "completed", "screen run completes: {final_run}");
     let out = read_output(&server, &user.token, run_id, "screen").await;
+    eprintln!("\n[SR-SCREEN real output] {out}\n");
     let arr = out.as_array().unwrap_or_else(|| panic!("screen output is an array: {out}"));
     assert_eq!(arr.len(), 2, "one decision per record: {out}");
     for d in arr {
         let dec = d["decision"].as_str().unwrap_or("");
         assert!(dec == "include" || dec == "exclude", "valid decision: {d}");
     }
+    // SENSIBLE (not just well-formed): the model must DISCRIMINATE — include the
+    // on-topic base-editing paper, exclude the clearly off-topic marine-sponge one.
+    let decision = |id: &str| {
+        arr.iter()
+            .find_map(|d| (d["id"].as_str() == Some(id)).then(|| d["decision"].as_str().unwrap_or("")))
+    };
+    assert_eq!(decision("10.1/a"), Some("include"), "on-topic base-editing paper INCLUDED: {out}");
+    assert_eq!(decision("10.2/b"), Some("exclude"), "off-topic marine-sponge paper EXCLUDED: {out}");
 }
 
 /// `extract` (llm_map) — sr-review's per-study extraction prompt over 1 paper with
@@ -183,10 +192,20 @@ outputs:
     let final_run = poll_run(&server, &user.token, run_id).await;
     assert_eq!(final_run["status"], "completed", "extract run completes: {final_run}");
     let out = read_output(&server, &user.token, run_id, "extract").await;
+    eprintln!("\n[SR-EXTRACT real output] {out}\n");
     let row = &out.as_array().and_then(|a| a.first()).cloned().unwrap_or(Value::Null);
     for key in ["id", "population", "intervention", "outcome", "confidence", "quote"] {
         assert!(row.get(key).is_some(), "extraction row has `{key}`: {out}");
     }
+    // SENSIBLE: the extraction must reflect the SOURCE TEXT (the 47% off-target
+    // effect), not be empty/invented — and the quote must be drawn from it.
+    let blob = row.to_string().to_lowercase();
+    assert!(
+        blob.contains("47") || blob.contains("off-target") || blob.contains("off target"),
+        "extraction captured the real effect from the source: {row}"
+    );
+    let quote = row["quote"].as_str().unwrap_or("");
+    assert!(quote.trim().len() > 5, "a non-trivial supporting quote was extracted: {row}");
 }
 
 /// `expand` (llm, json) — sr-review's auto-expansion decision prompt. Asserts the
@@ -235,6 +254,9 @@ outputs:
     let final_run = poll_run(&server, &user.token, run_id).await;
     assert_eq!(final_run["status"], "completed", "expand run completes: {final_run}");
     let out = read_output(&server, &user.token, run_id, "expand").await;
+    eprintln!("\n[SR-EXPAND real output] {out}\n");
+    // Shape-only: whether to stop or which queries to add is a legitimate judgment
+    // call, so we don't assert a specific decision — only that it's actionable.
     assert!(out["stop"].is_boolean(), "`stop` is a bool: {out}");
     assert!(out["new_queries"].is_array(), "`new_queries` is an array: {out}");
     assert!(out["snowball_seed_ids"].is_array(), "`snowball_seed_ids` is an array: {out}");
@@ -288,7 +310,16 @@ outputs:
     assert_eq!(final_run["status"], "completed", "synthesize run completes: {final_run}");
     let report = read_output(&server, &user.token, run_id, "synthesize").await;
     let text = report.as_str().unwrap_or("");
+    eprintln!("\n[SR-SYNTHESIS real output]\n{text}\n");
     assert!(text.trim().len() > 40, "real synthesis is non-trivial markdown: {text:?}");
+    // SENSIBLE: the synthesis must USE the supplied evidence (the 47% effect) and
+    // CITE the study id it was given — not produce generic boilerplate.
+    let low = text.to_lowercase();
+    assert!(
+        low.contains("47") || low.contains("off-target") || low.contains("off target"),
+        "synthesis reflects the supplied evidence: {text}"
+    );
+    assert!(text.contains("10.1/a"), "synthesis cites the study id it was given: {text}");
 }
 
 // ──────────────────────────────── END-TO-END ────────────────────────────────
@@ -419,7 +450,17 @@ async fn real_llm_sr_review_end_to_end_completes() {
     // The real `screen` produced a decision array; the real `synthesize` produced
     // non-empty markdown. (Shape-only — real output is non-deterministic.)
     let screen = read_output(&server, &user.token, run_id, "screen").await;
+    eprintln!("\n[SR-E2E screen decisions] {screen}\n");
     assert!(screen.as_array().map(|a| !a.is_empty()).unwrap_or(false), "real screen decisions: {screen}");
     let report = read_output(&server, &user.token, run_id, "synthesize").await;
-    assert!(report.as_str().unwrap_or("").trim().len() > 40, "real synthesis markdown: {report}");
+    let text = report.as_str().unwrap_or("");
+    eprintln!("\n[SR-E2E synthesis]\n{text}\n");
+    assert!(text.trim().len() > 40, "real synthesis markdown: {report}");
+    // SENSIBLE: the end-to-end synthesis must engage the actual evidence (the
+    // included papers' off-target effect), not generic filler.
+    let low = text.to_lowercase();
+    assert!(
+        low.contains("off-target") || low.contains("off target") || low.contains("base edit") || low.contains("47"),
+        "e2e synthesis engages the real evidence: {text}"
+    );
 }
