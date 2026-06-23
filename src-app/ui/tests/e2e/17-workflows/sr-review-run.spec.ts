@@ -108,6 +108,66 @@ outputs:
     expose: full
 `
 
+// sr-review's GATE 2 (extraction review): a mock `extract` seeds the editable PICO
+// table; `review` is the real durable elicit gate; `synthesize` is mocked so the
+// run resumes to completion after the human approves.
+const SR_REVIEW_REVIEW_GATE_YAML = `$schema: "/schemas/2026-06-12/workflow-definition.schema.json"
+max_runtime_secs: 0
+inputs:
+  - name: question
+    description: "The review question the synthesis must answer."
+    required: true
+steps:
+  - id: extract
+    kind: llm
+    output_format: json
+    prompt: "extract for {{ inputs.question }}"
+    mock:
+      - { id: "10.1/a", population: "200 patients", intervention: "base editing", comparator: "standard CRISPR", outcome: "off-target mutations", effect: "47% reduction", risk_of_bias: "low", confidence: 0.8, quote: "reduced off-target mutations by 47%" }
+  - id: review
+    kind: elicit
+    message: "Review the AI-extracted study data — correct any value or quote, then approve to synthesize."
+    data:
+      extractions: "{{ extract.output }}"
+    schema:
+      type: object
+      properties:
+        extractions:
+          type: array
+          ui:
+            widget: table
+          items:
+            type: ["object", "null"]
+            properties:
+              id: { type: string, title: "Study ID", ui: { width: 160 } }
+              population: { type: string, title: "Population" }
+              intervention: { type: string, title: "Intervention" }
+              comparator: { type: string, title: "Comparator" }
+              outcome: { type: string, title: "Outcome" }
+              effect: { type: string, title: "Effect" }
+              risk_of_bias: { type: string, title: "Risk of bias" }
+              confidence: { type: number, title: "Confidence", minimum: 0, maximum: 1 }
+              quote: { type: string, title: "Supporting quote", ui: { expand: true } }
+            required: [id]
+        approved:
+          type: boolean
+          const: true
+      required: [approved]
+    timeout_ms: 0
+    depends_on: [extract]
+  - id: synthesize
+    kind: llm
+    output_format: text
+    prompt: "synthesize {{ review.output.extractions }}"
+    mock: "## Synthesis. Base editing reduced off-target effects [10.1/a]. Limitations: AI-assisted."
+    depends_on: [review]
+outputs:
+  - name: report
+    from: "{{ synthesize.output }}"
+    expose: full
+    mime_type: text/markdown
+`
+
 test.describe('SR-review — settings run input form + screening gate', () => {
   test.skip(!HAS_ANTHROPIC, 'ANTHROPIC_API_KEY not set — model snapshot unavailable')
 
@@ -162,6 +222,52 @@ test.describe('SR-review — settings run input form + screening gate', () => {
     // addition) — the primary "Screen in panel" path to screen + resume.
     await expect(page.getByRole('button', { name: 'Screen in panel' })).toBeVisible({
       timeout: 10000,
+    })
+  })
+
+  test('extraction-review gate: the PICO table renders, approve + submit resumes to completion', async ({
+    page,
+    request,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    const adminToken = await getAdminToken(apiURL)
+    const providerId = await createProviderViaAPI(apiURL, adminToken, 'Anthropic', 'anthropic')
+    await assignProviderToAdministratorsGroup(apiURL, adminToken, providerId)
+    await createModelViaAPI(
+      apiURL,
+      adminToken,
+      providerId,
+      'claude-haiku-4-5-20251001',
+      'Claude Haiku 4.5',
+      'anthropic',
+    )
+    await seedDevWorkflow(request, apiURL, adminToken, 'e2e-sr-review-extract', SR_REVIEW_REVIEW_GATE_YAML)
+
+    await goToWorkflowsSettingsPage(page, baseURL)
+    await openWorkflowCard(page, 'e2e-sr-review-extract')
+    await page.getByRole('button', { name: /Run$/ }).first().click()
+    await page.getByLabel('question').fill('Does base editing reduce off-target effects?')
+    await page.getByLabel('Model').click()
+    await page.getByText('Claude Haiku 4.5').last().click()
+    await page.getByRole('button', { name: 'Run', exact: true }).last().click()
+
+    await page.getByText('Workflow page', { exact: true }).first().click()
+
+    // GATE 2: the extraction-review form renders the EditableArrayTable seeded with
+    // the AI extraction (`data:`), so the reviewer sees the PICO row.
+    await expect(page.getByText(/input required/i)).toBeVisible({ timeout: 20000 })
+    await expect(page.getByText('base editing').first()).toBeVisible({ timeout: 10000 })
+
+    // Approve (the `approved` boolean → a Switch) + submit → the run resumes past
+    // the gate and the (mocked) synthesize step runs to completion.
+    const approve = page.getByRole('switch').first()
+    if (await approve.count()) await approve.click()
+    await page.getByRole('button', { name: 'Submit', exact: true }).click()
+
+    await expect(page.getByText('completed', { exact: true }).first()).toBeVisible({
+      timeout: 30000,
     })
   })
 })
