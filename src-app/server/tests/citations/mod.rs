@@ -595,6 +595,72 @@ async fn test_format_citations_mcp_tool() {
 }
 
 #[tokio::test]
+async fn test_format_citations_inline_items_does_not_persist() {
+    // The inline `items` path formats CSL-JSON DIRECTLY (no DB load, no library
+    // write) — the SR export path. Crux: it must render AND leave the library
+    // empty (the no-auto-persist consent contract).
+    let server = server_with_mock_resolver().await;
+    let user = create_user_with_permissions(&server, "cit_fmt_inline", &[]).await;
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({
+            "name": "format_citations",
+            "arguments": {
+                "format": "ris",
+                "items": [{
+                    "type": "article-journal",
+                    "title": "Inline Only Study",
+                    "DOI": "10.1234/inline",
+                    "author": [{ "family": "Doe", "given": "Jane" }],
+                    "issued": { "date-parts": [[2022]] }
+                }]
+            }
+        }),
+    )
+    .send()
+    .await
+    .unwrap();
+    let body: Value = res.json().await.unwrap();
+    let out = body["result"]["structuredContent"]["output"].as_str().unwrap_or("");
+    assert!(out.contains("TY  - JOUR"), "inline items render RIS: {body}");
+    assert!(out.contains("Inline Only Study"), "inline title is rendered: {body}");
+    // No `ids`/`project_id` were given and `items` was supplied → nothing persisted.
+    assert_eq!(
+        list_entries(&server, &user.token).await.len(),
+        0,
+        "inline format_citations MUST NOT write the bibliography"
+    );
+}
+
+#[tokio::test]
+async fn test_format_citations_inline_items_over_cap_is_rejected() {
+    // The inline path enforces the same MAX_BATCH_ITEMS (100) cap as the other
+    // citation tools — 101 inline items → an in-band JSON-RPC error.
+    let server = server_with_mock_resolver().await;
+    let user = create_user_with_permissions(&server, "cit_fmt_cap", &[]).await;
+    let items: Vec<Value> = (0..101)
+        .map(|i| json!({ "type": "article-journal", "title": format!("Study {i}") }))
+        .collect();
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({ "name": "format_citations", "arguments": { "format": "ris", "items": items } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    let body: Value = res.json().await.unwrap();
+    let msg = serde_json::to_string(&body).unwrap_or_default();
+    assert!(
+        msg.contains("too many items"),
+        "over-cap inline items must be rejected: {body}"
+    );
+}
+
+#[tokio::test]
 async fn test_remove_citations_mcp_deletes_from_library() {
     // Exercises the MCP remove_citations (delete-from-library) dispatch arm.
     let server = server_with_mock_resolver().await;

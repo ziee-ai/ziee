@@ -348,6 +348,36 @@ mod tests {
     }
 
     #[test]
+    fn array_items_nullable_object_accepts_null_rows() {
+        // The SR review gate uses `items.type: [object, null]` so a SKIPPED
+        // extraction (materialized as a null array element) passes submit
+        // validation. Object rows still require `id`; a bare null is accepted.
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "extractions": {
+                    "type": "array",
+                    "items": {
+                        "type": ["object", "null"],
+                        "properties": { "id": { "type": "string" } },
+                        "required": ["id"]
+                    }
+                }
+            }
+        });
+        // A real row + a null (skipped) row → OK.
+        assert!(
+            validate_response_shape(&schema, &json!({"extractions": [{"id": "10.1/x"}, null]})).is_ok(),
+            "a null array element must pass when items allows the null type"
+        );
+        // An OBJECT row still must have `id` (null rows are the only exception).
+        assert!(
+            validate_response_shape(&schema, &json!({"extractions": [{"foo": "bar"}]})).is_err(),
+            "an object row missing the required id still fails"
+        );
+    }
+
+    #[test]
     fn non_object_schema_is_permissive() {
         // A `true` / non-object schema carries no constraints.
         assert!(validate_response_shape(&json!(true), &json!({"anything": 1})).is_ok());

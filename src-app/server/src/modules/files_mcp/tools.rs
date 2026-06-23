@@ -1,5 +1,7 @@
-//! Static tool descriptors emitted by `tools/list` — exactly three read-only
-//! tools (LS / Read / Grep, adapted to a fixed id-addressed file set).
+//! Static tool descriptors emitted by `tools/list` — 9 tools: 4 read-only
+//! (list_files / read_file / grep_files / semantic_search, adapted to a fixed
+//! id-addressed file set) + 5 write (create_file / edit_file / edit_file_lines /
+//! rewrite_file / convert_document).
 
 use serde_json::{Value, json};
 
@@ -102,6 +104,18 @@ pub fn tool_list() -> Value {
                         "content": { "type": "string", "description": "New full file contents." }
                     },
                     "required": ["content"]
+                }
+            },
+            {
+                "name": "convert_document",
+                "description": "Convert Markdown to a PDF and save it to your files (returns the saved file). Use to turn a report or synthesis into a downloadable PDF. Rendered server-side with a UTF-8/scientific-symbol-safe engine.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "markdown": { "type": "string", "description": "The Markdown source to render to PDF." },
+                        "filename": { "type": "string", "description": "Output filename (a '.pdf' extension is ensured). Default 'document.pdf'." }
+                    },
+                    "required": ["markdown"]
                 }
             }
         ]

@@ -9,6 +9,7 @@ use crate::common::test_helpers::{create_user_with_no_permissions, create_user_w
 use crate::common::{TestServer, TestServerOptions};
 use crate::lit_search::{
     configure, jsonrpc, start_mock_crossref, start_mock_europepmc, start_mock_s2_flaky,
+    start_mock_s2_paper,
 };
 
 fn admin_perms() -> &'static [&'static str] {
@@ -299,4 +300,241 @@ async fn test_core_enabled_but_unkeyed_self_skips_into_degraded() {
         !sc["records"].as_array().unwrap().is_empty(),
         "keyless europepmc must still return records: {body}"
     );
+}
+
+// ── systematic-review tools: dedup_records / verify_quote (mock-free) ──
+
+/// A minimal valid `LitRecord` as the tools emit it.
+fn rec(doi: &str, source: &str) -> serde_json::Value {
+    json!({
+        "doi": doi, "pmid": null, "title": format!("Study {doi}"),
+        "abstract_text": null, "authors": ["A B"], "year": 2021, "venue": null,
+        "url": null, "source": source, "source_ids": [format!("{source}:1")],
+        "cited_by_count": null, "is_preprint": false, "relevance": 0.0
+    })
+}
+
+#[tokio::test]
+async fn test_tools_list_includes_sr_tools() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "ls_srlist", &["lit_search::use"]).await;
+    let res = jsonrpc(&server, &user.token, "tools/list", json!({}))
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = res.json().await.unwrap();
+    let names: Vec<&str> = body["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap())
+        .collect();
+    for t in ["dedup_records", "verify_quote", "fetch_references"] {
+        assert!(names.contains(&t), "missing {t}: {names:?}");
+    }
+}
+
+#[tokio::test]
+async fn test_dedup_records_merges_by_doi_and_counts_identified() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "ls_dedup", &["lit_search::use"]).await;
+    // The same DOI (10.1/x) appears in both sets (europepmc + crossref) → merges
+    // to one record; 10.2/y is distinct → 2 after dedup. Pre-dedup per-source
+    // counts: europepmc 2, crossref 1.
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({
+            "name": "dedup_records",
+            "arguments": {
+                "record_sets": [
+                    [rec("10.1/x", "europepmc"), rec("10.2/y", "europepmc")],
+                    [rec("10.1/x", "crossref")]
+                ],
+                "query": "x"
+            }
+        }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let sc = &body["result"]["structuredContent"];
+    assert_eq!(sc["after_dedup"], 2, "DOI 10.1/x dedups across sets: {sc}");
+    assert_eq!(sc["identified"]["europepmc"], 2);
+    assert_eq!(sc["identified"]["crossref"], 1);
+}
+
+#[tokio::test]
+async fn test_dedup_records_counts_dropped_malformed() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "ls_dedup_drop", &["lit_search::use"]).await;
+    // One valid record + one malformed object (missing required fields) in the set:
+    // the valid one survives, the malformed one is counted in `dropped`, no error.
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({
+            "name": "dedup_records",
+            "arguments": {
+                "record_sets": [[ rec("10.1/ok", "europepmc"), { "not": "a record" } ]]
+            }
+        }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let sc = &body["result"]["structuredContent"];
+    assert_eq!(sc["dropped"], 1, "the malformed record is counted as dropped: {body}");
+    assert_eq!(sc["after_dedup"], 1, "the valid record still survives: {body}");
+    assert_eq!(sc["union_capped"], false);
+}
+
+#[tokio::test]
+async fn test_fetch_references_backward_returns_cited_works() {
+    // Snowball: backward = the works the seed CITES. The S2 paper-graph mock
+    // returns one cited paper; assert it surfaces in the deduped record set.
+    let s2 = start_mock_s2_paper().await;
+    let server = server_with_seams(vec![(
+        "LIT_SEARCH_S2_PAPER_ENDPOINT".to_string(),
+        s2,
+    )])
+    .await;
+    let admin = create_user_with_permissions(&server, "ls_snowball_admin", admin_perms()).await;
+    // The per-connector gate requires semanticscholar enabled.
+    configure(&server, &admin.token, &["semanticscholar"]).await;
+
+    let res = jsonrpc(
+        &server,
+        &admin.token,
+        "tools/call",
+        json!({
+            "name": "fetch_references",
+            "arguments": { "ids": ["10.1234/seed"], "direction": "backward" }
+        }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let sc = &body["result"]["structuredContent"];
+    let recs = sc["records"].as_array().expect("records array");
+    assert!(
+        recs.iter().any(|r| r["doi"] == "10.9/cited"),
+        "backward snowball returns the cited reference: {body}"
+    );
+    assert!(
+        !recs.iter().any(|r| r["doi"] == "10.9/citing"),
+        "backward must NOT include the citing paper: {body}"
+    );
+}
+
+#[tokio::test]
+async fn test_fetch_references_forward_returns_citing_works() {
+    // direction=forward maps each item's `citingPaper` (papers that CITE the seed),
+    // the mirror of the backward case.
+    let s2 = start_mock_s2_paper().await;
+    let server = server_with_seams(vec![("LIT_SEARCH_S2_PAPER_ENDPOINT".to_string(), s2)]).await;
+    let admin = create_user_with_permissions(&server, "ls_snowball_fwd", admin_perms()).await;
+    configure(&server, &admin.token, &["semanticscholar"]).await;
+    let res = jsonrpc(
+        &server,
+        &admin.token,
+        "tools/call",
+        json!({
+            "name": "fetch_references",
+            "arguments": { "ids": ["10.1234/seed"], "direction": "forward" }
+        }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let recs = body["result"]["structuredContent"]["records"]
+        .as_array()
+        .expect("records array");
+    assert!(
+        recs.iter().any(|r| r["doi"] == "10.9/citing"),
+        "forward snowball returns the citing paper: {body}"
+    );
+    assert!(
+        !recs.iter().any(|r| r["doi"] == "10.9/cited"),
+        "forward must NOT include the cited reference: {body}"
+    );
+}
+
+#[tokio::test]
+async fn test_fetch_references_invalid_direction_is_rejected() {
+    // `direction` is validated before the settings/connector checks, so a bad
+    // value is an in-band JSON-RPC error naming the field.
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "ls_snow_dir", &["lit_search::use"]).await;
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({ "name": "fetch_references", "arguments": { "ids": ["10.1/x"], "direction": "sideways" } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    let body: serde_json::Value = res.json().await.unwrap();
+    let msg = serde_json::to_string(&body).unwrap_or_default();
+    assert!(msg.contains("direction"), "invalid direction must be rejected: {body}");
+}
+
+#[tokio::test]
+async fn test_fetch_references_disabled_connector_is_rejected() {
+    // The snowball tool honors the per-connector enable gate: with semanticscholar
+    // NOT enabled, the call is rejected rather than hitting S2 anyway.
+    let server = TestServer::start().await;
+    let admin = create_user_with_permissions(&server, "ls_snowball_off", admin_perms()).await;
+    configure(&server, &admin.token, &["europepmc"]).await; // semanticscholar NOT enabled
+    let res = jsonrpc(
+        &server,
+        &admin.token,
+        "tools/call",
+        json!({ "name": "fetch_references", "arguments": { "ids": ["10.1234/seed"] } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    let body: serde_json::Value = res.json().await.unwrap();
+    // The JSON-RPC error carries the human message (not the error code), so
+    // assert on the message text the response actually contains.
+    let msg = serde_json::to_string(&body).unwrap_or_default();
+    assert!(
+        msg.contains("Semantic Scholar") && msg.contains("not enabled"),
+        "disabled snowball connector must be rejected: {body}"
+    );
+}
+
+#[tokio::test]
+async fn test_verify_quote_uncached_paper_reports_not_cached() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "ls_vq", &["lit_search::use"]).await;
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({
+            "name": "verify_quote",
+            "arguments": { "id": "10.9999/never-fetched", "quote": "some claimed span" }
+        }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let sc = &body["result"]["structuredContent"];
+    assert_eq!(sc["status"], "not_cached", "uncached paper: {body}");
+    assert_eq!(sc["verified"], false);
 }

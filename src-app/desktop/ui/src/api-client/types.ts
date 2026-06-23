@@ -183,11 +183,6 @@ export interface CallToolResponse {
   is_error: boolean
 }
 
-export interface CancelAckResponse {
-  run_id: string
-  status: string
-}
-
 export interface Catalog {
   generated_at?: string
   hub_version: string
@@ -2121,6 +2116,34 @@ export interface ProbeFailure2 {
   reason: string
 }
 
+export type ProgressKind = {
+  type: 'status'
+  message: string
+} | {
+  type: 'bar'
+  fraction: number
+} | {
+  type: 'counter'
+  current: number
+  total: number
+  unit?: string | null
+} | {
+  type: 'log'
+  line: string
+} | {
+  type: 'phase'
+  index?: number | null
+  name: string
+  total?: number | null
+}
+
+export interface ProgressTrack {
+  done?: boolean
+  id?: string
+  kind: ProgressKind
+  label?: string
+}
+
 export interface Project {
   description?: string
   created_at: string
@@ -2384,6 +2407,11 @@ export interface RotateProxyTokenResponse {
   provider: LlmProvider
 }
 
+export interface RunActionAck {
+  run_id: string
+  status: string
+}
+
 export interface RuntimeSettings {
   auto_start_timeout_secs: number
   created_at: string
@@ -2507,6 +2535,7 @@ export type SSEDownloadProgressEvent = {
 }
 
 export interface SSEElicitationRequiredData {
+  data?: any
   deadline_at: string
   elicitation_id: string
   message: string
@@ -2636,6 +2665,7 @@ export interface SSERunStartedData {
   model_id?: string
   run_id: string
   sandbox_flavor?: string
+  step_manifest?: SSEStepManifestItem[]
   total_steps: number
   workflow_id: string
 }
@@ -2649,7 +2679,9 @@ export interface SSESnapshotData {
   step_artifacts_json: any
   step_item_progress_json: any
   step_logs_json: any
+  step_manifest?: SSEStepManifestItem[]
   step_outputs_json: any
+  step_progress_json?: any
   total_tokens: number
 }
 
@@ -2674,7 +2706,20 @@ export interface SSEStepItemProgressData {
   step_id: string
 }
 
+export interface SSEStepManifestItem {
+  description?: string
+  id: string
+  kind: string
+}
+
+export interface SSEStepProgressData {
+  run_id: string
+  step_id: string
+  tracks: ProgressTrack[]
+}
+
 export interface SSEStepStartedData {
+  description?: string
   message?: string
   run_id: string
   step_id: string
@@ -2689,6 +2734,7 @@ export type SSEWorkflowRunEvent = {
   runStarted: SSERunStartedData
   stepStarted: SSEStepStartedData
   stepItemProgress: SSEStepItemProgressData
+  stepProgress: SSEStepProgressData
   stepCompleted: SSEStepCompletedData
   stepFailed: SSEStepFailedData
   elicitationRequired: SSEElicitationRequiredData
@@ -2756,6 +2802,10 @@ export interface SetSettingRequest {
 
 export interface SetSubscriptionRequest {
   conversation_id?: string
+}
+
+export interface SetTimeoutRequest {
+  timeout_secs: number
 }
 
 export interface SettingItem {
@@ -3538,21 +3588,39 @@ export interface WorkflowRun {
   step_item_progress_json: any
   step_logs_json: any
   step_outputs_json: any
+  step_progress_json?: any
   total_tokens: number
   updated_at: string
   user_id: string
   workflow_id: string
 }
 
+export interface WorkflowRunListResponse {
+  runs: WorkflowRunSummary[]
+}
+
 export interface WorkflowRunRequest {
+  capture_logs?: boolean
   conversation_id?: string
   inputs?: any
   mocks?: any
+  model_id?: string
 }
 
 export interface WorkflowRunStartResponse {
   run_id: string
   status: string
+}
+
+export interface WorkflowRunSummary {
+  conversation_id?: string
+  created_at: string
+  id: string
+  invocation_source: string
+  model_id?: string
+  status: string
+  total_tokens: number
+  workflow_id: string
 }
 
 // =============================================================================
@@ -4158,6 +4226,7 @@ export const ApiEndpoints = {
   'WebSearch.updateSettings': 'PUT /api/web-search/settings',
   'Workflow.cancelRun': 'POST /api/workflow-runs/{run_id}/cancel',
   'Workflow.delete': 'DELETE /api/workflows/{id}',
+  'Workflow.deleteRun': 'DELETE /api/workflow-runs/{run_id}',
   'Workflow.deleteSystem': 'DELETE /api/workflows/system/{id}',
   'Workflow.dryRun': 'POST /api/workflows/{id}/dry-run',
   'Workflow.get': 'GET /api/workflows/{id}',
@@ -4166,11 +4235,13 @@ export const ApiEndpoints = {
   'Workflow.import': 'POST /api/workflows/import',
   'Workflow.importSystem': 'POST /api/workflows/system/import',
   'Workflow.list': 'GET /api/workflows',
+  'Workflow.listRuns': 'GET /api/workflows/{id}/runs',
   'Workflow.listSystem': 'GET /api/workflows/system',
   'Workflow.readArtifact': 'GET /api/workflow-runs/{run_id}/artifact/{step_id}/{filename}',
   'Workflow.readLog': 'GET /api/workflow-runs/{run_id}/logs/{step_id}/{kind}',
   'Workflow.readOutput': 'GET /api/workflow-runs/{run_id}/output/{step_id}',
   'Workflow.run': 'POST /api/workflows/{id}/run',
+  'Workflow.setRunTimeout': 'PUT /api/workflow-runs/{run_id}/timeout',
   'Workflow.submitElicit': 'POST /api/workflow-runs/{run_id}/elicit/{elicitation_id}',
   'Workflow.subscribeRunEvents': 'GET /api/workflow-runs/{run_id}/events',
   'Workflow.test': 'POST /api/workflows/{id}/test',
@@ -4516,6 +4587,7 @@ export type ApiEndpointParameters = {
   'WebSearch.updateSettings': UpdateWebSearchSettingsRequest
   'Workflow.cancelRun': { run_id: string }
   'Workflow.delete': { id: string }
+  'Workflow.deleteRun': { run_id: string }
   'Workflow.deleteSystem': { id: string }
   'Workflow.dryRun': { id: string } & DryRunRequest
   'Workflow.get': { id: string }
@@ -4524,11 +4596,13 @@ export type ApiEndpointParameters = {
   'Workflow.import': { name?: string; scope?: string } & FormData
   'Workflow.importSystem': { name?: string; scope?: string } & FormData
   'Workflow.list': void
+  'Workflow.listRuns': { id: string }
   'Workflow.listSystem': void
   'Workflow.readArtifact': { run_id: string; step_id: string; filename: string }
   'Workflow.readLog': { run_id: string; step_id: string; kind: string }
   'Workflow.readOutput': { run_id: string; step_id: string }
   'Workflow.run': { id: string } & WorkflowRunRequest
+  'Workflow.setRunTimeout': { run_id: string } & SetTimeoutRequest
   'Workflow.submitElicit': { run_id: string; elicitation_id: string } & ElicitationResponseRequest
   'Workflow.subscribeRunEvents': { run_id: string }
   'Workflow.test': { id: string } & TestWorkflowRequest
@@ -4872,8 +4946,9 @@ export type ApiEndpointResponses = {
   'WebSearch.getSettings': WebSearchSettings
   'WebSearch.updateProvider': ProviderCatalogResponse
   'WebSearch.updateSettings': WebSearchSettings
-  'Workflow.cancelRun': CancelAckResponse
+  'Workflow.cancelRun': RunActionAck
   'Workflow.delete': void
+  'Workflow.deleteRun': void
   'Workflow.deleteSystem': void
   'Workflow.dryRun': DryRunResult
   'Workflow.get': Workflow
@@ -4882,11 +4957,13 @@ export type ApiEndpointResponses = {
   'Workflow.import': Workflow
   'Workflow.importSystem': Workflow
   'Workflow.list': WorkflowListResponse
+  'Workflow.listRuns': WorkflowRunListResponse
   'Workflow.listSystem': WorkflowListResponse
   'Workflow.readArtifact': any
   'Workflow.readLog': any
   'Workflow.readOutput': any
   'Workflow.run': WorkflowRunStartResponse
+  'Workflow.setRunTimeout': RunActionAck
   'Workflow.submitElicit': ElicitAckResponse
   'Workflow.subscribeRunEvents': SSEWorkflowRunEvent
   'Workflow.test': TestRunResponse

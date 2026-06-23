@@ -74,10 +74,11 @@ pub fn tool_list() -> Value {
             },
             {
                 "name": "format_citations",
-                "description": "Render a reference list in a chosen CSL style + format. format ∈ csljson|bibtex|ris|text; style is a bundled CSL style name (e.g. apa, vancouver, nature) used when format=text.",
+                "description": "Render a reference list in a chosen CSL style + format. format is one of csljson | bibtex | ris | text; style is a bundled CSL style name (e.g. apa, vancouver, nature) used when format=text. Supply EITHER inline `items` (raw CSL-JSON, formatted directly — nothing is saved) OR saved `ids`/`project_id`.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
+                        "items": { "type": "array", "items": { "type": "object" }, "description": "Inline CSL-JSON references to format directly (e.g. from a workflow's own records). When given, `ids`/`project_id` are ignored and NOTHING is written to the library." },
                         "project_id": { "type": "string", "format": "uuid" },
                         "ids": { "type": "array", "items": { "type": "string", "format": "uuid" } },
                         "style": { "type": "string", "description": "CSL style name (for format=text). Default apa." },

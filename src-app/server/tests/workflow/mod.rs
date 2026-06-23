@@ -27,6 +27,8 @@ mod run_mocked;
 mod run_model;
 mod sandbox_progress;
 mod sandbox_run;
+mod sr_real_llm;
+mod sr_workflow;
 mod status_machine;
 mod stream_access;
 mod system_endpoints;

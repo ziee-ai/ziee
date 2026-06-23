@@ -143,6 +143,99 @@ async fn elicit_wrong_user_is_forbidden() {
 }
 
 #[tokio::test]
+async fn set_run_timeout_updates_for_owner_and_forbids_other_user() {
+    // A paused-on-elicit run is in-flight (its registry handle is live), so the
+    // live-timeout endpoint (PUT /workflow-runs/{id}/timeout) can adjust it.
+    let server = plain_server().await;
+    let (owner_token, run_id, _elicitation_id) =
+        start_paused_elicit_run(&server, "timeout-live").await;
+    let client = reqwest::Client::new();
+    let url = server.api_url(&format!("/workflow-runs/{run_id}/timeout"));
+
+    // Owner lifts the wall-clock cap (secs: 0 = unbounded) → 200 { status: "updated" }.
+    let resp = client
+        .put(&url)
+        .header("Authorization", format!("Bearer {owner_token}"))
+        .json(&json!({ "timeout_secs": 0 }))
+        .send()
+        .await
+        .expect("owner set timeout");
+    assert_eq!(resp.status(), 200, "owner may set their own run's timeout");
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["status"], "updated", "in-flight run timeout updated: {body}");
+    assert_eq!(body["run_id"], run_id.to_string());
+
+    // An over-ceiling value is accepted (clamped server-side) → still "updated".
+    let resp = client
+        .put(&url)
+        .header("Authorization", format!("Bearer {owner_token}"))
+        .json(&json!({ "timeout_secs": 99_999_999_999u64 }))
+        .send()
+        .await
+        .expect("owner clamp timeout");
+    assert_eq!(resp.status(), 200, "an over-ceiling timeout is clamped, not rejected");
+
+    // A different user must NOT adjust this run's timeout → 403.
+    let other = create_user_with_permissions(
+        &server,
+        "timeout_intruder",
+        &["workflows::read", "workflows::execute"],
+    )
+    .await;
+    let resp = client
+        .put(&url)
+        .header("Authorization", format!("Bearer {}", other.token))
+        .json(&json!({ "timeout_secs": 600 }))
+        .send()
+        .await
+        .expect("other user set timeout");
+    assert_eq!(
+        resp.status(),
+        403,
+        "another user cannot change this run's timeout: {}",
+        resp.text().await.unwrap_or_default()
+    );
+
+    // Drive the run to a terminal state, then PUT /timeout → 200 {already_terminal}:
+    // the registry handle is gone, so there's nothing live to adjust.
+    let cancel = client
+        .post(server.api_url(&format!("/workflow-runs/{run_id}/cancel")))
+        .header("Authorization", format!("Bearer {owner_token}"))
+        .send()
+        .await
+        .expect("cancel run");
+    assert_eq!(cancel.status(), 200, "owner cancels their own run");
+    let final_run = poll_run(&server, &owner_token, run_id).await;
+    assert_eq!(final_run["status"], "cancelled", "run reached terminal: {final_run}");
+
+    // The registry handle is unregistered by the runner task AFTER the DB flips
+    // to cancelled, so there's a brief window where set_timeout still finds a
+    // live handle ("updated"). Poll until the handle is gone → "already_terminal".
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        let resp = client
+            .put(&url)
+            .header("Authorization", format!("Bearer {owner_token}"))
+            .json(&json!({ "timeout_secs": 0 }))
+            .send()
+            .await
+            .expect("set timeout on terminal run");
+        assert_eq!(resp.status(), 200, "PUT /timeout on a finished run still 200s");
+        let body: serde_json::Value = resp.json().await.unwrap();
+        let status = body["status"].as_str().unwrap_or("");
+        if status == "already_terminal" {
+            break;
+        }
+        assert_eq!(status, "updated", "only 'updated'/'already_terminal' expected: {body}");
+        assert!(
+            Instant::now() < deadline,
+            "handle was never reaped after the run went terminal"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
+#[tokio::test]
 async fn elicit_stale_id_is_gone() {
     let server = plain_server().await;
     let (owner_token, run_id, _elicitation_id) = start_paused_elicit_run(&server, "stale-410").await;

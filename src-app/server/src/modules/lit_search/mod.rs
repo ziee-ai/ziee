@@ -5,11 +5,17 @@
 //! the same axum app, and serves JSON-RPC at `/api/lit-search/mcp`. The MCP
 //! client at `mcp/client/manager.rs` injects the JWT for built-in servers.
 //!
-//! Two tools:
+//! Five tools:
 //! - `literature_search(query, …)`     — UNION across Europe PMC / Crossref /
 //!   Semantic Scholar / PubMed / arXiv / CORE → dedup → rank → digest.
 //! - `fetch_paper_fulltext(ids, …)`    — open-access full text, cached to disk +
 //!   mounted read-only at `/lit` in the sandbox.
+//! - `dedup_records(record_sets, …)`   — DOI-dedup + rank a union of prior result
+//!   sets (the SR multi-query / snowball merge point; no library write).
+//! - `verify_quote(id, quote)`         — deterministic check that a quote is a
+//!   verbatim span of a paper's cached full text (the hallucination guard).
+//! - `fetch_references(ids, direction)` — citation snowballing via Semantic
+//!   Scholar (backward = cited / forward = citing), deduped.
 //!
 //! The server row is registered at boot unless the deploy-level
 //! `lit_search.enabled=false` kill switch is set; the chat extension then
@@ -57,7 +63,7 @@ static LIT_SEARCH_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {
     // ModuleEntry order (NOT a migration number): after mcp (order 65) so the
     // mcp_servers table exists for the built-in upsert; after web_search (order 96).
     order: 100,
-    description: "Built-in MCP server: literature search (literature_search) + OA full text (fetch_paper_fulltext)",
+    description: "Built-in MCP server: literature search + screening (search, dedup, OA full text, quote-verify, citation snowballing)",
     constructor: || Box::new(LitSearchModule::new()),
 };
 
@@ -84,7 +90,7 @@ impl AppModule for LitSearchModule {
     }
 
     fn description(&self) -> &'static str {
-        "Built-in MCP server: literature search + open-access full text"
+        "Built-in MCP server: literature search + screening (search, dedup, OA full text, quote-verify, citation snowballing)"
     }
 
     fn init(&mut self, ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {

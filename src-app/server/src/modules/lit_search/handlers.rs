@@ -1,5 +1,5 @@
-//! HTTP handlers: the JSON-RPC MCP endpoint (literature_search +
-//! fetch_paper_fulltext) + the admin settings/connectors REST surface.
+//! HTTP handlers: the JSON-RPC MCP endpoint (the five lit_search tools) + the
+//! admin settings/connectors REST surface.
 
 use aide::transform::TransformOperation;
 use axum::{
@@ -105,6 +105,10 @@ async fn dispatch_tool_call(
     let result = match call.name.as_str() {
         "literature_search" => do_search(&call.arguments).await,
         "fetch_paper_fulltext" => do_fetch_fulltext(user_id, conversation_id, &call.arguments).await,
+        "dedup_records" => do_dedup_records(&call.arguments).await,
+        "select_included" => do_select_included(&call.arguments).await,
+        "verify_quote" => do_verify_quote(&call.arguments).await,
+        "fetch_references" => do_fetch_references(&call.arguments).await,
         other => {
             return Err((StatusCode::OK, JsonRpcError::method_not_found(&format!("lit_search tool: {other}"))));
         }
@@ -114,7 +118,15 @@ async fn dispatch_tool_call(
 
 #[derive(Debug, Deserialize)]
 struct SearchArgs {
-    query: String,
+    /// Single query (the common case).
+    #[serde(default)]
+    query: Option<String>,
+    /// Batch form: search several queries and return their merged (dedup→rank)
+    /// union. Used by the SR auto-expansion rounds so one tool step can run the
+    /// LLM's N derived queries. An empty list is a NO-OP (empty result) — that is
+    /// what lets a skipped auto-expansion round cost nothing.
+    #[serde(default)]
+    queries: Option<Vec<String>>,
     #[serde(default)]
     max_results: Option<i64>,
     #[serde(default)]
@@ -123,19 +135,40 @@ struct SearchArgs {
     year_to: Option<i32>,
 }
 
-// NOTE: the lit_search tool fns (`do_search`, `do_fetch_fulltext`) build the
-// full MCP `{ content, structuredContent }` envelope INLINE rather than returning
-// a `(text, Value)` tuple for the dispatcher to wrap (the web_search peer's
-// convention). Deliberate: `fetch_paper_fulltext`'s envelope is bespoke (multi-
-// paper text + a `lit_dir`/`note` structuredContent), so a shared two-tuple
-// wrapper wouldn't fit both tools; keeping each fn self-contained is clearer.
+// NOTE: most lit_search tool fns wrap their result via the shared
+// `tool_result(text, structured)` helper (mirroring `citations::handlers`). The
+// one exception is `do_fetch_fulltext`, whose envelope is bespoke (multi-paper
+// text + a `lit_dir`/`note` structuredContent) and is built inline.
 async fn do_search(args: &Value) -> Result<Value, AppError> {
+    use chrono::Datelike;
     let args: SearchArgs = serde_json::from_value(args.clone())
         .map_err(|e| AppError::bad_request("INVALID_ARGS", e.to_string()))?;
-    let q = args.query.trim();
-    if q.is_empty() {
+
+    // Resolve the query list. `queries` (batch) takes precedence over `query`
+    // (single); empty strings are dropped. Batch mode with no usable query is a
+    // NO-OP (empty result) — this is what makes a skipped SR auto-expansion round
+    // free. Single-query mode keeps the strict "must not be empty" error.
+    let (queries, batch_mode): (Vec<String>, bool) = if let Some(qs) = &args.queries {
+        (
+            qs.iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
+            true,
+        )
+    } else if let Some(q) = &args.query {
+        let q = q.trim().to_string();
+        (if q.is_empty() { vec![] } else { vec![q] }, false)
+    } else {
+        return Err(AppError::bad_request("VALIDATION_ERROR", "query or queries is required"));
+    };
+    if queries.is_empty() {
+        if batch_mode {
+            let empty = empty_result(String::new());
+            let structured = serde_json::to_value(&empty)
+                .map_err(|e| AppError::internal_error(e.to_string()))?;
+            return Ok(tool_result(build_digest(&empty), structured));
+        }
         return Err(AppError::bad_request("VALIDATION_ERROR", "query must not be empty"));
     }
+
     // Reject an inverted year range (otherwise it silently yields zero results).
     if let (Some(from), Some(to)) = (args.year_from, args.year_to)
         && from > to
@@ -163,11 +196,48 @@ async fn do_search(args: &Value) -> Result<Value, AppError> {
     if settings.max_results > settings.per_source_limit {
         settings.per_source_limit = settings.max_results.min(100);
     }
-    let result = connectors::aggregate_search(q, args.year_from, args.year_to, &settings).await?;
+
+    // Single query: the connector's own dedup→rank→cap result is final (no extra
+    // work — preserves the common-path behavior exactly). Multiple queries: run
+    // each and merge the union (dedup→rank→cap), mirroring `aggregate_search`'s tail.
+    let result = if queries.len() == 1 {
+        connectors::aggregate_search(&queries[0], args.year_from, args.year_to, &settings).await?
+    } else {
+        let mut all: Vec<super::models::LitRecord> = Vec::new();
+        let mut identified: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+        let mut degraded: Vec<String> = Vec::new();
+        for q in &queries {
+            let r = connectors::aggregate_search(q, args.year_from, args.year_to, &settings).await?;
+            for (k, v) in r.identified {
+                *identified.entry(k).or_insert(0) += v;
+            }
+            degraded.extend(r.degraded_sources);
+            all.extend(r.records);
+        }
+        let mut records = super::dedup::merge_by_doi(all);
+        super::ranking::rank(&mut records, &queries.join(" "), chrono::Utc::now().year());
+        let after_dedup = records.len();
+        records.truncate(settings.max_results.clamp(1, 200) as usize);
+        degraded.sort();
+        degraded.dedup();
+        let completeness = if settings.completeness_estimate_enabled {
+            Some(super::completeness::estimate(&records, &identified))
+        } else {
+            None
+        };
+        AggregateResult {
+            query: queries.join(" | "),
+            records,
+            identified,
+            after_dedup,
+            degraded_sources: degraded,
+            completeness,
+        }
+    };
     let digest = build_digest(&result);
     let structured =
         serde_json::to_value(&result).map_err(|e| AppError::internal_error(e.to_string()))?;
-    Ok(json!({ "content": [{ "type": "text", "text": digest }], "structuredContent": structured }))
+    Ok(tool_result(digest, structured))
 }
 
 /// Per-record loop-stop threshold. Kept well under `MAX_KEPT_TOOL_RESULT_CHARS`
@@ -295,6 +365,403 @@ async fn do_fetch_fulltext(
     }
     let max_papers = args.max_papers.unwrap_or(10).clamp(1, 50) as usize;
     fulltext::fetch_paper_fulltext(user_id, conversation_id, ids, max_papers, &settings).await
+}
+
+/// Build the standard MCP tool-result envelope (text digest + structuredContent).
+/// Mirrors `citations::handlers::tool_result` so every lit_search tool returns an
+/// identically-shaped result.
+fn tool_result(text: String, structured: Value) -> Value {
+    json!({
+        "content": [{ "type": "text", "text": text }],
+        "structuredContent": structured,
+    })
+}
+
+/// An empty `AggregateResult` — the NO-OP return for a batch `literature_search`
+/// with no usable queries, or `fetch_references` with no ids (e.g. a skipped SR
+/// auto-expansion round). Returning empty instead of erroring keeps a skipped
+/// round a clean no-op rather than an `on_error` path.
+fn empty_result(query: String) -> AggregateResult {
+    AggregateResult {
+        query,
+        records: vec![],
+        identified: std::collections::BTreeMap::new(),
+        after_dedup: 0,
+        degraded_sources: vec![],
+        completeness: None,
+    }
+}
+
+// ─────────────────────── dedup_records / verify_quote / fetch_references ──────
+
+#[derive(Debug, Deserialize)]
+struct DedupArgs {
+    /// Array of record arrays (each the `records` of a prior result). Parsed
+    /// per-record (best-effort) so one malformed record doesn't reject the batch.
+    record_sets: Vec<Vec<Value>>,
+    #[serde(default)]
+    query: Option<String>,
+    #[serde(default)]
+    max_keep: Option<i64>,
+}
+
+/// Merge + DOI-dedup several record sets into one relevance-ranked union. Pure
+/// in-process (no search, no library write) — the SR multi-query / snowball merge
+/// point. Mirrors `aggregate_search`'s dedup→rank→completeness tail.
+async fn do_dedup_records(args: &Value) -> Result<Value, AppError> {
+    use chrono::Datelike;
+    let args: DedupArgs = serde_json::from_value(args.clone())
+        .map_err(|e| AppError::bad_request("INVALID_ARGS", e.to_string()))?;
+    let query = args.query.unwrap_or_default();
+
+    // Flatten + per-source pre-dedup counts (PRISMA "identified"). Per-record
+    // parse: a malformed record is skipped (counted as `dropped`, not fatal —
+    // inputs are normally this system's own outputs). The flattened union is
+    // hard-capped so a pathological caller can't exhaust memory before dedup.
+    const MAX_DEDUP_UNION: usize = 5000;
+    let mut all: Vec<super::models::LitRecord> = Vec::new();
+    let mut identified: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    let mut dropped = 0usize;
+    let mut union_capped = false;
+    'flatten: for set in args.record_sets {
+        for rec_val in set {
+            match serde_json::from_value::<super::models::LitRecord>(rec_val) {
+                Ok(rec) => {
+                    *identified.entry(rec.source.clone()).or_insert(0) += 1;
+                    all.push(rec);
+                    if all.len() >= MAX_DEDUP_UNION {
+                        union_capped = true;
+                        break 'flatten;
+                    }
+                }
+                Err(_) => dropped += 1,
+            }
+        }
+    }
+
+    let mut records = super::dedup::merge_by_doi(all);
+    let current_year = chrono::Utc::now().year();
+    super::ranking::rank(&mut records, &query, current_year);
+    let after_dedup = records.len();
+    if let Some(n) = args.max_keep {
+        records.truncate(n.clamp(1, 1000) as usize);
+    }
+
+    let settings = Repos.lit_search.get_settings().await?;
+    let completeness = if settings.completeness_estimate_enabled {
+        Some(super::completeness::estimate(&records, &identified))
+    } else {
+        None
+    };
+
+    let result = AggregateResult {
+        query,
+        records,
+        identified,
+        after_dedup,
+        degraded_sources: vec![],
+        completeness,
+    };
+    let mut digest = build_digest(&result);
+    if dropped > 0 {
+        digest.push_str(&format!(
+            "\nNote: {dropped} malformed record(s) were skipped during dedup."
+        ));
+    }
+    if union_capped {
+        digest.push_str(&format!(
+            "\nNote: the input exceeded the {MAX_DEDUP_UNION}-record union cap; records beyond it were not included."
+        ));
+    }
+    let mut structured =
+        serde_json::to_value(&result).map_err(|e| AppError::internal_error(e.to_string()))?;
+    if let Some(obj) = structured.as_object_mut() {
+        obj.insert("dropped".into(), json!(dropped));
+        obj.insert("union_capped".into(), json!(union_capped));
+    }
+    Ok(tool_result(digest, structured))
+}
+
+#[derive(Debug, Deserialize)]
+struct SelectIncludedArgs {
+    /// Screening decisions — objects carrying `id` + `decision`
+    /// ("include"/"exclude"). A `null` element (a skipped llm_map item) is fine.
+    decisions: Vec<Value>,
+    /// Which `decision` value counts as included (default "include").
+    #[serde(default)]
+    include_value: Option<String>,
+}
+
+/// Pure: gather the identifiers of the INCLUDED studies from a screening-decisions
+/// array — the deterministic "the LLM screened, now collect the included set" step
+/// (no LLM, no I/O). Turns an AI `screen` (llm_map) output into the deduped id list
+/// `fetch_paper_fulltext` consumes, plus PRISMA include/exclude counts.
+async fn do_select_included(args: &Value) -> Result<Value, AppError> {
+    let args: SelectIncludedArgs = serde_json::from_value(args.clone())
+        .map_err(|e| AppError::bad_request("INVALID_ARGS", e.to_string()))?;
+    let include = args.include_value.as_deref().unwrap_or("include");
+
+    let mut included_ids: Vec<String> = Vec::new();
+    let mut excluded = 0usize;
+    let mut skipped = 0usize;
+    for d in &args.decisions {
+        let Some(obj) = d.as_object() else {
+            // null (a dropped llm_map item) or a non-object record → not a decision.
+            skipped += 1;
+            continue;
+        };
+        let decision = obj.get("decision").and_then(|v| v.as_str()).unwrap_or("");
+        if decision == include {
+            if let Some(id) = obj.get("id").and_then(|v| v.as_str()) {
+                let id = id.trim();
+                if !id.is_empty() {
+                    included_ids.push(id.to_string());
+                }
+            }
+        } else {
+            excluded += 1;
+        }
+    }
+    // Dedup ids (an id can repeat across decisions), preserving first-seen order.
+    let mut seen = std::collections::HashSet::new();
+    included_ids.retain(|id| seen.insert(id.clone()));
+    let included = included_ids.len();
+
+    let digest = format!(
+        "Selected {included} included stud{} for full-text retrieval ({excluded} excluded, {skipped} skipped).",
+        if included == 1 { "y" } else { "ies" },
+    );
+    let structured = json!({
+        "included_ids": included_ids,
+        "included": included,
+        "excluded": excluded,
+        "skipped": skipped,
+    });
+    Ok(tool_result(digest, structured))
+}
+
+#[derive(Debug, Deserialize)]
+struct VerifyQuoteArgs {
+    id: String,
+    quote: String,
+}
+
+/// Normalize text for verbatim-quote matching: lowercase, collapse all whitespace
+/// (incl. PDF newlines) to single spaces, drop soft hyphens, unify smart
+/// quotes/dashes. A normalized-substring test tolerates pdfium/JATS extraction
+/// artifacts without accepting a genuinely-absent quote. (Hard de-hyphenation at a
+/// line break is a known v1 limitation.)
+fn normalize_for_match(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut prev_space = false;
+    for ch in s.chars() {
+        let c = match ch {
+            '\u{2018}' | '\u{2019}' | '\u{201B}' | '`' => '\'',
+            '\u{201C}' | '\u{201D}' => '"',
+            '\u{2010}'..='\u{2015}' | '\u{2212}' => '-',
+            '\u{00AD}' => continue, // soft hyphen
+            _ => ch,
+        };
+        if c.is_whitespace() {
+            if !prev_space {
+                out.push(' ');
+                prev_space = true;
+            }
+        } else {
+            for lc in c.to_lowercase() {
+                out.push(lc);
+            }
+            prev_space = false;
+        }
+    }
+    out.trim().to_string()
+}
+
+fn quote_in_text(text: &str, quote: &str) -> bool {
+    let nq = normalize_for_match(quote);
+    !nq.is_empty() && normalize_for_match(text).contains(&nq)
+}
+
+/// Deterministic quote-grounding: is `quote` a verbatim (normalized) span of the
+/// paper's cached full text? The paper must already be fetched
+/// (`fetch_paper_fulltext`). NO model judgment — the hallucination guard.
+async fn do_verify_quote(args: &Value) -> Result<Value, AppError> {
+    let args: VerifyQuoteArgs = serde_json::from_value(args.clone())
+        .map_err(|e| AppError::bad_request("INVALID_ARGS", e.to_string()))?;
+    let id = args.id.trim();
+    let quote = args.quote.trim();
+    if id.is_empty() || quote.is_empty() {
+        return Err(AppError::bad_request("VALIDATION_ERROR", "id and quote must not be empty"));
+    }
+
+    let ids = fulltext::resolvers::parse_id(id);
+    let entry = fulltext::cache::lookup(&ids).await?;
+    // `verified` / `not_cached` are verify_quote-specific verdicts; the cached
+    // fulltext statuses reuse the canonical `fulltext::cache::STATUS_*` constants.
+    use fulltext::cache::{STATUS_FULL_TEXT, STATUS_NOT_FOUND, STATUS_NOT_OA};
+    let (status, verified) = match &entry {
+        Some(e) if e.status == STATUS_FULL_TEXT => {
+            match e.content_hash.as_deref().and_then(fulltext::cache::read_blob) {
+                Some(text) => {
+                    let found = quote_in_text(&text, quote);
+                    (if found { "verified" } else { STATUS_NOT_FOUND }, found)
+                }
+                // full_text status but the blob is gone (evicted) — treat as a miss.
+                None => ("not_cached", false),
+            }
+        }
+        // Cached + CONFIRMED paywalled → not_open_access (re-fetching won't help).
+        Some(e) if e.status == STATUS_NOT_OA => (STATUS_NOT_OA, false),
+        // Cached but OA status UNDETERMINED (a negative `not_found` row, 6h TTL):
+        // report not_cached so the model re-fetches rather than treating it as
+        // definitively paywalled.
+        Some(_) => ("not_cached", false),
+        None => ("not_cached", false),
+    };
+
+    // Match on the SAME constants `status` is built from (above) — not string
+    // literals — so a change to a STATUS_* value can't silently drift this text.
+    let text = if status == "verified" {
+        format!("VERIFIED: the quote is present verbatim in {id}.")
+    } else if status == STATUS_NOT_FOUND {
+        format!(
+            "NOT FOUND: the quote is NOT present in {id}'s full text — treat the claim as unsupported."
+        )
+    } else if status == STATUS_NOT_OA {
+        format!(
+            "CANNOT VERIFY: {id} is not open-access — there is no full text to check the quote against."
+        )
+    } else {
+        format!("NOT CACHED: {id} has no cached full text — call fetch_paper_fulltext first.")
+    };
+    let structured = json!({ "id": id, "status": status, "verified": verified });
+    Ok(tool_result(text, structured))
+}
+
+#[derive(Debug, Deserialize)]
+struct FetchReferencesArgs {
+    ids: Vec<String>,
+    #[serde(default)]
+    direction: Option<String>,
+    #[serde(default)]
+    limit: Option<i64>,
+}
+
+/// Citation snowballing via Semantic Scholar (both directions, rich metadata):
+/// fetch the works each id CITES (backward) or that CITE it (forward), deduped.
+async fn do_fetch_references(args: &Value) -> Result<Value, AppError> {
+    // Cap the number of seed papers so a large `ids` array can't fan out into an
+    // unbounded burst of outbound S2 requests (mirrors `fetch_paper_fulltext`'s
+    // `max_papers` cap).
+    const MAX_SNOWBALL_SEEDS: usize = 50;
+    let args: FetchReferencesArgs = serde_json::from_value(args.clone())
+        .map_err(|e| AppError::bad_request("INVALID_ARGS", e.to_string()))?;
+    let ids: Vec<String> = args
+        .ids
+        .into_iter()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .take(MAX_SNOWBALL_SEEDS)
+        .collect();
+    // Empty ids = a NO-OP (e.g. an SR auto-expansion round the LLM chose not to
+    // snowball). Return an empty result rather than erroring, so the round is a
+    // clean no-op instead of an `on_error: skip` path. Returns before the
+    // enabled/connector gates — an empty snowball is a no-op regardless.
+    if ids.is_empty() {
+        let empty = empty_result("references of 0 paper(s)".to_string());
+        let structured =
+            serde_json::to_value(&empty).map_err(|e| AppError::internal_error(e.to_string()))?;
+        return Ok(tool_result(build_digest(&empty), structured));
+    }
+    let forward = match args.direction.as_deref() {
+        Some("forward") => true,
+        Some("backward") | None => false,
+        Some(other) => {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                format!("direction must be 'backward' or 'forward', got '{other}'"),
+            ));
+        }
+    };
+    let limit = args.limit.unwrap_or(50).clamp(1, 200) as usize;
+
+    let settings = Repos.lit_search.get_settings().await?;
+    if !settings.enabled {
+        return Err(AppError::bad_request(
+            "LIT_SEARCH_DISABLED",
+            "literature search is disabled by the administrator",
+        ));
+    }
+    // Snowballing is Semantic-Scholar-only; honor the same per-connector enable
+    // gate `aggregate_search` enforces, rather than calling S2 regardless.
+    if !settings
+        .enabled_connectors
+        .iter()
+        .any(|c| c == "semanticscholar")
+    {
+        return Err(AppError::bad_request(
+            "LIT_SEARCH_CONNECTOR_DISABLED",
+            "citation snowballing requires the Semantic Scholar connector, which is not enabled",
+        ));
+    }
+    // NOTE: snowballing deliberately calls `semanticscholar::fetch_references`
+    // directly rather than going through the `LitConnector` trait + the
+    // `aggregate_search` UNION path — the graph endpoints (references/citations)
+    // aren't a keyword search, so they don't fit the `search()` trait shape. We
+    // still honor the same enable gate (above) and resolve the S2 key from the
+    // same `list_connectors` rows the search path reads.
+    let s2_key = Repos
+        .lit_search
+        .list_connectors()
+        .await?
+        .into_iter()
+        .find(|r| r.connector == "semanticscholar")
+        .and_then(|r| r.api_key);
+    let timeout = std::time::Duration::from_secs(settings.request_timeout_secs.max(1) as u64);
+
+    let fetched = connectors::semanticscholar::fetch_references(
+        &ids,
+        forward,
+        limit,
+        s2_key.as_deref(),
+        timeout,
+    )
+    .await?;
+    // Flag the source as degraded when any seed's request failed, so the digest's
+    // "Degraded/skipped sources" line distinguishes "no references" from "S2 was
+    // rate-limited / unavailable".
+    let degraded_sources = if fetched.any_failed {
+        vec!["semanticscholar".to_string()]
+    } else {
+        vec![]
+    };
+
+    // PRISMA "identified" = per-source counts BEFORE dedup (so the digest can
+    // distinguish identified from after_dedup); count from the raw fetched set.
+    let mut identified: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    for r in &fetched.records {
+        *identified.entry(r.source.clone()).or_insert(0) += 1;
+    }
+    // Dedup the union (multiple seeds can share references) + rank.
+    let mut records = super::dedup::merge_by_doi(fetched.records);
+    {
+        use chrono::Datelike;
+        super::ranking::rank(&mut records, "", chrono::Utc::now().year());
+    }
+    let after_dedup = records.len();
+    let dir = if forward { "citing" } else { "cited-by" };
+    let result = AggregateResult {
+        query: format!("{dir} references of {} paper(s)", ids.len()),
+        records,
+        identified,
+        after_dedup,
+        degraded_sources,
+        completeness: None,
+    };
+    let digest = build_digest(&result);
+    let structured =
+        serde_json::to_value(&result).map_err(|e| AppError::internal_error(e.to_string()))?;
+    Ok(tool_result(digest, structured))
 }
 
 // ─────────────────────────── Admin REST: settings ───────────────────────────
@@ -578,5 +1045,109 @@ mod tests {
             "the untrusted-data safety note must survive the budget"
         );
         assert!(digest.trim_end().ends_with("not a replacement.]"));
+    }
+
+    // ── verify_quote normalization (the deterministic hallucination guard) ──
+
+    #[test]
+    fn quote_matches_verbatim() {
+        let text = "The CRISPR system enables precise base editing in plants.";
+        assert!(quote_in_text(text, "precise base editing"));
+    }
+
+    #[test]
+    fn quote_match_is_whitespace_and_newline_insensitive() {
+        // pdfium/JATS extraction folds line breaks + runs of spaces.
+        let text = "off-target effects were\n   observed   in   3 of 40 samples";
+        assert!(quote_in_text(text, "off-target effects were observed in 3 of 40 samples"));
+    }
+
+    #[test]
+    fn quote_match_normalizes_smart_quotes_soft_hyphens_and_case() {
+        // Smart quotes → straight; CASE folded; soft hyphen (a hyphenation point,
+        // e.g. at a PDF line break) DROPPED so "gene<shy>drive" rejoins to
+        // "genedrive". (A real hyphen is kept — that's a different test below.)
+        let text = "The \u{201C}gene\u{00AD}drive\u{201D} CONSTRUCT was used.";
+        assert!(quote_in_text(text, "the \"genedrive\" construct was used"));
+    }
+
+    #[test]
+    fn quote_match_normalizes_smart_dash_to_hyphen() {
+        // An en/em dash in the source matches a plain hyphen in the quote.
+        let text = "a randomized\u{2013}controlled trial";
+        assert!(quote_in_text(text, "a randomized-controlled trial"));
+    }
+
+    #[test]
+    fn absent_quote_does_not_match() {
+        let text = "The study reported no significant difference.";
+        assert!(!quote_in_text(text, "a 47% reduction in mortality"));
+    }
+
+    #[test]
+    fn empty_quote_never_matches() {
+        assert!(!quote_in_text("anything", "   "));
+    }
+
+    // ── batch/empty no-op paths (the SR auto-expansion early-stop substrate) ──
+    // These resolve + return BEFORE any DB/network call, so they're pure units.
+
+    #[tokio::test]
+    async fn search_empty_queries_batch_is_noop() {
+        let out = do_search(&json!({ "queries": [] }))
+            .await
+            .expect("empty batch must be a no-op, not an error");
+        let recs = out["structuredContent"]["records"].as_array().unwrap();
+        assert!(recs.is_empty(), "empty batch returns zero records");
+        assert_eq!(out["structuredContent"]["after_dedup"], json!(0));
+    }
+
+    #[tokio::test]
+    async fn search_queries_all_blank_is_noop() {
+        // Whitespace-only entries are dropped → empty → no-op (not an error).
+        let out = do_search(&json!({ "queries": ["  ", ""] }))
+            .await
+            .expect("all-blank batch must be a no-op");
+        assert!(out["structuredContent"]["records"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn search_single_empty_query_still_errors() {
+        // Back-compat: single-query mode keeps the strict empty-query error.
+        assert!(do_search(&json!({ "query": "" })).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn search_no_query_field_errors() {
+        assert!(do_search(&json!({})).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn fetch_references_empty_ids_is_noop() {
+        let out = do_fetch_references(&json!({ "ids": [] }))
+            .await
+            .expect("empty ids must be a no-op, not an error");
+        assert!(out["structuredContent"]["records"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn select_included_collects_dedups_and_counts() {
+        // Includes (with a dup id) + an exclude + a null (dropped llm_map item).
+        let out = do_select_included(&json!({
+            "decisions": [
+                { "id": "10.1/a", "decision": "include", "reason": "on-topic" },
+                { "id": "10.2/b", "decision": "exclude", "reason": "off-topic" },
+                { "id": "10.1/a", "decision": "include" },
+                null,
+                { "id": "10.3/c", "decision": "include" }
+            ]
+        }))
+        .await
+        .expect("ok");
+        let sc = &out["structuredContent"];
+        assert_eq!(sc["included_ids"], json!(["10.1/a", "10.3/c"]), "deduped includes: {sc}");
+        assert_eq!(sc["included"], 2, "unique included studies");
+        assert_eq!(sc["excluded"], 1);
+        assert_eq!(sc["skipped"], 1, "the null decision is skipped");
     }
 }

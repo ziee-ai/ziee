@@ -2,13 +2,14 @@
 
 use crate::modules::permissions::types::PermissionCheck;
 
-/// Use the built-in literature search + full-text tools (`literature_search` /
-/// `fetch_paper_fulltext`). Granted to the default Users group by migration 101.
+/// Use the built-in literature search + screening tools (`literature_search` /
+/// `fetch_paper_fulltext` / `dedup_records` / `verify_quote` / `fetch_references`).
+/// Granted to the default Users group by migration 101.
 pub struct LitSearchUse;
 impl PermissionCheck for LitSearchUse {
     const NAME: &'static str = "LitSearchUse";
     const PERMISSION: &'static str = "lit_search::use";
-    const DESCRIPTION: &'static str = "Use the literature search + full-text tools.";
+    const DESCRIPTION: &'static str = "Use the literature search + screening tools.";
     const MODULE: &'static str = "lit_search";
 }
 

@@ -30,6 +30,9 @@ src-app/server/config/dev.yaml
 
 # npm workspaces hoists into the repo-root node_modules; never committed.
 node_modules/
+# In a git worktree the hoisted node_modules is a SYMLINK to the main checkout,
+# which the trailing-slash dir pattern above does not match — anchor it too.
+/node_modules
 
 # Playwright artifacts — per-run, never committed.
 playwright-report/

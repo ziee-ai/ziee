@@ -70,7 +70,9 @@ pub fn setup(target: &str, target_dir: &Path, out_dir: &str) -> Result<(), Box<d
     // re-runs build.rs whenever any of these change.
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").map(PathBuf::from)?;
     let workspace = manifest_dir.parent().ok_or("no workspace parent")?;
-    for src in &[
+    // The same list drives BOTH the `rerun-if-changed` triggers AND the
+    // staleness check below, so the two can't drift.
+    let watched_sources = [
         "sandbox-vm-launcher/src/main.rs",
         "sandbox-vm-launcher/Cargo.toml",
         "sandbox-vm-launcher/build.rs",
@@ -79,19 +81,39 @@ pub fn setup(target: &str, target_dir: &Path, out_dir: &str) -> Result<(), Box<d
         "sandbox-guest-agent/Cargo.toml",
         "sandbox-seccomp/src/lib.rs",
         "sandbox-vm-protocol/src/lib.rs",
-    ] {
+    ];
+    for src in &watched_sources {
         println!("cargo:rerun-if-changed={}", workspace.join(src).display());
     }
 
-    // Cache hit: bundle exists AND is non-empty. The placeholder path
-    // creates a 0-byte file (for non-mac-arm64 / ZIEE_SKIP_SANDBOX_BUNDLE);
-    // we want to redo the real bundle if we land here on a mac-arm64
-    // build that previously had a placeholder. Force re-build any time
-    // with `rm bundle.tar.zst` or `cargo clean`.
-    let cached_ok = bundle_tar.exists() && fs::metadata(&bundle_tar).map(|m| m.len() > 0).unwrap_or(false);
+    // Cache hit: bundle exists, is non-empty, AND is at least as new as every
+    // watched source. The placeholder path creates a 0-byte file (for
+    // non-mac-arm64 / ZIEE_SKIP_SANDBOX_BUNDLE); we redo the real bundle if we
+    // land here on a mac-arm64 build that previously had a placeholder.
+    //
+    // The mtime check is load-bearing: `rerun-if-changed` re-runs build.rs when
+    // the agent/launcher/protocol source changes, but WITHOUT this staleness
+    // check the helper would keep an existing (now-stale) bundle — so a source
+    // change (e.g. a merge that updates the guest agent) silently shipped the OLD
+    // agent until someone ran `rm bundle.tar.zst` / `cargo clean`. Comparing the
+    // bundle mtime to the newest watched source makes the rebuild automatic.
+    // (Manual override still works: `rm bundle.tar.zst` or `cargo clean`.)
+    let bundle_meta = fs::metadata(&bundle_tar).ok();
+    let cached_ok = bundle_meta.as_ref().map(|m| m.len() > 0).unwrap_or(false) && {
+        let bundle_mtime = bundle_meta.as_ref().and_then(|m| m.modified().ok());
+        let newest_src = watched_sources
+            .iter()
+            .filter_map(|p| fs::metadata(workspace.join(p)).and_then(|m| m.modified()).ok())
+            .max();
+        match (bundle_mtime, newest_src) {
+            (Some(bundle), Some(src)) => bundle >= src,
+            // Can't read an mtime → fall back to the old "exists + non-empty" rule.
+            _ => true,
+        }
+    };
     if cached_ok {
         println!(
-            "sandbox-runtime: bundle already at {} ({} bytes); skipping rebuild",
+            "sandbox-runtime: bundle already at {} ({} bytes, newer than sources); skipping rebuild",
             bundle_tar.display(),
             fs::metadata(&bundle_tar)?.len()
         );

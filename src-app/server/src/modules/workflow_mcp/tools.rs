@@ -290,7 +290,8 @@ pub async fn call_tool(
     // H2: forward chat-Stop to the runner. The runner was spawned detached
     // (`spawn_run`), so if the chat dispatcher aborts this request (user hits
     // Stop), dropping `call_tool`'s future must cancel the run — otherwise it
-    // keeps spending tokens until its own 30-min wall-clock cap. The guard
+    // keeps spending tokens until its own (possibly large or unbounded)
+    // wall-clock cap. The guard
     // fires the same cancel path as `POST /cancel` (DB CAS + registry signal)
     // if dropped before we `disarm()` it on terminal status.
     let cancel_guard = RunCancelOnDrop {
@@ -390,24 +391,34 @@ impl Drop for RunCancelOnDrop {
 }
 
 /// Poll `workflow_runs.status` until terminal. The runner marks
-/// `completed` / `failed` / `cancelled` on exit; the per-run wall-clock
-/// cap (30 min) inside the runner guarantees this loop terminates. We
-/// add a generous independent ceiling so a vanished runner task can't
-/// hang the tool call forever.
+/// `completed` / `failed` / `cancelled` on exit. The run's wall-clock cap is
+/// now DYNAMIC — `WorkflowDef.max_runtime_secs` (live-adjustable via
+/// `PUT /workflow-runs/{id}/timeout`, `0` = unbounded, ceiling
+/// `runner::MAX_RUN_TIMEOUT_SECS`). So this poll loop can no longer assume a
+/// fixed 30-min cap; instead it terminates on one of three conditions:
+///   1. the row reaches a terminal status (the normal case — the runner's own
+///      `deadline_watcher` fires first for a bounded run and marks it),
+///   2. the no-progress guard below (a crashed/vanished runner task), or
+///   3. a backstop ceiling that TRACKS the run's live `timeout_secs` (+ slack)
+///      so a bounded run can't hang the chat past its own deadline, while an
+///      UNBOUNDED run (`timeout_secs == 0`) relies solely on (1)/(2).
 ///
 /// M5: a PANICKED runner task stops updating the row but never marks it
-/// terminal — without a no-progress guard the tool call would block the
-/// full 31-min ceiling. We track `updated_at`: every step transition /
-/// item-progress emit bumps it, AND a live runner ticks a 60s liveness
-/// heartbeat (`runner::HEARTBEAT_INTERVAL`) so a long-but-live single step
-/// (a 30-min elicit wait, a 10-min sandbox step) keeps `updated_at` fresh.
-/// A stalled `updated_at` past the no-progress threshold therefore means the
-/// runner task is genuinely dead → fail fast, without false-killing a live
-/// run that's merely waiting.
+/// terminal — without the no-progress guard the tool call would block until
+/// the ceiling. We track `updated_at`: every step transition / item-progress
+/// emit bumps it, AND a live runner ticks a 60s liveness heartbeat
+/// (`runner::HEARTBEAT_INTERVAL`) so a long-but-live single step (a 30-min
+/// elicit wait, a 10-min sandbox step) keeps `updated_at` fresh. A stalled
+/// `updated_at` past the no-progress threshold therefore means the runner task
+/// is genuinely dead → fail fast, without false-killing a live run that's
+/// merely waiting (this is what keeps an unbounded run from hanging forever).
 async fn await_terminal(pool: &sqlx::PgPool, run_id: Uuid) -> Result<WorkflowRun, AppError> {
-    // Slightly above the runner's 30-min wall-clock cap.
-    const MAX_WAIT: Duration = Duration::from_secs(31 * 60);
     const POLL_INTERVAL: Duration = Duration::from_millis(500);
+    // Slack added on top of the run's own wall-clock deadline: the runner's
+    // `deadline_watcher` should fire FIRST (marking the row terminal, observed
+    // below); this ceiling is only a backstop for a vanished runner task whose
+    // own watcher never fired.
+    const CEILING_SLACK: Duration = Duration::from_secs(2 * 60);
     // No-progress kill: if `updated_at` doesn't advance for this long while
     // the run is still non-terminal, treat the runner as crashed.
     const NO_PROGRESS_LIMIT: chrono::Duration = chrono::Duration::minutes(5);
@@ -438,10 +449,20 @@ async fn await_terminal(pool: &sqlx::PgPool, run_id: Uuid) -> Result<WorkflowRun
                 NO_PROGRESS_LIMIT.num_minutes()
             )));
         }
-        if started.elapsed() > MAX_WAIT {
-            return Err(AppError::internal_error(
-                "workflow_mcp: timed out waiting for run to reach a terminal status",
-            ));
+        // Backstop ceiling tracks the run's LIVE timeout (settable mid-run).
+        // `0` = unbounded → no absolute ceiling here; the no-progress guard
+        // above is the sole protection (a live runner heartbeats updated_at).
+        let timeout_secs = registry::get(run_id)
+            .map(|h| h.timeout_secs.load(std::sync::atomic::Ordering::Relaxed))
+            .unwrap_or(registry::DEFAULT_RUN_TIMEOUT_SECS);
+        if timeout_secs != 0 {
+            let ceiling =
+                Duration::from_secs(timeout_secs.min(runner::MAX_RUN_TIMEOUT_SECS)) + CEILING_SLACK;
+            if started.elapsed() > ceiling {
+                return Err(AppError::internal_error(
+                    "workflow_mcp: timed out waiting for run to reach a terminal status",
+                ));
+            }
         }
         tokio::time::sleep(POLL_INTERVAL).await;
     }

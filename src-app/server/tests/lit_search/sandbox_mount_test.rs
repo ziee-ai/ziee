@@ -28,7 +28,7 @@ async fn lit_view_is_readonly_mounted_in_sandbox() {
     let (epmc, _hits) = start_mock_epmc_fulltext().await;
     let Some(opts) = github_fetch_server_options(vec![
         ("LIT_SEARCH_ALLOW_LOOPBACK".to_string(), "1".to_string()),
-        ("LIT_SEARCH_EPMC_FULLTEXT_BASE".to_string(), epmc),
+        ("LIT_SEARCH_EUROPEPMC_FULLTEXT_ENDPOINT".to_string(), epmc),
     ]) else {
         return; // no bwrap / no rootfs for this arch — skip cleanly
     };
