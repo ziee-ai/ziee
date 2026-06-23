@@ -1698,22 +1698,13 @@ steps:
     /// (`build_helper/hub_seed.rs`) packs them into the bundle tarball at build.
     #[test]
     fn sr_seed_workflows_parse_and_validate() {
-        let yamls = [
-            (
-                "sr-review",
-                include_str!(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/resources/hub-seed/workflows/io.github.ziee/sr-review/workflow.yaml"
-                )),
-            ),
-            (
-                "sr-snowball-screen",
-                include_str!(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/resources/hub-seed/workflows/io.github.ziee/sr-snowball-screen/workflow.yaml"
-                )),
-            ),
-        ];
+        let yamls = [(
+            "sr-review",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/resources/hub-seed/workflows/io.github.ziee/sr-review/workflow.yaml"
+            )),
+        )];
         for (name, yaml) in yamls {
             let wf = parse_workflow_yaml(yaml)
                 .unwrap_or_else(|e| panic!("{name}: parse failed: {e:?}"));
@@ -1792,6 +1783,5 @@ steps:
             };
         }
         sr!("sr-review");
-        sr!("sr-snowball-screen");
     }
 }

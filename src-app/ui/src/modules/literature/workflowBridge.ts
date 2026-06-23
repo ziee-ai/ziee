@@ -18,9 +18,9 @@ interface AiDecision {
  * Bridge an SR workflow run into the literature screening panel — reading the
  * run's deduped candidate set (records + PRISMA counts) and `ai_screening`
  * (per-record first-pass decisions), seeding include/exclude from the AI pass so
- * the human refines from there. Works for the candidate-producing step of every
- * SR workflow: `dedup_all` (the durable `sr-review`), `search` (`sr-search-screen`),
- * or `snowball` (`sr-snowball-screen`). Returns false when the run has no
+ * the human refines from there. The candidate set is produced by the durable
+ * `sr-review`'s `dedup_all` step; `search`/`snowball` are accepted as fallbacks
+ * for any other screening-shaped workflow. Returns false when the run has no
  * screening-shaped output (so the caller can surface a hint instead of an empty
  * panel).
  */
@@ -39,8 +39,8 @@ export async function openWorkflowScreening(runId: string): Promise<boolean> {
   // `final_output_json` only carries 500-char per-output PREVIEWS (it backs the
   // chat-summary path), so the full record list is NOT reachable there. The
   // complete step outputs live on disk, served by `readOutput`. The candidate set
-  // is produced by `dedup_all` (sr-review), `search` (sr-search-screen), or
-  // `snowball` (sr-snowball-screen); the AI first-pass decisions by `screen`.
+  // is produced by `dedup_all` (the durable sr-review); `search`/`snowball` are
+  // accepted as fallbacks; the AI first-pass decisions by `screen`.
   const stepOutputs = (run?.step_outputs_json ?? {}) as Record<string, unknown>
   const candStep = ['dedup_all', 'search', 'snowball'].find(s => s in stepOutputs)
   if (!candStep || !('screen' in stepOutputs)) return false

@@ -22,11 +22,6 @@ const SR_REVIEW_YAML: &str = include_str!(concat!(
     "/resources/hub-seed/workflows/io.github.ziee/sr-review/workflow.yaml"
 ));
 
-const SR_SNOWBALL_SCREEN_YAML: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/resources/hub-seed/workflows/io.github.ziee/sr-snowball-screen/workflow.yaml"
-));
-
 /// Poll `GET /workflow-runs/{id}` until `status == "waiting"` (parked on a durable
 /// gate) with a pending `elicitation_id` that is NOT `exclude`, returning that id.
 /// `exclude` guards the resume race: after submitting gate N, the run briefly
@@ -277,76 +272,6 @@ async fn sr_review_runs_through_both_durable_gates() {
         Some(2),
         "reviewer-approved extraction table surfaced: {review}"
     );
-}
-
-/// Deterministic snowball run (kept as a separate re-runnable workflow): the
-/// `snowball` (tool: fetch_references) step is mocked with a canned AggregateResult,
-/// `screen` (llm_map) with canned decisions; the bridge consumes the identical
-/// `candidates`/`ai_screening` outputs (it keys off either `search` or `snowball`).
-#[tokio::test]
-async fn sr_snowball_screen_runs_and_surfaces_screening_outputs() {
-    let server = plain_server().await;
-    let user = workflow_user(&server, "wf_sr_snow_user").await;
-    let wf =
-        import_dev_workflow(&server, &user.token, "sr-snowball-screen", SR_SNOWBALL_SCREEN_YAML)
-            .await;
-    let wf_id = wf["id"].as_str().expect("workflow id").to_string();
-    let (_stub, conv_id) = stub_conversation(&server, &user.user_id, &user.token).await;
-
-    let run = run_workflow(
-        &server,
-        &user.token,
-        &wf_id,
-        json!({
-            "inputs": { "seed_ids": ["10.1/included"], "direction": "backward" },
-            "conversation_id": conv_id.to_string(),
-            "mocks": {
-                "snowball": {
-                    "query": "cited-by references of 1 paper(s)",
-                    "records": [
-                        {"doi":"10.9/cited-a","pmid":null,"title":"A cited work","abstract_text":"x","authors":["A B"],"year":2019,"venue":"Nature","url":null,"source":"semanticscholar","source_ids":["semanticscholar:1"],"cited_by_count":12,"is_preprint":false,"relevance":0.8},
-                        {"doi":"10.9/cited-b","pmid":"888","title":"Another cited work","abstract_text":"y","authors":["C D"],"year":2020,"venue":null,"url":null,"source":"semanticscholar","source_ids":["semanticscholar:2"],"cited_by_count":3,"is_preprint":false,"relevance":0.6}
-                    ],
-                    "identified": {"semanticscholar": 2},
-                    "after_dedup": 2,
-                    "degraded_sources": [],
-                    "completeness": null
-                },
-                "screen": [
-                    {"id":"10.9/cited-a","decision":"include","reason":"on-topic","confidence":0.85},
-                    {"id":"10.9/cited-b","decision":"exclude","reason":"out of scope","confidence":0.5}
-                ]
-            }
-        }),
-    )
-    .await;
-
-    let run_id = Uuid::parse_str(run["run_id"].as_str().expect("run_id")).unwrap();
-    let final_run = poll_run(&server, &user.token, run_id).await;
-    assert_eq!(
-        final_run["status"], "completed",
-        "SR snowball-screen run should complete; got: {final_run}"
-    );
-    let so = &final_run["step_outputs_json"];
-    assert!(
-        so.get("snowball").is_some() && so.get("screen").is_some(),
-        "step_outputs_json carries the bridge's keying source: {so}"
-    );
-
-    let candidates = read_step_output(&server, &user.token, run_id, "snowball").await;
-    let recs = candidates["records"]
-        .as_array()
-        .unwrap_or_else(|| panic!("snowball output has records[]: {candidates}"));
-    assert_eq!(recs.len(), 2, "both snowballed records surfaced");
-    assert_eq!(candidates["after_dedup"], 2);
-
-    let screening = read_step_output(&server, &user.token, run_id, "screen").await;
-    let ai = screening
-        .as_array()
-        .unwrap_or_else(|| panic!("screen output is a decisions array: {screening}"));
-    assert_eq!(ai.len(), 2, "one AI decision per record");
-    assert_eq!(ai[0]["decision"], "include");
-    assert_eq!(ai[1]["decision"], "exclude");
 }
 
 // A minimal workflow whose ONLY step is a REAL lit_search tool call (not mocked).

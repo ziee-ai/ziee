@@ -508,24 +508,6 @@
       "min_ziee_version": null,
       "version": "1.0.0",
       "manifest_path": "workflows/io.github.ziee/sr-review/1.0.0.json"
-    },
-    {
-      "name": "io.github.ziee/sr-snowball-screen",
-      "category": "workflow",
-      "title": "SR: Snowball & Screen",
-      "summary": "Citation snowballing: chase the references of the included set and AI-screen the new candidates.",
-      "tags": [
-        "systematic-review",
-        "literature",
-        "snowball",
-        "lit-search",
-        "llm-map"
-      ],
-      "verified": true,
-      "added_at": "2026-06-21",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "workflows/io.github.ziee/sr-snowball-screen/1.0.0.json"
     }
   ]
 }
