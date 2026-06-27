@@ -297,6 +297,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         backgroundColor: token.colorBgContainer,
       }}
     >
+      {/* Keyboard skip link — first focusable element; jumps past the
+          sidebar nav straight to the main content landmark. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-2 focus:left-2 focus:px-3 focus:py-1 focus:rounded focus:bg-white focus:shadow"
+      >
+        Skip to content
+      </a>
       {/* Mask for Left Sidebar (mobile-overlay mode).
         *
         * ALWAYS mounted (no `{xs && ...}` gate) — otherwise crossing
@@ -445,6 +453,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="flex-1 overflow-hidden relative">
           <div
             ref={mainContentRef}
+            id="main-content"
+            role="main"
+            tabIndex={-1}
             className="w-full h-full overflow-hidden relative"
           >
             {children}
