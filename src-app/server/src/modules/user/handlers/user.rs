@@ -457,8 +457,24 @@ pub async fn delete_user(
         );
     }
 
+    // Collect the user's skill bundle dirs BEFORE the delete — the skills row
+    // FK is `ON DELETE CASCADE`, so after `user.delete` the extracted_path
+    // values are gone and the on-disk dirs would be orphaned forever.
+    let skill_bundle_dirs = Repos
+        .skill
+        .list_owned_extracted_paths(user_id)
+        .await
+        .unwrap_or_default();
+
     // Delete user
     Repos.user.delete(user_id).await?;
+
+    // Best-effort cleanup of the now-orphaned skill bundle dirs on disk.
+    for dir in &skill_bundle_dirs {
+        if let Err(e) = std::fs::remove_dir_all(dir) {
+            tracing::warn!("delete_user: failed to remove skill bundle dir {}: {}", dir, e);
+        }
+    }
 
     // Emit deletion event for other modules to react
     event_bus.emit_async(UserEvent::deleted(user_id));

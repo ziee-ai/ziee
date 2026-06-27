@@ -182,6 +182,24 @@ impl SkillRepository {
     ) -> Result<(), AppError> {
         remove_skill_from_group(&self.pool, skill_id, group_id).await
     }
+
+    /// On-disk `extracted_path`s of a user's own (scope='user') skills.
+    /// Used by the user-delete path to rm the bundle dirs before the rows
+    /// cascade away (the FK is `ON DELETE CASCADE`, so this MUST be read
+    /// before the user row is deleted).
+    pub async fn list_owned_extracted_paths(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<String>, AppError> {
+        let rows = sqlx::query!(
+            "SELECT extracted_path FROM skills WHERE scope = 'user' AND owner_user_id = $1",
+            user_id
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(rows.into_iter().map(|r| r.extracted_path).collect())
+    }
 }
 
 /// Insert one skill row. Returns the created row (with server-generated
