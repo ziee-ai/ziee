@@ -113,7 +113,12 @@ fn run(cfg: VmLaunchConfig) -> ! {
     }
 
     fn cstr(s: &str) -> CString {
-        CString::new(s).expect("no interior NUL")
+        // A path/arg with an interior NUL is malformed and unrecoverable for a
+        // VM launch; exit cleanly with a clear message rather than panicking.
+        CString::new(s).unwrap_or_else(|_| {
+            eprintln!("launcher: argument contains an interior NUL byte: {s:?}");
+            std::process::exit(1)
+        })
     }
     fn check(what: &str, rc: i32) {
         if rc < 0 {
