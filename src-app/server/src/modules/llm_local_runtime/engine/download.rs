@@ -422,6 +422,7 @@ impl BinaryDownloader {
         let response = self.client
             .get(&url)
             .header("Accept", "application/vnd.github.v3+json")
+            .timeout(std::time::Duration::from_secs(30))
             .send()
             .await?;
 
@@ -451,6 +452,7 @@ impl BinaryDownloader {
             .client
             .get(&url)
             .header("Accept", "application/vnd.github.v3+json")
+            .timeout(std::time::Duration::from_secs(30))
             .send()
             .await?;
 
