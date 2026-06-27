@@ -3,12 +3,14 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
-import type {
-  Assistant,
-  CreateAssistantRequest,
-  UpdateAssistantRequest,
+import {
+  Permissions,
+  type Assistant,
+  type CreateAssistantRequest,
+  type UpdateAssistantRequest,
 } from '@/api-client/types'
 import { Stores } from '@/core/stores'
+import { hasPermissionNow } from '@/core/permissions'
 import {
   emitAssistantCreated,
   emitAssistantDeleted,
@@ -105,7 +107,15 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
             )
 
             // Remote sync: refetch on a remote change or on (re)connect.
-            const reload = () => void get().loadUserAssistants(true)
+            // Self-gate the sync-driven refetch: `sync:reconnect` fires for
+            // every store regardless of the user's permissions, so without
+            // this an assistants-read-less user would 403 on reconnect. Auth
+            // is already populated by the time these events fire (unlike the
+            // mount-time __init__ load), so the snapshot check is reliable here.
+            const reload = () => {
+              if (!hasPermissionNow(Permissions.AssistantsRead)) return
+              void get().loadUserAssistants(true)
+            }
             eventBus.on('sync:assistant', reload, GROUP)
             eventBus.on('sync:reconnect', reload, GROUP)
           },
