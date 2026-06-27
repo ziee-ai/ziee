@@ -3,21 +3,21 @@ import {
   Alert,
   Button,
   Card,
-  Divider,
+  Dialog,
   Flex,
   Form,
+  FormField,
   InputNumber,
-  Modal,
+  Paragraph,
   Select,
+  Separator,
   Switch,
-  Typography,
   message,
-} from 'antd'
+  useForm,
+} from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
-
-const { Paragraph } = Typography
 
 const READ_PERM = Permissions.MemoryAdminRead
 const MANAGE_PERM = Permissions.MemoryAdminManage
@@ -75,7 +75,7 @@ export function FullTextSearchSection() {
     ftsRebuildStatus,
     triggeringFtsRebuild,
   } = Stores.MemoryAdmin
-  const [form] = Form.useForm<FormValues>()
+  const form = useForm<FormValues>()
   const [pendingDictionary, setPendingDictionary] =
     useState<PendingDictionarySwap | null>(null)
 
@@ -88,8 +88,8 @@ export function FullTextSearchSection() {
     if (!settings) return
     if (lastSettingsRef.current === settings) return
     lastSettingsRef.current = settings
-    if (!form.isFieldsTouched()) {
-      form.setFieldsValue({
+    if (!form.formState.isDirty) {
+      form.reset({
         fts_enabled: settings.fts_enabled,
         fts_dictionary: settings.fts_dictionary,
         fts_rrf_k: settings.fts_rrf_k,
@@ -101,7 +101,7 @@ export function FullTextSearchSection() {
 
   // Watch the form fields so the "both arms off" banner reacts to
   // in-flight toggles (without waiting for the next save round-trip).
-  const watchedFtsEnabled = Form.useWatch('fts_enabled', form)
+  const watchedFtsEnabled = form.watch('fts_enabled')
 
   // Surface a success toast on the in_progress → idle transition. The
   // settings refetch is driven by the sync event the rebuild worker
@@ -119,8 +119,7 @@ export function FullTextSearchSection() {
     return (
       <Card title="Full-text search">
         <Alert
-          type="warning"
-          showIcon
+          tone="warning"
           title="You don't have permission to view memory admin settings."
         />
       </Card>
@@ -140,16 +139,12 @@ export function FullTextSearchSection() {
         fts_candidate_multiplier: values.fts_candidate_multiplier,
         fts_min_rank: values.fts_min_rank,
       })
-      // Re-seed from the just-saved values AND clear touched state so a
+      // Re-seed from the just-saved values AND clear dirty state so a
       // later settings refetch (e.g. another admin's change, or the
       // sync-driven reload after a rebuild) can resume re-seeding the
-      // form. Without this, `isFieldsTouched()` latches `true` after the
+      // form. Without this, `isDirty` latches `true` after the
       // first save and the form stops syncing.
-      form.setFields(
-        (Object.entries(values) as [keyof FormValues, unknown][]).map(
-          ([name, value]) => ({ name, value, touched: false }),
-        ),
-      )
+      form.reset(values)
       message.success('Full-text search settings saved.')
     } catch (error) {
       message.error(
@@ -215,8 +210,7 @@ export function FullTextSearchSection() {
       <Card title="Full-text search">
         {bothArmsOff && (
           <Alert
-            type="warning"
-            showIcon
+            tone="warning"
             className="!mb-4"
             title="Both recall arms are disabled."
             description={
@@ -234,26 +228,23 @@ export function FullTextSearchSection() {
           name="memory-admin-fts-form"
           form={form}
           layout="horizontal"
-          labelCol={{ xs: { span: 24 }, md: { span: 10 } }}
-          wrapperCol={{ xs: { span: 24 }, md: { span: 14 } }}
-          labelAlign="left"
-          colon={false}
-          onFinish={handleSubmit}
+          labelWidth="42%"
+          onSubmit={handleSubmit}
           disabled={!canManage}
         >
-          <Form.Item
+          <FormField
             name="fts_enabled"
             label="Enable full-text search"
-            extra="When off, retrieval skips the FTS arm. If no embedding model is configured, retrieval is disabled entirely."
+            description="When off, retrieval skips the FTS arm. If no embedding model is configured, retrieval is disabled entirely."
             valuePropName="checked"
           >
             <Switch aria-label="Enable full-text search retrieval" />
-          </Form.Item>
+          </FormField>
 
-          <Form.Item
+          <FormField
             name="fts_dictionary"
             label="Dictionary"
-            extra={
+            description={
               <span>
                 Tokenizer + stemmer. <code>simple</code> = language-agnostic,
                 no stemming (default; recommended for multilingual stores).{' '}
@@ -264,48 +255,41 @@ export function FullTextSearchSection() {
           >
             <Select
               options={DICTIONARY_OPTIONS}
-              showSearch={{ optionFilterProp: 'label' }}
-              style={{ maxWidth: 480 }}
+              className="max-w-[480px]"
               disabled={!canManage || ftsRebuildStatus?.in_progress === true}
-              title={
-                ftsRebuildStatus?.in_progress
-                  ? 'A rebuild is in progress — wait for it to finish before changing the dictionary again.'
-                  : undefined
-              }
             />
-          </Form.Item>
+          </FormField>
 
-          <Form.Item
+          <FormField
             name="fts_rrf_k"
             label="RRF k"
-            extra="RRF blending constant for hybrid retrieval. Higher = more egalitarian; lower = lopsided toward each arm's top-ranked. 60 matches the original RRF paper."
+            description="RRF blending constant for hybrid retrieval. Higher = more egalitarian; lower = lopsided toward each arm's top-ranked. 60 matches the original RRF paper."
           >
-            <InputNumber min={1} max={1000} style={{ width: 160 }} />
-          </Form.Item>
+            <InputNumber min={1} max={1000} className="w-40" />
+          </FormField>
 
-          <Form.Item
+          <FormField
             name="fts_candidate_multiplier"
             label="Candidate multiplier"
-            extra="Hybrid retrieval pulls top-K × this many candidates from each arm before RRF fusion. Higher = more recall, more DB load. Ignored when hybrid is disabled."
+            description="Hybrid retrieval pulls top-K × this many candidates from each arm before RRF fusion. Higher = more recall, more DB load. Ignored when hybrid is disabled."
           >
-            <InputNumber min={1} max={20} style={{ width: 160 }} />
-          </Form.Item>
+            <InputNumber min={1} max={20} className="w-40" />
+          </FormField>
 
-          <Form.Item
+          <FormField
             name="fts_min_rank"
             label="Minimum ts_rank_cd"
-            extra="ts_rank_cd cutoff. 0 = no filter (default). Increase to drop weak lexical matches."
+            description="ts_rank_cd cutoff. 0 = no filter (default). Increase to drop weak lexical matches."
           >
-            <InputNumber min={0} max={1} step={0.05} style={{ width: 160 }} />
-          </Form.Item>
+            <InputNumber min={0} max={1} step={0.05} className="w-40" />
+          </FormField>
 
           {canManage && (
             <>
-              <Divider className="!my-3" />
+              <Separator className="!my-3" />
               <Flex justify="end">
                 <Button
-                  type="primary"
-                  htmlType="submit"
+                  type="submit"
                   loading={saving || triggeringFtsRebuild}
                   disabled={ftsRebuildStatus?.in_progress === true}
                   title={
@@ -322,28 +306,44 @@ export function FullTextSearchSection() {
         </Form>
       </Card>
 
-      <Modal
+      <Dialog
         open={pendingDictionary !== null}
         title="Rebuild the full-text search index?"
-        okText="Rebuild"
-        okType="primary"
-        cancelText="Keep current dictionary"
-        confirmLoading={saving || triggeringFtsRebuild}
-        cancelButtonProps={{ disabled: saving || triggeringFtsRebuild }}
-        closable={!(saving || triggeringFtsRebuild)}
-        maskClosable={!(saving || triggeringFtsRebuild)}
-        keyboard={!(saving || triggeringFtsRebuild)}
-        onCancel={() => {
-          // Block the cancel during in-flight rebuild: the server-side
-          // dictionary swap is already committing and reverting the
-          // form field would make the UI briefly disagree with reality.
-          if (saving || triggeringFtsRebuild) return
-          setPendingDictionary(null)
-          // Revert just the dictionary field so cancel returns the user
-          // to the loaded value; other in-flight edits are preserved.
-          form.setFieldValue('fts_dictionary', settings.fts_dictionary)
+        onOpenChange={(open) => {
+          if (!open && (saving || triggeringFtsRebuild)) return
+          if (!open) {
+            setPendingDictionary(null)
+            // Revert just the dictionary field so cancel returns the user
+            // to the loaded value; other in-flight edits are preserved.
+            form.setValue('fts_dictionary', settings.fts_dictionary)
+          }
         }}
-        onOk={handleRebuildConfirm}
+        footer={
+          <Flex justify="end" className="gap-2">
+            <Button
+              variant="outline"
+              disabled={saving || triggeringFtsRebuild}
+              onClick={() => {
+                // Block the cancel during in-flight rebuild: the server-side
+                // dictionary swap is already committing and reverting the
+                // form field would make the UI briefly disagree with reality.
+                if (saving || triggeringFtsRebuild) return
+                setPendingDictionary(null)
+                // Revert just the dictionary field so cancel returns the user
+                // to the loaded value; other in-flight edits are preserved.
+                form.setValue('fts_dictionary', settings.fts_dictionary)
+              }}
+            >
+              Keep current dictionary
+            </Button>
+            <Button
+              loading={saving || triggeringFtsRebuild}
+              onClick={handleRebuildConfirm}
+            >
+              Rebuild
+            </Button>
+          </Flex>
+        }
       >
         <Paragraph>
           Switching to <code>{pendingDictionary?.newDictionary}</code>{' '}
@@ -355,7 +355,7 @@ export function FullTextSearchSection() {
           automatically. Retrieval continues to work using the old
           dictionary until the rebuild completes.
         </Paragraph>
-      </Modal>
+      </Dialog>
     </>
   )
 }
