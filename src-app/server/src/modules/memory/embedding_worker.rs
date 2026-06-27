@@ -34,6 +34,17 @@ const REBUILD_BATCH_SIZE: i64 = 100;
 /// browsers at once).
 static REBUILD_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
+/// RAII guard that clears `REBUILD_IN_PROGRESS` on drop — including on a
+/// panic unwind inside `run`. Without it, a panic mid-rebuild would leave
+/// the flag stuck `true` forever, permanently blocking every subsequent
+/// rebuild (the admin UI would show "in progress" with no running worker).
+struct InProgressGuard;
+impl Drop for InProgressGuard {
+    fn drop(&mut self) {
+        REBUILD_IN_PROGRESS.store(false, Ordering::Release);
+    }
+}
+
 /// Re-embed all `user_memories` rows using `new_model_id`. If
 /// `target_dimensions` differs from the column's current dimension,
 /// first runs `ALTER TABLE user_memories ALTER COLUMN embedding TYPE
@@ -59,8 +70,9 @@ pub async fn reembed_all(
         );
         return;
     }
+    // Guard resets the flag on every exit path, including a panic unwind.
+    let _guard = InProgressGuard;
     let result = run(pool, new_model_id, new_model_name, target_dimensions).await;
-    REBUILD_IN_PROGRESS.store(false, Ordering::Release);
     if let Err(e) = result {
         tracing::warn!("memory.embedding_worker: failed: {e}");
     }
