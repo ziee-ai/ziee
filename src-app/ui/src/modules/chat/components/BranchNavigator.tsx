@@ -43,6 +43,7 @@ export function BranchNavigator() {
       <Button
         type="text"
         size="small"
+        aria-label="Previous branch"
         icon={<LeftOutlined />}
         disabled={displayIndex === 0}
         onClick={() => goTo(displayIndex - 1)}
@@ -53,6 +54,7 @@ export function BranchNavigator() {
       <Button
         type="text"
         size="small"
+        aria-label="Next branch"
         icon={<RightOutlined />}
         disabled={displayIndex === total - 1}
         onClick={() => goTo(displayIndex + 1)}

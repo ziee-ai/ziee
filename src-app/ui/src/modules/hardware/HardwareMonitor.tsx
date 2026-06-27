@@ -166,6 +166,7 @@ export function HardwareMonitor() {
   return (
     <DivScrollY className="h-full w-full flex-col">
       <div className="p-3 max-w-4xl mx-auto w-full">
+        <h1 className="sr-only">Hardware Monitor</h1>
         <div className="flex flex-col gap-3">
           {renderConnectionStatus()}
 

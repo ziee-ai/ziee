@@ -112,6 +112,9 @@ export function MemoryStatusPill() {
         disabled={loading}
       >
         <Tag
+          role="button"
+          tabIndex={0}
+          aria-label="Per-conversation memory retrieval override"
           color={colorByMode[mode]}
           icon={mode === 'off' ? <EyeInvisibleOutlined /> : <BulbOutlined />}
           style={{ cursor: 'pointer', margin: 0 }}

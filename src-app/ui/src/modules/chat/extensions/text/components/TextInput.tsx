@@ -41,6 +41,7 @@ export function TextInput() {
       <Form name="chat-text-input" form={form} initialValues={{ message: '' }}>
         <Form.Item name="message" className="mb-0" noStyle>
           <TextArea
+            aria-label="Message"
             onKeyDown={handleKeyDown}
             placeholder="Type your message..."
             autoSize={{ minRows: 2, maxRows: 8 }}

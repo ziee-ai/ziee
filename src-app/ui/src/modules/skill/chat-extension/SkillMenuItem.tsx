@@ -23,14 +23,29 @@ export function SkillMenuItem() {
       <div
         className="flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer"
         style={{ color: token.colorTextBase, minWidth: 180 }}
+        role="button"
+        tabIndex={0}
         onClick={() => {
           Stores.SkillConversationDrawer.openDrawer()
           close()
+        }}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            Stores.SkillConversationDrawer.openDrawer()
+            close()
+          }
         }}
         onMouseEnter={e => {
           e.currentTarget.style.backgroundColor = token.colorFillSecondary
         }}
         onMouseLeave={e => {
+          e.currentTarget.style.backgroundColor = 'transparent'
+        }}
+        onFocus={e => {
+          e.currentTarget.style.backgroundColor = token.colorFillSecondary
+        }}
+        onBlur={e => {
           e.currentTarget.style.backgroundColor = 'transparent'
         }}
       >
