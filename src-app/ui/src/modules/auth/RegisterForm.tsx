@@ -1,26 +1,77 @@
-import { Alert, Button, Card, Form, Input, Typography } from 'antd'
+import {
+  Alert,
+  Button,
+  Card,
+  Form,
+  FormField,
+  Input,
+  PasswordInput,
+  Title,
+  Text,
+  useForm,
+  zodResolver,
+} from '@/components/ui'
+import { z } from 'zod'
 import { LockOutlined, MailOutlined, UserOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import type { CreateUserRequest } from '@/api-client/types'
 
-const { Title, Text } = Typography
-
 interface RegisterFormProps {
   onSwitchToLogin?: () => void
 }
 
+interface RegisterFormValues {
+  username: string
+  email: string
+  password: string
+  confirmPassword: string
+}
+
+const schema = z
+  .object({
+    username: z
+      .string()
+      .min(1, 'Please input your username!')
+      .min(3, 'Username must be at least 3 characters long!'),
+    email: z
+      .string()
+      .min(1, 'Please input your email!')
+      .email('Please enter a valid email address!'),
+    password: z
+      .string()
+      .min(1, 'Please input your password!')
+      .min(6, 'Password must be at least 6 characters long!'),
+    confirmPassword: z.string().min(1, 'Please confirm your password!'),
+  })
+  .refine(data => data.password === data.confirmPassword, {
+    message: 'Passwords do not match!',
+    path: ['confirmPassword'],
+  })
+
 export const RegisterForm: React.FC<RegisterFormProps> = ({
   onSwitchToLogin,
 }) => {
-  const [form] = Form.useForm()
+  const form = useForm<RegisterFormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      username: '',
+      email: '',
+      password: '',
+      confirmPassword: '',
+    },
+  })
   const { isLoading, error } = Stores.Auth
   const navigate = useNavigate()
 
-  const onFinish = async (values: CreateUserRequest) => {
+  const onSubmit = async (values: RegisterFormValues) => {
     try {
       Stores.Auth.clearAuthenticationError()
-      await Stores.Auth.registerNewUser(values)
+      await Stores.Auth.registerNewUser({
+        username: values.username,
+        email: values.email,
+        password: values.password,
+      } as CreateUserRequest)
       // Redirect to home page after successful registration
       navigate('/', { replace: true })
     } catch (error) {
@@ -38,9 +89,9 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       {error && (
         <Alert
           title={error}
-          type="error"
-          showIcon
-          closable={{ onClose: Stores.Auth.clearAuthenticationError }}
+          tone="error"
+          onClose={Stores.Auth.clearAuthenticationError}
+          closeLabel="Close"
           className="mb-4"
         />
       )}
@@ -48,95 +99,55 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       <Form
         form={form}
         name="register"
-        onFinish={onFinish}
+        onSubmit={onSubmit}
         layout="vertical"
-        size="large"
-        autoComplete="off"
+        size="lg"
       >
-        <Form.Item
-          label="Username"
-          name="username"
-          rules={[
-            { required: true, message: 'Please input your username!' },
-            { min: 3, message: 'Username must be at least 3 characters long!' },
-          ]}
-        >
+        <FormField label="Username" name="username">
           <Input
             prefix={<UserOutlined />}
             placeholder="Enter your username"
             autoComplete="username"
           />
-        </Form.Item>
+        </FormField>
 
-        <Form.Item
-          label="Email"
-          name="email"
-          rules={[
-            { required: true, message: 'Please input your email!' },
-            { type: 'email', message: 'Please enter a valid email address!' },
-          ]}
-        >
+        <FormField label="Email" name="email">
           <Input
             prefix={<MailOutlined />}
             placeholder="Enter your email address"
             autoComplete="email"
           />
-        </Form.Item>
+        </FormField>
 
-        <Form.Item
-          label="Password"
-          name="password"
-          rules={[
-            { required: true, message: 'Please input your password!' },
-            { min: 6, message: 'Password must be at least 6 characters long!' },
-          ]}
-        >
-          <Input.Password
+        <FormField label="Password" name="password">
+          <PasswordInput
             prefix={<LockOutlined />}
             placeholder="Enter your password"
             autoComplete="new-password"
+            showLabel="Show password"
+            hideLabel="Hide password"
           />
-        </Form.Item>
+        </FormField>
 
-        <Form.Item
-          label="Confirm Password"
-          name="confirmPassword"
-          dependencies={['password']}
-          rules={[
-            { required: true, message: 'Please confirm your password!' },
-            ({ getFieldValue }) => ({
-              validator(_, value) {
-                if (!value || getFieldValue('password') === value) {
-                  return Promise.resolve()
-                }
-                return Promise.reject(new Error('Passwords do not match!'))
-              },
-            }),
-          ]}
-        >
-          <Input.Password
+        <FormField label="Confirm Password" name="confirmPassword">
+          <PasswordInput
             prefix={<LockOutlined />}
             placeholder="Confirm your password"
             autoComplete="new-password"
+            showLabel="Show password"
+            hideLabel="Hide password"
           />
-        </Form.Item>
+        </FormField>
 
-        <Form.Item>
-          <Button
-            type="primary"
-            htmlType="submit"
-            loading={isLoading}
-            className="w-full"
-          >
-            Sign Up
-          </Button>
-        </Form.Item>
+        <Button type="submit" loading={isLoading} className="w-full">
+          Sign Up
+        </Button>
 
         {onSwitchToLogin && (
           <div className="text-center">
             <Text type="secondary">
               Already have an account?{' '}
-              <Button type="link" onClick={onSwitchToLogin} className="p-0">
+              <Button variant="link" onClick={onSwitchToLogin} className="p-0">
                 Sign In
               </Button>
             </Text>
