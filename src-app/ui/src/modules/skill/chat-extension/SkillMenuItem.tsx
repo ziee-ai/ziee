@@ -21,11 +21,21 @@ export function SkillMenuItem() {
   return (
     <>
       <div
-        className="flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer"
+        className="flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer focus-visible:outline focus-visible:outline-2"
         style={{ color: token.colorTextBase, minWidth: 180 }}
+        role="button"
+        tabIndex={0}
+        aria-label="Skills in this chat"
         onClick={() => {
           Stores.SkillConversationDrawer.openDrawer()
           close()
+        }}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            Stores.SkillConversationDrawer.openDrawer()
+            close()
+          }
         }}
         onMouseEnter={e => {
           e.currentTarget.style.backgroundColor = token.colorFillSecondary
