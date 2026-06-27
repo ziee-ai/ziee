@@ -65,32 +65,48 @@ impl ContentProcessor for PdfProcessor {
     }
 
     async fn extract_text(&self, data: &[u8], _mime_type: &str) -> Result<Vec<String>, AppError> {
-        // Initialize PDFium
-        let pdfium = init_pdfium()
-            .map_err(|e| AppError::internal_error(format!("PDFium initialization failed: {}", e)))?;
+        // PDFium FFI is synchronous and CPU-bound; run it off the async
+        // runtime so it cannot block executor threads.
+        let data = data.to_vec();
+        tokio::task::spawn_blocking(move || {
+            let processor = PdfProcessor;
 
-        // Load PDF document
-        let document = pdfium
-            .load_pdf_from_byte_slice(data, None)
-            .map_err(|e| AppError::internal_error(format!("Failed to load PDF: {}", e)))?;
+            // Initialize PDFium
+            let pdfium = init_pdfium().map_err(|e| {
+                AppError::internal_error(format!("PDFium initialization failed: {}", e))
+            })?;
 
-        let mut text_pages = Vec::new();
+            // Load PDF document
+            let document = pdfium
+                .load_pdf_from_byte_slice(&data, None)
+                .map_err(|e| AppError::internal_error(format!("Failed to load PDF: {}", e)))?;
 
-        // Extract text from each page
-        for page_index in 0..document.pages().len() {
-            let page = document.pages().get(page_index)
-                .map_err(|e| AppError::internal_error(format!("Failed to get page {}: {}", page_index + 1, e)))?;
+            let mut text_pages = Vec::new();
 
-            let page_text = page.text()
-                .map_err(|e| AppError::internal_error(format!("Failed to extract text from page {}: {}", page_index + 1, e)))?;
+            // Extract text from each page
+            for page_index in 0..document.pages().len() {
+                let page = document.pages().get(page_index).map_err(|e| {
+                    AppError::internal_error(format!("Failed to get page {}: {}", page_index + 1, e))
+                })?;
 
-            let all_text = page_text.all();
-            let cleaned_text = self.clean_extracted_text(&all_text);
+                let page_text = page.text().map_err(|e| {
+                    AppError::internal_error(format!(
+                        "Failed to extract text from page {}: {}",
+                        page_index + 1,
+                        e
+                    ))
+                })?;
 
-            text_pages.push(cleaned_text);
-        }
+                let all_text = page_text.all();
+                let cleaned_text = processor.clean_extracted_text(&all_text);
 
-        Ok(text_pages)
+                text_pages.push(cleaned_text);
+            }
+
+            Ok(text_pages)
+        })
+        .await
+        .map_err(|e| AppError::internal_error(format!("PDF text extraction task failed: {}", e)))?
     }
 
     async fn extract_metadata(
@@ -98,16 +114,18 @@ impl ContentProcessor for PdfProcessor {
         data: &[u8],
         mime_type: &str,
     ) -> Result<serde_json::Value, AppError> {
-        // Try to get page count via PDFium
-        let page_count = match init_pdfium() {
-            Ok(pdfium) => {
-                match pdfium.load_pdf_from_byte_slice(data, None) {
-                    Ok(document) => Some(document.pages().len() as u32),
-                    Err(_) => None,
-                }
-            }
+        // Try to get page count via PDFium. The FFI is synchronous and
+        // CPU-bound, so run it off the async runtime.
+        let data_owned = data.to_vec();
+        let page_count = tokio::task::spawn_blocking(move || match init_pdfium() {
+            Ok(pdfium) => match pdfium.load_pdf_from_byte_slice(&data_owned, None) {
+                Ok(document) => Some(document.pages().len() as u32),
+                Err(_) => None,
+            },
             Err(_) => None,
-        };
+        })
+        .await
+        .map_err(|e| AppError::internal_error(format!("PDF metadata task failed: {}", e)))?;
 
         Ok(serde_json::json!({
             "format": mime_type,
@@ -129,13 +147,17 @@ impl ImageGenerator for PdfProcessor {
         _mime_type: &str,
         max_thumbnails: u32,
     ) -> Result<ProcessingResult, AppError> {
+        // PDFium rendering is synchronous and CPU-bound; run it off the
+        // async runtime so it cannot block executor threads.
+        let data = data.to_vec();
+        tokio::task::spawn_blocking(move || {
         // Initialize PDFium
         let pdfium = init_pdfium()
             .map_err(|e| AppError::internal_error(format!("PDFium initialization failed: {}", e)))?;
 
         // Load the PDF document from bytes
         let document = pdfium
-            .load_pdf_from_byte_slice(data, None)
+            .load_pdf_from_byte_slice(&data, None)
             .map_err(|e| AppError::internal_error(format!("Failed to load PDF: {}", e)))?;
 
         let page_count = document.pages().len() as u32;
@@ -180,6 +202,9 @@ impl ImageGenerator for PdfProcessor {
             thumbnails, // Single element array
             images,     // Multiple elements (one per page)
         })
+        })
+        .await
+        .map_err(|e| AppError::internal_error(format!("PDF image generation task failed: {}", e)))?
     }
 }
 
