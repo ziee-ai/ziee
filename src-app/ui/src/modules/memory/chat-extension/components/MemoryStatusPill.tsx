@@ -114,6 +114,7 @@ export function MemoryStatusPill() {
         <Tag
           color={colorByMode[mode]}
           icon={mode === 'off' ? <EyeInvisibleOutlined /> : <BulbOutlined />}
+          aria-label={`Memory mode: ${labelByMode[mode]}`}
           style={{ cursor: 'pointer', margin: 0 }}
         >
           {labelByMode[mode]}
