@@ -81,6 +81,22 @@ impl AppModule for WebSearchModule {
     fn init(&mut self, ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
         self.pool = Some(ctx.db_pool.clone());
 
+        // Deploy-level kill switch — ON by default (an absent `web_search:`
+        // config section means enabled). IP-sensitive operators opt OUT with
+        // `web_search: { enabled: false }` so query terms never egress; an
+        // admin cannot re-enable it (distinct from the runtime
+        // `web_search_settings.enabled` toggle). Mirrors lit_search.
+        let enabled = ctx
+            .config
+            .web_search
+            .as_ref()
+            .map(|c| c.enabled)
+            .unwrap_or(true);
+        if !enabled {
+            tracing::info!("web_search: disabled in config; skipping registration");
+            return Ok(());
+        }
+
         // Pin loopback regardless of the configured server host (same helper
         // code_sandbox/memory_mcp use) so the built-in MCP URL can never be
         // redirected to a non-loopback host.

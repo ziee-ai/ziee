@@ -17,6 +17,8 @@ pub struct Config {
     #[serde(default)]
     pub lit_search: Option<LitSearchConfig>,
     #[serde(default)]
+    pub web_search: Option<WebSearchConfig>,
+    #[serde(default)]
     pub secrets: Option<SecretsConfig>,
     /// Per-cache path overrides. Defaults to all-None; `Config::resolve_paths`
     /// fills each unset field with a subdir of `app.data_dir`. Operators
@@ -230,6 +232,33 @@ impl Default for LitSearchConfig {
     fn default() -> Self {
         Self {
             enabled: default_lit_search_enabled(),
+        }
+    }
+}
+
+/// Configuration for the `web_search` built-in MCP server (web search + page
+/// fetch). Connected-only: query terms egress to the configured search
+/// provider, so IP-sensitive operators turn it off with
+/// `web_search: { enabled: false }` — a **deploy-level** kill switch an admin
+/// cannot re-enable (distinct from the runtime `web_search_settings.enabled`
+/// row). When false, `init()` returns before the MCP row upsert, so the tools
+/// are never registered. Mirrors [`LitSearchConfig`].
+#[derive(Debug, Deserialize, Clone)]
+pub struct WebSearchConfig {
+    /// Master switch. When false, the module's `init()` returns early (no MCP
+    /// row upsert). Defaults to true.
+    #[serde(default = "default_web_search_enabled")]
+    pub enabled: bool,
+}
+
+fn default_web_search_enabled() -> bool {
+    true
+}
+
+impl Default for WebSearchConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_web_search_enabled(),
         }
     }
 }
