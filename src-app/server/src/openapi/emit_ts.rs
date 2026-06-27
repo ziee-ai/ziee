@@ -652,7 +652,7 @@ fn get_type_from_schema(schema: &J, is_optional_or_nullable: bool) -> String {
                     let mut props: Vec<String> = Vec::new();
                     for (prop_name, prop_schema) in properties {
                         let prop_type = get_type_from_schema(prop_schema, false);
-                        props.push(format!("{}: {}", prop_name, prop_type));
+                        props.push(format!("{}: {}", ts_prop_key(prop_name), prop_type));
                     }
                     format!("{{ {} }}", props.join("; "))
                 } else {
@@ -1059,7 +1059,7 @@ fn generate_permission_descriptions(permissions: &[PermissionInfo]) -> String {
     }
     let entries: Vec<String> = permissions
         .iter()
-        .map(|p| format!("  {}: '{}'", p.name, p.description.replace('\'', "\\'")))
+        .map(|p| format!("  {}: {}", p.name, ts_str_lit(&p.description)))
         .collect();
     format!(
         "export const PermissionDescriptions: Record<string, string> = {{\n{}\n}}",
