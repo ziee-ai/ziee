@@ -1,3 +1,5 @@
+import { Alert, Spin } from 'antd'
+import { Stores } from '@/core/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { RebuildStatusSection } from '../components/sections/RebuildStatusSection'
 import { MemorySection } from '../components/sections/MemorySection'
@@ -25,11 +27,28 @@ import { RetentionLimitsSection } from '../components/sections/RetentionLimitsSe
  * the page is short by default.
  */
 export function MemoryAdminPage() {
+  const { settings, loading, error } = Stores.MemoryAdmin
   return (
     <SettingsPageContainer
       title="Memory (admin)"
       subtitle="Deployment-wide memory configuration: master toggle, full-text and semantic search, extraction model, retention."
     >
+      {/* Surface load failures — the per-section cards render nothing
+          until settings arrive, so without this the body is blank on error. */}
+      {error && !settings && (
+        <Alert
+          type="error"
+          showIcon
+          className="mb-4"
+          message="Failed to load memory settings"
+          description={error}
+        />
+      )}
+      {loading && !settings && (
+        <div className="flex justify-center py-8">
+          <Spin />
+        </div>
+      )}
       <RebuildStatusSection />
       <MemorySection />
       <FullTextSearchSection />
