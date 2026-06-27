@@ -154,11 +154,11 @@ impl J {
 }
 
 /// Render a schemars `description` (from a Rust `///` doc-comment) as a JSDoc
-/// block, indented two spaces to sit above an interface field. Returns `None`
-/// for an empty/whitespace-only description. `*/` is escaped so a description
-/// can never close the comment early. (Hardening over the original TS
-/// generator, which dropped all field doc-comments.)
-fn render_field_doc(desc: &str) -> Option<String> {
+/// block at the given indent. Returns `None` for an empty/whitespace-only
+/// description. `*/` is escaped so a description can never close the comment
+/// early. (Hardening over the original TS generator, which dropped every
+/// doc-comment.)
+fn render_doc(desc: &str, indent: &str) -> Option<String> {
     let desc = desc.trim_end_matches('\n');
     if desc.trim().is_empty() {
         return None;
@@ -168,17 +168,17 @@ fn render_field_doc(desc: &str) -> Option<String> {
         .map(|l| l.trim_end().replace("*/", "*\\/"))
         .collect();
     if lines.len() == 1 {
-        Some(format!("  /** {} */", lines[0].trim()))
+        Some(format!("{}/** {} */", indent, lines[0].trim()))
     } else {
-        let mut out = String::from("  /**\n");
+        let mut out = format!("{}/**\n", indent);
         for l in &lines {
             if l.is_empty() {
-                out.push_str("   *\n");
+                out.push_str(&format!("{} *\n", indent));
             } else {
-                out.push_str(&format!("   * {}\n", l));
+                out.push_str(&format!("{} * {}\n", indent, l));
             }
         }
-        out.push_str("   */");
+        out.push_str(&format!("{} */", indent));
         Some(out)
     }
 }
@@ -648,6 +648,22 @@ fn get_type_from_schema(schema: &J, is_optional_or_nullable: bool) -> String {
 }
 
 fn generate_schema_interface(name: &str, schema: &J) -> String {
+    let body = generate_schema_interface_body(name, schema);
+    // Skipped types (JsonOption_for_ / EnumOption_for_) return empty — leave as-is.
+    if body.trim().is_empty() {
+        return body;
+    }
+    // Hardening: carry the type's own doc-comment through as a JSDoc block above
+    // the `export interface`/`export type`/`export enum` declaration.
+    if let Some(desc) = schema.get("description").and_then(|d| d.as_str()) {
+        if let Some(doc) = render_doc(desc, "") {
+            return format!("{}\n{}", doc, body);
+        }
+    }
+    body
+}
+
+fn generate_schema_interface_body(name: &str, schema: &J) -> String {
     if schema.has_key("$ref") {
         return format!(
             "export type {} = {}",
@@ -752,7 +768,7 @@ fn generate_schema_interface(name: &str, schema: &J) -> String {
 
                 // Hardening: carry the field's doc-comment through as JSDoc.
                 if let Some(desc) = prop_schema.get("description").and_then(|d| d.as_str()) {
-                    if let Some(doc) = render_field_doc(desc) {
+                    if let Some(doc) = render_doc(desc, "  ") {
                         properties.push(doc);
                     }
                 }
@@ -849,6 +865,12 @@ fn generate_message_content_data_types(one_of: &[J]) -> String {
                                 J::Str(s) => format!("'{}'", s),
                                 other => js_stringify_scalar(other),
                             };
+                        }
+                        // Hardening: carry variant field doc-comments through.
+                        if let Some(desc) = prop_schema.get("description").and_then(|d| d.as_str()) {
+                            if let Some(doc) = render_doc(desc, "  ") {
+                                props.push(doc);
+                            }
                         }
                         let is_required = variant.required_includes(prop_name);
                         let marker = if is_required { "" } else { "?" };
