@@ -1,4 +1,4 @@
-import { App, Button, Empty, Popconfirm, Tooltip, Typography, theme } from 'antd'
+import { Alert, App, Button, Empty, Popconfirm, Tooltip, Typography, theme } from 'antd'
 import { MinusCircleOutlined } from '@ant-design/icons'
 import { useState } from 'react'
 import type { ConversationResponse } from '@/api-client/types'
@@ -30,6 +30,7 @@ export function ProjectConversationsList({
     conversationsLoading,
     conversationsLoadingMore,
     conversationsHasMore,
+    error,
   } = Stores.ProjectDetail
   const isSelectionMode = selectedIds.size > 0
 
@@ -39,6 +40,12 @@ export function ProjectConversationsList({
         <div className="animate-spin rounded-full h-8 w-8 border-b-2"></div>
       </div>
     )
+  }
+
+  // Surface a load failure instead of the misleading "no conversations"
+  // empty state below.
+  if (error && conversations.length === 0) {
+    return <Alert type="error" showIcon title={error} className="my-2" />
   }
 
   if (conversations.length === 0) {
