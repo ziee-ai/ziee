@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { App, Button, Card, Divider, Flex, Popconfirm, Spin, Typography } from 'antd'
+import { App, Button, Card, Divider, Flex, Popconfirm, Result, Spin, Typography } from 'antd'
 import {
   ArrowLeftOutlined,
   CloseCircleOutlined,
@@ -218,10 +218,34 @@ export function ProjectDetailPage() {
     return null
   }
 
-  if (loading || !project) {
+  if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
         <Spin />
+      </div>
+    )
+  }
+
+  // Load settled but no project (not found / fetch failed). Show a
+  // recoverable error state instead of an infinite spinner.
+  if (!project) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Result
+          status="error"
+          title="Failed to load project"
+          subTitle={error ?? 'The project could not be loaded.'}
+          extra={
+            <Flex gap="small" justify="center">
+              <Button onClick={() => Stores.ProjectDetail.loadProject(projectId)}>
+                Retry
+              </Button>
+              <Button type="primary" onClick={() => navigate('/projects')}>
+                Back to projects
+              </Button>
+            </Flex>
+          }
+        />
       </div>
     )
   }

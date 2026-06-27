@@ -61,7 +61,12 @@ export const useProjectDetailStore = create<ProjectDetailState>()(
         conversations: [],
         conversationsPage: 1,
         conversationsHasMore: false,
-        loading: false,
+        // Starts true: the detail page always loads on mount, so the
+        // initial render should show the spinner — not the
+        // load-failed state — before loadProject runs. This also lets
+        // the page distinguish "still loading" from "load settled with
+        // no project" (a failure), instead of spinning forever.
+        loading: true,
         conversationsLoading: false,
         conversationsLoadingMore: false,
         error: null,
