@@ -1,10 +1,9 @@
-import { Alert, Button, Card, Form, Typography, message } from 'antd'
+import { Alert, Button, Card, Paragraph } from '@/components/ui'
+import { message } from '@/components/ui'
 import { DatabaseOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
-
-const { Paragraph } = Typography
 
 const READ_PERM = Permissions.FileRagAdminRead
 const MANAGE_PERM = Permissions.FileRagAdminManage
@@ -23,8 +22,7 @@ export function MaintenanceSection() {
     return (
       <Card title="Maintenance">
         <Alert
-          type="warning"
-          showIcon
+          tone="warning"
           title="You don't have permission to view Document RAG admin settings."
         />
       </Card>
@@ -51,8 +49,9 @@ export function MaintenanceSection() {
         index. It's bounded and idempotent (safe to run repeatedly) and also
         runs on every server boot.
       </Paragraph>
-      <Form layout="horizontal" disabled={!canManage}>
-        <Form.Item label="Backfill existing files" colon={false}>
+      <div className="flex flex-col gap-2 opacity-[inherit]" aria-disabled={!canManage}>
+        <div className="flex items-center gap-4">
+          <span className="text-sm font-medium w-40">Backfill existing files</span>
           <Button
             icon={<DatabaseOutlined />}
             loading={triggeringBackfill}
@@ -61,8 +60,8 @@ export function MaintenanceSection() {
           >
             Run backfill
           </Button>
-        </Form.Item>
-      </Form>
+        </div>
+      </div>
     </Card>
   )
 }
