@@ -218,10 +218,21 @@ export function ProjectDetailPage() {
     return null
   }
 
-  if (loading || !project) {
+  if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
         <Spin />
+      </div>
+    )
+  }
+
+  // Load finished but no project — a failed load (the error toast above
+  // already surfaced the reason). Show a terminal message instead of an
+  // infinite spinner.
+  if (!project) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Text type="secondary">Couldn't load this project.</Text>
       </div>
     )
   }
