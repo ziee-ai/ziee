@@ -18,7 +18,7 @@ const { Title, Paragraph, Text } = Typography
 
 export default function McpServersStep({ registerBeforeNext }: OnboardingStepProps) {
   const selectedMcpServerIds = Stores.McpServersStep.selectedMcpServerIds
-  const { systemServers, hubServers, installedNames, loadingServers, serversError } = Stores.McpServersStep
+  const { systemServers, hubServers, installedNames, loadingServers, serversError, disabledSystemIds } = Stores.McpServersStep
 
   // The step renders for every authenticated user, but the controls are
   // admin-only. Non-admins see just the intro paragraph and continue.
@@ -74,7 +74,7 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
               >
                 <Switch
                   size="small"
-                  defaultChecked
+                  checked={!disabledSystemIds.has(server.id)}
                   onChange={checked => Stores.McpServersStep.toggleSystemServer(server.id, checked)}
                   className="mt-1"
                 />
