@@ -169,6 +169,13 @@ fn ris_type(csl_type: &str) -> &'static str {
     }
 }
 
+/// RIS is line-oriented, so a value containing a newline would split into a
+/// bogus second line (or inject a fake `ER  -` terminator). Collapse any
+/// CR/LF in a field value to a space before emitting it.
+fn ris_sanitize(s: &str) -> String {
+    s.replace(['\r', '\n'], " ")
+}
+
 /// Minimal CSL-JSON → RIS. RIS is line-oriented `TAG  - value`; one record per
 /// item, terminated by `ER  -`.
 pub fn to_ris(items: &[Value]) -> String {
@@ -177,7 +184,7 @@ pub fn to_ris(items: &[Value]) -> String {
         let ty = it.get("type").and_then(|v| v.as_str()).unwrap_or("article-journal");
         out.push_str(&format!("TY  - {}\n", ris_type(ty)));
         if let Some(title) = it.get("title").and_then(|v| v.as_str()) {
-            out.push_str(&format!("TI  - {title}\n"));
+            out.push_str(&format!("TI  - {}\n", ris_sanitize(title)));
         }
         if let Some(authors) = it.get("author").and_then(|v| v.as_array()) {
             for a in authors {
@@ -194,7 +201,7 @@ pub fn to_ris(items: &[Value]) -> String {
                         .to_string(),
                 };
                 if !name.is_empty() {
-                    out.push_str(&format!("AU  - {name}\n"));
+                    out.push_str(&format!("AU  - {}\n", ris_sanitize(&name)));
                 }
             }
         }
@@ -210,13 +217,13 @@ pub fn to_ris(items: &[Value]) -> String {
             out.push_str(&format!("PY  - {year}\n"));
         }
         if let Some(j) = it.get("container-title").and_then(|v| v.as_str()) {
-            out.push_str(&format!("JO  - {j}\n"));
+            out.push_str(&format!("JO  - {}\n", ris_sanitize(j)));
         }
         if let Some(doi) = it.get("DOI").and_then(|v| v.as_str()) {
-            out.push_str(&format!("DO  - {doi}\n"));
+            out.push_str(&format!("DO  - {}\n", ris_sanitize(doi)));
         }
         if let Some(url) = it.get("URL").and_then(|v| v.as_str()) {
-            out.push_str(&format!("UR  - {url}\n"));
+            out.push_str(&format!("UR  - {}\n", ris_sanitize(url)));
         }
         out.push_str("ER  - \n\n");
     }
