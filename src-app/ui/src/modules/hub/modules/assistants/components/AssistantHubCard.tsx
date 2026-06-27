@@ -1,4 +1,4 @@
-import { App, Card, Tag, Typography, Button, Flex } from 'antd'
+import { Card, Tag, Button, Flex, Text, message } from '@/components/ui'
 import {
   InfoCircleOutlined,
   RobotOutlined,
@@ -12,14 +12,11 @@ import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { useNavigate } from 'react-router-dom'
 
-const { Text } = Typography
-
 interface AssistantHubCardProps {
   assistant: HubAssistant
 }
 
 export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
-  const { message } = App.useApp()
   const navigate = useNavigate()
   const [showDetails, setShowDetails] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
@@ -98,12 +95,11 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
         enabled: true,
       })
 
-      message.success({
-        content: `Template "${assistant.display_name}" installed. \
+      message.success(
+        `Template "${assistant.display_name}" installed. \
 Mark it as default in /settings/assistant-templates to auto-clone it \
 for new users.`,
-        duration: 6,
-      })
+      )
 
       // Navigate to the templates admin page so the admin can see it.
       navigate('/settings/assistant-templates')
@@ -144,13 +140,13 @@ for new users.`,
                     <Tag className="text-xs !m-0">v{assistant.version}</Tag>
                   )}
                   {assistant.category && (
-                    <Tag color="geekblue" className="text-xs">
+                    <Tag tone="info" className="text-xs">
                       {assistant.category}
                     </Tag>
                   )}
-                  {isAlreadyCreated && <Tag color="green">Created</Tag>}
+                  {isAlreadyCreated && <Tag tone="success">Created</Tag>}
                   {isAlreadyTemplate && (
-                    <Tag color="purple">Template installed</Tag>
+                    <Tag tone="info">Template installed</Tag>
                   )}
                 </Flex>
               </div>
@@ -177,7 +173,7 @@ for new users.`,
                 )}
                 {!isAlreadyCreated && canCreate && (
                   <Button
-                    type="primary"
+                    variant="outline"
                     icon={<RobotOutlined />}
                     onClick={e => {
                       e.stopPropagation()
@@ -237,11 +233,10 @@ for new users.`,
                   </Text>
                   <Flex
                     wrap
-                    className="gap-1"
-                    style={{ display: 'inline-flex' }}
+                    className="gap-1 inline-flex"
                   >
                     {assistant.tags.map(tag => (
-                      <Tag key={tag} color="default" className="text-xs">
+                      <Tag key={tag} className="text-xs">
                         {tag}
                       </Tag>
                     ))}
@@ -274,15 +269,14 @@ for new users.`,
                     </Text>
                     <Flex
                       wrap
-                      className="gap-1"
-                      style={{ display: 'inline-flex' }}
+                      className="gap-1 inline-flex"
                     >
                       {assistant.dependencies.map(dep => {
                         const leaf = dep.name.split('/').slice(-1)[0]
                         return (
                           <Tag
                             key={`${dep.kind}-${dep.name}`}
-                            color={dep.kind === 'model' ? 'cyan' : 'purple'}
+                            tone={dep.kind === 'model' ? 'success' : 'info'}
                             className="text-xs"
                           >
                             {leaf} {dep.versionRange}

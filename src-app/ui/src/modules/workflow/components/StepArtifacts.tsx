@@ -1,11 +1,10 @@
 import { DownloadOutlined, FileOutlined } from '@ant-design/icons'
-import { App, Button, Image, Space, Typography } from 'antd'
+import { Button, Image, Space, Text } from '@/components/ui'
 import { useEffect, useRef, useState } from 'react'
 import { ApiClient } from '@/api-client'
 import type { StepArtifactMeta } from '@/modules/workflow/stores/WorkflowRun.store'
 import { formatBytes } from '@/utils/downloadUtils'
-
-const { Text } = Typography
+import { message } from '@/components/ui'
 
 interface StepArtifactsProps {
   runId: string
@@ -53,7 +52,6 @@ function ArtifactBlock({
   stepId: string
   artifact: StepArtifactMeta
 }) {
-  const { message } = App.useApp()
   const isImage = (artifact.mime_type ?? '').startsWith('image/')
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [downloading, setDownloading] = useState(false)
@@ -118,7 +116,7 @@ function ArtifactBlock({
   }
 
   const meta = (
-    <Space size={4} wrap>
+    <Space size={4}>
       <Text className="text-xs font-medium">{artifact.filename}</Text>
       {artifact.size_bytes != null && (
         <Text type="secondary" className="text-xs">
@@ -140,7 +138,7 @@ function ArtifactBlock({
         <Image
           src={imageUrl}
           alt={artifact.filename}
-          style={{ maxHeight: 240, objectFit: 'contain' }}
+          className="max-h-60 object-contain"
         />
         {artifact.description && (
           <Text type="secondary" className="text-xs">
@@ -165,8 +163,8 @@ function ArtifactBlock({
         </div>
       </Space>
       <Button
-        size="small"
-        type="text"
+        size="sm"
+        variant="ghost"
         icon={<DownloadOutlined aria-hidden="true" />}
         loading={downloading}
         onClick={() => void handleDownload()}

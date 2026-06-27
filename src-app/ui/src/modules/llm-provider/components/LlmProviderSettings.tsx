@@ -1,13 +1,13 @@
 import { PlusOutlined } from '@ant-design/icons'
 import {
-  App,
   Button,
   Dropdown,
   Empty,
+  Text,
+  Title,
   Flex,
-  Menu,
-  Typography,
-} from 'antd'
+  message,
+} from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
 import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -22,10 +22,7 @@ import { RemoteProviderSettings } from '@/modules/llm-provider/components/Remote
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { IoIosArrowDown } from 'react-icons/io'
 
-const { Title } = Typography
-
 export function LlmProviderSettings() {
-  const { message } = App.useApp()
   const { providerId } = useParams<{ providerId?: string }>()
   const navigate = useNavigate()
   const windowMinSize = useWindowMinSize()
@@ -42,7 +39,7 @@ export function LlmProviderSettings() {
       message.error(error)
       Stores.LlmProvider.clearLlmProviderStoreError()
     }
-  }, [error, message])
+  }, [error])
 
   // Handle URL parameter and provider selection
   useEffect(() => {
@@ -74,7 +71,7 @@ export function LlmProviderSettings() {
         <Flex className={'flex-row gap-2 items-center h-full'}>
           <IconComponent className={'text-lg'} />
           <div className={'flex-1 flex items-center h-full overflow-x-hidden'}>
-            <Typography.Text ellipsis>{provider.name}</Typography.Text>
+            <Text ellipsis>{provider.name}</Text>
           </div>
         </Flex>
       ),
@@ -84,33 +81,67 @@ export function LlmProviderSettings() {
   if (canCreate) {
     menuItems.push({
       key: 'add-provider',
-      //@ts-ignore
-      icon: <PlusOutlined />,
-      label: <Typography.Text>Add Provider</Typography.Text>,
+      label: (
+        <Flex className={'flex-row gap-2 items-center h-full'}>
+          <PlusOutlined className={'text-lg'} />
+          <Text>Add Provider</Text>
+        </Flex>
+      ),
     })
   }
 
   const ProviderMenu = () => (
-    <Menu
+    <div
       className={`
       w-full
       h-full
       !m-0
-      [&_.ant-menu]:!px-0
-      [&_.ant-menu-item]:!h-8
-      [&_.ant-menu-item]:!leading-[32px]
+      !px-0
       !bg-transparent
-      !border-none`}
-      selectedKeys={providerId ? [providerId] : []}
-      items={menuItems}
-      onClick={({ key }) => {
-        if (key === 'add-provider') {
-          Stores.LlmProviderDrawer.openLlmProviderDrawer()
-        } else {
-          navigate(`/settings/llm-providers/${key}`)
-        }
-      }}
-    />
+      !border-none
+      flex flex-col
+      gap-1
+    `}
+    >
+      {menuItems.map(item => {
+        const IconComponent =
+          item.key !== 'add-provider'
+            ? PROVIDER_ICONS[
+                providers.find(p => p.id === item.key)?.provider_type || 'custom'
+              ] || PROVIDER_ICONS.custom
+            : null
+        return (
+          <button
+            key={item.key}
+            onClick={() => {
+              if (item.key === 'add-provider') {
+                Stores.LlmProviderDrawer.openLlmProviderDrawer()
+              } else {
+                navigate(`/settings/llm-providers/${item.key}`)
+              }
+            }}
+            className={`
+              flex items-center gap-2 px-3 py-1.5 rounded-md text-sm w-full text-left
+              ${
+                providerId === item.key
+                  ? 'bg-accent text-accent-foreground'
+                  : 'hover:bg-accent/50 text-foreground'
+              }
+              transition-colors
+            `}
+          >
+            {item.key === 'add-provider' ? (
+              <span className="text-base">
+                <PlusOutlined />
+              </span>
+            ) : (
+              IconComponent && <IconComponent className="text-base" />
+            )}
+            <span className="flex-1 truncate">{item.label}</span>
+          </button>
+        )
+      })}
+    </div>
   )
 
   const renderProviderSettings = () => {
@@ -124,7 +155,6 @@ export function LlmProviderSettings() {
       return (
         <Empty
           description={'No provider selected'}
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
         />
       )
     }
@@ -170,26 +200,34 @@ export function LlmProviderSettings() {
                     className={'w-full flex flex-row gap-2 items-center mb-4'}
                   >
                     <Dropdown
-                      className={'w-full'}
-                      menu={{
-                        items: menuItems.map(item => ({
-                          // @ts-ignore
-                          icon: item.icon,
-                          key: item.key,
-                          label: item.label,
-                        })),
-                        onClick: ({ key }) => {
-                          if (key === 'add-provider') {
-                            Stores.LlmProviderDrawer.openLlmProviderDrawer()
-                          } else {
-                            navigate(`/settings/llm-providers/${key}`)
-                          }
-                        },
-                        selectedKeys: providerId ? [providerId] : [],
+                      items={menuItems.map(item => ({
+                        key: item.key,
+                        label: (
+                          <Flex className="gap-2 items-center">
+                            {item.key === 'add-provider' ? (
+                              <PlusOutlined />
+                            ) : (
+                              (() => {
+                                const IconComponent =
+                                  PROVIDER_ICONS[
+                                    providers.find(p => p.id === item.key)?.provider_type || 'custom'
+                                  ] || PROVIDER_ICONS.custom
+                                return <IconComponent className="text-lg" />
+                              })()
+                            )}
+                            {item.label}
+                          </Flex>
+                        ),
+                      }))}
+                      onSelect={(key: string) => {
+                        if (key === 'add-provider') {
+                          Stores.LlmProviderDrawer.openLlmProviderDrawer()
+                        } else {
+                          navigate(`/settings/llm-providers/${key}`)
+                        }
                       }}
-                      trigger={['click']}
                     >
-                      <Button className="w-fit" size={'large'}>
+                      <Button className="w-fit" size={'lg'}>
                         {currentProvider ? (
                           <Flex className="gap-2 items-center">
                             {(() => {

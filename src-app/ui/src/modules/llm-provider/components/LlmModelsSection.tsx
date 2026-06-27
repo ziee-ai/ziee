@@ -5,27 +5,24 @@ import {
   UploadOutlined,
 } from '@ant-design/icons'
 import {
-  App,
   Button,
   Card,
-  Divider,
+  Separator,
   Dropdown,
   Empty,
   Flex,
   Switch,
   Tooltip,
-  Typography,
-} from 'antd'
+  Text,
+} from '@/components/ui'
+import { message } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
 import { useParams } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type LlmModel } from '@/api-client/types'
 
-const { Text } = Typography
-
 export function LlmModelsSection() {
-  const { message } = App.useApp()
   const { providerId } = useParams<{ providerId?: string }>()
 
   // Store data
@@ -170,7 +167,7 @@ export function LlmModelsSection() {
       actions.push(
         <Button
           key="edit"
-          type="text"
+          variant="ghost"
           icon={<EditOutlined aria-hidden="true" />}
           onClick={() => handleEditLlmModel(llmModel.id)}
           aria-label={`Edit ${llmModel.display_name} model`}
@@ -184,7 +181,7 @@ export function LlmModelsSection() {
       actions.push(
         <Button
           key="delete"
-          type="text"
+          variant="ghost"
           icon={<DeleteOutlined aria-hidden="true" />}
           onClick={() => handleDeleteLlmModel(llmModel.id)}
           aria-label={`Delete ${llmModel.display_name} model`}
@@ -204,33 +201,30 @@ export function LlmModelsSection() {
     if (currentProvider.provider_type === 'local') {
       return (
         <Dropdown
-          menu={{
-            items: [
-              {
-                key: 'upload',
-                label: 'Upload from Files',
-                icon: <UploadOutlined />,
-                onClick: () =>
-                  Stores.AddLocalLlmModelUploadDrawer.openAddLocalLlmModelUploadDrawer(
-                    currentProvider.id,
-                  ),
-              },
-              {
-                key: 'download',
-                label: 'Download from Repository',
-                icon: <PlusOutlined />,
-                onClick: () =>
-                  Stores.AddLocalLlmModelDownloadDrawer.openAddLocalLlmModelDownloadDrawer(
-                    currentProvider.id,
-                  ),
-              },
-            ],
-          }}
-          trigger={['click']}
+          items={[
+            {
+              key: 'upload',
+              label: 'Upload from Files',
+              icon: <UploadOutlined />,
+              onClick: () =>
+                Stores.AddLocalLlmModelUploadDrawer.openAddLocalLlmModelUploadDrawer(
+                  currentProvider.id,
+                ),
+            },
+            {
+              key: 'download',
+              label: 'Download from Repository',
+              icon: <PlusOutlined />,
+              onClick: () =>
+                Stores.AddLocalLlmModelDownloadDrawer.openAddLocalLlmModelDownloadDrawer(
+                  currentProvider.id,
+                ),
+            },
+          ]}
         >
-          <Tooltip title="Add model">
+          <Tooltip content="Add model">
             <Button
-              type="text"
+              variant="ghost"
               icon={<PlusOutlined aria-hidden="true" />}
               aria-label="Add model"
             />
@@ -240,9 +234,9 @@ export function LlmModelsSection() {
     }
 
     return (
-      <Tooltip title="Add model">
+      <Tooltip content="Add model">
         <Button
-          type="text"
+          variant="ghost"
           icon={<PlusOutlined aria-hidden="true" />}
           onClick={handleAddLlmModel}
           aria-label="Add model"
@@ -349,7 +343,7 @@ export function LlmModelsSection() {
                   </div>
                 </div>
               </div>
-              {index < llmModels.length - 1 && <Divider className="my-0" />}
+              {index < llmModels.length - 1 && <Separator className="my-0" />}
             </div>
           ))}
         </div>

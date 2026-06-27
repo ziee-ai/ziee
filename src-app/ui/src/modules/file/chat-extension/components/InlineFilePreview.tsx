@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Button, Tooltip, theme, App } from 'antd'
+import { Button, Tooltip, message } from '@/components/ui'
 import {
   RightOutlined,
   DownOutlined,
@@ -47,8 +47,6 @@ function formatFileSize(bytes: number | undefined): string {
  * content, not a button.
  */
 export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewProps) {
-  const { token } = theme.useToken()
-  const { message } = App.useApp()
   const [collapsed, setCollapsed] = useState(false)
 
   // Viewport-gate the body: a conversation can hold many inline files, and the
@@ -133,18 +131,13 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
       data-testid="inline-file-preview"
       data-file-uri={source.url}
       data-file-id={file?.id}
-      className="flex flex-col rounded-md overflow-hidden"
-      style={{
-        border: `1px solid ${token.colorBorderSecondary}`,
-        backgroundColor: token.colorBgContainer,
-      }}
+      className="flex flex-col rounded-md overflow-hidden border border-border bg-card"
     >
       {/* Header row */}
       <div
-        className="flex items-center gap-2 px-3 py-2"
+        className="flex items-center gap-2 px-3 py-2 bg-muted/60"
         style={{
-          backgroundColor: token.colorFillTertiary,
-          borderBottom: showBody ? `1px solid ${token.colorBorderSecondary}` : 'none',
+          borderBottom: showBody ? '1px solid var(--border)' : 'none',
         }}
       >
         {/* Chevron = ONLY collapse toggle. Only render when the viewer
@@ -152,8 +145,8 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
             the whole UI and a chevron would be a noop. */}
         {canInline && Body && (
           <Button
-            type="text"
-            size="small"
+            variant="ghost"
+            size="sm"
             aria-label={collapsed ? 'Expand file preview' : 'Collapse file preview'}
             aria-expanded={!collapsed}
             icon={collapsed ? <RightOutlined /> : <DownOutlined />}
@@ -162,22 +155,18 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
           />
         )}
         <span
-          className="flex-shrink-0 inline-flex items-center justify-center"
-          style={{ width: 20, height: 20, color: token.colorTextSecondary }}
+          className="flex-shrink-0 inline-flex items-center justify-center text-muted-foreground"
+          style={{ width: 20, height: 20 }}
         >
           {Icon}
         </span>
         <span
-          className="font-medium truncate"
-          style={{ color: token.colorText }}
+          className="font-medium truncate text-foreground"
           title={displayName}
         >
           {displayName}
         </span>
-        <span
-          className="text-xs flex-shrink-0"
-          style={{ color: token.colorTextTertiary }}
-        >
+        <span className="text-xs flex-shrink-0 text-muted-foreground">
           {label ? <>· {label}</> : null}
           {displaySize !== undefined ? <> · {formatFileSize(displaySize)}</> : null}
         </span>
@@ -186,10 +175,10 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
         {/* Open in side panel — only for backend-owned files (need a File id
             to drive the panel renderer). */}
         {file ? (
-          <Tooltip title="Open in side panel">
+          <Tooltip content="Open in side panel">
             <Button
-              type="text"
-              size="small"
+              variant="ghost"
+              size="sm"
               icon={<PicRightOutlined />}
               onClick={handleOpenInPanel}
               aria-label="Open file in side panel"
@@ -197,13 +186,13 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
             />
           </Tooltip>
         ) : null}
-        <Tooltip title="Open in new tab">
+        <Tooltip content="Open in new tab">
           {file ? (
             // File-backed: mint a fresh token via the store action (a plain
             // <a target=_blank> can't carry the bearer header).
             <Button
-              type="text"
-              size="small"
+              variant="ghost"
+              size="sm"
               icon={<ExportOutlined />}
               onClick={handleOpenInNewTab}
               aria-label="Open file in new tab"
@@ -212,8 +201,8 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
           ) : (
             // External MCP link: open the URL directly.
             <Button
-              type="text"
-              size="small"
+              variant="ghost"
+              size="sm"
               href={source.url}
               target="_blank"
               rel="noopener noreferrer"

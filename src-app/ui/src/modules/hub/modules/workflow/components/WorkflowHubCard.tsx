@@ -1,16 +1,15 @@
 import { DownloadOutlined } from '@ant-design/icons'
-import type { MenuProps } from 'antd'
 import {
-  App,
   Button,
   Card,
   Dropdown,
   Flex,
-  Modal,
-  Select,
+  Dialog,
   Tag,
-  Typography,
-} from 'antd'
+  Text,
+  message,
+  MultiSelect,
+} from '@/components/ui'
 import { useState } from 'react'
 import { ApiClient } from '@/api-client'
 import type { Group, IndexItem } from '@/api-client/types'
@@ -19,14 +18,17 @@ import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import { WorkflowDetailsDrawer } from './WorkflowDetailsDrawer'
 
-const { Text } = Typography
-
 interface WorkflowHubCardProps {
   item: IndexItem
 }
 
+const adminMenuItems = [
+  { key: 'me', label: 'Install for me' },
+  { key: 'everyone', label: 'Install for everyone' },
+  { key: 'groups', label: 'Install for groups…' },
+]
+
 export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
-  const { message } = App.useApp()
   const [showDetails, setShowDetails] = useState(false)
   const [groupsOpen, setGroupsOpen] = useState(false)
   const [allGroups, setAllGroups] = useState<Group[]>([])
@@ -94,17 +96,10 @@ export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
     }
   }
 
-  const adminMenu: MenuProps = {
-    items: [
-      { key: 'me', label: 'Install for me' },
-      { key: 'everyone', label: 'Install for everyone' },
-      { key: 'groups', label: 'Install for groups…' },
-    ],
-    onClick: ({ key }) => {
-      if (key === 'me') void handleInstallForMe()
-      else if (key === 'everyone') void handleInstallForEveryone()
-      else if (key === 'groups') void openGroupPicker()
-    },
+  const handleInstallAction = (key: string) => {
+    if (key === 'me') void handleInstallForMe()
+    else if (key === 'everyone') void handleInstallForEveryone()
+    else if (key === 'groups') void openGroupPicker()
   }
 
   return (
@@ -115,15 +110,15 @@ export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
         onClick={() => setShowDetails(true)}
         data-testid={`hub-workflow-card-${item.name}`}
       >
-        <Flex justify="space-between" align="flex-start" gap={12}>
+        <Flex justify="between" align="start" className="gap-3">
           <div className="flex-1 min-w-0">
-            <Flex gap={8} align="center" wrap>
+            <Flex gap="small" align="center" wrap>
               <Text className="font-medium">{title}</Text>
               {item.version && (
                 <Tag className="text-xs !m-0">v{item.version}</Tag>
               )}
-              {state === 'user' && <Tag color="green">Installed</Tag>}
-              {state === 'system' && <Tag color="purple">System installed</Tag>}
+              {state === 'user' && <Tag tone="success">Installed</Tag>}
+              {state === 'system' && <Tag tone="info">System installed</Tag>}
             </Flex>
             {item.summary && (
               <Text type="secondary" className="text-sm mt-1 block">
@@ -133,19 +128,20 @@ export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
           </div>
           <div onClick={e => e.stopPropagation()}>
             {canManageSystem ? (
-              <Dropdown.Button
-                type="primary"
-                icon={<DownloadOutlined />}
-                loading={installing}
-                disabled={installing}
-                menu={adminMenu}
-                onClick={handleInstallForMe}
-              >
-                Install
-              </Dropdown.Button>
+              <Dropdown items={adminMenuItems} onSelect={handleInstallAction}>
+                <Button
+                  variant="default"
+                  icon={<DownloadOutlined />}
+                  loading={installing}
+                  disabled={installing}
+                  onClick={handleInstallForMe}
+                >
+                  Install
+                </Button>
+              </Dropdown>
             ) : canInstall ? (
               <Button
-                type="primary"
+                variant="default"
                 icon={<DownloadOutlined />}
                 loading={installing}
                 disabled={state !== 'none'}
@@ -164,23 +160,38 @@ export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
         onClose={() => setShowDetails(false)}
       />
 
-      <Modal
+      <Dialog
         open={groupsOpen}
         title="Install for groups"
-        onCancel={() => setGroupsOpen(false)}
-        onOk={handleInstallForGroups}
-        okText="Install"
-        confirmLoading={submittingGroups}
+        onOpenChange={(open) => {
+          if (!open) setGroupsOpen(false)
+        }}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setGroupsOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="default"
+              loading={submittingGroups}
+              onClick={handleInstallForGroups}
+            >
+              Install
+            </Button>
+          </>
+        }
       >
-        <Select
-          mode="multiple"
+        <MultiSelect
           className="w-full"
           placeholder="Select groups (empty = all users)"
+          searchPlaceholder="Search groups…"
+          emptyText="No groups found"
           value={selectedGroups}
           onChange={setSelectedGroups}
           options={allGroups.map(g => ({ label: g.name, value: g.id }))}
+          removeLabel={(label) => `Remove ${label}`}
         />
-      </Modal>
+      </Dialog>
     </>
   )
 }

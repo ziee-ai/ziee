@@ -1,16 +1,16 @@
 import { DownloadOutlined } from '@ant-design/icons'
-import type { MenuProps } from 'antd'
+import type { MenuProps } from '@/components/ui'
 import {
-  App,
   Button,
   Card,
   Dropdown,
   Flex,
-  Modal,
-  Select,
+  MultiSelect,
   Tag,
-  Typography,
-} from 'antd'
+  Text,
+  message,
+  Dialog,
+} from '@/components/ui'
 import { useState } from 'react'
 import { ApiClient } from '@/api-client'
 import type { Group, IndexItem } from '@/api-client/types'
@@ -19,14 +19,11 @@ import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import { SkillDetailsDrawer } from './SkillDetailsDrawer'
 
-const { Text } = Typography
-
 interface SkillHubCardProps {
   item: IndexItem
 }
 
 export function SkillHubCard({ item }: SkillHubCardProps) {
-  const { message } = App.useApp()
   const [showDetails, setShowDetails] = useState(false)
   const [groupsOpen, setGroupsOpen] = useState(false)
   const [allGroups, setAllGroups] = useState<Group[]>([])
@@ -37,10 +34,6 @@ export function SkillHubCard({ item }: SkillHubCardProps) {
   const canManageSystem = usePermission(Permissions.SkillsManageSystem)
 
   const installing = Stores.HubSkills.installing[item.name] ?? false
-  // Derive install state from the REACTIVE installed-items field (not
-  // the store's `installStateFor` function — reading a stable fn ref in
-  // render subscribes to the fn key, not the underlying data, so the
-  // badge would go stale on external uninstall / cross-device sync).
   const installedRows = Stores.HubInstalled.items
   const state: 'none' | 'user' | 'system' = (() => {
     const rows = installedRows.filter(
@@ -94,17 +87,16 @@ export function SkillHubCard({ item }: SkillHubCardProps) {
     }
   }
 
-  const adminMenu: MenuProps = {
-    items: [
-      { key: 'me', label: 'Install for me' },
-      { key: 'everyone', label: 'Install for everyone' },
-      { key: 'groups', label: 'Install for groups…' },
-    ],
-    onClick: ({ key }) => {
-      if (key === 'me') void handleInstallForMe()
-      else if (key === 'everyone') void handleInstallForEveryone()
-      else if (key === 'groups') void openGroupPicker()
-    },
+  const adminMenu: MenuProps['items'] = [
+    { key: 'me', label: 'Install for me' },
+    { key: 'everyone', label: 'Install for everyone' },
+    { key: 'groups', label: 'Install for groups…' },
+  ];
+
+  const handleAdminSelect = (key: string) => {
+    if (key === 'me') void handleInstallForMe()
+    else if (key === 'everyone') void handleInstallForEveryone()
+    else if (key === 'groups') void openGroupPicker()
   }
 
   return (
@@ -115,15 +107,15 @@ export function SkillHubCard({ item }: SkillHubCardProps) {
         onClick={() => setShowDetails(true)}
         data-testid={`hub-skill-card-${item.name}`}
       >
-        <Flex justify="space-between" align="flex-start" gap={12}>
+        <Flex justify="between" align="baseline" className="gap-4">
           <div className="flex-1 min-w-0">
-            <Flex gap={8} align="center" wrap>
+            <Flex gap="small" align="center" wrap>
               <Text className="font-medium">{title}</Text>
               {item.version && (
                 <Tag className="text-xs !m-0">v{item.version}</Tag>
               )}
-              {state === 'user' && <Tag color="green">Installed</Tag>}
-              {state === 'system' && <Tag color="purple">System installed</Tag>}
+              {state === 'user' && <Tag tone="success">Installed</Tag>}
+              {state === 'system' && <Tag tone="info">System installed</Tag>}
             </Flex>
             {item.summary && (
               <Text type="secondary" className="text-sm mt-1 block">
@@ -133,19 +125,23 @@ export function SkillHubCard({ item }: SkillHubCardProps) {
           </div>
           <div onClick={e => e.stopPropagation()}>
             {canManageSystem ? (
-              <Dropdown.Button
-                type="primary"
-                icon={<DownloadOutlined />}
-                loading={installing}
-                disabled={installing}
-                menu={adminMenu}
-                onClick={handleInstallForMe}
+              <Dropdown
+                items={adminMenu as any}
+                onSelect={handleAdminSelect}
               >
-                Install
-              </Dropdown.Button>
+                <Button
+                  variant="default"
+                  icon={<DownloadOutlined />}
+                  loading={installing}
+                  disabled={installing}
+                  onClick={handleInstallForMe}
+                >
+                  Install
+                </Button>
+              </Dropdown>
             ) : canInstall ? (
               <Button
-                type="primary"
+                variant="default"
                 icon={<DownloadOutlined />}
                 loading={installing}
                 disabled={state !== 'none'}
@@ -164,23 +160,34 @@ export function SkillHubCard({ item }: SkillHubCardProps) {
         onClose={() => setShowDetails(false)}
       />
 
-      <Modal
+      <Dialog
         open={groupsOpen}
+        onOpenChange={(open) => { if (!open) setGroupsOpen(false) }}
         title="Install for groups"
-        onCancel={() => setGroupsOpen(false)}
-        onOk={handleInstallForGroups}
-        okText="Install"
-        confirmLoading={submittingGroups}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setGroupsOpen(false)}>Cancel</Button>
+            <Button
+              variant="default"
+              loading={submittingGroups}
+              onClick={handleInstallForGroups}
+            >
+              Install
+            </Button>
+          </>
+        }
       >
-        <Select
-          mode="multiple"
+        <MultiSelect
           className="w-full"
           placeholder="Select groups (empty = all users)"
+          searchPlaceholder="Search groups…"
           value={selectedGroups}
-          onChange={setSelectedGroups}
+          onChange={(value: string[]) => setSelectedGroups(value)}
           options={allGroups.map(g => ({ label: g.name, value: g.id }))}
+          removeLabel={(label) => `Remove ${label}`}
+          emptyText="No groups found"
         />
-      </Modal>
+      </Dialog>
     </>
   )
 }

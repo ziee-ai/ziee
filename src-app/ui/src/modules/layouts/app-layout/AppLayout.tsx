@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import { LeftSidebar } from '@/modules/layouts/app-layout/components/LeftSidebar'
 import { SidebarToggleButton } from '@/modules/layouts/app-layout/components/SidebarToggleButton'
-import { theme } from 'antd'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import tinycolor from 'tinycolor2'
 import 'overlayscrollbars/overlayscrollbars.css'
@@ -25,7 +24,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const appBanners = [...(slots.get('appBanners') || [])].sort(
     (a, b) => (a.order ?? 0) - (b.order ?? 0),
   )
-  const { token } = theme.useToken()
   const windowMinSize = useWindowMinSize()
 
   const sidebarRef = useRef<HTMLDivElement>(null)
@@ -212,8 +210,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     //set root document background color based on theme
     const root = document.documentElement
-    root.style.backgroundColor = token.colorBgContainer
-  }, [token.colorBgContainer])
+    root.style.backgroundColor = 'hsl(var(--card))'
+  }, [])
 
   // Visual viewport listener for mobile keyboard adjustments
   //
@@ -291,12 +289,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div
-      className="h-full w-screen flex overflow-hidden"
-      style={{
-        backgroundColor: token.colorBgContainer,
-      }}
-    >
+    <div className="h-full w-screen flex overflow-hidden bg-card">
       {/* Mask for Left Sidebar (mobile-overlay mode).
         *
         * ALWAYS mounted (no `{xs && ...}` gate) — otherwise crossing
@@ -328,7 +321,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           : {})}
         className={'fixed h-full w-full z-3'}
         style={{
-          backgroundColor: tinycolor(token.colorBgContainer)
+          backgroundColor: tinycolor('hsl(var(--card))')
             .setAlpha(windowMinSize.xs && !isSidebarCollapsed ? 0.7 : 0)
             .toRgbString(),
           pointerEvents:
@@ -380,7 +373,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             : 'translateX(0)',
           backdropFilter: windowMinSize.xs ? 'blur(8px)' : undefined,
           borderRight: windowMinSize.xs
-            ? `1px solid ${token.colorBorderSecondary}`
+            ? `1px solid hsl(var(--border))`
             : undefined,
           borderRadius: windowMinSize.xs ? 12 : undefined,
           // Box-shadow extends ~16px past the wrapper edges. When the
@@ -426,15 +419,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       />
 
       {/* Main Content Area */}
-      <div
-        className="flex-1 flex flex-col relative overflow-hidden"
-        style={{
-          // Pure white content surface — `colorBgLayout` would pick
-          // up the sidebar's off-white, washing the chat / settings
-          // panes into the wrong tier of the surface hierarchy.
-          backgroundColor: token.colorBgContainer,
-        }}
-      >
+      <main className="flex-1 flex flex-col relative overflow-hidden bg-card">
         {/* App-wide banners (e.g. the admin "update available" notice).
             Contributed via the `appBanners` slot, so bundles that don't load a
             contributor (e.g. desktop drops server-update) render nothing. */}
@@ -443,12 +428,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         ))}
         {/* Content */}
         <div className="flex-1 overflow-hidden relative">
-          <div
+          <section
             ref={mainContentRef}
             className="w-full h-full overflow-hidden relative"
           >
             {children}
-          </div>
+          </section>
         </div>
         {!isSidebarCollapsed && (
           <div
@@ -461,7 +446,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             onMouseDown={handleMouseDown}
           />
         )}
-      </div>
+      </main>
     </div>
   )
 }

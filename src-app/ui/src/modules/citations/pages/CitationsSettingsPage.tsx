@@ -4,15 +4,14 @@ import {
   ImportOutlined,
   SafetyCertificateOutlined,
 } from '@ant-design/icons'
-import { App, Button, Card, Dropdown, Empty, Space, Spin, Typography } from 'antd'
+import { Button, Card, Space, Spin, Text, Empty, Dropdown } from '@/components/ui'
+import { message } from '@/components/ui'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { Stores } from '@/core/stores'
 import { CitationCard } from '../components/CitationCard'
 import { ImportCitationsModal } from '../components/ImportCitationsModal'
-
-const { Text } = Typography
 
 const EXPORT_FORMATS: { key: string; label: string; ext: string; mime: string }[] = [
   { key: 'text', label: 'Formatted (CSL style)', ext: 'txt', mime: 'text/plain' },
@@ -32,7 +31,6 @@ function download(content: string, filename: string, mime: string) {
 }
 
 export function CitationsSettingsPage() {
-  const { message } = App.useApp()
   const { entries, loading, importing, verifying } = Stores.Citations
   // Import / Delete require `citations::manage`; Verify-all + Export are `use`.
   const canManage = usePermission(Permissions.CitationsManage)
@@ -67,10 +65,10 @@ export function CitationsSettingsPage() {
       subtitle="Your verified bibliography library. Import references, verify they resolve to real records, and export in a citation style."
     >
       <Card>
-        <Space style={{ marginBottom: 12 }} wrap>
+        <Space className="mb-3" wrap>
           {canManage && (
             <Button
-              type="primary"
+              variant="outline"
               icon={<ImportOutlined />}
               loading={importing}
               onClick={() => setImportOpen(true)}
@@ -88,10 +86,8 @@ export function CitationsSettingsPage() {
           </Button>
           <Dropdown
             disabled={entries.length === 0}
-            menu={{
-              items: EXPORT_FORMATS.map(f => ({ key: f.key, label: f.label })),
-              onClick: ({ key }) => void handleExport(key),
-            }}
+            items={EXPORT_FORMATS.map(f => ({ key: f.key, label: f.label }))}
+            onSelect={(key) => void handleExport(key)}
           >
             <Button icon={<DownloadOutlined />}>Export</Button>
           </Dropdown>
@@ -99,9 +95,9 @@ export function CitationsSettingsPage() {
         </Space>
 
         {loading ? (
-          <Spin />
+          <Spin label="Loading" />
         ) : entries.length === 0 ? (
-          <Empty description="No citations yet — import some or run a literature search." />
+          <Empty />
         ) : (
           <div>
             {entries.map(e => (

@@ -1,9 +1,14 @@
-import { App, Empty, List, Spin, Switch, Typography } from 'antd'
 import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
 import { deriveHiddenSkills } from '@/modules/skill/stores/ConversationSkills.store'
-
-const { Text } = Typography
+import {
+  Empty,
+  List,
+  Spin,
+  Switch,
+  Text,
+  message,
+} from '@/components/ui'
 
 interface ConversationSkillsPanelProps {
   conversationId: string
@@ -17,7 +22,6 @@ interface ConversationSkillsPanelProps {
 export function ConversationSkillsPanel({
   conversationId,
 }: ConversationSkillsPanelProps) {
-  const { message } = App.useApp()
   const { skills } = Stores.Skill
   const available = Stores.ConversationSkills.available[conversationId]
   const loading = Stores.ConversationSkills.loading[conversationId]
@@ -32,7 +36,7 @@ export function ConversationSkillsPanel({
   }, [])
 
   if (loading && !available) {
-    return <Spin size="small" />
+    return <Spin size="sm" label="Loading" />
   }
 
   const availableIds = new Set((available ?? []).map(s => s.id))
@@ -45,10 +49,7 @@ export function ConversationSkillsPanel({
 
   if (allRows.length === 0) {
     return (
-      <Empty
-        description="No skills available in this conversation"
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-      />
+      <Empty description="No skills available in this conversation" />
     )
   }
 
@@ -66,42 +67,37 @@ export function ConversationSkillsPanel({
 
   return (
     <List
-      size="small"
+      size="sm"
       dataSource={allRows}
-      renderItem={skill => {
+      renderItem={(skill, index) => {
         const visible = availableIds.has(skill.id)
         return (
-          <List.Item
-            actions={[
-              <Switch
-                key="toggle"
-                size="small"
-                checked={visible}
-                onChange={next => void handleToggle(skill.id, next)}
-              />,
-            ]}
+          <li
+            key={skill.id || index}
+            className="flex items-center justify-between py-2"
           >
-            <List.Item.Meta
-              title={
-                <button
-                  type="button"
-                  className="bg-transparent border-0 p-0 cursor-pointer text-left text-inherit"
-                  // Thread conversationId so the detail drawer's "Hide in
-                  // this conversation" checkbox is reachable from chat.
-                  onClick={() => Stores.SkillDrawer.open(skill, conversationId)}
-                >
-                  {skill.display_name || skill.name}
-                </button>
-              }
-              description={
-                skill.description ? (
-                  <Text type="secondary" className="text-xs" ellipsis>
-                    {skill.description}
-                  </Text>
-                ) : undefined
-              }
+            <div className="flex-1">
+              <button
+                type="button"
+                className="bg-transparent border-0 p-0 cursor-pointer text-left text-inherit font-medium"
+                // Thread conversationId so the detail drawer's "Hide in
+                // this conversation" checkbox is reachable from chat.
+                onClick={() => Stores.SkillDrawer.open(skill, conversationId)}
+              >
+                {skill.display_name || skill.name}
+              </button>
+              {skill.description ? (
+                <Text type="secondary" ellipsis>
+                  {skill.description}
+                </Text>
+              ) : null}
+            </div>
+            <Switch
+              size="sm"
+              checked={visible}
+              onChange={next => void handleToggle(skill.id, next)}
             />
-          </List.Item>
+          </li>
         )
       }}
     />

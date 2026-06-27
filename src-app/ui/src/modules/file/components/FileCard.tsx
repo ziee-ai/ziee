@@ -1,4 +1,5 @@
-import { Button, Checkbox, Popconfirm, Progress, Spin, Tooltip, Typography, theme, App } from 'antd'
+import { Button, Checkbox, Progress, Spin, Tooltip, Text, message as kitMessage } from '@/components/ui'
+import { Confirm } from '@/components/ui'
 import {
   CloseOutlined,
   DeleteOutlined,
@@ -11,8 +12,6 @@ import { usePermission } from '@/core/permissions'
 import { Permissions, type File as FileEntity } from '@/api-client/types'
 import type { FileUploadProgress } from '@/modules/file/stores/File.store'
 import { getViewer } from '@/modules/file/registry/fileViewerRegistry'
-
-const { Text } = Typography
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -45,7 +44,7 @@ export interface FileCardProps {
    *  composer's FilePreviewList depends on. */
   stretch?: boolean
   /** Row only — appended to the trailing edge in place of the default
-   *  Download button. Use this slot to pass a Popconfirm-wrapped
+   *  Download button. Use this slot to pass a Confirm-wrapped
    *  delete button, retry button, etc. */
   actions?: React.ReactNode
   /** Overrides the default "{label} · {ext}" subtitle line (row only).
@@ -84,8 +83,6 @@ export function FileCard({
   onSelectChange,
   onRetry,
 }: FileCardProps) {
-  const { token } = theme.useToken()
-  const { message } = App.useApp()
   const canDownload = usePermission(Permissions.FilesDownload)
 
   // Reactive subscription: re-render when the thumbnail blob URL lands.
@@ -136,11 +133,7 @@ export function FileCard({
       uploadProgress.filename.split('.').pop()?.toUpperCase() || 'FILE'
     return (
       <div
-        className="w-full flex flex-row items-center gap-3 rounded-lg p-3"
-        style={{
-          border: `1px solid ${isError ? token.colorErrorBorder : token.colorBorderSecondary}`,
-          backgroundColor: token.colorBgContainer,
-        }}
+        className="w-full flex flex-row items-center gap-3 rounded-lg p-3 border border-border"
         data-testid="file-card-uploading"
         data-filename={uploadProgress.filename}
       >
@@ -150,19 +143,16 @@ export function FileCard({
           style={{ width: 40, height: 40 }}
         >
           {isError ? (
-            <Text
-              className="!text-[9px] rounded px-1"
-              style={{ backgroundColor: token.colorError, color: token.colorWhite }}
-            >
+            <Text className="!text-[9px] rounded px-1 text-white bg-destructive">
               ERROR
             </Text>
           ) : (
             <Progress
-              type="circle"
-              percent={percent}
-              size={32}
-              strokeWidth={10}
+              shape="circle"
+              value={percent}
+              size="sm"
               format={() => ext}
+              aria-label={`Upload progress for ${uploadProgress.filename}`}
             />
           )}
         </div>
@@ -173,7 +163,7 @@ export function FileCard({
             {uploadProgress.filename}
           </Text>
           {isError ? (
-            <Text type="danger" className="!text-xs truncate">
+            <Text type="secondary" className="!text-xs truncate text-destructive">
               {(uploadProgress as { error?: string }).error ?? 'Upload failed'}
             </Text>
           ) : (
@@ -185,9 +175,9 @@ export function FileCard({
 
         {/* Trailing: retry on error if onRetry provided, else cancel */}
         {isError && onRetry ? (
-          <Tooltip title="Retry upload">
+          <Tooltip content="Retry upload">
             <Button
-              type="text"
+              variant="ghost"
               icon={<ReloadOutlined />}
               onClick={() => onRetry()}
               aria-label={`Retry upload ${uploadProgress.filename}`}
@@ -195,9 +185,9 @@ export function FileCard({
           </Tooltip>
         ) : (
           onRemove && (
-            <Tooltip title="Dismiss">
+            <Tooltip content="Dismiss">
               <Button
-                type="text"
+                variant="ghost"
                 icon={<CloseOutlined />}
                 onClick={() => onRemove()}
                 aria-label={`Dismiss ${uploadProgress.filename}`}
@@ -213,11 +203,7 @@ export function FileCard({
     return (
       <div className="relative flex flex-col w-full h-full">
         <div
-          className="group relative rounded min-h-20 min-w-20 max-h-28 max-w-28 w-full h-full flex items-center justify-center"
-          style={{
-            border: `1px solid ${token.colorBorderSecondary}`,
-            backgroundColor: token.colorBgContainer,
-          }}
+          className="group relative rounded min-h-20 min-w-20 max-h-28 max-w-28 w-full h-full flex items-center justify-center border border-border"
         >
           <img
             src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB2aWV3Qm94PSIwIDAgMSAxIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9InRyYW5zcGFyZW50Ii8+PC9zdmc+"
@@ -226,13 +212,13 @@ export function FileCard({
             style={{ aspectRatio: '1' }}
           />
           <div className="absolute inset-0 flex items-center justify-center">
-            <Spin />
+            <Spin label="Uploading" />
           </div>
           {onRemove && (
-            <Tooltip title="Cancel upload">
+            <Tooltip content="Cancel upload">
               <Button
-                danger
-                size="small"
+                variant="ghost"
+                size="sm"
                 icon={<CloseOutlined />}
                 onClick={() => onRemove()}
                 className="!absolute top-1 right-1"
@@ -241,17 +227,13 @@ export function FileCard({
             </Tooltip>
           )}
           <Text
-            className="absolute top-1 left-1 rounded px-1 !text-[9px]"
-            style={{ backgroundColor: token.colorBgContainer }}
+            className="absolute top-1 left-1 rounded px-1 !text-[9px] bg-card"
             strong
           >
             {uploadProgress.filename.split('.').pop()?.toUpperCase() || 'FILE'}
           </Text>
           {uploadProgress.status === 'error' && (
-            <Text
-              className="absolute top-1 right-1 rounded px-1 !text-[9px]"
-              style={{ backgroundColor: token.colorError, color: token.colorWhite }}
-            >
+            <Text className="absolute top-1 right-1 rounded px-1 !text-[9px] text-white bg-destructive">
               ERROR
             </Text>
           )}
@@ -278,11 +260,7 @@ export function FileCard({
   if (variant === 'row') {
     return (
       <div
-        className="group w-full flex flex-row items-center gap-3 cursor-pointer rounded-lg p-3 transition-opacity hover:opacity-80"
-        style={{
-          border: `1px solid ${token.colorBorderSecondary}`,
-          backgroundColor: token.colorBgContainer,
-        }}
+        className="group w-full flex flex-row items-center gap-3 cursor-pointer rounded-lg p-3 border border-border transition-opacity hover:opacity-80"
         onClick={handleCardClick}
         data-testid="file-card"
         data-file-id={file.id}
@@ -299,7 +277,7 @@ export function FileCard({
           >
             <Checkbox
               checked={selected}
-              onChange={e => onSelectChange?.(e.target.checked)}
+              onChange={checked => onSelectChange?.(checked)}
               aria-label={`Select ${file.filename}`}
             />
           </div>
@@ -307,13 +285,11 @@ export function FileCard({
 
         {/* Left: icon box */}
         <div
-          className="flex-shrink-0 flex items-center justify-center rounded-lg overflow-hidden"
+          className="flex-shrink-0 flex items-center justify-center rounded-lg overflow-hidden bg-muted text-muted-foreground"
           style={{
             width: 40,
             height: 40,
-            backgroundColor: token.colorFillTertiary,
             fontSize: 20,
-            color: token.colorTextSecondary,
           }}
         >
           {isImage && thumbnailUrl ? (
@@ -334,7 +310,7 @@ export function FileCard({
         </div>
 
         {/* Trailing: caller-provided actions OR default Download button.
-            actions slot wins — knowledge panels pass a Popconfirm-wrapped
+            actions slot wins — knowledge panels pass a Confirm-wrapped
             delete here; chat callers pass nothing and get Download. */}
         {actions !== undefined ? (
           <div onClick={e => e.stopPropagation()} className="flex-shrink-0">
@@ -342,15 +318,15 @@ export function FileCard({
           </div>
         ) : (
           canDownload && (
-            <Tooltip title="Download">
+            <Tooltip content="Download">
               <Button
-                type="text"
+                variant="ghost"
                 icon={<DownloadOutlined style={{ fontSize: 20 }} />}
                 aria-label={`Download ${file.filename}`}
                 onClick={e => {
                   e.stopPropagation()
                   Stores.File.downloadFile(file)
-                    .catch(() => message.error('Failed to download file'))
+                    .catch(() => kitMessage.error('Failed to download file'))
                 }}
               />
             </Tooltip>
@@ -377,10 +353,8 @@ export function FileCard({
       <div
         className={`group relative cursor-pointer rounded-2xl w-full h-full flex items-center justify-center ${
           stretch ? '' : 'min-h-20 min-w-20 max-h-28 max-w-28'
-        }`}
+        } border border-border`}
         style={{
-          border: `1px solid ${token.colorBorderSecondary}`,
-          backgroundColor: token.colorBgContainer,
           ...(isImage && thumbnailUrl
             ? {
                 backgroundImage: `url(${thumbnailUrl})`,
@@ -403,27 +377,27 @@ export function FileCard({
         {/* Centered file type icon (for non-images) */}
         {!isImage && (
           <div
-            className="absolute inset-0 flex items-center justify-center"
-            style={{ fontSize: 28, color: token.colorTextTertiary }}
+            className="absolute inset-0 flex items-center justify-center text-muted-foreground"
+            style={{ fontSize: 28 }}
           >
             {getFileIcon(file)}
           </div>
         )}
 
-        {/* Delete/Remove button — Popconfirm-wrapped so the
+        {/* Delete/Remove button — Confirm-wrapped so the
             destructive action requires explicit confirmation.
             The row variant routes its delete through the `actions`
-            slot (caller already wraps in Popconfirm); the square
+            slot (caller already wraps in Confirm); the square
             variant has its delete inline, so the confirm lives
             here.
 
             stopPropagation is on the OUTER wrapper, not the Button.
             If we put stopPropagation on the Button itself, it
             cancels the click event before it bubbles up to
-            Tooltip's wrapper span — which is where Popconfirm
+            Tooltip's wrapper span — which is where Confirm
             attaches its trigger handler — so the popover never
             opens. Hoisting it to a wrapper that lives outside
-            Popconfirm's trigger subtree means Popconfirm's
+            Confirm's trigger subtree means Confirm's
             handler runs first (popover opens), then our handler
             stops the click from reaching the card's onClick. */}
         {(canDelete || canRemove) && onRemove && (
@@ -432,7 +406,7 @@ export function FileCard({
             style={{ display: canRemove ? 'block' : 'none' }}
             onClick={e => e.stopPropagation()}
           >
-            <Popconfirm
+            <Confirm
               title="Remove this file?"
               description={canDelete ? 'This deletes the file permanently.' : undefined}
               okText="Remove"
@@ -440,23 +414,22 @@ export function FileCard({
               cancelText="Cancel"
               onConfirm={() => onRemove()}
             >
-              <Tooltip title="Remove">
+              <Tooltip content="Remove">
                 <Button
-                  danger
-                  size="small"
+                  variant="destructive"
+                  size="sm"
                   icon={<DeleteOutlined />}
                   aria-label="Remove file"
                   className="bg-transparent"
                 />
               </Tooltip>
-            </Popconfirm>
+            </Confirm>
           </div>
         )}
 
         {/* File size badge */}
         <Text
-          className="absolute bottom-1 right-1 rounded px-1 !text-[9px]"
-          style={{ backgroundColor: token.colorBgContainer }}
+          className="absolute bottom-1 right-1 rounded px-1 !text-[9px] bg-card"
         >
           {formatFileSize(file.file_size)}
         </Text>

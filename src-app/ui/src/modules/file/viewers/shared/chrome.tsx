@@ -1,4 +1,4 @@
-import { App, Button, Space } from 'antd'
+import { Button, Space } from '@/components/ui'
 import {
   CodeOutlined,
   CopyOutlined,
@@ -7,6 +7,7 @@ import {
 } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import type { File as FileEntity } from '@/api-client/types'
+import { message } from '@/components/ui'
 
 /**
  * Shared chrome building blocks for file viewer headers. Viewers compose
@@ -33,22 +34,24 @@ export function RawToggle({ file }: { file: FileEntity }) {
   if (file.text_page_count === 0) return null
   const mode = Stores.File.fileViewModes.get(file.id) ?? 'compiled'
   return (
-    <Space.Compact>
+    <Space direction="horizontal">
       <Button
         icon={<EyeOutlined />}
-        type={mode === 'compiled' ? 'primary' : 'default'}
-        title="Rendered view"
+        variant={mode === 'compiled' ? 'default' : 'outline'}
         aria-label="Rendered view"
         onClick={() => Stores.File.setFileViewMode(file.id, 'compiled')}
-      />
+      >
+        Rendered view
+      </Button>
       <Button
         icon={<CodeOutlined />}
-        type={mode === 'raw' ? 'primary' : 'default'}
-        title="Raw view"
+        variant={mode === 'raw' ? 'default' : 'outline'}
         aria-label="Raw view"
         onClick={() => Stores.File.setFileViewMode(file.id, 'raw')}
-      />
-    </Space.Compact>
+      >
+        Raw view
+      </Button>
+    </Space>
   )
 }
 
@@ -58,7 +61,6 @@ export function RawToggle({ file }: { file: FileEntity }) {
 // Useful for any text-based viewer.
 
 export function CopyButton({ file }: { file: FileEntity }) {
-  const { message } = App.useApp()
   const handleCopy = async () => {
     // `Stores.File.__state` is the raw zustand getState — bypasses
     // the reactive proxy, safe to use inside event handlers. The
@@ -99,7 +101,6 @@ export function CopyButton({ file }: { file: FileEntity }) {
 // it just streams the original bytes from the server.
 
 export function DownloadButton({ file }: { file: FileEntity }) {
-  const { message } = App.useApp()
   return (
     <Button
       icon={<DownloadOutlined />}

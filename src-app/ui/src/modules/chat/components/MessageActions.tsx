@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { App, Button, Space, Tooltip } from 'antd'
+import { Button, Space, Tooltip, message } from '@/components/ui'
 import { EditOutlined, ReloadOutlined, CopyOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { useMessageContext } from '@/modules/chat/core/MessageContext'
@@ -14,7 +14,6 @@ import { useMessageContext } from '@/modules/chat/core/MessageContext'
  */
 export function MessageActions() {
   const msg = useMessageContext()
-  const { message } = App.useApp()
   const [isRegenerating, setIsRegenerating] = useState(false)
 
   const { isStreaming, sending } = Stores.Chat
@@ -83,20 +82,20 @@ export function MessageActions() {
       size={2}
       className="opacity-0 group-hover:opacity-100 transition-opacity"
     >
-      <Tooltip title="Copy">
+      <Tooltip content="Copy">
         <Button
-          type="text"
-          size="small"
+          variant="ghost"
+          size="sm"
           icon={<CopyOutlined />}
           onClick={handleCopy}
         />
       </Tooltip>
 
       {isUser && (
-        <Tooltip title="Edit message">
+        <Tooltip content="Edit message">
           <Button
-            type="text"
-            size="small"
+            variant="ghost"
+            size="sm"
             icon={<EditOutlined />}
             disabled={isBusy}
             onClick={handleEdit}
@@ -106,10 +105,10 @@ export function MessageActions() {
       )}
 
       {isAssistant && (
-        <Tooltip title="Regenerate response">
+        <Tooltip content="Regenerate response">
           <Button
-            type="text"
-            size="small"
+            variant="ghost"
+            size="sm"
             icon={<ReloadOutlined />}
             loading={isRegenerating}
             disabled={isBusy && !isRegenerating}

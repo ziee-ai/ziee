@@ -1,4 +1,4 @@
-import { App, Button } from 'antd'
+import { Button, message } from '@/components/ui'
 import { MdOutlineMonitorHeart } from 'react-icons/md'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -20,7 +20,6 @@ import { Permissions } from '@/api-client/types'
  * in HardwareSettings).
  */
 export function HardwareMonitorButton() {
-  const { message } = App.useApp()
   const canMonitor = usePermission(Permissions.HardwareMonitor)
 
   if (!canMonitor) return null

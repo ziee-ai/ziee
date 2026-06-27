@@ -1,16 +1,13 @@
 import { useEffect, useState } from 'react'
-import { App, Button, Card, Flex, Spin, Switch, Tag, Typography } from 'antd'
+import { Button, Card, Flex, Spin, Switch, Tag, Text, Title, message } from '@/components/ui'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
-
-const { Text, Title } = Typography
 
 /**
  * Drawer for assigning/removing LLM Providers to/from a group.
  * Self-contained - owned by LLM Provider module.
  */
 export function GroupLlmProvidersAssignmentDrawer() {
-  const { message } = App.useApp()
   const { isOpen, selectedGroup } = Stores.GroupLlmProvidersAssignment
   const { providers } = Stores.LlmProvider
 
@@ -83,7 +80,7 @@ export function GroupLlmProvidersAssignmentDrawer() {
             Cancel
           </Button>
           <Button
-            type="primary"
+            variant="default"
             onClick={handleSave}
             loading={saving}
             disabled={loading}
@@ -95,12 +92,12 @@ export function GroupLlmProvidersAssignmentDrawer() {
     >
       {loading ? (
         <div className="flex justify-center p-8">
-          <Spin />
+          <Spin label="Loading" />
         </div>
       ) : (
-        <Flex vertical gap="large" style={{ width: '100%' }}>
+        <Flex direction="column" gap="large" className="w-full">
           <div>
-            <Title level={5} style={{ marginBottom: '8px' }}>
+            <Title level={5} className="mb-2">
               Available Providers
             </Title>
             <Text type="secondary">
@@ -113,14 +110,14 @@ export function GroupLlmProvidersAssignmentDrawer() {
               <Text type="secondary">No providers available</Text>
             </div>
           ) : (
-            <Flex vertical gap="middle" style={{ width: '100%' }}>
+            <Flex direction="column" gap="middle" className="w-full">
               {providers.map(provider => {
                 const isChecked = assignedIds.includes(provider.id)
                 return (
                   <Card
                     key={provider.id}
                     onClick={() => handleToggle(provider.id, !isChecked)}
-                    style={{ cursor: 'pointer' }}
+                    className="cursor-pointer"
                   >
                     <div className="flex items-start gap-3">
                       <div onClick={e => e.stopPropagation()}>
@@ -129,39 +126,39 @@ export function GroupLlmProvidersAssignmentDrawer() {
                           onChange={checked =>
                             handleToggle(provider.id, checked)
                           }
-                          style={{ marginTop: '2px' }}
+                          size="sm"
                         />
                       </div>
                       <div className="flex flex-col gap-1 flex-1">
                         <div className="flex items-center gap-2">
-                          <Text strong style={{ fontSize: '14px' }}>
+                          <Text strong className="text-sm">
                             {provider.name}
                           </Text>
                           {provider.built_in && (
                             <Tag
-                              color="blue"
-                              style={{ fontSize: '11px', margin: 0 }}
+                              tone="info"
+                              className="text-[11px] m-0"
                             >
                               Built-in
                             </Tag>
                           )}
                           {provider.enabled ? (
                             <Tag
-                              color="green"
-                              style={{ fontSize: '11px', margin: 0 }}
+                              tone="success"
+                              className="text-[11px] m-0"
                             >
                               Enabled
                             </Tag>
                           ) : (
                             <Tag
-                              color="orange"
-                              style={{ fontSize: '11px', margin: 0 }}
+                              tone="warning"
+                              className="text-[11px] m-0"
                             >
                               Disabled
                             </Tag>
                           )}
                         </div>
-                        <Text type="secondary" style={{ fontSize: '12px' }}>
+                        <Text type="secondary" className="text-xs">
                           {provider.provider_type}
                         </Text>
                       </div>

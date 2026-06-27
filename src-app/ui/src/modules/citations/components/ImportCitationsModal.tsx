@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { Alert, App, Input, Modal, Typography } from 'antd'
+import { Alert } from '@/components/ui'
+import { Dialog, Paragraph, Text } from '@/components/ui'
+import { message } from '@/components/ui'
 import type { BatchReport, CitationInput } from '@/api-client/types'
 import { Stores } from '@/core/stores'
-
-const { Paragraph, Text } = Typography
 
 /** Summarize a batch report into a one-line human note. */
 function summary(report: BatchReport): string {
@@ -41,7 +41,6 @@ export function ImportCitationsModal({
   onClose: () => void
   projectId?: string | null
 }) {
-  const { message } = App.useApp()
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<BatchReport | null>(null)
@@ -65,38 +64,47 @@ export function ImportCitationsModal({
   }
 
   return (
-    <Modal
+    <Dialog
       open={open}
       title="Import citations"
-      okText="Import + verify"
-      confirmLoading={busy}
-      onOk={handleImport}
-      onCancel={() => {
-        setResult(null)
-        setText('')
-        onClose()
+      onOpenChange={(v) => {
+        if (!v) {
+          setResult(null)
+          setText('')
+          onClose()
+        }
       }}
+      footer={
+        <>
+          <button type="button" onClick={() => {
+            setResult(null)
+            setText('')
+            onClose()
+          }}>Cancel</button>
+          <button type="button" disabled={busy} onClick={handleImport}>Import + verify</button>
+        </>
+      }
     >
       <Paragraph type="secondary">
         Paste DOIs, PMIDs, arXiv IDs, or titles — one per line. Each is resolved
         to a real record and verified; fabricated identifiers are reported as
         <Text strong> not found</Text> and not stored.
       </Paragraph>
-      <Input.TextArea
+      <textarea
         rows={6}
         value={text}
-        onChange={e => setText(e.target.value)}
+        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setText(e.target.value)}
         placeholder={'10.1038/s41586-021-...\n34121113\n2101.12345'}
+        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
       />
       {result && (
         <Alert
-          style={{ marginTop: 12 }}
-          type="info"
-          showIcon
-          message="Import result"
+          className="mt-3"
+          tone="info"
+          title="Import result"
           description={summary(result)}
         />
       )}
-    </Modal>
+    </Dialog>
   )
 }

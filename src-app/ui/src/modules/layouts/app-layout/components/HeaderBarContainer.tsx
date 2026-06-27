@@ -1,4 +1,3 @@
-import { theme } from 'antd'
 import tinycolor from 'tinycolor2'
 import { Stores } from '@/core/stores'
 
@@ -13,14 +12,14 @@ export const HeaderBarContainer = ({
   className = '',
   style = {},
 }: HeaderBarContainerProps) => {
-  const { token } = theme.useToken()
+  const bgCard = '#ffffff'
   const { isSidebarCollapsed } = Stores.AppLayout
 
   // Same-color alpha-faded transparent — pairs better with the
   // bg-color top stop than the CSS `transparent` keyword, which
   // interpolates through transparent BLACK and can produce a faint
   // gray midpoint on light themes.
-  const fadeOut = tinycolor(token.colorBgContainer).setAlpha(0).toRgbString()
+  const fadeOut = tinycolor(bgCard).setAlpha(0).toRgbString()
 
   return (
     <div
@@ -52,7 +51,7 @@ export const HeaderBarContainer = ({
           top: '100%',
           height: 16,
           pointerEvents: 'none',
-          background: `linear-gradient(to bottom, ${token.colorBgContainer}, ${fadeOut})`,
+          background: `linear-gradient(to bottom, ${bgCard}, ${fadeOut})`,
         }}
       />
     </div>

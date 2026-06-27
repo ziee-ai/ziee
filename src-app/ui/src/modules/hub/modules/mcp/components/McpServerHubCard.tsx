@@ -1,4 +1,4 @@
-import { App, Card, Tag, Tooltip, Typography, Button, Flex } from 'antd'
+import { Card, Tag, Tooltip, Text, Button, Flex, message } from '@/components/ui'
 import {
   DownloadOutlined,
   GlobalOutlined,
@@ -17,8 +17,6 @@ import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { useNavigate } from 'react-router-dom'
 import type { McpServerDrawerPrefill } from '@/modules/mcp/stores/McpServerDrawer.store'
-
-const { Text } = Typography
 
 interface McpServerHubCardProps {
   server: HubMCPServer
@@ -40,7 +38,6 @@ function deriveSlug(name: string): string {
 }
 
 export function McpServerHubCard({ server }: McpServerHubCardProps) {
-  const { message } = App.useApp()
   const navigate = useNavigate()
   const [showDetails, setShowDetails] = useState(false)
   const [installing, setInstalling] = useState(false)
@@ -161,10 +158,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
         'create',
         prefillFromHub(),
       )
-      message.info({
-        content: 'Review settings and configure any required secrets, then save.',
-        duration: 5,
-      })
+      message.info('Review settings and configure any required secrets, then save.')
     } finally {
       setInstalling(false)
     }
@@ -178,10 +172,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
         'create-system',
         prefillFromHub(),
       )
-      message.info({
-        content: 'Review settings and configure any required secrets, then save.',
-        duration: 5,
-      })
+      message.info('Review settings and configure any required secrets, then save.')
     } finally {
       setInstallingSystem(false)
     }
@@ -216,17 +207,17 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                       'io.modelcontextprotocol.registry'
                     ]
                   ) && (
-                    <Tooltip title="From the official Model Context Protocol registry">
-                      <Tag color="cyan" className="text-xs !m-0">
+                    <Tooltip content="From the official Model Context Protocol registry">
+                      <Tag tone="info" className="text-xs !m-0">
                         MCP Registry
                       </Tag>
                     </Tooltip>
                   )}
                   <Tag className="text-xs">{transportLabel}</Tag>
-                  {installing && <Tag color="blue">Installing...</Tag>}
-                  {isAlreadyInstalled && <Tag color="green">Installed</Tag>}
+                  {installing && <Tag tone="info">Installing...</Tag>}
+                  {isAlreadyInstalled && <Tag tone="success">Installed</Tag>}
                   {isAlreadyInstalledAsSystem && (
-                    <Tag color="purple">System installed</Tag>
+                    <Tag tone="info">System installed</Tag>
                   )}
                 </Flex>
               </div>
@@ -263,7 +254,6 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                     </Button>
                   ) : canInstall ? (
                     <Button
-                      type="primary"
                       icon={<DownloadOutlined />}
                       onClick={e => {
                         e.stopPropagation()

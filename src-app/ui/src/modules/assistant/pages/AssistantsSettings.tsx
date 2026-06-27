@@ -5,19 +5,18 @@ import {
   RobotOutlined,
 } from '@ant-design/icons'
 import {
-  App,
   Button,
   Card,
   Descriptions,
-  Divider,
+  Separator,
   Empty,
-  Flex,
   Pagination,
-  Popconfirm,
+  Confirm,
   Tag,
   Tooltip,
-  Typography,
-} from 'antd'
+  Text,
+  message,
+} from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
 import { useEffect } from 'react'
 import { Stores } from '@/modules/assistant/stores'
@@ -26,11 +25,7 @@ import { Permissions, type Assistant } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { AssistantFormDrawer } from '@/modules/assistant/components/AssistantFormDrawer'
 
-const { Text } = Typography
-
 export function AssistantsSettings() {
-  const { message } = App.useApp()
-
   // Store state
   const {
     assistants,
@@ -77,7 +72,7 @@ export function AssistantsSettings() {
       actions.push(
         <Button
           key="edit"
-          type="text"
+          variant="ghost"
           icon={<EditOutlined />}
           onClick={() => handleEdit(assistant)}
         >
@@ -88,7 +83,7 @@ export function AssistantsSettings() {
 
     if (canDelete) {
       actions.push(
-        <Popconfirm
+        <Confirm
           key="delete"
           title="Delete Assistant"
           description="Are you sure you want to delete this assistant?"
@@ -96,10 +91,10 @@ export function AssistantsSettings() {
           okText="Delete"
           cancelText="Cancel"
         >
-          <Button type="text" danger icon={<DeleteOutlined />}>
+          <Button variant="destructive" icon={<DeleteOutlined />}>
             Delete
           </Button>
-        </Popconfirm>,
+        </Confirm>,
       )
     }
 
@@ -123,9 +118,9 @@ export function AssistantsSettings() {
           title="Template Assistants"
           extra={
             <Can permission={Permissions.AssistantsTemplateCreate}>
-              <Tooltip title="Create assistant">
+              <Tooltip content="Create assistant">
                 <Button
-                  type="text"
+                  variant="ghost"
                   icon={<PlusOutlined aria-hidden="true" />}
                   onClick={handleCreate}
                   aria-label="Create assistant"
@@ -152,18 +147,18 @@ export function AssistantsSettings() {
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <div className="flex-1 min-w-48">
-                          <Flex className="gap-2 items-center">
+                          <div className="flex gap-2 items-center">
                             <RobotOutlined />
                             <Text className="font-medium">
                               {assistant.name}
                             </Text>
                             {assistant.is_default && (
-                              <Tag color="success">Default</Tag>
+                              <Tag tone="success">Default</Tag>
                             )}
                             {!assistant.enabled && (
-                              <Tag color="error">Inactive</Tag>
+                              <Tag tone="error">Inactive</Tag>
                             )}
-                          </Flex>
+                          </div>
                         </div>
                         <div className="flex gap-1 items-center justify-end">
                           {getAssistantActions(assistant)}
@@ -171,28 +166,19 @@ export function AssistantsSettings() {
                       </div>
 
                       <Descriptions
-                        size="small"
-                        column={{ xs: 1, sm: 2, md: 3 }}
-                        colon={false}
-                        styles={{
-                          label: { fontSize: '12px' },
-                          content: { fontSize: '12px' },
-                        }}
-                      >
-                        <Descriptions.Item label="Description">
-                          {assistant.description || 'No description'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Created By">
-                          {assistant.created_by ? 'User' : 'System'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Created">
-                          {new Date(assistant.created_at).toLocaleDateString()}
-                        </Descriptions.Item>
-                      </Descriptions>
+                        size="sm"
+                        column={3}
+                        items={[
+                          { key: 'description', label: 'Description', children: assistant.description || 'No description' },
+                          { key: 'createdBy', label: 'Created By', children: assistant.created_by ? 'User' : 'System' },
+                          { key: 'created', label: 'Created', children: new Date(assistant.created_at).toLocaleDateString() },
+                        ]}
+                        className="[&_.label]:text-xs [&_.content]:text-xs"
+                      />
                     </div>
                   </div>
                   {index < assistants.length - 1 && (
-                    <Divider className="my-4" />
+                    <Separator className="my-4" />
                   )}
                 </div>
               ))}
@@ -201,20 +187,15 @@ export function AssistantsSettings() {
 
           {assistants.length > 0 && (
             <>
-              <Divider className="mb-4" />
+              <Separator className="mb-4" />
               <div className="flex justify-end">
                 <Pagination
+              previousLabel="Previous page" nextLabel="Next page" pageLabel={(p) => `Page ${p}`}
                   current={storePage}
                   total={totalAssistants}
                   pageSize={storePageSize}
-                  showSizeChanger
-                  showQuickJumper
-                  showTotal={(total, range) =>
-                    `${range[0]}-${range[1]} of ${total} assistants`
-                  }
-                  onChange={handlePageChange}
-                  onShowSizeChange={handlePageChange}
-                  pageSizeOptions={['5', '10', '20', '50']}
+                  onChange={(page) => handlePageChange(page, storePageSize)}
+                  aria-label="Assistants pagination"
                 />
               </div>
             </>

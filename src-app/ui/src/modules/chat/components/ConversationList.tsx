@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Input, Card, Button, Typography, Empty, Flex, Popconfirm, App } from 'antd'
+import { Card, Button, Text, Empty, Flex, Confirm, Input, message } from '@/components/ui'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { SearchOutlined, DeleteOutlined, CloseCircleOutlined } from '@ant-design/icons'
@@ -8,8 +8,6 @@ import { Stores } from '@/core/stores'
 import { ConversationCard } from '@/modules/chat/components/ConversationCard'
 import type { ConversationResponse } from '@/api-client/types'
 import { DivScrollY } from '@/components/common/DivScrollY'
-
-const { Text } = Typography
 
 interface ConversationListProps {
   /**
@@ -23,7 +21,6 @@ interface ConversationListProps {
  * Displays a searchable, paginated list of conversations with bulk operations
  */
 export function ConversationList({ getSearchBoxContainer }: ConversationListProps) {
-  const { message } = App.useApp()
   const [, forceRender] = useState({})
   const [localSearchQuery, setLocalSearchQuery] = useState('')
   const canDelete = usePermission(Permissions.ConversationsDelete)
@@ -113,7 +110,6 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
     <Input
       placeholder="Search conversations..."
       allowClear
-      size="middle"
       prefix={<SearchOutlined />}
       onChange={e => setLocalSearchQuery(e.target.value)}
       className="self-center w-full"
@@ -139,13 +135,9 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
         {/* Bulk actions bar */}
         {selectedIds.size > 0 && (
           <div className="max-w-4xl w-full self-center px-3 pt-3">
-            <Card
-              classNames={{
-                body: '!p-3',
-              }}
-            >
+            <Card className="[&_[data-part='body']]:!p-3">
               <Flex
-                justify="space-between"
+                justify="between"
                 align="center"
                 className="flex-wrap gap-2"
               >
@@ -163,19 +155,18 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                     Select All
                   </Button>
                   {canDelete && (
-                    <Popconfirm
+                    <Confirm
                       title="Delete selected conversations"
                       description={`Are you sure you want to delete ${selectedIds.size} conversation${selectedIds.size > 1 ? 's' : ''}?`}
                       onConfirm={handleDeleteSelected}
-                      okText="Delete"
+                      okText="OK"
                       cancelText="Cancel"
-                      okType="danger"
-                      okButtonProps={{ loading: deleting }}
+                      okButtonProps={{ danger: true, disabled: deleting }}
                     >
-                      <Button danger icon={<DeleteOutlined />} loading={deleting}>
+                      <Button variant="destructive" icon={<DeleteOutlined />} loading={deleting}>
                         Delete Selected
                       </Button>
-                    </Popconfirm>
+                    </Confirm>
                   )}
                 </Flex>
               </Flex>
@@ -189,7 +180,6 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
             {visibleConversations.length === 0 && !loading ? (
               <Card className="!mx-3">
                 <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
                   description={
                     searchQuery
                       ? 'No conversations found matching your search'
@@ -225,12 +215,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
 
                     {/* Pagination info */}
                     {visibleConversations.length > 0 && (
-                      <Card
-                        className="text-center !mx-3"
-                        classNames={{
-                          body: '!p-2 gap-2 flex justify-center items-center flex-wrap',
-                        }}
-                      >
+                      <Card className="text-center !mx-3 [&_[data-part='body']]:!p-2">
                         <Text type="secondary">
                           Showing {visibleConversations.length} of {total} conversations
                         </Text>

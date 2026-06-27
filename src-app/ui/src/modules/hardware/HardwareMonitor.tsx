@@ -1,15 +1,11 @@
-import { Alert, App, Button, Card, Progress, Spin, Tag, Typography } from 'antd'
+import { Alert, Button, Card, Progress, Spin, Tag, Text, message } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
 import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
 import { DivScrollY } from '@/components/common/DivScrollY'
 import { formatBytes } from '@/modules/hardware/utils/formatBytes'
 
-const { Text } = Typography
-
 export function HardwareMonitor() {
-  const { message } = App.useApp()
-
   // Hardware store state
   const {
     hardwareInfo,
@@ -44,7 +40,7 @@ export function HardwareMonitor() {
     if (sseError) {
       message.error(`Connection Error: ${sseError}`)
     }
-  }, [hardwareError, usageError, sseError, message])
+  }, [hardwareError, usageError, sseError])
 
   const handleManualConnect = async () => {
     try {
@@ -57,32 +53,30 @@ export function HardwareMonitor() {
 
   const renderConnectionStatus = () => (
     <Card
-      style={{
-        display: sseConnected ? 'none' : 'block',
-      }}
+      className={sseConnected ? 'hidden' : 'block'}
     >
       <div className={'flex flex-wrap justify-between gap-3'}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Text strong>Real-time Monitoring:</Text>
-            <Tag color={sseConnected ? 'green' : 'red'}>
+            <Tag tone={sseConnected ? 'success' : 'error'}>
               {sseConnected ? 'Connected' : 'Disconnected'}
             </Tag>
             {usageLoading && (
               <div className="flex items-center gap-2">
-                <Spin />
+                <Spin label="Connecting..." />
                 <Text type="secondary">Connecting...</Text>
               </div>
             )}
           </div>
           {!sseConnected && !usageLoading && (
-            <Button type="primary" onClick={handleManualConnect}>
+            <Button variant="default" onClick={handleManualConnect}>
               Connect
             </Button>
           )}
         </div>
         {currentUsage && (
-          <Text type="secondary" style={{ fontSize: '11px' }}>
+          <Text type="secondary" className="text-xs">
             Last update: {new Date(currentUsage.timestamp).toLocaleTimeString()}
           </Text>
         )}
@@ -96,20 +90,19 @@ export function HardwareMonitor() {
     return (
       <Card title="CPU Usage">
         <Progress
-          percent={currentUsage.cpu.usage_percentage}
-          status={
-            currentUsage.cpu.usage_percentage > 90 ? 'exception' : 'active'
-          }
+          value={currentUsage.cpu.usage_percentage}
+          tone={currentUsage.cpu.usage_percentage > 90 ? 'error' : 'primary'}
+          aria-label="CPU usage"
           format={percent => `${percent != null ? percent.toFixed(1) : '0.0'}%`}
         />
         <div className="flex gap-3 mt-2">
           {currentUsage.cpu.temperature && (
-            <Text type="secondary" style={{ fontSize: '12px' }}>
+            <Text type="secondary" className="text-xs">
               Temperature: {currentUsage.cpu.temperature}°C
             </Text>
           )}
           {currentUsage.cpu.frequency && (
-            <Text type="secondary" style={{ fontSize: '12px' }}>
+            <Text type="secondary" className="text-xs">
               Frequency: {currentUsage.cpu.frequency} MHz
             </Text>
           )}
@@ -124,17 +117,16 @@ export function HardwareMonitor() {
     return (
       <Card title="Memory Usage">
         <Progress
-          percent={currentUsage.memory.usage_percentage}
-          status={
-            currentUsage.memory.usage_percentage > 90 ? 'exception' : 'active'
-          }
+          value={currentUsage.memory.usage_percentage}
+          tone={currentUsage.memory.usage_percentage > 90 ? 'error' : 'primary'}
+          aria-label="Memory usage"
           format={percent => `${percent != null ? percent.toFixed(1) : '0.0'}%`}
         />
         <div className="flex gap-3 mt-2">
-          <Text type="secondary" style={{ fontSize: '12px' }}>
+          <Text type="secondary" className="text-xs">
             Used: {formatBytes(currentUsage.memory.used_ram)}
           </Text>
-          <Text type="secondary" style={{ fontSize: '12px' }}>
+          <Text type="secondary" className="text-xs">
             Available: {formatBytes(currentUsage.memory.available_ram)}
           </Text>
         </div>
@@ -156,8 +148,7 @@ export function HardwareMonitor() {
         <Alert
           title="Hardware Monitor Unavailable"
           description={hardwareError}
-          type="error"
-          showIcon
+          tone="error"
         />
       </div>
     )
@@ -204,12 +195,9 @@ export function HardwareMonitor() {
                             <div>
                               <Text strong>GPU Utilization</Text>
                               <Progress
-                                percent={gpuUsage.utilization_percentage}
-                                status={
-                                  gpuUsage.utilization_percentage > 90
-                                    ? 'exception'
-                                    : 'active'
-                                }
+                                value={gpuUsage.utilization_percentage}
+                                tone={gpuUsage.utilization_percentage > 90 ? 'error' : 'primary'}
+                                aria-label="GPU utilization"
                                 format={percent =>
                                   `${percent != null ? percent.toFixed(1) : '0.0'}%`
                                 }
@@ -229,12 +217,9 @@ export function HardwareMonitor() {
                               {gpuUsage.memory_usage_percentage !==
                               undefined ? (
                                 <Progress
-                                  percent={gpuUsage.memory_usage_percentage}
-                                  status={
-                                    gpuUsage.memory_usage_percentage > 90
-                                      ? 'exception'
-                                      : 'active'
-                                  }
+                                  value={gpuUsage.memory_usage_percentage}
+                                  tone={gpuUsage.memory_usage_percentage > 90 ? 'error' : 'primary'}
+                                  aria-label="GPU memory usage"
                                   format={percent =>
                                     `${percent != null ? percent.toFixed(1) : '0.0'}%`
                                   }
@@ -243,19 +228,9 @@ export function HardwareMonitor() {
                                 gpuUsage.memory_used !== undefined &&
                                 gpuUsage.memory_total !== undefined && (
                                   <Progress
-                                    percent={
-                                      (gpuUsage.memory_used /
-                                        gpuUsage.memory_total) *
-                                      100
-                                    }
-                                    status={
-                                      (gpuUsage.memory_used /
-                                        gpuUsage.memory_total) *
-                                        100 >
-                                      90
-                                        ? 'exception'
-                                        : 'active'
-                                    }
+                                    value={(gpuUsage.memory_used / gpuUsage.memory_total) * 100}
+                                    tone={(gpuUsage.memory_used / gpuUsage.memory_total) * 100 > 90 ? 'error' : 'primary'}
+                                    aria-label="GPU memory usage"
                                     format={percent =>
                                       `${percent != null ? percent.toFixed(1) : '0.0'}%`
                                     }
@@ -266,10 +241,7 @@ export function HardwareMonitor() {
                               {gpuUsage.memory_used !== undefined &&
                                 gpuUsage.memory_total !== undefined && (
                                   <div className="mt-1">
-                                    <Text
-                                      type="secondary"
-                                      style={{ fontSize: '12px' }}
-                                    >
+                                    <Text type="secondary" className="text-xs">
                                       {gpuInfo?.vendor?.includes('Apple')
                                         ? 'GPU Memory Used: '
                                         : 'Used: '}
@@ -285,18 +257,12 @@ export function HardwareMonitor() {
 
                           <div className="flex gap-3">
                             {gpuUsage.temperature !== undefined && (
-                              <Text
-                                type="secondary"
-                                style={{ fontSize: '12px' }}
-                              >
+                              <Text type="secondary" className="text-xs">
                                 Temperature: {gpuUsage.temperature}°C
                               </Text>
                             )}
                             {gpuUsage.power_usage !== undefined && (
-                              <Text
-                                type="secondary"
-                                style={{ fontSize: '12px' }}
-                              >
+                              <Text type="secondary" className="text-xs">
                                 Power: {gpuUsage.power_usage}W
                               </Text>
                             )}

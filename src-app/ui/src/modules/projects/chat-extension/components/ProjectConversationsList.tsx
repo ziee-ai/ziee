@@ -1,4 +1,4 @@
-import { App, Button, Empty, Popconfirm, Tooltip, Typography, theme } from 'antd'
+import { Button, Empty, Tooltip, Text, message, Dialog } from '@/components/ui'
 import { MinusCircleOutlined } from '@ant-design/icons'
 import { useState } from 'react'
 import type { ConversationResponse } from '@/api-client/types'
@@ -43,14 +43,11 @@ export function ProjectConversationsList({
 
   if (conversations.length === 0) {
     return (
-      <Empty
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description="No conversations in this project yet"
-      >
-        <Typography.Text type="secondary">
+      <Empty description="No conversations in this project yet">
+        <Text type="secondary">
           Start a new chat here and it will inherit this project's
           instructions + knowledge.
-        </Typography.Text>
+        </Text>
       </Empty>
     )
   }
@@ -106,8 +103,6 @@ function RemoveFromProjectButton({
   projectId: string
   conversationId: string
 }) {
-  const { message } = App.useApp()
-  const { token } = theme.useToken()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
 
@@ -127,25 +122,39 @@ function RemoveFromProjectButton({
   }
 
   return (
-    <Popconfirm
-      title="Remove from project?"
-      description="The conversation will become unfiled. It is NOT deleted."
-      open={open}
-      onConfirm={handleRemove}
-      onCancel={() => setOpen(false)}
-      okText="Remove"
-      cancelText="Cancel"
-      okButtonProps={{ loading }}
-    >
-      <Tooltip title="Remove from project">
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={(v) => { if (!v) setOpen(false) }}
+        title="Remove from project?"
+      >
+        <p className="text-muted-foreground">
+          The conversation will become unfiled. It is NOT deleted.
+        </p>
+        <div className="flex justify-end gap-2 mt-6">
+          <Button
+            onClick={() => setOpen(false)}
+            variant="outline"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleRemove}
+            variant="destructive"
+            disabled={loading}
+          >
+            {loading ? 'Removing...' : 'Remove'}
+          </Button>
+        </div>
+      </Dialog>
+      <Tooltip content="Remove from project">
         <Button
-          className={`transition-opacity ${
+          className={`transition-opacity bg-card ${
             open ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
           }`}
-          type="text"
-          size="small"
+          variant="ghost"
+          size="sm"
           icon={<MinusCircleOutlined />}
-          style={{ backgroundColor: token.colorBgContainer }}
           aria-label="Remove from project"
           onClick={(e: React.MouseEvent) => {
             e.stopPropagation()
@@ -153,6 +162,6 @@ function RemoveFromProjectButton({
           }}
         />
       </Tooltip>
-    </Popconfirm>
+    </>
   )
 }

@@ -1,5 +1,4 @@
-import { Dropdown, Tooltip, theme } from 'antd'
-import type { MenuProps } from 'antd'
+import { Dropdown, Tooltip } from '@/components/ui'
 import { LogoutOutlined, UserOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -17,20 +16,17 @@ function SidebarItem({
   onClick?: () => void
   collapsed?: boolean
 }) {
-  const { token } = theme.useToken()
-
   return (
     <div
       onClick={onClick}
-      className="flex items-center px-3 py-1 mx-2 rounded-md cursor-pointer transition-colors duration-150"
-      style={{ color: token.colorTextBase }}
+      className="flex items-center px-3 py-1 mx-2 rounded-md cursor-pointer transition-colors duration-150 text-foreground"
       onMouseEnter={e => {
-        e.currentTarget.style.backgroundColor = token.colorPrimaryHover
-        e.currentTarget.style.color = token.colorTextLightSolid
+        e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.9)'
+        e.currentTarget.style.color = 'white'
       }}
       onMouseLeave={e => {
         e.currentTarget.style.backgroundColor = 'transparent'
-        e.currentTarget.style.color = token.colorTextBase
+        e.currentTarget.style.color = ''
       }}
     >
       <div
@@ -40,8 +36,8 @@ function SidebarItem({
         {icon}
       </div>
       <span
+        className="text-sm"
         style={{
-          fontSize: token.fontSize,
           opacity: collapsed ? 0 : 1,
           maxWidth: collapsed ? 0 : 200,
           overflow: 'hidden',
@@ -63,27 +59,27 @@ export function UserProfileWidget() {
 
   if (!user) return null
 
-  const item = (
-    <Dropdown
-      menu={{
-        items: [
-          canViewProfile && {
+  const items = [
+    ...(canViewProfile
+      ? [
+          {
             key: 'profile',
             icon: <UserOutlined />,
             label: 'Profile',
             onClick: () => navigate('/settings/profile'),
           },
-          {
-            key: 'logout',
-            icon: <LogoutOutlined />,
-            label: 'Logout',
-            onClick: async () => await Stores.Auth.logoutUser(),
-          },
-        ].filter(Boolean) as MenuProps['items'],
-      }}
-      placement="topLeft"
-      trigger={['click']}
-    >
+        ]
+      : []),
+    {
+      key: 'logout',
+      icon: <LogoutOutlined />,
+      label: 'Logout',
+      onClick: async () => await Stores.Auth.logoutUser(),
+    },
+  ]
+
+  const item = (
+    <Dropdown items={items} side="top" align="start">
       <div data-testid="user-profile-widget">
         <SidebarItem
           icon={<UserOutlined />}
@@ -96,7 +92,7 @@ export function UserProfileWidget() {
 
   if (isSidebarCollapsed) {
     return (
-      <Tooltip title={user.username} placement="right">
+      <Tooltip content={user.username} side="right">
         {item}
       </Tooltip>
     )

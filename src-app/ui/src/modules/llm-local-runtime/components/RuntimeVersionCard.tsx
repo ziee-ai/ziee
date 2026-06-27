@@ -1,20 +1,19 @@
 import { useState } from 'react'
 import {
-  App,
   Button,
   Checkbox,
   Descriptions,
   Flex,
-  Popconfirm,
+  Confirm,
   Tooltip,
-  Typography,
-} from 'antd'
+  Text,
+  message,
+} from '@/components/ui'
 import {
   DeleteOutlined,
   StarOutlined,
 } from '@ant-design/icons'
 
-const { Text } = Typography
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type RuntimeVersionResponse } from '@/api-client/types'
@@ -48,7 +47,6 @@ export function RuntimeVersionCard({ version }: Props) {
   const canDelete = usePermission(Permissions.RuntimeVersionDelete)
 
   const [removeBinary, setRemoveBinary] = useState(false)
-  const { message } = App.useApp()
 
   const handleSetDefault = async () => {
     try {
@@ -75,10 +73,10 @@ export function RuntimeVersionCard({ version }: Props) {
     actions.push(
       <Tooltip
         key="set-default"
-        title="Make this version the default for new sessions"
+        content="Make this version the default for new sessions"
       >
         <Button
-          type="text"
+          variant="ghost"
           icon={<StarOutlined />}
           loading={isSettingDefault}
           onClick={handleSetDefault}
@@ -91,11 +89,11 @@ export function RuntimeVersionCard({ version }: Props) {
   }
   if (canDelete) {
     actions.push(
-      <Popconfirm
+      <Confirm
         key="delete"
         title="Delete Runtime Version"
         description={
-          <Flex vertical gap="small">
+          <Flex direction="column" gap="small" className="[&_*]:!m-0">
             <Text>
               Are you sure you want to delete version {version.version}?
             </Text>
@@ -106,26 +104,25 @@ export function RuntimeVersionCard({ version }: Props) {
             )}
             <Checkbox
               checked={removeBinary}
-              onChange={e => setRemoveBinary(e.target.checked)}
-            >
-              Also remove cached files from disk
-            </Checkbox>
+              onChange={(e: boolean) => setRemoveBinary(e)}
+              label="Also remove cached files from disk"
+            />
           </Flex>
         }
         onConfirm={handleDelete}
         okText="Delete"
+        cancelText="Cancel"
         okButtonProps={{ danger: true }}
       >
         <Button
-          type="text"
-          danger
+          variant="destructive"
           icon={<DeleteOutlined />}
           loading={isDeleting}
           aria-label={`Delete version ${version.version}`}
         >
           Delete
         </Button>
-      </Popconfirm>
+      </Confirm>
     )
   }
 
@@ -146,27 +143,30 @@ export function RuntimeVersionCard({ version }: Props) {
       </div>
 
       <Descriptions
-        size="small"
-        column={{ xs: 1, sm: 2, md: 4 }}
-        colon={false}
-        styles={{
-          label: { fontSize: '12px', color: '#8c8c8c' },
-          content: { fontSize: '12px' },
-        }}
-      >
-        <Descriptions.Item label="Platform">
-          {version.platform}
-        </Descriptions.Item>
-        <Descriptions.Item label="Architecture">
-          {version.arch}
-        </Descriptions.Item>
-        <Descriptions.Item label="Backend">
-          {version.backend.toUpperCase()}
-        </Descriptions.Item>
-        <Descriptions.Item label="Installed">
-          {new Date(version.created_at).toLocaleString()}
-        </Descriptions.Item>
-      </Descriptions>
+        size="sm"
+        items={[
+          {
+            key: 'platform',
+            label: 'Platform',
+            children: version.platform,
+          },
+          {
+            key: 'arch',
+            label: 'Architecture',
+            children: version.arch,
+          },
+          {
+            key: 'backend',
+            label: 'Backend',
+            children: version.backend.toUpperCase(),
+          },
+          {
+            key: 'installed',
+            label: 'Installed',
+            children: new Date(version.created_at).toLocaleString(),
+          },
+        ]}
+      />
     </div>
   )
 }

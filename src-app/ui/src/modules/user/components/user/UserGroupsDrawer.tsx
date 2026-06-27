@@ -1,14 +1,14 @@
 import { PlusOutlined, TeamOutlined } from '@ant-design/icons'
-import { App, Button, Empty, List, Popconfirm, Tag, Tooltip } from 'antd'
+import { Button, Empty, List, Tooltip } from 'antd'
 import { Loading } from '@/core/components/Loading'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { useEffect, useState } from 'react'
+import { message, Tag, Confirm } from '@/components/ui'
 
 export function UserGroupsDrawer() {
-  const { message } = App.useApp()
   const { isOpen, user } = Stores.UserGroupsDrawer
   const { groups } = Stores.UserGroups
   const [userGroupIds, setUserGroupIds] = useState<Set<string>>(new Set())
@@ -100,7 +100,7 @@ export function UserGroupsDrawer() {
         canAssign && (
           <Tooltip title="Assign group">
             <Button
-              type="text"
+              variant="link"
               icon={<PlusOutlined aria-hidden="true" />}
               onClick={() => {
                 Stores.UserGroupsDrawer.closeUserGroupsDrawer()
@@ -127,21 +127,21 @@ export function UserGroupsDrawer() {
             const actions = canAssign
               ? [
                   isMember ? (
-                    <Popconfirm
+                    <Confirm
                       key="remove"
                       title="Remove user from this group?"
                       onConfirm={() => handleRemoveFromGroup(group.id)}
-                      okText="Remove"
+                      okText="OK"
                       cancelText="Cancel"
                     >
-                      <Button type="link" danger size="small">
+                      <Button variant="link" danger size="small">
                         Remove
                       </Button>
-                    </Popconfirm>
+                    </Confirm>
                   ) : (
                     <Button
                       key="assign"
-                      type="link"
+                      variant="link"
                       size="small"
                       onClick={() => handleAssignToGroup(group.id)}
                     >
@@ -157,8 +157,8 @@ export function UserGroupsDrawer() {
                   title={
                     <div className="flex items-center gap-2">
                       {group.name}
-                      {isMember && <Tag color="green">Member</Tag>}
-                      {group.is_system && <Tag color="orange">System</Tag>}
+                      {isMember && <Tag tone="success">Member</Tag>}
+                      {group.is_system && <Tag tone="warning">System</Tag>}
                     </div>
                   }
                   description={group.description || 'No description'}

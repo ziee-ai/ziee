@@ -5,18 +5,17 @@ import {
   RobotOutlined,
 } from '@ant-design/icons'
 import {
-  App,
   Button,
   Card,
   Descriptions,
-  Divider,
+  Separator,
   Empty,
   Flex,
-  Popconfirm,
+  Confirm,
   Tag,
   Tooltip,
-  Typography,
-} from 'antd'
+  Text,
+} from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
 import { useEffect } from 'react'
 import { Stores } from '@/modules/assistant/stores'
@@ -25,11 +24,7 @@ import { Permissions, type Assistant } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { AssistantFormDrawer } from '@/modules/assistant/components/AssistantFormDrawer'
 
-const { Text } = Typography
-
 export function UserAssistantsSettings() {
-  const { message } = App.useApp()
-
   // Store state
   const { assistants: assistantsMap, loading, error } = Stores.UserAssistants
 
@@ -41,15 +36,13 @@ export function UserAssistantsSettings() {
   // Show errors
   useEffect(() => {
     if (error) {
-      message.error(error)
       Stores.UserAssistants.clearUserAssistantsStoreError()
     }
-  }, [error, message])
+  }, [error])
 
   const handleDelete = async (assistant: Assistant) => {
     try {
       await Stores.UserAssistants.deleteUserAssistant(assistant.id)
-      message.success('Assistant deleted successfully')
     } catch (error) {
       console.error('Failed to delete assistant:', error)
       // Error is surfaced via the store error effect above
@@ -71,7 +64,7 @@ export function UserAssistantsSettings() {
       actions.push(
         <Button
           key="edit"
-          type="text"
+          variant="ghost"
           icon={<EditOutlined />}
           onClick={() => handleEdit(assistant)}
         >
@@ -82,7 +75,7 @@ export function UserAssistantsSettings() {
 
     if (canDelete) {
       actions.push(
-        <Popconfirm
+        <Confirm
           key="delete"
           title="Delete Assistant"
           description="Are you sure you want to delete this assistant?"
@@ -90,10 +83,10 @@ export function UserAssistantsSettings() {
           okText="Delete"
           cancelText="Cancel"
         >
-          <Button type="text" danger icon={<DeleteOutlined />}>
+          <Button variant="ghost" icon={<DeleteOutlined />}>
             Delete
           </Button>
-        </Popconfirm>,
+        </Confirm>,
       )
     }
 
@@ -110,9 +103,9 @@ export function UserAssistantsSettings() {
           title="My Assistants"
           extra={
             <Can permission={Permissions.AssistantsCreate}>
-              <Tooltip title="Create assistant">
+              <Tooltip content="Create assistant">
                 <Button
-                  type="text"
+                  variant="ghost"
                   icon={<PlusOutlined aria-hidden="true" />}
                   onClick={handleCreate}
                   aria-label="Create assistant"
@@ -143,10 +136,10 @@ export function UserAssistantsSettings() {
                             <RobotOutlined />
                             <Text className="font-medium">{assistant.name}</Text>
                             {assistant.is_default && (
-                              <Tag color="success">Default</Tag>
+                              <Tag tone="success">Default</Tag>
                             )}
                             {!assistant.enabled && (
-                              <Tag color="error">Inactive</Tag>
+                              <Tag tone="error">Inactive</Tag>
                             )}
                           </Flex>
                         </div>
@@ -156,25 +149,24 @@ export function UserAssistantsSettings() {
                       </div>
 
                       <Descriptions
-                        size="small"
-                        column={{ xs: 1, sm: 2, md: 3 }}
-                        colon={false}
-                        styles={{
-                          label: { fontSize: '12px' },
-                          content: { fontSize: '12px' },
-                        }}
-                      >
-                        <Descriptions.Item label="Description">
-                          {assistant.description || 'No description'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Created">
-                          {new Date(assistant.created_at).toLocaleDateString()}
-                        </Descriptions.Item>
-                      </Descriptions>
+                        size="sm"
+                        items={[
+                          {
+                            key: 'description',
+                            label: 'Description',
+                            children: assistant.description || 'No description',
+                          },
+                          {
+                            key: 'created',
+                            label: 'Created',
+                            children: new Date(assistant.created_at).toLocaleDateString(),
+                          },
+                        ]}
+                      />
                     </div>
                   </div>
                   {index < assistants.length - 1 && (
-                    <Divider className="my-4" />
+                    <Separator className="my-4" />
                   )}
                 </div>
               ))}

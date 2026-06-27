@@ -1,12 +1,10 @@
 import { DeleteOutlined } from '@ant-design/icons'
-import { App, Button, Empty, List, Popconfirm, Space, Tag, Typography } from 'antd'
+import { Button, Empty, List, Confirm, Space, Tag, Text, Link } from '@/components/ui'
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
-
-const { Text, Link } = Typography
 
 const STATUS_COLOR: Record<string, string> = {
   completed: 'green',
@@ -39,7 +37,6 @@ export function WorkflowRunsList({
   workflowId: string
   onSelectRun: (runId: string) => void
 }) {
-  const { message } = App.useApp()
   const navigate = useNavigate()
   const canExecute = usePermission(Permissions.WorkflowsExecute)
   const { runs, loading, deleting } = Stores.WorkflowRuns
@@ -55,91 +52,89 @@ export function WorkflowRunsList({
   const handleDelete = async (runId: string) => {
     try {
       await Stores.WorkflowRuns.deleteRun(runId, workflowId)
-      message.success('Run deleted')
     } catch (e) {
-      message.error(e instanceof Error ? e.message : 'Failed to delete run')
     }
   }
 
   if (!loading[workflowId] && items.length === 0) {
     return (
-      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No runs yet" />
+      <Empty description="No runs yet" />
     )
   }
 
   return (
     <List
-      size="small"
+      size="sm"
       loading={!!loading[workflowId] && items.length === 0}
       dataSource={items}
-      renderItem={run => (
-        <List.Item
+      renderItem={(run) => (
+        <div
+          key={run.id}
           className="cursor-pointer"
           onClick={() => onSelectRun(run.id)}
-          actions={
-            canExecute
-              ? [
-                  <Popconfirm
-                    key="del"
-                    title="Delete this run?"
-                    description="Artifacts are removed too unless the run is tied to a conversation."
-                    onConfirm={e => {
-                      e?.stopPropagation()
-                      void handleDelete(run.id)
-                    }}
-                    onCancel={e => e?.stopPropagation()}
-                    okText="Delete"
-                    okButtonProps={{ danger: true }}
-                  >
-                    <Button
-                      danger
-                      size="small"
-                      type="text"
-                      icon={<DeleteOutlined />}
-                      loading={!!deleting[run.id]}
-                      onClick={e => e.stopPropagation()}
-                    />
-                  </Popconfirm>,
-                ]
-              : undefined
-          }
         >
-          <Space size={8} wrap>
-            <Tag color={STATUS_COLOR[run.status] || 'default'} className="!m-0">
-              {run.status}
-            </Tag>
-            {run.invocation_source === 'conversation' && run.conversation_id ? (
-              // Conversation-launched run: a Typography.Link (accessible
-              // <a role="link">, the codebase's inline-nav idiom — cf.
-              // DownloadItem) inside the badge opens the originating
-              // conversation. stopPropagation so the click navigates instead of
-              // firing the List.Item's open-progress onClick.
-              <Tag className="!m-0 text-xs">
-                <Link
-                  className="text-xs"
-                  onClick={e => {
-                    e.stopPropagation()
-                    navigate(`/chat/${run.conversation_id}`)
-                  }}
-                >
-                  {INVOCATION_SOURCE_LABEL.conversation}
-                </Link>
+          <div className="flex justify-between items-center">
+            <Space size={8} wrap>
+              <Tag tone={STATUS_COLOR[run.status] === 'green' ? 'success' : STATUS_COLOR[run.status] === 'red' ? 'error' : STATUS_COLOR[run.status] === 'blue' ? 'info' : STATUS_COLOR[run.status] === 'gold' ? 'warning' : undefined} className="!m-0">
+                {run.status}
               </Tag>
-            ) : (
-              <Tag className="!m-0 text-xs">
-                {INVOCATION_SOURCE_LABEL[run.invocation_source] ?? 'Workflow page'}
-              </Tag>
-            )}
-            <Text type="secondary" className="text-xs">
-              {new Date(run.created_at).toLocaleString()}
-            </Text>
-            {run.total_tokens > 0 && (
+              {run.invocation_source === 'conversation' && run.conversation_id ? (
+                // Conversation-launched run: a Typography.Link (accessible
+                // <a role="link">, the codebase's inline-nav idiom — cf.
+                // DownloadItem) inside the badge opens the originating
+                // conversation. stopPropagation so the click navigates instead of
+                // firing the div's open-progress onClick.
+                <Tag className="!m-0 text-xs">
+                  <Link
+                    href="#"
+                    className="text-xs"
+                    onClick={(e: React.MouseEvent) => {
+                      e.stopPropagation()
+                      e.preventDefault()
+                      navigate(`/chat/${run.conversation_id}`)
+                    }}
+                  >
+                    {INVOCATION_SOURCE_LABEL.conversation}
+                  </Link>
+                </Tag>
+              ) : (
+                <Tag className="!m-0 text-xs">
+                  {INVOCATION_SOURCE_LABEL[run.invocation_source] ?? 'Workflow page'}
+                </Tag>
+              )}
               <Text type="secondary" className="text-xs">
-                {run.total_tokens} tok
+                {new Date(run.created_at).toLocaleString()}
               </Text>
+              {run.total_tokens > 0 && (
+                <Text type="secondary" className="text-xs">
+                  {run.total_tokens} tok
+                </Text>
+              )}
+            </Space>
+            {canExecute && (
+              <Confirm
+                key="del"
+                title="Delete this run?"
+                description="Artifacts are removed too unless the run is tied to a conversation."
+                onConfirm={() => {
+                  void handleDelete(run.id)
+                }}
+                onCancel={() => {}}
+                okText="Delete"
+                cancelText="Cancel"
+                okButtonProps={{ danger: true }}
+              >
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  icon={<DeleteOutlined />}
+                  loading={!!deleting[run.id]}
+                  onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                />
+              </Confirm>
             )}
-          </Space>
-        </List.Item>
+          </div>
+        </div>
       )}
     />
   )

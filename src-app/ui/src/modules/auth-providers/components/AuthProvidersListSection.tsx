@@ -1,17 +1,17 @@
 import { useState } from 'react'
 import {
   Alert,
-  App,
   Button,
   Card,
-  Divider,
+  Confirm,
   Empty,
   Flex,
-  Popconfirm,
+  Separator,
   Spin,
   Switch,
-  Typography,
-} from 'antd'
+  Text,
+  message,
+} from '@/components/ui'
 import {
   DeleteOutlined,
   EditOutlined,
@@ -24,8 +24,6 @@ import { Can } from '@/core/permissions/Can'
 import { AddProviderMenu } from './AddProviderMenu'
 import { AuthProviderEditDrawer } from './AuthProviderEditDrawer'
 import type { ProviderTemplate } from '../types'
-
-const { Text } = Typography
 
 type DrawerState =
   | { mode: 'closed' }
@@ -46,7 +44,6 @@ function relativeTime(iso: string | null | undefined): string {
 }
 
 export function AuthProvidersListSection() {
-  const { message } = App.useApp()
   const { providers, loading, error, testingIds } = Stores.AuthProvidersAdmin
   const [drawer, setDrawer] = useState<DrawerState>({ mode: 'closed' })
   const [pendingToggleId, setPendingToggleId] = useState<string | null>(null)
@@ -62,7 +59,7 @@ export function AuthProvidersListSection() {
       // reason. The store emits `auth_provider.auto_disabled` so the
       // Switch snaps back; the toast here just surfaces the reason.
       const reason = e?.message ?? 'Failed to update provider'
-      message.error({ content: reason, duration: 8 })
+      message.error(reason)
     } finally {
       setPendingToggleId(null)
     }
@@ -115,7 +112,7 @@ export function AuthProvidersListSection() {
         aria-label={`Toggle ${row.name}`}
       />
       <Button
-        type="text"
+        variant="ghost"
         icon={<ExperimentOutlined />}
         aria-label={`Test ${row.name}`}
         loading={testingIds.has(row.id)}
@@ -124,14 +121,14 @@ export function AuthProvidersListSection() {
         Test
       </Button>
       <Button
-        type="text"
+        variant="ghost"
         icon={<EditOutlined />}
         aria-label={`Edit ${row.name}`}
         onClick={() => setDrawer({ mode: 'edit', existing: row })}
       >
         Edit
       </Button>
-      <Popconfirm
+      <Confirm
         title={`Delete ${row.name}?`}
         description="Linked users lose this sign-in method; their accounts remain."
         okText="Delete"
@@ -140,14 +137,13 @@ export function AuthProvidersListSection() {
         onConfirm={() => onDelete(row)}
       >
         <Button
-          type="text"
-          danger
+          variant="ghost"
           icon={<DeleteOutlined />}
           aria-label={`Delete ${row.name}`}
         >
           Delete
         </Button>
-      </Popconfirm>
+      </Confirm>
     </Can>
   )
 
@@ -166,17 +162,17 @@ export function AuthProvidersListSection() {
       >
         {error && (
           <Alert
-            type="error"
+            tone="error"
             title={error}
-            showIcon
-            closable
+            onClose={() => {}}
+            closeLabel="Close"
             className="mb-3"
           />
         )}
 
         {loading && providers.length === 0 ? (
           <div className="flex justify-center py-6">
-            <Spin />
+            <Spin label="Loading" />
           </div>
         ) : providers.length === 0 ? (
           <Empty
@@ -220,8 +216,7 @@ export function AuthProvidersListSection() {
 
                       {row.last_test_ok === false && (
                         <Alert
-                          type="error"
-                          showIcon
+                          tone="error"
                           className="!mt-2"
                           title={
                             row.last_test_at
@@ -238,7 +233,7 @@ export function AuthProvidersListSection() {
                     </div>
                   </div>
                   {index < providers.length - 1 && (
-                    <Divider className="my-4" />
+                    <Separator className="my-4" />
                   )}
                 </div>
               ))}

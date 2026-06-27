@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { App, Tooltip, Tag, Dropdown } from 'antd'
+import { Tooltip, Tag, Dropdown, message } from '@/components/ui'
 import { CompressOutlined, FileTextOutlined, EyeInvisibleOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { ApiClient } from '@/api-client'
@@ -19,7 +19,6 @@ type Mode = 'inherit' | 'on' | 'off'
  * elsewhere (audit lesson from the crashed-session redo).
  */
 export function SummarizationStatusPill() {
-  const { message } = App.useApp()
   // Read every Stores.X.field at the TOP, before any conditional.
   // Each proxy access fires a useEffect; reading conditionally after
   // a guard triggers "Rendered more hooks than during the previous
@@ -124,29 +123,25 @@ export function SummarizationStatusPill() {
     on: 'Summary: on',
     off: 'Summary: off',
   }
-  const colorByMode: Record<Mode, string> = {
-    inherit: 'default',
-    on: 'green',
-    off: 'red',
+  const toneByMode: Record<Mode, Parameters<typeof Tag>[0]['tone']> = {
+    inherit: undefined,
+    on: 'success',
+    off: 'error',
   }
 
   return (
-    <Tooltip title="Per-conversation summarization override">
+    <Tooltip content="Per-conversation summarization override">
       <Dropdown
-        menu={{
-          items,
-          selectable: true,
-          selectedKeys: [mode],
-          onClick: ({ key }) => setRemote(key as Mode),
-        }}
+        items={items}
+        onSelect={(key) => setRemote(key as Mode)}
         disabled={loading}
       >
         <Tag
-          color={colorByMode[mode]}
+          tone={toneByMode[mode]}
           icon={
             mode === 'off' ? <EyeInvisibleOutlined /> : <CompressOutlined />
           }
-          style={{ cursor: 'pointer', margin: 0 }}
+          className="cursor-pointer m-0"
         >
           {labelByMode[mode]}
         </Tag>

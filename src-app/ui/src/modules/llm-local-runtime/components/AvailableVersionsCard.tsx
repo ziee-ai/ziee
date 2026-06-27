@@ -1,16 +1,16 @@
 import { useEffect } from 'react'
 import {
-  App,
   Button,
   Card,
-  Divider,
+  Separator,
   Flex,
   Progress,
   Space,
   Spin,
   Tag,
-  Typography,
-} from 'antd'
+  Text,
+  message,
+} from '@/components/ui'
 import { DownloadOutlined, ReloadOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions'
@@ -18,8 +18,6 @@ import { Permissions } from '@/api-client/types'
 import type { DownloadSnapshot } from '@/api-client/types'
 import type { RuntimeAvailableVersion, RuntimeEngine } from '../types'
 import { HoverRow, formatBytes } from './_engineVersionsShared'
-
-const { Text } = Typography
 
 const BACKEND_LABEL: Record<string, string> = {
   cpu: 'CPU',
@@ -52,7 +50,6 @@ export function AvailableVersionsCard({ engine }: { engine: RuntimeEngine }) {
   const { gpu, loadingGpu } = Stores.RuntimeConfig
   const { updateChecks, checking } = Stores.RuntimeUpdate
   const { activeByKey } = Stores.RuntimeDownloadProgress
-  const { message } = App.useApp()
 
   const updateCheck = updateChecks.get(engine)
   const isChecking = checking.get(engine) || false
@@ -148,14 +145,14 @@ export function AvailableVersionsCard({ engine }: { engine: RuntimeEngine }) {
         </Can>
       }
     >
-      <Flex vertical gap="middle">
+      <Flex vertical className="gap-4">
         <PlatformRow gpu={gpu} loadingGpu={loadingGpu} />
         <BackendsRow gpu={gpu} loadingGpu={loadingGpu} />
 
-        <Divider className="!my-2" />
+        <Separator className="!my-2" />
 
         {isChecking && !updateCheck ? (
-          <Spin />
+          <Spin label="Checking for updates" />
         ) : !updateCheck ? (
           <Text type="secondary">
             Could not reach the upstream release feed.
@@ -198,7 +195,7 @@ function PlatformRow({
     return (
       <div>
         <Text type="secondary">Platform: </Text>
-        <Spin size="small" />
+        <Spin size="sm" label="Loading platform" />
       </div>
     )
   }
@@ -224,7 +221,7 @@ function BackendsRow({
     return (
       <Flex align="center" gap="small" wrap>
         <Text type="secondary">Available backends:</Text>
-        <Spin size="small" />
+        <Spin size="sm" label="Loading backends" />
       </Flex>
     )
   }
@@ -232,12 +229,12 @@ function BackendsRow({
   return (
     <Flex align="center" gap="small" wrap>
       <Text type="secondary">Available backends:</Text>
-      <Space size={[8, 8]} wrap>
+      <Space size="small" wrap>
         {gpu.available.map(b => (
           <Tag
             key={b}
-            variant="filled"
-            color={b === gpu.recommended ? 'green' : 'default'}
+            variant="solid"
+            tone={b === gpu.recommended ? 'success' : undefined}
           >
             {BACKEND_LABEL[b] ?? b}
           </Tag>
@@ -272,7 +269,7 @@ function AvailableVersionRow({
   return (
     <HoverRow>
       <Flex vertical gap="small">
-        <Flex justify="space-between" align="center" gap="small" wrap>
+        <Flex justify="between" align="center" gap="small" wrap>
           <Space wrap>
             <Text strong>{v.version}</Text>
             {v.size_bytes != null && !v.installed && (
@@ -280,9 +277,9 @@ function AvailableVersionRow({
                 {formatBytes(v.size_bytes)}
               </Text>
             )}
-            {isLatest && <Tag color="blue" variant="filled">latest</Tag>}
-            {v.installed && <Tag color="green" variant="filled">installed</Tag>}
-            {v.prerelease && <Tag variant="filled">prerelease</Tag>}
+            {isLatest && <Tag tone="info" variant="solid">latest</Tag>}
+            {v.installed && <Tag tone="success" variant="solid">installed</Tag>}
+            {v.prerelease && <Tag variant="solid">prerelease</Tag>}
           </Space>
           <Can permission={Permissions.RuntimeVersionCreate}>
             <Button
@@ -302,7 +299,7 @@ function AvailableVersionRow({
         </Flex>
         {progress && <DownloadProgressLine progress={progress} />}
         {failed && progress?.error && (
-          <Text type="danger">{progress.error}</Text>
+          <Text type="secondary">{progress.error}</Text>
         )}
       </Flex>
     </HoverRow>
@@ -320,20 +317,21 @@ function DownloadProgressLine({ progress }: { progress: DownloadSnapshot }) {
       ? Math.round((recv / total) * 100)
       : undefined
   return (
-    <Flex vertical gap={4}>
+    <Flex vertical className="gap-1">
       <Progress
-        percent={pct ?? 0}
-        status={
+        value={pct ?? 0}
+        tone={
           progress.status === 'failed'
-            ? 'exception'
+            ? 'error'
             : progress.status === 'completed'
             ? 'success'
-            : 'active'
+            : 'primary'
         }
         // Indeterminate-looking when total_bytes is unknown: keep
         // the bar at 0% and rely on the byte counter for feedback.
         showInfo={pct != null}
-        size="small"
+        size="sm"
+        aria-label={`Download progress: ${pct ?? 0}%`}
       />
       <Text type="secondary" className="text-xs">
         {formatBytes(recv)}

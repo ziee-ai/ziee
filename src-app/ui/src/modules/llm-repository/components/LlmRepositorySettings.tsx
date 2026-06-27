@@ -6,28 +6,26 @@ import {
 } from '@ant-design/icons'
 import {
   Alert,
-  App,
   Button,
   Card,
-  Divider,
   Empty,
   Flex,
   Pagination,
-  Popconfirm,
   Switch,
   Tooltip,
-  Typography,
-} from 'antd'
+} from '@/components/ui'
+import {
+  Text,
+  message,
+  Separator,
+  Confirm,
+} from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { Can, usePermission } from '@/core/permissions'
 import { Permissions, type LlmRepository } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'
 
-const { Text } = Typography
-
 export function LlmRepositorySettings() {
-  const { message } = App.useApp()
-
   // Stores
   const {
     repositories,
@@ -133,7 +131,7 @@ export function LlmRepositorySettings() {
       // surface the reason in a longer-lived toast.
       console.error('Failed to toggle repository:', error)
       const reason = error?.message || 'Failed to toggle repository'
-      message.error({ content: reason, duration: 8 })
+      message.error(reason)
     }
   }
 
@@ -160,7 +158,7 @@ export function LlmRepositorySettings() {
       actions.push(
         <Button
           key="test"
-          type="text"
+          variant="outline"
           icon={<CloudDownloadOutlined />}
           loading={testing}
           onClick={() => testRepositoryConnection(repository)}
@@ -174,7 +172,7 @@ export function LlmRepositorySettings() {
       actions.push(
         <Button
           key="edit"
-          type="text"
+          variant="outline"
           icon={<EditOutlined />}
           onClick={() => handleEditRepository(repository)}
         >
@@ -185,7 +183,7 @@ export function LlmRepositorySettings() {
 
     if (canDelete && !repository.built_in) {
       actions.push(
-        <Popconfirm
+        <Confirm
           key="delete"
           title="Are you sure?"
           onConfirm={() => handleDeleteRepository(repository.id)}
@@ -193,10 +191,10 @@ export function LlmRepositorySettings() {
           cancelText="Cancel"
           okButtonProps={{ danger: true }}
         >
-          <Button type="text" danger icon={<DeleteOutlined />}>
+          <Button variant="destructive" icon={<DeleteOutlined />}>
             Delete
           </Button>
-        </Popconfirm>,
+        </Confirm>,
       )
     }
 
@@ -215,10 +213,12 @@ export function LlmRepositorySettings() {
           <Can permission={Permissions.LlmRepositoriesCreate}>
             <Tooltip title="Add repository">
               <Button
-                type={'text'}
+                variant="outline"
+                size="icon"
                 icon={<PlusOutlined />}
                 onClick={handleAddRepository}
                 aria-label="Add repository"
+                tooltip="Add repository"
               />
             </Tooltip>
           </Can>
@@ -229,9 +229,6 @@ export function LlmRepositorySettings() {
             {repositories.length === 0 ? (
               <Empty
                 description="No repositories yet"
-                image={
-                  <CloudDownloadOutlined className="text-4xl opacity-50" />
-                }
               >
                 <Text type="secondary">Add a repository to get started</Text>
               </Empty>
@@ -294,10 +291,11 @@ export function LlmRepositorySettings() {
                         {repository.last_health_check_status ===
                           'unhealthy' && (
                           <Alert
-                            type="error"
-                            showIcon
+                            tone="error"
                             className="!mt-2"
-                            message={
+                            closeLabel="Close"
+                            onClose={() => {}}
+                            title={
                               repository.last_health_check_at
                                 ? `Connection test failed at ${new Date(
                                     repository.last_health_check_at,
@@ -313,7 +311,7 @@ export function LlmRepositorySettings() {
                       </div>
                     </div>
                     {index < repositories.length - 1 && (
-                      <Divider className="my-4" />
+                      <Separator className="my-4" />
                     )}
                   </div>
                 ))}
@@ -323,20 +321,23 @@ export function LlmRepositorySettings() {
 
           {totalRepositories > 0 && (
             <>
-              <Divider className="!my-3" />
+              <Separator className="!my-3" />
               <Flex justify="end">
                 <Pagination
+              previousLabel="Previous page" nextLabel="Next page" pageLabel={(p) => `Page ${p}`} aria-label="Pagination"
                   current={storePage}
                   total={totalRepositories}
                   pageSize={storePageSize}
                   showSizeChanger
+              pageSizeLabel="Page size"
+              onPageSizeChange={(size: number) => handlePageChange(1, size)}
                   showQuickJumper
-                  showTotal={(total, range) =>
+              jumpLabel="Go to page"
+                  showTotal={(total: number, range: [number, number]) =>
                     `${range[0]}-${range[1]} of ${total} repositories`
                   }
                   onChange={handlePageChange}
-                  onShowSizeChange={handlePageChange}
-                  pageSizeOptions={['5', '10', '20', '50']}
+                  pageSizeOptions={[5, 10, 20, 50]}
                 />
               </Flex>
             </>

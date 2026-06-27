@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Alert, App, Button, Flex, Spin, Tag, Typography } from 'antd'
+import { Alert, Button, Flex, Spin, Tag, Text } from '@/components/ui'
 import { ReloadOutlined, StarOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -15,10 +15,8 @@ import {
   type VersionGroup,
 } from './_rootfsShared'
 
-const { Text } = Typography
-
 export function SandboxRootfsVersionsSection() {
-  const { modal } = App.useApp()
+  const { dialog } = require('@/components/ui')
   // Hook-safety: every `Stores.X.field` read is a `useStore` hook under the
   // hood, so ALL needed fields are read at the TOP before any early return.
   // `conversationCount` / `mcpServerWorkspaceCount` are only consumed inside
@@ -99,8 +97,7 @@ export function SandboxRootfsVersionsSection() {
   if (!canRead) {
     return (
       <Alert
-        type="warning"
-        showIcon
+        tone="warning"
         title="Not authorized"
         description="You don't have permission to view rootfs versions."
       />
@@ -111,9 +108,9 @@ export function SandboxRootfsVersionsSection() {
     if (isMajorBump(pinnedVersion, version)) {
       const convCount = conversationCount ?? 0
       const mcpCount = mcpServerWorkspaceCount ?? 0
-      modal.confirm({
+      dialog.confirm({
         title: `Set v${version} as default (major version bump)`,
-        content: (
+        description: (
           <div>
             <p>
               The semver major number is changing from v{pinnedVersion} to v
@@ -155,10 +152,8 @@ export function SandboxRootfsVersionsSection() {
           </div>
         ),
         okText: 'Set as default and wipe caches',
-        okButtonProps: { danger: true },
         cancelText: 'Cancel',
-        onOk: () => Stores.SandboxRootfsVersions.setPin(version),
-        width: 600,
+        onConfirm: () => Stores.SandboxRootfsVersions.setPin(version),
       })
     } else {
       Stores.SandboxRootfsVersions.setPin(version)
@@ -191,11 +186,11 @@ export function SandboxRootfsVersionsSection() {
 
   return (
     <Flex vertical className="gap-3">
-      <Flex align="center" justify="space-between" wrap className="gap-2">
+      <Flex align="center" justify="between" wrap className="gap-2">
         <div>
           <Text strong>Currently default: </Text>
           {pinnedVersion ? (
-            <Tag color="blue" icon={<StarOutlined />} data-testid="default-chip">
+            <Tag tone="info" icon={<StarOutlined />} data-testid="default-chip">
               v{pinnedVersion}
             </Tag>
           ) : (
@@ -223,9 +218,9 @@ export function SandboxRootfsVersionsSection() {
 
       {lastSwap && lastSwap.draining_mounts > 0 && (
         <Alert
-          type="info"
-          showIcon
-          closable
+          tone="info"
+          onClose={() => {}}
+          closeLabel="Close"
           title={
             <span data-testid="draining-indicator">
               {lastSwap.draining_mounts} session
@@ -240,10 +235,10 @@ export function SandboxRootfsVersionsSection() {
         />
       )}
 
-      {error && <Alert type="error" showIcon title={error} />}
+      {error && <Alert tone="error" title={error} />}
 
       {loading && groups.length === 0 ? (
-        <Spin />
+        <Spin label="Loading" />
       ) : (
         <>
           <DownloadedRootfsCard

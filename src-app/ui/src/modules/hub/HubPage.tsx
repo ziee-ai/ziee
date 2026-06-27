@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  App,
   Button,
   Dropdown,
   Flex,
@@ -9,8 +8,9 @@ import {
   Segmented,
   Tag,
   Tooltip,
-  Typography,
-} from 'antd'
+  Text,
+  message,
+} from '@/components/ui'
 import { ReloadOutlined } from '@ant-design/icons'
 import { IoIosArrowDown, IoIosArrowForward } from 'react-icons/io'
 import { Stores } from '@/core/stores'
@@ -22,7 +22,6 @@ import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMi
 import { DivScrollY } from '@/components/common/DivScrollY'
 
 export function HubPage() {
-  const { message } = App.useApp()
   const { activeTab: urlActiveTab } = useParams()
   const navigate = useNavigate()
   const { slots } = Stores.ModuleSystem
@@ -125,7 +124,7 @@ export function HubPage() {
   const segmentedOptions = visibleTabs.map(tab => ({
     value: tab.id,
     label: (
-      <Flex align="center" gap={4}>
+      <Flex align="center" className="gap-1">
         {tab.icon}
         {tab.label}
       </Flex>
@@ -144,7 +143,7 @@ export function HubPage() {
   }))
 
   const currentTabLabel = currentTabSlot ? (
-    <Flex align="center" gap={4}>
+    <Flex align="center" className="gap-1">
       {currentTabSlot.icon}
       {currentTabSlot.label}
     </Flex>
@@ -154,9 +153,9 @@ export function HubPage() {
     <Flex className="flex flex-col w-full h-full overflow-hidden">
       <HeaderBarContainer>
         <div className="flex items-center justify-between w-full h-[50px]">
-          <Typography.Title level={3} ellipsis className="!m-0 !leading-tight">
+          <Text ellipsis className="!m-0 !leading-tight">
             Hub
-          </Typography.Title>
+          </Text>
 
           {/* Desktop: Show segmented control in title bar center */}
           {!windowMinSize.xs && (
@@ -167,7 +166,6 @@ export function HubPage() {
                   navigate(`/hub/${value}`)
                 }}
                 className="[&_.ant-segmented-item-label]:!px-4 [&_.ant-segmented-item-label]:!py-1"
-                shape="round"
                 options={segmentedOptions}
               />
             </div>
@@ -178,30 +176,26 @@ export function HubPage() {
             <div className="flex flex-1 items-center px-2">
               <IoIosArrowForward />
               <Dropdown
-                menu={{
-                  items: dropdownItems,
-                  onClick: ({ key }) => {
-                    navigate(`/hub/${key}`)
-                  },
-                  selectedKeys: [activeTab],
+                items={dropdownItems}
+                onSelect={(key: string) => {
+                  navigate(`/hub/${key}`)
                 }}
-                trigger={['click']}
               >
-                <Button type="text" className="!pt-1">
+                <Button variant="ghost" className="!pt-1">
                   {currentTabLabel} <IoIosArrowDown />
                 </Button>
               </Dropdown>
             </div>
           )}
 
-          <Flex align="center" gap={8}>
+          <Flex align="center" className="gap-2">
             {/* Catalog-version indicator. Hub v2 uses per-entry semver;
                 the catalog hub_version is now just a build marker shown
                 read-only here for diagnostics (and is identical for
                 admins + users — no version picker anymore). */}
             {hubVersion && (
               <Tooltip
-                title={
+                content={
                   serverVersion
                     ? `Server v${serverVersion} — installed catalog from ziee-ai/hub`
                     : 'Installed catalog from ziee-ai/hub'
@@ -215,7 +209,7 @@ export function HubPage() {
                 icon={<ReloadOutlined />}
                 onClick={handleRefresh}
                 loading={refreshing}
-                type="text"
+                variant="ghost"
               >
                 {windowMinSize.xs ? null : 'Refresh'}
               </Button>
@@ -233,7 +227,7 @@ export function HubPage() {
                   <Result
                     status="403"
                     title="Not authorized"
-                    subTitle="You don't have permission to view this Hub tab."
+                    subtitle="You don't have permission to view this Hub tab."
                   />
                 ) : (
                   currentTabSlot && (

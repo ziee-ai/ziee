@@ -1,13 +1,11 @@
 import { useEffect } from 'react'
 import {
-  App,
   Button,
-  Flex,
   Input,
   Pagination,
   Select,
-  Typography,
-} from 'antd'
+  Text,
+} from '@/components/ui'
 import { PlusOutlined, SearchOutlined, ClearOutlined } from '@ant-design/icons'
 import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'
@@ -16,11 +14,9 @@ import { Permissions } from '@/api-client/types'
 import { McpServerCard } from '@/modules/mcp/components/common/McpServerCard'
 import { McpServerDrawer } from '@/modules/mcp/components/common/McpServerDrawer'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
-
-const { Text } = Typography
+import { message } from '@/components/ui'
 
 export function McpServersSettings() {
-  const { message } = App.useApp()
   const {
     servers,
     loading,
@@ -131,8 +127,7 @@ export function McpServersSettings() {
             placeholder="Filter by status"
             value={statusFilter}
             onChange={setStatusFilter}
-            style={{ minWidth: 150 }}
-            allowClear
+            className="min-w-[150px]"
             aria-label="Filter servers by status"
             options={[
               { label: 'All Servers', value: 'all' },
@@ -148,7 +143,7 @@ export function McpServersSettings() {
                 the right empty-state copy below instead. */}
             {policyAllowsAdd && (
               <Button
-                type="primary"
+                variant="default"
                 icon={<PlusOutlined />}
                 onClick={handleAddServer}
               >
@@ -159,7 +154,7 @@ export function McpServersSettings() {
         </div>
 
         {(searchTerm || statusFilter !== 'all') && (
-          <Flex align="center" gap={8}>
+          <div className="flex items-center gap-2">
             <Text type="secondary" className="text-xs">
               Filters active:{' '}
               {[
@@ -170,14 +165,14 @@ export function McpServersSettings() {
                 .join(', ')}
             </Text>
             <Button
-              size="small"
-              type="text"
+              size="sm"
+              variant="ghost"
               icon={<ClearOutlined />}
               onClick={clearAllFilters}
             >
               Clear all
             </Button>
-          </Flex>
+          </div>
         )}
 
         {/* Servers List */}
@@ -204,21 +199,24 @@ export function McpServersSettings() {
         )}
 
         {totalServers > 0 && (
-          <Flex justify="end">
+          <div className="flex justify-end">
             <Pagination
+              previousLabel="Previous page" nextLabel="Next page" pageLabel={(p) => `Page ${p}`} aria-label="Pagination"
               current={storePage}
               total={totalServers}
               pageSize={storePageSize}
               showSizeChanger
+              pageSizeLabel="Page size"
+              onPageSizeChange={(size: number) => handlePageChange(1, size)}
               showQuickJumper
+              jumpLabel="Go to page"
               showTotal={(total, range) =>
                 `${range[0]}-${range[1]} of ${total} servers`
               }
               onChange={handlePageChange}
-              onShowSizeChange={handlePageChange}
-              pageSizeOptions={['5', '10', '20', '50']}
+              pageSizeOptions={[5, 10, 20, 50]}
             />
-          </Flex>
+          </div>
         )}
       </div>
 

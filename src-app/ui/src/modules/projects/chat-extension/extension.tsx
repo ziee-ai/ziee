@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
-import { App, Button, Popconfirm, Spin, Tag, Tooltip } from 'antd'
+import { Button, Confirm, Spin, Tag, Tooltip, message, dialog } from '@/components/ui'
 import type { MenuProps } from 'antd'
-import { getAppApi } from '@/lib/antdAppHolder'
 import {
   CloseOutlined,
   FolderOpenOutlined,
@@ -160,7 +159,7 @@ function ProjectChipForConversationHeader() {
   return (
     <div className="px-4 pt-2">
       <Tag
-        color="blue"
+        tone="info"
         className="cursor-pointer"
         onClick={() => navigate(`/projects/${project.id}`)}
       >
@@ -212,7 +211,7 @@ const projectExtension: ChatExtension = createExtension({
         '[project extension] attach failed; conversation stays unfiled.',
         err,
       )
-      getAppApi().message.error('Failed to file this conversation into the project — saved as unfiled.')
+      message.error('Failed to file this conversation into the project — saved as unfiled.')
       setCached(conversation.id, null)
       return
     }
@@ -274,19 +273,16 @@ function ProjectTagWithRemove({
   project: Project
   navigate: (path: string) => void
 }) {
-  const { message: msg } = App.useApp()
   const [removeOpen, setRemoveOpen] = useState(false)
-  const [removing, setRemoving] = useState(false)
+  const [, setRemoving] = useState(false)
 
   const handleRemove = async () => {
     setRemoving(true)
     try {
       await Stores.Projects.detachConversation(project.id, conversationId)
-      msg.success('Removed from project')
-      // Trailing component's event subscriber flips us to 'unfiled'
-      // when project.conversation_detached fires.
+      message.success('Removed from project')
     } catch (err) {
-      msg.error(
+      message.error(
         err instanceof Error ? err.message : 'Failed to remove from project',
       )
     } finally {
@@ -295,47 +291,22 @@ function ProjectTagWithRemove({
     }
   }
 
-  // Visibility wrapper: hover-only by default; pin visible while
-  // the popconfirm is open so moving the mouse to the bubble
-  // (which renders in a body-level portal) doesn't hide the anchor.
-  // The wrapper div is what `group-hover` targets — antd Tag's own
-  // styles don't always combine cleanly with utility opacity, but a
-  // plain wrapper is rock-solid.
   return (
     <div
       className={`inline-flex items-center transition-opacity ${
         removeOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
       }`}
     >
-      <Popconfirm
+      <Confirm
         title="Remove from project?"
         description="The conversation becomes unfiled. It is NOT deleted."
-        open={removeOpen}
         onConfirm={handleRemove}
         onCancel={() => setRemoveOpen(false)}
         okText="Remove"
         cancelText="Cancel"
-        okButtonProps={{ loading: removing }}
-        placement="topRight"
       >
-        <Tag
-          color="processing"
-          icon={<FolderOpenOutlined />}
-          closable
-          closeIcon={
-            <Tooltip title="Remove from project">
-              <CloseOutlined />
-            </Tooltip>
-          }
-          onClose={(e: React.MouseEvent<HTMLElement>) => {
-            // preventDefault: stop the tag from auto-hiding itself.
-            // stopPropagation: don't fall through to the tag's onClick
-            // (which would navigate to the project).
-            e.preventDefault()
-            e.stopPropagation()
-            setRemoveOpen(true)
-          }}
-          className="cursor-pointer !mr-0"
+        <span
+          className="inline-flex items-center cursor-pointer"
           role="button"
           tabIndex={0}
           aria-label={`Open project ${project.name || ''}`}
@@ -350,9 +321,28 @@ function ProjectTagWithRemove({
             }
           }}
         >
-          {project.name ? `In project: ${project.name}` : 'In project'}
-        </Tag>
-      </Popconfirm>
+          <Tag
+            tone="info"
+            icon={<FolderOpenOutlined />}
+            className="!mr-0"
+          >
+            {project.name ? `In project: ${project.name}` : 'In project'}
+          </Tag>
+          <Tooltip title="Remove from project">
+            <button
+              type="button"
+              className="ml-1 inline-flex items-center justify-center rounded-full p-0.5 text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Remove from project"
+              onClick={(e: React.MouseEvent) => {
+                e.stopPropagation()
+                setRemoveOpen(true)
+              }}
+            >
+              <CloseOutlined className="h-3 w-3" />
+            </button>
+          </Tooltip>
+        </span>
+      </Confirm>
     </div>
   )
 }
@@ -442,7 +432,7 @@ function ProjectMembershipTrailing({
   }, [conversationId])
 
   if (state.kind === 'loading') {
-    return <Spin size="small" />
+    return <Spin size="sm" label="Loading" />
   }
 
   if (state.kind === 'in_project') {
@@ -467,8 +457,8 @@ function ProjectMembershipTrailing({
       >
         <Tooltip title="Add to project">
           <Button
-            type="text"
-            size="small"
+            variant="ghost"
+            size="sm"
             icon={<PlusCircleOutlined />}
             aria-label="Add to project"
             onClick={(e: React.MouseEvent) => {
@@ -508,10 +498,6 @@ function useProjectMenuContribution(conversation: Conversation): {
   keepMenuOpen: boolean
 } {
   const navigate = useNavigate()
-  // `modal` from App.useApp() — NOT the static `Modal.confirm`. The
-  // static API renders outside the ConfigProvider tree and ignores
-  // the active theme tokens, so it shows a light modal on dark mode.
-  const { message: msg, modal } = App.useApp()
   const [project, setProject] = useState<Project | null>(() => {
     const cached = getCached(conversation.id)
     return cached && cached.name ? cached : null
@@ -577,24 +563,21 @@ function useProjectMenuContribution(conversation: Conversation): {
   // normally on menu-item click.
   const confirmRemove = () => {
     if (!project) return
-    modal.confirm({
+    void dialog.confirm({
       title: 'Remove from project?',
-      content: 'The conversation becomes unfiled. It is NOT deleted.',
+      description: 'The conversation becomes unfiled. It is NOT deleted.',
       okText: 'Remove',
       cancelText: 'Cancel',
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        try {
-          await Stores.Projects.detachConversation(project.id, conversation.id)
-          msg.success('Removed from project')
-        } catch (err) {
-          msg.error(
-            err instanceof Error
-              ? err.message
-              : 'Failed to remove from project',
-          )
-        }
-      },
+    }).then(async (ok) => {
+      if (!ok) return
+      try {
+        await Stores.Projects.detachConversation(project.id, conversation.id)
+        message.success('Removed from project')
+      } catch (err) {
+        message.error(
+          err instanceof Error ? err.message : 'Failed to remove from project',
+        )
+      }
     })
   }
 
@@ -627,11 +610,13 @@ function useProjectMenuContribution(conversation: Conversation): {
       : []
 
   const overlays = (
-    <AddToProjectModal
-      open={addOpen}
-      conversationId={conversation.id}
-      onClose={() => setAddOpen(false)}
-    />
+    <>
+      <AddToProjectModal
+        open={addOpen}
+        conversationId={conversation.id}
+        onClose={() => setAddOpen(false)}
+      />
+    </>
   )
 
   // Both the add-modal and the remove-confirm are screen-covering

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ImportOutlined } from '@ant-design/icons'
-import { App, Button, Empty, Space, Spin, Typography } from 'antd'
+import { Button, Empty, message, Space, Spin, Text } from '@/components/ui'
 import { ApiClient } from '@/api-client'
 import { Permissions } from '@/api-client/types'
 import type { BibliographyEntry } from '@/api-client/types'
@@ -9,11 +9,8 @@ import { Stores } from '@/core/stores'
 import { CitationCard } from '../../components/CitationCard'
 import { ImportCitationsModal } from '../../components/ImportCitationsModal'
 
-const { Text } = Typography
-
 /** Full management of a project's reference list — inside the knowledge drawer. */
 export function ProjectBibliographyManagePanel() {
-  const { message } = App.useApp()
   // Import-into-project + per-card Delete require manage; gate them so a
   // read-only (`citations::use`) viewer doesn't see actions that would 403.
   const canManage = usePermission(Permissions.CitationsManage)
@@ -34,7 +31,7 @@ export function ProjectBibliographyManagePanel() {
     } finally {
       setLoading(false)
     }
-  }, [projectId, message])
+  }, [projectId])
 
   useEffect(() => {
     void reload()
@@ -51,11 +48,11 @@ export function ProjectBibliographyManagePanel() {
   if (!projectId) return <Empty description="Open a project to manage its references." />
 
   return (
-    <Space direction="vertical" style={{ width: '100%' }}>
+    <Space direction="vertical" className="w-full">
       <Space>
         {canManage && (
           <Button
-            type="primary"
+            variant="default"
             icon={<ImportOutlined />}
             onClick={() => setImportOpen(true)}
           >
@@ -66,7 +63,7 @@ export function ProjectBibliographyManagePanel() {
       </Space>
 
       {loading ? (
-        <Spin />
+        <Spin label="Loading" />
       ) : entries.length === 0 ? (
         <Empty description="No references in this project yet." />
       ) : (

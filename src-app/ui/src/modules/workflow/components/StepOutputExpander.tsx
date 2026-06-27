@@ -1,10 +1,8 @@
-import { App, Collapse, Spin, Typography } from 'antd'
+import { Spin, Accordion, Paragraph, message } from '@/components/ui'
 import { useState } from 'react'
 import { Streamdown } from 'streamdown'
 import { ApiClient } from '@/api-client'
 import { StreamdownErrorBoundary } from '@/modules/chat/core/utils/StreamdownErrorBoundary'
-
-const { Paragraph } = Typography
 
 interface StepOutputExpanderProps {
   runId: string
@@ -26,7 +24,6 @@ export function StepOutputExpander({
   stepId,
   parsedAs,
 }: StepOutputExpanderProps) {
-  const { message } = App.useApp()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [content, setContent] = useState<string | null>(null)
@@ -72,7 +69,7 @@ export function StepOutputExpander({
   }
 
   const body = () => {
-    if (loading) return <Spin size="small" />
+    if (loading) return <Spin size="sm" label="Loading" />
     if (error) {
       return (
         <Paragraph type="secondary" className="text-xs !mb-0">
@@ -100,11 +97,10 @@ export function StepOutputExpander({
   }
 
   return (
-    <Collapse
-      ghost
-      size="small"
-      activeKey={open ? ['output'] : []}
-      onChange={keys => {
+    <Accordion
+      type="multiple"
+      value={open ? ['output'] : []}
+      onValueChange={(keys: string[]) => {
         const next = keys.length > 0
         setOpen(next)
         if (next && content === null && !loading) void fetchOutput()

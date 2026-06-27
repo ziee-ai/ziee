@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { App, Modal, Select, Typography } from 'antd'
+import { Dialog, Button, message, Text, Combobox } from '@/components/ui'
 import { Stores } from '@/core/stores'
-
-const { Text } = Typography
 
 interface AddToProjectModalProps {
   open: boolean
@@ -22,7 +20,6 @@ export function AddToProjectModal({
   onClose,
   onAttached,
 }: AddToProjectModalProps) {
-  const { message } = App.useApp()
   const { projects, isInitialized, loading } = Stores.Projects
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -67,14 +64,22 @@ export function AddToProjectModal({
   }
 
   return (
-    <Modal
+    <Dialog
       title="Add to project"
       open={open}
-      onCancel={onClose}
-      onOk={handleOk}
-      okText="Add"
-      okButtonProps={{ disabled: !selectedId, loading: submitting }}
-      destroyOnHidden
+      onOpenChange={(v) => { if (!v) onClose() }}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button
+            onClick={handleOk}
+            disabled={!selectedId}
+            loading={submitting}
+          >
+            Add
+          </Button>
+        </div>
+      }
     >
       <div className="flex flex-col gap-3">
         <Text type="secondary">
@@ -82,19 +87,16 @@ export function AddToProjectModal({
           receiving the project's instructions, knowledge files, and
           MCP defaults on subsequent sends.
         </Text>
-        <Select
+        <Combobox
           placeholder="Pick a project…"
-          showSearch={{ optionFilterProp: 'label' }}
-          loading={loading}
+          searchPlaceholder="Search projects…"
           options={options}
           value={selectedId ?? undefined}
           onChange={v => setSelectedId(v ?? null)}
-          notFoundContent={
-            loading ? 'Loading…' : 'No projects — create one first.'
-          }
+          emptyText={loading ? 'Loading…' : 'No projects — create one first.'}
           className="w-full"
         />
       </div>
-    </Modal>
+    </Dialog>
   )
 }

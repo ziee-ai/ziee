@@ -1,6 +1,5 @@
 import { memo } from 'react'
-import { Avatar, theme } from 'antd'
-import { UserOutlined } from '@ant-design/icons'
+import { Avatar } from '@/components/ui'
 import type { MessageWithContent } from '@/api-client/types'
 import { ExtensionSlot } from '@/modules/chat/core/extensions'
 import { ContentRenderer } from '@/modules/chat/components/ContentRenderer'
@@ -14,7 +13,6 @@ export const ChatMessage = memo(function ChatMessage({
   message: MessageWithContent
 }) {
   const isUser = message.role === 'user'
-  const { token } = theme.useToken()
 
   // Check if message has any content to render
   if (!message.contents || message.contents.length === 0) {
@@ -71,17 +69,13 @@ export const ChatMessage = memo(function ChatMessage({
       {bubbleBlocks.length > 0 && (
         <div
           key={message.id}
-          className={`flex gap-2 rounded-lg relative min-w-36 flex-col`}
-          style={{
-            backgroundColor: isUser ? token.colorBgMask : 'transparent',
-            border: isUser ? `1px solid ${token.colorBorderSecondary}` : 'none',
-            width: isUser ? 'fit-content' : '100%',
-            padding: isUser ? '8px 8px' : '0px',
-          }}
+          className={`flex gap-2 rounded-lg relative min-w-36 flex-col ${
+            isUser ? 'bg-card border-border w-fit p-2' : 'bg-transparent w-full p-0'
+          }`}
         >
           <div className={'flex items-start gap-2 w-full relative'}>
             <div className={`flex ${!isUser ? 'hidden' : ''}`}>
-              <Avatar size={24} icon={<UserOutlined />} />
+              <Avatar src={undefined} className="h-8 w-8" />
             </div>
 
             {/* Message content */}

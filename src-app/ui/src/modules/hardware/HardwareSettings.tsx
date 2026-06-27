@@ -1,14 +1,14 @@
 import {
   Alert,
-  App,
   Button,
   Card,
   Progress,
   Spin,
   Statistic,
   Tag,
-  Typography,
-} from 'antd'
+  Text,
+  message,
+} from '@/components/ui'
 import { useEffect } from 'react'
 import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'
@@ -18,12 +18,7 @@ import { formatBytes } from '@/modules/hardware/utils/formatBytes'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { HardwareMonitorButton } from '@/modules/hardware/HardwareMonitorButton'
 
-const { Text } = Typography
-
 export default function HardwareSettings() {
-  const { message } = App.useApp()
-
-  // Hardware store state
   const {
     hardwareInfo,
     hardwareLoading,
@@ -52,7 +47,7 @@ export default function HardwareSettings() {
     }
   }, [canMonitor])
 
-  // Show errors
+  // Show errors – using message.error from the kit barrel – no App.useApp
   useEffect(() => {
     if (hardwareError) {
       message.error(`Hardware Error: ${hardwareError}`)
@@ -63,7 +58,7 @@ export default function HardwareSettings() {
     if (sseError) {
       message.error(`Connection Error: ${sseError}`)
     }
-  }, [hardwareError, usageError, sseError, message])
+  }, [hardwareError, usageError, sseError])
 
   if (hardwareLoading) {
     return (
@@ -79,8 +74,7 @@ export default function HardwareSettings() {
         <Alert
           title="Hardware Information Unavailable"
           description={hardwareError}
-          type="error"
-          showIcon
+          tone="error"
         />
       </SettingsPageContainer>
     )
@@ -113,7 +107,7 @@ export default function HardwareSettings() {
 
   const renderCPUCard = () => (
     <Card title="CPU">
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div className="flex flex-col gap-4">
         <div className="flex flex-wrap gap-6">
           <Statistic
             title="Model"
@@ -144,22 +138,21 @@ export default function HardwareSettings() {
           <div>
             <Text strong>CPU Usage</Text>
             <Progress
-              percent={currentUsage.cpu.usage_percentage}
-              status={
-                currentUsage.cpu.usage_percentage > 90 ? 'exception' : 'active'
-              }
+              value={currentUsage.cpu.usage_percentage}
+              tone={currentUsage.cpu.usage_percentage > 90 ? 'error' : 'primary'}
               format={percent =>
                 `${percent != null ? percent.toFixed(1) : '0.0'}%`
               }
+              aria-label="CPU usage"
             />
-            <div className="flex gap-3" style={{ marginTop: '8px' }}>
+            <div className="flex gap-3 mt-2">
               {currentUsage.cpu.temperature && (
-                <Text type="secondary" style={{ fontSize: '12px' }}>
+                <Text type="secondary" className="text-xs">
                   Temperature: {currentUsage.cpu.temperature}°C
                 </Text>
               )}
               {currentUsage.cpu.frequency && (
-                <Text type="secondary" style={{ fontSize: '12px' }}>
+                <Text type="secondary" className="text-xs">
                   Current: {currentUsage.cpu.frequency} MHz
                 </Text>
               )}
@@ -172,29 +165,23 @@ export default function HardwareSettings() {
 
   const renderMemoryCard = () => (
     <Card title="Memory">
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div className="flex flex-col gap-4">
         <div className="flex flex-wrap gap-6">
           <div>
-            <Text
-              type="secondary"
-              style={{ fontSize: '12px', display: 'block' }}
-            >
+            <Text type="secondary" className="text-xs block">
               Total RAM
             </Text>
-            <div style={{ fontSize: '24px', fontWeight: 600 }}>
+            <div className="text-2xl font-semibold">
               {formatBytes(hardwareInfo?.memory.total_ram || 0)}
             </div>
           </div>
           {hardwareInfo?.memory.total_swap !== undefined &&
             hardwareInfo.memory.total_swap > 0 && (
               <div>
-                <Text
-                  type="secondary"
-                  style={{ fontSize: '12px', display: 'block' }}
-                >
+                <Text type="secondary" className="text-xs block">
                   Total Swap
                 </Text>
-                <div style={{ fontSize: '24px', fontWeight: 600 }}>
+                <div className="text-2xl font-semibold">
                   {formatBytes(hardwareInfo.memory.total_swap)}
                 </div>
               </div>
@@ -204,21 +191,18 @@ export default function HardwareSettings() {
           <div>
             <Text strong>Memory Usage</Text>
             <Progress
-              percent={currentUsage.memory.usage_percentage}
-              status={
-                currentUsage.memory.usage_percentage > 90
-                  ? 'exception'
-                  : 'active'
-              }
+              value={currentUsage.memory.usage_percentage}
+              tone={currentUsage.memory.usage_percentage > 90 ? 'error' : 'primary'}
               format={percent =>
                 `${percent != null ? percent.toFixed(1) : '0.0'}%`
               }
+              aria-label="Memory usage"
             />
-            <div className="flex gap-3" style={{ marginTop: '8px' }}>
-              <Text type="secondary" style={{ fontSize: '12px' }}>
+            <div className="flex gap-3 mt-2">
+              <Text type="secondary" className="text-xs">
                 Used: {formatBytes(currentUsage.memory.used_ram)}
               </Text>
-              <Text type="secondary" style={{ fontSize: '12px' }}>
+              <Text type="secondary" className="text-xs">
                 Available: {formatBytes(currentUsage.memory.available_ram)}
               </Text>
             </div>
@@ -251,74 +235,47 @@ export default function HardwareSettings() {
 
       return (
         <Card key={index} title={gpu.name}>
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '16px',
-            }}
-          >
+          <div className="flex flex-col gap-4">
             <div className="flex flex-wrap gap-6">
               <div>
-                <Text
-                  type="secondary"
-                  style={{ fontSize: '12px', display: 'block' }}
-                >
+                <Text type="secondary" className="text-xs block">
                   Vendor
                 </Text>
-                <div style={{ fontSize: '24px', fontWeight: 600 }}>
-                  {gpu.vendor}
-                </div>
+                <div className="text-2xl font-semibold">{gpu.vendor}</div>
               </div>
               {gpu.memory ? (
                 <div>
-                  <Text
-                    type="secondary"
-                    style={{ fontSize: '12px', display: 'block' }}
-                  >
-                    {gpu.vendor?.includes('Apple')
-                      ? 'Dedicated VRAM'
-                      : 'Memory'}
+                  <Text type="secondary" className="text-xs block">
+                    {gpu.vendor?.includes('Apple') ? 'Dedicated VRAM' : 'Memory'}
                   </Text>
-                  <div style={{ fontSize: '24px', fontWeight: 600 }}>
+                  <div className="text-2xl font-semibold">
                     {formatBytes(gpu.memory)}
                   </div>
                 </div>
               ) : gpu.vendor?.includes('Apple') ? (
                 <div>
-                  <Text
-                    type="secondary"
-                    style={{ fontSize: '12px', display: 'block' }}
-                  >
+                  <Text type="secondary" className="text-xs block">
                     Memory Architecture
                   </Text>
-                  <div style={{ fontSize: '24px', fontWeight: 600 }}>
-                    Unified Memory
-                  </div>
+                  <div className="text-2xl font-semibold">Unified Memory</div>
                 </div>
               ) : null}
               {gpu.driver_version && (
                 <div>
-                  <Text
-                    type="secondary"
-                    style={{ fontSize: '12px', display: 'block' }}
-                  >
+                  <Text type="secondary" className="text-xs block">
                     Driver
                   </Text>
-                  <div style={{ fontSize: '24px', fontWeight: 600 }}>
+                  <div className="text-2xl font-semibold">
                     {gpu.driver_version}
                   </div>
                 </div>
               )}
               {gpu.vendor?.includes('Apple') && hardwareInfo?.memory && (
                 <div>
-                  <Text
-                    type="secondary"
-                    style={{ fontSize: '12px', display: 'block' }}
-                  >
+                  <Text type="secondary" className="text-xs block">
                     Shared System Memory
                   </Text>
-                  <div style={{ fontSize: '24px', fontWeight: 600 }}>
+                  <div className="text-2xl font-semibold">
                     {formatBytes(hardwareInfo.memory.total_ram)}
                   </div>
                 </div>
@@ -326,42 +283,30 @@ export default function HardwareSettings() {
             </div>
 
             <div>
-              <Text strong style={{ marginBottom: '8px', display: 'block' }}>
+              <Text strong className="mb-2 block">
                 Compute Support
               </Text>
               <div className="flex flex-wrap gap-1">
                 <Tag
-                  color={
-                    gpu.compute_capabilities.cuda_support ? 'green' : 'default'
-                  }
+                  tone={gpu.compute_capabilities.cuda_support ? 'success' : 'info'}
                 >
                   CUDA {gpu.compute_capabilities.cuda_support ? '✓' : '✗'}
                   {gpu.compute_capabilities.cuda_version &&
                     ` (${gpu.compute_capabilities.cuda_version})`}
                 </Tag>
                 <Tag
-                  color={
-                    gpu.compute_capabilities.metal_support ? 'green' : 'default'
-                  }
+                  tone={gpu.compute_capabilities.metal_support ? 'success' : 'info'}
                 >
                   Metal {gpu.compute_capabilities.metal_support ? '✓' : '✗'}
                 </Tag>
                 <Tag
-                  color={
-                    gpu.compute_capabilities.opencl_support
-                      ? 'green'
-                      : 'default'
-                  }
+                  tone={gpu.compute_capabilities.opencl_support ? 'success' : 'info'}
                 >
                   OpenCL {gpu.compute_capabilities.opencl_support ? '✓' : '✗'}
                 </Tag>
                 {gpu.compute_capabilities.vulkan_support !== undefined && (
                   <Tag
-                    color={
-                      gpu.compute_capabilities.vulkan_support
-                        ? 'green'
-                        : 'default'
-                    }
+                    tone={gpu.compute_capabilities.vulkan_support ? 'success' : 'info'}
                   >
                     Vulkan {gpu.compute_capabilities.vulkan_support ? '✓' : '✗'}
                   </Tag>
@@ -372,18 +317,15 @@ export default function HardwareSettings() {
             {gpuUsage && (
               <div>
                 {gpuUsage.utilization_percentage !== undefined && (
-                  <div style={{ marginBottom: '12px' }}>
+                  <div className="mb-3">
                     <Text strong>GPU Utilization</Text>
                     <Progress
-                      percent={gpuUsage.utilization_percentage}
-                      status={
-                        gpuUsage.utilization_percentage > 90
-                          ? 'exception'
-                          : 'active'
-                      }
+                      value={gpuUsage.utilization_percentage}
+                      tone={gpuUsage.utilization_percentage > 90 ? 'error' : 'primary'}
                       format={percent =>
                         `${percent != null ? percent.toFixed(1) : '0.0'}%`
                       }
+                      aria-label="GPU utilization"
                     />
                   </div>
                 )}
@@ -391,49 +333,41 @@ export default function HardwareSettings() {
                 {(gpuUsage.memory_usage_percentage !== undefined ||
                   (gpuUsage.memory_used !== undefined &&
                     gpuUsage.memory_total !== undefined)) && (
-                  <div style={{ marginBottom: '12px' }}>
+                  <div className="mb-3">
                     <Text strong>
-                      {gpu.vendor?.includes('Apple')
-                        ? 'System Memory Usage'
-                        : 'GPU Memory'}
+                      {gpu.vendor?.includes('Apple') ? 'System Memory Usage' : 'GPU Memory'}
                     </Text>
                     {gpuUsage.memory_usage_percentage !== undefined ? (
                       <Progress
-                        percent={gpuUsage.memory_usage_percentage}
-                        status={
-                          gpuUsage.memory_usage_percentage > 90
-                            ? 'exception'
-                            : 'active'
-                        }
+                        value={gpuUsage.memory_usage_percentage}
+                        tone={gpuUsage.memory_usage_percentage > 90 ? 'error' : 'primary'}
                         format={percent =>
                           `${percent != null ? percent.toFixed(1) : '0.0'}%`
                         }
+                        aria-label="GPU memory usage"
                       />
                     ) : gpuUsage.memory_used !== undefined &&
                       gpuUsage.memory_total !== undefined ? (
                       <Progress
-                        percent={
+                        value={
                           (gpuUsage.memory_used / gpuUsage.memory_total) * 100
                         }
-                        status={
-                          (gpuUsage.memory_used / gpuUsage.memory_total) * 100 >
-                          90
-                            ? 'exception'
-                            : 'active'
+                        tone={
+                          (gpuUsage.memory_used / gpuUsage.memory_total) * 100 > 90
+                            ? 'error'
+                            : 'primary'
                         }
                         format={percent =>
                           `${percent != null ? percent.toFixed(1) : '0.0'}%`
                         }
+                        aria-label="GPU memory usage"
                       />
                     ) : null}
 
                     {gpuUsage.memory_used !== undefined &&
                       gpuUsage.memory_total !== undefined && (
-                        <div style={{ marginTop: '4px' }}>
-                          <Text
-                            type="secondary"
-                            style={{ fontSize: '12px', display: 'block' }}
-                          >
+                        <div className="mt-1">
+                          <Text type="secondary" className="text-xs block">
                             {gpu.vendor?.includes('Apple')
                               ? 'GPU Memory Used: '
                               : 'Used: '}
@@ -443,14 +377,7 @@ export default function HardwareSettings() {
                               : ` / ${formatBytes(gpuUsage.memory_total)}`}
                           </Text>
                           {gpu.vendor?.includes('Apple') && (
-                            <Text
-                              type="secondary"
-                              style={{
-                                fontSize: '11px',
-                                display: 'block',
-                                fontStyle: 'italic',
-                              }}
-                            >
+                            <Text type="secondary" className="text-xs italic block">
                               Apple Silicon uses unified memory architecture
                             </Text>
                           )}
@@ -465,22 +392,17 @@ export default function HardwareSettings() {
                     gpuUsage.memory_used !== undefined ||
                     gpuUsage.temperature !== undefined ||
                     gpuUsage.power_usage !== undefined) && (
-                    <div style={{ marginBottom: '12px' }}>
-                      <Text
-                        strong
-                        style={{ display: 'block', marginBottom: '8px' }}
-                      >
+                    <div className="mb-3">
+                      <Text strong className="block mb-2">
                         Real-time Statistics
                       </Text>
                       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                         {gpuUsage.utilization_percentage !== undefined && (
                           <div>
-                            <Text type="secondary" style={{ fontSize: '11px' }}>
+                            <Text type="secondary" className="text-xs">
                               GPU Usage
                             </Text>
-                            <div
-                              style={{ fontSize: '14px', fontWeight: 'bold' }}
-                            >
+                            <div className="text-sm font-bold">
                               {gpuUsage.utilization_percentage != null
                                 ? gpuUsage.utilization_percentage.toFixed(1)
                                 : '0.0'}
@@ -490,12 +412,10 @@ export default function HardwareSettings() {
                         )}
                         {gpuUsage.memory_usage_percentage !== undefined && (
                           <div>
-                            <Text type="secondary" style={{ fontSize: '11px' }}>
+                            <Text type="secondary" className="text-xs">
                               Memory Usage
                             </Text>
-                            <div
-                              style={{ fontSize: '14px', fontWeight: 'bold' }}
-                            >
+                            <div className="text-sm font-bold">
                               {gpuUsage.memory_usage_percentage != null
                                 ? gpuUsage.memory_usage_percentage.toFixed(1)
                                 : '0.0'}
@@ -505,36 +425,30 @@ export default function HardwareSettings() {
                         )}
                         {gpuUsage.memory_used !== undefined && (
                           <div>
-                            <Text type="secondary" style={{ fontSize: '11px' }}>
+                            <Text type="secondary" className="text-xs">
                               Memory Used
                             </Text>
-                            <div
-                              style={{ fontSize: '14px', fontWeight: 'bold' }}
-                            >
+                            <div className="text-sm font-bold">
                               {formatBytes(gpuUsage.memory_used)}
                             </div>
                           </div>
                         )}
                         {gpuUsage.temperature !== undefined && (
                           <div>
-                            <Text type="secondary" style={{ fontSize: '11px' }}>
+                            <Text type="secondary" className="text-xs">
                               Temperature
                             </Text>
-                            <div
-                              style={{ fontSize: '14px', fontWeight: 'bold' }}
-                            >
+                            <div className="text-sm font-bold">
                               {gpuUsage.temperature}°C
                             </div>
                           </div>
                         )}
                         {gpuUsage.power_usage !== undefined && (
                           <div>
-                            <Text type="secondary" style={{ fontSize: '11px' }}>
+                            <Text type="secondary" className="text-xs">
                               Power Draw
                             </Text>
-                            <div
-                              style={{ fontSize: '14px', fontWeight: 'bold' }}
-                            >
+                            <div className="text-sm font-bold">
                               {gpuUsage.power_usage != null
                                 ? gpuUsage.power_usage.toFixed(1)
                                 : '0.0'}
@@ -548,12 +462,12 @@ export default function HardwareSettings() {
 
                 <div className="flex gap-3">
                   {gpuUsage.temperature !== undefined && (
-                    <Text type="secondary" style={{ fontSize: '12px' }}>
+                    <Text type="secondary" className="text-xs">
                       Temperature: {gpuUsage.temperature}°C
                     </Text>
                   )}
                   {gpuUsage.power_usage !== undefined && (
-                    <Text type="secondary" style={{ fontSize: '12px' }}>
+                    <Text type="secondary" className="text-xs">
                       Power: {gpuUsage.power_usage}W
                     </Text>
                   )}
@@ -576,31 +490,27 @@ export default function HardwareSettings() {
   }
 
   const renderConnectionStatus = () => (
-    <Card
-      style={{
-        display: sseConnected ? 'none' : 'block',
-      }}
-    >
+    <Card className={sseConnected ? 'hidden' : 'block'}>
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex gap-3 flex-wrap">
           <Text strong>Real-time Monitoring:</Text>
-          <Tag color={sseConnected ? 'green' : 'red'}>
+          <Tag tone={sseConnected ? 'success' : 'error'}>
             {sseConnected ? 'Connected' : 'Disconnected'}
           </Tag>
         </div>
         {canMonitor && !sseConnected && !usageLoading && (
-          <Button type="primary" onClick={handleManualConnect}>
+          <Button variant="default" onClick={handleManualConnect}>
             Connect
           </Button>
         )}
         {usageLoading && (
           <div className="flex items-center gap-2">
-            <Spin />
+            <Spin label="Connecting" />
             <Text type="secondary">Connecting...</Text>
           </div>
         )}
         {currentUsage && (
-          <Text type="secondary" style={{ fontSize: '12px' }}>
+          <Text type="secondary" className="text-xs">
             Last update: {new Date(currentUsage.timestamp).toLocaleTimeString()}
           </Text>
         )}
