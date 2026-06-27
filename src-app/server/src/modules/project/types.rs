@@ -47,10 +47,33 @@ pub struct UpdateProjectRequest {
     /// Tri-state on FKs (missing = no change; null = clear; uuid = set).
     /// The frontend uses the existing deserialize_nullable_field helper
     /// from the chat module for symmetry.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_nullable_field",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub default_assistant_id: Option<Option<Uuid>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_nullable_field",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub default_model_id: Option<Option<Uuid>>,
+}
+
+/// Tri-state field deserializer: a missing key yields `None` (no change)
+/// while an explicit JSON `null` yields `Some(None)` (clear). Without this
+/// custom deserializer serde collapses both cases to `None`, so the
+/// "clear" arm is unreachable. Mirrors
+/// `chat::core::types::deserialize_nullable_field`.
+fn deserialize_nullable_field<'de, D, T>(
+    deserializer: D,
+) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de>,
+{
+    Ok(Some(Option::<T>::deserialize(deserializer)?))
 }
 
 /// List response.
