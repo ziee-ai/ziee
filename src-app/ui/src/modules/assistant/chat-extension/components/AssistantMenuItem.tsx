@@ -102,7 +102,16 @@ function AssistantOption({
   return (
     <>
       <div
+        role="button"
+        tabIndex={0}
+        aria-pressed={active}
         onClick={onClick}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onClick()
+          }
+        }}
         className="cursor-pointer px-3 py-1.5 rounded-md"
         style={{
           fontSize: 14,
@@ -114,6 +123,13 @@ function AssistantOption({
             e.currentTarget.style.backgroundColor = token.colorFillSecondary
         }}
         onMouseLeave={e => {
+          if (!active) e.currentTarget.style.backgroundColor = 'transparent'
+        }}
+        onFocus={e => {
+          if (!active)
+            e.currentTarget.style.backgroundColor = token.colorFillSecondary
+        }}
+        onBlur={e => {
           if (!active) e.currentTarget.style.backgroundColor = 'transparent'
         }}
       >
