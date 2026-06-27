@@ -176,7 +176,7 @@ The vendored pgvector source is a git submodule at
 - Onboarding step `memory-setup` in the `getting-started` guide asks
   the admin to enable memory + pick an embedding model.
 - User-facing pages: `/memories`, `/settings/memory`,
-  `/settings/admin/memory`.
+  `/settings/memory-admin`.
 
 ---
 
@@ -796,7 +796,7 @@ Cross-cutting on the chat module:
 ProjectDrawer), pages (ProjectsListPage, ProjectDetailPage), components
 (ProjectFormDrawer, ProjectFilesPanel, ProjectConversationsList,
 ProjectMcpSettingsPanel, ConversationProjectChip), sidebar widget
-(`ProjectsNavWidget` in `sidebarContent` at order 5, above
+(`ProjectsNavWidget` in `sidebarNavigation` at order 5, above
 `RecentConversationsWidget`).
 
 The chat module's `RecentConversationsWidget` is wrapped at the slot
