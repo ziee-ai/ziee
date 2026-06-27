@@ -352,6 +352,11 @@ export const useSandboxRootfsVersionsStore = create<SandboxRootfsVersionsStore>(
                     for (const key of Object.keys(s.installTasks)) {
                       const t = s.installTasks[key]
                       if (t.task_id === d.task_id) {
+                        // Don't let a late/out-of-order progress event resurrect
+                        // a task that already reached a terminal status.
+                        if (t.status === 'completed' || t.status === 'failed') {
+                          continue
+                        }
                         t.phase = d.phase
                         t.message = d.message
                       }
