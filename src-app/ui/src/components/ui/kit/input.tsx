@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Eye, EyeOff, Loader2 } from 'lucide-react'
+import { Eye, EyeOff, Loader2, X } from 'lucide-react'
 import { Input as InputBase } from '../shadcn/input'
 import { Skeleton } from '../shadcn/skeleton'
 import { useSurface } from './surface'
@@ -15,20 +15,33 @@ export type InputProps = Omit<React.ComponentProps<'input'>, 'size' | 'prefix' |
   prefix?: React.ReactNode
   suffix?: React.ReactNode
   invalid?: boolean
+  /** Show a clear (×) button when there's a value (legacy `allowClear`). Fires onChange with ''. */
+  allowClear?: boolean
 } & KitStyleProps
 
 const heightFor = (size?: 'sm' | 'default' | 'lg') =>
   size === 'sm' ? 'h-8 text-xs' : size === 'lg' ? 'h-10' : 'h-9'
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ size: ownSize, loading, prefix, suffix, invalid, disabled, readOnly, style, allowStyle, className, ...props }, ref) => {
+  ({ size: ownSize, loading, prefix, suffix, invalid, disabled, readOnly, allowClear, style, allowStyle, className, ...props }, ref) => {
     const s = useSurface({ disabled, readOnly, size: ownSize })
 
     if (s.loading) {
       return <Skeleton className={cn(heightFor(s.size), 'w-full rounded-md', className)} />
     }
 
-    const rightAdornment = loading ? <Loader2 className="size-4 animate-spin opacity-70" aria-hidden /> : suffix
+    const showClear = allowClear && props.value != null && props.value !== '' && !s.disabled && !s.readOnly && !loading
+    const clearBtn = showClear ? (
+      <button
+        type="button"
+        aria-label="Clear"
+        className="pointer-events-auto text-muted-foreground hover:text-foreground"
+        onClick={() => props.onChange?.({ target: { value: '' } } as React.ChangeEvent<HTMLInputElement>)}
+      >
+        <X className="size-4" aria-hidden />
+      </button>
+    ) : null
+    const rightAdornment = loading ? <Loader2 className="size-4 animate-spin opacity-70" aria-hidden /> : (clearBtn ?? suffix)
     const field = (
       <InputBase
         ref={ref}

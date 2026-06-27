@@ -1,11 +1,9 @@
 import { useMemo, useState } from 'react'
-import { Card, Empty, Select, Spin, Typography } from 'antd'
+import { Card, Empty, Combobox, Spin, Paragraph } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { CoreMemoryBlocksEditor } from '@/modules/memory/components/CoreMemoryBlocksEditor'
-
-const { Paragraph } = Typography
 
 const READ_PERM = Permissions.CoreMemoryRead
 
@@ -37,24 +35,23 @@ export function CoreMemorySection() {
 
       <div className="mb-4">
         {loading ? (
-          <Spin />
+          <Spin label="Loading assistants" />
         ) : assistants.length === 0 ? (
           <Empty
             description="No assistants yet"
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
           />
         ) : (
-          <Select
+          <Combobox
             className="w-full"
             placeholder="Pick an assistant"
             value={assistantId ?? undefined}
-            onChange={(v) => setAssistantId(v ?? null)}
+            onChange={(v: string) => setAssistantId(v ?? null)}
             options={assistants.map((a) => ({
               value: a.id,
               label: a.name,
             }))}
-            showSearch={{ optionFilterProp: 'label' }}
-            allowClear
+            emptyText="No assistants found"
+            searchPlaceholder="Search assistants"
           />
         )}
       </div>

@@ -1,12 +1,10 @@
 import { useState, useMemo } from 'react'
-import { Input, Select, Typography, Button } from 'antd'
+import { MultiSelect, Select, Text, Button, Input } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
-import { SearchOutlined, ClearOutlined } from '@ant-design/icons'
+import { ClearOutlined, SearchOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { ModelHubCard } from '@/modules/hub/modules/llm-models/components/ModelHubCard'
 import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
-
-const { Text } = Typography
 
 export function ModelsHubTab() {
   const { models, loading, error } = Stores.HubModels // Auto-loads via __init__
@@ -99,39 +97,36 @@ export function ModelsHubTab() {
             placeholder="Search models..."
             prefix={<SearchOutlined />}
             value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
+            onChange={(e) => setSearchTerm(e.target.value)}
             allowClear
             className="flex-1"
             aria-label="Search models"
           />
 
-          <Select
-            mode="multiple"
+          <MultiSelect
             placeholder="Filter by tags"
             value={selectedTags}
-            onChange={setSelectedTags}
+            onChange={(values: string[]) => setSelectedTags(values)}
             className="flex-1"
-            allowClear
-            maxTagCount="responsive"
+            removeLabel={(label) => `Remove ${label}`}
+            emptyText="No tags available"
+            searchPlaceholder="Search tags..."
             options={modelTags.map(tag => ({
-              key: tag,
               value: tag,
               label: tag,
             }))}
-            popupMatchSelectWidth={false}
             aria-label="Filter by tags"
           />
 
           <Select
             placeholder="Sort by"
             value={sortBy}
-            onChange={setSortBy}
+            onChange={(value: string) => setSortBy(value)}
             className="flex-1"
             options={[
               { value: 'name', label: 'ID' },
               { value: 'display_name', label: 'Display name' },
             ]}
-            popupMatchSelectWidth={false}
             aria-label="Sort models"
           />
         </div>
@@ -148,8 +143,8 @@ export function ModelsHubTab() {
                 .join(', ')}
             </Text>
             <Button
-              size="small"
-              type="text"
+              size="sm"
+              variant="ghost"
               icon={<ClearOutlined />}
               onClick={clearAllFilters}
               aria-label="Clear all filters"

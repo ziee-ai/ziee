@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import {
-  Typography,
+  Text,
+  Title,
+  Paragraph,
   Switch,
   Select,
   Alert,
@@ -9,7 +11,7 @@ import {
   Button,
   Space,
   Flex,
-} from 'antd'
+} from '@/components/ui'
 import {
   BulbOutlined,
   InfoCircleOutlined,
@@ -21,8 +23,6 @@ import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
-
-const { Title, Paragraph, Text } = Typography
 
 /**
  * MemorySetupStep — Plan §8 two-screen flow.
@@ -96,7 +96,7 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
   if (loading) {
     return (
       <div className="flex justify-center mt-8">
-        <Spin />
+        <Spin label="Loading" />
       </div>
     )
   }
@@ -135,7 +135,7 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
       </Paragraph>
 
       {error && (
-        <Alert type="error" title={error} showIcon className="mb-4" />
+        <Alert tone="error" title={error} className="mb-4" />
       )}
 
       <div className="border rounded-lg p-4 mb-4">
@@ -186,7 +186,7 @@ function PickModelScreen({
       <div className="flex items-center gap-3 mb-4">
         <Button
           icon={<ArrowLeftOutlined />}
-          size="small"
+          size="sm"
           onClick={onBack}
           aria-label="Back"
         />
@@ -204,20 +204,19 @@ function PickModelScreen({
       </Paragraph>
 
       {error && (
-        <Alert type="error" title={error} showIcon className="mb-4" />
+        <Alert tone="error" title={error} className="mb-4" />
       )}
 
       <div className="mb-2 flex items-center gap-2">
         <Text strong>Embedding model</Text>
         {noModelsAvailable && (
-          <Tag color="orange">No embedding-capable models</Tag>
+          <Tag tone="warning">No embedding-capable models</Tag>
         )}
       </div>
 
       {noModelsAvailable ? (
         <Alert
-          type="info"
-          showIcon
+          tone="info"
           icon={<InfoCircleOutlined />}
           title="No embedding-capable models found."
           description={
@@ -233,7 +232,7 @@ function PickModelScreen({
               </Text>
               <Space>
                 <Button
-                  type="primary"
+                  variant="default"
                   icon={<PlusOutlined />}
                   onClick={() => {
                     // Open the LLM Providers page in a NEW tab so the
@@ -273,7 +272,6 @@ function PickModelScreen({
             value: m.id,
             label: m.display_name || m.name,
           }))}
-          showSearch={{ optionFilterProp: 'label' }}
         />
       )}
 

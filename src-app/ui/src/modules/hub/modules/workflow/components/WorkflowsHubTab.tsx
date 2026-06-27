@@ -1,12 +1,10 @@
 import { SearchOutlined } from '@ant-design/icons'
-import { Input, Select, Typography } from 'antd'
+import { Input, MultiSelect, Text } from '@/components/ui'
 import { useMemo, useState } from 'react'
 import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'
 import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
 import { WorkflowHubCard } from './WorkflowHubCard'
-
-const { Text } = Typography
 
 export function WorkflowsHubTab() {
   const catalog = Stores.HubCatalog.catalog
@@ -49,7 +47,7 @@ export function WorkflowsHubTab() {
   }, [items, searchTerm, selectedTags, serverVersion])
 
   if (loading && items.length === 0) {
-    return <Loading tip="Loading workflows..." />
+    return <Loading tip="Loading workflows..." label="Loading workflows" />
   }
 
   return (
@@ -65,17 +63,18 @@ export function WorkflowsHubTab() {
             className="flex-1"
             aria-label="Search workflows"
           />
-          <Select
-            mode="multiple"
+          <MultiSelect
             placeholder="Filter by tags"
             value={selectedTags}
-            onChange={setSelectedTags}
+            onChange={(values: string[]) => {
+              setSelectedTags(values)
+            }}
             className="flex-1"
-            allowClear
-            maxTagCount="responsive"
             options={allTags.map(t => ({ value: t, label: t }))}
-            popupMatchSelectWidth={false}
             aria-label="Filter workflows by tags"
+            searchPlaceholder="Search tags..."
+            emptyText="No tags found"
+            removeLabel={(label) => `Remove ${label}`}
           />
         </div>
       </div>

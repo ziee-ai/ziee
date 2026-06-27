@@ -1,24 +1,10 @@
-// Generic knowledge-section shell for the project detail page.
-//
-// Owns the dual-surface UX (inline preview on the page + full
-// management UI in a side drawer) without knowing about any specific
-// knowledge kind. The content is supplied by `<ProjectExtensionSlot>`,
-// which fans out to every registered knowledge-kind extension (file,
-// future URL/notes/etc.).
-//
-// Per the project↔file inversion: this file replaces the old
-// `ProjectFilesManageDrawer.tsx` shell. The projects module no longer
-// imports anything from `@/modules/file/`.
-
 import { useState } from 'react'
-import { Button, Typography } from 'antd'
+import { Button, Text } from '@/components/ui'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import {
   DrawerOpenerProvider,
   ProjectExtensionSlot,
 } from '@/modules/projects/core/extensions'
-
-const { Text } = Typography
 
 export function ProjectKnowledgeSection() {
   const [open, setOpen] = useState(false)
@@ -32,7 +18,7 @@ export function ProjectKnowledgeSection() {
       <div className="flex items-center mb-2">
         <Text strong>Project knowledge</Text>
         <Button
-          size="small"
+          size="sm"
           onClick={openDrawer}
           aria-label="Manage knowledge files"
           className="!ml-auto"

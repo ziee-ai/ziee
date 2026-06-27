@@ -1,13 +1,11 @@
 import { useState, useMemo } from 'react'
-import { Input, Select, Typography, Button } from 'antd'
+import { Combobox, MultiSelect, Text, Button, Input } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
 import { SearchOutlined, ClearOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { AssistantHubCard } from '@/modules/hub/modules/assistants/components/AssistantHubCard'
 import { AssistantFormDrawer } from '@/modules/assistant/components/AssistantFormDrawer'
 import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
-
-const { Text } = Typography
 
 export function AssistantsHubTab() {
   const { assistants, loading, error } = Stores.HubAssistants // Auto-loads via __init__
@@ -97,39 +95,38 @@ export function AssistantsHubTab() {
             placeholder="Search assistants..."
             prefix={<SearchOutlined />}
             value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
+            onChange={(e) => setSearchTerm(e.target.value)}
             allowClear
             className="flex-1"
             aria-label="Search assistants"
           />
 
-          <Select
-            mode="multiple"
+          <MultiSelect
             placeholder="Filter by tags"
+            searchPlaceholder="Search tags..."
+            emptyText="No tags found"
             value={selectedTags}
-            onChange={setSelectedTags}
+            onChange={(value: string[]) => setSelectedTags(value)}
+            removeLabel={(label) => `Remove tag filter: ${label}`}
             className="flex-1"
-            allowClear
-            maxTagCount="responsive"
             options={assistantTags.map(tag => ({
-              key: tag,
               value: tag,
               label: tag,
             }))}
-            popupMatchSelectWidth={false}
             aria-label="Filter by tags"
           />
 
-          <Select
+          <Combobox
             placeholder="Sort by"
+            searchPlaceholder="Sort by..."
+            emptyText="No sort options"
             value={sortBy}
-            onChange={setSortBy}
+            onChange={(value: string) => setSortBy(value)}
             className="flex-1"
             options={[
               { value: 'name', label: 'ID' },
               { value: 'display_name', label: 'Display name' },
             ]}
-            popupMatchSelectWidth={false}
             aria-label="Sort assistants"
           />
         </div>
@@ -146,8 +143,8 @@ export function AssistantsHubTab() {
                 .join(', ')}
             </Text>
             <Button
-              size="small"
-              type="text"
+              size="sm"
+              variant="ghost"
               icon={<ClearOutlined />}
               onClick={clearAllFilters}
               aria-label="Clear all filters"

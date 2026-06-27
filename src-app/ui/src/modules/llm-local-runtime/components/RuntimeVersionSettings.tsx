@@ -1,4 +1,4 @@
-import { Flex, Tabs } from 'antd'
+import { Flex, Tabs } from '@/components/ui'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -47,7 +47,7 @@ export function RuntimeVersionSettings() {
       >
         <Flex className="flex-col gap-3">
           <Tabs
-            defaultActiveKey="llamacpp"
+            defaultValue="llamacpp"
             items={[
               {
                 key: 'llamacpp',

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { DownloadOutlined } from '@ant-design/icons'
-import { Alert, Button, Checkbox, Dropdown, Input, List, Segmented, Space, Tag, Typography } from 'antd'
+import { Button, Checkbox, Dropdown, Input, List, Segmented, Space, Tag, Text, Title, Paragraph } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import {
   type LiteratureRecord,
@@ -125,35 +125,33 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
 
   return (
     <div className="p-3 space-y-3 overflow-y-auto">
-      <Typography.Title level={5} className="!mb-0">
+      <Title level={5} className="!mb-0">
         Screening
-      </Typography.Title>
-      <Typography.Text type="secondary" className="text-xs">
+      </Title>
+      <Text type="secondary" className="text-xs">
         “{query}”
-      </Typography.Text>
+      </Text>
 
       {/* PRISMA-style counts */}
       <Space wrap size="small">
         <Tag>Identified: {identifiedTotal}</Tag>
         <Tag>After dedup: {afterDedup}</Tag>
-        <Tag color="processing">Screened: {screened}</Tag>
-        <Tag color="success">Included: {counts.include}</Tag>
-        <Tag color="error">Excluded: {counts.exclude}</Tag>
+        <Tag tone="info">Screened: {screened}</Tag>
+        <Tag tone="success">Included: {counts.include}</Tag>
+        <Tag tone="error">Excluded: {counts.exclude}</Tag>
       </Space>
 
       {degradedSources.length > 0 && (
-        <Typography.Text type="warning" className="text-xs block">
+        <Text type="warning" className="text-xs block">
           Degraded/skipped sources: {degradedSources.join(', ')}
-        </Typography.Text>
+        </Text>
       )}
 
       {completeness && (
-        <Alert
-          type="info"
-          showIcon
-          title={`Saturation estimate: ${completeness.estimate.toUpperCase()}`}
-          description={completeness.caveat}
-        />
+        <div className="rounded-md bg-blue-50 p-3 border border-blue-200">
+          <Text className="text-sm font-medium text-blue-800">{completeness.estimate.toUpperCase()}</Text>
+          <Paragraph className="text-xs text-blue-600 !mb-0">{completeness.caveat}</Paragraph>
+        </div>
       )}
 
       {/* Bulk-action bar (select rows → apply one decision) + export. */}
@@ -162,86 +160,83 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
           aria-label="Select all records"
           checked={allSelected}
           indeterminate={someSelected}
-          onChange={e => toggleSelectAll(e.target.checked)}
-        >
-          {selected.size > 0 ? `${selected.size} selected` : 'Select all'}
-        </Checkbox>
-        <Button size="small" disabled={selected.size === 0} onClick={() => bulkDecide('include')}>
+          onChange={(checked: boolean) => toggleSelectAll(checked)}
+          label={selected.size > 0 ? `${selected.size} selected` : 'Select all'}
+        />
+        <Button size="sm" disabled={selected.size === 0} onClick={() => bulkDecide('include')}>
           Include
         </Button>
-        <Button size="small" disabled={selected.size === 0} onClick={() => bulkDecide('exclude')}>
+        <Button size="sm" disabled={selected.size === 0} onClick={() => bulkDecide('exclude')}>
           Exclude
         </Button>
-        <Button size="small" disabled={selected.size === 0} onClick={() => bulkDecide('unscreened')}>
+        <Button size="sm" disabled={selected.size === 0} onClick={() => bulkDecide('unscreened')}>
           Unscreen
         </Button>
         <Dropdown
-          menu={{
-            items: [
-              { key: 'ris', label: 'Export RIS' },
-              { key: 'bibtex', label: 'Export BibTeX' },
-              { key: 'csv', label: 'Export CSV' },
-            ],
-            onClick: ({ key }) => doExport(key as 'ris' | 'bibtex' | 'csv'),
-          }}
+          items={[
+            { key: 'ris', label: 'Export RIS' },
+            { key: 'bibtex', label: 'Export BibTeX' },
+            { key: 'csv', label: 'Export CSV' },
+          ]}
+          onSelect={(key: string) => doExport(key as 'ris' | 'bibtex' | 'csv')}
         >
-          <Button icon={<DownloadOutlined />} size="small" disabled={records.length === 0}>
+          <Button icon={<DownloadOutlined />} size="sm" disabled={records.length === 0}>
             Export {counts.include > 0 ? 'included' : 'all'}
           </Button>
         </Dropdown>
       </Space>
 
       <List
-        size="small"
+        size="sm"
         dataSource={records}
-        locale={{
-          emptyText:
-            degradedSources.length > 0
-              ? `No records — all sources errored or were skipped (${degradedSources.join(', ')}). Try again or ask the model to re-search.`
-              : 'No records returned for this query.',
-        }}
-        renderItem={(r, i) => {
-          const key = recordKey(r)
+        empty={
+          degradedSources.length > 0
+            ? `No records — all sources errored or were skipped (${degradedSources.join(', ')}). Try again or ask the model to re-search.`
+            : 'No records returned for this query.'
+        }
+        renderItem={(r: unknown, i: number) => {
+          const record = r as LiteratureRecord
+          const key = recordKey(record)
           const decision = decisions[key] ?? 'unscreened'
           return (
             // React key uses the index (recordKey can collide on duplicate
             // records); decisions/reasons/selection still key on recordKey.
-            <List.Item key={`${i}-${key}`}>
-              <div className="w-full flex gap-2">
+            <div key={`${i}-${key}`} className="w-full flex gap-2">
+              <div className="flex items-start mt-1">
                 <Checkbox
-                  className="mt-1"
-                  aria-label={`Select "${r.title}"`}
+                  aria-label={`Select "${record.title ?? ''}"`}
                   checked={selected.has(key)}
-                  onChange={e => toggleSelect(key, e.target.checked)}
+                  onChange={(checked: boolean) => toggleSelect(key, checked)}
                 />
-                <div className="flex-1 min-w-0">
-                <Typography.Text strong className="text-sm">
-                  {i + 1}. {r.title}
-                </Typography.Text>
-                {r.is_preprint && <Tag className="ml-1">preprint</Tag>}
-                <Typography.Paragraph type="secondary" className="text-xs !mb-0">
-                  {r.authors.slice(0, 3).join(', ')}
-                  {r.authors.length > 3 ? ' et al.' : ''}
-                  {r.year ? ` · ${r.year}` : ''}
-                  {r.venue ? ` · ${r.venue}` : ''}
-                  {` · ${r.source}`}
-                </Typography.Paragraph>
-                {(r.doi || r.pmid) && (
-                  <Typography.Text type="secondary" className="text-xs block">
-                    {r.doi ? `doi:${r.doi}` : ''} {r.pmid ? `pmid:${r.pmid}` : ''}
-                  </Typography.Text>
+              </div>
+              <div className="flex-1 min-w-0">
+                <Text strong className="text-sm">
+                  {i + 1}. {record.title}
+                </Text>
+                {record.is_preprint && <Tag className="ml-1">preprint</Tag>}
+                <Paragraph type="secondary" className="text-xs !mb-0">
+                  {record.authors?.slice(0, 3).join(', ')}
+                  {record.authors?.length > 3 ? ' et al.' : ''}
+                  {record.year ? ` · ${record.year}` : ''}
+                  {record.venue ? ` · ${record.venue}` : ''}
+                  {` · ${record.source}`}
+                </Paragraph>
+                {(record.doi || record.pmid) && (
+                  <Text type="secondary" className="text-xs block">
+                    {record.doi ? `doi:${record.doi}` : ''} {record.pmid ? `pmid:${record.pmid}` : ''}
+                  </Text>
                 )}
-                {r.abstract_text && (
-                  <Typography.Paragraph
+                {record.abstract_text && (
+                  <Paragraph
                     type="secondary"
                     className="text-xs !mb-1"
-                    ellipsis={{ rows: 3, expandable: true, symbol: 'more' }}
+                    ellipsis={true}
                   >
-                    {r.abstract_text}
-                  </Typography.Paragraph>
+                    {record.abstract_text}
+                  </Paragraph>
                 )}
                 <Segmented
-                  size="small"
+                  size="sm"
                   value={decision}
                   onChange={val => setDecision(key, val as ScreeningDecision)}
                   options={[
@@ -252,7 +247,7 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
                 />
                 {decision === 'exclude' && (
                   <Input
-                    size="small"
+                    size="sm"
                     className="mt-1"
                     placeholder="Exclusion reason (optional)"
                     value={reasonDrafts[key] ?? reasons[key] ?? ''}
@@ -262,17 +257,16 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
                     onBlur={() => flushReason(key)}
                   />
                 )}
-                </div>
               </div>
-            </List.Item>
+            </div>
           )
         }}
       />
 
-      <Typography.Text type="secondary" className="text-xs block">
+      <Text type="secondary" className="text-xs block">
         An adjunct to — not a replacement for — systematic searching. Verify every
         record; cite by DOI/PMID.
-      </Typography.Text>
+      </Text>
     </div>
   )
 }

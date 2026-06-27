@@ -8,7 +8,8 @@ import { Empty } from './empty'
 export interface ListProps<T> {
   dataSource: T[]
   renderItem: (item: T, index: number) => React.ReactNode
-  rowKey: (item: T, index: number) => string
+  /** Row key: a record field name, a function, or omitted (falls back to index). */
+  rowKey?: (keyof T & string) | ((item: T, index: number) => string)
   header?: React.ReactNode
   footer?: React.ReactNode
   empty?: React.ReactNode
@@ -24,6 +25,10 @@ const rowPad = (size?: 'sm' | 'default' | 'lg') => (size === 'sm' ? 'px-3 py-2' 
 export function List<T>({ dataSource, renderItem, rowKey, header, footer, empty, loading, size, className, 'aria-label': ariaLabel }: ListProps<T>) {
   const s = useSurface({})
   const busy = loading || s.loading
+  const keyOf = (item: T, i: number) =>
+    typeof rowKey === 'function' ? rowKey(item, i)
+      : rowKey != null ? String((item as Record<string, unknown>)[rowKey])
+      : String(i)
   return (
     <div className={cn('rounded-md border', className)}>
       {header != null && <div className={cn('border-b font-medium', rowPad(size))}>{header}</div>}
@@ -38,7 +43,7 @@ export function List<T>({ dataSource, renderItem, rowKey, header, footer, empty,
       ) : (
         <ul aria-label={ariaLabel} className="divide-y">
           {dataSource.map((item, i) => (
-            <li key={rowKey(item, i)} className={rowPad(size)}>{renderItem(item, i)}</li>
+            <li key={keyOf(item, i)} className={rowPad(size)}>{renderItem(item, i)}</li>
           ))}
         </ul>
       )}

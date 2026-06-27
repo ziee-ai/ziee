@@ -1,6 +1,6 @@
 import { Fragment, useEffect } from 'react'
-import { Button, Card, Divider, Empty, Flex, Spin, Tag, Typography } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
+import { Button, Card, Separator, Empty, Flex, Spin, Tag, Text } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -92,17 +92,16 @@ export function InstalledVersionsCard({ engine }: { engine: RuntimeEngine }) {
       }
     >
       {loadingVersions && engineVersions.length === 0 ? (
-        <Spin />
+        <Spin label="Loading" />
       ) : engineVersions.length === 0 ? (
         <Empty
           description="No versions installed yet — install one below."
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
         />
       ) : (
         <div>
           {engineVersions.map((v, i) => (
             <Fragment key={v.id}>
-              {i > 0 && <Divider className="!my-4" />}
+              {i > 0 && <Separator className="!my-4" />}
               {/* Installed rows are static (not "selectable"), so no
                   hover background — matches the User / Repository
                   settings pages, which also don't tint rows on hover. */}
@@ -121,11 +120,11 @@ export function InstalledVersionsCard({ engine }: { engine: RuntimeEngine }) {
           ))}
           {engineUsage?.unresolved && engineUsage.unresolved.length > 0 && (
             <>
-              <Divider className="!my-4" />
+              <Separator className="!my-4" />
               <Flex vertical gap="small">
-                <Typography.Text type="warning">
+                <Text type="warning">
                   No installed version resolves for these models:
-                </Typography.Text>
+                </Text>
                 <div>
                   {engineUsage.unresolved.map(m => (
                     <Tag key={m.id}>{m.display_name}</Tag>

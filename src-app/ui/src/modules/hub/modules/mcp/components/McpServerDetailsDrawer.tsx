@@ -1,10 +1,8 @@
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Flex, Tag, Typography, Card } from 'antd'
+import { Flex, Tag, Card, Text, Title } from '@/components/ui'
 import { LinkOutlined } from '@ant-design/icons'
 import type { HubMCPServer } from '@/api-client/types'
 import { Stores } from '@/core/stores'
-
-const { Title, Text } = Typography
 
 interface McpServerDetailsDrawerProps {
   server: HubMCPServer | null
@@ -70,7 +68,7 @@ export function McpServerDetailsDrawer({
         {firstRemote ? (
           <div>
             <Title level={5}>Remote endpoint</Title>
-            <Card size="small" className="bg-gray-50">
+            <Card size="sm" className="bg-gray-50">
               <a
                 href={firstRemote.url}
                 target="_blank"
@@ -80,7 +78,7 @@ export function McpServerDetailsDrawer({
                 <LinkOutlined /> {firstRemote.url}
               </a>
               <div className="mt-1">
-                <Tag color="cyan" className="text-xs">
+                <Tag tone="info" className="text-xs">
                   {firstRemote.type ?? 'remote'}
                 </Tag>
               </div>
@@ -89,7 +87,7 @@ export function McpServerDetailsDrawer({
         ) : firstPackage ? (
           <div>
             <Title level={5}>Install command</Title>
-            <Card size="small" className="bg-gray-50">
+            <Card size="sm" className="bg-gray-50">
               <Text code className="text-xs break-all">
                 {firstPackage.runtimeHint ?? 'run'}{' '}
                 {(firstPackage.runtimeArguments ?? [])
@@ -103,7 +101,7 @@ export function McpServerDetailsDrawer({
                   .join(' ')}
               </Text>
               <div className="mt-1">
-                <Tag color="blue" className="text-xs">
+                <Tag tone="info" className="text-xs">
                   {firstPackage.registryType} · {firstPackage.transport?.type ?? 'stdio'}
                 </Tag>
               </div>
@@ -125,17 +123,16 @@ export function McpServerDetailsDrawer({
           firstPackage.environmentVariables.length > 0 && (
             <div>
               <Title level={5}>Environment variables</Title>
-              <Card size="small">
+              <Card size="sm">
                 <Flex vertical className="gap-1">
                   {firstPackage.environmentVariables.map(ev => (
                     <Flex
                       key={ev.name}
-                      justify="space-between"
-                      className="text-xs"
+                      className="flex justify-between text-xs"
                     >
                       <Text code>{ev.name}</Text>
                       {ev.isSecret && (
-                        <Tag color="orange" className="text-xs">
+                        <Tag tone="warning" className="text-xs">
                           secret
                         </Tag>
                       )}
@@ -150,17 +147,16 @@ export function McpServerDetailsDrawer({
         {firstRemote?.headers && firstRemote.headers.length > 0 && (
           <div>
             <Title level={5}>Headers</Title>
-            <Card size="small">
+            <Card size="sm">
               <Flex vertical className="gap-1">
                 {firstRemote.headers.map(h => (
                   <Flex
                     key={h.name}
-                    justify="space-between"
-                    className="text-xs"
+                    className="flex justify-between text-xs"
                   >
                     <Text code>{h.name}</Text>
                     {h.isSecret && (
-                      <Tag color="orange" className="text-xs">
+                      <Tag tone="warning" className="text-xs">
                         secret
                       </Tag>
                     )}

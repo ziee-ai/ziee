@@ -1,9 +1,7 @@
-import { Alert, Modal, Statistic, Table, Typography } from 'antd'
+import { Alert, Dialog, Statistic, Table, Text } from '@/components/ui'
 import { useEffect, useState } from 'react'
 import type { DryRunResult, DryRunStep, Workflow } from '@/api-client/types'
 import { Stores } from '@/core/stores'
-
-const { Text } = Typography
 
 interface DryRunPreviewDialogProps {
   workflow: Workflow
@@ -49,14 +47,14 @@ export function DryRunPreviewDialog({
   }, [open, workflow.id])
 
   return (
-    <Modal
+    <Dialog
       open={open}
       title="Dry-run preview"
-      onCancel={onClose}
+      onOpenChange={(v) => { if (!v) onClose() }}
       footer={null}
-      width={640}
+      className="!max-w-[640px]"
     >
-      {error && <Alert type="error" title={error} showIcon />}
+      {error && <Alert tone="error" title={error} />}
       {result && (
         <div className="flex flex-col gap-3">
           <div className="flex gap-6">
@@ -72,24 +70,24 @@ export function DryRunPreviewDialog({
             )}
           </div>
           <Table<DryRunStep>
-            size="small"
             rowKey="step_id"
             loading={loading}
-            pagination={false}
             dataSource={result.steps}
             columns={[
-              { title: 'Step', dataIndex: 'step_id' },
-              { title: 'Kind', dataIndex: 'kind' },
-              { title: 'Calls', dataIndex: 'est_calls' },
+              { key: 'step', title: 'Step', dataIndex: 'step_id' },
+              { key: 'kind', title: 'Kind', dataIndex: 'kind' },
+              { key: 'calls', title: 'Calls', dataIndex: 'est_calls' },
               {
+                key: 'tokens',
                 title: 'Tokens (in/out)',
-                render: (_: unknown, s: DryRunStep) =>
-                  `${s.est_tokens_in} / ${s.est_tokens_out}`,
+                render: (record: DryRunStep) =>
+                  `${record.est_tokens_in} / ${record.est_tokens_out}`,
               },
               {
+                key: 'runtime',
                 title: '',
-                render: (_: unknown, s: DryRunStep) =>
-                  s.runtime_dependent ? (
+                render: (record: DryRunStep) =>
+                  record.runtime_dependent ? (
                     <Text type="secondary" className="text-xs">
                       runtime-dependent
                     </Text>
@@ -102,6 +100,6 @@ export function DryRunPreviewDialog({
           </Text>
         </div>
       )}
-    </Modal>
+    </Dialog>
   )
 }

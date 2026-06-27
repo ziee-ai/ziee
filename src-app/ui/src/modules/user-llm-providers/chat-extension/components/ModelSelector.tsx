@@ -1,10 +1,9 @@
 import { useState, useMemo } from 'react'
-import { Select } from 'antd'
+import { Select } from '@/components/ui'
 import { WarningOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import type { ProviderWithModels } from '@/api-client/types'
 import { ProviderApiKeyModal } from './ProviderApiKeyModal'
-import { useMainContentMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 
 /**
  * ModelSelector Component
@@ -35,7 +34,6 @@ function providerNeedsApiKey(
 export function ModelSelector() {
   const { selectedModelId, providers } = Stores.ModelPicker
   const { sending } = Stores.Chat
-  const mainContentMinSize = useMainContentMinSize()
   const [pendingProviderForKey, setPendingProviderForKey] = useState<{
     providerId: string
     providerName: string
@@ -77,7 +75,8 @@ export function ModelSelector() {
     return modelGroups
   }, [providers])
 
-  const handleChange = (value: string) => {
+  const handleChange = (value: string | undefined) => {
+    if (!value) return
     // Check if selected model belongs to a provider that still needs an API
     // key (local providers never do — they use an internal proxy token).
     for (const provider of providers) {
@@ -104,16 +103,14 @@ export function ModelSelector() {
   return (
     <div data-testid="model-selector">
       <Select
-        value={selectedModelId}
+        value={selectedModelId ?? undefined}
         onChange={handleChange}
         popupMatchSelectWidth={false}
         placeholder="Select Model"
         aria-label="Model"
         disabled={sending}
         options={availableModels}
-        style={{ fontSize: 15, maxWidth: mainContentMinSize.xs ? 130 : undefined }}
-        className="[&_.ant-select-selector]:!w-auto [&_.ant-select-selector]:!min-w-0"
-        variant="borderless"
+        className="text-[15px] max-w-[130px] border-0 shadow-none bg-transparent"
       />
       {pendingProviderForKey && (
         <ProviderApiKeyModal

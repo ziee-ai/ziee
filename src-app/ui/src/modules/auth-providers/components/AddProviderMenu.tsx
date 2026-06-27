@@ -1,6 +1,5 @@
-import { Button, Dropdown, Tooltip } from 'antd'
+import { Button, Dropdown, Tooltip } from '@/components/ui'
 import { PlusOutlined } from '@ant-design/icons'
-import type { MenuProps } from 'antd'
 import { PROVIDER_TEMPLATES, type ProviderTemplate } from '../types'
 
 interface Props {
@@ -25,7 +24,7 @@ export function AddProviderMenu({ onPick, existingNames, disabled }: Props) {
   const available = PROVIDER_TEMPLATES.filter(
     t => !taken.has(t.key.toLowerCase()),
   )
-  const items: MenuProps['items'] = available.map(t => ({
+  const items = available.map(t => ({
     key: t.key,
     label: t.label,
     onClick: () => onPick(t),
@@ -35,10 +34,13 @@ export function AddProviderMenu({ onPick, existingNames, disabled }: Props) {
   const isDisabled = disabled || allTaken
 
   return (
-    <Dropdown menu={{ items }} disabled={isDisabled}>
-      <Tooltip title="Add authentication provider">
+    <Dropdown items={items} onSelect={(key) => {
+      const item = available.find(t => t.key === key)
+      if (item) onPick(item)
+    }} disabled={isDisabled}>
+      <Tooltip content="Add authentication provider">
         <Button
-          type="text"
+          variant="ghost"
           icon={<PlusOutlined />}
           disabled={isDisabled}
           aria-label="Add authentication provider"

@@ -10,12 +10,10 @@
 // arrow and filename. FilePanel runs with `hideHeader` to avoid
 // duplicating the filename inside the body.
 
-import { Typography } from 'antd'
+import { Title } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { FilePanel, FilePanelHeaderActions } from '@/modules/file/components/FilePanel'
-
-const { Title } = Typography
 
 export function FilePreviewDrawer() {
   const isOpen = Stores.FilePreviewDrawer.isOpen

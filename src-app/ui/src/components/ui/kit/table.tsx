@@ -20,7 +20,8 @@ export interface TableColumn<T> {
 export interface TableProps<T> {
   columns: TableColumn<T>[]
   dataSource: T[]
-  rowKey: (record: T, index: number) => string
+  /** Row key: a record field name (legacy string form) or a function. */
+  rowKey: (keyof T & string) | ((record: T, index: number) => string)
   /** Own loading → in-place skeleton rows. Region loading (surface) → skeleton too. */
   loading?: boolean
   caption?: React.ReactNode
@@ -42,6 +43,8 @@ function defaultCell(v: unknown): React.ReactNode {
 export function Table<T>({ columns, dataSource, rowKey, loading, caption, empty, className, onRowClick }: TableProps<T>) {
   const s = useSurface({})
   const busy = loading || s.loading
+  const keyOf = (record: T, i: number) =>
+    typeof rowKey === 'function' ? rowKey(record, i) : String((record as Record<string, unknown>)[rowKey])
   return (
     <Base className={className}>
       {caption != null && <TableCaption>{caption}</TableCaption>}
@@ -70,7 +73,7 @@ export function Table<T>({ columns, dataSource, rowKey, loading, caption, empty,
         ) : (
           dataSource.map((record, i) => (
             <TableRow
-              key={rowKey(record, i)}
+              key={keyOf(record, i)}
               // Keyboard-operable when clickable: focusable + Enter/Space activate. We keep the
               // native row semantics (no role override — role="button" on a <tr> is invalid ARIA
               // and breaks cell association).

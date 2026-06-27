@@ -1,19 +1,9 @@
-import {
-  Card,
-  Empty,
-  InputNumber,
-  Space,
-  Spin,
-  Table,
-  Tag,
-  Typography,
-} from 'antd'
+import { Card, Empty, InputNumber, Space, Spin } from '@/components/ui'
+import { Table, Tag, Text, Paragraph } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import type { MemoryAuditEntry } from '@/api-client/types'
-
-const { Text, Paragraph } = Typography
 
 const READ_PERM = Permissions.MemoryRead
 
@@ -50,7 +40,7 @@ export function AuditLogSection() {
 
       {loading ? (
         <div className="flex justify-center py-6">
-          <Spin />
+          <Spin label="Loading" />
         </div>
       ) : entries.length === 0 ? (
         <Empty description="No audit entries yet" />
@@ -58,63 +48,72 @@ export function AuditLogSection() {
         <Table<MemoryAuditEntry>
           dataSource={entries}
           rowKey="id"
-          size="middle"
-          pagination={{ pageSize: 25 }}
           columns={[
             {
+              key: 'created_at',
               title: 'When',
               dataIndex: 'created_at',
               width: 180,
-              render: (v: string) => (
-                <Text type="secondary">{new Date(v).toLocaleString()}</Text>
+              render: (record: MemoryAuditEntry) => (
+                <Text type="secondary">{new Date(record.created_at).toLocaleString()}</Text>
               ),
             },
             {
+              key: 'op',
               title: 'Op',
               dataIndex: 'op',
               width: 130,
-              render: (v: string) => {
-                const color =
+              render: (record: MemoryAuditEntry) => {
+                const v = record.op
+                const tone =
                   v === 'ADD'
-                    ? 'green'
+                    ? 'success'
                     : v === 'UPDATE'
-                      ? 'blue'
+                      ? 'info'
                       : v === 'DELETE'
-                        ? 'red'
-                        : 'volcano'
-                return <Tag color={color}>{v}</Tag>
+                        ? 'error'
+                        : 'warning'
+                return <Tag tone={tone}>{v}</Tag>
               },
             },
             {
+              key: 'source',
               title: 'Source',
               dataIndex: 'source',
               width: 120,
-              render: (v: string) => (
-                <Tag
-                  color={
-                    v === 'manual'
-                      ? 'blue'
-                      : v === 'extraction'
-                        ? 'green'
-                        : 'purple'
-                  }
-                >
-                  {v === 'mcp_tool' ? 'tool' : v}
-                </Tag>
-              ),
+              render: (record: MemoryAuditEntry) => {
+                const v = record.source
+                const tone =
+                  v === 'manual'
+                    ? 'info'
+                    : v === 'extraction'
+                      ? 'success'
+                      : 'info'
+                return (
+                  <Tag tone={tone}>
+                    {v === 'mcp_tool' ? 'tool' : v}
+                  </Tag>
+                )
+              },
             },
             {
+              key: 'actor_kind',
               title: 'Actor',
               dataIndex: 'actor_kind',
               width: 100,
-              render: (v: string) => <Tag>{v}</Tag>,
+              render: (record: MemoryAuditEntry) => {
+                return <Tag>{record.actor_kind}</Tag>
+              },
             },
             {
+              key: 'content_snapshot',
               title: 'Snapshot',
               dataIndex: 'content_snapshot',
-              ellipsis: true,
-              render: (v: string | null) =>
-                v ? <Text>{v}</Text> : <Text type="secondary">—</Text>,
+              width: 200,
+              render: (record: MemoryAuditEntry) => {
+                const v = record.content_snapshot
+                return v ? <Text>{v}</Text> : <Text type="secondary">—</Text>
+              },
             },
           ]}
         />

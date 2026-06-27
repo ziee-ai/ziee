@@ -1,5 +1,4 @@
-import { Select, Tooltip } from 'antd'
-import { RobotOutlined } from '@ant-design/icons'
+import { Combobox, Tooltip } from '@/components/ui'
 import { Stores } from '@/core/stores'
 
 interface AssistantSelectorProps {
@@ -17,11 +16,10 @@ export function AssistantSelector({
     selectAssistant(assistantId)
   }
 
-  // Build options for the select
+  // Build options for the combobox
   const options = availableAssistants.map((assistant: any) => ({
     label: assistant.name,
     value: assistant.id,
-    title: assistant.description || assistant.name,
   }))
 
   // If no assistants available, don't render
@@ -30,16 +28,17 @@ export function AssistantSelector({
   }
 
   return (
-    <Tooltip title="Select Assistant">
-      <Select
-        value={selectedAssistantId}
+    <Tooltip content="Select Assistant">
+      <Combobox
+        value={selectedAssistantId ?? undefined}
         onChange={handleChange}
         options={options}
         disabled={disabled}
         placeholder="Assistant"
-        style={{ minWidth: 120 }}
-        size="small"
-        suffixIcon={<RobotOutlined />}
+        className="min-w-[120px]"
+        size="sm"
+        emptyText="No assistants available"
+        searchPlaceholder="Search assistant"
       />
     </Tooltip>
   )

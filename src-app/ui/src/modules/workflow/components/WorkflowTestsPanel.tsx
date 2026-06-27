@@ -3,12 +3,11 @@ import {
   CloseCircleOutlined,
   MinusCircleOutlined,
 } from '@ant-design/icons'
-import { Alert, List, Modal, Space, Spin, Tag, Typography } from 'antd'
+import { Alert, List, Space, Spin, Tag, Text } from '@/components/ui'
+import { Dialog } from '@/components/ui'
 import { useEffect, useState } from 'react'
 import type { TestRunResponse, Workflow } from '@/api-client/types'
 import { Stores } from '@/core/stores'
-
-const { Text } = Typography
 
 interface WorkflowTestsPanelProps {
   workflow: Workflow
@@ -54,43 +53,44 @@ export function WorkflowTestsPanel({
   }, [open, workflow.id])
 
   return (
-    <Modal
+    <Dialog
       open={open}
       title="Workflow tests"
-      onCancel={onClose}
+      onOpenChange={(v) => { if (!v) onClose() }}
       footer={null}
-      width={640}
+      className="!max-w-[640px]"
     >
-      {loading && <Spin />}
-      {error && <Alert type="error" title={error} showIcon />}
+      {loading && <Spin label="Loading" />}
+      {error && <Alert tone="error" title={error} />}
       {result && (
         <div className="flex flex-col gap-3">
           <Space>
-            <Tag color="green">{result.passed} passed</Tag>
-            {result.failed > 0 && <Tag color="red">{result.failed} failed</Tag>}
+            <Tag tone="success">{result.passed} passed</Tag>
+            {result.failed > 0 && <Tag tone="error">{result.failed} failed</Tag>}
             {result.skipped > 0 && (
-              <Tag color="default">{result.skipped} skipped</Tag>
+              <Tag>{result.skipped} skipped</Tag>
             )}
           </Space>
           <List
-            size="small"
+            size="sm"
+            rowKey="name"
             dataSource={result.results}
-            renderItem={r => (
-              <List.Item>
-                <List.Item.Meta
-                  avatar={
-                    r.skipped ? (
-                      <MinusCircleOutlined style={{ color: '#999' }} />
+            renderItem={(r) => (
+              <div className="list-item">
+                <div className="flex items-start gap-3">
+                  <div className="mt-1">
+                    {r.skipped ? (
+                      <MinusCircleOutlined className="text-[#999] text-lg" />
                     ) : r.passed ? (
-                      <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                      <CheckCircleOutlined className="text-[#52c41a] text-lg" />
                     ) : (
-                      <CloseCircleOutlined style={{ color: '#ff4d4f' }} />
-                    )
-                  }
-                  title={r.name}
-                  description={
-                    r.failure ? (
-                      <div className="flex flex-col">
+                      <CloseCircleOutlined className="text-[#ff4d4f] text-lg" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <Text strong className="text-sm">{r.name}</Text>
+                    {r.failure ? (
+                      <div className="flex flex-col mt-1">
                         <Text type="danger" className="text-xs">
                           {r.failure.output_name}: {r.failure.assertion}
                         </Text>
@@ -103,14 +103,14 @@ export function WorkflowTestsPanel({
                       <Text type="secondary" className="text-xs">
                         {r.duration_ms} ms
                       </Text>
-                    )
-                  }
-                />
-              </List.Item>
+                    )}
+                  </div>
+                </div>
+              </div>
             )}
           />
         </div>
       )}
-    </Modal>
+    </Dialog>
   )
 }

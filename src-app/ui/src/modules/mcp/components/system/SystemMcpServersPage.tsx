@@ -1,4 +1,3 @@
-import { Button, Card, Flex, Input, Pagination, Select, Typography } from 'antd'
 import { PlusOutlined, SearchOutlined, ClearOutlined } from '@ant-design/icons'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { Stores } from '@/core/stores'
@@ -8,8 +7,7 @@ import { McpServerCard } from '@/modules/mcp/components/common/McpServerCard'
 import { McpServerDrawer } from '@/modules/mcp/components/common/McpServerDrawer'
 import { McpServerGroupsAssignmentCard } from '@/modules/mcp/components/system/McpServerGroupsAssignmentCard'
 import { McpUserPolicyCard } from '@/modules/mcp/components/system/McpUserPolicyCard'
-
-const { Text } = Typography
+import { Button, Card, Flex, Text, Input, Select, Pagination } from '@/components/ui'
 
 export function SystemMcpServersPage() {
   const {
@@ -85,7 +83,7 @@ export function SystemMcpServersPage() {
             placeholder="Search servers..."
             prefix={<SearchOutlined />}
             value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
             allowClear
             className="flex-1"
             aria-label="Search system MCP servers"
@@ -94,9 +92,10 @@ export function SystemMcpServersPage() {
             placeholder="Filter by status"
             value={statusFilter}
             onChange={setStatusFilter}
-            style={{ minWidth: 150 }}
-            allowClear
             aria-label="Filter servers by status"
+            className="min-w-[150px]"
+            allowClear
+            clearLabel="Clear status filter"
             options={[
               { label: 'All Servers', value: 'all' },
               { label: 'Enabled', value: 'enabled' },
@@ -105,7 +104,7 @@ export function SystemMcpServersPage() {
           />
           <Can permission={Permissions.McpServersAdminCreate}>
             <Button
-              type="primary"
+              variant="default"
               icon={<PlusOutlined />}
               onClick={handleCreateServer}
             >
@@ -115,7 +114,7 @@ export function SystemMcpServersPage() {
         </div>
 
         {(searchTerm || statusFilter !== 'all') && (
-          <Flex align="center" gap={8}>
+          <Flex align="center" className="gap-2">
             <Text type="secondary" className="text-xs">
               Filters active:{' '}
               {[
@@ -126,8 +125,8 @@ export function SystemMcpServersPage() {
                 .join(', ')}
             </Text>
             <Button
-              size="small"
-              type="text"
+              size="sm"
+              variant="ghost"
               icon={<ClearOutlined />}
               onClick={clearAllFilters}
             >
@@ -143,15 +142,16 @@ export function SystemMcpServersPage() {
           {filteredServers.map(server => (
             <Card
               key={server.id}
-              classNames={{ body: '!p-0' }}
               className="overflow-hidden"
               data-server-id={server.id}
               data-server-name={server.display_name}
             >
-              <McpServerCard server={server} isEditable={true} bordered={false} />
-              {multiUserMode && (
-                <McpServerGroupsAssignmentCard serverId={server.id} />
-              )}
+              <div className="!p-0">
+                <McpServerCard server={server} isEditable={true} bordered={false} />
+                {multiUserMode && (
+                  <McpServerGroupsAssignmentCard serverId={server.id} />
+                )}
+              </div>
             </Card>
           ))}
         </div>
@@ -169,17 +169,23 @@ export function SystemMcpServersPage() {
         {systemServersTotal > 0 && (
           <Flex justify="end">
             <Pagination
+              aria-label="System MCP servers pagination"
+              previousLabel="Previous page"
+              nextLabel="Next page"
+              pageLabel={(p: number) => `Page ${p}`}
               current={systemServersPage}
               total={systemServersTotal}
-              pageSize={systemServersPageSize}
+              pageSize={systemServersPageSize as number}
               showSizeChanger
+              pageSizeLabel="Page size"
+              onPageSizeChange={(size: number) => handlePageChange(1, size)}
               showQuickJumper
-              showTotal={(total, range) =>
+              jumpLabel="Go to page"
+              showTotal={(total: number, range: [number, number]) =>
                 `${range[0]}-${range[1]} of ${total} servers`
               }
-              onChange={handlePageChange}
-              onShowSizeChange={handlePageChange}
-              pageSizeOptions={['5', '10', '20', '50']}
+              onChange={(page: number) => handlePageChange(page)}
+              pageSizeOptions={[5, 10, 20, 50]}
             />
           </Flex>
         )}
