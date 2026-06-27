@@ -59,8 +59,17 @@ pub async fn reembed_all(
         );
         return;
     }
+    // RAII reset so the flag clears on a normal return, an error, OR a panic
+    // unwind — a bare `store(false)` after the await would leak the guard
+    // permanently (blocking all future rebuilds) if `run` ever panicked.
+    struct InProgressGuard;
+    impl Drop for InProgressGuard {
+        fn drop(&mut self) {
+            REBUILD_IN_PROGRESS.store(false, Ordering::Release);
+        }
+    }
+    let _reset = InProgressGuard;
     let result = run(pool, new_model_id, new_model_name, target_dimensions).await;
-    REBUILD_IN_PROGRESS.store(false, Ordering::Release);
     if let Err(e) = result {
         tracing::warn!("memory.embedding_worker: failed: {e}");
     }
