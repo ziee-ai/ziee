@@ -243,7 +243,7 @@ export function SandboxRootfsVersionsSection() {
       {error && <Alert type="error" showIcon title={error} />}
 
       {loading && groups.length === 0 ? (
-        <Spin />
+        <Spin aria-label="Loading rootfs versions" />
       ) : (
         <>
           <DownloadedRootfsCard
