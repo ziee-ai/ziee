@@ -41,6 +41,10 @@ pub fn get_admin_settings_docs(op: TransformOperation) -> TransformOperation {
         .id("SummarizationAdmin.get")
         .tag("Summarization")
         .summary("Read deployment-wide summarization settings")
+        .description(
+            "Returns the singleton deployment-wide summarization settings \
+             (enable flag, trigger thresholds, model, prompt).",
+        )
         .response::<200, Json<SummarizationAdminSettings>>()
 }
 
@@ -237,6 +241,10 @@ pub fn get_conversation_summary_docs(op: TransformOperation) -> TransformOperati
         .id("Summarization.getConversationSummary")
         .tag("Summarization")
         .summary("Get the active-branch summary for a conversation (null if none)")
+        .description(
+            "Returns the rolling summary for the conversation's active branch, \
+             or null when no summary has been generated yet.",
+        )
         .response::<200, Json<Option<ConversationSummary>>>()
 }
 
@@ -272,5 +280,9 @@ pub fn test_refresh_docs(op: TransformOperation) -> TransformOperation {
         .id("SummarizationTest.refresh")
         .tag("Summarization")
         .summary("Test-only: trigger summary refresh synchronously (debug builds)")
+        .description(
+            "Debug-build-only endpoint that runs a synchronous summary refresh \
+             for deterministic tests. Not present in release builds.",
+        )
         .response::<200, Json<serde_json::Value>>()
 }
