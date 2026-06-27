@@ -47,7 +47,15 @@ export function SkillsList() {
               key={skill.id}
               hoverable
               size="small"
+              role="button"
+              tabIndex={0}
               onClick={() => Stores.SkillDrawer.open(skill)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  Stores.SkillDrawer.open(skill)
+                }
+              }}
               data-skill-id={skill.id}
             >
               <Flex justify="space-between" align="flex-start" gap={12}>
