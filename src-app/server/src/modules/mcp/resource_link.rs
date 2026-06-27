@@ -374,17 +374,47 @@ pub async fn persist_links(
             }
         }
 
-        let client = match reqwest::Client::builder()
-            .default_headers(fetch_headers)
-            .build()
-        {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::error!("Failed to build HTTP client for resource_link fetch: {e}");
+        // A built-in server's link is a trusted loopback URL (127.0.0.1
+        // /api/files/...). An external server's link is model-/third-party
+        // controlled, so it must be SSRF-confined to public hosts
+        // (block loopback / RFC1918 / IMDS) with redirects re-validated.
+        let client = if server_is_built_in {
+            match reqwest::Client::builder().build() {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::error!("Failed to build HTTP client for resource_link fetch: {e}");
+                    continue;
+                }
+            }
+        } else {
+            if let Err(e) = crate::utils::url_validator::validate_outbound_url(
+                &link.uri,
+                &crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS,
+            ) {
+                tracing::error!(
+                    "resource_link external fetch rejected by SSRF policy for '{}': {e}",
+                    link.uri
+                );
                 continue;
             }
+            match crate::utils::url_validator::build_validated_client(
+                crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS,
+            ) {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::error!("Failed to build HTTP client for resource_link fetch: {e}");
+                    continue;
+                }
+            }
         };
-        let response = match client.get(&link.uri).send().await {
+        // Per-request timeout so a slow/stalled peer can't hang persistence.
+        let response = match client
+            .get(&link.uri)
+            .headers(fetch_headers)
+            .timeout(std::time::Duration::from_secs(30))
+            .send()
+            .await
+        {
             Ok(r) if r.status().is_success() => r,
             Ok(r) => {
                 tracing::error!(
