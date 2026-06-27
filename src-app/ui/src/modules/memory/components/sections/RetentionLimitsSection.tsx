@@ -3,12 +3,16 @@ import {
   Alert,
   Button,
   Card,
-  Divider,
+  Separator,
   Flex,
   Form,
+  FormField,
+  useForm,
+  zodResolver,
   InputNumber,
   message,
-} from 'antd'
+} from '@/components/ui'
+import { z } from 'zod'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -16,10 +20,12 @@ import { Permissions } from '@/api-client/types'
 const READ_PERM = Permissions.MemoryAdminRead
 const MANAGE_PERM = Permissions.MemoryAdminManage
 
-interface FormValues {
-  soft_delete_grace_days: number
-  daily_extraction_quota: number
-}
+const schema = z.object({
+  soft_delete_grace_days: z.number().min(1).max(365),
+  daily_extraction_quota: z.number().min(1).max(10000),
+})
+
+type FormValues = z.infer<typeof schema>
 
 /**
  * Retention + extraction quota. Own form.
@@ -28,11 +34,17 @@ export function RetentionLimitsSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
   const { settings, saving } = Stores.MemoryAdmin
-  const [form] = Form.useForm<FormValues>()
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      soft_delete_grace_days: 30,
+      daily_extraction_quota: 100,
+    },
+  })
 
   useEffect(() => {
     if (settings) {
-      form.setFieldsValue({
+      form.reset({
         soft_delete_grace_days: settings.soft_delete_grace_days,
         daily_extraction_quota: settings.daily_extraction_quota,
       })
@@ -43,8 +55,7 @@ export function RetentionLimitsSection() {
     return (
       <Card title="Retention & extraction limits">
         <Alert
-          type="warning"
-          showIcon
+          tone="warning"
           title="You don't have permission to view memory admin settings."
         />
       </Card>
@@ -74,33 +85,30 @@ export function RetentionLimitsSection() {
         name="memory-admin-retention-form"
         form={form}
         layout="horizontal"
-        labelCol={{ xs: { span: 24 }, md: { span: 10 } }}
-        wrapperCol={{ xs: { span: 24 }, md: { span: 14 } }}
-        labelAlign="left"
-        colon={false}
-        onFinish={handleSubmit}
+        labelWidth="10rem"
+        onSubmit={handleSubmit}
         disabled={!canManage}
       >
-        <Form.Item
+        <FormField
           name="soft_delete_grace_days"
           label="Soft-delete grace days"
-          extra="How long soft-deleted memories stick around before the nightly reaper hard-deletes them. Lower = faster GDPR/erasure compliance; higher = longer audit window for user-initiated undeletes."
+          description="How long soft-deleted memories stick around before the nightly reaper hard-deletes them. Lower = faster GDPR/erasure compliance; higher = longer audit window for user-initiated undeletes."
         >
-          <InputNumber min={1} max={365} style={{ width: 160 }} />
-        </Form.Item>
-        <Form.Item
+          <InputNumber min={1} max={365} className="w-40" />
+        </FormField>
+        <FormField
           name="daily_extraction_quota"
           label="Daily extraction quota (per user)"
-          extra="Brake against extraction-spam loops. When a user hits this many extraction-sourced memories in a 24h window, further extraction is skipped silently. The hard cost gate is your LLM API spend; this is the secondary brake on row count."
+          description="Brake against extraction-spam loops. When a user hits this many extraction-sourced memories in a 24h window, further extraction is skipped silently. The hard cost gate is your LLM API spend; this is the secondary brake on row count."
         >
-          <InputNumber min={1} max={10000} style={{ width: 160 }} />
-        </Form.Item>
+          <InputNumber min={1} max={10000} className="w-40" />
+        </FormField>
 
         {canManage && (
           <>
-            <Divider className="!my-3" />
+            <Separator className="!my-3" />
             <Flex justify="end">
-              <Button type="primary" htmlType="submit" loading={saving}>
+              <Button type="submit" loading={saving}>
                 Save
               </Button>
             </Flex>
