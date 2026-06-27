@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
+import { Permissions } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 import type {
   Project,
   ConversationResponse,
@@ -87,6 +89,19 @@ export const useProjectDetailStore = create<ProjectDetailState>()(
               },
               GROUP,
             )
+
+            // Cross-device: a remote edit to this project arrives as a
+            // `sync:project` notify-and-refetch frame (the local
+            // `project.updated` above only fires for same-device mutations).
+            // Refetch the open project so the detail page stays current.
+            // Self-gated per the no-403-reconnect convention.
+            const reloadOnSync = () => {
+              if (!hasPermissionNow(Permissions.ProjectsRead)) return
+              const id = get().project?.id
+              if (id) void get().loadProject(id)
+            }
+            eventBus.on('sync:project', reloadOnSync, GROUP)
+            eventBus.on('sync:reconnect', reloadOnSync, GROUP)
 
             // F5: drop a conversation from the project's local list
             // when ANY component deletes it (sidebar, chat history
