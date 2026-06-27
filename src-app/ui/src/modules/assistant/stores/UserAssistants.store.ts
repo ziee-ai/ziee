@@ -3,11 +3,13 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
-import type {
-  Assistant,
-  CreateAssistantRequest,
-  UpdateAssistantRequest,
+import {
+  Permissions,
+  type Assistant,
+  type CreateAssistantRequest,
+  type UpdateAssistantRequest,
 } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import {
   emitAssistantCreated,
@@ -105,7 +107,13 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
             )
 
             // Remote sync: refetch on a remote change or on (re)connect.
-            const reload = () => void get().loadUserAssistants(true)
+            // Self-gate on `assistants::read` so a user lacking it never
+            // hits `GET /api/assistants` → 403 on a `sync:reconnect`
+            // (which fires for every store). Mirrors AssistantPicker.
+            const reload = () => {
+              if (!hasPermissionNow(Permissions.AssistantsRead)) return
+              void get().loadUserAssistants(true)
+            }
             eventBus.on('sync:assistant', reload, GROUP)
             eventBus.on('sync:reconnect', reload, GROUP)
           },
