@@ -76,6 +76,41 @@ export const ResizeHandle = ({
     <div className={classNames.join(' ')} ref={ref} style={style}>
       <div
         className={'w-full h-full relative group'}
+        role="separator"
+        aria-orientation={isHorizontal ? 'vertical' : 'horizontal'}
+        aria-label="Resize"
+        tabIndex={0}
+        onKeyDown={event => {
+          // Keyboard actuation: nudge the parent dimension in the same
+          // direction the drag would, clamped to the same min/max. Shift =
+          // larger step. Mirrors the mouse path so size persists identically.
+          const step = event.shiftKey ? 48 : 16
+          const targets = parentRefs.current
+          if (!targets.length) return
+          let grow = 0 // +1 grow, -1 shrink, 0 = key not handled
+          if (isHorizontal) {
+            if (event.key === 'ArrowRight') grow = placement === 'left' ? -1 : 1
+            else if (event.key === 'ArrowLeft') grow = placement === 'left' ? 1 : -1
+          } else {
+            if (event.key === 'ArrowDown') grow = placement === 'top' ? -1 : 1
+            else if (event.key === 'ArrowUp') grow = placement === 'top' ? 1 : -1
+          }
+          if (grow === 0) return
+          event.preventDefault()
+          if (onStart) onStart()
+          for (const target of targets) {
+            if (isHorizontal) {
+              let w = target.offsetWidth + grow * step
+              w = Math.min(Math.max(w, minWidth), maxWidth)
+              target.style.width = `${w}px`
+            } else {
+              let h = target.offsetHeight + grow * step
+              h = Math.min(Math.max(h, minHeight), maxHeight)
+              target.style.height = `${h}px`
+            }
+          }
+          if (onEnd) onEnd()
+        }}
         onMouseDown={event => {
           event.preventDefault()
           event.stopPropagation()
