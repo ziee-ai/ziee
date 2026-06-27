@@ -44,10 +44,13 @@ export const useHubInstalledStore = create<HubInstalledState>()(
               loading: false,
             })
           } catch (error: any) {
+            // Keep any previously-loaded items on a refetch failure — a
+            // transient error (e.g. a background reload) shouldn't blank
+            // out a list the user was already viewing. On the initial load
+            // `items` is already [], so nothing is lost there either.
             set({
               error: error?.message || 'Failed to load installed hub items',
               loading: false,
-              items: [],
             })
           }
         },
