@@ -392,7 +392,7 @@ pub fn toggle_user_active_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn reset_user_password(
     _auth: RequirePermissions<(UsersResetPassword,)>,
-
+    origin: SyncOrigin,
     Json(request): Json<ResetPasswordRequest>,
 ) -> ApiResult<StatusCode> {
     // Check if user exists
@@ -416,6 +416,17 @@ pub async fn reset_user_password(
         .user
         .update_password(request.user_id, &password_hash)
         .await?;
+
+    // Signal the affected user's own devices (Owner) so they re-bootstrap
+    // /auth/me after the credential change, mirroring delete_user's session
+    // signal. Notify-only — carries just the user id, no credential data.
+    sync_publish(
+        SyncEntity::Session,
+        SyncAction::Update,
+        request.user_id,
+        Audience::owner(request.user_id),
+        origin.0,
+    );
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
