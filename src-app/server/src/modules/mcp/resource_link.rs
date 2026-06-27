@@ -376,6 +376,7 @@ pub async fn persist_links(
 
         let client = match reqwest::Client::builder()
             .default_headers(fetch_headers)
+            .timeout(std::time::Duration::from_secs(30))
             .build()
         {
             Ok(c) => c,
