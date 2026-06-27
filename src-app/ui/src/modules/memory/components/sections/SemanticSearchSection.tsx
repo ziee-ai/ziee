@@ -40,7 +40,7 @@ interface FormValues {
 export function SemanticSearchSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const { settings, availableModels, saving, loadingModels } =
+  const { settings, embeddingModels, saving, loadingModels } =
     Stores.MemoryAdmin
   const [form] = Form.useForm<FormValues>()
   const [reembedConfirmOpen, setReembedConfirmOpen] = useState(false)
@@ -69,7 +69,7 @@ export function SemanticSearchSection() {
   }
   if (!settings) return null
 
-  const noModelsAvailable = availableModels.length === 0
+  const noModelsAvailable = embeddingModels.length === 0
 
   const persist = async (values: FormValues, modelChanged: boolean) => {
     try {
@@ -126,9 +126,9 @@ export function SemanticSearchSection() {
   }
 
   const swapTargetLabel = pendingSwap
-    ? (availableModels.find((m) => m.id === pendingSwap.embedding_model_id)
+    ? (embeddingModels.find((m) => m.id === pendingSwap.embedding_model_id)
         ?.display_name ??
-      availableModels.find((m) => m.id === pendingSwap.embedding_model_id)
+      embeddingModels.find((m) => m.id === pendingSwap.embedding_model_id)
         ?.name ??
       pendingSwap.embedding_model_id)
     : ''
@@ -187,7 +187,7 @@ export function SemanticSearchSection() {
               }
               loading={loadingModels}
               disabled={noModelsAvailable}
-              options={availableModels.map((m) => ({
+              options={embeddingModels.map((m) => ({
                 value: m.id,
                 label: m.display_name || m.name,
               }))}
