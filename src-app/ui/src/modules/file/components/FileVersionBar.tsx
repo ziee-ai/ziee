@@ -74,6 +74,7 @@ export function FileVersionBar({ file, selectedVersion, onSelectVersion }: FileV
       <HistoryOutlined style={{ color: token.colorTextSecondary }} />
       <Select
         size="small"
+        aria-label="Select file version"
         value={current}
         style={{ minWidth: 220 }}
         onChange={(v) => onSelectVersion(v === headVersion ? null : v)}
