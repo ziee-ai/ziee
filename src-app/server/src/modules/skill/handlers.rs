@@ -544,20 +544,15 @@ pub async fn set_skill_groups(
         )
         .into());
     }
-    // Replace-all: get current, diff, apply.
-    let current: std::collections::HashSet<Uuid> = Repos
-        .skill
-        .get_skill_groups(id)
-        .await?
+    // Replace-all, atomically (delete-not-desired + insert-desired in one
+    // transaction) so a mid-update failure can't leave a partial set.
+    let desired: Vec<Uuid> = request
+        .group_ids
+        .into_iter()
+        .collect::<std::collections::HashSet<Uuid>>()
         .into_iter()
         .collect();
-    let desired: std::collections::HashSet<Uuid> = request.group_ids.into_iter().collect();
-    for gid in current.difference(&desired) {
-        Repos.skill.remove_skill_from_group(id, *gid).await?;
-    }
-    for gid in desired.difference(&current) {
-        Repos.skill.assign_skill_to_group(id, *gid).await?;
-    }
+    Repos.skill.set_skill_groups(id, &desired).await?;
     events::emit_system_skill(SyncAction::Update, id, origin.0);
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }

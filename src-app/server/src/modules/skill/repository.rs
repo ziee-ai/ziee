@@ -182,6 +182,40 @@ impl SkillRepository {
     ) -> Result<(), AppError> {
         remove_skill_from_group(&self.pool, skill_id, group_id).await
     }
+
+    /// Replace the full set of groups assigned to a skill in ONE
+    /// transaction. The previous read-diff-then-N-writes flow left the
+    /// assignment set partially updated if any write failed midway; doing
+    /// the delete + inserts atomically removes that window.
+    pub async fn set_skill_groups(
+        &self,
+        skill_id: Uuid,
+        desired: &[Uuid],
+    ) -> Result<(), AppError> {
+        let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
+        // Drop memberships that are no longer desired.
+        sqlx::query!(
+            "DELETE FROM group_skills WHERE skill_id = $1 AND NOT (group_id = ANY($2))",
+            skill_id,
+            desired,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::database_error)?;
+        // Add desired memberships (idempotent).
+        for group_id in desired {
+            sqlx::query!(
+                "INSERT INTO group_skills (group_id, skill_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+                group_id,
+                skill_id,
+            )
+            .execute(&mut *tx)
+            .await
+            .map_err(AppError::database_error)?;
+        }
+        tx.commit().await.map_err(AppError::database_error)?;
+        Ok(())
+    }
 }
 
 /// Insert one skill row. Returns the created row (with server-generated
