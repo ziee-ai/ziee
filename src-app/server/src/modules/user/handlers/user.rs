@@ -182,12 +182,19 @@ pub async fn create_user(
 
     // Assign user to default group if it exists
     if let Some(default_group) = Repos.group.get_default().await? {
-        // Assign user to default group (assigned_by is None for automatic assignment)
-        let _ = Repos
+        // Assign user to default group (assigned_by is None for automatic
+        // assignment). We don't fail user creation if this fails, but we log
+        // it — a silently group-less user can be missing expected permissions.
+        if let Err(e) = Repos
             .user
             .assign_to_group(user.id, default_group.id, None)
-            .await;
-        // Note: We ignore errors here to not fail user creation if group assignment fails
+            .await
+        {
+            tracing::warn!(
+                "user {}: default-group assignment failed: {e}",
+                user.id
+            );
+        }
     }
 
     // Emit UserCreated event asynchronously
