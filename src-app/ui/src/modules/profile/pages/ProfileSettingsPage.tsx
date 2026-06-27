@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import {
+  Alert,
   Avatar,
   Button,
   Card,
@@ -125,6 +126,14 @@ export function ProfileSettingsPage() {
           </Descriptions.Item>
         </Descriptions>
 
+        {!canEdit && (
+          <Alert
+            type="info"
+            showIcon
+            message="You don't have permission to edit your profile. Fields are read-only."
+            className="mb-3"
+          />
+        )}
         <Form
           name="profile-form"
           form={profileForm}
@@ -233,6 +242,7 @@ export function ProfileSettingsPage() {
               >
                 <Input.Password
                   autoComplete="new-password"
+                  maxLength={72}
                   placeholder="Confirm new password"
                 />
               </Form.Item>
