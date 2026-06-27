@@ -30,7 +30,9 @@ export const AuthPage: React.FC = () => {
         <Content className="flex items-center justify-center p-4">
           <div className="w-full max-w-md">
             <div className="text-center mb-8">
-              <Title level={2}>Welcome</Title>
+              <Title level={2}>
+                {mode === 'login' ? 'Welcome back' : 'Create your account'}
+              </Title>
             </div>
 
             {mode === 'login' && (
