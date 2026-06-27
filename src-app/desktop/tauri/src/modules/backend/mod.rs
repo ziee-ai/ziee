@@ -843,7 +843,9 @@ fn create_main_window(app_handle: &tauri::AppHandle) {
             .traffic_light_position(tauri::LogicalPosition::new(20.0, 22.0));
     }
 
-    main_window_builder.build().unwrap();
+    main_window_builder
+        .build()
+        .expect("failed to build the main application window");
 
     // Post-build: Windows overlay
     #[cfg(target_os = "windows")]
