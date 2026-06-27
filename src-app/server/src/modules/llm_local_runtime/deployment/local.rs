@@ -139,6 +139,22 @@ impl LocalDeployment {
         cmd.stdin(Stdio::null());
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
+        cmd.kill_on_drop(true);
+
+        // PR_SET_PDEATHSIG makes the engine subprocess die with the server even
+        // on SIGKILL/OOM, instead of orphaning a GPU-holding llama-server.
+        // Linux-only (copy of the bio_mcp / code_sandbox squashfuse path).
+        #[cfg(target_os = "linux")]
+        unsafe {
+            cmd.pre_exec(|| {
+                let r = libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM, 0, 0, 0);
+                if r == 0 {
+                    Ok(())
+                } else {
+                    Err(std::io::Error::last_os_error())
+                }
+            });
+        }
     }
 
     /// Parse a model's nested `engine_settings` (a `ModelEngineSettings`
