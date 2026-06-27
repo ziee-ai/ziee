@@ -111,8 +111,17 @@ export function SkillHubCard({ item }: SkillHubCardProps) {
     <>
       <Card
         hoverable
-        className="cursor-pointer h-full"
+        className="cursor-pointer h-full focus-visible:outline focus-visible:outline-2"
         onClick={() => setShowDetails(true)}
+        role="button"
+        tabIndex={0}
+        aria-label={`View details for ${title}`}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            setShowDetails(true)
+          }
+        }}
         data-testid={`hub-skill-card-${item.name}`}
       >
         <Flex justify="space-between" align="flex-start" gap={12}>
