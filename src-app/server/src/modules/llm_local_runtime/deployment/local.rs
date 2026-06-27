@@ -645,10 +645,6 @@ impl Deployment for LocalDeployment {
         // 256-bit CSPRNG token (matches the proxy's PROXY_TOKEN), not
         // a 122-bit UUID — the bearer gates the engine's HTTP surface.
         let api_key = crate::modules::llm_local_runtime::proxy::generate_proxy_token();
-        INSTANCE_API_KEYS
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .insert(model_id, api_key.clone());
 
         // Build the engine argv from the model's typed engine_settings,
         // then assemble + harden the command.
@@ -677,6 +673,14 @@ impl Deployment for LocalDeployment {
         let mut child = cmd.spawn().map_err(|e| {
             AppError::internal_error(format!("Failed to spawn process: {}", e))
         })?;
+
+        // Register the per-instance bearer only after the spawn succeeds, so an
+        // argv-build or spawn failure above doesn't leave a stale token mapped
+        // for a model that isn't actually running.
+        INSTANCE_API_KEYS
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .insert(model_id, api_key.clone());
 
         let pid = child
             .id()
