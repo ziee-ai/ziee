@@ -109,7 +109,7 @@ pub async fn subscribe_hardware_usage(
         }
 
         // Stream ended, remove client
-        println!("Hardware monitoring client disconnected: {}", client_id);
+        tracing::debug!("Hardware monitoring client disconnected: {}", client_id);
         remove_client(client_id);
     };
 
