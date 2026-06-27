@@ -1,3 +1,5 @@
+import { Alert, Spin } from 'antd'
+import { Stores } from '@/core/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { EnableSection } from '../components/sections/EnableSection'
 import { EmbeddingSection } from '../components/sections/EmbeddingSection'
@@ -20,11 +22,30 @@ import { MaintenanceSection } from '../components/sections/MaintenanceSection'
  * model is configured under "Embedding".
  */
 export function FileRagAdminPage() {
+  const { settings, loading, error } = Stores.FileRagAdmin
   return (
     <SettingsPageContainer
       title="Document RAG (admin)"
       subtitle="Deployment-wide document retrieval: master toggle, embedding model, chunking, full-text tuning, and backfill. On by default — full-text search works immediately; semantic search activates when you set an embedding model."
     >
+      {/* Surface load failures (the per-section cards render nothing
+          until settings arrive, so without this the page body is blank
+          on error). */}
+      {error && !settings && (
+        <Alert
+          type="error"
+          showIcon
+          className="mb-4"
+          message="Failed to load Document RAG settings"
+          description={error}
+        />
+      )}
+      {/* Spinner while the first load is in flight so the body isn't blank. */}
+      {loading && !settings && (
+        <div className="flex justify-center py-8">
+          <Spin />
+        </div>
+      )}
       <EnableSection />
       <EmbeddingSection />
       <ChunkingSection />
