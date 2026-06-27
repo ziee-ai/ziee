@@ -1,3 +1,4 @@
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Button, Checkbox, Popconfirm, Progress, Spin, Tooltip, Typography, theme, App } from 'antd'
 import {
   CloseOutlined,
@@ -123,6 +124,13 @@ export function FileCard({
     // drawer, knowledge card on ProjectDetailPage, etc.) gets preview
     // without per-surface plumbing.
     Stores.FilePreviewDrawer.openPreview(file)
+  }
+
+  const handleCardKeyDown = (e: ReactKeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      handleCardClick()
+    }
   }
 
   // Row-shaped upload-progress branch — added separately from the
@@ -283,7 +291,10 @@ export function FileCard({
           border: `1px solid ${token.colorBorderSecondary}`,
           backgroundColor: token.colorBgContainer,
         }}
+        role="button"
+        tabIndex={0}
         onClick={handleCardClick}
+        onKeyDown={handleCardKeyDown}
         data-testid="file-card"
         data-file-id={file.id}
         data-filename={file.filename}
@@ -390,7 +401,10 @@ export function FileCard({
               }
             : {}),
         }}
+        role="button"
+        tabIndex={0}
         onClick={handleCardClick}
+        onKeyDown={handleCardKeyDown}
       >
         {/* Square aspect ratio enforcer */}
         <img

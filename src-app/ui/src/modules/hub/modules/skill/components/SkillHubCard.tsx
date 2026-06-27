@@ -112,7 +112,15 @@ export function SkillHubCard({ item }: SkillHubCardProps) {
       <Card
         hoverable
         className="cursor-pointer h-full"
+        role="button"
+        tabIndex={0}
         onClick={() => setShowDetails(true)}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            setShowDetails(true)
+          }
+        }}
         data-testid={`hub-skill-card-${item.name}`}
       >
         <Flex justify="space-between" align="flex-start" gap={12}>

@@ -51,7 +51,15 @@ export function AdminSkillsPage() {
             >
               <div
                 className="p-3 cursor-pointer"
+                role="button"
+                tabIndex={0}
                 onClick={() => Stores.SkillDrawer.open(skill)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    Stores.SkillDrawer.open(skill)
+                  }
+                }}
               >
                 <Space vertical size={2}>
                   <Space size={8}>
