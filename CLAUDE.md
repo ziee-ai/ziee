@@ -158,8 +158,9 @@ The vendored pgvector source is a git submodule at
 - `user_memories` — per-user fact rows (vector(N) default 768)
 - `user_memory_settings` — per-user opt-in toggles (default OFF)
 - `memory_admin_settings` — deployment-wide config (default OFF)
-- `conversations.memory_mode` — per-conversation override
-  (`inherit`/`on`/`off`)
+- `conversation_memory_settings.memory_mode` — per-conversation
+  override (`inherit`/`on`/`off`); replaced the inline
+  `conversations.memory_mode` column (dropped in migration 76)
 - `assistant_core_memory` — Letta-style always-in-context blocks
 - `conversation_summaries` — rolling per-branch summary
 
