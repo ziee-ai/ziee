@@ -78,7 +78,17 @@ pub async fn update_admin_settings(
     // to compiled default) and Some(Some("")) (clear-via-empty) both
     // skip validation — those reset to the compiled-in default which
     // is always valid.
+    // Cap prompt length: these templates are injected into every
+    // summarization LLM call, so an unbounded value is a cost/DoS vector.
+    const MAX_PROMPT_LEN: usize = 32_768;
     if let Some(Some(s)) = body.full_summary_prompt.as_ref() {
+        if s.len() > MAX_PROMPT_LEN {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                "full_summary_prompt exceeds the 32 KiB limit",
+            )
+            .into());
+        }
         if !s.is_empty() && !s.contains("{transcript}") {
             return Err(AppError::bad_request(
                 "VALIDATION_ERROR",
@@ -88,6 +98,13 @@ pub async fn update_admin_settings(
         }
     }
     if let Some(Some(s)) = body.incremental_summary_prompt.as_ref() {
+        if s.len() > MAX_PROMPT_LEN {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                "incremental_summary_prompt exceeds the 32 KiB limit",
+            )
+            .into());
+        }
         if !s.is_empty()
             && (!s.contains("{previous_summary}") || !s.contains("{new_transcript}"))
         {
