@@ -541,6 +541,17 @@ pub async fn me(auth: JwtAuth) -> ApiResult<Json<MeResponse>> {
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, AppError::not_found("User")))?;
 
+    // A deactivated user's JWT stays valid until expiry, but JwtAuth only
+    // validates the token — it never re-checks is_active. Reject here so a
+    // disabled account can't keep reading its profile/permissions (matches
+    // the RequirePermissions extractor's is_active gate).
+    if !user.is_active {
+        return Err((
+            StatusCode::FORBIDDEN,
+            AppError::forbidden("USER_INACTIVE", "User account is inactive"),
+        ));
+    }
+
     // Get effective permissions (union of user permissions + group permissions)
     let user_service = UserService::new(
         (**Repos.user).clone(),
