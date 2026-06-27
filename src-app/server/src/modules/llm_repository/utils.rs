@@ -285,13 +285,15 @@ pub async fn test_repository_connectivity(
     // test endpoint https://api.github.com/user) rejects any UA-less request with
     // 403 Forbidden *before* checking the token, so a valid token would otherwise
     // fail the connection test with a misleading 403.
-    let client_builder = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .user_agent(concat!("ziee/", env!("CARGO_PKG_VERSION")));
-
-    let client = client_builder
-        .build()
-        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+    // SSRF guard: route through a client whose DNS resolver + redirect policy
+    // re-validate every connect/hop against PUBLIC_HTTP_OR_HTTPS (blocks
+    // loopback / RFC1918 / link-local IMDS, and closes the redirect-to-internal
+    // bypass). The 10s timeout + User-Agent are applied per-request below since
+    // the validated-client builder owns the resolver/redirect config.
+    let client = crate::utils::url_validator::build_validated_client(
+        crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS,
+    )
+    .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
     // Determine the test URL - use auth_test_api_endpoint if provided, otherwise use the main URL
     let test_url = if let Some(auth_config) = &request.auth_config {
@@ -308,8 +310,16 @@ pub async fn test_repository_connectivity(
         &request.url
     };
 
-    // Build the request with authentication
-    let mut req_builder = client.get(test_url);
+    // Build the request with authentication. Timeout + UA are per-request
+    // (the validated client owns the resolver/redirect config). GitHub's REST
+    // API rejects UA-less requests with 403 before checking the token.
+    let mut req_builder = client
+        .get(test_url)
+        .timeout(std::time::Duration::from_secs(10))
+        .header(
+            reqwest::header::USER_AGENT,
+            concat!("ziee/", env!("CARGO_PKG_VERSION")),
+        );
 
     tracing::info!("Testing connection to: {}", redact_url_userinfo(test_url));
 
