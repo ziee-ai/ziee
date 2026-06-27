@@ -69,7 +69,9 @@ export function SemanticSearchSection() {
   }
   if (!settings) return null
 
-  const noModelsAvailable = availableModels.length === 0
+  // Don't claim "no models" until the fetch has actually completed — otherwise
+  // the warning + disabled select flash during the initial load.
+  const noModelsAvailable = !loadingModels && availableModels.length === 0
 
   const persist = async (values: FormValues, modelChanged: boolean) => {
     try {
