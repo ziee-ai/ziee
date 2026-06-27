@@ -24,6 +24,7 @@ function SidebarItem({
       onClick={onClick}
       role="button"
       tabIndex={0}
+      aria-label={label}
       onKeyDown={e => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
@@ -42,6 +43,7 @@ function SidebarItem({
       }}
     >
       <div
+        aria-hidden="true"
         className="w-4 h-4 mr-1.5 flex items-center justify-center"
         style={{ fontSize: 18 }}
       >
