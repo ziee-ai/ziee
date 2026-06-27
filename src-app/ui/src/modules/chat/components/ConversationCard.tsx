@@ -96,10 +96,19 @@ export function ConversationCard({
     <Card
       key={conversation.id}
       onClick={handleCardClick}
+      role="button"
+      tabIndex={0}
+      aria-label={conversation.title || 'Untitled Conversation'}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          handleCardClick()
+        }
+      }}
       onMouseEnter={() => {
         if (!hoveredOnce) setHoveredOnce(true)
       }}
-      className="cursor-pointer relative group hover:!shadow-md transition-shadow"
+      className="cursor-pointer relative group hover:!shadow-md transition-shadow focus-visible:outline focus-visible:outline-2"
       classNames={{
         body: '!px-3 !py-2',
       }}
