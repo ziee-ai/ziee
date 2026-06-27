@@ -46,6 +46,7 @@ export function CoreMemorySection() {
         ) : (
           <Select
             className="w-full"
+            aria-label="Pick an assistant"
             placeholder="Pick an assistant"
             value={assistantId ?? undefined}
             onChange={(v) => setAssistantId(v ?? null)}
