@@ -67,7 +67,9 @@ export const useAuthProvidersAdminStore = create<AuthProvidersAdminStore>()(
   subscribeWithSelector(
     immer((set, get) => ({
       providers: [],
-      loading: false,
+      // Start in the loading state so the first paint shows a spinner, not a
+      // spurious "No providers yet" empty state, before __init__ loads.
+      loading: true,
       saving: false,
       error: null,
       testingIds: new Set<string>(),
@@ -149,7 +151,14 @@ export const useAuthProvidersAdminStore = create<AuthProvidersAdminStore>()(
         // Self-gate: sync:reconnect fires for every store regardless of
         // audience, so a non-admin must not refetch this admin-only list
         // and trip a 403. Perm must match the endpoint's read gate.
-        if (!hasPermissionNow(Permissions.AuthProvidersRead)) return
+        if (!hasPermissionNow(Permissions.AuthProvidersRead)) {
+          // Clear the initial loading state so a non-admin mount doesn't hang
+          // on a permanent spinner (loading defaults to true).
+          set(s => {
+            s.loading = false
+          })
+          return
+        }
         set(s => {
           s.loading = true
           s.error = null
