@@ -1,0 +1,101 @@
+import * as React from 'react'
+import { Loader2 } from 'lucide-react'
+import { Button as ButtonBase, type ButtonProps as BaseButtonProps } from '../shadcn/button'
+import { Skeleton } from '../shadcn/skeleton'
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '../shadcn/tooltip'
+import { useSurface } from './surface'
+import { cn } from '@/lib/utils'
+import { safeHref } from './safe-href'
+
+type ButtonCommon = Omit<BaseButtonProps, 'size'> & {
+  loading?: boolean
+  /** Leading icon (legacy `icon`); rendered before children, replaced by the spinner while loading. */
+  icon?: React.ReactNode
+  /** Full-width block button (legacy `block`). */
+  block?: boolean
+  /** Render as an <a> styled as a button (pair with variant="link" for a text link). */
+  href?: string
+  target?: string
+  /** Tooltip shown on hover AND keyboard focus. Doubles as the accessible name when a string. */
+  tooltip?: React.ReactNode
+}
+
+// Icon-only buttons have no text → no accessible name. The type FORCES a `tooltip`
+// when size="icon" (which also becomes the aria-label and shows on hover + focus).
+export type ButtonProps =
+  // icon-only has no text → force a name: a string tooltip, or an explicit aria-label.
+  | (ButtonCommon & { size: 'icon'; tooltip: string })
+  | (ButtonCommon & { size: 'icon'; 'aria-label': string; tooltip?: React.ReactNode })
+  | (ButtonCommon & { size?: 'sm' | 'default' | 'lg' })
+
+const skeletonH = (size?: BaseButtonProps['size']) =>
+  size === 'sm' ? 'h-8' : size === 'lg' ? 'h-10' : 'h-9'
+
+export const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, ButtonProps>(
+  ({ loading, disabled, href, target, size: ownSize, type = 'button', tooltip, icon, block, children, className: classNameProp, onClick, ...props }, ref) => {
+    const { disabled: surfaceDisabled, loading: regionLoading, size: ambientSize } = useSurface({ disabled })
+    const size = ownSize ?? ambientSize
+    const className = cn(block && 'w-full', classNameProp)
+
+    if (regionLoading) {
+      return <Skeleton className={cn(skeletonH(size), 'w-20 rounded-md', className)} />
+    }
+
+    // surface-disabled → native `disabled` (truly inert). loading → keep focusable but
+    // aria-disabled + block activation, so `aria-busy` is announced and focus isn't lost.
+    const nativeDisabled = surfaceDisabled
+    const isDisabled = surfaceDisabled || loading
+    // a string tooltip becomes the accessible name (unless an explicit aria-label is given).
+    const ariaLabel =
+      (props as { 'aria-label'?: string })['aria-label'] ?? (typeof tooltip === 'string' ? tooltip : undefined)
+    const inner = (
+      <>
+        {loading ? <Loader2 className="animate-spin" aria-hidden /> : (icon != null && <span aria-hidden className="[&_svg]:size-4">{icon}</span>)}
+        {children}
+      </>
+    )
+
+    const linkHref = href ? safeHref(href) : undefined
+    const node =
+      linkHref && !isDisabled ? (
+        <ButtonBase asChild size={size} className={className} onClick={onClick as React.MouseEventHandler} {...props}>
+          <a
+            ref={ref as React.Ref<HTMLAnchorElement>}
+            href={linkHref}
+            target={target}
+            rel={target === '_blank' ? 'noopener noreferrer' : undefined}
+            aria-label={ariaLabel}
+          >
+            {inner}
+          </a>
+        </ButtonBase>
+      ) : (
+        <ButtonBase
+          ref={ref as React.Ref<HTMLButtonElement>}
+          type={type}
+          size={size}
+          disabled={nativeDisabled}
+          aria-disabled={loading || undefined}
+          aria-busy={loading || undefined}
+          aria-label={ariaLabel}
+          className={cn(className, loading && 'pointer-events-none opacity-70')}
+          // while loading: stay focusable but swallow activation.
+          onClick={loading ? (e) => e.preventDefault() : (onClick as React.MouseEventHandler)}
+          {...props}
+        >
+          {inner}
+        </ButtonBase>
+      )
+
+    if (tooltip == null) return node
+    return (
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <TooltipTrigger asChild>{node}</TooltipTrigger>
+          <TooltipContent>{tooltip}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+  },
+)
+Button.displayName = 'Button'

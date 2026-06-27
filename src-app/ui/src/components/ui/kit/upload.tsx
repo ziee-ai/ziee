@@ -1,0 +1,68 @@
+import * as React from 'react'
+import { useSurface } from './surface'
+import { type KitStyleProps } from './style-guard'
+import { cn } from '@/lib/utils'
+
+// legacy Upload (controlled-files subset): a drag-and-drop + click dropzone that hands raw
+// File objects to the caller. File list rendering/removal is the caller's concern (render
+// `children` or a sibling list). No built-in network upload — the app owns transport.
+export type UploadProps = {
+  onFiles: (files: File[]) => void
+  /** accept attribute, e.g. "image/*,.pdf". */
+  accept?: string
+  multiple?: boolean
+  disabled?: boolean
+  /** Accessible label for the file input (required — i18n). */
+  label: string
+  /** Dropzone body (instructions, icon, current file list). */
+  children: React.ReactNode
+  className?: string} & KitStyleProps
+
+export const Upload = React.forwardRef<HTMLInputElement, UploadProps>(function Upload(
+  { onFiles, accept, multiple, disabled, label, children, className, style }, ref,
+) {
+  const s = useSurface({ disabled })
+  const inputRef = React.useRef<HTMLInputElement>(null)
+  React.useImperativeHandle(ref, () => inputRef.current as HTMLInputElement)
+  const [drag, setDrag] = React.useState(false)
+  const locked = s.disabled
+  const pick = (list: FileList | null) => {
+    if (!list || locked) return
+    const files = Array.from(list)
+    if (files.length) onFiles(multiple ? files : files.slice(0, 1))
+  }
+  return (
+    <div
+      role="button"
+      tabIndex={locked ? -1 : 0}
+      aria-label={label}
+      aria-disabled={locked || undefined}
+      style={style}
+      onClick={() => !locked && inputRef.current?.click()}
+      onKeyDown={(e) => { if (!locked && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); inputRef.current?.click() } }}
+      onDragOver={(e) => { if (!locked) { e.preventDefault(); setDrag(true) } }}
+      onDragLeave={() => setDrag(false)}
+      onDrop={(e) => { e.preventDefault(); setDrag(false); pick(e.dataTransfer.files) }}
+      className={cn(
+        'flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed p-6 text-center text-sm transition-colors',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        drag && 'border-primary bg-primary/5',
+        locked && 'cursor-not-allowed opacity-50',
+        className,
+      )}
+    >
+      {children}
+      <input
+        ref={inputRef}
+        type="file"
+        tabIndex={-1}
+        accept={accept}
+        multiple={multiple}
+        disabled={locked}
+        aria-label={label}
+        className="sr-only"
+        onChange={(e) => { pick(e.target.files); e.target.value = '' }}
+      />
+    </div>
+  )
+})

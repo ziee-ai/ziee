@@ -5,6 +5,17 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content"/>
     <title>Ziee Chat - Modular Architecture</title>
+    <!-- Pre-hydration theme: set the `dark` class before first paint to avoid a flash of the
+         wrong theme. Key must match ThemeProvider's storageKey (default 'ziee-theme'). -->
+    <script>
+      (function () {
+        try {
+          var p = localStorage.getItem('ziee-theme') || 'system'
+          var dark = p === 'dark' || (p === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
+          document.documentElement.classList.toggle('dark', dark)
+        } catch (e) {}
+      })()
+    </script>
 </head>
 
 <body>
