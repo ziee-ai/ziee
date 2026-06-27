@@ -2022,6 +2022,23 @@ impl ChatExtension for McpChatExtension {
                 Ok(id) => id,
                 Err(_) => {
                     tracing::error!("Invalid server_id: {}", server_id_str);
+                    // Emit an error tool_result so the model's tool_use block
+                    // is not orphaned (a tool_use with no matching tool_result
+                    // breaks the next provider request). Mirrors the
+                    // server-not-found branch below.
+                    let error_result = McpContentData::ToolResult {
+                        tool_use_id: tool_use_id.clone(),
+                        name: Some(tool_name.clone()),
+                        server_id: Some(server_id_str.clone()),
+                        content: format!("Invalid server id '{}'", server_id_str),
+                        is_error: Some(true),
+                        attachment: None,
+                        images: None,
+                        resource_links: None,
+                        hidden_content: None,
+                        structured_content: None,
+                    };
+                    tool_results.push(error_result.to_message_content());
                     continue;
                 }
             };
