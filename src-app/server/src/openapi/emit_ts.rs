@@ -468,8 +468,16 @@ fn generate_response_type(operation: &J, http_method: Option<&str>) -> String {
 }
 
 fn get_type_from_schema(schema: &J, is_optional_or_nullable: bool) -> String {
-    if let J::Bool(_) = schema {
-        return "any".to_string();
+    if let J::Bool(b) = schema {
+        // A `serde_json::Value` field renders as the boolean schema `true`
+        // (accepts any JSON); `false` accepts nothing. Type these precisely
+        // rather than collapsing to `any`. (`AnyType` keeps its explicit `any`
+        // via extract_schema_name — that's a deliberate escape hatch.)
+        return if *b {
+            "unknown".to_string()
+        } else {
+            "never".to_string()
+        };
     }
 
     if schema.is_ref() {
@@ -643,7 +651,10 @@ fn get_type_from_schema(schema: &J, is_optional_or_nullable: bool) -> String {
             types.join(" | ")
         }
     } else {
-        "any".to_string()
+        // No $ref / anyOf / oneOf / allOf / enum / type — i.e. a schema that
+        // accepts any JSON (e.g. a `serde_json::Value` field carrying only a
+        // description / writeOnly). Type it as `unknown`, not `any`.
+        "unknown".to_string()
     }
 }
 

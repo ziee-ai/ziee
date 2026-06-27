@@ -45,7 +45,7 @@ export interface Assistant {
    * Model parameters stored as JSONB
    *  Can be deserialized to ModelParameters when needed
    */
-  parameters?: any
+  parameters?: unknown
   updated_at: string
 }
 
@@ -79,7 +79,7 @@ export interface AttachFileRequest {
  *  MASKED — see handlers.rs::mask_provider_config.
  */
 export interface AuthProviderResponse {
-  config: any
+  config: unknown
   created_at: string
   enabled: boolean
   id: string
@@ -202,7 +202,7 @@ export interface BibliographyEntry {
   arxiv_id?: string
   citation_key: string
   created_at: string
-  csl_json: any
+  csl_json: unknown
   doi?: string
   id: string
   pmcid?: string
@@ -244,7 +244,7 @@ export interface CPUUsage {
 }
 
 export interface CallToolRequest {
-  arguments: any
+  arguments: unknown
 }
 
 export interface CallToolResponse {
@@ -347,7 +347,7 @@ export interface CitationInput {
   title?: string
   authors?: string[]
   /** A full CSL-JSON item (e.g. piped from a prior literature_search result). */
-  csl?: any
+  csl?: unknown
   /**
    * A raw identifier (DOI / PMID / PMCID / arXiv); kind auto-detected by
    *  pattern, or set `kind` to disambiguate. May be wrong/fabricated.
@@ -462,7 +462,7 @@ export interface ConnectorCatalogEntry {
    *  form can pre-fill + round-trip it (the api key is never included here).
    *  Without this the form would re-submit empty config fields and wipe them.
    */
-  config: any
+  config: unknown
   config_fields: ConfigFieldInfo[]
   /** True when required config + (if required) key are present. */
   configured: boolean
@@ -600,7 +600,7 @@ export interface CreateAssistantFromHubRequest {
   /** Optional: Override name (defaults to hub assistant name) */
   name?: string
   /** Optional: Override parameters */
-  parameters?: any
+  parameters?: unknown
   /**
    * Template-only: when true, delete the existing template install
    *  for this `hub_id` before creating the new one. Used by the
@@ -650,7 +650,7 @@ export interface CreateAssistantRequest {
 }
 
 export interface CreateAuthProviderRequest {
-  config: any
+  config: unknown
   enabled?: boolean
   name: string
   /** One of: `oidc`, `oauth2`, `apple`, `ldap`, `local`. */
@@ -860,7 +860,7 @@ export interface CreateMemoryRequest {
   content: string
   importance?: number
   kind?: string
-  metadata?: any
+  metadata?: unknown
 }
 
 /** Request to create LLM model from hub catalog (triggers download) */
@@ -1218,7 +1218,7 @@ export interface DrainEntry {
 }
 
 export interface DryRunRequest {
-  inputs?: any
+  inputs?: unknown
 }
 
 /** Result of `dry_run`. */
@@ -1272,7 +1272,7 @@ export interface ElicitAckResponse {
 }
 
 export interface ElicitationResponseRequest {
-  response: any
+  response: unknown
 }
 
 export type EngineDownloadStatus = 'pending' | 'downloading' | 'verifying' | 'extracting' | 'registering' | 'completed' | 'failed'
@@ -1375,7 +1375,7 @@ export interface File {
   id: string
   mime_type?: string
   preview_page_count: number
-  processing_metadata: any
+  processing_metadata: unknown
   text_page_count: number
   updated_at: string
   user_id: string
@@ -1452,7 +1452,7 @@ export interface FileVersion {
   is_head: boolean
   mime_type?: string
   preview_page_count: number
-  processing_metadata: any
+  processing_metadata: unknown
   /** The chat turn / tool-call that produced this version (provenance). */
   source_message_id?: string
   text_page_count: number
@@ -1535,14 +1535,14 @@ export interface GPUUsage {
 }
 
 export interface GetPromptRequest {
-  arguments?: any
+  arguments?: unknown
   name: string
 }
 
 /** Result of a `prompts/get` call — server's rendered prompt messages. */
 export interface GetPromptResponse {
   description?: string
-  messages: any[]
+  messages: unknown[]
 }
 
 /** Response for user-accessible LLM providers */
@@ -1664,7 +1664,7 @@ export interface HideSkillInConversationRequest {
 export interface HubAssistant {
   $schema?: string
   description?: string
-  _meta?: any
+  _meta?: unknown
   author?: string
   capabilities_required?: string[]
   category?: string
@@ -1687,7 +1687,7 @@ export interface HubAssistant {
   instructions?: string
   /** Reverse-DNS canonical name (the catalog lookup key). */
   name: string
-  parameters: any
+  parameters: unknown
   /** Source repository pointer (rare for assistants, but supported). */
   repository?: HubRepository
   tags?: string[]
@@ -1884,7 +1884,7 @@ export interface HubMCPServer {
    *  so the frontend can surface "official MCP registry" provenance
    *  without a separate lookup.
    */
-  _meta?: any
+  _meta?: unknown
   /**
    * Array of entity IDs created by current user from this hub server.
    *  Populated by the handler at response time; never present in the
@@ -1960,7 +1960,7 @@ export interface HubModel {
    *  preserved from ingested entries on the MCP side). Free-form for
    *  forward compat.
    */
-  _meta?: any
+  _meta?: unknown
   author?: string
   capabilities?: ModelCapabilities2
   /** Array of model IDs downloaded by ANYONE from this hub model (system-wide) */
@@ -1979,7 +1979,7 @@ export interface HubModel {
    *  endpoint.
    */
   name: string
-  recommended_parameters?: any
+  recommended_parameters?: unknown
   /** Source repository pointer. Mirrors `HubMCPServer.repository`. */
   repository?: HubRepository
   /**
@@ -2042,7 +2042,7 @@ export interface HubRepository {
 export interface HubSkill {
   $schema?: string
   description?: string
-  _meta?: any
+  _meta?: unknown
   author?: string
   bundle: HubBundle
   dependencies?: HubDependency[]
@@ -2070,7 +2070,7 @@ export interface HubVersionResponse {
 export interface HubWorkflow {
   $schema?: string
   description?: string
-  _meta?: any
+  _meta?: unknown
   author?: string
   bundle: HubBundle
   dependencies?: HubDependency[]
@@ -2126,7 +2126,7 @@ export interface IndexItem {
    * Namespaced extras (e.g.
    *  `io.modelcontextprotocol.registry/*` on ingested entries).
    */
-  _meta?: any
+  _meta?: unknown
   added_at?: string
   category: HubCategory
   /**
@@ -2703,7 +2703,7 @@ export interface McpRemote {
 
 export interface McpServer {
   description?: string
-  args: any
+  args: unknown
   command?: string
   created_at: string
   display_name: string
@@ -2717,7 +2717,7 @@ export interface McpServer {
    *  shape is `environment_variables_entries` with secret values
    *  redacted to `value: None`.
    */
-  environment_variables?: any
+  environment_variables?: unknown
   /**
    * Public structured view of `environment_variables` for the UI
    *  form editor. Per-entry secret marker; secret values redacted
@@ -2732,7 +2732,7 @@ export interface McpServer {
    *  `parse_header_map` runs `${VAR}` interpolation against the
    *  (decrypted) env map at request-build time.
    */
-  headers?: any
+  headers?: unknown
   /**
    * Public structured view of `headers` for the UI form editor.
    *  Sibling of `environment_variables_entries`.
@@ -2833,7 +2833,7 @@ export interface McpServerOAuthConfigResponse {
  */
 export interface McpServerWithHealthWarning {
   description?: string
-  args: any
+  args: unknown
   command?: string
   connection_warning?: ProbeFailure2
   created_at: string
@@ -2848,7 +2848,7 @@ export interface McpServerWithHealthWarning {
    *  shape is `environment_variables_entries` with secret values
    *  redacted to `value: None`.
    */
-  environment_variables?: any
+  environment_variables?: unknown
   /**
    * Public structured view of `environment_variables` for the UI
    *  form editor. Per-entry secret marker; secret values redacted
@@ -2863,7 +2863,7 @@ export interface McpServerWithHealthWarning {
    *  `parse_header_map` runs `${VAR}` interpolation against the
    *  (decrypted) env map at request-build time.
    */
-  headers?: any
+  headers?: unknown
   /**
    * Public structured view of `headers` for the UI form editor.
    *  Sibling of `environment_variables_entries`.
@@ -2931,7 +2931,7 @@ export interface McpSettingsResponse {
  *  (`query_as!` maps by name, but keeping them aligned aids review).
  */
 export interface McpToolCall {
-  arguments_json: any
+  arguments_json: unknown
   branch_id?: string
   content_kinds: string[]
   conversation_id?: string
@@ -2944,7 +2944,7 @@ export interface McpToolCall {
   is_error: boolean
   message_id?: string
   result_bytes: number
-  result_json?: any
+  result_json?: unknown
   server_id?: string
   server_name: string
   source: string
@@ -3095,7 +3095,7 @@ export interface MemoryAuditEntry {
   created_at: string
   id: number
   memory_id?: string
-  metadata: any
+  metadata: unknown
   op: string
   source: string
   user_id: string
@@ -3197,7 +3197,7 @@ export interface MessageContentDataFileAttachment {
 export interface MessageContentDataToolUse {
   type: 'tool_use'
   id: string
-  input: any
+  input: unknown
   /** Tool name (without server_id prefix) */
   name: string
   /** Server ID (UUID) */
@@ -3246,7 +3246,7 @@ export interface MessageContentDataToolResult {
    *  the literature screening card) read it, and the model recalls it via
    *  `get_tool_result`; it is NOT forwarded to the LLM by `to_content_block`.
    */
-  structured_content?: any
+  structured_content?: unknown
   tool_use_id: string
 }
 export interface MessageContentDataElicitationRequest {
@@ -3256,9 +3256,9 @@ export interface MessageContentDataElicitationRequest {
   /** Human-readable prompt from the MCP server */
   message: string
   /** JSON Schema (SEP-1330) describing the requested fields */
-  requested_schema: any
+  requested_schema: unknown
   /** User's submitted field values (only present when status = "accepted") */
-  response_content?: any
+  response_content?: unknown
   /** Display name of the MCP server that sent the request */
   server: string
   /** "pending" | "accepted" | "declined" | "cancelled" */
@@ -3777,7 +3777,7 @@ export interface ProviderCatalogEntry {
   /** True when an API key is stored (the value itself is never exposed). */
   api_key_set: boolean
   /** Non-secret stored config for this provider. */
-  config: any
+  config: unknown
   config_fields: ConfigField[]
   /** True when required config + (if needed) API key are present. */
   configured: boolean
@@ -3890,7 +3890,7 @@ export interface ReadResourceRequest {
 }
 
 export interface ReadResourceResponse {
-  content: any
+  content: unknown
 }
 
 export interface RebuildStatus {
@@ -4024,7 +4024,7 @@ export interface RespondToElicitationRequest {
   /** "accept" | "decline" | "cancel" */
   action: string
   /** Field values — only present when action == "accept" */
-  content?: any
+  content?: unknown
 }
 
 /** Response body for POST /api/mcp/elicitation/{id}/respond */
@@ -4202,7 +4202,7 @@ export type SSEChatStreamEvent = {
 /** Event data for MCP tool approval required */
 export interface SSEChatStreamMcpApprovalRequiredData {
   /** Tool input parameters */
-  input: any
+  input: unknown
   /** MCP server requesting tool execution (display name) */
   server: string
   /** MCP server ID (UUID) */
@@ -4222,7 +4222,7 @@ export interface SSEChatStreamMcpElicitationRequiredData {
   /** ID of the assistant message that triggered this elicitation (informational) */
   message_id?: string
   /** JSON Schema describing the requested fields (per SEP-1330) */
-  requested_schema: any
+  requested_schema: unknown
   /** Display name of the MCP server that sent the request */
   server: string
 }
@@ -4256,7 +4256,7 @@ export interface SSEChatStreamMcpToolProgressData {
    * Opaque progress token the server echoed back (the client sets it on
    *  the originating `tools/call`). Lets the UI correlate concurrent calls.
    */
-  progress_token?: any
+  progress_token?: unknown
   /** Display name of the MCP server reporting progress. */
   server: string
   /** Total expected units, if known (denominator for a progress bar). */
@@ -4266,7 +4266,7 @@ export interface SSEChatStreamMcpToolProgressData {
 /** Event data for MCP tool execution start */
 export interface SSEChatStreamMcpToolStartData {
   /** Tool input parameters (for display in "Show details" panel) */
-  input: any
+  input: unknown
   /** MCP server executing the tool */
   server: string
   /** Name of the tool being executed */
@@ -4317,12 +4317,12 @@ export interface SSEElicitationRequiredData {
    * D2: rendered seed data the FE form pre-fills with (see
    *  `StepConfig::Elicit.data`). `None` when the step declares no `data:`.
    */
-  data?: any
+  data?: unknown
   deadline_at: string
   elicitation_id: string
   message: string
   run_id: string
-  schema: any
+  schema: unknown
   step_id: string
 }
 
@@ -4440,7 +4440,7 @@ export interface SSERunCancelledData {
 
 export interface SSERunCompletedData {
   ms_elapsed: number
-  outputs_preview: any
+  outputs_preview: unknown
   run_id: string
   total_tokens: number
 }
@@ -4468,26 +4468,26 @@ export interface SSERunStartedData {
 
 export interface SSESnapshotData {
   current_step?: string
-  final_output_json?: any
-  pending_elicitation_json?: any
+  final_output_json?: unknown
+  pending_elicitation_json?: unknown
   run_id: string
   status: string
-  step_artifacts_json: any
-  step_item_progress_json: any
-  step_logs_json: any
+  step_artifacts_json: unknown
+  step_item_progress_json: unknown
+  step_logs_json: unknown
   /**
    * The full pipeline (topo order) so a (re)connecting client renders all
    *  steps up front — pending ones included. Rebuilt from the run's
    *  compiled IR. Empty for legacy/in-flight rows without a manifest.
    */
   step_manifest?: SSEStepManifestItem[]
-  step_outputs_json: any
+  step_outputs_json: unknown
   /**
    * P2.6: the running sandbox step's live track map (`{ id -> ProgressTrack }`)
    *  so a (re)connecting client rehydrates in-flight bars. `None` when no step
    *  is currently streaming progress.
    */
-  step_progress_json?: any
+  step_progress_json?: unknown
   total_tokens: number
 }
 
@@ -4719,7 +4719,7 @@ export interface Skill {
    *  fields (`allowed-tools`, `disable-model-invocation`, `paths`, etc.)
    *  round-trip if the bundle is re-exported.
    */
-  frontmatter_json: any
+  frontmatter_json: unknown
   id: string
   /**
    * True when imported via `/api/skills/import` (dev workflow:
@@ -4730,7 +4730,7 @@ export interface Skill {
   name: string
   owner_user_id?: string
   scope: string
-  tags: any
+  tags: unknown
   updated_at: string
   /** Per-entry semver (the hub manifest's `version`). */
   version?: string
@@ -5005,7 +5005,7 @@ export interface TokenPair {
 
 export interface Tool {
   description?: string
-  input_schema: any
+  input_schema: unknown
   name: string
 }
 
@@ -5039,7 +5039,7 @@ export interface ToolUseApproval {
   created_at: string
   id: string
   /** Tool input (serialized as "input" for API compatibility) */
-  input: any
+  input: unknown
   message_id: string
   /** Server identification (hybrid approach) */
   server_id?: string
@@ -5084,7 +5084,7 @@ export interface UpdateAuthProviderRequest {
    *  field is treated as "leave the existing value unchanged" so
    *  admins can edit other fields without re-entering secrets.
    */
-  config?: any
+  config?: unknown
   enabled?: boolean
   name?: string
 }
@@ -5118,7 +5118,7 @@ export interface UpdateConnectorRequest {
   /** API key: omitted = leave, "" = clear, non-empty = set. */
   api_key?: string
   /** Non-secret config (e.g. `{ "mailto": "a@b.c" }`). */
-  config?: any
+  config?: unknown
 }
 
 export interface UpdateConversationMemoryModeRequest {
@@ -5307,7 +5307,7 @@ export interface UpdateMemoryRequest {
   content?: string
   importance?: number
   kind?: string
-  metadata?: any
+  metadata?: unknown
 }
 
 /**
@@ -5343,7 +5343,7 @@ export interface UpdateProjectRequest {
  */
 export interface UpdateProviderRequest {
   api_key?: string
-  config?: any
+  config?: unknown
 }
 
 export interface UpdateRuntimeSettingsRequest {
@@ -5356,7 +5356,7 @@ export interface UpdateSkill {
   description?: string
   display_name?: string
   enabled?: boolean
-  tags?: any
+  tags?: unknown
   when_to_use?: string
 }
 
@@ -5428,7 +5428,7 @@ export interface UpdateWorkflow {
   description?: string
   display_name?: string
   enabled?: boolean
-  tags?: any
+  tags?: unknown
 }
 
 export interface UpsertCoreMemoryBlockRequest {
@@ -5568,7 +5568,7 @@ export interface UserMemory {
   importance: number
   kind: string
   last_recalled_at?: string
-  metadata: any
+  metadata: unknown
   recall_count: number
   source: string
   source_message_id?: string
@@ -5724,7 +5724,7 @@ export interface Workflow {
    * Pre-resolved templates + typed step metadata. NULL until the
    *  validator's compile pass runs (B4). See plan §4.1 pattern (d).
    */
-  compiled_ir_json?: any
+  compiled_ir_json?: unknown
   created_at: string
   created_by?: string
   display_name?: string
@@ -5737,7 +5737,7 @@ export interface Workflow {
   name: string
   owner_user_id?: string
   scope: string
-  tags: any
+  tags: unknown
   updated_at: string
   version?: string
 }
@@ -5770,24 +5770,24 @@ export interface WorkflowRun {
   created_at: string
   current_step?: string
   error_message?: string
-  final_output_json?: any
+  final_output_json?: unknown
   id: string
-  inputs_json: any
+  inputs_json: unknown
   model_id?: string
-  pending_elicitation_json?: any
+  pending_elicitation_json?: unknown
   run_kind: string
   sandbox_flavor?: string
   status: string
-  step_artifacts_json: any
-  step_item_progress_json: any
-  step_logs_json: any
-  step_outputs_json: any
+  step_artifacts_json: unknown
+  step_item_progress_json: unknown
+  step_logs_json: unknown
+  step_outputs_json: unknown
   /**
    * P2.6: the running sandbox step's live progress track map
    *  (`{ id -> ProgressTrack }`), or NULL when no step is streaming progress.
    *  Drives Snapshot rehydration of in-flight bars after a refresh.
    */
-  step_progress_json?: any
+  step_progress_json?: unknown
   total_tokens: number
   updated_at: string
   user_id: string
@@ -5808,7 +5808,7 @@ export interface WorkflowRunRequest {
    */
   capture_logs?: boolean
   conversation_id?: string
-  inputs?: any
+  inputs?: unknown
   /**
    * Per-step canned responses, keyed by step id. ONLY honored when the
    *  workflow's `is_dev = true` (the route handler rejects mocks for
@@ -6918,7 +6918,7 @@ export type ApiEndpointResponses = {
   'LlmModel.subscribeDownloadProgress': SSEDownloadProgressEvent
   'LlmModel.update': LlmModel
   'LlmModel.upload': LlmModel
-  'LlmModel.validate': any
+  'LlmModel.validate': unknown
   'LlmProvider.assignGroup': void
   'LlmProvider.create': CreateLlmProviderResponse
   'LlmProvider.delete': void
@@ -6995,16 +6995,16 @@ export type ApiEndpointResponses = {
   'Memory.get': UserMemory
   'Memory.list': MemoryListResponse
   'Memory.update': UserMemory
-  'MemoryAdmin.ftsRebuild': any
+  'MemoryAdmin.ftsRebuild': unknown
   'MemoryAdmin.ftsRebuildStatus': FtsRebuildStatus
   'MemoryAdmin.get': MemoryAdminSettings
   'MemoryAdmin.rebuildStatus': RebuildStatus
-  'MemoryAdmin.reembed': any
+  'MemoryAdmin.reembed': unknown
   'MemoryAdmin.update': MemoryAdminSettings
   'MemoryAudit.list': MemoryAuditEntry[]
   'MemorySettings.get': UserMemorySettings
   'MemorySettings.update': UserMemorySettings
-  'MemoryTest.extract': any
+  'MemoryTest.extract': unknown
   'Message.delete': void
   'Message.edit': EditMessageResponse
   'Message.get': MessageWithContent
@@ -7064,7 +7064,7 @@ export type ApiEndpointResponses = {
   'Summarization.getConversationSummary': ConversationSummary | null
   'SummarizationAdmin.get': SummarizationAdminSettings
   'SummarizationAdmin.update': SummarizationAdminSettings
-  'SummarizationTest.refresh': any
+  'SummarizationTest.refresh': unknown
   'Sync.subscribe': SyncSseEvent
   'User.create': User
   'User.delete': void
@@ -7098,9 +7098,9 @@ export type ApiEndpointResponses = {
   'Workflow.list': WorkflowListResponse
   'Workflow.listRuns': WorkflowRunListResponse
   'Workflow.listSystem': WorkflowListResponse
-  'Workflow.readArtifact': any
-  'Workflow.readLog': any
-  'Workflow.readOutput': any
+  'Workflow.readArtifact': unknown
+  'Workflow.readLog': unknown
+  'Workflow.readOutput': unknown
   'Workflow.run': WorkflowRunStartResponse
   'Workflow.setRunTimeout': RunActionAck
   'Workflow.submitElicit': ElicitAckResponse

@@ -224,8 +224,8 @@ export function ModelDetailsDrawer({
         )}
 
         {/* Recommended Parameters */}
-        {model.recommended_parameters &&
-          Object.keys(model.recommended_parameters).length > 0 && (
+        {!!model.recommended_parameters &&
+          Object.keys(model.recommended_parameters as object).length > 0 && (
             <div>
               <Title level={5}>Recommended Parameters</Title>
               <Card size="small">

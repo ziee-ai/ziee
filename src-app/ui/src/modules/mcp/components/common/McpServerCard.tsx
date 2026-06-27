@@ -357,8 +357,7 @@ export function McpServerCard({
                 <Card size="small" className={'!mt-2'}>
                   <pre className="text-xs overflow-auto m-0">
                     {server.command}
-                    {server.args &&
-                      Array.isArray(server.args) &&
+                    {Array.isArray(server.args) &&
                       server.args.length > 0 && (
                         <span> {server.args.join(' ')}</span>
                       )}

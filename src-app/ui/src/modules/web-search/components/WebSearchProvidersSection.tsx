@@ -58,7 +58,8 @@ function ProviderConfigForm({ entry }: { entry: ProviderCatalogEntry }) {
     if (!dirty) {
       const init: ProviderFormValues = { api_key: '' }
       for (const f of entry.config_fields) {
-        init[f.key] = (entry.config?.[f.key] as string) ?? ''
+        init[f.key] =
+          (entry.config as Record<string, string> | undefined)?.[f.key] ?? ''
       }
       form.setFieldsValue(init)
     }

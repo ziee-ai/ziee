@@ -157,8 +157,8 @@ export function AssistantDetailsDrawer({
         )}
 
         {/* Parameters */}
-        {assistant.parameters &&
-          Object.keys(assistant.parameters).length > 0 && (
+        {!!assistant.parameters &&
+          Object.keys(assistant.parameters as object).length > 0 && (
             <div>
               <Title level={5}>Parameters</Title>
               <Card size="small">
