@@ -55,7 +55,7 @@ export const useProjectDrawerStore = create<ProjectDrawerState>()(
       },
 
       openProjectDrawer: (project = null) => {
-        set({ open: true, editingProject: project })
+        set({ open: true, editingProject: project, loading: false })
       },
 
       closeProjectDrawer: () => {
