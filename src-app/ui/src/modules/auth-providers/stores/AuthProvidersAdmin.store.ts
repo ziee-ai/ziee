@@ -65,7 +65,10 @@ export const useAuthProvidersAdminStore = create<AuthProvidersAdminStore>()(
   subscribeWithSelector(
     immer((set, get) => ({
       providers: [],
-      loading: false,
+      // Start true so the first paint shows the spinner, not a "No
+      // providers yet" empty-state flash before the lazy load fires.
+      // loadProviders always resets this on success/error.
+      loading: true,
       saving: false,
       error: null,
       testingIds: new Set<string>(),
