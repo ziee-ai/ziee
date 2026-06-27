@@ -376,6 +376,10 @@ pub async fn persist_links(
 
         let client = match reqwest::Client::builder()
             .default_headers(fetch_headers)
+            // Bound the fetch of an external (possibly slow/hostile) URL so a
+            // hung server can't pin this task indefinitely.
+            .timeout(std::time::Duration::from_secs(30))
+            .connect_timeout(std::time::Duration::from_secs(10))
             .build()
         {
             Ok(c) => c,
