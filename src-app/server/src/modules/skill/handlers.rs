@@ -220,6 +220,7 @@ pub fn delete_user_skill_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn hide_skill_in_conversation(
     auth: RequirePermissions<(SkillsRead,)>,
+    origin: SyncOrigin,
     Path(id): Path<Uuid>,
     Json(request): Json<HideSkillInConversationRequest>,
 ) -> ApiResult<StatusCode> {
@@ -241,6 +242,10 @@ pub async fn hide_skill_in_conversation(
         .skill
         .set_hidden_in_conversation(id, request.conversation_id, true)
         .await?;
+    // Notify the owner's other devices so the per-conversation
+    // available-skills listing refetches (chat extension + skill_mcp
+    // refetch on `sync:skill`).
+    events::emit_user_skill(SyncAction::Update, id, auth.user.id, origin.0);
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
 
@@ -259,6 +264,7 @@ pub fn hide_skill_in_conversation_docs(op: TransformOperation) -> TransformOpera
 #[debug_handler]
 pub async fn unhide_skill_in_conversation(
     auth: RequirePermissions<(SkillsRead,)>,
+    origin: SyncOrigin,
     Path((id, conversation_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<StatusCode> {
     let owner = Repos
@@ -274,6 +280,10 @@ pub async fn unhide_skill_in_conversation(
         .skill
         .clear_hidden_in_conversation(id, conversation_id)
         .await?;
+    // Notify the owner's other devices so the per-conversation
+    // available-skills listing refetches (chat extension + skill_mcp
+    // refetch on `sync:skill`).
+    events::emit_user_skill(SyncAction::Update, id, auth.user.id, origin.0);
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
 
