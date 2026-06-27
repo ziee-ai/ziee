@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import {
-  Typography,
-  Form,
-  Input,
+  Title,
+  Text,
+  PasswordInput,
   Button,
   Space,
   Spin,
@@ -12,14 +12,12 @@ import {
   Menu,
   Dropdown,
   Empty,
-} from 'antd'
+} from '@/components/ui'
 import { CheckCircleOutlined } from '@ant-design/icons'
 import { IoIosArrowDown } from 'react-icons/io'
 import { Stores } from '@/core/stores'
 import { PROVIDER_ICONS } from '@/modules/llm-provider/constants'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
-
-const { Title, Text } = Typography
 
 // Displayed in the input when a key is already saved — long enough to look like a real key
 const KEY_DISPLAY_PLACEHOLDER = '••••••••••••••••••••••••'
@@ -78,7 +76,7 @@ export default function UserLlmProvidersPage() {
         <Flex className="flex-row gap-2 items-center h-full">
           <IconComponent className="text-lg" />
           <div className="flex-1 flex items-center h-full overflow-x-hidden">
-            <Typography.Text ellipsis>{provider.name}</Typography.Text>
+            <Text ellipsis>{provider.name}</Text>
           </div>
         </Flex>
       ),
@@ -87,28 +85,24 @@ export default function UserLlmProvidersPage() {
 
   const ProviderMenu = () => (
     <Menu
-      className={`
-        w-full h-full !m-0
-        [&_.ant-menu]:!px-0
-        [&_.ant-menu-item]:!h-8
-        [&_.ant-menu-item]:!leading-[32px]
-        !bg-transparent !border-none`}
-      selectedKeys={selectedId ? [selectedId] : []}
+      aria-label="Providers"
+      className="w-full h-full"
+      selectedKey={selectedId ?? undefined}
       items={menuItems}
-      onClick={({ key }) => setSelectedId(key)}
+      onSelect={key => setSelectedId(key)}
     />
   )
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-32">
-        <Spin />
+        <Spin label="Loading" />
       </div>
     )
   }
 
   if (error) {
-    return <Alert type="error" title={error} showIcon className="m-6" />
+    return <Alert tone="error" title={error} className="m-6" />
   }
 
   const renderContent = () => {
@@ -123,7 +117,6 @@ export default function UserLlmProvidersPage() {
               can configure keys here.
             </span>
           }
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
         />
       )
     }
@@ -132,7 +125,6 @@ export default function UserLlmProvidersPage() {
       return (
         <Empty
           description="No provider selected"
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
         />
       )
     }
@@ -141,12 +133,12 @@ export default function UserLlmProvidersPage() {
 
     return (
       <div className="max-w-lg">
-        <Flex align="center" gap={10} className="mb-1">
+        <Flex align="center" className="gap-2.5 mb-1">
           <IconComponent className="text-2xl" />
           <Title level={4} className="!mb-0">
             {currentProvider.name}
           </Title>
-          <Tag color={hasUserKey ? 'green' : currentProvider.api_key_configured ? 'blue' : 'orange'}>
+          <Tag tone={hasUserKey ? 'success' : currentProvider.api_key_configured ? 'info' : 'warning'}>
             {hasUserKey ? (
               <><CheckCircleOutlined /> Your key configured</>
             ) : currentProvider.api_key_configured ? (
@@ -161,37 +153,37 @@ export default function UserLlmProvidersPage() {
           Your personal key takes priority over the system key when making requests.
         </Text>
 
-        <Form layout="vertical">
-          <Form.Item label="Your API Key">
-            <Input.Password
-              value={keyValue}
-              onChange={e => setKeyValue(e.target.value)}
-              onFocus={() => {
-                if (keyValue === KEY_DISPLAY_PLACEHOLDER) setKeyValue('')
-              }}
-              placeholder={hasUserKey ? 'Enter new key to replace' : 'Enter your API key (e.g. sk-...)'}
-            />
-          </Form.Item>
-          <Space>
+        <div className="mb-4">
+          <Text className="block mb-1">Your API Key</Text>
+          <PasswordInput
+            showLabel="Show key"
+            hideLabel="Hide key"
+            value={keyValue}
+            onChange={e => setKeyValue(e.target.value)}
+            onFocus={() => {
+              if (keyValue === KEY_DISPLAY_PLACEHOLDER) setKeyValue('')
+            }}
+            placeholder={hasUserKey ? 'Enter new key to replace' : 'Enter your API key (e.g. sk-...)'}
+          />
+        </div>
+        <Space>
+          <Button
+            onClick={handleSave}
+            loading={savingFor === currentProvider.id || saving}
+            disabled={!keyValue.trim() || keyValue === KEY_DISPLAY_PLACEHOLDER}
+          >
+            {hasUserKey ? 'Update Key' : 'Save Key'}
+          </Button>
+          {hasUserKey && (
             <Button
-              type="primary"
-              onClick={handleSave}
-              loading={savingFor === currentProvider.id || saving}
-              disabled={!keyValue.trim() || keyValue === KEY_DISPLAY_PLACEHOLDER}
+              variant="destructive"
+              onClick={handleDelete}
+              loading={savingFor === currentProvider.id}
             >
-              {hasUserKey ? 'Update Key' : 'Save Key'}
+              Remove Key
             </Button>
-            {hasUserKey && (
-              <Button
-                danger
-                onClick={handleDelete}
-                loading={savingFor === currentProvider.id}
-              >
-                Remove Key
-              </Button>
-            )}
-          </Space>
-        </Form>
+          )}
+        </Space>
       </div>
     )
   }
@@ -220,15 +212,10 @@ export default function UserLlmProvidersPage() {
             {windowMinSize.sm && providers.length > 0 && (
               <div className="w-full flex flex-row gap-2 items-center mb-4">
                 <Dropdown
-                  className="w-full"
-                  menu={{
-                    items: menuItems,
-                    onClick: ({ key }) => setSelectedId(key),
-                    selectedKeys: selectedId ? [selectedId] : [],
-                  }}
-                  trigger={['click']}
+                  items={menuItems}
+                  onSelect={key => setSelectedId(key)}
                 >
-                  <Button className="w-fit" size="large">
+                  <Button variant="outline" className="w-fit" size="lg">
                     {currentProvider ? (
                       <Flex className="gap-2 items-center">
                         {(() => {
