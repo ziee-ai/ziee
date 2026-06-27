@@ -234,7 +234,7 @@ function ConversationRowLabel({
       </span>
       <div
         className={
-          'row-actions flex-shrink-0 opacity-0 group-hover:opacity-100 ' +
+          'row-actions flex-shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 ' +
           'transition-opacity duration-150'
         }
         // Keep the button visible while its dropdown is open OR while
