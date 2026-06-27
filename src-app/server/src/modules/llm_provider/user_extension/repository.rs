@@ -78,21 +78,15 @@ impl UserGroupLlmProviderRepository {
         provider_id: Uuid,
         group_id: Uuid,
     ) -> Result<(), sqlx::Error> {
-        let existing = sqlx::query!(
-            "SELECT id FROM user_group_llm_providers WHERE group_id = $1 AND provider_id = $2",
-            group_id,
-            provider_id
-        )
-        .fetch_optional(&self.pool)
-        .await?;
-
-        if existing.is_some() {
-            return Ok(());
-        }
-
+        // Race-safe idempotent insert: a SELECT-then-INSERT lets two
+        // concurrent callers both pass the existence check and then collide
+        // on the UNIQUE(group_id, provider_id) constraint (one errors). A
+        // single UPSERT keeps the documented no-op-on-existing contract
+        // without the race.
         let relationship_id = Uuid::new_v4();
         sqlx::query!(
-            "INSERT INTO user_group_llm_providers (id, group_id, provider_id) VALUES ($1, $2, $3)",
+            "INSERT INTO user_group_llm_providers (id, group_id, provider_id) \
+             VALUES ($1, $2, $3) ON CONFLICT (group_id, provider_id) DO NOTHING",
             relationship_id,
             group_id,
             provider_id
