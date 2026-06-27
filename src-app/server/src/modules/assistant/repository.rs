@@ -41,6 +41,12 @@ impl AssistantRepository {
         get_assistant(&self.pool, id).await
     }
 
+    /// Get an assistant by ID regardless of `enabled` status. Admin/template
+    /// management only — see [`get_assistant_any`].
+    pub async fn get_any(&self, id: Uuid) -> Result<Option<Assistant>, AppError> {
+        get_assistant_any(&self.pool, id).await
+    }
+
     /// Get an assistant by ID, scoped to a user. Returns Some only when
     /// the assistant is either owned by `user_id` OR is a public template
     /// (`is_template = TRUE`). Returns None for assistants belonging to
@@ -187,6 +193,39 @@ pub async fn get_assistant(pool: &PgPool, id: Uuid) -> Result<Option<Assistant>,
         r#"SELECT id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, created_at, updated_at
         FROM assistants
         WHERE id = $1 AND enabled = true"#,
+        id
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::database_error)?;
+
+    Ok(row.map(|r| {
+        row_to_assistant(
+            r.id,
+            r.name,
+            r.description,
+            r.instructions,
+            r.parameters,
+            r.created_by,
+            r.is_template,
+            r.is_default,
+            r.enabled,
+            r.created_at,
+            r.updated_at,
+        )
+    }))
+}
+
+/// Get assistant by ID regardless of `enabled` status. For admin/template
+/// management paths only: the template list intentionally surfaces disabled
+/// templates, so the per-id get/update/delete handlers must be able to resolve
+/// them too (the `enabled = true` filter in [`get_assistant`] is for chat
+/// resolution, which must never pick a disabled assistant).
+pub async fn get_assistant_any(pool: &PgPool, id: Uuid) -> Result<Option<Assistant>, AppError> {
+    let row = sqlx::query!(
+        r#"SELECT id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, created_at, updated_at
+        FROM assistants
+        WHERE id = $1"#,
         id
     )
     .fetch_optional(pool)
