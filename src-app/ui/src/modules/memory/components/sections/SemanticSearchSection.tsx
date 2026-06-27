@@ -3,22 +3,24 @@ import {
   Alert,
   Button,
   Card,
-  Divider,
+  Separator,
   Flex,
   Form,
+  FormField,
+  useForm,
+  zodResolver,
   InputNumber,
-  Modal,
-  Select,
+  Dialog,
+  Combobox,
   Switch,
-  Typography,
+  Paragraph,
   message,
-} from 'antd'
+} from '@/components/ui'
+import { z } from 'zod'
 import { ReloadOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
-
-const { Paragraph } = Typography
 
 const READ_PERM = Permissions.MemoryAdminRead
 const MANAGE_PERM = Permissions.MemoryAdminManage
@@ -28,6 +30,12 @@ interface FormValues {
   embedding_model_id?: string | null
   cosine_threshold: number
 }
+
+const schema = z.object({
+  semantic_enabled: z.boolean(),
+  embedding_model_id: z.string().nullable().optional(),
+  cosine_threshold: z.number(),
+})
 
 /**
  * Semantic (vector) search admin card. Owns the `semantic_enabled`
@@ -42,13 +50,20 @@ export function SemanticSearchSection() {
   const canManage = usePermission(MANAGE_PERM)
   const { settings, availableModels, saving, loadingModels } =
     Stores.MemoryAdmin
-  const [form] = Form.useForm<FormValues>()
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      semantic_enabled: false,
+      embedding_model_id: null,
+      cosine_threshold: 1,
+    },
+  })
   const [reembedConfirmOpen, setReembedConfirmOpen] = useState(false)
   const [pendingSwap, setPendingSwap] = useState<FormValues | null>(null)
 
   useEffect(() => {
     if (settings) {
-      form.setFieldsValue({
+      form.reset({
         semantic_enabled: settings.semantic_enabled,
         embedding_model_id: settings.embedding_model_id,
         cosine_threshold: settings.cosine_threshold,
@@ -60,8 +75,7 @@ export function SemanticSearchSection() {
     return (
       <Card title="Semantic search">
         <Alert
-          type="warning"
-          showIcon
+          tone="warning"
           title="You don't have permission to view memory admin settings."
         />
       </Card>
@@ -138,8 +152,7 @@ export function SemanticSearchSection() {
       <Card title="Semantic search">
         {noModelsAvailable && (
           <Alert
-            type="info"
-            showIcon
+            tone="info"
             className="!mb-4"
             title="No embedding-capable models found."
             description={
@@ -158,71 +171,71 @@ export function SemanticSearchSection() {
           name="memory-admin-semantic-form"
           form={form}
           layout="horizontal"
-          labelCol={{ xs: { span: 24 }, md: { span: 10 } }}
-          wrapperCol={{ xs: { span: 24 }, md: { span: 14 } }}
-          labelAlign="left"
-          colon={false}
-          onFinish={handleSubmit}
+          onSubmit={handleSubmit}
           disabled={!canManage}
         >
-          <Form.Item
+          <FormField
             name="semantic_enabled"
             label="Enable semantic search"
-            extra="When off, retrieval skips the vector arm regardless of whether an embedding model is configured. An effective vector recall additionally requires a model to be picked below."
+            description="When off, retrieval skips the vector arm regardless of whether an embedding model is configured. An effective vector recall additionally requires a model to be picked below."
             valuePropName="checked"
           >
             <Switch aria-label="Enable semantic search retrieval" />
-          </Form.Item>
+          </FormField>
 
-          <Form.Item
+          <FormField
             name="embedding_model_id"
             label="Embedding model"
-            extra={`The model used to compute vectors for retrieval and extraction. Switching dimension triggers a re-embed of all stored memories. Current vector dimension: ${settings.embedding_dimensions}`}
+            description={`The model used to compute vectors for retrieval and extraction. Switching dimension triggers a re-embed of all stored memories. Current vector dimension: ${settings.embedding_dimensions}`}
           >
-            <Select
+            <Combobox
               placeholder={
                 noModelsAvailable
                   ? 'No embedding-capable models'
                   : 'Select an embedding model'
               }
+              searchPlaceholder="Search models"
+              emptyText="No models found"
               loading={loadingModels}
               disabled={noModelsAvailable}
               options={availableModels.map((m) => ({
                 value: m.id,
                 label: m.display_name || m.name,
               }))}
-              showSearch={{ optionFilterProp: 'label' }}
-              allowClear
-              style={{ maxWidth: 480 }}
+              className="max-w-[480px]"
             />
-          </Form.Item>
+          </FormField>
 
-          <Form.Item
+          <FormField
             name="cosine_threshold"
             label="Cosine distance threshold"
-            extra="Memories with distance ≥ this value are filtered out of the vector arm. Lower = stricter (fewer false-positives, more misses)."
+            description="Memories with distance ≥ this value are filtered out of the vector arm. Lower = stricter (fewer false-positives, more misses)."
           >
-            <InputNumber min={0} max={2} step={0.05} style={{ width: 160 }} />
-          </Form.Item>
+            <InputNumber min={0} max={2} step={0.05} className="w-[160px]" />
+          </FormField>
 
-          <Form.Item
-            label="Force re-embed all memories"
-            extra="Useful after an embedder upgrade or to recover from a stale embedding_model column. Re-embeds rows where the recorded model name no longer matches the current configuration."
-          >
+          <div className="flex flex-col gap-1">
+            <span className="text-sm font-medium">Force re-embed all memories</span>
             <Button
               icon={<ReloadOutlined />}
+              variant="outline"
               onClick={() => setReembedConfirmOpen(true)}
               disabled={!settings.embedding_model_id || !canManage}
             >
               Re-embed now
             </Button>
-          </Form.Item>
+            <span className="text-xs text-muted-foreground">
+              Useful after an embedder upgrade or to recover from a stale
+              embedding_model column. Re-embeds rows where the recorded model
+              name no longer matches the current configuration.
+            </span>
+          </div>
 
           {canManage && (
             <>
-              <Divider className="!my-3" />
+              <Separator className="!my-3" />
               <Flex justify="end">
-                <Button type="primary" htmlType="submit" loading={saving}>
+                <Button type="submit" loading={saving}>
                   Save
                 </Button>
               </Flex>
@@ -231,13 +244,20 @@ export function SemanticSearchSection() {
         </Form>
       </Card>
 
-      <Modal
+      <Dialog
         open={reembedConfirmOpen}
+        onOpenChange={(o) => {
+          if (!o) setReembedConfirmOpen(false)
+        }}
         title="Re-embed every memory?"
-        okText="Re-embed"
-        okType="primary"
-        onCancel={() => setReembedConfirmOpen(false)}
-        onOk={handleReembed}
+        footer={
+          <Flex justify="end" className="gap-2">
+            <Button variant="outline" onClick={() => setReembedConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleReembed}>Re-embed</Button>
+          </Flex>
+        }
       >
         <Paragraph>
           This runs in the background. Retrieval will skip rows with
@@ -245,21 +265,31 @@ export function SemanticSearchSection() {
           up as the worker fills them in. For large memory stores this
           can take several minutes.
         </Paragraph>
-      </Modal>
+      </Dialog>
 
-      <Modal
+      <Dialog
         open={pendingSwap !== null}
-        title="Change the embedding model?"
-        okText="Change and re-embed"
-        okType="primary"
-        cancelText="Keep current model"
-        onCancel={() => setPendingSwap(null)}
-        onOk={async () => {
-          if (!pendingSwap) return
-          const captured = pendingSwap
-          setPendingSwap(null)
-          await persist(captured, true)
+        onOpenChange={(o) => {
+          if (!o) setPendingSwap(null)
         }}
+        title="Change the embedding model?"
+        footer={
+          <Flex justify="end" className="gap-2">
+            <Button variant="outline" onClick={() => setPendingSwap(null)}>
+              Keep current model
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!pendingSwap) return
+                const captured = pendingSwap
+                setPendingSwap(null)
+                await persist(captured, true)
+              }}
+            >
+              Change and re-embed
+            </Button>
+          </Flex>
+        }
       >
         <Paragraph>
           Switching to <code>{swapTargetLabel}</code> will NULL every
@@ -271,7 +301,7 @@ export function SemanticSearchSection() {
           during the rebuild are picked up automatically. For large
           memory stores this can take several minutes.
         </Paragraph>
-      </Modal>
+      </Dialog>
     </>
   )
 }
