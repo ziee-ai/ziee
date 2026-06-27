@@ -261,6 +261,9 @@ pub async fn unhide_skill_in_conversation(
     auth: RequirePermissions<(SkillsRead,)>,
     Path((id, conversation_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<StatusCode> {
+    if !Repos.skill.user_can_read(auth.user.id, id).await? {
+        return Err(AppError::not_found("Skill").into());
+    }
     let owner = Repos
         .code_sandbox
         .get_conversation_user_id(conversation_id)
