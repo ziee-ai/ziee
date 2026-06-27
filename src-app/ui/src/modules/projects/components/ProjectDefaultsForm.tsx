@@ -75,6 +75,9 @@ export function ProjectDefaultsForm({ project }: ProjectDefaultsFormProps) {
       setModels(modelsResp.models ?? [])
     } catch (err) {
       console.warn('Failed to load default-asset options', err)
+      if (mountedRef.current) {
+        message.error('Failed to load assistant/model options')
+      }
     } finally {
       if (mountedRef.current) setOptionsLoading(false)
     }
