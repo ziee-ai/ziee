@@ -5,20 +5,23 @@ import {
   Button,
   Card,
   Form,
-  Input,
-  Layout,
-  Typography,
-} from 'antd'
+  FormField,
+  PasswordInput,
+  Title,
+  Paragraph,
+  useForm,
+  zodResolver,
+} from '@/components/ui'
+import { z } from 'zod'
 import { LockOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { BlankLayoutComponent } from '@/modules/layouts/blank'
 
-const { Content } = Layout
-const { Title, Paragraph } = Typography
+const linkAccountSchema = z.object({
+  password: z.string().min(1, 'Please enter your password'),
+})
 
-interface LinkFormValues {
-  password: string
-}
+type LinkFormValues = z.infer<typeof linkAccountSchema>
 
 /**
  * /auth/link-account — First-Broker-Login confirmation page.
@@ -33,7 +36,10 @@ interface LinkFormValues {
 export const LinkAccountPage: React.FC = () => {
   const [params] = useSearchParams()
   const navigate = useNavigate()
-  const [form] = Form.useForm<LinkFormValues>()
+  const form = useForm<LinkFormValues>({
+    resolver: zodResolver(linkAccountSchema),
+    defaultValues: { password: '' },
+  })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const linkToken = params.get('link_token') ?? ''
@@ -59,8 +65,8 @@ export const LinkAccountPage: React.FC = () => {
 
   return (
     <BlankLayoutComponent>
-      <Layout className="min-h-screen">
-        <Content className="flex items-center justify-center p-4">
+      <div className="min-h-screen">
+        <div className="flex items-center justify-center p-4">
           <Card className="w-full max-w-md">
             <Title level={3}>Link your accounts</Title>
             <Paragraph type="secondary">
@@ -70,51 +76,45 @@ export const LinkAccountPage: React.FC = () => {
             {error && (
               <Alert
                 title={error}
-                type="error"
-                showIcon
-                closable={{ onClose: () => setError(null) }}
+                tone="error"
+                onClose={() => setError(null)}
+                closeLabel="Close"
                 className="mb-4"
               />
             )}
             <Form
               form={form}
               layout="vertical"
-              size="large"
-              onFinish={onFinish}
-              autoComplete="off"
+              onSubmit={onFinish}
             >
-              <Form.Item
-                label="Password"
+              <FormField
                 name="password"
-                rules={[
-                  { required: true, message: 'Please enter your password' },
-                ]}
+                label="Password"
               >
-                <Input.Password
+                <PasswordInput
                   prefix={<LockOutlined />}
                   placeholder="Your existing password"
                   autoComplete="current-password"
                   disabled={!linkToken}
+                  showLabel="Show password"
+                  hideLabel="Hide password"
                 />
-              </Form.Item>
-              <Form.Item>
-                <Button
-                  type="primary"
-                  htmlType="submit"
-                  block
-                  loading={loading}
-                  disabled={!linkToken}
-                >
-                  Link and sign in
-                </Button>
-              </Form.Item>
+              </FormField>
+              <Button
+                block
+                loading={loading}
+                disabled={!linkToken}
+                type="submit"
+              >
+                Link and sign in
+              </Button>
               <div className="text-center">
                 <a href="/auth">Cancel</a>
               </div>
             </Form>
           </Card>
-        </Content>
-      </Layout>
+        </div>
+      </div>
     </BlankLayoutComponent>
   )
 }
