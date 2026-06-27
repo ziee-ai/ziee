@@ -69,7 +69,8 @@ export function SemanticSearchSection() {
   }
   if (!settings) return null
 
-  const noModelsAvailable = availableModels.length === 0
+  // Don't flash the "no models" state while the model list is still loading.
+  const noModelsAvailable = !loadingModels && availableModels.length === 0
 
   const persist = async (values: FormValues, modelChanged: boolean) => {
     try {
