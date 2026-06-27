@@ -541,6 +541,18 @@ pub async fn me(auth: JwtAuth) -> ApiResult<Json<MeResponse>> {
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, AppError::not_found("User")))?;
 
+    // A deactivated account must not keep reading its profile on a still-valid
+    // JWT. 401 is the same teardown signal the session-sync path relies on:
+    // delete_user / toggle-inactive emit a Session signal expecting the device's
+    // /auth/me re-bootstrap to 401 and log out. Mirrors the is_active gate the
+    // login + refresh handlers already enforce.
+    if !user.is_active {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            AppError::unauthorized("ACCOUNT_DEACTIVATED", "Account is deactivated"),
+        ));
+    }
+
     // Get effective permissions (union of user permissions + group permissions)
     let user_service = UserService::new(
         (**Repos.user).clone(),
