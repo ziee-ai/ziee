@@ -42,6 +42,11 @@ interface ProjectDetailState {
 
   error: string | null
 
+  /// Conversation-list load error, distinct from the shared `error` (which
+  /// also carries project-detail load failures). Lets the list surface a real
+  /// failure instead of the misleading "no conversations" empty state.
+  conversationsError: string | null
+
   __init__: {
     __store__: () => void
   }
@@ -65,6 +70,7 @@ export const useProjectDetailStore = create<ProjectDetailState>()(
         conversationsLoading: false,
         conversationsLoadingMore: false,
         error: null,
+        conversationsError: null,
 
         __init__: {
           __store__: () => {
@@ -126,7 +132,11 @@ export const useProjectDetailStore = create<ProjectDetailState>()(
         // from the response size.
         loadConversations: async projectId => {
           try {
-            set({ conversationsLoading: true, conversationsPage: 1 })
+            set({
+              conversationsLoading: true,
+              conversationsPage: 1,
+              conversationsError: null,
+            })
             const conversations = await ApiClient.Project.listConversations({
               id: projectId,
               page: 1,
@@ -140,7 +150,7 @@ export const useProjectDetailStore = create<ProjectDetailState>()(
             })
           } catch (error) {
             set({
-              error:
+              conversationsError:
                 error instanceof Error
                   ? error.message
                   : 'Failed to load project conversations',
