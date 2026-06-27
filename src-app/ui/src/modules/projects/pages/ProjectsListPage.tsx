@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { App, Button, Typography } from 'antd'
+import { App, Button, Spin, Typography } from 'antd'
 import {
   FolderAddOutlined,
   FolderOutlined,
@@ -88,6 +88,10 @@ export function ProjectsListPage() {
                 <div className="min-w-70 flex-1" />
               </div>
             </div>
+          </div>
+        ) : loading ? (
+          <div className="flex justify-center py-12 m-auto">
+            <Spin />
           </div>
         ) : (
           !loading && (
