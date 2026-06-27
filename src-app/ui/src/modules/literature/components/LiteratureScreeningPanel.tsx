@@ -254,6 +254,7 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
                   <Input
                     size="small"
                     className="mt-1"
+                    aria-label="Exclusion reason"
                     placeholder="Exclusion reason (optional)"
                     value={reasonDrafts[key] ?? reasons[key] ?? ''}
                     onChange={e =>
