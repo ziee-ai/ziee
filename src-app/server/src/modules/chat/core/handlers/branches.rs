@@ -36,7 +36,7 @@ const MAX_BRANCHES_PER_CONVERSATION: i64 = 256;
 #[debug_handler]
 pub async fn create_branch(
     auth: RequirePermissions<(BranchesCreate,)>,
-
+    origin: SyncOrigin,
     Path(conversation_id): Path<Uuid>,
     Json(request): Json<CreateBranchRequest>,
 ) -> ApiResult<Json<Branch>> {
@@ -69,6 +69,17 @@ pub async fn create_branch(
     let branch = Repos.chat.core
         .create_branch(conversation_id, parent_branch_id, request.from_message_id, &request.fork_level)
         .await?;
+
+    // Cross-device sync: a new branch changes the conversation's branch
+    // set, so peers must refetch. Mirrors `activate_branch` — there is no
+    // dedicated Branch sync entity; recipients refetch via Conversation.
+    sync_publish(
+        SyncEntity::Conversation,
+        SyncAction::Update,
+        conversation_id,
+        Audience::owner(auth.user.id),
+        origin.0,
+    );
 
     Ok((StatusCode::CREATED, Json(branch)))
 }
