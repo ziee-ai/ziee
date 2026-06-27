@@ -151,7 +151,7 @@ export function FileCard({
         >
           {isError ? (
             <Text
-              className="!text-[9px] rounded px-1"
+              className="!text-[11px] rounded px-1"
               style={{ backgroundColor: token.colorError, color: token.colorWhite }}
             >
               ERROR
@@ -249,7 +249,7 @@ export function FileCard({
           </Text>
           {uploadProgress.status === 'error' && (
             <Text
-              className="absolute top-1 right-1 rounded px-1 !text-[9px]"
+              className="absolute top-1 right-1 rounded px-1 !text-[11px]"
               style={{ backgroundColor: token.colorError, color: token.colorWhite }}
             >
               ERROR
