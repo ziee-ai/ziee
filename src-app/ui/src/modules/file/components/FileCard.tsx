@@ -278,12 +278,20 @@ export function FileCard({
   if (variant === 'row') {
     return (
       <div
-        className="group w-full flex flex-row items-center gap-3 cursor-pointer rounded-lg p-3 transition-opacity hover:opacity-80"
+        className="group w-full flex flex-row items-center gap-3 cursor-pointer rounded-lg p-3 transition-opacity hover:opacity-80 focus-visible:outline focus-visible:outline-2"
         style={{
           border: `1px solid ${token.colorBorderSecondary}`,
           backgroundColor: token.colorBgContainer,
         }}
         onClick={handleCardClick}
+        role="button"
+        tabIndex={0}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            handleCardClick()
+          }
+        }}
         data-testid="file-card"
         data-file-id={file.id}
         data-filename={file.filename}
@@ -375,7 +383,7 @@ export function FileCard({
       data-filename={file.filename}
     >
       <div
-        className={`group relative cursor-pointer rounded-2xl w-full h-full flex items-center justify-center ${
+        className={`group relative cursor-pointer rounded-2xl w-full h-full flex items-center justify-center focus-visible:outline focus-visible:outline-2 ${
           stretch ? '' : 'min-h-20 min-w-20 max-h-28 max-w-28'
         }`}
         style={{
@@ -391,6 +399,14 @@ export function FileCard({
             : {}),
         }}
         onClick={handleCardClick}
+        role="button"
+        tabIndex={0}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            handleCardClick()
+          }
+        }}
       >
         {/* Square aspect ratio enforcer */}
         <img
