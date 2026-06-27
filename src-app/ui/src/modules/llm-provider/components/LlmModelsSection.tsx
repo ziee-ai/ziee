@@ -103,7 +103,8 @@ export function LlmModelsSection() {
     }
   }
 
-  // TODO: Implement start/stop functionality for local models once backend supports it
+  // TODO: Wire up the start/stop UI for local models — the backend now
+  // supports it via /api/local-runtime (start/stop instance handlers).
   // const handleStartStopLlmModel = async (modelId: string, is_active: boolean) => {
   //   if (!currentProvider || currentProvider.provider_type !== 'local') return
   //   ...
@@ -145,7 +146,7 @@ export function LlmModelsSection() {
       )
     }
 
-    // TODO: Add Start/Stop button for local models once backend supports it
+    // TODO: Add Start/Stop button for local models — backend now supports it via /api/local-runtime.
     // if (currentProvider?.provider_type === 'local') {
     //   actions.push(
     //     <Button
@@ -289,7 +290,7 @@ export function LlmModelsSection() {
                     <Text type="secondary" className="text-xs block">
                       Model ID: {llmModel.name}
                     </Text>
-                    {/* TODO: Display running status once backend supports local model execution */}
+                    {/* TODO: Display running status — backend now supports local model execution via /api/local-runtime. */}
                     {/* {llmModel.is_active && llmModel.port && (
                       <Text type="secondary" className="text-xs block">
                         Running on:{' '}
