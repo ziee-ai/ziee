@@ -54,6 +54,9 @@ interface SelectBase {
   /** Custom content for the selected value in the trigger. Receives the selected option
    *  (undefined if none). Overrides per-option `selectedLabel`. */
   labelRender?: (option: SelectOption | undefined) => React.ReactNode
+  /** Constrain the dropdown to the trigger's width (legacy `popupMatchSelectWidth`).
+   *  Default true (exact match); false lets the dropdown grow wider for long options. */
+  popupMatchSelectWidth?: boolean
   'aria-describedby'?: string
   'aria-label'?: string
   'aria-labelledby'?: string
@@ -77,7 +80,7 @@ function flatOptions(options: (SelectOption | SelectOptionGroup)[]): SelectOptio
 export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function Select(
   {
     options, value, defaultValue, onValueChange, onChange, onBlur, placeholder,
-    disabled, loading, invalid, size, name, id, className, optionRender, labelRender,
+    disabled, loading, invalid, size, name, id, className, optionRender, labelRender, popupMatchSelectWidth = true,
     'aria-describedby': ariaDescribedby, 'aria-label': ariaLabel,
     'aria-labelledby': ariaLabelledby, 'aria-required': ariaRequired,
     ...rest
@@ -183,7 +186,11 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(function 
           </button>
         )}
       </div>
-      <SelectContent>{items}</SelectContent>
+      {/* match=true → pin to the trigger width (shadcn already sets min-w to it; cap the max).
+          match=false → keep the default grow-for-long-options behavior. */}
+      <SelectContent className={popupMatchSelectWidth ? 'max-w-[var(--radix-select-trigger-width)]' : undefined}>
+        {items}
+      </SelectContent>
     </SelectRoot>
   )
 })

@@ -2,6 +2,7 @@ import * as React from 'react'
 import {
   Sheet as Root, SheetTrigger, SheetContent, SheetHeader, SheetFooter, SheetTitle, SheetDescription,
 } from '../shadcn/sheet'
+import { Spinner } from './spinner'
 import { cn } from '@/lib/utils'
 
 type SheetBase = {
@@ -13,9 +14,15 @@ type SheetBase = {
   footer?: React.ReactNode
   side?: 'top' | 'right' | 'bottom' | 'left'
   trigger?: React.ReactElement
+  /** Allow closing by clicking the backdrop (legacy `maskClosable`). Default true. */
+  maskClosable?: boolean
   className?: string
   children?: React.ReactNode
-}
+} & (
+  // loading replaces the body with a spinner; its accessible name is REQUIRED then (i18n).
+  | { loading?: false; loadingLabel?: never }
+  | { loading: true; loadingLabel: string }
+)
 // Resizable drawer: a draggable + keyboard-operable edge handle. When enabled, `resizeLabel`
 // (accessible name for the separator handle) is required.
 export type SheetProps =
@@ -31,7 +38,7 @@ export type SheetProps =
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(Math.max(n, lo), hi)
 
-export function Sheet({ open, onOpenChange, title, description, footer, side = 'right', trigger, className, children, ...rest }: SheetProps) {
+export function Sheet({ open, onOpenChange, title, description, footer, side = 'right', trigger, maskClosable = true, loading, loadingLabel, className, children, ...rest }: SheetProps) {
   const resizable = (rest as { resizable?: boolean }).resizable
   const resizeLabel = (rest as { resizeLabel?: string }).resizeLabel
   const minSize = (rest as { minSize?: number }).minSize ?? 280
@@ -73,13 +80,20 @@ export function Sheet({ open, onOpenChange, title, description, footer, side = '
         side={side}
         className={cn(resizable && 'max-w-none', className)}
         style={resizable ? (horizontal ? { width: size } : { height: size }) : undefined}
+        // maskClosable=false → backdrop click no longer dismisses (Escape still works).
+        onPointerDownOutside={maskClosable ? undefined : (e) => e.preventDefault()}
         {...(description == null ? { 'aria-describedby': undefined } : {})}
       >
         <SheetHeader>
           <SheetTitle>{title}</SheetTitle>
           {description != null && <SheetDescription>{description}</SheetDescription>}
         </SheetHeader>
-        <div className="flex-1 overflow-y-auto px-4">{children}</div>
+        <div className="flex-1 overflow-y-auto px-4">
+          {/* min-h centers reliably even though SheetContent isn't a flex column. */}
+          {loading
+            ? <div className="flex min-h-40 items-center justify-center"><Spinner label={loadingLabel ?? ''} /></div>
+            : children}
+        </div>
         {footer != null && <SheetFooter>{footer}</SheetFooter>}
         {resizable && (
           <div

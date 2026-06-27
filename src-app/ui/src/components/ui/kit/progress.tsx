@@ -10,10 +10,18 @@ const toneCls: Record<ProgressTone, string> = {
   error: '[&>[data-state]]:bg-destructive [&>div]:bg-destructive',
 }
 
+const strokeCls: Record<ProgressTone, string> = {
+  primary: 'text-primary', success: 'text-green-600', warning: 'text-amber-500', error: 'text-destructive',
+}
+
 export interface ProgressProps {
   value: number
   tone?: ProgressTone
   size?: 'sm' | 'default'
+  /** Render as a circular gauge instead of a bar (legacy `type="circle"`). */
+  shape?: 'line' | 'circle'
+  /** Diameter in px for the circular shape (legacy circle `size`). Default 120. */
+  circleSize?: number
   /** Show the percentage text beside the bar (legacy `showInfo`). */
   showInfo?: boolean
   /** Custom label formatter (legacy `format`), e.g. (p) => `${p}%`. Implies showInfo. */
@@ -23,8 +31,37 @@ export interface ProgressProps {
   'aria-label': string
 }
 
-export function Progress({ value, tone = 'primary', size = 'default', showInfo, format, className, 'aria-label': ariaLabel }: ProgressProps) {
+export function Progress({ value, tone = 'primary', size = 'default', shape = 'line', circleSize = 120, showInfo, format, className, 'aria-label': ariaLabel }: ProgressProps) {
   const v = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0))
+  if (shape === 'circle') {
+    const stroke = size === 'sm' ? 6 : 8
+    const r = (circleSize - stroke) / 2
+    const c = 2 * Math.PI * r
+    // showInfo defaults to ON for the circle (the number lives in the centre); pass showInfo={false} to hide.
+    const showCenter = showInfo !== false
+    return (
+      <div
+        className={cn('relative inline-flex items-center justify-center', className)}
+        style={{ width: circleSize, height: circleSize }}
+        role="progressbar" aria-label={ariaLabel} aria-valuenow={Math.round(v)} aria-valuemin={0} aria-valuemax={100}
+      >
+        <svg width={circleSize} height={circleSize} className={cn('-rotate-90', strokeCls[tone])}>
+          <circle cx={circleSize / 2} cy={circleSize / 2} r={r} fill="none" strokeWidth={stroke} className="stroke-muted" />
+          <circle
+            cx={circleSize / 2} cy={circleSize / 2} r={r} fill="none" strokeWidth={stroke}
+            stroke="currentColor" strokeLinecap="round"
+            strokeDasharray={c} strokeDashoffset={c * (1 - v / 100)}
+            style={{ transition: 'stroke-dashoffset 300ms' }}
+          />
+        </svg>
+        {showCenter && (
+          <span className="absolute text-sm font-medium tabular-nums">
+            {format ? format(Math.round(v)) : `${Math.round(v)}%`}
+          </span>
+        )}
+      </div>
+    )
+  }
   const bar = (
     <Base
       value={v}
