@@ -4,7 +4,7 @@
 // section header (and the empty-state link below) opens the knowledge
 // management drawer for file CRUD.
 
-import { Button, Typography } from 'antd'
+import { Button, Spin, Typography } from 'antd'
 import { FileOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { FileCard } from '@/modules/file/components/FileCard'
@@ -14,7 +14,7 @@ const { Text } = Typography
 
 export function ProjectFilesInlinePreview() {
   const openManageDrawer = useOpenManageDrawer()
-  const { files } = Stores.ProjectFiles
+  const { files, filesLoading } = Stores.ProjectFiles
   const project = Stores.ProjectDetail.project
 
   // Don't render if no project is loaded — the slot host should have
@@ -31,7 +31,11 @@ export function ProjectFilesInlinePreview() {
         </Text>
       </div>
 
-      {files.length === 0 ? (
+      {filesLoading && files.length === 0 ? (
+        <div className="flex justify-center py-4">
+          <Spin size="small" />
+        </div>
+      ) : files.length === 0 ? (
         <Button
           type="link"
           onClick={openManageDrawer}
