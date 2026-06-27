@@ -183,11 +183,26 @@ pub async fn create_user(
     // Assign user to default group if it exists
     if let Some(default_group) = Repos.group.get_default().await? {
         // Assign user to default group (assigned_by is None for automatic assignment)
-        let _ = Repos
+        match Repos
             .user
             .assign_to_group(user.id, default_group.id, None)
-            .await;
-        // Note: We ignore errors here to not fail user creation if group assignment fails
+            .await
+        {
+            // The group's member list changed → refresh admins viewing it
+            // (mirrors the explicit assign-to-group handler).
+            Ok(_) => sync_publish(
+                SyncEntity::Group,
+                SyncAction::Update,
+                default_group.id,
+                Audience::perm::<GroupsRead>(),
+                origin.0,
+            ),
+            // Ignore errors here to not fail user creation if group assignment fails.
+            Err(e) => tracing::warn!(
+                "create_user: default-group assignment failed for {}: {e}",
+                user.id
+            ),
+        }
     }
 
     // Emit UserCreated event asynchronously
