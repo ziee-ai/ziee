@@ -603,7 +603,13 @@ fn provision_artifact_tmpfs(dirs: &[String]) {
             tracing::warn!("agent: mkdir artifact dir {dir} failed: {e}");
             continue;
         }
-        let c = std::ffi::CString::new(dir.as_str()).unwrap();
+        let c = match std::ffi::CString::new(dir.as_str()) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("agent: artifact dir {dir} has an interior NUL byte: {e}");
+                continue;
+            }
+        };
         let rc = unsafe { libc::chmod(c.as_ptr(), 0o1777) };
         if rc != 0 {
             tracing::warn!(
