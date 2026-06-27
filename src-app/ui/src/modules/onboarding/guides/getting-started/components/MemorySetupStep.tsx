@@ -151,6 +151,7 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
           </div>
           <Switch
             checked={enableMemory}
+            aria-label="Enable memory"
             onChange={(checked) => Stores.MemorySetupStep.setEnableMemory(checked)}
           />
         </div>
