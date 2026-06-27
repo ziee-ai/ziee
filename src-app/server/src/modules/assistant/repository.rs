@@ -180,13 +180,16 @@ pub async fn create_assistant(
 }
 
 /// Get assistant by ID
-/// Returns the assistant if it exists and is active
+/// Returns the assistant if it exists, regardless of its `enabled` state, so
+/// management/admin paths can read (and re-enable) a disabled assistant. Chat
+/// resolution must keep using `get_assistant_for_user`, which still filters
+/// `enabled = true`.
 /// Does not check ownership - permission check should be done in handler
 pub async fn get_assistant(pool: &PgPool, id: Uuid) -> Result<Option<Assistant>, AppError> {
     let row = sqlx::query!(
         r#"SELECT id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, created_at, updated_at
         FROM assistants
-        WHERE id = $1 AND enabled = true"#,
+        WHERE id = $1"#,
         id
     )
     .fetch_optional(pool)
