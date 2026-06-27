@@ -3,7 +3,7 @@
  * Notification only — updating is a manual operator action (install.sh).
  */
 
-import { Alert, Button, Card, Descriptions, Tag, Typography } from 'antd'
+import { Alert, Button, Card, Descriptions, Tag, Tooltip, Typography } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
@@ -100,14 +100,16 @@ export default function AboutSettings() {
           </div>
         )}
 
-        <Button
-          style={{ marginTop: 8 }}
-          icon={<ReloadOutlined />}
-          loading={loading}
-          onClick={() => Stores.ServerUpdate.loadStatus()}
-        >
-          Refresh
-        </Button>
+        <Tooltip title="Reloads the most recent update check. The server checks GitHub on its own schedule; this does not force an immediate check.">
+          <Button
+            style={{ marginTop: 8 }}
+            icon={<ReloadOutlined />}
+            loading={loading}
+            onClick={() => Stores.ServerUpdate.loadStatus()}
+          >
+            Reload status
+          </Button>
+        </Tooltip>
       </Card>
     </SettingsPageContainer>
   )
