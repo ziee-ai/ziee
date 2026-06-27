@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Button, Divider, Empty, Spin, Typography } from 'antd'
+import { Button, Separator, Empty, Spin, Text } from '@/components/ui'
 import {
   FolderOutlined,
   FolderOpenOutlined,
@@ -10,8 +10,6 @@ import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type Project } from '@/api-client/types'
 import { DivScrollY } from '@/components/common/DivScrollY'
-
-const { Text } = Typography
 
 /**
  * Sidebar widget showing the user's top N projects. Mount-time fetch
@@ -78,7 +76,7 @@ export function ProjectsNavWidget() {
   if (loading && !isInitialized) {
     return (
       <div className="flex justify-center items-center py-4">
-        <Spin />
+        <Spin label="Loading" />
       </div>
     )
   }
@@ -100,7 +98,6 @@ export function ProjectsNavWidget() {
                 No projects yet
               </Text>
             }
-            styles={{ image: { height: 28 } }}
           />
         </div>
       ) : (
@@ -145,8 +142,8 @@ export function ProjectsNavWidget() {
                   </div>
                   {showPlus && (
                     <Button
-                      type="text"
-                      size="small"
+                      variant="ghost"
+                      size="sm"
                       icon={<PlusOutlined />}
                       aria-label={`New chat in ${project.name}`}
                       onClick={e => {
@@ -166,10 +163,10 @@ export function ProjectsNavWidget() {
         </DivScrollY>
       )}
 
-      <Divider className="!my-1" />
+      <Separator className="!my-1" />
       <div className="px-2 pb-1">
         <Button
-          type="text"
+          variant="ghost"
           icon={<FolderOutlined />}
           block
           onClick={() => navigate('/projects')}

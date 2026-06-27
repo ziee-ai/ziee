@@ -1,4 +1,4 @@
-import { Progress } from 'antd'
+import { Progress } from '@/components/ui'
 import type { DownloadStatus } from '@/api-client/types'
 
 interface DownloadProgressProps {
@@ -16,26 +16,27 @@ export function DownloadProgress({
 }: DownloadProgressProps) {
   const percentage = total > 0 ? Math.round((current / total) * 100) : 0
 
-  const getStatus = () => {
+  const tone = () => {
     switch (status) {
       case 'completed':
         return 'success'
       case 'failed':
       case 'cancelled':
-        return 'exception'
+        return 'error'
       case 'downloading':
-        return 'active'
+        return 'primary'
       default:
-        return 'normal'
+        return 'primary'
     }
   }
 
   return (
     <Progress
-      percent={percentage}
-      status={getStatus()}
-      size={size}
+      value={percentage}
+      tone={tone()}
+      size={size === 'small' ? 'sm' : undefined}
       showInfo={size !== 'small'}
+      aria-label={`Download progress: ${percentage}%`}
     />
   )
 }

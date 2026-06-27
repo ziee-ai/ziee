@@ -1,4 +1,4 @@
-import { Tag } from 'antd'
+import { Tag } from '@/components/ui'
 import { ToolOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 
@@ -30,9 +30,8 @@ export function McpStatusRow() {
         return (
           <Tag
             key={serverId}
-            color="blue"
+            tone="info"
             icon={<ToolOutlined />}
-            closable
             onClose={async () => {
               mcpStore.deselectServer(serverId)
               if (currentConversationId) {
@@ -44,7 +43,8 @@ export function McpStatusRow() {
                 await mcpStore.saveUserDefaults(null, enabledServerIds)
               }
             }}
-            style={{ margin: 0 }}
+            closeLabel="Remove"
+            className="m-0"
             data-testid={`mcp-chip-${serverId}`}
           >
             {server.display_name}

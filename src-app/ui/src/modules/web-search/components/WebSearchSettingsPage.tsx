@@ -1,4 +1,4 @@
-import { Alert } from 'antd'
+import { Alert } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { WebSearchGlobalSection } from './WebSearchGlobalSection'
@@ -20,8 +20,7 @@ export function WebSearchSettingsPage() {
     >
       {error && (
         <Alert
-          type="error"
-          showIcon
+          tone="error"
           title="Failed to load web search settings"
           description={error}
           className="mb-3"

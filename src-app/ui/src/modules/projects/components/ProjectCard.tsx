@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { Button, Card, Flex, Popconfirm, Tooltip, Typography } from 'antd'
+import { Button, Card, Flex, Confirm, Tooltip, Text, Title } from '@/components/ui'
 import {
   CopyOutlined,
   DeleteOutlined,
@@ -8,8 +8,6 @@ import {
 } from '@ant-design/icons'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type Project } from '@/api-client/types'
-
-const { Title, Text } = Typography
 
 interface ProjectCardProps {
   project: Project
@@ -45,8 +43,8 @@ export function ProjectCard({
   // but no Read). Mirror the backend predicate precisely.
   const canDuplicate = canCreate && canRead
 
-  // Stops both button-click bubble + Popconfirm onCancel passthrough.
-  // Popconfirm passes `MouseEvent<HTMLElement> | undefined` to onCancel;
+  // Stops both button-click bubble + Confirm onCancel passthrough.
+  // Confirm passes `MouseEvent<HTMLElement> | undefined` to onCancel;
   // we accept any event-like object with stopPropagation defensively.
   const stop = (e?: { stopPropagation?: () => void }) => {
     e?.stopPropagation?.()
@@ -71,13 +69,13 @@ export function ProjectCard({
       extra={
         <Flex gap="small" onClick={stop}>
           {canEdit && (
-            <Tooltip title="Edit">
+            <Tooltip content="Edit">
               <Button
-                type="text"
-                size="small"
+                variant="ghost"
+                size="sm"
                 icon={<EditOutlined />}
                 aria-label={`Edit ${project.name}`}
-                onClick={e => {
+                onClick={(e: React.MouseEvent) => {
                   stop(e)
                   onEdit(project)
                 }}
@@ -85,13 +83,13 @@ export function ProjectCard({
             </Tooltip>
           )}
           {canDuplicate && (
-            <Tooltip title="Duplicate">
+            <Tooltip content="Duplicate">
               <Button
-                type="text"
-                size="small"
+                variant="ghost"
+                size="sm"
                 icon={<CopyOutlined />}
                 aria-label={`Duplicate ${project.name}`}
-                onClick={e => {
+                onClick={(e: React.MouseEvent) => {
                   stop(e)
                   onDuplicate(project)
                 }}
@@ -99,27 +97,25 @@ export function ProjectCard({
             </Tooltip>
           )}
           {canDelete && (
-            <Popconfirm
+            <Confirm
               title="Delete project"
               description={`Are you sure you want to delete "${project.name}"? Conversations inside it will be preserved as unfiled.`}
               okText="Delete"
-              okButtonProps={{ danger: true }}
               cancelText="Cancel"
-              onConfirm={e => {
-                e?.stopPropagation()
+              okButtonProps={{ danger: true }}
+              onConfirm={() => {
                 onDelete(project)
               }}
               onCancel={stop}
             >
               <Button
-                type="text"
-                danger
-                size="small"
+                variant="ghost"
+                size="sm"
                 icon={<DeleteOutlined />}
                 aria-label={`Delete ${project.name}`}
                 onClick={stop}
               />
-            </Popconfirm>
+            </Confirm>
           )}
         </Flex>
       }

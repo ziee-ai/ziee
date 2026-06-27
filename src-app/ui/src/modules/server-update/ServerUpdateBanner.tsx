@@ -6,13 +6,11 @@
  * this session. Gated by <Can> so only admins ever see/mount it.
  */
 
-import { Alert, Button, Typography } from 'antd'
+import { Alert, Button, Link } from '@/components/ui'
 import { useNavigate } from 'react-router-dom'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { Stores } from '@/core/stores'
-
-const { Link } = Typography
 
 export function ServerUpdateBanner() {
   return (
@@ -30,20 +28,16 @@ function ServerUpdateBannerInner() {
 
   return (
     <Alert
-      type="info"
-      showIcon
-      banner
-      // antd v6 only renders the close control for the object form when
-      // `closeIcon` is truthy (Alert.js isClosable: `isPlainObject(closable) &&
-      // closable.closeIcon`); `closeIcon: true` → default CloseOutlined.
-      closable={{ closeIcon: true, onClose: () => Stores.ServerUpdate.dismiss() }}
+      tone="info"
+      onClose={() => Stores.ServerUpdate.dismiss()}
+      closeLabel="Close"
       title={
         <span>
           Ziee {latestVersion} is available.{' '}
           <Button
-            type="link"
-            size="small"
-            style={{ padding: 0, height: 'auto' }}
+            variant="link"
+            size="sm"
+            className="!p-0 !h-auto"
             onClick={() => navigate('/settings/about')}
           >
             How to update

@@ -1,4 +1,4 @@
-import { Tag } from 'antd'
+import { Tag } from '@/components/ui'
 
 interface WorkflowScopeBadgeProps {
   scope: string
@@ -12,16 +12,16 @@ export function WorkflowScopeBadge({ scope, isDev }: WorkflowScopeBadgeProps) {
   return (
     <>
       {scope === 'system' ? (
-        <Tag color="purple" style={{ color: '#2c0a6b' }}>
+        <Tag tone="info" className="text-[#2c0a6b]">
           System
         </Tag>
       ) : (
-        <Tag color="blue" style={{ color: '#001a4d' }}>
+        <Tag tone="info" className="text-[#001a4d]">
           Mine
         </Tag>
       )}
       {isDev && (
-        <Tag color="orange" style={{ color: '#612500' }}>
+        <Tag tone="warning" className="text-[#612500]">
           Dev
         </Tag>
       )}

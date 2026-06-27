@@ -1,10 +1,9 @@
-import { Flex, Typography } from 'antd'
+import { Flex } from '@/components/ui'
+import { Text } from '@/components/ui'
 import { LoadingOutlined, MessageOutlined } from '@ant-design/icons'
 import { ExtensionSlot } from '@/modules/chat/core/extensions'
 import { ChatMessage } from '@/modules/chat/components/ChatMessage'
 import { Stores } from '@/core/stores'
-
-const { Text } = Typography
 
 /**
  * MessageList Component

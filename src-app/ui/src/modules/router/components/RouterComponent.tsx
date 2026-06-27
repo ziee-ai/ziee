@@ -6,7 +6,7 @@ import {
   Navigate,
   Outlet,
 } from 'react-router-dom'
-import { Result } from 'antd'
+import { Result } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import { Loading } from '@/core/components/Loading'
@@ -32,7 +32,7 @@ function RoutePermissionGate({
       <Result
         status="403"
         title="Not authorized"
-        subTitle="You don't have permission to view this page."
+        subtitle="You don't have permission to view this page."
       />
     )
   }

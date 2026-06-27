@@ -1,6 +1,6 @@
-import { Card, Divider, Empty, Flex } from 'antd'
 import { Fragment } from 'react'
 import { RootfsVersionGroup } from './RootfsVersionGroup'
+import { Card, Empty, Flex, Separator } from '@/components/ui'
 import type { ActionFlags, VersionGroup } from './_rootfsShared'
 
 interface DownloadedRootfsCardProps {
@@ -24,14 +24,13 @@ export function DownloadedRootfsCard({
     <Card title="Downloaded versions" data-testid="downloaded-versions-card">
       {groups.length === 0 ? (
         <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
           description="No rootfs versions downloaded yet. Download one from the Available versions list below."
         />
       ) : (
         <Flex vertical className="gap-1">
           {groups.map((g, i) => (
             <Fragment key={g.version}>
-              {i > 0 && <Divider className="!my-3" />}
+              {i > 0 && <Separator className="!my-3" />}
               <RootfsVersionGroup
                 group={g}
                 variant="downloaded"

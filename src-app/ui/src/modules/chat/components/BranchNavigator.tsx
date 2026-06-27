@@ -1,9 +1,7 @@
-import { Button, Space, Typography } from 'antd'
+import { Button, Space, Text } from '@/components/ui'
 import { LeftOutlined, RightOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { useMessageContext } from '@/modules/chat/core/MessageContext'
-
-const { Text } = Typography
 
 /**
  * Core component rendered via MessageContext in ChatMessage.
@@ -41,8 +39,8 @@ export function BranchNavigator() {
   return (
     <Space size={2} data-testid="branch-navigator">
       <Button
-        type="text"
-        size="small"
+        variant="ghost"
+        size="sm"
         icon={<LeftOutlined />}
         disabled={displayIndex === 0}
         onClick={() => goTo(displayIndex - 1)}
@@ -51,8 +49,8 @@ export function BranchNavigator() {
         {displayIndex + 1} / {total}
       </Text>
       <Button
-        type="text"
-        size="small"
+        variant="ghost"
+        size="sm"
         icon={<RightOutlined />}
         disabled={displayIndex === total - 1}
         onClick={() => goTo(displayIndex + 1)}

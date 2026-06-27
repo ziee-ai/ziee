@@ -1,5 +1,5 @@
 import { ImportOutlined, NodeIndexOutlined } from '@ant-design/icons'
-import { Button, Card, Empty, Flex, Space, Typography } from 'antd'
+import { Button, Card, Empty, Flex, Space, Text } from '@/components/ui'
 import { useState } from 'react'
 import { Permissions } from '@/api-client/types'
 import { Can } from '@/core/permissions'
@@ -8,8 +8,6 @@ import { SettingsPageContainer } from '@/modules/settings/components/SettingsPag
 import { ImportWorkflowDialog } from './ImportWorkflowDialog'
 import { WorkflowDetailDrawer } from './WorkflowDetailDrawer'
 import { WorkflowScopeBadge } from './WorkflowScopeBadge'
-
-const { Text } = Typography
 
 /**
  * `/workflows` page — lists the user's own + accessible system
@@ -44,11 +42,10 @@ export function WorkflowsList() {
             <Card
               key={workflow.id}
               hoverable
-              size="small"
+              size="sm"
               onClick={() => Stores.WorkflowDrawer.open(workflow)}
               data-workflow-id={workflow.id}
-            >
-              <Space vertical size={2}>
+              title={
                 <Space size={8}>
                   <NodeIndexOutlined />
                   <Text strong>{workflow.display_name || workflow.name}</Text>
@@ -57,12 +54,13 @@ export function WorkflowsList() {
                     isDev={workflow.is_dev}
                   />
                 </Space>
-                {workflow.description && (
-                  <Text type="secondary" className="text-xs" ellipsis>
-                    {workflow.description}
-                  </Text>
-                )}
-              </Space>
+              }
+            >
+              {workflow.description && (
+                <Text type="secondary" className="text-xs" ellipsis>
+                  {workflow.description}
+                </Text>
+              )}
             </Card>
           ))}
         </div>

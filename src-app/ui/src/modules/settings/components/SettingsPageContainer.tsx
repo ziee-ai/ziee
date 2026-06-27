@@ -1,8 +1,6 @@
-import { Typography } from 'antd'
+import { Text, Title } from '@/components/ui'
 import { ReactNode } from 'react'
 import { DivScrollY } from '@/components/common/DivScrollY'
-
-const { Title, Text } = Typography
 
 interface SettingsPageContainerProps {
   title: string | ReactNode

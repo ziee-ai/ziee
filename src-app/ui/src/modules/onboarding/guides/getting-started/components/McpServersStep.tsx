@@ -1,20 +1,20 @@
 import { useEffect } from 'react'
 import {
-  Typography,
+  Title,
+  Paragraph,
+  Text,
   Checkbox,
   Spin,
   Alert,
-  Divider,
+  Separator,
   Tag,
   Switch,
-} from 'antd'
+} from '@/components/ui'
 import { ToolOutlined } from '@ant-design/icons'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
-
-const { Title, Paragraph, Text } = Typography
 
 export default function McpServersStep({ registerBeforeNext }: OnboardingStepProps) {
   const selectedMcpServerIds = Stores.McpServersStep.selectedMcpServerIds
@@ -37,7 +37,7 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
   if (loadingServers) {
     return (
       <div className="flex justify-center mt-8">
-        <Spin />
+        <Spin label="Loading" />
       </div>
     )
   }
@@ -51,14 +51,14 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
         </Title>
       </div>
 
-      <Paragraph type="secondary">
+      <Paragraph tone="secondary">
         {canSeeAdminControls
           ? 'MCP servers extend your AI assistant with tools and data access. Toggle the ones you want to use, or install new ones from the Hub.'
           : 'MCP servers extend your AI assistant with tools and data access. Your administrator has already configured the servers available to you.'}
       </Paragraph>
 
       {serversError && canSeeAdminControls && (
-        <Alert type="error" title={serversError} showIcon className="mb-4" />
+        <Alert tone="error" title={serversError} className="mb-4" />
       )}
 
       {canManageSystemMcp && systemServers.length > 0 && (
@@ -73,7 +73,7 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
                 className="flex items-start gap-3 border rounded-lg p-3"
               >
                 <Switch
-                  size="small"
+                  size="sm"
                   defaultChecked
                   onChange={checked => Stores.McpServersStep.toggleSystemServer(server.id, checked)}
                   className="mt-1"
@@ -81,7 +81,7 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
                 <div>
                   <Text strong>{server.display_name || server.name}</Text>
                   {server.description && (
-                    <Text type="secondary" className="block text-sm">
+                    <Text tone="secondary" className="block text-sm">
                       {server.description}
                     </Text>
                   )}
@@ -89,7 +89,7 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
               </div>
             ))}
           </div>
-          <Divider />
+          <Separator />
         </>
       )}
 
@@ -129,7 +129,7 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
                       {alreadyInstalled && <Tag>Already installed</Tag>}
                     </div>
                     {server.description && (
-                      <Text type="secondary" className="block text-sm">
+                      <Text tone="secondary" className="block text-sm">
                         {server.description}
                       </Text>
                     )}

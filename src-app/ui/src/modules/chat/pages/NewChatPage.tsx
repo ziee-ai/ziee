@@ -1,10 +1,8 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Typography } from 'antd'
+import { Text, Title } from '@/components/ui'
 import { ChatInput } from '@/modules/chat/components/ChatInput'
 import { Stores } from '@/core/stores'
-
-const { Title, Text } = Typography
 
 export default function NewChatPage() {
   const navigate = useNavigate()

@@ -1,10 +1,8 @@
 import { useEffect } from 'react'
-import { Typography } from 'antd'
 import { CheckCircleOutlined, RocketOutlined } from '@ant-design/icons'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
 import { Stores } from '@/core/stores'
-
-const { Title, Paragraph, Text } = Typography
+import { Title, Paragraph, Text } from '@/components/ui'
 
 export default function FinishStep({ registerBeforeNext }: OnboardingStepProps) {
   const selectedMcpServerIds = Stores.McpServersStep.selectedMcpServerIds

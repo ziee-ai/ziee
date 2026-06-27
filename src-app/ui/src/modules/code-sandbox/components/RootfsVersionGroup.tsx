@@ -1,4 +1,4 @@
-import { Button, Flex, Popconfirm, Progress, Tag, Tooltip, Typography } from 'antd'
+import { Button, Flex, Confirm, Progress, Tag, Tooltip, Text } from '@/components/ui'
 import {
   CheckCircleTwoTone,
   CloudDownloadOutlined,
@@ -12,8 +12,6 @@ import {
   type FlavorEntry,
   type VersionGroup,
 } from './_rootfsShared'
-
-const { Text } = Typography
 
 interface RootfsVersionGroupProps {
   group: VersionGroup
@@ -59,8 +57,6 @@ export function RootfsVersionGroup({
         ) / group.flavors.length,
       )
     : 100
-  const aggStatus: 'exception' | 'active' | 'success' =
-    failed.length > 0 ? 'exception' : installing.length > 0 ? 'active' : 'success'
   const progressMessage =
     failed.length > 0
       ? (failed[0].task?.error ?? 'Install failed')
@@ -78,24 +74,24 @@ export function RootfsVersionGroup({
       gap="small"
       data-testid={`rootfs-version-group-${group.version}`}
     >
-      <Flex align="center" gap="small" justify="space-between" wrap>
+      <Flex align="center" gap="small" justify="between" wrap>
         <Flex align="center" gap="small" wrap className="min-w-48">
           <Text className="font-medium">v{group.version}</Text>
           {/* A filled blue Tag (not the sibling module's muted "(Default)"
               text) to match THIS page's header "Currently default" chip. */}
           {group.isDefault && (
-            <Tag color="blue" icon={<StarOutlined />} data-testid="default-tag">
+            <Tag tone="info" icon={<StarOutlined />} data-testid="default-tag">
               Default
             </Tag>
           )}
           {anyDraining && (
-            <Tag color="orange" data-testid="row-draining">
+            <Tag tone="warning" data-testid="row-draining">
               Draining
             </Tag>
           )}
         </Flex>
 
-        <Flex align="center" gap={4} justify="end">
+        <Flex align="center" gap="small" justify="end">
           {variant === 'available' && (
             <RenderButton
               canManage={canManage}
@@ -129,7 +125,7 @@ export function RootfsVersionGroup({
 
       {showProgress && (
         <div data-testid={`install-progress-${group.version}`}>
-          <Progress percent={aggPercent} size="small" status={aggStatus} />
+          <Progress value={aggPercent} size="sm" tone={failed.length > 0 ? 'error' : 'primary'} aria-label="Install progress" />
           {progressMessage && (
             <Text type="secondary" className="text-xs">
               {progressMessage}
@@ -138,7 +134,7 @@ export function RootfsVersionGroup({
         </div>
       )}
 
-      <Flex vertical gap={4} className="pl-1">
+      <Flex vertical gap="small" className="pl-1">
         {group.flavors.map(f => (
           <FlavorSubRow key={f.rowKey} version={group.version} flavor={f} />
         ))}
@@ -150,8 +146,8 @@ export function RootfsVersionGroup({
 /**
  * Version-level Delete with the same visible-but-disabled + "Requires …manage"
  * Tooltip affordance the RenderButton-based actions use. The Button must remain
- * the single trigger child of Popconfirm, so the Tooltip wraps the whole
- * Popconfirm; `disabled` keeps the Popconfirm from opening for read-only users.
+ * the single trigger child of Confirm, so the Tooltip wraps the whole
+ * Confirm; `disabled` keeps the Confirm from opening for read-only users.
  */
 function DeleteVersionButton({
   canManage,
@@ -165,16 +161,16 @@ function DeleteVersionButton({
   onConfirm: () => void
 }) {
   const del = (
-    <Popconfirm
+    <Confirm
       title="Delete this version?"
       description="Removes all downloaded flavors of this version. Frees disk; the next use re-downloads. Refused while it is the default."
-      okText="Delete"
+      okText="OK"
+      cancelText="Cancel"
       okButtonProps={{ danger: true }}
       onConfirm={onConfirm}
     >
       <Button
-        danger
-        type="text"
+        variant="ghost"
         icon={<DeleteOutlined />}
         loading={loading}
         disabled={!canManage}
@@ -182,12 +178,12 @@ function DeleteVersionButton({
       >
         Delete
       </Button>
-    </Popconfirm>
+    </Confirm>
   )
   return canManage ? (
     del
   ) : (
-    <Tooltip title={`Requires ${MANAGE_PERM}`}>{del}</Tooltip>
+    <Tooltip content={`Requires ${MANAGE_PERM}`}>{del}</Tooltip>
   )
 }
 
@@ -206,7 +202,7 @@ function FlavorSubRow({
         {f.artifact ? (
           <Tag
             icon={<CheckCircleTwoTone twoToneColor="#52c41a" />}
-            color="success"
+            tone="success"
           >
             Downloaded
           </Tag>
@@ -215,7 +211,7 @@ function FlavorSubRow({
         )}
         {f.live > 0 && (
           <Tag
-            color={f.isDraining ? 'orange' : 'default'}
+            tone={f.isDraining ? 'warning' : undefined}
             data-testid={`inflight-${version}-${f.flavor}`}
           >
             {f.drainEntry?.inflight_exec ?? 0} exec ·{' '}

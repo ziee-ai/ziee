@@ -1,9 +1,7 @@
-import { Alert, Spin, Typography } from 'antd'
+import { Alert, Spin, Text } from '@/components/ui'
 import { FileOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import type { FileViewerSlotProps } from '../../types/viewer'
-
-const { Text } = Typography
 
 export function PdfBody(props: FileViewerSlotProps) {
   // PDF viewer is not inline-capable (its module declares no `inline:`).
@@ -46,8 +44,7 @@ export function PdfBody(props: FileViewerSlotProps) {
     <div className="flex flex-col gap-6 p-4 overflow-auto h-full">
       {truncated && (
         <Alert
-          type="info"
-          showIcon
+          tone="info"
           title={
             `Showing first ${file.preview_page_count} of ${totalPages} pages. ` +
             `Download the file to view all pages.`
@@ -85,7 +82,7 @@ export function PdfBody(props: FileViewerSlotProps) {
             />
           ) : (
             <div className="w-full flex items-center justify-center py-16">
-              <Spin />
+              <Spin label="Loading" />
             </div>
           )}
         </div>

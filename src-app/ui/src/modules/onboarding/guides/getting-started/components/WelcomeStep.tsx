@@ -1,10 +1,8 @@
 import { useEffect } from 'react'
-import { Typography } from 'antd'
+import { Title, Paragraph } from '@/components/ui'
 import { RocketOutlined } from '@ant-design/icons'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
 import { Stores } from '@/core/stores'
-
-const { Title, Paragraph } = Typography
 
 export default function WelcomeStep({ registerBeforeNext }: OnboardingStepProps) {
   const user = Stores.Auth.user

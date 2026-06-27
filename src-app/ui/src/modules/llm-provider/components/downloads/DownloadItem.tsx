@@ -1,4 +1,4 @@
-import { Button, Card, Flex, Space, Tag, Tooltip, Typography } from 'antd'
+import { Button, Card, Flex, Space, Tag, Tooltip, Text } from '@/components/ui'
 import {
   CloseOutlined,
   CheckCircleOutlined,
@@ -9,8 +9,6 @@ import { useNavigate } from 'react-router-dom'
 import { DownloadProgress } from '@/modules/llm-provider/components/downloads/DownloadProgress'
 import { formatBytes, formatSpeed, formatETA } from '@/utils/downloadUtils'
 import type { DownloadInstance } from '@/api-client/types'
-
-const { Text, Link } = Typography
 
 interface DownloadItemProps {
   download: DownloadInstance
@@ -44,21 +42,21 @@ export function DownloadItem({
     switch (download.status) {
       case 'downloading':
       case 'pending':
-        return <Tag color="blue">Downloading...</Tag>
+        return <Tag tone="info">Downloading...</Tag>
       case 'completed':
         return (
-          <Tag color="green" icon={<CheckCircleOutlined />}>
+          <Tag tone="success" icon={<CheckCircleOutlined />}>
             Downloaded
           </Tag>
         )
       case 'failed':
         return (
-          <Tag color="red" icon={<ExclamationCircleOutlined />}>
+          <Tag tone="error" icon={<ExclamationCircleOutlined />}>
             Failed
           </Tag>
         )
       case 'cancelled':
-        return <Tag color="default">Cancelled</Tag>
+        return <Tag>Cancelled</Tag>
       default:
         return null
     }
@@ -94,14 +92,10 @@ export function DownloadItem({
   // FULL MODE (for LocalProviderSettings)
   if (mode === 'full') {
     return (
-      <Card size="small">
-        <Flex vertical gap="small" style={{ width: '100%' }}>
+      <Card size="sm">
+        <Flex vertical gap="small" className="w-full">
           <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
+            className="flex justify-between items-center"
           >
             <Space>
               <Text strong>{download.request_data.display_name}</Text>
@@ -110,8 +104,8 @@ export function DownloadItem({
             <Space>
               {onViewDetails && (
                 <Button
-                  type="link"
-                  size="small"
+                  variant="link"
+                  size="sm"
                   icon={<EyeOutlined />}
                   onClick={onViewDetails}
                 >
@@ -120,9 +114,8 @@ export function DownloadItem({
               )}
               {isActive && onCancel && (
                 <Button
-                  type="link"
-                  size="small"
-                  danger
+                  variant="ghost"
+                  size="sm"
                   icon={<CloseOutlined />}
                   onClick={onCancel}
                 >
@@ -131,8 +124,8 @@ export function DownloadItem({
               )}
               {isTerminal && onClose && (
                 <Button
-                  type="link"
-                  size="small"
+                  variant="link"
+                  size="sm"
                   icon={<CloseOutlined />}
                   onClick={onClose}
                 >
@@ -167,21 +160,18 @@ export function DownloadItem({
     return (
       <div>
         <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 4,
-          }}
+          className="flex justify-between items-center mb-1"
         >
-          <Link onClick={handleNavigateToProvider}>
+          <span
+            className="cursor-pointer text-primary underline underline-offset-2"
+            onClick={handleNavigateToProvider}
+          >
             {download.request_data.display_name}
-          </Link>
+          </span>
           {isActive && onCancel && (
             <Button
-              type="link"
-              size="small"
-              danger
+              variant="ghost"
+              size="sm"
               icon={<CloseOutlined />}
               onClick={onCancel}
             >
@@ -207,22 +197,18 @@ export function DownloadItem({
       fullName.length > 30 ? fullName.substring(0, 30) + '...' : fullName
 
     return (
-      <Tooltip title={renderProgressInfo()}>
+      <Tooltip content={renderProgressInfo()}>
         <div
-          style={{ marginBottom: 8, cursor: 'pointer' }}
+          className="mb-2 cursor-pointer"
           onClick={handleNavigateToProvider}
         >
           <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              marginBottom: 2,
-            }}
+            className="flex justify-between mb-0.5"
           >
-            <Text ellipsis style={{ fontSize: 12 }}>
+            <Text ellipsis className="text-xs">
               {displayName}
             </Text>
-            <Text type="secondary" style={{ fontSize: 12 }}>
+            <Text type="secondary" className="text-xs">
               {Math.round(
                 ((download.progress_data?.current || 0) /
                   (download.progress_data?.total || 1)) *

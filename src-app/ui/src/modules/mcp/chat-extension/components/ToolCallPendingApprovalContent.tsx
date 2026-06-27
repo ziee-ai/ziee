@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Alert, Button, Space, Typography } from 'antd'
+import { Alert, Button, Space, Text } from '@/components/ui'
 import {
   ClockCircleOutlined,
   CheckOutlined,
@@ -7,8 +7,6 @@ import {
 } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import type { McpToolCall } from '@/modules/mcp/stores/McpComposer.store'
-
-const { Text } = Typography
 
 interface ToolCallPendingApprovalContentProps {
   toolCall: McpToolCall
@@ -148,7 +146,7 @@ export function ToolCallPendingApprovalContent({
   return (
     <div className="my-2" data-testid={`tool-approval-${toolCall.tool_use_id}`}>
       <Alert
-        type="warning"
+        tone="warning"
         icon={<ClockCircleOutlined />}
         title={
           <div>
@@ -178,11 +176,10 @@ export function ToolCallPendingApprovalContent({
             <div className="mt-3">
               <Space>
                 <Button
-                  type="primary"
                   icon={<CheckOutlined />}
                   onClick={handleApproveOnce}
                   loading={isSubmitting}
-                  size="small"
+                  size="sm"
                   data-testid="tool-approval-approve-once"
                 >
                   Approve once
@@ -191,17 +188,17 @@ export function ToolCallPendingApprovalContent({
                   icon={<CheckOutlined />}
                   onClick={handleApproveForConversation}
                   loading={isSubmitting}
-                  size="small"
+                  size="sm"
                   data-testid="tool-approval-approve-conv"
                 >
                   Approve for this conversation
                 </Button>
                 <Button
-                  danger
+                  variant="destructive"
                   icon={<CloseOutlined />}
                   onClick={handleDeny}
                   loading={isSubmitting}
-                  size="small"
+                  size="sm"
                   data-testid="tool-approval-deny"
                 >
                   Deny
@@ -210,7 +207,6 @@ export function ToolCallPendingApprovalContent({
             </div>
           </div>
         }
-        showIcon
       />
     </div>
   )

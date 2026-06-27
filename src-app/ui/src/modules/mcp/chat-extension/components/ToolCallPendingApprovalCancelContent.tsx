@@ -1,8 +1,6 @@
-import { Alert, Typography } from 'antd'
+import { Alert, Text } from '@/components/ui'
 import { StopOutlined } from '@ant-design/icons'
 import type { McpToolCall } from '@/modules/mcp/stores/McpComposer.store'
-
-const { Text } = Typography
 
 interface ToolCallPendingApprovalCancelContentProps {
   toolCall: McpToolCall
@@ -20,7 +18,7 @@ export function ToolCallPendingApprovalCancelContent({
   return (
     <div className="my-2">
       <Alert
-        type="error"
+        tone="error"
         icon={<StopOutlined />}
         title={
           <div>
@@ -33,7 +31,6 @@ export function ToolCallPendingApprovalCancelContent({
         description={
           toolCall.error || 'Tool execution was denied or cancelled by the user'
         }
-        showIcon
       />
     </div>
   )

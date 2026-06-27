@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Alert, Button, Card, Progress, Typography } from 'antd'
+import { Alert, Button, Card, Progress, Text } from '@/components/ui'
 import {
   ToolOutlined,
   CheckCircleOutlined,
@@ -18,8 +18,6 @@ import { McpMenuItem } from '@/modules/mcp/chat-extension/components/McpMenuItem
 import { McpStatusRow } from '@/modules/mcp/chat-extension/components/McpStatusRow'
 import { McpInitializer } from '@/modules/mcp/chat-extension/components/McpInitializer'
 import { ElicitationFormContent } from '@/modules/mcp/chat-extension/components/ElicitationFormContent'
-
-const { Text } = Typography
 
 /**
  * MCP Tool Call UI Component
@@ -57,9 +55,8 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
 
   return (
     <Card
-      size="small"
-      className="mb-2"
-      style={{ backgroundColor: 'rgba(0, 0, 0, 0.02)' }}
+      size="sm"
+      className="mb-2 bg-black/2"
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -73,8 +70,8 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
           </Text>
         </div>
         <Button
-          size="small"
-          type="text"
+          size="sm"
+          variant="ghost"
           onClick={() => setIsExpanded(!isExpanded)}
         >
           {isExpanded ? 'Hide' : 'Show'} details
@@ -89,9 +86,9 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
             </Text>
           )}
           <Progress
-            size="small"
-            status="active"
-            percent={
+            size="sm"
+            aria-label="Tool call progress"
+            value={
               toolCall.progress.total && toolCall.progress.total > 0
                 ? Math.min(
                     100,
@@ -99,7 +96,7 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
                       (toolCall.progress.progress / toolCall.progress.total) * 100,
                     ),
                   )
-                : undefined
+                : 0
             }
           />
         </div>
@@ -127,10 +124,9 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
 
           {toolCall.error && (
             <Alert
-              type="error"
+              tone="error"
               title="Error"
               description={toolCall.error}
-              showIcon
             />
           )}
         </div>
@@ -178,7 +174,7 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
 
   // Historical view for tool calls loaded from DB (store is empty after reload)
   return (
-    <Card size="small" className="mb-2" style={{ backgroundColor: 'rgba(0, 0, 0, 0.02)' }}>
+    <Card size="sm" className="mb-2 bg-black/2">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           {toolResultData?.is_error ? (
@@ -197,7 +193,7 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
           )}
         </div>
         {hasDetails && (
-          <Button size="small" type="text" onClick={() => setIsExpanded(!isExpanded)}>
+          <Button size="sm" variant="ghost" onClick={() => setIsExpanded(!isExpanded)}>
             {isExpanded ? 'Hide' : 'Show'} details
           </Button>
         )}
@@ -216,7 +212,7 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
             <div className="mb-2">
               <Text strong>Result:</Text>
               {toolResultData.is_error ? (
-                <Alert type="error" title="Error" description={toolResultData.content} showIcon className="mt-1" />
+                <Alert tone="error" title="Error" description={toolResultData.content} className="mt-1" />
               ) : (
                 <pre className="p-2 rounded mt-1 overflow-auto max-h-40">{toolResultData.content}</pre>
               )}

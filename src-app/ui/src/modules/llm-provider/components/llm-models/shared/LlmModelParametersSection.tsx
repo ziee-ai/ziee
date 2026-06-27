@@ -1,10 +1,9 @@
-import { Typography } from 'antd'
+import { Title } from '@/components/ui'
+
 import {
   LlmModelParameterField,
   ParameterFieldConfig,
 } from '@/modules/llm-provider/components/llm-models/shared/LlmModelParameterField'
-
-const { Title } = Typography
 
 interface LlmModelParametersSectionProps {
   title?: string

@@ -8,19 +8,18 @@ import {
   Badge,
   Button,
   Card,
+  Confirm,
   Descriptions,
   Flex,
-  Popconfirm,
   Tag,
-  Typography,
-} from 'antd'
+  Text,
+  type DescriptionsItem,
+} from '@/components/ui'
 import { Permissions, type Group } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { WidgetRenderer } from '@/core/components/LazyComponentRenderer'
 import type { GroupWidget } from '@/modules/user/types/GroupWidget'
-
-const { Text } = Typography
 
 interface GroupListItemProps {
   group: Group
@@ -56,7 +55,7 @@ export function GroupListItem({
       actions.push(
         <Button
           key="members"
-          type="text"
+          variant="ghost"
           icon={<UserOutlined aria-hidden="true" />}
           onClick={() => onViewMembers(group)}
           aria-label={`View members of ${group.name}`}
@@ -70,7 +69,7 @@ export function GroupListItem({
       actions.push(
         <Button
           key="edit"
-          type="text"
+          variant="ghost"
           icon={<EditOutlined aria-hidden="true" />}
           onClick={() => onEdit(group)}
           aria-label={`Edit ${group.name}`}
@@ -84,7 +83,7 @@ export function GroupListItem({
     // refuses to delete system groups and the UI shouldn't pretend.
     if (canDelete && !group.is_system) {
       actions.push(
-        <Popconfirm
+        <Confirm
           key="delete"
           title="Are you sure you want to delete this group?"
           onConfirm={() => onDelete(group.id)}
@@ -92,19 +91,41 @@ export function GroupListItem({
           cancelText="Cancel"
         >
           <Button
-            type="text"
-            danger
+            variant="destructive"
             icon={<DeleteOutlined aria-hidden="true" />}
             aria-label={`Delete ${group.name}`}
           >
             Delete
           </Button>
-        </Popconfirm>,
+        </Confirm>,
       )
     }
 
     return actions.filter(Boolean)
   }
+
+  const descriptionItems: DescriptionsItem[] = [
+    {
+      key: 'description',
+      label: 'Description',
+      children: group.description || 'No description',
+      span: 2,
+    },
+    {
+      key: 'permissions',
+      label: 'Permissions',
+      children: (
+        <Text className="font-mono text-xs">
+          {Object.keys(group.permissions || {}).length} permissions
+        </Text>
+      ),
+    },
+    {
+      key: 'created',
+      label: 'Created',
+      children: new Date(group.created_at).toLocaleDateString(),
+    },
+  ]
 
   return (
     <Card>
@@ -116,11 +137,9 @@ export function GroupListItem({
               <Flex className="gap-2 items-center">
                 <TeamOutlined aria-hidden="true" />
                 <Text className="font-medium">{group.name}</Text>
-                {group.is_system && <Tag color="orange">System</Tag>}
-                <Badge
-                  status={group.is_active ? 'success' : 'error'}
-                  text={group.is_active ? 'Active' : 'Inactive'}
-                />
+                {group.is_system && <Tag tone="warning">System</Tag>}
+                <Badge color={group.is_active ? 'green' : 'red'} />
+                <Text>{group.is_active ? 'Active' : 'Inactive'}</Text>
               </Flex>
             </div>
             <div className={'flex gap-1 items-center justify-end'}>
@@ -136,26 +155,11 @@ export function GroupListItem({
             stack naturally.
           */}
           <Descriptions
-            size="small"
-            column={{ xs: 1, sm: 2 }}
-            colon={false}
-            styles={{
-              label: { fontSize: '12px' },
-              content: { fontSize: '12px' },
-            }}
-          >
-            <Descriptions.Item label="Description" span={{ xs: 1, sm: 2 }}>
-              {group.description || 'No description'}
-            </Descriptions.Item>
-            <Descriptions.Item label="Permissions">
-              <Text code>
-                {Object.keys(group.permissions || {}).length} permissions
-              </Text>
-            </Descriptions.Item>
-            <Descriptions.Item label="Created">
-              {new Date(group.created_at).toLocaleDateString()}
-            </Descriptions.Item>
-          </Descriptions>
+            size="sm"
+            column={2}
+            className="[&_.ant-descriptions-item-label]:text-[12px] [&_.ant-descriptions-item-content]:text-[12px]"
+            items={descriptionItems}
+          />
         </div>
       </div>
 

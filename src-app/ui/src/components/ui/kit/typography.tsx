@@ -52,21 +52,25 @@ export type TextProps = Omit<React.ComponentProps<'span'>, 'style'> & {
   type?: 'secondary' | 'success' | 'warning' | 'danger'
   /** Bold text (legacy `strong`). */
   strong?: boolean
+  /** Inline monospace code styling (legacy `code`). */
+  code?: boolean
   /** Single-line truncation with ellipsis (legacy `ellipsis`). */
   ellipsis?: boolean
   /** Adds a copy button (legacy `copyable`). */
   copyable?: Copyable
 } & KitStyleProps
+// inline-code look (legacy Typography `code`).
+const codeCls = 'rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]'
 // forwardRef: these are natural children for Tooltip/Popover/Dropdown triggers (asChild),
 // which clone the child and attach a ref — a plain function component would drop it.
 export const Text = React.forwardRef<HTMLSpanElement, TextProps>(function Text(
-  { tone, type, strong, ellipsis, copyable, style, allowStyle: _a, className, children, ...props }, ref,
+  { tone, type, strong, code, ellipsis, copyable, style, allowStyle: _a, className, children, ...props }, ref,
 ) {
   const t = tone ?? type ?? 'default'
   // With a copy button, truncation must wrap the CONTENT only (else the button is clipped).
   if (copyable != null) {
     return (
-      <span ref={ref} style={style} className={cn('inline-flex max-w-full items-center text-sm', textTone[t], strong && 'font-semibold', className)} {...props}>
+      <span ref={ref} style={style} className={cn('inline-flex max-w-full items-center text-sm', textTone[t], strong && 'font-semibold', code && codeCls, className)} {...props}>
         <span className={cn(ellipsis && 'truncate')}>{children}</span>
         <CopyButton copyable={copyable} />
       </span>
@@ -76,7 +80,7 @@ export const Text = React.forwardRef<HTMLSpanElement, TextProps>(function Text(
     <span
       ref={ref}
       style={style}
-      className={cn('text-sm', textTone[t], strong && 'font-semibold', ellipsis && 'inline-block max-w-full truncate align-bottom', className)}
+      className={cn('text-sm', textTone[t], strong && 'font-semibold', code && codeCls, ellipsis && 'inline-block max-w-full truncate align-bottom', className)}
       {...props}
     >
       {children}
@@ -102,13 +106,19 @@ export const Title = React.forwardRef<HTMLHeadingElement, TitleProps>(function T
 })
 
 export type ParagraphProps = Omit<React.ComponentProps<'p'>, 'style'> & {
+  tone?: keyof typeof textTone
+  /** legacy `type` — alias of `tone`. */
+  type?: 'secondary' | 'success' | 'warning' | 'danger'
+  strong?: boolean
+  code?: boolean
   ellipsis?: boolean
   copyable?: Copyable
 } & KitStyleProps
 export const Paragraph = React.forwardRef<HTMLParagraphElement, ParagraphProps>(
-  function Paragraph({ ellipsis, copyable, style, allowStyle: _a, className, children, ...props }, ref) {
+  function Paragraph({ tone, type, strong, code, ellipsis, copyable, style, allowStyle: _a, className, children, ...props }, ref) {
+    const t = tone ?? type ?? 'default'
     return (
-      <p ref={ref} style={style} className={cn('text-sm leading-relaxed', ellipsis && 'truncate', className)} {...props}>
+      <p ref={ref} style={style} className={cn('text-sm leading-relaxed', textTone[t], strong && 'font-semibold', code && codeCls, ellipsis && 'truncate', className)} {...props}>
         {children}
         {copyable != null && <CopyButton copyable={copyable} />}
       </p>

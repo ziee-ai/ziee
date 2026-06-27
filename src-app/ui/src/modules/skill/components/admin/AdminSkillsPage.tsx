@@ -1,5 +1,5 @@
 import { ImportOutlined } from '@ant-design/icons'
-import { Button, Card, Empty, Flex, Space, Typography } from 'antd'
+import { Button, Card, Empty, Flex, Text } from '@/components/ui'
 import { useState } from 'react'
 import { Permissions } from '@/api-client/types'
 import { Can } from '@/core/permissions'
@@ -9,8 +9,6 @@ import { ImportSkillDialog } from '@/modules/skill/components/ImportSkillDialog'
 import { SkillDetailDrawer } from '@/modules/skill/components/SkillDetailDrawer'
 import { SkillScopeBadge } from '@/modules/skill/components/SkillScopeBadge'
 import { AdminSkillGroupAssignment } from './AdminSkillGroupAssignment'
-
-const { Text } = Typography
 
 /**
  * `/settings/admin/skills` — lists system-scope skills with per-skill
@@ -45,7 +43,6 @@ export function AdminSkillsPage() {
           {systemSkills.map(skill => (
             <Card
               key={skill.id}
-              classNames={{ body: '!p-0' }}
               className="overflow-hidden"
               data-skill-id={skill.id}
             >
@@ -53,17 +50,17 @@ export function AdminSkillsPage() {
                 className="p-3 cursor-pointer"
                 onClick={() => Stores.SkillDrawer.open(skill)}
               >
-                <Space vertical size={2}>
-                  <Space size={8}>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
                     <Text strong>{skill.display_name || skill.name}</Text>
                     <SkillScopeBadge scope={skill.scope} isDev={skill.is_dev} />
-                  </Space>
+                  </div>
                   {skill.description && (
                     <Text type="secondary" className="text-xs">
                       {skill.description}
                     </Text>
                   )}
-                </Space>
+                </div>
               </div>
               {multiUserMode && (
                 <AdminSkillGroupAssignment skillId={skill.id} />

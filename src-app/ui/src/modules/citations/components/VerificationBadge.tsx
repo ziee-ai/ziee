@@ -1,4 +1,4 @@
-import { Tag, Tooltip } from 'antd'
+import { Tag, Tooltip } from '@/components/ui'
 import type { BibliographyEntry } from '@/api-client/types'
 
 /** The visual heart of "never invent a citation": colour-coded resolution state. */
@@ -9,17 +9,17 @@ export function VerificationBadge({
 }) {
   switch (status) {
     case 'verified':
-      return <Tag color="green">verified</Tag>
+      return <Tag tone="success">verified</Tag>
     case 'mismatch':
       return (
         <Tooltip title="The identifier resolves, but to a record whose title differs from what was supplied — review it.">
-          <Tag color="orange">mismatch</Tag>
+          <Tag tone="warning">mismatch</Tag>
         </Tooltip>
       )
     case 'not_found':
       return (
         <Tooltip title="The supplied DOI/PMID did NOT resolve to a real record — likely fabricated.">
-          <Tag color="red">not found</Tag>
+          <Tag tone="error">not found</Tag>
         </Tooltip>
       )
     default:

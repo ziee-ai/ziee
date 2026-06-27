@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Card, Empty } from 'antd'
+import { Card, Empty } from '@/components/ui'
 import { ApiClient } from '@/api-client'
 import type { SSELogLineData, SSELogLagData } from '@/api-client/types'
 
@@ -65,10 +65,7 @@ export function LiveLogsPanel({ modelId }: { modelId: string }) {
   return (
     <Card title="Live logs">
       {lines.length === 0 ? (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="No log output yet"
-        />
+        <Empty description="No log output yet" />
       ) : (
         <div
           ref={scrollRef}

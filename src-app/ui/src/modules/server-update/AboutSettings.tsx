@@ -3,12 +3,19 @@
  * Notification only — updating is a manual operator action (install.sh).
  */
 
-import { Alert, Button, Card, Descriptions, Tag, Typography } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
-
-const { Text, Paragraph, Link } = Typography
+import {
+  Alert,
+  Button,
+  Card,
+  Descriptions,
+  Tag,
+  Text,
+  Paragraph,
+  Link,
+} from '@/components/ui'
 
 const UPGRADE_COMMAND =
   'curl -fsSL https://github.com/phibya/ziee-chat-new/releases/latest/download/install.sh | sh'
@@ -29,48 +36,67 @@ export default function AboutSettings() {
   return (
     <SettingsPageContainer title="About" subtitle="Server version and updates">
       <Card>
-        <Descriptions column={1} size="small" colon>
-          <Descriptions.Item label="Application">Ziee server</Descriptions.Item>
-          <Descriptions.Item label="Current version">
-            <Text code>{currentVersion ?? '—'}</Text>
-          </Descriptions.Item>
-          <Descriptions.Item label="Latest version">
-            {latestVersion ? (
-              <>
-                <Text code>{latestVersion}</Text>{' '}
-                {updateAvailable ? (
-                  <Tag color="blue">update available</Tag>
-                ) : (
-                  <Tag color="green">up to date</Tag>
-                )}
-              </>
-            ) : (
-              <Text type="secondary">{enabled ? 'not checked yet' : '—'}</Text>
-            )}
-          </Descriptions.Item>
-          {checkedAt && (
-            <Descriptions.Item label="Last checked">
-              <Text type="secondary">{new Date(checkedAt).toLocaleString()}</Text>
-            </Descriptions.Item>
-          )}
-        </Descriptions>
+        <Descriptions
+          column={1}
+          size="sm"
+          items={[
+            {
+              key: 'application',
+              label: 'Application',
+              children: 'Ziee server',
+            },
+            {
+              key: 'current-version',
+              label: 'Current version',
+              children: <Text code>{currentVersion ?? '—'}</Text>,
+            },
+            {
+              key: 'latest-version',
+              label: 'Latest version',
+              children: latestVersion ? (
+                <>
+                  <Text code>{latestVersion}</Text>{' '}
+                  {updateAvailable ? (
+                    <Tag tone="info">update available</Tag>
+                  ) : (
+                    <Tag tone="success">up to date</Tag>
+                  )}
+                </>
+              ) : (
+                <Text type="secondary">{enabled ? 'not checked yet' : '—'}</Text>
+              ),
+            },
+            ...(checkedAt
+              ? [
+                  {
+                    key: 'last-checked',
+                    label: 'Last checked',
+                    children: (
+                      <Text type="secondary">
+                        {new Date(checkedAt).toLocaleString()}
+                      </Text>
+                    ),
+                  },
+                ]
+              : []),
+          ]}
+        />
 
         {!enabled && (
           <Alert
-            type="info"
-            showIcon
-            style={{ marginTop: 16 }}
+            tone="info"
+            className="mt-4"
             title="Update checks are disabled by operator config"
             description="Set update_check.enabled: true to receive update notifications."
           />
         )}
 
         {error && (
-          <Alert type="error" showIcon style={{ marginTop: 16 }} title={error} />
+          <Alert tone="error" className="mt-4" title={error} />
         )}
 
         {updateAvailable && (
-          <div style={{ marginTop: 16 }}>
+          <div className="mt-4">
             <Paragraph>
               A newer version is available.{' '}
               {releaseUrl && (
@@ -80,20 +106,17 @@ export default function AboutSettings() {
               )}
             </Paragraph>
             {notes && (
-              <Paragraph
-                type="secondary"
-                style={{ whiteSpace: 'pre-wrap', marginBottom: 12 }}
-              >
+              <Paragraph type="secondary" className="whitespace-pre-wrap mb-3">
                 {notes}
               </Paragraph>
             )}
-            <Paragraph type="secondary" style={{ marginBottom: 4 }}>
+            <Paragraph type="secondary" className="mb-1">
               To update, run on the server host:
             </Paragraph>
             <Paragraph
-              copyable={{ text: UPGRADE_COMMAND }}
+              copyable={{ text: UPGRADE_COMMAND, label: 'Copy upgrade command' }}
               code
-              style={{ whiteSpace: 'pre-wrap' }}
+              className="whitespace-pre-wrap"
             >
               {UPGRADE_COMMAND}
             </Paragraph>
@@ -101,7 +124,7 @@ export default function AboutSettings() {
         )}
 
         <Button
-          style={{ marginTop: 8 }}
+          className="mt-2"
           icon={<ReloadOutlined />}
           loading={loading}
           onClick={() => Stores.ServerUpdate.loadStatus()}

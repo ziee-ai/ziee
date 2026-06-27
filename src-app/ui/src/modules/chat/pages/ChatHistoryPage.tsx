@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Button, Tooltip, Typography } from 'antd'
+import { Button, Tooltip, Text, Title } from '@/components/ui'
 import {
   MessageOutlined,
   PlusOutlined,
@@ -12,8 +12,6 @@ import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/Head
 import { DivScrollY } from '@/components/common/DivScrollY'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 
-const { Title, Text } = Typography
-
 /**
  * ChatHistoryPage
  * Displays the full chat history with search, pagination, and bulk operations.
@@ -23,7 +21,7 @@ const { Title, Text } = Typography
  *     page header on the right.
  *   - Narrow page (≤sm): a single search ICON button sits in the header.
  *     Clicking it toggles a body-rendered search box above the list.
- *     The header button switches to `type="primary"` while the body
+ *     The header button switches to `variant="default"` while the body
  *     search is open so the user knows the affordance is active.
  *
  * The search box itself lives in `ConversationList`; this page just
@@ -78,30 +76,30 @@ export default function ChatHistoryPage() {
       {/* Header */}
       <HeaderBarContainer>
         <div className="h-full flex items-center justify-between gap-3 w-full">
-          <Typography.Title
+          <Title
             level={4}
             className="!m-0 !leading-tight truncate"
           >
             Chats
-          </Typography.Title>
+          </Title>
 
           {/* Wide layout: inline search input portal target. */}
           {!isNarrow && (
             <div
               ref={headerSearchRef}
-              style={{ flex: '0 1 320px', minWidth: 200 }}
+              className="flex-[0_1_320px] min-w-[200px]"
             />
           )}
 
           {/* Narrow layout: search ICON button that toggles a body
-            * search box. Becomes `primary` when the body search is
+            * search box. Becomes `variant="default"` when the body search is
             * open so the active state is visible. */}
           {isNarrow && (
             <Tooltip
-              title={searchOpenInNarrow ? 'Hide search' : 'Search'}
+              content={searchOpenInNarrow ? 'Hide search' : 'Search'}
             >
               <Button
-                type={searchOpenInNarrow ? 'primary' : 'text'}
+                variant={searchOpenInNarrow ? 'default' : 'ghost'}
                 icon={<SearchOutlined />}
                 onClick={() => setSearchOpenInNarrow(v => !v)}
                 aria-label={
@@ -139,14 +137,14 @@ export default function ChatHistoryPage() {
         {!loading && conversations.length === 0 && (
           <div className="text-center py-12 m-auto">
             <MessageOutlined className="text-6xl mb-4" />
-            <Title level={3} type="secondary">
+            <Title level={3}>
               No chat history yet
             </Title>
             <Text type="secondary" className="block mb-4">
               Start your first conversation to see your chat history here
             </Text>
             <Button
-              type="primary"
+              variant="default"
               icon={<PlusOutlined />}
               onClick={() => navigate('/chat')}
             >

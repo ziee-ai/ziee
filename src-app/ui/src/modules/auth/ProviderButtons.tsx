@@ -1,4 +1,4 @@
-import { Alert, Button, Divider, Spin, Typography } from 'antd'
+import { Alert, Button, Separator, Spin, Text } from '@/components/ui'
 import {
   AppleFilled,
   GoogleOutlined,
@@ -8,8 +8,6 @@ import {
 import { Stores } from '@/core/stores'
 import type { PublicProvider } from '@/api-client/types'
 import { SESSION_RETURN_TO_KEY } from './constants'
-
-const { Text } = Typography
 
 /**
  * Per-provider icon. AntD icons stand in for the official Google /
@@ -50,7 +48,7 @@ export const ProviderButtons: React.FC<{ returnTo?: string }> = ({ returnTo }) =
   if (isLoading || !hasLoaded) {
     return (
       <div className="text-center py-2">
-        <Spin size="small" />
+        <Spin size="sm" label="Loading sign-in options" />
       </div>
     )
   }
@@ -58,10 +56,9 @@ export const ProviderButtons: React.FC<{ returnTo?: string }> = ({ returnTo }) =
   if (error) {
     return (
       <Alert
-        type="warning"
+        tone="warning"
         title="Unable to load sign-in options"
         description={error}
-        showIcon
         className="my-2"
       />
     )
@@ -83,17 +80,17 @@ export const ProviderButtons: React.FC<{ returnTo?: string }> = ({ returnTo }) =
 
   return (
     <div className="space-y-3">
-      <Divider plain>
+      <Separator>
         <Text type="secondary" className="text-xs">
           or continue with
         </Text>
-      </Divider>
+      </Separator>
       <div className="space-y-2">
         {providers.map(p => (
           <Button
             key={p.name}
             block
-            size="large"
+            size="lg"
             icon={iconFor(p)}
             onClick={() => onClick(p.name)}
           >

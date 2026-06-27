@@ -1,10 +1,8 @@
-import { Button, Card, Flex, Spin, Tag, Typography } from 'antd'
+import { Button, Card, Flex, Spin, Tag, Text } from '@/components/ui'
 import { EditOutlined } from '@ant-design/icons'
 import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { Stores } from '@/core/stores'
-
-const { Text } = Typography
 
 /**
  * Card for managing which user groups have access to an LLM provider.
@@ -40,7 +38,7 @@ export function ProviderGroupAssignmentCard() {
       title="User Groups"
       extra={
         <Button
-          type="text"
+          variant="ghost"
           icon={<EditOutlined />}
           onClick={handleManageGroups}
           aria-label="Manage user groups"
@@ -48,15 +46,15 @@ export function ProviderGroupAssignmentCard() {
       }
     >
       {providerData?.loading ? (
-        <Flex justify="center" align="center" style={{ padding: '20px' }}>
-          <Spin />
+        <Flex justify="center" align="center" className="p-5">
+          <Spin label="Loading" />
         </Flex>
       ) : providerData?.error ? (
         <Text type="danger">{providerData.error}</Text>
       ) : providerData?.groups && providerData.groups.length > 0 ? (
-        <Flex gap={8} wrap="wrap">
+        <Flex gap="middle" wrap>
           {providerData.groups.map(group => (
-            <Tag key={group.id} color="blue">
+            <Tag key={group.id} tone="info">
               {group.name}
             </Tag>
           ))}

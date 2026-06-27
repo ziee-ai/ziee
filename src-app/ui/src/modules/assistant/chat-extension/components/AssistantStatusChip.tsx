@@ -1,4 +1,4 @@
-import { Tag } from 'antd'
+import { Tag } from '@/components/ui'
 import { RobotOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 
@@ -19,11 +19,11 @@ export function AssistantStatusChip() {
 
   return (
     <Tag
-      color="purple"
+      tone="info"
       icon={<RobotOutlined />}
-      closable
       onClose={() => selectAssistant(null as any)}
-      style={{ margin: 0 }}
+      closeLabel="Remove"
+      className="m-0"
     >
       {assistant.name}
     </Tag>

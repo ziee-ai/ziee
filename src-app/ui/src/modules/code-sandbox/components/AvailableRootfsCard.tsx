@@ -1,4 +1,4 @@
-import { Card, Divider, Empty, Flex } from 'antd'
+import { Card, Empty, Flex, Separator } from '@/components/ui'
 import { Fragment } from 'react'
 import { RootfsVersionGroup } from './RootfsVersionGroup'
 import type { VersionGroup } from './_rootfsShared'
@@ -20,14 +20,13 @@ export function AvailableRootfsCard({
     <Card title="Available versions" data-testid="available-versions-card">
       {groups.length === 0 ? (
         <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
           description="No versions available to download. GitHub Releases may be unreachable, or no compatible releases were found — ensure the server can reach api.github.com, then Refresh."
         />
       ) : (
         <Flex vertical className="gap-1">
           {groups.map((g, i) => (
             <Fragment key={g.version}>
-              {i > 0 && <Divider className="!my-3" />}
+              {i > 0 && <Separator className="!my-3" />}
               <RootfsVersionGroup
                 group={g}
                 variant="available"

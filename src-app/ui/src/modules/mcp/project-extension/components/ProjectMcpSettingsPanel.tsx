@@ -1,4 +1,4 @@
-import { Button, Card, Empty, Skeleton, Space, Tag, Typography } from 'antd'
+import { Button, Card, Empty, Skeleton, Space, Tag, Text } from '@/components/ui'
 import { EditOutlined, ToolOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -8,8 +8,6 @@ import {
   type DisabledServer,
 } from '@/api-client/types'
 import { McpConfigModal } from '@/modules/mcp/components/McpConfigModal'
-
-const { Text } = Typography
 
 /**
  * Project MCP defaults editor. Reads settings from the dedicated
@@ -56,7 +54,7 @@ export function ProjectMcpSettingsPanel() {
 
   const renderServerRule = (
     rule: AutoApprovedServer | DisabledServer,
-    color: 'blue' | 'orange',
+    tone: 'info' | 'warning',
   ) => {
     // Convention (see McpConfigModal.tsx:121): an empty `tools` array
     // means the rule applies to the whole server; a non-empty list
@@ -68,11 +66,11 @@ export function ProjectMcpSettingsPanel() {
           {serverName(rule.server_id)}
         </Text>
         {allTools ? (
-          <Tag color={color}>All tools</Tag>
+          <Tag tone={tone}>All tools</Tag>
         ) : (
           <Space size={[4, 4]} wrap>
             {rule.tools.map(t => (
-              <Tag key={t} color={color}>
+              <Tag key={t} tone={tone}>
                 {t}
               </Tag>
             ))}
@@ -117,7 +115,7 @@ export function ProjectMcpSettingsPanel() {
       extra={
         canEdit && (
           <Button
-            type="text"
+            variant="ghost"
             icon={<EditOutlined />}
             onClick={handleConfigure}
             aria-label="Edit MCP defaults"
@@ -136,7 +134,7 @@ export function ProjectMcpSettingsPanel() {
       </Text>
 
       {loading && !settings ? (
-        <Skeleton active paragraph={{ rows: 3 }} />
+        <Skeleton />
       ) : (
         <div className="flex flex-col gap-4">
           {/* Approval mode — always shown. */}
@@ -155,7 +153,7 @@ export function ProjectMcpSettingsPanel() {
             <div className="flex flex-col gap-2">
               <Text strong>Auto-approved</Text>
               <div className="flex flex-col gap-3 pl-2">
-                {autoApproved.map(r => renderServerRule(r, 'blue'))}
+                {autoApproved.map(r => renderServerRule(r, 'info'))}
               </div>
             </div>
           )}
@@ -164,14 +162,13 @@ export function ProjectMcpSettingsPanel() {
             <div className="flex flex-col gap-2">
               <Text strong>Disabled</Text>
               <div className="flex flex-col gap-3 pl-2">
-                {disabled.map(r => renderServerRule(r, 'orange'))}
+                {disabled.map(r => renderServerRule(r, 'warning'))}
               </div>
             </div>
           )}
 
           {noRules && (
             <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
               description={
                 <Text type="secondary" className="!text-xs">
                   No per-server rules configured.

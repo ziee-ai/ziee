@@ -1,4 +1,4 @@
-import { Button, Tooltip } from 'antd'
+import { Button, Tooltip } from '@/components/ui'
 import {
   Permissions,
   type DrainEntry,
@@ -390,7 +390,6 @@ interface RenderButtonProps {
   onClick: () => void
   loading?: boolean
   danger?: boolean
-  type?: 'text' | 'default' | 'primary'
   'data-testid'?: string
 }
 
@@ -401,13 +400,11 @@ export function RenderButton({
   onClick,
   loading,
   danger,
-  type = 'text',
   'data-testid': testId,
 }: RenderButtonProps) {
   const btn = (
     <Button
-      type={type}
-      danger={danger}
+      variant={danger ? 'destructive' : 'ghost'}
       icon={icon}
       loading={loading}
       disabled={!canManage || loading}
@@ -420,6 +417,6 @@ export function RenderButton({
   return canManage ? (
     btn
   ) : (
-    <Tooltip title={`Requires ${MANAGE_PERM}`}>{btn}</Tooltip>
+    <Tooltip content={`Requires ${MANAGE_PERM}`}>{btn}</Tooltip>
   )
 }

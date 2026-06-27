@@ -1,5 +1,5 @@
 import { ImportOutlined } from '@ant-design/icons'
-import { Button, Card, Empty, Flex, Space, Typography } from 'antd'
+import { Button, Empty, Flex, Space, Text } from '@/components/ui'
 import { useState } from 'react'
 import { Permissions } from '@/api-client/types'
 import { Can } from '@/core/permissions'
@@ -9,8 +9,6 @@ import { ImportWorkflowDialog } from '@/modules/workflow/components/ImportWorkfl
 import { WorkflowDetailDrawer } from '@/modules/workflow/components/WorkflowDetailDrawer'
 import { WorkflowScopeBadge } from '@/modules/workflow/components/WorkflowScopeBadge'
 import { AdminWorkflowGroupAssignment } from './AdminWorkflowGroupAssignment'
-
-const { Text } = Typography
 
 /**
  * `/settings/workflows-admin` — lists system-scope workflows. Admins
@@ -43,35 +41,36 @@ export function AdminWorkflowsPage() {
 
         <div className="flex flex-col gap-3">
           {systemWorkflows.map(workflow => (
-            <Card
+            <div
               key={workflow.id}
-              classNames={{ body: '!p-0' }}
-              className="overflow-hidden"
+              className="relative overflow-hidden border rounded-lg"
               data-workflow-id={workflow.id}
             >
-              <div
-                className="p-3 cursor-pointer"
-                onClick={() => Stores.WorkflowDrawer.open(workflow)}
-              >
-                <Space vertical size={2}>
-                  <Space size={8}>
-                    <Text strong>{workflow.display_name || workflow.name}</Text>
-                    <WorkflowScopeBadge
-                      scope={workflow.scope}
-                      isDev={workflow.is_dev}
-                    />
-                  </Space>
-                  {workflow.description && (
-                    <Text type="secondary" className="text-xs">
-                      {workflow.description}
-                    </Text>
-                  )}
-                </Space>
+              <div className="overflow-hidden">
+                <div
+                  className="p-3 cursor-pointer"
+                  onClick={() => Stores.WorkflowDrawer.open(workflow)}
+                >
+                  <div className="flex flex-col gap-2">
+                    <Space size={8}>
+                      <Text strong>{workflow.display_name || workflow.name}</Text>
+                      <WorkflowScopeBadge
+                        scope={workflow.scope}
+                        isDev={workflow.is_dev}
+                      />
+                    </Space>
+                    {workflow.description && (
+                      <Text type="secondary" className="text-xs">
+                        {workflow.description}
+                      </Text>
+                    )}
+                  </div>
+                </div>
+                {multiUserMode && (
+                  <AdminWorkflowGroupAssignment workflowId={workflow.id} />
+                )}
               </div>
-              {multiUserMode && (
-                <AdminWorkflowGroupAssignment workflowId={workflow.id} />
-              )}
-            </Card>
+            </div>
           ))}
         </div>
 

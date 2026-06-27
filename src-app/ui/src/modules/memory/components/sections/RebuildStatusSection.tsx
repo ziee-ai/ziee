@@ -1,8 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { Card, Flex, Progress, Spin, Typography } from 'antd'
+import { Card, Flex, Progress, Spin } from '@/components/ui'
 import { Stores } from '@/core/stores'
-
-const { Paragraph } = Typography
 
 /**
  * Renders rebuild progress cards. Self-hides unless an embedding
@@ -38,9 +36,9 @@ export function RebuildStatusSection() {
   useEffect(() => {
     if (
       rebuildStatus?.in_progress &&
-      rebuildStatus.pending_count > rebuildTotalRef.current
+      (rebuildStatus?.pending_count ?? 0) > rebuildTotalRef.current
     ) {
-      rebuildTotalRef.current = rebuildStatus.pending_count
+      rebuildTotalRef.current = rebuildStatus?.pending_count ?? 0
     }
     if (!rebuildStatus?.in_progress && rebuildStatus?.pending_count === 0) {
       rebuildTotalRef.current = 0
@@ -59,28 +57,28 @@ export function RebuildStatusSection() {
           Math.min(
             100,
             Math.round(
-              ((rebuildTotalRef.current - rebuildStatus.pending_count) /
+              ((rebuildTotalRef.current - (rebuildStatus?.pending_count ?? 0)) /
                 rebuildTotalRef.current) *
                 100,
             ),
           ),
         )
-      : undefined
+      : 0
 
   return (
     <>
       {embeddingInProgress && rebuildStatus && (
         <Card
           title={
-            <Flex align="center" gap={8}>
-              <Spin size="small" />
+            <Flex align="center" gap="small">
+              <Spin size="sm" label="Re-embedding memories" />
               <span>Re-embedding memories</span>
             </Flex>
           }
         >
-          <Paragraph type="secondary" className="!mb-2 text-sm">
+          <p className="text-sm text-secondary-foreground/70 mb-2">
             Running{' '}
-            {rebuildStatus.model_name ? (
+            {rebuildStatus?.model_name ? (
               <code>{rebuildStatus.model_name}</code>
             ) : (
               'the configured embedding model'
@@ -88,30 +86,30 @@ export function RebuildStatusSection() {
             against every stored memory. Retrieval may return fewer results
             until this finishes; new memories created during the rebuild
             are picked up automatically.
-          </Paragraph>
-          <Progress percent={percent} status="active" />
-          <Paragraph type="secondary" className="!mb-0 text-xs">
-            {rebuildStatus.pending_count} memor
-            {rebuildStatus.pending_count === 1 ? 'y' : 'ies'} remaining.
-          </Paragraph>
+          </p>
+          <Progress value={percent} aria-label="Rebuild progress" />
+          <p className="text-xs text-secondary-foreground/70 mb-0">
+            {rebuildStatus?.pending_count} memor
+            {rebuildStatus?.pending_count === 1 ? 'y' : 'ies'} remaining.
+          </p>
         </Card>
       )}
       {ftsInProgress && (
         <Card
           title={
-            <Flex align="center" gap={8}>
-              <Spin size="small" />
+            <Flex align="center" gap="small">
+              <Spin size="sm" label="Rebuilding full-text search index" />
               <span>Rebuilding full-text search index</span>
             </Flex>
           }
         >
-          <Paragraph type="secondary" className="!mb-2 text-sm">
+          <p className="text-sm text-secondary-foreground/70 mb-2">
             Rewriting <code>user_memories.content_tsv</code> with the{' '}
             <code>{settings?.fts_dictionary ?? '...'}</code> dictionary.
             Lexical retrieval continues to work using the prior column
             until the rebuild commits.
-          </Paragraph>
-          <Progress percent={undefined} status="active" />
+          </p>
+          <Progress value={0} aria-label="Rebuild progress" />
         </Card>
       )}
     </>

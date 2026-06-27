@@ -5,7 +5,9 @@ import { useSurface } from './surface'
 import { type KitStyleProps } from './style-guard'
 import { cn } from '@/lib/utils'
 
-export type CardProps = {
+// Omit native `title` (we take a ReactNode title) + `style` (style-gated). The rest of the
+// div props (onClick, data-*, role, id, aria-*) pass through to the card root.
+export type CardProps = Omit<React.ComponentProps<'div'>, 'title' | 'style'> & {
   title?: React.ReactNode
   /** Top-right actions. */
   extra?: React.ReactNode
@@ -19,12 +21,16 @@ export type CardProps = {
   children?: React.ReactNode
 } & KitStyleProps
 
-export function Card({ title, extra, footer, loading, size = 'default', hoverable, className, style, children }: CardProps) {
+export function Card({ title, extra, footer, loading, size = 'default', hoverable, className, style, allowStyle: _a, children, ...rest }: CardProps) {
   const s = useSurface({})
   const skeleton = loading || s.loading
   const pad = size === 'sm' ? 'px-4' : undefined
   return (
-    <Base style={style} className={cn(size === 'sm' && 'gap-3 py-4', hoverable && 'transition-shadow hover:shadow-md', className)}>
+    <Base
+      style={style}
+      className={cn(size === 'sm' && 'gap-3 py-4', hoverable && 'transition-shadow hover:shadow-md', rest.onClick && 'cursor-pointer', className)}
+      {...rest}
+    >
       {(title != null || extra != null) && (
         <CardHeader className={cn('flex flex-row items-center justify-between gap-2', pad)}>
           {title != null ? <CardTitle>{title}</CardTitle> : <span />}

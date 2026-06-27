@@ -1,12 +1,11 @@
 import { useState } from 'react'
-import { Layout, Typography } from 'antd'
+import { Layout, Title } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { LoginForm } from '@/modules/auth/LoginForm'
 import { RegisterForm } from '@/modules/auth/RegisterForm'
 import { BlankLayoutComponent } from '@/modules/layouts/blank'
 
 const { Content } = Layout
-const { Title } = Typography
 
 type AuthMode = 'login' | 'register'
 
