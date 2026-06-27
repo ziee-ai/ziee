@@ -237,14 +237,11 @@ pub async fn attach_to_project(
     // so project existence isn't leaked). Mirrors file/project_extension.
     handlers::verify_project_owned(auth.user.id, Some(project_id)).await?;
     let repo = repo();
-    let mut count = 0i64;
-    for entry_id in &body.entry_ids {
-        // Ownership check: only link entries the caller owns.
-        if repo.get_entry(auth.user.id, *entry_id).await?.is_some() {
-            repo.attach_to_project(project_id, *entry_id).await?;
-            count += 1;
-        }
-    }
+    // Ownership filtering + inserts run in one transaction so a mid-batch
+    // failure can't leave a partially-attached reference list.
+    let count = repo
+        .attach_many_to_project(auth.user.id, project_id, &body.entry_ids)
+        .await?;
     if count > 0 {
         handlers::emit_library_changed(auth.user.id, SyncAction::Update, uuid::Uuid::nil());
     }

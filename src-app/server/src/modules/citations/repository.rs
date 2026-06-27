@@ -296,6 +296,49 @@ impl CitationsRepository {
         Ok(())
     }
 
+    /// Atomically attach many owned entries to a project's reference list.
+    /// Ownership filtering + inserts run in ONE transaction so a mid-batch
+    /// failure cannot leave a partially-attached reference list. Returns the
+    /// number of owned entries processed (attach is idempotent via the
+    /// `ON CONFLICT DO NOTHING`).
+    pub async fn attach_many_to_project(
+        &self,
+        user_id: Uuid,
+        project_id: Uuid,
+        entry_ids: &[Uuid],
+    ) -> Result<i64, AppError> {
+        let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
+        let mut count = 0i64;
+        for entry_id in entry_ids {
+            let owned: i64 = sqlx::query_scalar!(
+                "SELECT COUNT(*) FROM bibliography_entries WHERE user_id = $1 AND id = $2",
+                user_id,
+                entry_id,
+            )
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(AppError::database_error)?
+            .unwrap_or(0);
+            if owned > 0 {
+                sqlx::query!(
+                    r#"
+                    INSERT INTO project_bibliography (project_id, entry_id)
+                    VALUES ($1, $2)
+                    ON CONFLICT (project_id, entry_id) DO NOTHING
+                    "#,
+                    project_id,
+                    entry_id,
+                )
+                .execute(&mut *tx)
+                .await
+                .map_err(AppError::database_error)?;
+                count += 1;
+            }
+        }
+        tx.commit().await.map_err(AppError::database_error)?;
+        Ok(count)
+    }
+
     /// Unlink an entry from a project (the entry stays in the library).
     pub async fn detach_from_project(
         &self,
