@@ -455,11 +455,21 @@ pub async fn delete_runtime_version(
         })?;
     let mut effective_models = 0u32;
     for m in &local_models {
-        let resolved = binary_manager
+        let resolved = match binary_manager
             .select_runtime_version(Some(m.id), Some(m.provider_id), &version_record.engine)
             .await
-            .ok()
-            .flatten();
+        {
+            Ok(v) => v,
+            Err(e) => {
+                // Skip this model on a transient lookup error (keep the loop
+                // resilient) but don't swallow it silently.
+                tracing::warn!(
+                    "runtime_version: select_runtime_version failed for model {}: {e}",
+                    m.id
+                );
+                None
+            }
+        };
         if resolved.map(|v| v.id) == Some(version_id) {
             effective_models += 1;
         }
@@ -625,11 +635,19 @@ pub async fn list_version_usage(
     let mut unresolved: Vec<ModelUsageInfo> = Vec::new();
 
     for m in models {
-        let effective = binary_manager
+        let effective = match binary_manager
             .select_runtime_version(Some(m.id), Some(m.provider_id), &m.engine)
             .await
-            .ok()
-            .flatten();
+        {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(
+                    "runtime_version: select_runtime_version failed for model {}: {e}",
+                    m.id
+                );
+                None
+            }
+        };
         let pinned = match &effective {
             Some(v) => m.required_runtime_version_id == Some(v.id),
             None => false,
