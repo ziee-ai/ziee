@@ -289,7 +289,7 @@ pub fn delete_group_docs(op: TransformOperation) -> TransformOperation {
 /// Get members of a group (requires groups::read permission)
 #[debug_handler]
 pub async fn get_group_members(
-    _auth: RequirePermissions<(GroupsRead,)>,
+    auth: RequirePermissions<(GroupsRead,)>,
     Path(group_id): Path<Uuid>,
     Query(params): Query<PaginationQuery>,
 ) -> ApiResult<Json<UserListResponse>> {
@@ -299,10 +299,21 @@ pub async fn get_group_members(
     }
 
     // Get group members
-    let (users, total) = Repos
+    let (mut users, total) = Repos
         .group
         .get_members(group_id, params.page, params.per_page)
         .await?;
+
+    // Zero out PII (email / last_login_at) for non-admins, consistent with
+    // list_users. The repo already returns an empty permissions array, but
+    // email + last_login_at would otherwise leak to any GroupsRead holder.
+    if !auth.user.is_admin {
+        for u in users.iter_mut() {
+            u.email = String::new();
+            u.permissions = Vec::new();
+            u.last_login_at = None;
+        }
+    }
 
     let total_pages = (total + params.per_page as i64 - 1) / params.per_page as i64;
 
