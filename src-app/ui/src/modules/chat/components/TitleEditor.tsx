@@ -1,17 +1,41 @@
 import { useState } from 'react'
-import { Form, Input, Button, Tooltip, Typography } from 'antd'
+import {
+  Form,
+  FormField,
+  Input,
+  Button,
+  Tooltip,
+  Title,
+  useForm,
+  zodResolver,
+} from '@/components/ui'
+import { z } from 'zod'
 import { EditOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons'
 import { IoIosArrowBack } from 'react-icons/io'
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
 
+interface TitleFormValues {
+  title: string
+}
+
+const schema = z.object({
+  title: z
+    .string()
+    .min(1, 'Please enter a title')
+    .max(100, 'Title must be less than 100 characters'),
+})
+
 /**
  * TitleEditor Component
  * Self-contained component that accesses conversation from store and handles its own state/events
  */
 export function TitleEditor() {
-  const [form] = Form.useForm()
+  const form = useForm<TitleFormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { title: '' },
+  })
   const [isEditing, setIsEditing] = useState(false)
   const navigate = useNavigate()
 
@@ -19,13 +43,12 @@ export function TitleEditor() {
   const { conversation } = Stores.Chat
 
   const handleEditClick = () => {
-    form.setFieldValue('title', conversation?.title || '')
+    form.setValue('title', conversation?.title || '')
     setIsEditing(true)
   }
 
-  const handleSave = async () => {
+  const handleSave = async (values: TitleFormValues) => {
     try {
-      const values = await form.validateFields()
       if (conversation && values.title.trim()) {
         await Stores.Chat.updateConversation({ title: values.title.trim() })
         setIsEditing(false)
@@ -36,7 +59,7 @@ export function TitleEditor() {
   }
 
   const handleCancel = () => {
-    form.resetFields()
+    form.reset()
     setIsEditing(false)
   }
 
@@ -52,41 +75,30 @@ export function TitleEditor() {
 
   if (isEditing) {
     return (
-      <Form name="title-editor" form={form} className="flex items-center gap-1 flex-1 max-w-full">
-        <Form.Item
-          name="title"
-          className="!mb-0 flex-1"
-          rules={[
-            { required: true, message: 'Please enter a title' },
-            {
-              max: 100,
-              message: 'Title must be less than 100 characters',
-            },
-          ]}
-        >
+      <Form
+        name="title-editor"
+        form={form}
+        onSubmit={handleSave}
+        className="flex items-center gap-1 flex-1 max-w-full"
+      >
+        <FormField name="title" className="!mb-0 flex-1">
           <Input
             placeholder="Enter conversation title"
             autoFocus
-            onPressEnter={handleSave}
-            size="small"
-            className="!border-none !shadow-none"
-            style={{
-              backgroundColor: 'transparent',
-              fontSize: '16px',
-              fontWeight: 600,
-            }}
+            size="sm"
+            className="!border-none !shadow-none bg-transparent text-base font-semibold"
           />
-        </Form.Item>
+        </FormField>
         <Button
-          type="text"
-          size="small"
+          type="submit"
+          variant="ghost"
+          size="sm"
           icon={<CheckOutlined />}
-          onClick={handleSave}
           className="!p-1"
         />
         <Button
-          type="text"
-          size="small"
+          variant="ghost"
+          size="sm"
           icon={<CloseOutlined />}
           onClick={handleCancel}
           className="!p-1"
@@ -98,7 +110,7 @@ export function TitleEditor() {
   return (
     <div className="flex gap-1 items-center justify-start overflow-hidden">
       <Button
-        type="text"
+        variant="ghost"
         className="!px-1"
         onClick={handleBack}
         aria-label="Back to conversation list"
@@ -106,16 +118,15 @@ export function TitleEditor() {
       >
         <IoIosArrowBack className="text-md" />
       </Button>
-      <Typography.Title
+      <Title
         level={5}
-        ellipsis
         className="!m-0 !leading-tight truncate"
       >
         {conversation?.title || 'Untitled Conversation'}
-      </Typography.Title>
+      </Title>
       <Tooltip title="Edit title">
         <Button
-          type="text"
+          variant="ghost"
           icon={<EditOutlined />}
           onClick={handleEditClick}
           aria-label="Edit conversation title"
