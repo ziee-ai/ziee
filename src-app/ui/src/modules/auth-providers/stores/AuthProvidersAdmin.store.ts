@@ -9,6 +9,8 @@ import type {
   UpdateAuthProviderRequest,
 } from '@/api-client/types'
 import { Stores } from '@/core/stores'
+import { hasPermissionNow } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 import {
   emitAuthProviderAutoDisabled,
   emitAuthProviderCreated,
@@ -144,6 +146,10 @@ export const useAuthProvidersAdminStore = create<AuthProvidersAdminStore>()(
       },
 
       loadProviders: async () => {
+        // Self-gate: sync:reconnect fires for every store regardless of
+        // audience, so a non-admin must not refetch this admin-only list
+        // and trip a 403. Perm must match the endpoint's read gate.
+        if (!hasPermissionNow(Permissions.AuthProvidersRead)) return
         set(s => {
           s.loading = true
           s.error = null
