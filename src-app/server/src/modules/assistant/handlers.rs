@@ -193,7 +193,7 @@ pub async fn get_user_assistant(
 ) -> ApiResult<Json<Assistant>> {
     let assistant = Repos
         .assistant
-        .get(id)
+        .get_any(id)
         .await?
         .ok_or_else(|| AppError::not_found("Assistant"))?;
 
@@ -293,7 +293,7 @@ pub async fn delete_user_assistant(
 ) -> ApiResult<()> {
     let existing = Repos
         .assistant
-        .get(id)
+        .get_any(id)
         .await?
         .ok_or_else(|| AppError::not_found("Assistant"))?;
 

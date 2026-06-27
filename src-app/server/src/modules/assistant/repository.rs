@@ -41,6 +41,13 @@ impl AssistantRepository {
         get_assistant(&self.pool, id).await
     }
 
+    /// Like `get` but returns the assistant regardless of `enabled`.
+    /// Used by owner-facing GET/DELETE management handlers so a user can
+    /// still view and delete an assistant they have disabled.
+    pub async fn get_any(&self, id: Uuid) -> Result<Option<Assistant>, AppError> {
+        get_assistant_any(&self.pool, id).await
+    }
+
     /// Get an assistant by ID, scoped to a user. Returns Some only when
     /// the assistant is either owned by `user_id` OR is a public template
     /// (`is_template = TRUE`). Returns None for assistants belonging to
@@ -187,6 +194,39 @@ pub async fn get_assistant(pool: &PgPool, id: Uuid) -> Result<Option<Assistant>,
         r#"SELECT id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, created_at, updated_at
         FROM assistants
         WHERE id = $1 AND enabled = true"#,
+        id
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::database_error)?;
+
+    Ok(row.map(|r| {
+        row_to_assistant(
+            r.id,
+            r.name,
+            r.description,
+            r.instructions,
+            r.parameters,
+            r.created_by,
+            r.is_template,
+            r.is_default,
+            r.enabled,
+            r.created_at,
+            r.updated_at,
+        )
+    }))
+}
+
+/// Like `get_assistant` but does NOT filter on `enabled`, so a disabled
+/// (owner-toggled-off) assistant is still returned. Owner-facing GET/DELETE
+/// management handlers use this — the `enabled = true` filter would
+/// otherwise 404 a disabled assistant, leaving it impossible to view or
+/// delete. Ownership + template checks still gate access in the handler.
+pub async fn get_assistant_any(pool: &PgPool, id: Uuid) -> Result<Option<Assistant>, AppError> {
+    let row = sqlx::query!(
+        r#"SELECT id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, created_at, updated_at
+        FROM assistants
+        WHERE id = $1"#,
         id
     )
     .fetch_optional(pool)
