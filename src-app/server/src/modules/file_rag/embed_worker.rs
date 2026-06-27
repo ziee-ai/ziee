@@ -62,12 +62,16 @@ async fn run(pool: PgPool, model_id: Uuid, target_dimensions: i32) -> Result<(),
         tracing::info!(
             "file_rag.embed_worker: dimension change {current_dim} -> {target_dimensions} — NULLing + ALTER COLUMN"
         );
+        // Make the whole reshape atomic: if any step (incl. the HNSW index
+        // rebuild) fails, roll back so we never leave the column altered but
+        // the settings row's recorded dimension stale.
+        let mut tx = pool.begin().await.map_err(AppError::database_error)?;
         sqlx::query!("UPDATE file_chunks SET embedding = NULL, embedding_model = NULL")
-            .execute(&pool)
+            .execute(&mut *tx)
             .await
             .map_err(AppError::database_error)?;
         sqlx::query!("DROP INDEX IF EXISTS idx_file_chunks_embedding")
-            .execute(&pool)
+            .execute(&mut *tx)
             .await
             .map_err(AppError::database_error)?;
         // `target_dimensions` is an i32 from the controlled admin path (probe-
@@ -77,22 +81,23 @@ async fn run(pool: PgPool, model_id: Uuid, target_dimensions: i32) -> Result<(),
             "ALTER TABLE file_chunks ALTER COLUMN embedding TYPE halfvec({target_dimensions})"
         );
         sqlx::query(&alter)
-            .execute(&pool)
+            .execute(&mut *tx)
             .await
             .map_err(AppError::database_error)?;
         sqlx::query!(
             "CREATE INDEX idx_file_chunks_embedding ON file_chunks USING hnsw (embedding halfvec_cosine_ops)"
         )
-        .execute(&pool)
+        .execute(&mut *tx)
         .await
         .map_err(AppError::database_error)?;
         sqlx::query!(
             "UPDATE file_rag_admin_settings SET embedding_dimensions = $1, updated_at = NOW() WHERE id = 1",
             target_dimensions
         )
-        .execute(&pool)
+        .execute(&mut *tx)
         .await
         .map_err(AppError::database_error)?;
+        tx.commit().await.map_err(AppError::database_error)?;
     }
 
     // Re-embed every chunk whose embedding_model != model tag (or is NULL).
