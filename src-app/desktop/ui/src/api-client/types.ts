@@ -28,19 +28,29 @@ export interface AssignUserToGroupRequest {
 export interface Assistant {
   description?: string
   created_at: string
+  /** User who created this assistant (NULL for system templates) */
   created_by?: string
+  /** Whether this assistant is enabled (false means disabled/soft-deleted) */
   enabled: boolean
   id: string
   instructions?: string
+  /** Whether this is the default assistant for the user/template context */
   is_default: boolean
+  /** Whether this is a system-wide template (immutable after creation) */
   is_template: boolean
   name: string
+  /**
+   * Model parameters stored as JSONB
+   *  Can be deserialized to ModelParameters when needed
+   */
   parameters?: any
   updated_at: string
 }
 
 export interface AssistantFromHubResponse {
+  /** Created assistant */
   assistant: Assistant
+  /** Hub tracking record */
   hub_tracking: HubEntity
 }
 
@@ -68,8 +78,11 @@ export interface AuthProviderResponse {
   created_at: string
   enabled: boolean
   id: string
+  /** When the admin last clicked Test on this row (null = never). */
   last_test_at?: string
+  /** Human-readable detail from the last test. */
   last_test_message?: string
+  /** Outcome of the last test (null = never tested). */
   last_test_ok?: boolean
   name: string
   provider_type: string
@@ -85,7 +98,9 @@ export interface AuthResponse {
 }
 
 export interface AutoApprovedServer {
+  /** MCP server ID (UUID) */
   server_id: string
+  /** List of tool names that are auto-approved for this server */
   tools: string[]
 }
 
@@ -105,21 +120,47 @@ export interface AvailableSkillsResponse {
 }
 
 export interface AvailableUpdatesResponse {
+  /** Host architecture (`x86_64`/`aarch64`). */
   arch: string
   engine: string
+  /** Host platform the asset-readiness was computed for (`linux`/`macos`/`windows`). */
   platform: string
   versions: AvailableVersion[]
 }
 
 export interface AvailableVersion {
+  /** Backends published upstream for the host platform/arch. */
   available_backends: string[]
+  /**
+   * True if the binary for the host platform/arch is published upstream.
+   *  False ⇒ the release exists but its build for this host is pending.
+   */
   binary_ready: boolean
+  /**
+   * True if at least one backend of this version is installed for the
+   *  host platform/arch.
+   */
   installed: boolean
+  /** Backends already installed for the host platform/arch (e.g. `["cpu"]`). */
   installed_backends: string[]
+  /** GitHub prerelease flag. */
   prerelease: boolean
+  /** ISO-8601 publish timestamp, if present. */
   published_at?: string
+  /**
+   * The backend artifact recommended for this host given its detected
+   *  GPU/driver versions (the suitable major-version match), if any.
+   */
   recommended_backend?: string
+  /**
+   * Byte size of the archive the inline Install button would
+   *  fetch (recommended backend when set, else the first
+   *  published backend). `None` when no asset matches this host
+   *  or GitHub omitted the size — UI hides the size label in
+   *  that case.
+   */
   size_bytes?: number
+  /** Release tag (e.g. `v0.0.1-alpha`). */
   version: string
 }
 
@@ -154,6 +195,10 @@ export interface Branch {
   conversation_id: string
   created_at: string
   created_from_message_id?: string
+  /**
+   * Distinguishes edit ('user') from regenerate ('assistant') branches.
+   *  Used by the frontend to anchor the branch navigator at the correct message after page reload.
+   */
   fork_level: string
   id: string
   parent_branch_id?: string
@@ -185,6 +230,11 @@ export interface CallToolResponse {
 
 export interface Catalog {
   generated_at?: string
+  /**
+   * Build marker stamped by the publisher. This is NOT the per-entry
+   *  update signal — per-entry `IndexItem.version` is the truth. Kept
+   *  for diagnostics + the seed-version test guard.
+   */
   hub_version: string
   items: IndexItem[]
   schema_version: number
@@ -203,12 +253,19 @@ export interface ChangePasswordRequest2 {
 }
 
 export interface ChatStreamChunk {
+  /** Branch ID (sent in first chunk) */
   branch_id?: string
+  /** Content block deltas */
   content?: ContentBlockDelta[]
+  /** Conversation ID (sent in first chunk) */
   conversation_id?: string
+  /** Error information */
   error?: StreamError
+  /** Finish reason (when stream completes) */
   finish_reason?: string
+  /** Message ID (sent in first chunk) */
   message_id?: string
+  /** Usage metadata (when stream completes) */
   usage?: Usage
 }
 
@@ -228,43 +285,74 @@ export type ChatStreamSseEvent = {
 }
 
 export interface CitationInput {
+  /**
+   * A free-text reference with no/uncertain identifier — the server
+   *  title-searches Crossref/PubMed to find the real record.
+   */
   title?: string
   authors?: string[]
+  /** A full CSL-JSON item (e.g. piped from a prior literature_search result). */
   csl?: any
+  /**
+   * A raw identifier (DOI / PMID / PMCID / arXiv); kind auto-detected by
+   *  pattern, or set `kind` to disambiguate. May be wrong/fabricated.
+   */
   id?: string
   journal?: string
+  /** Optional explicit identifier kind: "doi" | "pmid" | "pmcid" | "arxiv". */
   kind?: string
+  /** A raw reference string to parse for an identifier or title-search. */
   raw?: string
   year?: number
 }
 
 export interface CitationItemResult {
   citation_key?: string
+  /** Present on add/import paths (None for pure verify/lookup). */
   dedup_outcome?: DedupOutcome
+  /** The library entry this resolved to (when persisted). */
   entry_id?: string
+  /** Echo of the input identifier/title so the UI can line results up. */
   input: string
+  /** For `mismatch`, the fields that disagreed with the resolved record. */
   mismatch_fields?: string[]
+  /** For a `possible_duplicate` outcome, the existing entry to review against. */
   possible_duplicate_of?: string
+  /** For `failed`/`not_found`, a short human reason. */
   reason?: string
   verification_status: VerificationStatus
 }
 
 export interface CodeSandboxResourceLimits {
+  /** `prlimit --as` (virtual address space). */
   address_space_bytes: number
+  /** cgroup v2 `cpu.max`. `"<quota> <period>"` in microseconds. */
   cpu_max: string
+  /** `prlimit --cpu` (CPU-seconds backstop). */
   cpu_secs_max: number
   created_at: string
+  /** `prlimit --fsize` (single-file max size). */
   fsize_bytes: number
+  /** macOS libkrun microVM RAM ceiling in MiB. */
   mac_vm_ram_mib: number
+  /** macOS libkrun microVM vCPU count (`krun_set_vm_config`). */
   mac_vm_vcpus: number
+  /** cgroup v2 `memory.max`. */
   memory_max_bytes: number
+  /** cgroup v2 `memory.swap.max`. `0` disables swap. */
   memory_swap_max_bytes: number
+  /** `prlimit --nofile`. */
   nofile_max: number
+  /** `prlimit --nproc`. */
   nproc_max: number
+  /** cgroup v2 `pids.max`. */
   pids_max: number
+  /** Wall-clock per-`execute_command` budget. */
   timeout_secs: number
   updated_at: string
+  /** VM idle eviction (macOS libkrun + WSL2 distro). `0` = never. */
   vm_idle_evict_secs: number
+  /** Per-VM concurrent `execute_command` cap (macOS + WSL2). */
   vm_max_concurrent_execs: number
 }
 
@@ -285,11 +373,19 @@ export interface ConfigFieldInfo {
 }
 
 export interface ConnectorCatalogEntry {
+  /** True when an api key is stored (never the value). */
   api_key_set: boolean
+  /**
+   * The stored NON-secret config (e.g. `{ "mailto": "a@b.c" }`), so the admin
+   *  form can pre-fill + round-trip it (the api key is never included here).
+   *  Without this the form would re-submit empty config fields and wipe them.
+   */
   config: any
   config_fields: ConfigFieldInfo[]
+  /** True when required config + (if required) key are present. */
   configured: boolean
   display_name: string
+  /** True when this connector is in `enabled_connectors`. */
   enabled: boolean
   key: string
   key_field?: KeyFieldInfo
@@ -321,24 +417,36 @@ export interface Conversation {
   active_branch_id?: string
   created_at: string
   id: string
+  /**
+   * Optional model ID for display/history purposes
+   *  Actual model selection happens per-message via SendMessageRequest
+   */
   model_id?: string
   updated_at: string
   user_id: string
 }
 
 export interface ConversationMcpSettingsResponse {
+  /** Approval mode */
   approval_mode: ApprovalMode
+  /** Auto-approved tools grouped by server */
   auto_approved_tools: AutoApprovedServer[]
   conversation_id: string
   created_at: string
+  /** Disabled servers/tools (empty = all servers enabled) */
   disabled_servers: DisabledServer[]
   id: string
+  /** Loop settings for controlling iteration behavior */
   loop_settings: LoopSettings
   updated_at: string
   user_id: string
 }
 
 export interface ConversationMemoryModeResponse {
+  /**
+   * One of `"inherit"`, `"on"`, `"off"`. Defaults to `"inherit"`
+   *  when the conversation has no explicit override row.
+   */
   memory_mode: string
 }
 
@@ -348,6 +456,10 @@ export interface ConversationResponse {
   created_at: string
   id: string
   message_count: number
+  /**
+   * Optional model ID for display/history purposes
+   *  Actual model selection happens per-message via SendMessageRequest
+   */
   model_id?: string
   updated_at: string
   user_id: string
@@ -379,23 +491,64 @@ export interface CoreMemoryBlock {
 }
 
 export interface CreateAssistantFromHubRequest {
+  /** Optional: Override description */
   description?: string
+  /** Whether this assistant is enabled */
   enabled?: boolean
+  /** Hub assistant ID */
   hub_id: string
+  /** Optional: Override instructions */
   instructions?: string
+  /** Whether this should be the default assistant */
   is_default?: boolean
+  /** Optional: Override name (defaults to hub assistant name) */
   name?: string
+  /** Optional: Override parameters */
   parameters?: any
+  /**
+   * Template-only: when true, delete the existing template install
+   *  for this `hub_id` before creating the new one. Used by the
+   *  `/hub/updates` Re-install action to refresh an outdated
+   *  template; without this the duplicate-prevention guard in
+   *  `Hub.createAssistantTemplateFromHub` would 409. Ignored on the
+   *  user-scoped install path (per-user installs aren't dedup'd).
+   */
   replace_existing?: boolean
 }
 
 export interface CreateAssistantRequest {
+  /**
+   * Brief description of the assistant purpose. Closes
+   *  10-assistant F-02 (Medium) — unbounded description was an
+   *  LLM-token-cost amplification vector.
+   */
   description?: string
+  /**
+   * Whether this assistant is enabled
+   *  Defaults to true if not specified
+   */
   enabled?: boolean
+  /**
+   * System instructions for the AI assistant. Bounded at 64 KiB
+   *  per 10-assistant F-02 (Medium); legitimate prompts fit
+   *  comfortably below 8 KiB.
+   */
   instructions?: string
+  /**
+   * Whether this is the default assistant
+   *  Setting to true will unset other defaults in the same context
+   */
   is_default?: boolean
+  /**
+   * Whether this is a system-wide template
+   *  - true: Requires assistant_templates::create permission, created_by will be NULL
+   *  - false/omitted: Requires assistants::create permission, created_by will be set to current user
+   *  This field is IMMUTABLE after creation
+   */
   is_template?: boolean
+  /** Unique name for the assistant (within user scope for user assistants, globally for templates) */
   name?: string
+  /** Model parameters (temperature, max_tokens, etc.) */
   parameters?: ModelParameters
 }
 
@@ -403,21 +556,36 @@ export interface CreateAuthProviderRequest {
   config: any
   enabled?: boolean
   name: string
+  /** One of: `oidc`, `oauth2`, `apple`, `ldap`, `local`. */
   provider_type: string
 }
 
 export interface CreateAuthProviderResponse {
+  /**
+   * Populated when the provider was created with `enabled=true` but
+   *  the connection probe failed; the row is persisted with
+   *  `enabled=false` and this carries the failure reason so the UI
+   *  can render an inline warning. `null` on the happy path.
+   */
   connection_warning?: string
   provider: AuthProviderResponse
 }
 
 export interface CreateBranchRequest {
+  /**
+   * Whether this branch was created by editing the user message ('user')
+   *  or regenerating the assistant response ('assistant'). Defaults to 'user'.
+   */
   fork_level?: string
   from_message_id: string
 }
 
 export interface CreateConversationRequest {
   title?: string
+  /**
+   * Optional model ID for display/history purposes
+   *  Actual model selection happens per-message via SendMessageRequest
+   */
   model_id?: string
 }
 
@@ -450,14 +618,29 @@ export interface CreateLlmProviderRequest {
 }
 
 export interface CreateLlmProviderResponse {
+  /**
+   * API key for upstream provider — write-only.
+   *
+   *  Deserialize unchanged so admins can POST/PUT the value; Serialize
+   *  suppressed so GET /llm-providers and /llm-providers/{id} no longer
+   *  return the secret. The previous behavior round-tripped the api_key
+   *  to every user with `llm_providers::read` — closes
+   *  06-llm-provider F-01 (Critical). The deeper at-rest encryption
+   *  (pgcrypto / SecretView) is the follow-up A5-full work.
+   */
   api_key?: string
   base_url?: string
   built_in: boolean
   created_at: string
+  /** Default runtime version for local models in this provider */
   default_runtime_version_id?: string
   enabled: boolean
   id: string
   name: string
+  /**
+   * Plaintext PROXY_TOKEN for newly-created local providers. None
+   *  for any other provider_type.
+   */
   plaintext_api_key?: string
   provider_type: string
   proxy_settings: ProxySettings
@@ -473,10 +656,24 @@ export interface CreateLlmRepositoryRequest {
 }
 
 export interface CreateMcpServerFromHubRequest {
+  /** Optional: Override display name */
   display_name?: string
+  /** Optional: Override enabled */
   enabled?: boolean
+  /** Hub MCP server ID */
   hub_id: string
+  /** Optional: Override name */
   name?: string
+  /**
+   * System-only: when true, delete the existing system install
+   *  for this `hub_id` before creating the new one. Used by the
+   *  `/hub/updates` Re-install action to refresh an outdated
+   *  system MCP server; without this the duplicate-prevention
+   *  guard in `Hub.createSystemMcpServerFromHub` would 409.
+   *  Rejected with 400 on the user-scoped install path (per-user
+   *  installs aren't dedup'd). Mirrors `replace_existing` on
+   *  `CreateAssistantFromHubRequest`.
+   */
   replace_existing?: boolean
 }
 
@@ -486,12 +683,45 @@ export interface CreateMcpServerRequest {
   command?: string
   display_name: string
   enabled?: boolean
+  /**
+   * Structured env-var entries (replaces the old flat
+   *  `HashMap<String, String>` shape). Each entry's `is_secret`
+   *  flag decides whether the value gets encrypted at rest. None /
+   *  missing → no env vars.
+   */
   environment_variables_entries?: EnvVarEntry[]
+  /**
+   * Structured HTTP header entries. Same per-entry secret model
+   *  as `environment_variables_entries`.
+   */
   headers_entries?: HeaderEntry[]
+  /**
+   * Optional Hub identifier — when set, the create handler also
+   *  records the install in `hub_entities` so the Hub card's
+   *  "already installed" badge keeps working. Set by the UI when
+   *  the drawer was opened via "Install" / "Install for the system"
+   *  on a hub MCP card; null for direct-add. Type matches the
+   *  existing `CreateMcpServerFromHubRequest::hub_id` (catalog
+   *  slug string, not a UUID).
+   */
   hub_id?: string
   max_concurrent_sessions?: number
   name: string
+  /**
+   * Launch the stdio subprocess inside the code_sandbox bwrap
+   *  isolation. The user-create handler force-sets this to `true`
+   *  for user-owned stdio servers per the active MCP user policy
+   *  (any client value is ignored). Admins may set it freely on
+   *  system stdio servers via the drawer toggle.
+   */
   run_in_sandbox?: boolean
+  /**
+   * Rootfs flavor (KNOWN_FLAVORS, e.g. "minimal" / "full") for the
+   *  sandboxed launch. None → handler-picks default ('full' on
+   *  fresh rows; the user-create handler force-overrides this with
+   *  the active `mcp_user_policy.user_stdio_sandbox_flavor` for
+   *  user-owned stdio regardless of what the client sent).
+   */
   sandbox_flavor?: string
   supports_sampling?: boolean
   timeout_seconds?: number
@@ -508,27 +738,52 @@ export interface CreateMemoryRequest {
 }
 
 export interface CreateModelFromHubRequest {
+  /** Optional: Override display name */
   display_name?: string
+  /** Whether this model is enabled */
   enabled?: boolean
+  /** Hub model ID */
   hub_id: string
+  /** Provider ID to associate model with */
   provider_id: string
+  /**
+   * Optional: name of the quantization within the chosen source's
+   *  `quantizations[]`. Defaults to the entry with `is_default: true`,
+   *  falling back to `quantizations[0]` if no entry sets it.
+   */
   quantization_name?: string
+  /**
+   * Optional: index into `HubModel.sources[]` (default 0). Phase-7
+   *  addition — v1 had a single source per model so the index was
+   *  implicit.
+   */
   source_index?: number
 }
 
 export interface CreateProjectRequest {
+  /**
+   * Brief description. Capped at 4 KiB (same as assistant) to avoid
+   *  per-turn token-cost amplification when project context is
+   *  injected.
+   */
   description?: string
   default_assistant_id?: string
   default_model_id?: string
+  /**
+   * System instructions injected into every conversation under this
+   *  project. Capped at 64 KiB (same as assistant).
+   */
   instructions?: string
   name?: string
 }
 
 export interface CreateSkillFromHubRequest {
+  /** Hub skill ID (reverse-DNS canonical name). */
   hub_id: string
 }
 
 export interface CreateSystemSkillFromHubRequest {
+  /** Optional list of group IDs to assign in the same TX as the install. */
   groups?: string[]
   hub_id: string
 }
@@ -567,6 +822,7 @@ export interface DeleteProviderResponse {
 }
 
 export interface DeleteVersionQuery {
+  /** Whether to remove the binary file (defaults to false) */
   remove_binary?: boolean
 }
 
@@ -575,7 +831,9 @@ export type DependencyKind = 'model' | 'mcp-server'
 export type DeviceType = 'cpu' | 'cuda' | 'metal' | 'rocm' | 'vulkan' | 'opencl' | 'auto'
 
 export interface DisabledServer {
+  /** MCP server ID (UUID) */
   server_id: string
+  /** List of disabled tool names (empty = entire server disabled) */
   tools: string[]
 }
 
@@ -591,6 +849,7 @@ export interface DiscoveredModel {
   display_name?: string
   id: string
   max_output_tokens?: number
+  /** "catalog" | "discovery" | "operator_override" */
   source: string
   supports_chat: boolean
   supports_embeddings: boolean
@@ -693,10 +952,13 @@ export interface DownloadSnapshot {
   engine: string
   error?: string
   key: string
+  /** 0..=100 when `total_bytes` is set. */
   percent?: number
+  /** Result version when terminal=Completed; null otherwise. */
   result_version_id?: string
   status: string
   task_id: string
+  /** `None` when the upstream omitted Content-Length. */
   total_bytes?: number
   version: string
 }
@@ -717,18 +979,36 @@ export interface DownloadTokenResponse {
 }
 
 export interface DownloadVersionRequest {
+  /** Architecture (x86_64, arm64) */
   arch: string
+  /** Backend (cpu, cuda, rocm, metal) */
   backend: string
+  /** Engine type (llamacpp or mistralrs) */
   engine: string
+  /** Platform (linux, macos, windows) */
   platform: string
+  /** Version tag (e.g., "v1.0.0") */
   version: string
 }
 
 export interface DownloadVersionStartedResponse {
   backend: string
   engine: string
+  /**
+   * Ready-to-use SSE URL for the frontend's EventSource (relative
+   *  to the API root). Includes the encoded key.
+   */
   events_url: string
+  /**
+   * Composite key `{engine}@{version}@{backend}` — also the path
+   *  segment for the events / snapshot endpoints.
+   */
   key: string
+  /**
+   * Current status snapshot at the moment the task was started or
+   *  joined. The SSE stream sends Connected immediately with the
+   *  same value so a late subscriber doesn't have to round-trip.
+   */
   status: string
   task_id: string
   version: string
@@ -748,6 +1028,10 @@ export interface DryRunRequest {
 }
 
 export interface DryRunResult {
+  /**
+   * Rough constant-rate cost estimate. Omitted (None) — we don't ship
+   *  per-model pricing tables in Phase 1.
+   */
   est_cost_usd?: number
   steps: DryRunStep[]
   total_est_calls: number
@@ -755,10 +1039,21 @@ export interface DryRunResult {
 }
 
 export interface DryRunStep {
+  /**
+   * Number of LLM calls this step makes. `llm` = 1, `llm_map` = the
+   *  fan-out count (or `max_parallel` cap when runtime-dependent),
+   *  `sandbox` / `elicit` = 0.
+   */
   est_calls: number
   est_tokens_in: number
   est_tokens_out: number
   kind: string
+  /**
+   * `true` when the call count couldn't be resolved statically — i.e.
+   *  an `llm_map` whose `for_each` references a prior step's output. The
+   *  reported `est_calls` is then the `max_parallel` cap, not a true
+   *  count.
+   */
   runtime_dependent: boolean
   step_id: string
 }
@@ -802,14 +1097,24 @@ export interface EnvironmentInfo {
   description: string
   approximate_size_mb: number
   cached: boolean
+  /**
+   * Actual on-disk size of the flavor's cached squashfs file(s). `None`
+   *  when the flavor is not cached.
+   */
   cached_size_bytes?: number
   flavor: string
+  /**
+   * Whether the flavor is currently mounted (a server-spawned squashfuse
+   *  is live, i.e. it may be in use by an in-flight execute_command).
+   */
   mounted: boolean
 }
 
 export interface ExportQuery {
+  /** csljson | bibtex | ris | text (default text) */
   format?: string
   project_id?: string
+  /** CSL style name for `text` (default: pandoc's built-in). */
   style?: string
 }
 
@@ -819,10 +1124,16 @@ export interface ExportResponse {
 }
 
 export interface File {
+  /**
+   * Storage key for the head version's bytes — equals `current_version_id`
+   *  for a normal head, or the restored target for a restored head. Internal
+   *  resolution detail (callers load blobs by this id).
+   */
   blob_version_id: string
   checksum?: string
   created_at: string
   created_by: string
+  /** FK to the head `file_versions` row. */
   current_version_id: string
   file_size: number
   filename: string
@@ -834,6 +1145,7 @@ export interface File {
   text_page_count: number
   updated_at: string
   user_id: string
+  /** Head version number (1-based). */
   version: number
 }
 
@@ -857,6 +1169,12 @@ export interface FileRagAdminSettings {
   embedding_model_id?: string
   enabled: boolean
   fts_candidate_multiplier: number
+  /**
+   * Postgres dictionary used by `websearch_to_tsquery` at query time.
+   *  The GENERATED `content_tsv` is fixed at `'simple'`, so v1 keeps this
+   *  at `'simple'` too (not exposed in the update request) to avoid an
+   *  index/query stemming mismatch — see the plan's FTS gotcha.
+   */
   fts_dictionary: string
   fts_enabled: boolean
   fts_min_rank: number
@@ -870,6 +1188,7 @@ export interface FileRagAdminSettings {
 export type FileRole = 'weight' | 'index' | 'config' | 'tokenizer' | 'vocab' | 'other'
 
 export interface FileVersion {
+  /** Storage key for this version's bytes (= `id`, or the restored target). */
   blob_version_id: string
   checksum?: string
   created_at: string
@@ -882,6 +1201,7 @@ export interface FileVersion {
   mime_type?: string
   preview_page_count: number
   processing_metadata: any
+  /** The chat turn / tool-call that produced this version (provenance). */
   source_message_id?: string
   text_page_count: number
   version: number
@@ -889,8 +1209,13 @@ export interface FileVersion {
 
 export interface FixtureFailure {
   actual_preview: string
+  /**
+   * The assertion that failed (or a descriptive code like
+   *  "missing_mocks" / "run_failed").
+   */
   assertion: string
   expected: string
+  /** The output name (or "" for whole-run errors like missing mocks). */
   output_name: string
 }
 
@@ -899,6 +1224,11 @@ export interface FixtureResult {
   failure?: FixtureFailure
   name: string
   passed: boolean
+  /**
+   * `true` when the fixture was skipped (e.g. a `real_llm` fixture
+   *  with no provider configured). Skipped fixtures count toward
+   *  neither passed nor failed.
+   */
   skipped?: boolean
 }
 
@@ -960,8 +1290,10 @@ export interface GetUserProvidersResponse2 {
 
 export interface GpuDetectionResponse {
   arch: string
+  /** All usable backends on this host. Always includes "cpu". */
   available: string[]
   platform: string
+  /** Recommended backend (priority winner). */
   recommended: string
 }
 
@@ -1054,24 +1386,48 @@ export interface HubAssistant {
   author?: string
   capabilities_required?: string[]
   category?: string
+  /** Array of entity IDs created by current user from this hub assistant */
   created_ids?: string[]
+  /**
+   * Array of system-wide TEMPLATE assistant IDs installed from this
+   *  hub assistant (created_by IS NULL, is_template = true). Usually
+   *  0-or-1 entries — the backend rejects duplicate template installs
+   *  with 409. Used by the hub card to disable the "Use as Template"
+   *  button when a template install already exists.
+   */
   created_template_ids?: string[]
+  /**
+   * Soft dependencies (`{kind: model|mcp-server, name, versionRange}`).
+   *  FE renders as "Works best with" chips; NOT auto-installed.
+   */
   dependencies?: HubDependency[]
   display_name: string
   instructions?: string
+  /** Reverse-DNS canonical name (the catalog lookup key). */
   name: string
   parameters: any
+  /** Source repository pointer (rare for assistants, but supported). */
   repository?: HubRepository
   tags?: string[]
+  /** Per-entry semver. See `HubModel.version`. */
   version?: string
+  /** Project / website link. */
   websiteUrl?: string
 }
 
 export interface HubBundle {
+  /**
+   * Conventional entry point inside the extracted bundle
+   *  (`"SKILL.md"` for skills, `"workflow.yaml"` for workflows).
+   */
   entry_point: string
+  /** Number of regular files inside the bundle (cap: 256). */
   file_count: number
+  /** Hex-encoded SHA-256 of the tar.gz bytes (lowercase, 64 chars). */
   sha256: string
+  /** Bundle size in bytes (consumer pre-checks against the 10 MiB cap). */
   size_bytes: number
+  /** Bundle URL relative to the Pages base. */
   url: string
 }
 
@@ -1092,8 +1448,10 @@ export interface HubCatalogRefreshResponse {
 export interface HubCatalogVersionResponse {
   counts: HubCatalogCounts
   hub_version: string
+  /** ISO 8601 install time of the active catalog (None if unreadable). */
   last_refreshed?: string
   server_version: string
+  /** "seed" (embedded boot fallback) or "github" (verified fetch). */
   source: CatalogProvenance
 }
 
@@ -1101,7 +1459,12 @@ export type HubCategory = 'assistant' | 'mcp-server' | 'model' | 'skill' | 'work
 
 export interface HubDependency {
   kind: DependencyKind
+  /** Reverse-DNS canonical name of the dependency. */
   name: string
+  /**
+   * Semver range (`"^1.0.0"`, `"*"`, etc.). Free-form on the wire;
+   *  not validated by the consumer.
+   */
   versionRange: string
 }
 
@@ -1116,6 +1479,11 @@ export interface HubEntity {
 }
 
 export interface HubInstalledResponse {
+  /**
+   * Live catalog version — handy on the client so every row can
+   *  compare its `installed_version` to highlight the delta
+   *  without a second round-trip to `/hub/version`.
+   */
   catalog_version: string
   items: HubInstalledRow[]
 }
@@ -1126,11 +1494,35 @@ export interface HubInstalledRow {
   entity_type: string
   hub_category: string
   hub_id: string
+  /**
+   * When the hub_entities tracking row was first created. Used to
+   *  render "installed N days ago" on the row.
+   */
   installed_at: string
   installed_version?: string
+  /**
+   * `created_by IS NULL`. Frontend renders a scope tag and
+   *  (for non-admin users) suppresses the Remove button.
+   */
   is_system: boolean
+  /**
+   * Re-install dispatch flag for system MCP servers — routes to
+   *  `Hub.createSystemMcpServerFromHub` (with `replace_existing:
+   *  true`) instead of the user-scoped endpoint.
+   */
   is_system_mcp_install: boolean
+  /**
+   * Re-install dispatch flag for ASSISTANT templates — routes the
+   *  Re-install action to `Hub.createAssistantTemplateFromHub`
+   *  instead of the user-scoped endpoint.
+   */
   is_template_install: boolean
+  /**
+   * Display name from the entity's own table. Empty when the
+   *  underlying entity row has been deleted (orphan — should be
+   *  cleaned by the deletion-event listener, but the LEFT JOIN
+   *  surfaces them rather than crashing the page).
+   */
   name: string
 }
 
@@ -1144,16 +1536,53 @@ export interface HubLocalProvidersResponse {
 }
 
 export interface HubMCPServer {
+  /** Schema URL the manifest claims to conform to. */
   $schema?: string
+  /** One-line human description from the manifest body. */
   description?: string
+  /**
+   * Namespaced extras. Preserves
+   *  `io.modelcontextprotocol.registry/*` keys from ingested entries
+   *  so the frontend can surface "official MCP registry" provenance
+   *  without a separate lookup.
+   */
   _meta?: any
+  /**
+   * Array of entity IDs created by current user from this hub server.
+   *  Populated by the handler at response time; never present in the
+   *  raw manifest JSON.
+   */
   created_ids?: string[]
+  /**
+   * Array of system-wide MCP server IDs installed from this hub
+   *  server (created_by IS NULL, is_system = true). Usually 0-or-1
+   *  entries — the backend rejects duplicate system installs with
+   *  409. Used by the hub card to disable the "Install as System"
+   *  button when a system install already exists. Mirrors
+   *  `HubAssistant.created_template_ids`.
+   */
   created_system_ids?: string[]
+  /**
+   * Required: reverse-DNS canonical name (e.g.
+   *  `io.github.modelcontextprotocol/filesystem`). Catalog lookup key.
+   */
   name: string
+  /**
+   * Official `server.json`: stdio-runnable packages
+   *  (npm/pypi/oci/nuget/mcpb via npx/uvx/docker/dnx). Ziee filters
+   *  to npx/uvx + stdio at install time.
+   */
   packages?: McpPackage[]
+  /**
+   * Official `server.json`: remote transports
+   *  (streamable-http + sse). Preferred over `packages` if present.
+   */
   remotes?: McpRemote[]
+  /** Source repository pointer. */
   repository?: HubRepository
+  /** Per-entry semver matching the IndexItem.version. */
   version?: string
+  /** Project homepage (`websiteUrl` on the wire). */
   websiteUrl?: string
 }
 
@@ -1171,27 +1600,68 @@ export interface HubManifestQuery {
 }
 
 export interface HubModel {
+  /**
+   * Schema URL the manifest claims to conform to. Informational on
+   *  the consumer; lets the catalog format evolve.
+   */
   $schema?: string
   description?: string
+  /**
+   * Namespaced extras (`io.modelcontextprotocol.registry/*`
+   *  preserved from ingested entries on the MCP side). Free-form for
+   *  forward compat.
+   */
   _meta?: any
   author?: string
   capabilities?: ModelCapabilities2
+  /** Array of model IDs downloaded by ANYONE from this hub model (system-wide) */
   created_ids?: string[]
+  /**
+   * Soft, informational dependencies (`{kind, name, versionRange}`).
+   *  Surfaced in the FE; NOT auto-installed (mirrors `HubAssistant`).
+   */
   dependencies?: HubDependency[]
   display_name: string
   language_support?: string[]
   license?: string
+  /**
+   * Reverse-DNS canonical name. Matches the IndexItem.name in the
+   *  catalog; used as the lookup key on every install / manifest
+   *  endpoint.
+   */
   name: string
   recommended_parameters?: any
+  /** Source repository pointer. Mirrors `HubMCPServer.repository`. */
   repository?: HubRepository
+  /**
+   * Whether the model's SOURCE repository currently has a credential
+   *  configured. Computed at response time (never read from the catalog file)
+   *  by checking, for each `sources[].environment_variables` entry marked
+   *  `is_required + is_secret`, whether the matching `llm_repositories` row
+   *  has a credential. `true` if at least one source has its required
+   *  secret credential configured. When all required-secret sources are
+   *  unconfigured, the UI blocks download and points the user to
+   *  Settings → LLM Repositories.
+   */
   source_auth_configured?: boolean
+  /**
+   * Installable variants. Required — the publisher always sets at
+   *  least one. Parallel to `HubMCPServer.packages`.
+   */
   sources: ModelSource[]
   tags?: string[]
+  /**
+   * Per-entry semver. Absent on legacy seed entries; the
+   *  `/installed` updates path treats `None` as "no update
+   *  available".
+   */
   version?: string
+  /** Project / model homepage URL. */
   websiteUrl?: string
 }
 
 export interface HubQuery {
+  /** Locale code (e.g., "en", "es", "fr") */
   lang?: string
 }
 
@@ -1215,8 +1685,10 @@ export interface HubSkill {
   bundle: HubBundle
   dependencies?: HubDependency[]
   license?: string
+  /** Reverse-DNS canonical name. */
   name: string
   tags?: string[]
+  /** Per-entry semver. */
   version?: string
 }
 
@@ -1233,8 +1705,10 @@ export interface HubWorkflow {
   bundle: HubBundle
   dependencies?: HubDependency[]
   license?: string
+  /** Reverse-DNS canonical name. */
   name: string
   tags?: string[]
+  /** Per-entry semver. */
   version?: string
 }
 
@@ -1261,21 +1735,52 @@ export interface ImportQuery {
 }
 
 export interface ImportQuery2 {
+  /** Optional slug override; `local.dev/<slug>` becomes the row name. */
   name?: string
+  /**
+   * `user` (default) or `system`. `system` requires
+   *  `workflows::manage_system`.
+   */
   scope?: string
 }
 
 export interface IndexItem {
+  /**
+   * Human display label. Optional — cards fall back to the slug
+   *  portion of `name` when absent.
+   */
   title?: string
+  /**
+   * Namespaced extras (e.g.
+   *  `io.modelcontextprotocol.registry/*` on ingested entries).
+   */
   _meta?: any
   added_at?: string
   category: HubCategory
+  /**
+   * Pages-relative path to the full manifest, e.g.
+   *  `"models/io.github.ziee-ai/llama-3-8b-instruct/1.0.0.json"`.
+   *  Used as both the HTTP fetch suffix and the on-disk cache path.
+   *  Validated by `is_safe_manifest_path` before any file or URL use.
+   */
   manifest_path: string
   min_ziee_version?: string
+  /**
+   * Reverse-DNS canonical name, unique across sources.
+   *  ziee-native entries use `io.github.<contributor>/<slug>`; ingested
+   *  MCP entries keep their official `name`. Matches the per-entry
+   *  manifest's top-level `name` field; used as the lookup key for
+   *  `manifest()` / `ensure_installable()` / install requests
+   *  (the `hub_id` field on `/hub/*\/create` is this value).
+   */
   name: string
   summary: string
   tags?: string[]
   verified?: boolean
+  /**
+   * Per-entry semver. This — not the monolithic `Catalog.hub_version`
+   *  — is the update signal.
+   */
   version?: string
 }
 
@@ -1297,9 +1802,13 @@ export interface InstallTaskState {
 }
 
 export interface InstallVersionRequest {
+  /** Host arch — `"x86_64"` or `"aarch64"`. */
   arch: string
+  /** `"minimal"` or `"full"`. */
   flavor: string
+  /** `"squashfs"` (Linux/macOS) or `"tar.zst"` (Windows WSL). */
   package: string
+  /** Semver string (no leading `v`), e.g. `"0.1.0"`. */
   version: string
 }
 
@@ -1340,7 +1849,12 @@ export interface KeyFieldInfo {
 }
 
 export interface LinkAccountRequest {
+  /** Single-use token from /auth/link-account?token=... */
   link_token: string
+  /**
+   * User's existing local password — the auth proof for binding
+   *  the social identity.
+   */
   password: string
 }
 
@@ -1364,19 +1878,39 @@ export interface ListCitationsResponse {
 }
 
 export interface ListMemoriesQuery {
+  /** Exact-match filter on `kind`. None = no filter. */
   kind?: string
+  /**
+   * Legacy: when `page`/`per_page` are absent, fall back to
+   *  `limit`/`offset` (clamped to safe ranges).
+   */
   limit?: number
   offset?: number
   page?: number
   per_page?: number
+  /**
+   * Substring search on `content` (case-insensitive). Trimmed +
+   *  empty-string normalized to None.
+   */
   search?: string
+  /** Exact-match filter on `source`. None = no filter. */
   source?: string
 }
 
 export interface ListModelsQuery {
+  /**
+   * Optional capability filter. When set, only models whose
+   *  `capabilities.<capability>` JSONB field is `true` are returned.
+   *  Used by the memory admin page to populate the embedding-model
+   *  dropdown via `?capability=text_embedding`. Validated against
+   *  a small allowlist; unknown values yield 400.
+   */
   capability?: string
+  /** Page number (1-indexed) */
   page?: number
+  /** Items per page */
   perPage?: number
+  /** Optional provider ID to filter models by */
   providerId?: string
 }
 
@@ -1396,10 +1930,13 @@ export interface ListSystemServersQuery {
 }
 
 export interface ListToolCallsQuery {
+  /** Filter to a single conversation. */
   conversation_id?: string
+  /** Filter by built-in vs external servers (e.g. `false` to hide built-ins). */
   is_built_in?: boolean
   page?: number
   per_page?: number
+  /** Filter to a single MCP server. */
   server_id?: string
 }
 
@@ -1408,6 +1945,7 @@ export interface ListToolsResponse {
 }
 
 export interface ListVersionsQuery {
+  /** Filter by engine (optional) */
   engine?: string
 }
 
@@ -1467,6 +2005,7 @@ export interface LlmModel {
   pid?: number
   port?: number
   provider_id: string
+  /** Required runtime version for this model */
   required_runtime_version_id?: string
   updated_at: string
   validation_issues?: string[]
@@ -1481,10 +2020,21 @@ export interface LlmModelListResponse {
 }
 
 export interface LlmProvider {
+  /**
+   * API key for upstream provider — write-only.
+   *
+   *  Deserialize unchanged so admins can POST/PUT the value; Serialize
+   *  suppressed so GET /llm-providers and /llm-providers/{id} no longer
+   *  return the secret. The previous behavior round-tripped the api_key
+   *  to every user with `llm_providers::read` — closes
+   *  06-llm-provider F-01 (Critical). The deeper at-rest encryption
+   *  (pgcrypto / SecretView) is the follow-up A5-full work.
+   */
   api_key?: string
   base_url?: string
   built_in: boolean
   created_at: string
+  /** Default runtime version for local models in this provider */
   default_runtime_version_id?: string
   enabled: boolean
   id: string
@@ -1508,6 +2058,15 @@ export interface LlmRepository {
   created_at: string
   enabled: boolean
   id: string
+  /**
+   * Connection-health columns (migration 83). Populated by
+   *  `connection_health::probe` at four points: boot startup
+   *  check, create-flow probe, update-flow enable-transition
+   *  probe, and the explicit form-based test path.
+   *  `last_health_check_at` is NULL on rows that have never been
+   *  probed (default status "untested"). UI renders an Alert
+   *  when `last_health_check_status == "unhealthy"`.
+   */
   last_health_check_at?: string
   last_health_check_reason?: string
   last_health_check_status: string
@@ -1531,6 +2090,15 @@ export interface LlmRepositoryWithHealthWarning {
   created_at: string
   enabled: boolean
   id: string
+  /**
+   * Connection-health columns (migration 83). Populated by
+   *  `connection_health::probe` at four points: boot startup
+   *  check, create-flow probe, update-flow enable-transition
+   *  probe, and the explicit form-based test path.
+   *  `last_health_check_at` is NULL on rows that have never been
+   *  probed (default status "untested"). UI renders an Alert
+   *  when `last_health_check_status == "unhealthy"`.
+   */
   last_health_check_at?: string
   last_health_check_reason?: string
   last_health_check_status: string
@@ -1541,6 +2109,10 @@ export interface LlmRepositoryWithHealthWarning {
 
 export interface LoginRequest {
   password: string
+  /**
+   * Optional provider name for LDAP/OAuth authentication
+   *  If not specified, defaults to local password authentication
+   */
   provider?: string
   username: string
 }
@@ -1551,10 +2123,15 @@ export interface LogsResponse {
 }
 
 export interface LoopSettings {
+  /** Force a final text answer when limits are reached (disable tools for last iteration) */
   force_final_answer?: boolean
+  /** Maximum iterations allowed per conversation turn (0 = unlimited, default: 10) */
   max_iteration?: number
+  /** Per-tool iteration limits */
   per_tool_max_iteration?: PerToolLimit[]
+  /** Stop when LLM generates a response without any tool calls (default: true) */
   stop_when_no_tool_calling?: boolean
+  /** Stop when any of these specific tools are called */
   stop_when_tools_called?: ToolIdentifier[]
 }
 
@@ -1569,18 +2146,30 @@ export interface MagicLinkIssueResponse {
 
 export interface McpArgument {
   description?: string
+  /** `"positional"` (default if absent) | `"named"`. */
   type?: string
+  /** One of `"string"` / `"boolean"` / `"number"` / `"filepath"`. */
   format?: string
   choices?: string[]
   default?: string
   isRepeated?: boolean
   isRequired?: boolean
+  /**
+   * Flag name for `"named"` args (e.g. `"--workspace"`). None for
+   *  positionals.
+   */
   name?: string
+  /**
+   * The argument's literal value, when fixed. For an arg the user
+   *  supplies at install time, `default` / `value_hint` may be the
+   *  only populated fields.
+   */
   value?: string
   valueHint?: string
 }
 
 export interface McpConfig {
+  /** List of MCP servers with optional tool filtering */
   mcp_servers: McpServerConfig[]
 }
 
@@ -1592,24 +2181,80 @@ export interface McpKeyValueInput {
   isRequired?: boolean
   isSecret?: boolean
   name: string
+  /**
+   * Default / suggested value. Mapped into the new MCP
+   *  server's env/header map verbatim so the user has a clear
+   *  "replace with your token" surface.
+   */
   value?: string
 }
 
 export interface McpPackage {
+  /**
+   * Env vars the package needs. Become the ziee MCP server's
+   *  `environment_variables` map.
+   */
   environmentVariables?: McpKeyValueInput[]
+  /**
+   * Optional sha256 (hex) for OCI / mcpb pinning. Not verified by
+   *  the consumer today; kept on the wire for forward compat.
+   */
   fileSha256?: string
+  /**
+   * Package name / identifier in the registry (e.g.
+   *  `@modelcontextprotocol/server-filesystem`).
+   */
   identifier: string
+  /** Args passed to the package itself, after `identifier`. */
   packageArguments?: McpArgument[]
+  /** Optional alternate registry hostname. */
   registryBaseUrl?: string
+  /**
+   * e.g. `"npm"` / `"pypi"` / `"oci"` / `"nuget"` / `"mcpb"`. Ziee
+   *  filters to npm/pypi + npx/uvx at install time; other values are
+   *  kept on the wire for forward compat but won't be launched.
+   */
   registryType: string
+  /**
+   * Args passed to the runtime (e.g. `["-y"]` for npx).
+   *  Prepended to the spawned argv (before `identifier` +
+   *  `package_arguments`).
+   */
   runtimeArguments?: McpArgument[]
+  /**
+   * `"npx"` / `"uvx"` / `"docker"` / `"dnx"`. The install path uses
+   *  this verbatim as the spawned command for the supported ones
+   *  (npx/uvx); other values are kept for forward compat.
+   */
   runtimeHint?: string
+  /**
+   * Transport object (official spec — anyOf StdioTransport /
+   *  StreamableHttpTransport / SseTransport, each shaped as
+   *  `{ "type": "stdio" | "streamable-http" | "sse" }`). Ziee filters
+   *  `packages[]` to stdio at install time; the consumer doesn't read
+   *  this value today but keeps the struct around to round-trip the
+   *  official shape unchanged.
+   */
   transport: McpTransport
+  /**
+   * Package version pin. Required by the official schema; the
+   *  install path appends it to the command line as part of the
+   *  package spec (e.g. `npx -y <identifier>@<version>`).
+   */
   version: string
 }
 
 export interface McpRemote {
+  /**
+   * Official spelling: `"streamable-http"` (kebab-case) or `"sse"`.
+   *  Mapped to ziee `TransportType::Http` / `TransportType::Sse` at
+   *  install.
+   */
   type: string
+  /**
+   * HTTP headers (may include `${VAR}` interpolation refs that the
+   *  install path templates against `environment_variables`).
+   */
   headers?: McpKeyValueInput[]
   url: string
 }
@@ -1621,19 +2266,76 @@ export interface McpServer {
   created_at: string
   display_name: string
   enabled: boolean
+  /**
+   * FLAT decrypted env-var map. Always populated by the repo with
+   *  the FULLY decrypted values (plain entries merged with the
+   *  decrypted secrets) so internal runtime callsites — stdio
+   *  subprocess spawn, http header `${VAR}` interpolation — keep
+   *  working unchanged. NEVER serialized — the public response
+   *  shape is `environment_variables_entries` with secret values
+   *  redacted to `value: None`.
+   */
   environment_variables?: any
+  /**
+   * Public structured view of `environment_variables` for the UI
+   *  form editor. Per-entry secret marker; secret values redacted
+   *  to `None`. Populated by the repo from the triple-column
+   *  storage (`environment_variables` + `environment_variables_encrypted` +
+   *  `environment_variables_secret_keys`).
+   */
   environment_variables_entries?: EnvVarView[]
+  /**
+   * FLAT decrypted header map. Same write-only semantics as
+   *  `environment_variables` — see that field's doc comment.
+   *  `parse_header_map` runs `${VAR}` interpolation against the
+   *  (decrypted) env map at request-build time.
+   */
   headers?: any
+  /**
+   * Public structured view of `headers` for the UI form editor.
+   *  Sibling of `environment_variables_entries`.
+   */
   headers_entries?: HeaderView[]
   id: string
   is_built_in: boolean
   is_system: boolean
+  /**
+   * Persisted result of the last connection probe — populated by
+   *  `connection_health` at boot (startup health check), at
+   *  create-time (post-create probe in `enforce_on_create`), at
+   *  enable-transition time (probe in `enforce_on_update_transition`),
+   *  and on every explicit "Test Connection" button press.
+   *  See migration 82.
+   */
   last_health_check_at?: string
+  /** Human reason on unhealthy. `None` on healthy / untested. */
   last_health_check_reason?: string
+  /**
+   * "untested" | "healthy" | "unhealthy". Defaults to "untested"
+   *  for freshly-created rows that have never been probed.
+   */
   last_health_check_status?: string
   max_concurrent_sessions?: number
   name: string
+  /**
+   * Launch the stdio subprocess inside the code_sandbox bwrap
+   *  isolation. Honored for any `transport_type == Stdio` row (both
+   *  system and user-owned) — the user-create handler force-sets this
+   *  to `true` for user-owned stdio servers per the active MCP user
+   *  policy; admins choose freely on system servers via the drawer
+   *  toggle. The spawn path ignores it for non-stdio servers.
+   */
   run_in_sandbox: boolean
+  /**
+   * Rootfs flavor (KNOWN_FLAVORS, e.g. `minimal`/`full`) used when
+   *  `run_in_sandbox` launches this stdio server inside the
+   *  code_sandbox. Defaults to `full` (the flavor that ships Node +
+   *  uv + python3 + R). Ignored when not sandboxed. For user-owned
+   *  stdio rows the user-create handler force-overwrites this with
+   *  the active `mcp_user_policy.user_stdio_sandbox_flavor` (the
+   *  drawer hides the picker on the user side); admins choose it on
+   *  the system drawer.
+   */
   sandbox_flavor: string
   supports_sampling: boolean
   timeout_seconds: number
@@ -1645,12 +2347,16 @@ export interface McpServer {
 }
 
 export interface McpServerConfig {
+  /** MCP server ID */
   server_id: string
+  /** Specific tools to enable (empty = all tools from this server) */
   tools?: string[]
 }
 
 export interface McpServerFromHubResponse {
+  /** Hub tracking record */
   hub_tracking: HubEntity
+  /** Created MCP server */
   server: McpServer
 }
 
@@ -1665,6 +2371,7 @@ export interface McpServerListResponse {
 export interface McpServerOAuthConfigResponse {
   client_id: string
   created_at: string
+  /** Whether a client secret is stored (the value itself is never returned). */
   has_client_secret: boolean
   resource?: string
   scopes?: string
@@ -1680,19 +2387,76 @@ export interface McpServerWithHealthWarning {
   created_at: string
   display_name: string
   enabled: boolean
+  /**
+   * FLAT decrypted env-var map. Always populated by the repo with
+   *  the FULLY decrypted values (plain entries merged with the
+   *  decrypted secrets) so internal runtime callsites — stdio
+   *  subprocess spawn, http header `${VAR}` interpolation — keep
+   *  working unchanged. NEVER serialized — the public response
+   *  shape is `environment_variables_entries` with secret values
+   *  redacted to `value: None`.
+   */
   environment_variables?: any
+  /**
+   * Public structured view of `environment_variables` for the UI
+   *  form editor. Per-entry secret marker; secret values redacted
+   *  to `None`. Populated by the repo from the triple-column
+   *  storage (`environment_variables` + `environment_variables_encrypted` +
+   *  `environment_variables_secret_keys`).
+   */
   environment_variables_entries?: EnvVarView[]
+  /**
+   * FLAT decrypted header map. Same write-only semantics as
+   *  `environment_variables` — see that field's doc comment.
+   *  `parse_header_map` runs `${VAR}` interpolation against the
+   *  (decrypted) env map at request-build time.
+   */
   headers?: any
+  /**
+   * Public structured view of `headers` for the UI form editor.
+   *  Sibling of `environment_variables_entries`.
+   */
   headers_entries?: HeaderView[]
   id: string
   is_built_in: boolean
   is_system: boolean
+  /**
+   * Persisted result of the last connection probe — populated by
+   *  `connection_health` at boot (startup health check), at
+   *  create-time (post-create probe in `enforce_on_create`), at
+   *  enable-transition time (probe in `enforce_on_update_transition`),
+   *  and on every explicit "Test Connection" button press.
+   *  See migration 82.
+   */
   last_health_check_at?: string
+  /** Human reason on unhealthy. `None` on healthy / untested. */
   last_health_check_reason?: string
+  /**
+   * "untested" | "healthy" | "unhealthy". Defaults to "untested"
+   *  for freshly-created rows that have never been probed.
+   */
   last_health_check_status?: string
   max_concurrent_sessions?: number
   name: string
+  /**
+   * Launch the stdio subprocess inside the code_sandbox bwrap
+   *  isolation. Honored for any `transport_type == Stdio` row (both
+   *  system and user-owned) — the user-create handler force-sets this
+   *  to `true` for user-owned stdio servers per the active MCP user
+   *  policy; admins choose freely on system servers via the drawer
+   *  toggle. The spawn path ignores it for non-stdio servers.
+   */
   run_in_sandbox: boolean
+  /**
+   * Rootfs flavor (KNOWN_FLAVORS, e.g. `minimal`/`full`) used when
+   *  `run_in_sandbox` launches this stdio server inside the
+   *  code_sandbox. Defaults to `full` (the flavor that ships Node +
+   *  uv + python3 + R). Ignored when not sandboxed. For user-owned
+   *  stdio rows the user-create handler force-overwrites this with
+   *  the active `mcp_user_policy.user_stdio_sandbox_flavor` (the
+   *  drawer hides the picker on the user side); admins choose it on
+   *  the system drawer.
+   */
   sandbox_flavor: string
   supports_sampling: boolean
   timeout_seconds: number
@@ -1742,40 +2506,102 @@ export interface McpToolCallListResponse {
 }
 
 export interface McpTransport {
+  /**
+   * `"stdio"` | `"streamable-http"` | `"sse"`. Consumer doesn't
+   *  read this today; ziee install path implies stdio whenever a
+   *  `package[]` entry is selected.
+   */
   type: string
 }
 
 export interface McpUserPolicy {
+  /**
+   * Subset of `{"http", "stdio"}`. `sse` is admin-only (not
+   *  exposed in the user-mode drawer dropdown).
+   */
   allowed_transports: string[]
+  /**
+   * Days to retain MCP tool-call history (`mcp_tool_calls`) before the
+   *  background prune deletes it. `0` = keep forever (no prune).
+   */
   tool_call_retention_days: number
   updated_at: string
   updated_by?: string
+  /**
+   * Required iff `"stdio" ∈ allowed_transports`; must be in
+   *  `code_sandbox::types::KNOWN_FLAVORS`.
+   */
   user_stdio_sandbox_flavor?: string
 }
 
 export interface MeResponse {
+  /**
+   * Whether this account has a local password set (`password_hash IS
+   *  NOT NULL`). `password_hash` itself is never serialized, so this
+   *  derived flag is how the client decides whether to offer a
+   *  self-service "change password" form (false for OAuth/LDAP-only).
+   */
   has_password: boolean
+  /** Effective permissions (union of user's direct permissions + all active group permissions) */
   permissions: string[]
   user: User
 }
 
 export interface MemoryAdminSettings {
   cosine_threshold: number
+  /** Per-user/day extraction quota (rows created via extraction). */
   daily_extraction_quota: number
   default_extraction_model_id?: string
   default_top_k: number
   embedding_dimensions: number
   embedding_model_id?: string
   enabled: boolean
+  /**
+   * Hybrid retrieval pulls top-K × this many candidates from each arm
+   *  before RRF fusion. Higher = more recall, more DB load.
+   */
   fts_candidate_multiplier: number
+  /**
+   * Postgres dictionary used by `websearch_to_tsquery` at retrieval
+   *  time AND in the GENERATED expression on `user_memories.content_tsv`.
+   *  `simple` = no stemming, language-agnostic. `english`/`spanish`/etc.
+   *  = Porter stemmer for that language only. Changing this requires
+   *  the explicit rebuild flow (`POST /memory/admin/fts/rebuild`); the
+   *  PUT settings handler returns 409 on a dictionary change.
+   */
   fts_dictionary: string
+  /**
+   * FTS arm kill switch. When `false`, the retriever skips FTS even
+   *  in the no-embedding-model path (then it bails entirely).
+   */
   fts_enabled: boolean
+  /**
+   * `ts_rank_cd` cutoff. 0.0 = no filter (default). Increase to drop
+   *  weak lexical matches at query time.
+   */
   fts_min_rank: number
+  /** Set when the most recent FTS rebuild finished successfully. */
   fts_rebuild_completed_at?: string
+  /**
+   * Set when an FTS rebuild starts; cleared when it completes (or
+   *  stays NULL if no rebuild has ever run on this deployment).
+   */
   fts_rebuild_started_at?: string
+  /**
+   * Reciprocal Rank Fusion constant for hybrid (vector ⊕ FTS) recall.
+   *  Higher k = more egalitarian; lower = lopsided toward each arm's
+   *  top-ranked. Default 60 matches the RRF paper.
+   */
   fts_rrf_k: number
   id: number
+  /**
+   * Semantic (vector) arm kill switch. When `false`, the retriever
+   *  skips the vector arm regardless of whether an embedding model is
+   *  configured. Effective vector recall requires
+   *  `semantic_enabled AND embedding_model_id IS NOT NULL`.
+   */
   semantic_enabled: boolean
+  /** Reaper hard-delete grace period for soft-deleted memories (days). */
   soft_delete_grace_days: number
   updated_at: string
 }
@@ -1822,6 +2648,11 @@ export interface Message {
 }
 
 export interface MessageAssistantResponse {
+  /**
+   * `None` when the message exists (and the caller owns it) but
+   *  was sent WITHOUT an assistant. `Some(uuid)` when an assistant
+   *  was attributed at send-time.
+   */
   assistant_id?: string
 }
 
@@ -1947,13 +2778,26 @@ export interface MistralRsSettings {
 }
 
 export interface ModelCapabilities {
+  /** Audio capability - can process audio */
   audio?: boolean
+  /** Chat capability - can engage in conversational text generation */
   chat?: boolean
+  /** Code interpreter capability */
   code_interpreter?: boolean
+  /**
+   * Native max context window (tokens). Parsed from GGUF / safetensors for
+   *  local models and serialized into the capabilities JSONB by the
+   *  llm_local_runtime validator; surfaced here so the UI can show the ceiling
+   *  and the summarizer can use the effective window. (B6a)
+   */
   context_length?: number
+  /** Image generation capability - can generate images from text descriptions */
   image_generator?: boolean
+  /** Text embedding capability - can generate text embeddings for semantic search */
   text_embedding?: boolean
+  /** Tools capability - can use function calling/tools */
   tools?: boolean
+  /** Vision capability - can process images */
   vision?: boolean
 }
 
@@ -1973,58 +2817,129 @@ export interface ModelEngineSettings {
 }
 
 export interface ModelFromHubResponse {
+  /** Created download instance */
   download: DownloadInstance
+  /** Hub tracking record */
   hub_tracking: HubEntity
 }
 
 export interface ModelParameters {
+  /** Frequency penalty for repeated tokens */
   frequency_penalty?: number
+  /** Context size for the model */
   max_tokens?: number
+  /** Min-P sampling parameter (0.0-1.0) */
   min_p?: number
+  /** Presence penalty for new tokens */
   presence_penalty?: number
+  /** Number of last tokens to consider for repetition penalty */
   repeat_last_n?: number
+  /** Repetition penalty (1.0 = no penalty) */
   repeat_penalty?: number
+  /** Random seed for reproducible outputs */
   seed?: number
+  /** Stop sequences to terminate generation */
   stop?: string[]
+  /** Temperature for randomness (0.0-2.0) */
   temperature?: number
+  /** Top-K sampling parameter */
   top_k?: number
+  /** Top-P (nucleus) sampling parameter (0.0-1.0) */
   top_p?: number
 }
 
 export interface ModelQuantization {
+  /**
+   * Optional sha256 (hex) for integrity verification. Not enforced
+   *  today; kept on the wire for forward compat.
+   */
   fileSha256?: string
+  /**
+   * Marks the install-time default. Exactly one entry SHOULD set
+   *  this; the install handler falls back to `quantizations[0]` if
+   *  no entry does.
+   */
   isDefault?: boolean
+  /**
+   * File within the source repo to download (matches v1's
+   *  `main_filename` semantics — passed straight through to the
+   *  download path).
+   */
   mainFile: string
+  /** Display name (`"Q4_K_M"`, `"f16"`, `"Q8_0"`). */
   name: string
+  /**
+   * Size in GB (informational; surfaced in the FE). Optional —
+   *  publishers commonly omit it for non-default quants where the
+   *  canonical size is the default's. The FE renders "—" when absent.
+   */
   sizeGb?: number
 }
 
 export type ModelShape = 'gguf' | 'safetensors' | 'pickle' | 'unknown'
 
 export interface ModelSource {
+  /** Per-source context length (replaces v1 model-wide field). */
   contextLength?: number
+  /**
+   * Env vars the source needs (e.g. `HUGGINGFACE_API_KEY`). Reuses
+   *  the same `McpKeyValueInput` struct used by `McpPackage` /
+   *  `McpRemote`. The install handler's auth gate iterates this list
+   *  to find required+secret entries.
+   */
   environmentVariables?: McpKeyValueInput[]
+  /** Per-source file format. Replaces the v1 model-wide `file_format`. */
   fileFormat: FileFormat2
+  /**
+   * Repo path (`huggingface`/`s3`) or absolute URL (`url`). For
+   *  `huggingface` this is `owner/repo`.
+   */
   identifier: string
+  /**
+   * Per-source quantization choices. At least one entry per source
+   *  (the publisher always lists the default file as a single
+   *  quantization). `is_default: true` marks the install-time default.
+   */
   quantizations: ModelQuantization[]
+  /**
+   * `"huggingface"` | `"s3"` | `"url"` | `"local"` etc. Drives URL
+   *  derivation in the install handler.
+   */
   registryType: string
+  /**
+   * `"mistralrs"` | `"llamacpp"` etc. Informational; the install
+   *  path does not currently use this to pick an engine.
+   */
   runtimeHint?: string
+  /** Branch / commit / tag pin. */
   version: string
 }
 
 export interface ModelUsageInfo {
   display_name: string
+  /** Engine type (`llamacpp`/`mistralrs`). */
   engine: string
   id: string
   name: string
+  /**
+   * True if the model is explicitly pinned to this version
+   *  (`required_runtime_version_id`); false if it merely inherits it via
+   *  the provider/system default.
+   */
   pinned: boolean
   provider_id: string
   provider_name: string
+  /** Whether a runtime instance is currently running for this model. */
   running: boolean
 }
 
 export interface MountEntry {
+  /** Absolute path on the user's machine (the desktop host). */
   host_path: string
+  /**
+   * Read-only by default; read-write additionally requires the policy's
+   *  `allow_readwrite`.
+   */
   read_only?: boolean
 }
 
@@ -2056,17 +2971,23 @@ export interface PaginationQuery2 {
 }
 
 export interface PaginationQuery3 {
+  /** Items per page; clamped to [1, ASSISTANT_MAX_LIMIT] at deserialize. */
   limit: number
+  /** Page number (1-indexed); clamped to ≥1 at deserialize. */
   page: number
 }
 
 export interface PaginationQuery4 {
+  /** Items per page. Defaults to 20, clamped to [1, 100]. */
   limit?: number
+  /** Page number (1-indexed). Defaults to 1. */
   page?: number
 }
 
 export interface PaginationQuery5 {
+  /** Items per page (max 100) */
   limit?: number
+  /** Page number (1-indexed) */
   page?: number
 }
 
@@ -2079,8 +3000,11 @@ export interface PendingApprovalsResponse {
 }
 
 export interface PerToolLimit {
+  /** Maximum number of times this tool can be called per conversation turn */
   max_iteration: number
+  /** MCP server ID */
   server_id: string
+  /** Tool name */
   tool_name: string
 }
 
@@ -2109,10 +3033,20 @@ export interface PreviewQuery {
 }
 
 export interface ProbeFailure {
+  /**
+   * Human-readable reason — taken verbatim from
+   *  `test_repository_connectivity`'s `Err(String)` (timeout / 401 /
+   *  DNS / etc.).
+   */
   reason: string
 }
 
 export interface ProbeFailure2 {
+  /**
+   * Human-readable reason — taken verbatim from
+   *  `TestMcpConnectionResponse.message` (timeout / 401 / bad
+   *  command / etc.).
+   */
   reason: string
 }
 
@@ -2170,6 +3104,11 @@ export interface ProjectMcpSettingsRequest {
   approval_mode: ApprovalMode
   auto_approved_tools?: AutoApprovedServer[]
   disabled_servers?: DisabledServer[]
+  /**
+   * Optional — None preserves the existing row's loop_settings.
+   *  `LoopSettings` is fully typed (matches chat_extension's
+   *  settings shape).
+   */
   loop_settings?: LoopSettings
 }
 
@@ -2193,9 +3132,12 @@ export interface PromptArgument {
 }
 
 export interface ProviderCatalogEntry {
+  /** True when an API key is stored (the value itself is never exposed). */
   api_key_set: boolean
+  /** Non-secret stored config for this provider. */
   config: any
   config_fields: ConfigField[]
+  /** True when required config + (if needed) API key are present. */
   configured: boolean
   display_name: string
   key: string
@@ -2212,11 +3154,23 @@ export interface ProviderInstancesResponse {
 }
 
 export interface ProviderWithModels {
+  /**
+   * API key for upstream provider — write-only.
+   *
+   *  Deserialize unchanged so admins can POST/PUT the value; Serialize
+   *  suppressed so GET /llm-providers and /llm-providers/{id} no longer
+   *  return the secret. The previous behavior round-tripped the api_key
+   *  to every user with `llm_providers::read` — closes
+   *  06-llm-provider F-01 (Critical). The deeper at-rest encryption
+   *  (pgcrypto / SecretView) is the follow-up A5-full work.
+   */
   api_key?: string
+  /** Whether an API key is configured (either system-level or user-level) */
   api_key_configured: boolean
   base_url?: string
   built_in: boolean
   created_at: string
+  /** Default runtime version for local models in this provider */
   default_runtime_version_id?: string
   enabled: boolean
   id: string
@@ -2228,10 +3182,21 @@ export interface ProviderWithModels {
 }
 
 export interface ProviderWithModels2 {
+  /**
+   * API key for upstream provider — write-only.
+   *
+   *  Deserialize unchanged so admins can POST/PUT the value; Serialize
+   *  suppressed so GET /llm-providers and /llm-providers/{id} no longer
+   *  return the secret. The previous behavior round-tripped the api_key
+   *  to every user with `llm_providers::read` — closes
+   *  06-llm-provider F-01 (Critical). The deeper at-rest encryption
+   *  (pgcrypto / SecretView) is the follow-up A5-full work.
+   */
   api_key?: string
   base_url?: string
   built_in: boolean
   created_at: string
+  /** Default runtime version for local models in this provider */
   default_runtime_version_id?: string
   enabled: boolean
   id: string
@@ -2246,6 +3211,15 @@ export interface ProxySettings {
   enabled?: boolean
   ignore_ssl_certificates?: boolean
   no_proxy?: string
+  /**
+   * Proxy password — write-only.
+   *
+   *  Accepted from request bodies (Deserialize) so admins can set the
+   *  value, but NEVER serialized into a response. Without this guard
+   *  the field round-tripped verbatim on every GET /llm-providers/{id}
+   *  and /llm-providers, exposing the proxy credential. Closes
+   *  06-llm-provider F-05 (Medium).
+   */
   password?: string
   url?: string
   username?: string
@@ -2270,8 +3244,15 @@ export interface ReadResourceResponse {
 }
 
 export interface RebuildStatus {
+  /** True while a rebuild worker holds the process-local lock. */
   in_progress: boolean
+  /** Name of the currently-configured embedding model, if any. */
   model_name?: string
+  /**
+   * Live rows still needing (re)embedding under the current model:
+   *  embedding IS NULL OR embedding_model != current_model.name.
+   *  Returns 0 if no embedding model is configured.
+   */
   pending_count: number
 }
 
@@ -2316,6 +3297,7 @@ export interface RepositoryAuthConfig {
 }
 
 export interface RepositoryFile {
+  /** "safetensors" | "pytorch" | "gguf" for weight files, else null. */
   file_format?: string
   file_role: FileRole
   path: string
@@ -2326,12 +3308,16 @@ export interface RepositoryFileListResponse {
   files: RepositoryFile[]
   shape: ModelShape
   source: RepositorySource
+  /** A sensible default to pre-fill the download form's main filename. */
   suggested_main_filename?: string
+  /** True when the upstream listing was capped (very large GitHub trees). */
   truncated: boolean
 }
 
 export interface RepositoryFilesQuery {
+  /** Branch / revision (defaults to "main"). */
   branch?: string
+  /** Repo path within the source, e.g. "meta-llama/Llama-3.1-8B-Instruct". */
   path: string
   repository_id: string
 }
@@ -2351,18 +3337,44 @@ export interface Resource {
 }
 
 export interface ResourceLink {
+  /**
+   * File id of the server-saved artifact backing this link, when the backend
+   *  persisted it as a `File` (workspace artifacts and user attachments). Lets
+   *  the UI fetch the content via the authenticated `/api/files/{id}/...`
+   *  endpoints (the same path the right-side panel uses) instead of
+   *  dereferencing the raw `uri`. `None` for external MCP links with no
+   *  backing File.
+   */
   file_id?: string
+  /**
+   * Whether the file is already persisted in originals storage (user-attached).
+   *  true  → URI is a download-with-token URL; skip fetch-and-save pipeline.
+   *  false → workspace file; run full processing pipeline.
+   *  None  → external MCP server; run full processing pipeline.
+   */
   is_saved?: boolean
+  /** MIME type of the resource */
   mime_type?: string
+  /** Display name for the resource */
   name?: string
+  /** File size in bytes */
   size?: number
+  /** URI of the resource (e.g. `/api/files/{file_id}`) */
   uri: string
+  /** Denormalized version number for display. */
   version?: number
+  /**
+   * The exact `file_versions.id` this link pins, when the backing File is
+   *  versioned (e.g. a sandbox version-back). Lets the UI render the precise
+   *  version produced this turn. `None` → follow head.
+   */
   version_id?: string
 }
 
 export interface RespondToElicitationRequest {
+  /** "accept" | "decline" | "cancel" */
   action: string
+  /** Field values — only present when action == "accept" */
   content?: any
 }
 
@@ -2371,10 +3383,12 @@ export interface RespondToElicitationResponse {
 }
 
 export interface RestoreVersionRequest {
+  /** The version number to restore (a new head is appended with its bytes). */
   version: number
 }
 
 export interface RichFile {
+  /** Base64-encoded file content */
   data: string
   filename: string
   mime_type: string
@@ -2395,14 +3409,24 @@ export interface RootfsArtifact {
 }
 
 export interface RootfsRelease {
+  /**
+   * Raw asset names attached to the release — useful for the UI to
+   *  surface "only x86_64 published" cases before the admin clicks
+   *  "Install".
+   */
   asset_names: string[]
   draft: boolean
   prerelease: boolean
   published_at?: string
+  /** Semver string with the leading `v` stripped (`"0.1.0"`). */
   version: string
 }
 
 export interface RotateProxyTokenResponse {
+  /**
+   * New plaintext token. Caller should copy + store; only this
+   *  response carries it.
+   */
   plaintext_api_key: string
   provider: LlmProvider
 }
@@ -2437,20 +3461,33 @@ export interface RuntimeVersionResponse {
 }
 
 export interface SSEChatStreamArtifactCreatedData {
+  /** UUID of the file in the files table */
   file_id: string
+  /** File size in bytes */
   file_size: number
+  /** Display filename */
   filename: string
+  /** MIME type of the file */
   mime_type?: string
+  /**
+   * Tool use id this artifact was produced by. Lets the frontend attach the
+   *  artifact's resource_link to the matching tool_result block (positioning),
+   *  and disambiguate when tools run in parallel.
+   */
   tool_use_id: string
 }
 
 export interface SSEChatStreamCompleteData {
+  /** Finish reason */
   finish_reason: string
+  /** Usage metadata */
   usage?: Usage
 }
 
 export interface SSEChatStreamErrorData {
+  /** Error code */
   code?: string
+  /** Error message */
   message: string
 }
 
@@ -2469,52 +3506,84 @@ export type SSEChatStreamEvent = {
 }
 
 export interface SSEChatStreamMcpApprovalRequiredData {
+  /** Tool input parameters */
   input: any
+  /** MCP server requesting tool execution (display name) */
   server: string
+  /** MCP server ID (UUID) */
   server_id: string
+  /** Name of the tool requiring approval */
   tool_name: string
+  /** Unique identifier for this tool use requiring approval */
   tool_use_id: string
 }
 
 export interface SSEChatStreamMcpElicitationRequiredData {
+  /** Per-elicitation random UUID — POST to /api/mcp/elicitation/{elicitation_id}/respond */
   elicitation_id: string
+  /** Human-readable prompt from the MCP server */
   message: string
+  /** ID of the assistant message that triggered this elicitation (informational) */
   message_id?: string
+  /** JSON Schema describing the requested fields (per SEP-1330) */
   requested_schema: any
+  /** Display name of the MCP server that sent the request */
   server: string
 }
 
 export interface SSEChatStreamMcpToolCompleteData {
+  /** Whether the tool execution resulted in an error */
   is_error: boolean
+  /** Tool result text, truncated to 2000 chars (for display in "Show details" panel) */
   result?: string
+  /** MCP server that executed the tool */
   server: string
+  /** Name of the completed tool */
   tool_name: string
+  /** Unique identifier for this tool use */
   tool_use_id: string
 }
 
 export interface SSEChatStreamMcpToolProgressData {
+  /** Human-readable progress message ("Downloading…", "Verifying…"). */
   message?: string
+  /** ID of the assistant message whose tool call is reporting progress. */
   message_id?: string
+  /** Current progress value (monotonically increasing per the MCP spec). */
   progress: number
+  /**
+   * Opaque progress token the server echoed back (the client sets it on
+   *  the originating `tools/call`). Lets the UI correlate concurrent calls.
+   */
   progress_token?: any
+  /** Display name of the MCP server reporting progress. */
   server: string
+  /** Total expected units, if known (denominator for a progress bar). */
   total?: number
 }
 
 export interface SSEChatStreamMcpToolStartData {
+  /** Tool input parameters (for display in "Show details" panel) */
   input: any
+  /** MCP server executing the tool */
   server: string
+  /** Name of the tool being executed */
   tool_name: string
+  /** Unique identifier for this tool use */
   tool_use_id: string
 }
 
 export interface SSEChatStreamStartedData {
+  /** Branch ID */
   branch_id: string
+  /** Conversation ID */
   conversation_id: string
+  /** User message ID (None if resuming with tool approvals or regenerating) */
   user_message_id?: string
 }
 
 export interface SSEChatStreamTitleUpdatedData {
+  /** The auto-generated title */
   title: string
 }
 
@@ -2535,6 +3604,10 @@ export type SSEDownloadProgressEvent = {
 }
 
 export interface SSEElicitationRequiredData {
+  /**
+   * D2: rendered seed data the FE form pre-fills with (see
+   *  `StepConfig::Elicit.data`). `None` when the step declares no `data:`.
+   */
   data?: any
   deadline_at: string
   elicitation_id: string
@@ -2579,8 +3652,13 @@ export interface SSEEngineDownloadFailedData {
 
 export interface SSEEngineDownloadProgressData {
   bytes_received: number
+  /** `None` when `total_bytes` is None; otherwise 0.0..=100.0. */
   percent?: number
   status: EngineDownloadStatus
+  /**
+   * May be `None` when the upstream omits Content-Length (rare
+   *  for GitHub Releases). The UI shows an indeterminate bar.
+   */
   total_bytes?: number
 }
 
@@ -2665,6 +3743,10 @@ export interface SSERunStartedData {
   model_id?: string
   run_id: string
   sandbox_flavor?: string
+  /**
+   * The full pipeline manifest for live first-paint (descriptions rendered
+   *  against inputs). Mirrors `SSESnapshotData.step_manifest`.
+   */
   step_manifest?: SSEStepManifestItem[]
   total_steps: number
   workflow_id: string
@@ -2679,8 +3761,18 @@ export interface SSESnapshotData {
   step_artifacts_json: any
   step_item_progress_json: any
   step_logs_json: any
+  /**
+   * The full pipeline (topo order) so a (re)connecting client renders all
+   *  steps up front — pending ones included. Rebuilt from the run's
+   *  compiled IR. Empty for legacy/in-flight rows without a manifest.
+   */
   step_manifest?: SSEStepManifestItem[]
   step_outputs_json: any
+  /**
+   * P2.6: the running sandbox step's live track map (`{ id -> ProgressTrack }`)
+   *  so a (re)connecting client rehydrates in-flight bars. `None` when no step
+   *  is currently streaming progress.
+   */
   step_progress_json?: any
   total_tokens: number
 }
@@ -2715,10 +3807,15 @@ export interface SSEStepManifestItem {
 export interface SSEStepProgressData {
   run_id: string
   step_id: string
+  /** The tracks that changed in this throttle flush (P2.5 coalesce → batch). */
   tracks: ProgressTrack[]
 }
 
 export interface SSEStepStartedData {
+  /**
+   * Full-context render of the step's `description` (inputs + completed
+   *  step outputs). The FE upgrades the manifest row's label to this.
+   */
   description?: string
   message?: string
   run_id: string
@@ -2746,6 +3843,10 @@ export type SSEWorkflowRunEvent = {
 
 export interface SandboxFlavorsResponse {
   available: EnvironmentInfo[]
+  /**
+   * Commands allowed for a NON-sandboxed (host) stdio MCP server. A
+   *  sandboxed server (run_in_sandbox) may use any command.
+   */
   host_allowed_commands: string[]
 }
 
@@ -2755,20 +3856,44 @@ export interface SaveUserApiKeyRequest {
 }
 
 export interface SendMessageRequest {
+  /**
+   * Optional assistant ID to use for this message.
+   *  The assistant's instructions will be injected as a system message.
+   */
   assistant_id?: string
+  /**
+   * Branch ID to send message to (required)
+   *  This branch will be used as the parent when creating a new branch
+   */
   branch_id: string
+  /** User message content (text) */
   content: string
+  /**
+   * If set, creates a new branch from this message before sending
+   *  The message must belong to the specified branch_id
+   *  The new branch becomes the active branch
+   */
   create_branch_from_message_id?: string
+  /** Enable MCP tool calling for this request */
   enable_mcp?: boolean
+  /** Array of file IDs to attach to the message */
   file_ids?: string[]
+  /**
+   * Fork level for the new branch: 'user' (edit flow) or 'assistant' (regenerate flow).
+   *  Only used when create_branch_from_message_id is set. Defaults to 'user'.
+   */
   fork_level?: string
+  /** MCP configuration specifying which servers and tools to enable */
   mcp_config?: McpConfig
+  /** Model ID to use for this message (required) */
   model_id: string
+  /** Tool approval decisions for resuming after approval workflow */
   tool_approvals?: ToolApprovalDecision[]
 }
 
 export interface SendMessageResponse {
   assistant_message_id: string
+  /** None if an extension suppressed the user message (e.g. tool-approval resume). */
   user_message_id?: string
 }
 
@@ -2805,6 +3930,10 @@ export interface SetSubscriptionRequest {
 }
 
 export interface SetTimeoutRequest {
+  /**
+   * New wall-clock cap in seconds; `0` = unbounded (no timeout). Named to
+   *  match the `timeout_secs` used across the rest of the timeout surface.
+   */
   timeout_secs: number
 }
 
@@ -2835,25 +3964,45 @@ export interface SimpleResponse {
 }
 
 export interface Skill {
+  /**
+   * SKILL.md frontmatter `description` — Path-B listing line the
+   *  model sees in the system prompt.
+   */
   description?: string
+  /** Hex-encoded sha256 of the original tar.gz; used for re-verification. */
   bundle_sha256: string
   bundle_size_bytes: number
   created_at: string
   created_by?: string
+  /** Display name from SKILL.md frontmatter `name`. */
   display_name?: string
   enabled: boolean
+  /** Conventional entry-point file inside the bundle (`"SKILL.md"`). */
   entry_point: string
+  /** Absolute path on disk to the extracted bundle dir. */
   extracted_path: string
   file_count: number
+  /**
+   * FULL parsed YAML frontmatter — JSONB. Opaque-preserving so unknown
+   *  fields (`allowed-tools`, `disable-model-invocation`, `paths`, etc.)
+   *  round-trip if the bundle is re-exported.
+   */
   frontmatter_json: any
   id: string
+  /**
+   * True when imported via `/api/skills/import` (dev workflow:
+   *  mock: honored, no version bumping).
+   */
   is_dev: boolean
+  /** Reverse-DNS canonical name (matches hub identity). */
   name: string
   owner_user_id?: string
   scope: string
   tags: any
   updated_at: string
+  /** Per-entry semver (the hub manifest's `version`). */
   version?: string
+  /** SKILL.md frontmatter `when_to_use` — supplemental trigger hint. */
   when_to_use?: string
 }
 
@@ -2893,8 +4042,17 @@ export interface SuccessResponse {
 export interface SummarizationAdminSettings {
   default_summarization_model_id?: string
   enabled: boolean
+  /**
+   * Custom prompt for the full-resume path. NULL → use the compiled-in
+   *  default. Must contain `{transcript}` placeholder when set.
+   */
   full_summary_prompt?: string
   id: number
+  /**
+   * Custom prompt for the incremental-fold path. NULL → use the
+   *  compiled-in default. Must contain `{previous_summary}` AND
+   *  `{new_transcript}` placeholders when set.
+   */
   incremental_summary_prompt?: string
   summarize_after_tokens: number
   summarizer_keep_recent_tokens: number
@@ -2916,6 +4074,7 @@ export interface SwapRuntimeVersionRequest {
 
 export interface SwapRuntimeVersionResponse {
   model_id: string
+  /** True if a running instance was restarted onto the new version. */
   restarted: boolean
   version_id: string
 }
@@ -2956,9 +4115,20 @@ export interface TestExtractRequest {
 export interface TestMcpConnectionRequest {
   args?: string[]
   command?: string
+  /**
+   * Same structured shape as create/update — for entries the user
+   *  hasn't touched (saved-secret entries with `value: None`), the
+   *  test path falls back to the decrypted stored value via `id`
+   *  (mirrors the existing OAuth-secret fallback comment below).
+   */
   environment_variables_entries?: EnvVarEntry[]
   headers_entries?: HeaderEntry[]
+  /**
+   * Existing server id — used ONLY to recover the stored OAuth secret when
+   *  `oauth` is absent (edit drawer / list card). Access-checked before use.
+   */
   id?: string
+  /** OAuth client_credentials typed into the form (new external HTTP server). */
   oauth?: SetMcpServerOAuthConfigRequest
   timeout_seconds?: number
   transport_type: TransportType
@@ -3002,6 +4172,11 @@ export interface TestRunResponse {
 }
 
 export interface TestWorkflowRequest {
+  /**
+   * Conversation to snapshot the model from (mirrors /run). Required
+   *  for `real_llm` fixtures; ci fixtures are fully mocked but still
+   *  need a model snapshot to build the (never-called) provider object.
+   */
   conversation_id?: string
 }
 
@@ -3010,7 +4185,12 @@ export interface TextPageQuery {
 }
 
 export interface ThinkingMetadata {
+  /** Opaque data for a redacted-thinking block (Anthropic). */
   redacted_data?: string
+  /**
+   * Anthropic extended-thinking signature — required to replay the block on a
+   *  later turn (`None` for Gemini/OpenAI, whose thinking isn't replayable).
+   */
   signature?: string
   token_count?: number
 }
@@ -3029,15 +4209,20 @@ export interface Tool {
 }
 
 export interface ToolApprovalDecision {
+  /** Decision: "approve" | "deny" */
   decision: string
+  /** Optional note */
   note?: string
+  /** Tool use ID */
   tool_use_id: string
 }
 
 export type ToolContent = any
 
 export interface ToolIdentifier {
+  /** MCP server ID */
   server_id: string
+  /** Tool name */
   tool_name: string
 }
 
@@ -3049,10 +4234,13 @@ export interface ToolUseApproval {
   conversation_id: string
   created_at: string
   id: string
+  /** Tool input (serialized as "input" for API compatibility) */
   input: any
   message_id: string
+  /** Server identification (hybrid approach) */
   server_id?: string
   server_name: string
+  /** Approval status (stored as VARCHAR in DB, serialized as String for API) */
   status: string
   tool_name: string
   tool_use_id: string
@@ -3074,15 +4262,29 @@ export interface TunnelStartResponse {
 export type TunnelStateKind = 'idle' | 'starting' | 'connected' | 'error'
 
 export interface UpdateAssistantRequest {
+  /** Update description (max 4 KiB per 10-assistant F-02) */
   description?: string
+  /** Update enabled status (soft delete) */
   enabled?: boolean
+  /** Update instructions (max 64 KiB per 10-assistant F-02) */
   instructions?: string
+  /**
+   * Update default status
+   *  Setting to true will unset other defaults in the same context
+   */
   is_default?: boolean
+  /** Update assistant name */
   name?: string
+  /** Update model parameters */
   parameters?: ModelParameters
 }
 
 export interface UpdateAuthProviderRequest {
+  /**
+   * Patch the provider's JSONB config. Empty `client_secret`
+   *  field is treated as "leave the existing value unchanged" so
+   *  admins can edit other fields without re-entering secrets.
+   */
   config?: any
   enabled?: boolean
   name?: string
@@ -3112,15 +4314,22 @@ export interface UpdateCodeSandboxResourceLimits {
 }
 
 export interface UpdateConnectorRequest {
+  /** API key: omitted = leave, "" = clear, non-empty = set. */
   api_key?: string
+  /** Non-secret config (e.g. `{ "mailto": "a@b.c" }`). */
   config?: any
 }
 
 export interface UpdateConversationMemoryModeRequest {
+  /**
+   * One of `"inherit"`, `"on"`, `"off"`. Setting `"inherit"`
+   *  deletes any stored override (row absence == inherit).
+   */
   memory_mode: string
 }
 
 export interface UpdateConversationRequest {
+  /** Title update: None = don't update, Some(None) = clear to null, Some(Some(value)) = set value */
   title?: string
 }
 
@@ -3208,11 +4417,28 @@ export interface UpdateMcpServerRequest {
   command?: string
   display_name?: string
   enabled?: boolean
+  /**
+   * Replaces the existing env vars wholesale when present.
+   *  `None` means "don't touch" (caller didn't include this field).
+   *  `Some(empty vec)` clears all entries. Per-entry `value: None`
+   *  keeps the existing secret value (see `EnvVarEntry`).
+   */
   environment_variables_entries?: EnvVarEntry[]
+  /** Same wholesale-replace semantic as `environment_variables_entries`. */
   headers_entries?: HeaderEntry[]
   max_concurrent_sessions?: number
   name?: string
+  /**
+   * Launch the stdio subprocess inside the code_sandbox bwrap
+   *  isolation. Same force-set semantics as
+   *  [`CreateMcpServerRequest::run_in_sandbox`].
+   */
   run_in_sandbox?: boolean
+  /**
+   * Rootfs flavor (KNOWN_FLAVORS, e.g. "minimal" / "full") for the
+   *  sandboxed launch. Same force-override semantics as
+   *  [`CreateMcpServerRequest::sandbox_flavor`].
+   */
   sandbox_flavor?: string
   supports_sampling?: boolean
   timeout_seconds?: number
@@ -3222,6 +4448,11 @@ export interface UpdateMcpServerRequest {
 
 export interface UpdateMcpUserPolicyRequest {
   allowed_transports: string[]
+  /**
+   * Days to retain MCP tool-call history; `0` = keep forever. Clamped to
+   *  [0, 3650] on save. Omitted (`None`) keeps the current value, so
+   *  existing PUT callers that don't set it are unaffected.
+   */
   tool_call_retention_days?: number
   user_stdio_sandbox_flavor?: string
 }
@@ -3256,6 +4487,11 @@ export interface UpdateProfileRequest {
 
 export interface UpdateProjectRequest {
   description?: string
+  /**
+   * Tri-state on FKs (missing = no change; null = clear; uuid = set).
+   *  The frontend uses the existing deserialize_nullable_field helper
+   *  from the chat module for symmetry.
+   */
   default_assistant_id?: string
   default_model_id?: string
   instructions?: string
@@ -3268,6 +4504,7 @@ export interface UpdateProviderRequest {
 }
 
 export interface UpdateRemoteAccessSettingsRequest {
+  /** Booleans don't need null semantics — absent means "don't touch". */
   auto_start_tunnel?: boolean
   ngrok_auth_token?: string
   ngrok_domain?: string
@@ -3300,12 +4537,22 @@ export interface UpdateState {
 }
 
 export interface UpdateStatusResponse {
+  /** RFC3339 timestamp of the last successful check, or null if never. */
   checked_at?: string
+  /** The running server version (`CARGO_PKG_VERSION`). */
   current_version: string
+  /**
+   * Whether update checks are enabled in config (false → air-gapped or the
+   *  embedded desktop server).
+   */
   enabled: boolean
+  /** Latest version seen on GitHub, or null if not yet checked / disabled. */
   latest_version?: string
+  /** Release notes (markdown) for the latest version. */
   notes?: string
+  /** GitHub release page for the latest version. */
   release_url?: string
+  /** True when `latest_version` is newer than `current_version`. */
   update_available: boolean
 }
 
@@ -3360,24 +4607,45 @@ export interface UpsertCoreMemoryBlockRequest {
 }
 
 export interface UpsertMcpSettingsRequest {
+  /** Approval mode */
   approval_mode: ApprovalMode
+  /**
+   * Auto-approved tools grouped by server
+   *  Format: [{"server_id": "uuid", "tools": ["tool1", "tool2"]}, ...]
+   *  None = preserve existing value in DB; Some(vec) = overwrite with this value
+   */
   auto_approved_tools?: AutoApprovedServer[]
+  /**
+   * Disabled servers/tools (empty = all servers enabled)
+   *  Format: [{"server_id": "uuid", "tools": []}, ...] (empty tools = entire server disabled)
+   */
   disabled_servers?: DisabledServer[]
+  /** Loop settings for controlling iteration behavior */
   loop_settings?: LoopSettings
 }
 
 export interface UpsertUserMcpDefaultsRequest {
+  /** Approval mode */
   approval_mode: ApprovalMode
+  /**
+   * Auto-approved tools grouped by server
+   *  None = preserve existing value in DB; Some(vec) = overwrite with this value
+   */
   auto_approved_tools?: AutoApprovedServer[]
+  /** Disabled servers/tools (empty = all servers enabled) */
   disabled_servers?: DisabledServer[]
+  /** Loop settings for controlling iteration behavior */
   loop_settings?: LoopSettings
 }
 
 export interface Usage {
+  /** Prompt tokens written to cache this request. */
   cache_creation_input_tokens?: number
+  /** Prompt tokens served from cache (the prompt-cache hit signal). */
   cache_read_input_tokens?: number
   input_tokens?: number
   output_tokens?: number
+  /** Reasoning/thinking tokens (if the provider reports them). */
   reasoning_tokens?: number
 }
 
@@ -3393,6 +4661,13 @@ export interface User {
   is_active: boolean
   is_admin: boolean
   last_login_at?: string
+  /**
+   * When the user last rotated their password. NULL means the
+   *  account is still using the bootstrap-issued password (only
+   *  meaningful for the desktop `admin` user). The Remote Access
+   *  module refuses to enable password authentication unless this
+   *  is non-NULL for the admin.
+   */
   password_changed_at?: string
   permissions: string[]
   updated_at: string
@@ -3426,11 +4701,15 @@ export interface UserMcpDefaultsGetResponse {
 }
 
 export interface UserMcpDefaultsResponse {
+  /** Approval mode */
   approval_mode: ApprovalMode
+  /** Auto-approved tools grouped by server */
   auto_approved_tools: AutoApprovedServer[]
   created_at: string
+  /** Disabled servers/tools (empty = all servers enabled) */
   disabled_servers: DisabledServer[]
   id: string
+  /** Loop settings for controlling iteration behavior */
   loop_settings: LoopSettings
   updated_at: string
   user_id: string
@@ -3466,6 +4745,10 @@ export interface UserMemorySettings {
 
 export interface ValidateErrorEntry {
   code: string
+  /**
+   * Source location of the error (e.g. a frontmatter field). Named
+   *  `location` to agree with the workflow validate surface.
+   */
   location?: string
   message: string
 }
@@ -3477,6 +4760,7 @@ export interface ValidateErrorEntry2 {
 }
 
 export interface ValidateSkillRequest {
+  /** The SKILL.md text (frontmatter + body). */
   skill_md: string
 }
 
@@ -3506,12 +4790,39 @@ export interface VerifyCitationsRequest {
 }
 
 export interface VersionStatus {
+  /** Only populated when GitHub is reachable (best-effort). */
   available: RootfsRelease[]
+  /**
+   * Count of per-conversation workspace dirs that would be
+   *  touched by a major-bump wipe. Read by the major-bump confirm
+   *  modal so the admin sees blast radius before clicking through.
+   */
   conversation_count: number
+  /**
+   * One entry per live mount (registered after a successful
+   *  `runtime_mount::ensure_rootfs_ready`). The admin UI uses
+   *  this to render per-row "in-flight" counts + draining
+   *  indicators on rows being phased out by a set-pin.
+   */
   draining: DrainEntry[]
+  /**
+   * The local host's CPU arch (`"x86_64"` | `"aarch64"`). Authoritative —
+   *  the admin UI uses this to offer the artifact this machine can run,
+   *  instead of guessing from installed artifacts (which is empty on a fresh
+   *  host).
+   */
   host_arch: string
+  /**
+   * The rootfs package format the local backend can actually mount
+   *  (`"squashfs"` on Linux/macOS, `"tar.zst"` on Windows/WSL2). Authoritative
+   *  — prevents a fresh Windows host from pre-fetching an unmountable squashfs.
+   */
   host_package: string
   installed: RootfsArtifact[]
+  /**
+   * Same as above, for per-MCP-server workspaces under
+   *  `<workspace_root>/mcp/<server_id>/`.
+   */
   mcp_server_workspace_count: number
   pinned_version?: string
 }
@@ -3522,6 +4833,7 @@ export interface VersionUsageEntry {
 }
 
 export interface VersionUsageResponse {
+  /** Local models whose engine has no installed version to resolve to. */
   unresolved: ModelUsageInfo[]
   versions: VersionUsageEntry[]
 }
@@ -3531,6 +4843,7 @@ export interface WebSearchSettings {
   fetch_max_bytes: number
   fetch_max_chars: number
   max_results: number
+  /** Ordered fallback chain of provider registry keys. */
   provider_chain: string[]
   request_timeout_secs: number
   updated_at: string
@@ -3540,6 +4853,10 @@ export interface Workflow {
   description?: string
   bundle_sha256: string
   bundle_size_bytes: number
+  /**
+   * Pre-resolved templates + typed step metadata. NULL until the
+   *  validator's compile pass runs (B4). See plan §4.1 pattern (d).
+   */
   compiled_ir_json?: any
   created_at: string
   created_by?: string
@@ -3588,6 +4905,11 @@ export interface WorkflowRun {
   step_item_progress_json: any
   step_logs_json: any
   step_outputs_json: any
+  /**
+   * P2.6: the running sandbox step's live progress track map
+   *  (`{ id -> ProgressTrack }`), or NULL when no step is streaming progress.
+   *  Drives Snapshot rehydration of in-flight bars after a refresh.
+   */
   step_progress_json?: any
   total_tokens: number
   updated_at: string
@@ -3600,10 +4922,30 @@ export interface WorkflowRunListResponse {
 }
 
 export interface WorkflowRunRequest {
+  /**
+   * Opt-in: force full per-step log capture (prompt / raw_output / stderr /
+   *  items) for THIS run regardless of the workflow's per-step `log:` levels,
+   *  so a manually-launched run is debuggable in the run history. Off by
+   *  default. The captured logs are surfaced to the run owner only.
+   */
   capture_logs?: boolean
   conversation_id?: string
   inputs?: any
+  /**
+   * Per-step canned responses, keyed by step id. ONLY honored when the
+   *  workflow's `is_dev = true` (the route handler rejects mocks for
+   *  published workflows with 403). Lets dev iteration + `tests/` fixtures
+   *  stub specific steps without spending LLM tokens. See plan §1.
+   */
   mocks?: any
+  /**
+   * Explicit model for a standalone (no-conversation) run, picked in the
+   *  Run dialog. When set, it wins over the conversation's model and is
+   *  access-checked against the user's providers (the run handler is only
+   *  gated on `WorkflowsExecute`, so this is the per-model authorization).
+   *  When unset, the model is snapshotted from `conversation_id` (legacy
+   *  path). A run with neither is rejected (`WORKFLOW_NO_MODEL_SOURCE`).
+   */
   model_id?: string
 }
 
@@ -3616,6 +4958,7 @@ export interface WorkflowRunSummary {
   conversation_id?: string
   created_at: string
   id: string
+  /** `"manual"` (workflow page) or `"conversation"` (LLM tool call). */
   invocation_source: string
   model_id?: string
   status: string

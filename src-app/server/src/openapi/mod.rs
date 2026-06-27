@@ -6,6 +6,8 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
+pub mod emit_ts;
+
 /// Generate OpenAPI specification in the output directory
 pub async fn generate_openapi_spec(
     output_dir: &str,
@@ -91,10 +93,20 @@ pub async fn generate_openapi_spec(
         openapi_json_path.display()
     );
 
+    // Generate TypeScript types directly (Rust port of the former
+    // `ui/openapi/generate-endpoints.ts`). `output_dir` is `ui/openapi`, so
+    // `types.ts` lands at `ui/src/api-client/types.ts`.
+    let types_ts = emit_ts::generate_types_ts_from_json(&json)?;
+    let types_ts_path = output_path.join("../src/api-client/types.ts");
+    fs::write(&types_ts_path, &types_ts)?;
+    println!(
+        "✓ TypeScript types written to: {}",
+        types_ts_path.display()
+    );
+
     println!("\n✓ OpenAPI generation complete!");
     println!("  - OpenAPI spec: {}", openapi_json_path.display());
-    println!("\nTo generate TypeScript types, run:");
-    println!("  cd ui && npm run generate-openapi");
+    println!("  - TypeScript types: {}", types_ts_path.display());
 
     Ok(())
 }

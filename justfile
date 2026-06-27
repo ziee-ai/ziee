@@ -460,9 +460,10 @@ test-hub: ensure-build-db
 
 # OpenAPI two-step regen: the SERVER binary emits the core UI spec, and the
 # DESKTOP binary emits the desktop UI spec (server routes + the desktop-only
-# routes — remote_access / magic_link / tunnel_auth / host_mount). Each
-# workspace then runs its generate-openapi script (which rewrites
-# `src/api-client/types.ts` from openapi.json). The whole set is the single
+# routes — remote_access / magic_link / tunnel_auth / host_mount). Each binary
+# now ALSO emits its `src/api-client/types.ts` directly (Rust port of the former
+# `generate-endpoints.ts`; see `server/src/openapi/emit_ts.rs`), so there is no
+# longer a separate Node/tsx codegen step. The whole set is the single
 # source-of-truth flow for API types.
 #
 # NOTE: do NOT `cp` the server spec onto the desktop one — that drops every
@@ -472,8 +473,6 @@ openapi-regen: check-hub
         cargo run --bin ziee -- --generate-openapi ui/openapi
     @cd src-app && DATABASE_URL="{{HUB_DB_URL}}" CONFIG_FILE=server/config/openapi-gen.yaml \
         cargo run -p ziee-desktop -- --generate-openapi desktop/ui/openapi
-    @cd src-app/ui && npm run generate-openapi
-    @cd src-app/desktop/ui && npm run generate-openapi
 
 # The "all green" hub compile gate — check + tsc + openapi-regen, but
 # NOT test-hub (slow, needs creds, separate recipe).
