@@ -3,15 +3,18 @@ import {
   Alert,
   Button,
   Card,
-  Divider,
+  Separator,
   Flex,
   Form,
+  FormField,
+  useForm,
+  zodResolver,
   InputNumber,
-  Space,
   Spin,
   Switch,
   message,
-} from 'antd'
+} from '@/components/ui'
+import { z } from 'zod'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -20,12 +23,13 @@ import { Permissions } from '@/api-client/types'
 const READ_PERM = Permissions.MemoryRead
 const WRITE_PERM = Permissions.MemoryWrite
 
-interface FormValues {
-  extraction_enabled: boolean
-  retrieval_enabled: boolean
-  max_memories: number
-  retention_days: number | null
-}
+const schema = z.object({
+  extraction_enabled: z.boolean(),
+  retrieval_enabled: z.boolean(),
+  max_memories: z.number().min(1).max(100000),
+  retention_days: z.number().min(1).max(3650).nullable(),
+})
+type FormValues = z.infer<typeof schema>
 
 /**
  * Per-user memory preferences: extraction/retrieval toggles + storage caps.
@@ -41,11 +45,19 @@ export function PreferencesSection() {
   const canWrite = usePermission(WRITE_PERM)
   const { settings, loading, saving } = Stores.MemorySettings
   const { settings: adminSettings } = Stores.MemoryAdmin
-  const [form] = Form.useForm<FormValues>()
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      extraction_enabled: false,
+      retrieval_enabled: false,
+      max_memories: 1000,
+      retention_days: null,
+    },
+  })
 
   useEffect(() => {
     if (settings) {
-      form.setFieldsValue({
+      form.reset({
         extraction_enabled: settings.extraction_enabled,
         retrieval_enabled: settings.retrieval_enabled,
         max_memories: settings.max_memories,
@@ -62,7 +74,7 @@ export function PreferencesSection() {
     return (
       <Card title="Preferences">
         <div className="flex justify-center py-6">
-          <Spin />
+          <Spin label="Loading" />
         </div>
       </Card>
     )
@@ -88,8 +100,7 @@ export function PreferencesSection() {
     <>
       {adminDisabled && (
         <Alert
-          type="warning"
-          showIcon
+          tone="warning"
           title="Memory is currently disabled by the administrator."
           description="Settings here will be saved but have no effect until the administrator enables memory."
         />
@@ -99,65 +110,59 @@ export function PreferencesSection() {
         Horizontal layout: label + description on the left, the
         control on the right. Compact enough that Switch /
         InputNumber controls don't drown in vertical whitespace.
-        `labelCol`/`wrapperCol` proportions match the typical
-        settings-form rhythm used elsewhere in the codebase.
       */}
       <Form
         name="memory-preferences-form"
         form={form}
         layout="horizontal"
-        labelCol={{ xs: { span: 24 }, md: { span: 10 } }}
-        wrapperCol={{ xs: { span: 24 }, md: { span: 14 } }}
-        labelAlign="left"
-        colon={false}
-        onFinish={handleSubmit}
+        onSubmit={handleSubmit}
         disabled={!canWrite}
       >
-        <Form.Item
+        <FormField
           name="extraction_enabled"
           label="Auto-extract memories"
           valuePropName="checked"
-          extra="After each assistant reply, an LLM scans your turn for durable facts about you and stores them."
+          description="After each assistant reply, an LLM scans your turn for durable facts about you and stores them."
         >
           <Switch />
-        </Form.Item>
-        <Form.Item
+        </FormField>
+        <FormField
           name="retrieval_enabled"
           label="Inject relevant memories"
           valuePropName="checked"
-          extra="Before each LLM call, your latest message is embedded and the top-K most-similar memories are added to the system prompt."
+          description="Before each LLM call, your latest message is embedded and the top-K most-similar memories are added to the system prompt."
         >
           <Switch />
-        </Form.Item>
-        <Form.Item
+        </FormField>
+        <FormField
           name="max_memories"
           label="Max memories stored"
-          extra="When this cap is reached the reaper soft-deletes the oldest."
+          description="When this cap is reached the reaper soft-deletes the oldest."
         >
-          <InputNumber min={1} max={100000} style={{ width: 160 }} />
-        </Form.Item>
-        <Form.Item
+          <InputNumber min={1} max={100000} className="w-40" />
+        </FormField>
+        <FormField
+          name="retention_days"
           label="Retention (days)"
-          extra="Empty = forever. Older memories are soft-deleted by the nightly reaper."
+          description="Empty = forever. Older memories are soft-deleted by the nightly reaper."
         >
-          <Space>
-            <Form.Item name="retention_days" noStyle>
-              <InputNumber min={1} max={3650} style={{ width: 160 }} />
-            </Form.Item>
-            <Button
-              disabled={!canWrite}
-              onClick={() => form.setFieldValue('retention_days', null)}
-            >
-              Forever
-            </Button>
-          </Space>
-        </Form.Item>
+          <InputNumber min={1} max={3650} className="w-40" />
+        </FormField>
+        <Flex justify="end" className="-mt-2">
+          <Button
+            variant="outline"
+            disabled={!canWrite}
+            onClick={() => form.setValue('retention_days', null)}
+          >
+            Forever
+          </Button>
+        </Flex>
 
         {canWrite && (
           <>
-            <Divider className="!my-3" />
+            <Separator className="!my-3" />
             <Flex justify="end">
-              <Button type="primary" htmlType="submit" loading={saving}>
+              <Button type="submit" loading={saving}>
                 Save
               </Button>
             </Flex>
