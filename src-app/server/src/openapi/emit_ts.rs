@@ -183,6 +183,41 @@ fn render_doc(desc: &str, indent: &str) -> Option<String> {
     }
 }
 
+/// Escape a string for placement inside a single-quoted TS string literal.
+/// (Hardening beyond the original JS generator, which emitted raw `'{value}'`
+/// — an unescaped `'` or `\` produced TypeScript that `tsc` rejects. A no-op
+/// for the current spec, so the golden output is unchanged.)
+fn ts_escape(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('\'', "\\'")
+}
+
+/// A single-quoted, escaped TS string literal: `'value'`.
+fn ts_str_lit(s: &str) -> String {
+    format!("'{}'", ts_escape(s))
+}
+
+/// Whether `s` is a valid (ASCII) TS identifier usable as an UNQUOTED member
+/// name. Reserved words are fine as member names, so they're not excluded.
+fn is_ts_identifier(s: &str) -> bool {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) if c == '_' || c == '$' || c.is_ascii_alphabetic() => {}
+        _ => return false,
+    }
+    chars.all(|c| c == '_' || c == '$' || c.is_ascii_alphanumeric())
+}
+
+/// An object/interface member key: bare if a valid identifier, else a quoted
+/// string literal. (The original JS emitted the key raw, breaking `tsc` on
+/// e.g. a `#[serde(rename = "foo-bar")]`. No-op for the current spec.)
+fn ts_prop_key(name: &str) -> String {
+    if is_ts_identifier(name) {
+        name.to_string()
+    } else {
+        ts_str_lit(name)
+    }
+}
+
 /// JS `String(x)` for the non-string `const` branch (bool / number).
 fn js_stringify_scalar(j: &J) -> String {
     match j {
@@ -311,7 +346,7 @@ fn generate_parameter_type(operation: &J, path: &str) -> String {
     let mut param_types: Vec<String> = Vec::new();
 
     for p in path_params(path) {
-        param_types.push(format!("{}: string", p));
+        param_types.push(format!("{}: string", ts_prop_key(&p)));
     }
 
     let mut query_params: Vec<String> = Vec::new();
@@ -332,7 +367,7 @@ fn generate_parameter_type(operation: &J, path: &str) -> String {
                 let name = param.get("name").and_then(|x| x.as_str()).unwrap_or("");
                 query_params.push(format!(
                     "{}{}: {}",
-                    name,
+                    ts_prop_key(name),
                     if is_optional { "?" } else { "" },
                     param_type
                 ));
@@ -545,20 +580,20 @@ fn get_type_from_schema(schema: &J, is_optional_or_nullable: bool) -> String {
                             if prop_schema.has_key("const") {
                                 let c = prop_schema.get("const").unwrap();
                                 prop_type = match c {
-                                    J::Str(s) => format!("'{}'", s),
+                                    J::Str(s) => ts_str_lit(s),
                                     other => js_stringify_scalar(other),
                                 };
                             }
                             let is_required = sub.required_includes(prop_name);
                             let marker = if is_required { "" } else { "?" };
-                            props.push(format!("{}{}: {}", prop_name, marker, prop_type));
+                            props.push(format!("{}{}: {}", ts_prop_key(prop_name), marker, prop_type));
                         }
                     }
                     format!("{{ {} }}", props.join("; "))
                 } else if sub.has_key("const") {
                     let c = sub.get("const").unwrap();
                     match c {
-                        J::Str(s) => format!("'{}'", s),
+                        J::Str(s) => ts_str_lit(s),
                         other => js_stringify_scalar(other),
                     }
                 } else {
@@ -595,7 +630,7 @@ fn get_type_from_schema(schema: &J, is_optional_or_nullable: bool) -> String {
     if let Some(J::Arr(enum_values)) = schema.get("enum") {
         return enum_values
             .iter()
-            .map(|v| format!("'{}'", js_stringify_scalar(v)))
+            .map(|v| ts_str_lit(&js_stringify_scalar(v)))
             .collect::<Vec<_>>()
             .join(" | ");
     }
@@ -739,20 +774,20 @@ fn generate_schema_interface_body(name: &str, schema: &J) -> String {
                             if prop_schema.has_key("const") {
                                 let c = prop_schema.get("const").unwrap();
                                 prop_type = match c {
-                                    J::Str(s) => format!("'{}'", s),
+                                    J::Str(s) => ts_str_lit(s),
                                     other => js_stringify_scalar(other),
                                 };
                             }
                             let is_required = sub.required_includes(prop_name);
                             let marker = if is_required { "" } else { "?" };
-                            props.push(format!("  {}{}: {}", prop_name, marker, prop_type));
+                            props.push(format!("  {}{}: {}", ts_prop_key(prop_name), marker, prop_type));
                         }
                     }
                     format!("{{\n{}\n}}", props.join("\n"))
                 } else if sub.has_key("const") {
                     let c = sub.get("const").unwrap();
                     match c {
-                        J::Str(s) => format!("'{}'", s),
+                        J::Str(s) => ts_str_lit(s),
                         other => js_stringify_scalar(other),
                     }
                 } else {
@@ -807,7 +842,7 @@ fn generate_schema_interface_body(name: &str, schema: &J) -> String {
                 }
 
                 let marker = if is_optional { "?" } else { "" };
-                properties.push(format!("  {}{}: {}", prop_name, marker, prop_type));
+                properties.push(format!("  {}{}: {}", ts_prop_key(prop_name), marker, prop_type));
             }
         }
         format!("export interface {} {{\n{}\n}}", name, properties.join("\n"))
@@ -841,7 +876,7 @@ fn generate_sse_event_type(name: &str, one_of: &[J]) -> String {
                             }
                         }
                     }
-                    event_types.push(format!("  {}: {}", event_name, data_type));
+                    event_types.push(format!("  {}: {}", ts_prop_key(&event_name), data_type));
                     continue;
                 }
             }
@@ -864,7 +899,7 @@ fn generate_sse_event_type(name: &str, one_of: &[J]) -> String {
                     } else {
                         get_type_from_schema(event_data_schema, false)
                     };
-                    event_types.push(format!("  {}: {}", event_name, data_type));
+                    event_types.push(format!("  {}: {}", ts_prop_key(event_name), data_type));
                 }
             }
         }
@@ -895,7 +930,7 @@ fn generate_message_content_data_types(one_of: &[J]) -> String {
                         if prop_schema.has_key("const") {
                             let c = prop_schema.get("const").unwrap();
                             prop_type = match c {
-                                J::Str(s) => format!("'{}'", s),
+                                J::Str(s) => ts_str_lit(s),
                                 other => js_stringify_scalar(other),
                             };
                         }
@@ -907,7 +942,7 @@ fn generate_message_content_data_types(one_of: &[J]) -> String {
                         }
                         let is_required = variant.required_includes(prop_name);
                         let marker = if is_required { "" } else { "?" };
-                        props.push(format!("  {}{}: {}", prop_name, marker, prop_type));
+                        props.push(format!("  {}{}: {}", ts_prop_key(prop_name), marker, prop_type));
                     }
 
                     type_definitions.push(format!(
@@ -960,7 +995,7 @@ fn generate_permission_enum(enum_values: &[J]) -> String {
     for value in enum_values {
         if let J::Str(s) = value {
             let key = convert_permission_to_pascal_case(s);
-            entries.push(format!("  {} = '{}'", key, s));
+            entries.push(format!("  {} = {}", key, ts_str_lit(s)));
         }
     }
     format!("export enum Permission {{\n{}\n}}", entries.join(",\n"))
@@ -1013,7 +1048,7 @@ fn generate_permissions_enum(permissions: &[PermissionInfo]) -> String {
     }
     let entries: Vec<String> = permissions
         .iter()
-        .map(|p| format!("  {} = '{}'", p.name, p.value))
+        .map(|p| format!("  {} = {}", p.name, ts_str_lit(&p.value)))
         .collect();
     format!("export enum Permissions {{\n{}\n}}", entries.join(",\n"))
 }
@@ -1203,6 +1238,25 @@ pub fn generate_types_ts_from_json(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn escapes_string_literals() {
+        assert_eq!(ts_str_lit("plain"), "'plain'");
+        assert_eq!(ts_str_lit("it's"), "'it\\'s'");
+        assert_eq!(ts_str_lit("a\\b"), "'a\\\\b'");
+        // backslash escaped before quote so it isn't double-processed
+        assert_eq!(ts_str_lit("a\\'b"), "'a\\\\\\'b'");
+    }
+
+    #[test]
+    fn quotes_non_identifier_member_keys() {
+        assert_eq!(ts_prop_key("snake_case"), "snake_case");
+        assert_eq!(ts_prop_key("$ok"), "$ok");
+        assert_eq!(ts_prop_key("default"), "default"); // reserved word ok as member
+        assert_eq!(ts_prop_key("foo-bar"), "'foo-bar'");
+        assert_eq!(ts_prop_key("2fa"), "'2fa'");
+        assert_eq!(ts_prop_key("with space"), "'with space'");
+    }
 
     /// Byte-for-byte parity with the committed `ui/` `types.ts`. The golden gate
     /// guarding the port.

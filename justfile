@@ -70,7 +70,7 @@ sandbox-test:
 
 # Run everything before pushing changes that touch the sandbox.
 # Skips bwrap tests if no rootfs is mounted (prints a hint).
-check: check-schema-sync check-sandbox-unit
+check: check-schema-sync openapi-check check-sandbox-unit
     @echo "✓ pre-push checks passed (cheap layer)"
     @echo
     @echo "Run \`just check-sandbox\` next if you've mounted a rootfs"
@@ -80,6 +80,12 @@ check: check-schema-sync check-sandbox-unit
 # `SANDBOX_ROOTFS_SCHEMA_VERSION` in mod.rs drift apart. A mismatch
 # breaks every operator's boot probe — cheap to check, expensive to
 # debug after the fact.
+# Verify the committed types.ts files are in sync with the Rust generator
+# (server/src/openapi/emit_ts.rs). No Node/tsx needed — pure cargo test. Catches
+# a backend type change that wasn't followed by `just openapi-regen`.
+openapi-check:
+    cd src-app/server && cargo test --lib openapi::emit_ts::
+
 check-schema-sync:
     @bash -c 'set -eu; \
         toml=$(grep -E "^current_schema" src-app/sandbox-rootfs/compat.toml | grep -oE "[0-9]+"); \
