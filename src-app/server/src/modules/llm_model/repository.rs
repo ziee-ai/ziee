@@ -454,14 +454,16 @@ pub async fn update_llm_model(
         return get_llm_model_by_id(pool, model_id).await;
     }
 
-    // Apply updates
+    // Apply all column updates atomically so a mid-update failure can't
+    // leave the row half-written.
+    let mut tx = pool.begin().await?;
     if let Some(name) = &request.name {
         sqlx::query!(
             "UPDATE llm_models SET name = $1, updated_at = NOW() WHERE id = $2",
             name,
             model_id
         )
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
     }
 
@@ -471,7 +473,7 @@ pub async fn update_llm_model(
             display_name,
             model_id
         )
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
     }
 
@@ -481,7 +483,7 @@ pub async fn update_llm_model(
             Some(description),
             model_id
         )
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
     }
 
@@ -491,7 +493,7 @@ pub async fn update_llm_model(
             enabled,
             model_id
         )
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
     }
 
@@ -501,7 +503,7 @@ pub async fn update_llm_model(
             is_active,
             model_id
         )
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
     }
 
@@ -512,7 +514,7 @@ pub async fn update_llm_model(
             capabilities_json,
             model_id
         )
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
     }
 
@@ -523,7 +525,7 @@ pub async fn update_llm_model(
             parameters_json,
             model_id
         )
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
     }
 
@@ -533,7 +535,7 @@ pub async fn update_llm_model(
             engine_type.as_str(),
             model_id
         )
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
     }
 
@@ -544,7 +546,7 @@ pub async fn update_llm_model(
             engine_settings_json,
             model_id
         )
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
     }
 
@@ -554,9 +556,11 @@ pub async fn update_llm_model(
             file_format.as_str(),
             model_id
         )
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
     }
+
+    tx.commit().await?;
 
     // Return updated model
     get_llm_model_by_id(pool, model_id).await
