@@ -172,5 +172,5 @@ pub async fn hardware_types() -> Json<HardwareUsageUpdate> {
 /// Documentation for types endpoint
 pub fn hardware_types_docs(op: TransformOperation) -> TransformOperation {
     op.description("Types for OpenAPI generation")
-        .response::<600, Json<HardwareUsageUpdate>>()
+        .response::<200, Json<HardwareUsageUpdate>>()
 }
