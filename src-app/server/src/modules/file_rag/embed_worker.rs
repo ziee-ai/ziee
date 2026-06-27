@@ -23,6 +23,17 @@ const REBUILD_BATCH_SIZE: i64 = 100;
 /// NULL + ALTER + re-embed against the same `file_chunks.embedding` column.
 static REBUILD_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
+/// RAII guard that clears `REBUILD_IN_PROGRESS` on drop — including on a
+/// panic unwind inside `run`. Without it, a panic mid-rebuild would leave
+/// the flag stuck `true` forever, permanently blocking every subsequent
+/// rebuild.
+struct InProgressGuard;
+impl Drop for InProgressGuard {
+    fn drop(&mut self) {
+        REBUILD_IN_PROGRESS.store(false, Ordering::Release);
+    }
+}
+
 /// True while a rebuild is in flight — surfaced to the admin UI so it can show
 /// a progress banner instead of letting the operator trigger a second rebuild.
 pub fn is_in_progress() -> bool {
@@ -43,8 +54,9 @@ pub async fn reembed_all(pool: PgPool, model_id: Uuid, target_dimensions: i32) {
         );
         return;
     }
+    // Guard resets the flag on every exit path, including a panic unwind.
+    let _guard = InProgressGuard;
     let result = run(pool, model_id, target_dimensions).await;
-    REBUILD_IN_PROGRESS.store(false, Ordering::Release);
     if let Err(e) = result {
         tracing::warn!("file_rag.embed_worker: failed: {e}");
     }
