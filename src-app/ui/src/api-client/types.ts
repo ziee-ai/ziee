@@ -3160,12 +3160,6 @@ export interface MessageContent {
   updated_at: string
 }
 
-/**
- * Content data types - All content types come from extensions via composition
- *
- *  Extensions add variants by defining MessageContentDataVariants enums in their
- *  extension.rs files. The compose_message_content_variants macro merges them at compile time.
- */
 export interface MessageContentDataText {
   type: 'text'
   text: string
@@ -3265,6 +3259,12 @@ export interface MessageContentDataElicitationRequest {
   status: string
 }
 
+/**
+ * Content data types - All content types come from extensions via composition
+ *
+ *  Extensions add variants by defining MessageContentDataVariants enums in their
+ *  extension.rs files. The compose_message_content_variants macro merges them at compile time.
+ */
 export type MessageContentData = MessageContentDataText | MessageContentDataThinking | MessageContentDataImage | MessageContentDataFileAttachment | MessageContentDataToolUse | MessageContentDataToolResult | MessageContentDataElicitationRequest
 
 export interface MessageMcpServersResponse {

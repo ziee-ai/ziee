@@ -99,6 +99,9 @@ pub async fn generate_openapi_spec(
     // `desktop/ui/src/api-client/types.ts`.
     let types_ts = ziee::generate_types_ts_from_json(&json)?;
     let types_ts_path = output_path.join("../src/api-client/types.ts");
+    if let Some(parent) = types_ts_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
     fs::write(&types_ts_path, &types_ts)?;
     println!(
         "✓ TypeScript types written to: {}",
