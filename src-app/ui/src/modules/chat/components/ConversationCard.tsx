@@ -169,7 +169,7 @@ export function ConversationCard({
           >
             <Button
               className={`transition-opacity ${
-                popconfirmOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                popconfirmOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
               }`}
               type="text"
               size="small"

@@ -81,7 +81,7 @@ export function MessageActions() {
   return (
     <Space
       size={2}
-      className="opacity-0 group-hover:opacity-100 transition-opacity"
+      className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity"
     >
       <Tooltip title="Copy">
         <Button
