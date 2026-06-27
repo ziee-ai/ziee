@@ -324,6 +324,18 @@ async fn dispatch_tool_call(
                 };
                 entries.iter().map(|e| e.csl_json.clone()).collect()
             };
+            // Cap the DB-loaded path too: an unbounded project/library would
+            // otherwise format thousands of entries in one call (the inline
+            // path above is already capped).
+            if items.len() > MAX_BATCH_ITEMS {
+                return Err((
+                    StatusCode::OK,
+                    JsonRpcError::invalid_params(format!(
+                        "too many items ({}); cap is {MAX_BATCH_ITEMS}. Split into batches.",
+                        items.len()
+                    )),
+                ));
+            }
             let n = items.len();
             let output = format::export(items, fmt, style_path).await.map_err(internal)?;
             Ok(tool_result(
