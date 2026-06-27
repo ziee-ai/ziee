@@ -48,20 +48,14 @@ export function ProviderHeader() {
   }, [isEditingName, currentProvider, form])
 
   // Helper functions for provider validation
-  const canEnableProvider = (provider: LlmProvider): boolean => {
-    if (provider.enabled) return true // Already enabled
-    if (provider.provider_type === 'local') return true
-    return Stores.LlmProvider.llmProviderHasCredentials(provider)
-  }
+  // API keys are no longer required to enable a provider (users supply their
+  // own via profile settings), so there is no precondition that blocks
+  // enabling — keep these helpers for clarity but drop the dead/misleading
+  // "API key required" branch that could never trigger.
+  const canEnableProvider = (_provider: LlmProvider): boolean => true
 
-  const getEnableDisabledReason = (provider: LlmProvider): string | null => {
-    if (provider.enabled) return null
-    if (provider.provider_type === 'local') return null
-    if (!Stores.LlmProvider.llmProviderHasCredentials(provider)) {
-      return 'API key is required for remote providers'
-    }
-    return null
-  }
+  const getEnableDisabledReason = (_provider: LlmProvider): string | null =>
+    null
 
   const handleProviderToggle = async (providerId: string, enabled: boolean) => {
     if (!currentProvider) return
