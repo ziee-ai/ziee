@@ -3,13 +3,17 @@ import {
   Alert,
   Button,
   Card,
-  Divider,
+  Separator,
   Flex,
   Form,
+  FormField,
+  useForm,
+  zodResolver,
   InputNumber,
   Switch,
   message,
-} from 'antd'
+} from '@/components/ui'
+import { z } from 'zod'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -17,10 +21,11 @@ import { Permissions } from '@/api-client/types'
 const READ_PERM = Permissions.MemoryAdminRead
 const MANAGE_PERM = Permissions.MemoryAdminManage
 
-interface FormValues {
-  enabled: boolean
-  default_top_k: number
-}
+const schema = z.object({
+  enabled: z.boolean(),
+  default_top_k: z.number().min(1).max(100),
+})
+type FormValues = z.infer<typeof schema>
 
 /**
  * Master memory card: deployment-wide kill switch + the shared
@@ -31,11 +36,14 @@ export function MemorySection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
   const { settings, saving } = Stores.MemoryAdmin
-  const [form] = Form.useForm<FormValues>()
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { enabled: false, default_top_k: 10 },
+  })
 
   useEffect(() => {
     if (settings) {
-      form.setFieldsValue({
+      form.reset({
         enabled: settings.enabled,
         default_top_k: settings.default_top_k,
       })
@@ -46,8 +54,7 @@ export function MemorySection() {
     return (
       <Card title="Memory">
         <Alert
-          type="warning"
-          showIcon
+          tone="warning"
           title="You don't have permission to view memory admin settings."
         />
       </Card>
@@ -75,35 +82,31 @@ export function MemorySection() {
         name="memory-admin-master-form"
         form={form}
         layout="horizontal"
-        labelCol={{ xs: { span: 24 }, md: { span: 10 } }}
-        wrapperCol={{ xs: { span: 24 }, md: { span: 14 } }}
-        labelAlign="left"
-        colon={false}
-        onFinish={handleSubmit}
+        onSubmit={handleSubmit}
         disabled={!canManage}
       >
-        <Form.Item
+        <FormField
           name="enabled"
           label="Enable memory deployment-wide"
-          extra="When off, all memory hooks no-op silently. Per-user toggles are unaffected but have no effect until this is on."
+          description="When off, all memory hooks no-op silently. Per-user toggles are unaffected but have no effect until this is on."
           valuePropName="checked"
         >
           <Switch aria-label="Enable memory deployment-wide" />
-        </Form.Item>
+        </FormField>
 
-        <Form.Item
+        <FormField
           name="default_top_k"
           label="Default top-K"
-          extra="How many memories to inject per turn. Shared across retrieval arms — the fused top-K is what's injected, whether the result came from full-text, semantic, or hybrid search. Users can override their own limit later."
+          description="How many memories to inject per turn. Shared across retrieval arms — the fused top-K is what's injected, whether the result came from full-text, semantic, or hybrid search. Users can override their own limit later."
         >
-          <InputNumber min={1} max={100} style={{ width: 160 }} />
-        </Form.Item>
+          <InputNumber min={1} max={100} className="w-40" />
+        </FormField>
 
         {canManage && (
           <>
-            <Divider className="!my-3" />
+            <Separator className="!my-3" />
             <Flex justify="end">
-              <Button type="primary" htmlType="submit" loading={saving}>
+              <Button type="submit" loading={saving}>
                 Save
               </Button>
             </Flex>
