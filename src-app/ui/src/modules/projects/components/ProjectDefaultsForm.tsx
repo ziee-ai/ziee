@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { App, Form, Select } from 'antd'
+import { Combobox, message } from '@/components/ui'
 import { ApiClient } from '@/api-client'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -39,7 +39,6 @@ interface ProjectDefaultsFormProps {
  * `deserialize_nullable_field` reads it correctly.
  */
 export function ProjectDefaultsForm({ project }: ProjectDefaultsFormProps) {
-  const { message } = App.useApp()
   const canEdit = usePermission(Permissions.ProjectsEdit)
 
   // Picker option lists. Loaded once on mount + refetched when an
@@ -100,11 +99,13 @@ export function ProjectDefaultsForm({ project }: ProjectDefaultsFormProps) {
     return () => offs.forEach(off => off())
   }, [refetchOptions])
 
-  const handleAssistantChange = async (value: string | null | undefined) => {
+  const handleAssistantChange = async (value: string) => {
+    // Empty string from Combobox means "clear" → send null to the API
+    const resolved = value === '' ? null : value
     setSavingAssistant(true)
     try {
       const patch: UpdateProjectRequest = {
-        default_assistant_id: (value ?? null) as unknown as string | undefined,
+        default_assistant_id: (resolved ?? null) as unknown as string | undefined,
       }
       await Stores.Projects.updateProject(project.id, patch)
       message.success('Default assistant updated')
@@ -117,11 +118,13 @@ export function ProjectDefaultsForm({ project }: ProjectDefaultsFormProps) {
     }
   }
 
-  const handleModelChange = async (value: string | null | undefined) => {
+  const handleModelChange = async (value: string) => {
+    // Empty string from Combobox means "clear" → send null to the API
+    const resolved = value === '' ? null : value
     setSavingModel(true)
     try {
       const patch: UpdateProjectRequest = {
-        default_model_id: (value ?? null) as unknown as string | undefined,
+        default_model_id: (resolved ?? null) as unknown as string | undefined,
       }
       await Stores.Projects.updateProject(project.id, patch)
       message.success('Default model updated')
@@ -135,6 +138,8 @@ export function ProjectDefaultsForm({ project }: ProjectDefaultsFormProps) {
   }
 
   const assistantOptions = (() => {
+    // "No default" sentinel lets users clear the selection (Combobox has no allowClear)
+    const base = [{ value: '', label: 'No default' }]
     const opts = assistants.map(a => ({
       value: a.id as string,
       label: a.name,
@@ -145,10 +150,12 @@ export function ProjectDefaultsForm({ project }: ProjectDefaultsFormProps) {
     if (current && !opts.some(o => o.value === current)) {
       opts.unshift({ value: current, label: '(deleted)' })
     }
-    return opts
+    return [...base, ...opts]
   })()
 
   const modelOptions = (() => {
+    // "No default" sentinel lets users clear the selection (Combobox has no allowClear)
+    const base = [{ value: '', label: 'No default' }]
     const opts = models.map(m => ({
       value: m.id as string,
       label: m.display_name || m.name,
@@ -157,7 +164,7 @@ export function ProjectDefaultsForm({ project }: ProjectDefaultsFormProps) {
     if (current && !opts.some(o => o.value === current)) {
       opts.unshift({ value: current, label: '(deleted)' })
     }
-    return opts
+    return [...base, ...opts]
   })()
 
   // Wrapper data-test-* attributes carry the boolean "is a default
@@ -165,45 +172,46 @@ export function ProjectDefaultsForm({ project }: ProjectDefaultsFormProps) {
   // the Advanced section's summary state without scraping the antd
   // Select's value (which is just a UUID).
   return (
-    <Form layout="vertical" disabled={!canEdit}>
-      <div
-        data-test-default-assistant-set={project.default_assistant_id ? 'true' : 'false'}
-      >
-        <Form.Item
-          label="Default assistant"
-          help="Pre-selected when creating a new conversation in this project. Users can override per-conversation."
+    <fieldset disabled={!canEdit} className="contents">
+      <div className="flex flex-col gap-4">
+        <div
+          data-test-default-assistant-set={project.default_assistant_id ? 'true' : 'false'}
+          className="flex flex-col gap-1.5"
         >
-          <Select
-            allowClear
+          <label className="text-sm font-medium leading-none">Default assistant</label>
+          <Combobox
             placeholder="No default"
+            searchPlaceholder="Search assistants…"
+            emptyText="No assistants found"
             loading={optionsLoading || savingAssistant}
-            value={project.default_assistant_id ?? undefined}
-            onChange={handleAssistantChange}
+            value={project.default_assistant_id ?? ''}
+            onChange={value => void handleAssistantChange(value)}
             options={assistantOptions}
-            showSearch={{ optionFilterProp: 'label' }}
           />
-        </Form.Item>
-      </div>
+          <p className="text-sm text-muted-foreground">
+            Pre-selected when creating a new conversation in this project. Users can override per-conversation.
+          </p>
+        </div>
 
-      <div
-        data-test-default-model-set={project.default_model_id ? 'true' : 'false'}
-      >
-        <Form.Item
-          label="Default model"
-          help="Snapshotted onto each conversation created in this project (when no explicit model is selected)."
-          className="!mb-0"
+        <div
+          data-test-default-model-set={project.default_model_id ? 'true' : 'false'}
+          className="flex flex-col gap-1.5"
         >
-          <Select
-            allowClear
+          <label className="text-sm font-medium leading-none">Default model</label>
+          <Combobox
             placeholder="No default"
+            searchPlaceholder="Search models…"
+            emptyText="No models found"
             loading={optionsLoading || savingModel}
-            value={project.default_model_id ?? undefined}
-            onChange={handleModelChange}
+            value={project.default_model_id ?? ''}
+            onChange={value => void handleModelChange(value)}
             options={modelOptions}
-            showSearch={{ optionFilterProp: 'label' }}
           />
-        </Form.Item>
+          <p className="text-sm text-muted-foreground">
+            Snapshotted onto each conversation created in this project (when no explicit model is selected).
+          </p>
+        </div>
       </div>
-    </Form>
+    </fieldset>
   )
 }
