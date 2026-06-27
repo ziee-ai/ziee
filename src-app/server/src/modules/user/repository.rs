@@ -153,7 +153,16 @@ impl UserRepository {
         )
         .fetch_one(&self.pool)
         .await
-        .map_err(AppError::database_error)
+        .map_err(|e| {
+            // A duplicate username/email racing past the handler's pre-check
+            // must surface as 409 Conflict, not a generic 500.
+            if let sqlx::Error::Database(db_err) = &e
+                && db_err.is_unique_violation()
+            {
+                return AppError::conflict("Username or email");
+            }
+            AppError::database_error(e)
+        })
     }
 
     /// Check if an admin user exists
