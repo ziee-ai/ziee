@@ -118,10 +118,6 @@ export const useLlmModelDownloadStore = create<LlmModelDownloadState>()(
           onStart?.(downloadInstance.id)
 
           // Set up download tracking subscription if not already done
-          console.log(
-            '[Download] Setting up download tracking after adding download:',
-            downloadInstance.id,
-          )
           get().setupDownloadTracking()
 
           return { downloadId: downloadInstance.id }
@@ -216,11 +212,9 @@ export const useLlmModelDownloadStore = create<LlmModelDownloadState>()(
 
         // Don't reconnect if already connected
         if (state.sseConnected || sseAbortController) {
-          console.log('SSE already connected')
           return
         }
 
-        console.log('Subscribing to download progress updates via ApiClient...')
 
         try {
           // Call ApiClient with SSE handlers
@@ -229,7 +223,6 @@ export const useLlmModelDownloadStore = create<LlmModelDownloadState>()(
               __init: ({ abortController }) => {
                 // Store abort controller for manual disconnection
                 sseAbortController = abortController
-                console.log('SSE connection initialized')
                 set({
                   sseConnected: true,
                   sseError: null,
@@ -237,12 +230,9 @@ export const useLlmModelDownloadStore = create<LlmModelDownloadState>()(
                 })
               },
 
-              connected: (data: { message?: string }) => {
-                console.log('SSE connected:', data)
-              },
+              connected: (_data: { message?: string }) => {},
 
               update: (updates: any[]) => {
-                console.log('SSE update:', updates)
 
                 // Snapshot pre-update status by id. The EventBus emits
                 // for `llm_model.download_completed` /
@@ -273,10 +263,6 @@ export const useLlmModelDownloadStore = create<LlmModelDownloadState>()(
                   ]
 
                   // Refresh models for each provider
-                  console.log(
-                    '[Download] Refreshing models for providers:',
-                    providerIds,
-                  )
                   for (const providerId of providerIds) {
                     void useLlmProviderStore
                       .getState()
@@ -347,8 +333,7 @@ export const useLlmModelDownloadStore = create<LlmModelDownloadState>()(
                 })
               },
 
-              complete: (data: string) => {
-                console.log('SSE complete:', data)
+              complete: (_data: string) => {
 
                 // Get provider IDs from all downloads before they're filtered out
                 const allDownloads = get().downloads
@@ -361,10 +346,6 @@ export const useLlmModelDownloadStore = create<LlmModelDownloadState>()(
                 ]
 
                 // Refresh models for all providers that had downloads
-                console.log(
-                  '[Download] Refreshing models for providers on complete:',
-                  providerIds,
-                )
                 for (const providerId of providerIds) {
                   void useLlmProviderStore
                     .getState()
@@ -397,7 +378,6 @@ export const useLlmModelDownloadStore = create<LlmModelDownloadState>()(
           const maxAttempts = 5
 
           if (attempts < maxAttempts) {
-            console.log(`Reconnection attempt ${attempts}/${maxAttempts}`)
             set({
               sseConnected: false,
               sseError: 'Connection lost, reconnecting...',
@@ -420,7 +400,6 @@ export const useLlmModelDownloadStore = create<LlmModelDownloadState>()(
       },
 
       disconnectSSE: (): void => {
-        console.log('Disconnecting SSE...')
 
         if (sseAbortController) {
           sseAbortController.abort()
@@ -451,9 +430,6 @@ export const useLlmModelDownloadStore = create<LlmModelDownloadState>()(
 
             if (activeDownloads.length > 0 && !state.sseConnected) {
               // We have active downloads but no SSE connection, establish one
-              console.log(
-                '[Download] Active downloads detected, establishing SSE connection',
-              )
               void get().subscribeToDownloadProgress()
             } else if (activeDownloads.length === 0 && state.sseConnected) {
               // No active downloads and SSE is connected, disconnect
@@ -465,7 +441,6 @@ export const useLlmModelDownloadStore = create<LlmModelDownloadState>()(
       },
 
       initializeDownloadTracking: async (): Promise<void> => {
-        console.log('Initializing download tracking...')
 
         const state = get()
         if (state.isInitialized) {
