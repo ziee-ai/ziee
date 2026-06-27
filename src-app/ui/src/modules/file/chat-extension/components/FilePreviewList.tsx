@@ -40,7 +40,11 @@ export function FilePreviewList() {
     <>
       <Divider style={{ margin: 0 }} />
       <div style={{ padding: '8px' }}>
-        <div className="flex gap-2 w-full overflow-x-auto">
+        <div
+          className="flex gap-2 w-full overflow-x-auto"
+          role="list"
+          aria-label="Attached files"
+        >
           {/* Uploading files */}
           {Array.from(uploadingFiles.values() as IterableIterator<FileUploadProgress>).map((progress) => (
             <div key={progress.id} className="flex-1 min-w-20 max-w-24">
