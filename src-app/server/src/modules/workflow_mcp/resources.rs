@@ -205,6 +205,18 @@ pub async fn resources_read(
             // from the output name, so we need the def to resolve the
             // backing step file (mirrors tools::read_full_output_value).
             let def = workflow_def_for_run(pool, &run).await.ok();
+            // Honor `expose: hidden` — resources/list never advertises a
+            // hidden output, so resources/read (reachable via a guessed URI)
+            // must refuse it too, or the Hidden intent is bypassed.
+            if let Some(d) = &def
+                && let Some(o) = d.outputs.iter().find(|o| o.name == name)
+                && matches!(o.expose, ExposeMode::Hidden)
+            {
+                return Err(AppError::forbidden(
+                    "WORKFLOW_OUTPUT_HIDDEN",
+                    "output is marked hidden and is not exposed",
+                ));
+            }
             read_output(&run, def.as_ref(), &name)?
         }
         ResourceKind::Artifact { step_id, filename } => {
