@@ -1,5 +1,19 @@
 import { useEffect } from 'react'
-import { Alert, Button, Card, Divider, Flex, Form, InputNumber, Typography, message } from 'antd'
+import {
+  Alert,
+  Button,
+  Card,
+  Separator,
+  Flex,
+  Form,
+  FormField,
+  useForm,
+  zodResolver,
+  InputNumber,
+  Paragraph,
+  message,
+} from '@/components/ui'
+import { z } from 'zod'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
@@ -7,11 +21,13 @@ import { Permissions } from '@/api-client/types'
 const READ_PERM = Permissions.FileRagAdminRead
 const MANAGE_PERM = Permissions.FileRagAdminManage
 
-interface FormValues {
-  chunk_chars: number
-  chunk_overlap_chars: number
-  max_chunks_per_file: number
-}
+const schema = z.object({
+  chunk_chars: z.number().min(200).max(8000),
+  chunk_overlap_chars: z.number().min(0).max(4000),
+  max_chunks_per_file: z.number().min(1).max(100000),
+})
+
+type FormValues = z.infer<typeof schema>
 
 /**
  * Chunking parameters. Changes apply to files indexed AFTER saving. Existing
@@ -23,12 +39,19 @@ export function ChunkingSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
   const { settings, saving } = Stores.FileRagAdmin
-  const [form] = Form.useForm<FormValues>()
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      chunk_chars: 1200,
+      chunk_overlap_chars: 200,
+      max_chunks_per_file: 10000,
+    },
+  })
 
   useEffect(() => {
     // Don't clobber the admin's unsaved edits on a mid-edit refetch.
-    if (settings && !form.isFieldsTouched()) {
-      form.setFieldsValue({
+    if (settings && !form.formState.isDirty) {
+      form.reset({
         chunk_chars: settings.chunk_chars,
         chunk_overlap_chars: settings.chunk_overlap_chars,
         max_chunks_per_file: settings.max_chunks_per_file,
@@ -40,8 +63,7 @@ export function ChunkingSection() {
     return (
       <Card title="Chunking">
         <Alert
-          type="warning"
-          showIcon
+          tone="warning"
           title="You don't have permission to view Document RAG admin settings."
         />
       </Card>
@@ -70,50 +92,47 @@ export function ChunkingSection() {
 
   return (
     <Card title="Chunking">
-      <Typography.Paragraph type="secondary" className="!mb-3 text-sm">
+      <Paragraph type="secondary" className="!mb-3 text-sm">
         Applies to files indexed after saving; existing files keep their current
         chunking until re-uploaded or edited.
-      </Typography.Paragraph>
+      </Paragraph>
       <Form
         name="file-rag-admin-chunking-form"
         form={form}
         layout="horizontal"
-        labelCol={{ xs: { span: 24 }, md: { span: 10 } }}
-        wrapperCol={{ xs: { span: 24 }, md: { span: 14 } }}
-        labelAlign="left"
-        colon={false}
-        onFinish={handleSubmit}
+        labelWidth="10rem"
+        onSubmit={handleSubmit}
         disabled={!canManage}
       >
-        <Form.Item
+        <FormField
           name="chunk_chars"
           label="Chunk size (characters)"
-          extra="Target window size per chunk. ~1200 chars ≈ 300 tokens — small enough for precise citations, large enough for coherent passages."
+          description="Target window size per chunk. ~1200 chars ≈ 300 tokens — small enough for precise citations, large enough for coherent passages."
         >
-          <InputNumber min={200} max={8000} step={100} style={{ width: 160 }} />
-        </Form.Item>
+          <InputNumber min={200} max={8000} step={100} className="w-40" />
+        </FormField>
 
-        <Form.Item
+        <FormField
           name="chunk_overlap_chars"
           label="Chunk overlap (characters)"
-          extra="How much consecutive chunks overlap, so a passage split across a boundary is still retrievable. Must be smaller than the chunk size."
+          description="How much consecutive chunks overlap, so a passage split across a boundary is still retrievable. Must be smaller than the chunk size."
         >
-          <InputNumber min={0} max={4000} step={50} style={{ width: 160 }} />
-        </Form.Item>
+          <InputNumber min={0} max={4000} step={50} className="w-40" />
+        </FormField>
 
-        <Form.Item
+        <FormField
           name="max_chunks_per_file"
           label="Max chunks per file"
-          extra="Safety cap; a file producing more chunks than this is truncated (with a server log) to bound storage and embedding cost."
+          description="Safety cap; a file producing more chunks than this is truncated (with a server log) to bound storage and embedding cost."
         >
-          <InputNumber min={1} max={100000} step={100} style={{ width: 160 }} />
-        </Form.Item>
+          <InputNumber min={1} max={100000} step={100} className="w-40" />
+        </FormField>
 
         {canManage && (
           <>
-            <Divider className="!my-3" />
+            <Separator className="my-3" />
             <Flex justify="end">
-              <Button type="primary" htmlType="submit" loading={saving}>
+              <Button type="submit" loading={saving}>
                 Save
               </Button>
             </Flex>
