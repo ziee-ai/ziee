@@ -588,10 +588,22 @@ impl McpRepository {
         enabled: Option<bool>,
         is_system: Option<bool>,
     ) -> Result<McpServerListResponse, AppError> {
-        let (servers, total) = list_accessible_mcp_servers(
+        let (mut servers, total) = list_accessible_mcp_servers(
             &self.pool, user_id, page, per_page, search, enabled, is_system,
         )
         .await?;
+        // Redact the upstream endpoint on system servers in this
+        // user-facing view. A regular user is allowed to USE a
+        // group-assigned system server (the server proxies on their
+        // behalf) but must not learn its admin-configured URL. Secret
+        // headers/env are already redacted in assembly; this closes the
+        // remaining url disclosure. The admin list (`list_system_servers`,
+        // gated by McpServersAdminRead) is unaffected.
+        for server in servers.iter_mut() {
+            if server.is_system {
+                server.url = None;
+            }
+        }
         let total_pages = (total + per_page - 1) / per_page;
         Ok(McpServerListResponse {
             servers,
