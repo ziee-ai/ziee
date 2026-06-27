@@ -21,5 +21,4 @@ pub mod repository;
 pub mod types;
 
 pub use enforce::{enforce_on_user_create, enforce_on_user_transport_change};
-pub use repository::{load, save};
-pub use types::{McpUserPolicy, UpdateMcpUserPolicyRequest};
+pub use repository::load;

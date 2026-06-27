@@ -23,7 +23,7 @@ pub mod types;
 // (BinaryInfo, the error type, HealthSignal/backoff/window, DeviceType)
 // stays reachable via its submodule path, e.g. `engine::error::RuntimeError`.
 pub use download::{
-    asset_size_for_backend, available_backends, AssetInfo, BinaryDownloader,
+    asset_size_for_backend, available_backends, BinaryDownloader,
 };
 pub use health::{HealthEvent, HealthStateMachine, InstanceState, Transition};
 pub use metadata::{extract_model_capabilities, ModelCapabilities};

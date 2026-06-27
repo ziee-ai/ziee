@@ -33,7 +33,6 @@ pub mod repository;
 pub mod routes;
 pub mod tools;
 
-pub use repository::ElicitationMcpRepository;
 
 /// Deterministic UUID for the built-in elicitation MCP server row.
 /// Stable across deployments (mirrors `memory_mcp_server_id`).
