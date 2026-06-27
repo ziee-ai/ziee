@@ -29,6 +29,9 @@ import { sortProviders } from '@/modules/llm-provider/sortProviders'
 // TODO: Backend should include llm_models in LlmProvider response
 export interface LlmProviderWithModels extends BaseLlmProvider {
   llm_models?: LlmModel[]
+  // Whether an API key is configured (system- or user-level); returned by the
+  // user-facing providers endpoint (backend `ProviderWithModels`).
+  api_key_configured?: boolean
 }
 
 interface LlmProviderState {
