@@ -177,4 +177,37 @@ mod tests {
         put(k.clone(), "smaller".to_string()); // replaces
         assert_eq!(get(&k).as_deref(), Some("smaller"));
     }
+
+    // audit id all-32c98a5e0b5b — resilience of the MCP skill-content cache: the
+    // global cache mutex is intentionally poison-RECOVERING
+    // (`lock().unwrap_or_else(|p| p.into_inner())`) so a panic in one request
+    // while holding the lock can't wedge the cache for every later skill read.
+    // Poison the mutex from a panicking thread, then assert get/put still work.
+    #[test]
+    fn cache_survives_a_poisoned_mutex() {
+        let id = Uuid::new_v4();
+        let k = key(id, "poison.md");
+        put(k.clone(), "before".to_string());
+
+        // Poison the global mutex by panicking while it's held.
+        let _ = std::thread::spawn(|| {
+            let _guard = cache().lock().unwrap();
+            panic!("intentional poison");
+        })
+        .join();
+
+        // Despite the poisoned lock, reads + writes recover and succeed.
+        assert_eq!(
+            get(&k).as_deref(),
+            Some("before"),
+            "get must recover from a poisoned cache mutex"
+        );
+        let k2 = key(id, "after.md");
+        put(k2.clone(), "after".to_string());
+        assert_eq!(
+            get(&k2).as_deref(),
+            Some("after"),
+            "put must recover from a poisoned cache mutex"
+        );
+    }
 }
