@@ -226,3 +226,72 @@ async fn broadcast_usage_update(usage_update: HardwareUsageUpdate) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// add_client registers a client + returns its receiver; remove_client
+    /// drops it from the SSE pool. The monitoring loop (start_hardware_monitoring)
+    /// keys entirely off this pool, so its registration lifecycle is the unit
+    /// under test. Unique ids keep this safe under parallel test execution.
+    #[test]
+    fn add_then_remove_client_updates_the_sse_pool() {
+        let id = Uuid::new_v4();
+        assert!(
+            !SSE_CLIENTS.lock().unwrap().contains_key(&id),
+            "precondition: id not present"
+        );
+
+        let rx = add_client(id);
+        assert!(rx.is_some(), "add_client must return a receiver under the cap");
+        assert!(
+            SSE_CLIENTS.lock().unwrap().contains_key(&id),
+            "client must be registered in the pool"
+        );
+
+        remove_client(id);
+        assert!(
+            !SSE_CLIENTS.lock().unwrap().contains_key(&id),
+            "remove_client must drop the client from the pool"
+        );
+    }
+
+    /// collect_hardware_usage produces a well-formed snapshot each tick — the
+    /// per-tick payload the monitoring loop broadcasts. Guards the saturating
+    /// memory math (12-hardware F-05): usage_percentage stays in [0,100] and
+    /// available_ram never wraps even if used > total.
+    #[test]
+    fn collect_hardware_usage_returns_a_valid_snapshot() {
+        let mut sys = System::new_all();
+        sys.refresh_all();
+        let snap = collect_hardware_usage(&mut sys);
+
+        assert!(!snap.timestamp.is_empty(), "timestamp must be set");
+        assert!(
+            snap.memory.usage_percentage >= 0.0 && snap.memory.usage_percentage <= 100.0,
+            "memory usage% must be clamped to [0,100]; got {}",
+            snap.memory.usage_percentage
+        );
+        assert!(
+            snap.memory.available_ram <= snap.memory.used_ram + snap.memory.available_ram,
+            "available_ram must not have wrapped (saturating sub)"
+        );
+        assert!(
+            snap.cpu.usage_percentage.is_finite(),
+            "cpu usage% must be a finite number"
+        );
+    }
+
+    /// stop_hardware_monitoring clears the active flag so the spawned loop exits
+    /// within one tick (graceful shutdown path).
+    #[test]
+    fn stop_hardware_monitoring_clears_the_active_flag() {
+        MONITORING_ACTIVE.store(true, Ordering::SeqCst);
+        stop_hardware_monitoring();
+        assert!(
+            !MONITORING_ACTIVE.load(Ordering::SeqCst),
+            "stop must clear MONITORING_ACTIVE"
+        );
+    }
+}

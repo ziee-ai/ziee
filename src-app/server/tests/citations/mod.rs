@@ -725,3 +725,39 @@ async fn test_cannot_attach_to_another_users_project() {
         .json(&json!({ "entry_ids": [b_entry] })).send().await.unwrap();
     assert_eq!(r.status(), 404, "B must not attach into A's project (cross-tenant): {}", r.status());
 }
+
+/// Concurrent add of the SAME work exercises the 409-retry race (handlers.rs:630-695,
+/// repository.rs partial-unique-index 409). Two simultaneous add_citations for the
+/// same DOI: one wins the insert, the other's insert collides (409) and re-finds +
+/// links to the winner. Net result MUST be exactly one entry with outcomes
+/// {inserted, linked_existing} — never two rows, never an error. The existing dedup
+/// tests are all SEQUENTIAL (second add hits the pre-insert find, not the 409 path).
+#[tokio::test]
+async fn test_concurrent_add_same_doi_dedups_via_409_retry() {
+    let server = server_with_mock_resolver().await;
+    let user = create_user_with_permissions(&server, "cit_race", &[]).await;
+    let item = json!({ "id": "10.5555/known" });
+
+    let (r1, r2) = tokio::join!(
+        add_one_item(&server, &user.token, item.clone()),
+        add_one_item(&server, &user.token, item.clone()),
+    );
+
+    let outcomes = {
+        let mut v = vec![
+            r1["dedup_outcome"].as_str().unwrap_or("").to_string(),
+            r2["dedup_outcome"].as_str().unwrap_or("").to_string(),
+        ];
+        v.sort();
+        v
+    };
+    assert_eq!(
+        outcomes,
+        vec!["inserted".to_string(), "linked_existing".to_string()],
+        "concurrent same-DOI adds must net one insert + one link; got r1={r1}, r2={r2}"
+    );
+
+    // Exactly one entry persisted (no duplicate row from the race).
+    let entries = list_entries(&server, &user.token).await;
+    assert_eq!(entries.len(), 1, "the race must collapse to a single entry: {entries:?}");
+}
