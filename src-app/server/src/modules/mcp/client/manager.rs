@@ -28,6 +28,7 @@ static MCP_SESSION_MANAGER: OnceLock<Arc<McpSessionManager>> = OnceLock::new();
 /// second call (subsequent `set` attempts are silently dropped — boot
 /// only calls this once, but unit-test harnesses might call it from a
 /// shared setup function).
+#[allow(dead_code)]
 pub fn set_global(manager: Arc<McpSessionManager>) {
     let _ = MCP_SESSION_MANAGER.set(manager);
 }
@@ -52,6 +53,7 @@ impl McpSessionManager {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn get_or_create(
         &self,
         server_id: Uuid,
@@ -236,6 +238,7 @@ impl McpSessionManager {
     /// Whether a session for `server_id` is currently pooled. Drives
     /// the cleanup test that asserts `McpSessionCleanupHandler` actually
     /// removed an entry from the pool after a delete event.
+    #[allow(dead_code)]
     pub async fn contains(&self, server_id: Uuid) -> bool {
         self.sessions.read().await.contains_key(&server_id)
     }
@@ -244,6 +247,7 @@ impl McpSessionManager {
     /// `get_or_create` path. Test-only — lets the cleanup test seed
     /// the pool without standing up a real subprocess / HTTP server.
     #[cfg(test)]
+    #[allow(dead_code)]
     pub async fn insert_for_test(
         &self,
         server_id: Uuid,

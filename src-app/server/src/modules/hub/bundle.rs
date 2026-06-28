@@ -270,6 +270,7 @@ pub async fn fetch_and_extract(
 /// Bytes are the tar.gz contents (e.g. read from `include_dir!`).
 /// Runs the same bomb-guard + path-safety pipeline and verifies the
 /// sha256 against `bundle.sha256`.
+#[allow(dead_code)]
 pub async fn extract_from_seed_bytes(
     bundle: &HubBundle,
     bytes: &[u8],

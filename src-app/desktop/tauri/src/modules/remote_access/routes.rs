@@ -8,7 +8,7 @@
 
 use aide::axum::{
     ApiRouter,
-    routing::{get_with, post_with, put_with},
+    routing::{get_with, post_with},
 };
 use axum::middleware;
 

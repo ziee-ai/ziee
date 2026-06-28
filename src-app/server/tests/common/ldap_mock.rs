@@ -81,7 +81,7 @@ impl LdapMockServer {
         // Fry's credentials from the test LDAP server
         ("fry", "fry")
     }
-
+}
 
 #[cfg(test)]
 mod tests {

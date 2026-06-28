@@ -1422,6 +1422,7 @@ pub fn acquire_inflight(artifact_id: Uuid, kind: InflightKind) -> Option<Infligh
 }
 
 /// Look up an already-registered artifact by id (used by drain tasks).
+#[allow(dead_code)]
 pub fn mounted_artifact(id: Uuid) -> Option<Arc<MountedArtifact>> {
     MOUNTED_ARTIFACTS.get(&id).map(|e| e.value().clone())
 }

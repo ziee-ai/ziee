@@ -18,7 +18,9 @@ pub struct ConversationFile {
     pub version_id: Uuid,
     pub filename: String,
     pub user_id: Uuid,
+    #[allow(dead_code)]
     pub mime_type: Option<String>,
+    #[allow(dead_code)]
     pub created_at: DateTime<Utc>,
 }
 
@@ -28,6 +30,7 @@ pub struct ConversationFile {
 /// last seeded from / committed as.
 #[derive(Debug, Clone, FromRow)]
 pub struct SandboxWorkspaceFile {
+    #[allow(dead_code)]
     pub conversation_id: Uuid,
     pub workspace_relpath: String,
     pub file_id: Uuid,

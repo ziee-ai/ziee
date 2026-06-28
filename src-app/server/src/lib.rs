@@ -153,7 +153,8 @@ pub mod mcp {
 // `ziee::code_sandbox::CodeSandboxRepository`).
 #[doc(hidden)]
 pub mod workflow_mcp {
-    pub use crate::modules::workflow_mcp::{workflow_mcp_server_id, WorkflowMcpRepository};
+    pub use crate::modules::workflow_mcp::repository::WorkflowMcpRepository;
+    pub use crate::modules::workflow_mcp::workflow_mcp_server_id;
 }
 
 // Re-export the workflow run-status-machine surface for the Tier-2 status-

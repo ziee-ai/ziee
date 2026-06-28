@@ -343,6 +343,7 @@ pub fn spawn_idle_reaper() {
 
 /// Kill the sidecar (graceful-shutdown hook / tests). The next
 /// `ensure_healthy()` respawns it.
+#[allow(dead_code)]
 pub async fn shutdown() {
     let mut st = STATE.lock().await;
     if let Some(mut r) = st.running.take() {

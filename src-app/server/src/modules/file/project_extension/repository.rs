@@ -27,30 +27,6 @@ impl ProjectFilesRepository {
         Self { pool }
     }
 
-    /// Attach a file. Idempotent: duplicate (composite PK collision) is
-    /// silently swallowed and returns success. The caller must have
-    /// already verified that `file_id`'s owner matches the project's
-    /// owner — repository does NOT re-check; handler is the boundary.
-    ///
-    /// For RACE-FREE attach that also enforces the 100-file cap, use
-    /// `attach_file_capped` instead — that variant takes a row lock on
-    /// the project and recounts before INSERT to close audit B1.
-    pub async fn attach_file(&self, project_id: Uuid, file_id: Uuid) -> Result<(), AppError> {
-        sqlx::query!(
-            r#"
-            INSERT INTO project_files (project_id, file_id)
-            VALUES ($1, $2)
-            ON CONFLICT (project_id, file_id) DO NOTHING
-            "#,
-            project_id,
-            file_id
-        )
-        .execute(&self.pool)
-        .await
-        .map_err(AppError::database_error)?;
-        Ok(())
-    }
-
     /// Race-free attach that enforces the file count cap atomically.
     /// Closes audit B1: two concurrent attaches at count=99 used to
     /// both pass a pre-check and result in count=101. Now we take a

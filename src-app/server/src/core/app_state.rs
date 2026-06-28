@@ -84,6 +84,7 @@ pub fn get_caches_config() -> CachesConfig {
 pub static SERVER_ADDR: Lazy<Mutex<(String, u16, String)>> =
     Lazy::new(|| Mutex::new(("127.0.0.1".to_string(), 3000, "/api".to_string())));
 
+#[allow(dead_code)]
 pub fn set_server_addr(host: String, port: u16, api_prefix: String) {
     let mut guard = SERVER_ADDR.lock().unwrap_or_else(|p| p.into_inner());
     *guard = (host, port, api_prefix);

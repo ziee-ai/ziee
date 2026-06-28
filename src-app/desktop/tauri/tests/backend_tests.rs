@@ -63,8 +63,7 @@ async fn test_wait_for_server_timeout() {
 #[serial]
 #[ignore = "Requires full server startup - run with --ignored"]
 async fn test_full_server_lifecycle() {
-    use common::server::wait_for_server_ready;
-
+    use common;
     let temp_dir = tempfile::tempdir().unwrap();
     let config = common::TestConfig::new(temp_dir.path().to_path_buf());
 

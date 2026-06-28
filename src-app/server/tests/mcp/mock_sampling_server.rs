@@ -466,7 +466,7 @@ async fn tool_call_drop_first_response(
 /// Tests that the sampling handler correctly deserializes and forwards Image content to the LLM.
 async fn tool_call_send_image_content(
     state: Arc<MockState>,
-    query: String,
+    _query: String,
     tx: tokio::sync::mpsc::Sender<Result<Bytes, Infallible>>,
 ) {
     let id1 = state.next_id.fetch_add(1, Ordering::SeqCst);

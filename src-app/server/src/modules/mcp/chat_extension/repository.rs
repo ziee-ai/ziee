@@ -68,19 +68,23 @@ impl McpChatRepository {
         server_id: Option<Uuid>,
         server_name: String,
     ) -> Result<ToolUseApproval, AppError> {
-        repository::create_tool_approval(
-            &self.pool,
-            conversation_id,
-            branch_id,
-            message_id,
-            user_id,
+        let items = vec![repository::NewToolApproval {
             tool_use_id,
             tool_name,
             tool_input,
             server_id,
             server_name,
+        }];
+        let mut results = repository::create_tool_approvals(
+            &self.pool,
+            conversation_id,
+            branch_id,
+            message_id,
+            user_id,
+            &items,
         )
-        .await
+        .await?;
+        results.pop().ok_or_else(|| AppError::internal_error("create_tool_approval returned no rows"))
     }
 
     /// Create many pending tool-use approvals in a single round-trip.

@@ -128,6 +128,7 @@ pub struct MockElicitationServer {
 }
 
 impl MockElicitationServer {
+    #[allow(dead_code)]
     pub async fn start() -> Self {
         Self::start_with_script(ElicitationScript::default()).await
     }
@@ -170,6 +171,7 @@ impl MockElicitationServer {
         self.state.elicitation_responses.lock().unwrap().clone()
     }
 
+    #[allow(dead_code)]
     pub fn requests(&self) -> Vec<serde_json::Value> {
         self.state.requests.lock().unwrap().clone()
     }
