@@ -226,3 +226,46 @@ async fn broadcast_usage_update(usage_update: HardwareUsageUpdate) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The SSE registry caps concurrent clients at MAX_SSE_CLIENTS: once full,
+    /// `add_client` returns None (the caller surfaces 429/503), and freeing a
+    /// slot via `remove_client` lets a new client in again. Robust to any
+    /// baseline count: we add until the first rejection, prove rejection
+    /// happened, then prove a removal re-opens a slot, and clean up after.
+    #[test]
+    fn add_client_enforces_cap_and_remove_frees_a_slot() {
+        let mut accepted: Vec<Uuid> = Vec::new();
+        let mut rejected = false;
+        // Try to add a few more than the cap; one of them MUST be rejected.
+        for _ in 0..(MAX_SSE_CLIENTS + 8) {
+            let id = Uuid::new_v4();
+            match add_client(id) {
+                Some(_rx) => accepted.push(id),
+                None => {
+                    rejected = true;
+                    break;
+                }
+            }
+        }
+        assert!(rejected, "add_client must reject once MAX_SSE_CLIENTS is reached");
+
+        // Free one slot → the next add must succeed.
+        let freed = accepted.pop().expect("at least one client was accepted");
+        remove_client(freed);
+        let reopened = Uuid::new_v4();
+        assert!(
+            add_client(reopened).is_some(),
+            "removing a client must free a slot for a new one"
+        );
+
+        // Cleanup so the shared registry doesn't leak into other tests.
+        remove_client(reopened);
+        for id in accepted {
+            remove_client(id);
+        }
+    }
+}
