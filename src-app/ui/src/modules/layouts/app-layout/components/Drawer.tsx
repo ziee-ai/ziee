@@ -141,7 +141,7 @@ export const Drawer: React.FC<DrawerProps> = ({
               style={styles?.header}
             >
               {closable && (
-                <Button variant="ghost" size="icon" tooltip="Close" aria-label="Close drawer" onClick={onClose} className="w-[30px]">
+                <Button variant="ghost" size="icon" tooltip="Close" aria-label="Close drawer" onClick={onClose} className="w-[30px]" data-testid="layout-drawer-close-button">
                   <span className="text-xl"><IoIosArrowBack aria-hidden="true" /></span>
                 </Button>
               )}
