@@ -78,11 +78,11 @@ export function WorkflowTestsPanel({
                 <div className="flex items-start gap-3">
                   <div className="mt-1">
                     {r.skipped ? (
-                      <CircleMinus className="text-[#999] text-lg" />
+                      <CircleMinus className="text-muted-foreground text-lg" />
                     ) : r.passed ? (
-                      <CircleCheck className="text-[#52c41a] text-lg" />
+                      <CircleCheck className="text-primary text-lg" />
                     ) : (
-                      <CircleX className="text-[#ff4d4f] text-lg" />
+                      <CircleX className="text-destructive text-lg" />
                     )}
                   </div>
                   <div className="flex-1">
