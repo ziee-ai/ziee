@@ -727,3 +727,62 @@ mod helpers {
         .expect("Failed to generate JWT")
     }
 }
+
+/// Assigning a user who is ALREADY in the group is an idempotent no-op
+/// (ON CONFLICT DO NOTHING): the second assign still returns 204 and the user
+/// appears exactly once in the membership — no duplicate row, no error.
+#[tokio::test]
+async fn test_assign_user_already_in_group_is_idempotent() {
+    let server = crate::common::TestServer::start().await;
+    let admin = helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["groups::create", "groups::read", "users::create", "groups::assign_users"],
+    )
+    .await;
+
+    let group = helpers::create_test_group(&server, &admin.token, "idemgroup").await;
+    let group_id = group["id"].as_str().expect("group ID");
+    let user = helpers::create_test_user_via_api(&server, &admin.token, "idemuser").await;
+    let user_id = user["id"].as_str().expect("user ID");
+
+    let assign = |client: reqwest::Client| {
+        let url = server.api_url("/groups/assign");
+        let payload = json!({ "user_id": user_id, "group_id": group_id });
+        async move {
+            client
+                .post(&url)
+                .header("Authorization", format!("Bearer {}", admin.token))
+                .json(&payload)
+                .send()
+                .await
+                .expect("assign request failed")
+        }
+    };
+
+    // First assign + a redundant second assign — both must succeed (204).
+    assert_eq!(assign(reqwest::Client::new()).await.status(), 204);
+    assert_eq!(
+        assign(reqwest::Client::new()).await.status(),
+        204,
+        "re-assigning an existing member must still be 204 (idempotent)"
+    );
+
+    // The user must appear exactly once in the membership.
+    let members: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url(&format!("/groups/{}/members", group_id)))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("members request failed")
+        .json()
+        .await
+        .expect("parse members");
+    let count = members["users"]
+        .as_array()
+        .expect("users array")
+        .iter()
+        .filter(|u| u["id"].as_str() == Some(user_id))
+        .count();
+    assert_eq!(count, 1, "double-assign must not duplicate the membership row");
+}
