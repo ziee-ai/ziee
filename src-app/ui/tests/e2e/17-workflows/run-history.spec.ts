@@ -142,4 +142,65 @@ test.describe('Workflows - run history (Runs tab) (real LLM)', () => {
       page.getByText('Workflow page', { exact: true }),
     ).toHaveCount(0, { timeout: 15000 })
   })
+
+  test('cancelling the delete Popconfirm keeps the run in the list', async ({
+    page,
+    request,
+    testInfra,
+  }) => {
+    // Edge case not covered by the happy-path test: the delete-Popconfirm
+    // CANCEL branch must NOT remove the run. The `summarize` step is mocked via
+    // the run API (no token spent; model only snapshotted) so the run completes
+    // deterministically.
+    const { baseURL, apiURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    const adminToken = await getAdminToken(apiURL)
+    const providerId = await createProviderViaAPI(apiURL, adminToken, 'Anthropic', 'anthropic')
+    await assignProviderToAdministratorsGroup(apiURL, adminToken, providerId)
+    const modelId = await createModelViaAPI(
+      apiURL,
+      adminToken,
+      providerId,
+      'claude-haiku-4-5-20251001',
+      'Claude Haiku 4.5',
+      'anthropic',
+    )
+    const workflowId = await seedDevWorkflow(
+      request,
+      apiURL,
+      adminToken,
+      'e2e-history-cancel-wf',
+      HISTORY_WORKFLOW_YAML,
+    )
+
+    const runResp = await request.post(`${apiURL}/api/workflows/${workflowId}/run`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      data: {
+        inputs: { topic: 'photosynthesis' },
+        model_id: modelId,
+        mocks: { summarize: 'A one-line deterministic summary.' },
+      },
+    })
+    expect(runResp.status(), `run should 202: ${await runResp.text()}`).toBe(202)
+
+    await goToWorkflowsSettingsPage(page, baseURL)
+    await openWorkflowCard(page, 'e2e-history-cancel-wf')
+
+    // The run lists in the Runs tab.
+    await expect(page.getByText('Runs', { exact: true })).toBeVisible()
+    await expect(
+      page.getByText('Workflow page', { exact: true }).first(),
+    ).toBeVisible({ timeout: 15000 })
+
+    // Open the per-row delete Popconfirm, then CANCEL it.
+    await page.getByRole('button', { name: 'delete', exact: true }).first().click()
+    await expect(page.getByText(/delete this run\?/i)).toBeVisible()
+    await page.getByRole('button', { name: 'Cancel', exact: true }).last().click()
+
+    // The run row is still present (cancel did not delete it).
+    await expect(page.getByText(/delete this run\?/i)).toHaveCount(0, { timeout: 10000 })
+    await expect(
+      page.getByText('Workflow page', { exact: true }).first(),
+    ).toBeVisible()
+  })
 })
