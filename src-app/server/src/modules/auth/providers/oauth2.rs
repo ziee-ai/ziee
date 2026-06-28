@@ -80,9 +80,18 @@ fn create_http_client() -> reqwest::Client {
         })
 }
 
+/// Process-wide cached OAuth2 HTTP client. `reqwest::Client` holds an internal
+/// connection pool behind an `Arc`, so building it once and cloning (cheap Arc
+/// bump) reuses pooled connections instead of constructing a fresh client +
+/// pool on every token/userinfo request.
+fn http_client() -> reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(create_http_client).clone()
+}
+
 /// Async HTTP client implementation for openidconnect
 async fn async_http_client(request: HttpRequest) -> Result<HttpResponse, reqwest::Error> {
-    let client = create_http_client();
+    let client = http_client();
 
     let method = request.method().clone();
     let url = request.uri().to_string();
@@ -116,7 +125,7 @@ async fn async_http_client(request: HttpRequest) -> Result<HttpResponse, reqwest
 async fn oauth2_http_client(
     request: OAuth2HttpRequest,
 ) -> Result<OAuth2HttpResponse, reqwest::Error> {
-    let client = create_http_client();
+    let client = http_client();
 
     let method = request.method().clone();
     let url = request.uri().to_string();
@@ -222,7 +231,7 @@ async fn probe_oidc_credentials(
     client_id: &str,
     client_secret: &str,
 ) -> ProbeResult {
-    let client = create_http_client();
+    let client = http_client();
     let body = [
         ("grant_type", "authorization_code"),
         ("code", "ziee-test-connection-probe-dummy-code"),
@@ -388,7 +397,7 @@ impl OAuth2Provider {
                     e
                 ))
             })?;
-        let client = create_http_client();
+        let client = http_client();
         let response = client
             .get(userinfo_url)
             .bearer_auth(access_token)
