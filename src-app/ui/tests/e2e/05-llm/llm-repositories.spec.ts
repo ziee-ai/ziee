@@ -851,4 +851,38 @@ test.describe('LLM Repositories - Empty States', () => {
     // (Empty state would show if no repositories exist, but we likely have built-ins)
     await expect(page.locator('button:has([data-icon="plus"])')).toBeVisible()
   })
+
+  test('renders the Empty state when no repositories exist', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    // Built-in repos are always seeded, so force an empty list to reach the
+    // Empty component (CloudDownloadOutlined + the get-started copy).
+    await page.route(/\/api\/llm-repositories(\?.*)?$/, async (route, req) => {
+      if (req.method() === 'GET') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            repositories: [],
+            page: 1,
+            per_page: 20,
+            total: 0,
+          }),
+        })
+      }
+      return route.continue()
+    })
+
+    await goToRepositoriesPage(page, baseURL)
+    await expect(page.getByText('No repositories yet')).toBeVisible({
+      timeout: 15000,
+    })
+    await expect(
+      page.getByText('Add a repository to get started'),
+    ).toBeVisible()
+  })
 })
