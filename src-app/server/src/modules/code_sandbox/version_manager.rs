@@ -2154,4 +2154,68 @@ mod tests {
         // Cleanup so sibling tests never observe the override.
         unsafe { std::env::remove_var("CODE_SANDBOX_ROOTFS_MIRROR") };
     }
+
+    // audit id all-3fa5d25af4f3 — rootfs download FAILURE handling. A cached
+    // artifact whose bytes don't match the recorded sha256 (a truncated /
+    // tampered / hijacked-mirror download) must be REJECTED so the caller
+    // re-fetches; a missing file must likewise read as not-valid. The existing
+    // runtime_fetch tests cover only locking; nothing exercised the sha256
+    // verification verdict that gates a corrupt download.
+    fn artifact_with(path: &std::path::Path, sha256: &str) -> RootfsArtifact {
+        RootfsArtifact {
+            id: uuid::Uuid::new_v4(),
+            version: "0.0.1".into(),
+            arch: "x86_64".into(),
+            flavor: "minimal".into(),
+            package: "squashfs".into(),
+            sha256: sha256.to_string(),
+            artifact_path: path.to_string_lossy().into_owned(),
+            cosign_bundle: None,
+            status: "ready".into(),
+            downloaded_at: chrono::Utc::now(),
+            last_used_at: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn verify_cached_sha256_rejects_mismatch_and_missing() {
+        let dir = std::env::temp_dir().join(format!("ziee-rootfs-sha-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("artifact.squashfs");
+        std::fs::write(&file, b"the real rootfs bytes").unwrap();
+
+        // The artifact's TRUE sha256 (computed by the same primitive the
+        // download path uses) → verification passes.
+        let real = sha256_file(&file).unwrap();
+        let ok = artifact_with(&file, &real);
+        assert!(
+            verify_cached_sha256(&ok).await.unwrap(),
+            "a byte-for-byte cached artifact must verify"
+        );
+        // Case-insensitive hex comparison is accepted.
+        let ok_upper = artifact_with(&file, &real.to_uppercase());
+        assert!(
+            verify_cached_sha256(&ok_upper).await.unwrap(),
+            "sha256 comparison must be case-insensitive"
+        );
+
+        // A wrong sha256 (corrupt / tampered download) → rejected.
+        let bad = artifact_with(
+            &file,
+            "0000000000000000000000000000000000000000000000000000000000000000",
+        );
+        assert!(
+            !verify_cached_sha256(&bad).await.unwrap(),
+            "a sha256 mismatch must be rejected so the caller re-downloads"
+        );
+
+        // A missing artifact file → not valid (re-download).
+        let gone = artifact_with(&dir.join("nope.squashfs"), &real);
+        assert!(
+            !verify_cached_sha256(&gone).await.unwrap(),
+            "a missing cached file must read as not-valid"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
