@@ -70,6 +70,33 @@ test.describe('Document RAG — admin settings surface', () => {
     await expect(page.getByText(/Embedding model/)).toBeVisible()
   })
 
+  test('EnableSection master toggle saves the document-search setting', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    await page.goto(`${baseURL}/settings/file-rag-admin`)
+    const enableCard = page
+      .locator('.ant-card')
+      .filter({ hasText: 'Enable Document RAG deployment-wide' })
+    await expect(enableCard).toBeVisible({ timeout: 20000 })
+
+    // Flip the master switch and confirm it actually toggled, then save.
+    const master = enableCard.getByRole('switch', {
+      name: 'Enable Document RAG deployment-wide',
+    })
+    const before = await master.getAttribute('aria-checked')
+    await master.click()
+    await expect(master).not.toHaveAttribute('aria-checked', before ?? 'true')
+
+    await enableCard.getByRole('button', { name: 'Save' }).click()
+    await expect(
+      page.getByText('Document search settings saved.'),
+    ).toBeVisible()
+  })
+
   test('embedding section: no-model state + cosine threshold save', async ({
     page,
     testInfra,
