@@ -129,3 +129,40 @@ async fn dry_run_returns_per_step_cost_structure() {
     );
     assert!(body["total_est_tokens"].is_u64(), "total_est_tokens present: {body}");
 }
+
+/// POST /workflows/{id}/test (dev fixture-runner surface). A bundle imported
+/// without any `tests/*.yaml` fixtures runs zero fixtures → an all-zero
+/// TestRunResponse; a non-existent workflow id is access-gated to 404. Neither
+/// path had a test.
+#[tokio::test]
+async fn test_workflow_endpoint_no_fixtures_and_not_found() {
+    let server = plain_server().await;
+    let user = workflow_user(&server, "wf_test_ep").await;
+    let wf = import_dev_workflow(&server, &user.token, "test-ep", FIXTURE_WORKFLOW_YAML).await;
+    let wf_id = wf["id"].as_str().expect("workflow id");
+    let client = reqwest::Client::new();
+
+    let res = client
+        .post(server.api_url(&format!("/workflows/{wf_id}/test")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200, "test endpoint should 200");
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["total"], 0, "no fixtures -> total 0: {body}");
+    assert_eq!(body["passed"], 0);
+    assert_eq!(body["failed"], 0);
+    assert!(body["results"].as_array().unwrap().is_empty());
+
+    let missing = uuid::Uuid::new_v4();
+    let res = client
+        .post(server.api_url(&format!("/workflows/{missing}/test")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 404, "unknown workflow must 404");
+}
