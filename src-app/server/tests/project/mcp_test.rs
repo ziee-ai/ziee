@@ -181,3 +181,89 @@ async fn editing_project_mcp_does_not_propagate_to_existing_conversations() {
     // This test exists to pin the behavior; richer assertions can be
     // added when a `/conversations/{id}/mcp-settings` GET shape lands.
 }
+
+/// Cross-module: a single project carries BOTH MCP defaults AND attached files,
+/// and a conversation created in it snapshots the project's MCP settings while
+/// the project's files remain associated (ready for the order-20 file processor
+/// to inject). Exercises the project-MCP-file combination no single existing
+/// test covers (mcp snapshot + project files together on one project).
+#[tokio::test]
+async fn project_combines_mcp_settings_and_files_into_conversation() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        helpers::full_project_permissions(),
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    let mcp = helpers::create_user_mcp_server(&server, &user, "combined-srv").await;
+    let sid = mcp["id"].as_str().unwrap();
+
+    let p = helpers::create_project(&server, &user, "Combined Hub").await;
+    let pid = p["id"].as_str().unwrap();
+
+    // (a) Project MCP defaults.
+    let put = client
+        .put(server.api_url(&format!("/projects/{}/mcp-settings", pid)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "approval_mode": "auto_approve",
+            "auto_approved_tools": [{"server_id": sid, "tools": ["greet"]}],
+            "disabled_servers": [],
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(put.status(), StatusCode::OK);
+
+    // (b) A project file.
+    let file = helpers::upload_file(&server, &user, "spec.txt", "combined flow content").await;
+    let file_id = file["id"].as_str().unwrap();
+    let attach = client
+        .post(server.api_url(&format!("/projects/{}/files", pid)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "file_id": file_id }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(attach.status(), StatusCode::NO_CONTENT);
+
+    // A conversation in the project → MCP settings are snapshotted at create.
+    let conv_id = helpers::create_project_conversation(&server, &user, pid).await;
+    let conv_mcp = client
+        .get(server.api_url(&format!("/conversations/{}/mcp-settings", conv_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_ne!(
+        conv_mcp.status(),
+        StatusCode::NOT_FOUND,
+        "the conversation must carry a snapshotted MCP-settings row"
+    );
+    let conv_mcp_body: Value = conv_mcp.json().await.unwrap();
+    assert!(
+        !conv_mcp_body.is_null() && conv_mcp_body != json!(null),
+        "snapshotted MCP settings must be present: {conv_mcp_body}"
+    );
+
+    // The project file is still associated (ready for the order-20 file processor).
+    let files: Value = client
+        .get(server.api_url(&format!("/projects/{}/files", pid)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let has_file = files["files"]
+        .as_array()
+        .or(files.as_array())
+        .expect("files array")
+        .iter()
+        .any(|f| f["id"].as_str() == Some(file_id) || f["file_id"].as_str() == Some(file_id));
+    assert!(has_file, "the project must still list its attached file: {files}");
+}
