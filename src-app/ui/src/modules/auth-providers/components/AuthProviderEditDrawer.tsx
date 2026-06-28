@@ -345,7 +345,7 @@ export function AuthProviderEditDrawer({
         // Read-only users get a "Close" button instead of "Cancel"
         // because there's nothing to cancel.
         <Flex className="justify-end gap-2">
-          <Button variant="outline" onClick={onClose} disabled={saving}>
+          <Button variant="outline" data-testid="authprov-drawer-cancel-button" onClick={onClose} disabled={saving}>
             {canManage ? 'Cancel' : 'Close'}
           </Button>
           <Can permission={Permissions.AuthProvidersManage}>
@@ -353,7 +353,7 @@ export function AuthProviderEditDrawer({
                 convention), so htmlType="submit" wouldn't work
                 here — Enter-to-submit is handled by Form's
                 `onSubmit={handleSave}` instead. */}
-            <Button loading={saving} onClick={handleSave}>
+            <Button data-testid="authprov-drawer-save-button" loading={saving} onClick={handleSave}>
               {existing ? 'Save' : 'Create'}
             </Button>
           </Can>
@@ -368,7 +368,7 @@ export function AuthProviderEditDrawer({
           drawer body. */}
       <div className="flex flex-col w-full">
         {error && (
-          <Alert tone="error" title={error} className="mb-4" />
+          <Alert tone="error" data-testid="authprov-drawer-error-alert" title={error} className="mb-4" />
         )}
         {testing && (
           <div className="text-center py-3 mb-4">
@@ -377,6 +377,7 @@ export function AuthProviderEditDrawer({
         )}
         {testResult && !testing && (
           <Alert
+            data-testid="authprov-drawer-testresult-alert"
             tone={testResult.ok ? 'success' : 'warning'}
             title={testResult.ok ? 'Configuration OK' : 'Configuration issues'}
             description={testResult.message}
@@ -385,13 +386,14 @@ export function AuthProviderEditDrawer({
             className="mb-4"
           />
         )}
-        <Form form={form} layout="vertical" disabled={!canManage} onSubmit={onValidSubmit}>
+        <Form form={form} data-testid="authprov-drawer-form" layout="vertical" disabled={!canManage} onSubmit={onValidSubmit}>
           <FormField
             name="name"
             label="Name (URL slug)"
             required
           >
             <Input
+              data-testid="authprov-name-input"
               placeholder="e.g. google, microsoft-corp, apple"
               disabled={!!existing}
             />
@@ -406,7 +408,7 @@ export function AuthProviderEditDrawer({
                 : 'Toggling on commits the form and runs a connection probe server-side; the Switch reverts if the probe fails.'
             }
           >
-            <Switch loading={togglingEnable} onChange={handleEnabledToggle} />
+            <Switch data-testid="authprov-enabled-switch" loading={togglingEnable} onChange={handleEnabledToggle} />
           </FormField>
 
           <Title level={5} className="mt-2">
@@ -427,7 +429,7 @@ export function AuthProviderEditDrawer({
           )}
           <Can permission={Permissions.AuthProvidersManage}>
             <Flex className="mt-4">
-              <Button loading={testing} onClick={onTestConfig}>
+              <Button data-testid="authprov-test-config-button" loading={testing} onClick={onTestConfig}>
                 Test config
               </Button>
             </Flex>
@@ -446,10 +448,11 @@ function OidcFields() {
         label="Client ID"
         required
       >
-        <Input />
+        <Input data-testid="authprov-oidc-client-id-input" />
       </FormField>
       <FormField name="config.client_secret" label="Client secret">
         <PasswordInput
+          data-testid="authprov-oidc-client-secret-input"
           placeholder="••••••  (leave empty to keep existing)"
           autoComplete="new-password"
           showLabel="Show"
@@ -461,23 +464,23 @@ function OidcFields() {
         label="Issuer URL"
         required
       >
-        <Input placeholder="https://accounts.google.com" />
+        <Input data-testid="authprov-oidc-issuer-url-input" placeholder="https://accounts.google.com" />
       </FormField>
       <FormField
         name="config.scopes"
         label="Scopes"
       >
-        <Input placeholder="openid email profile" />
+        <Input data-testid="authprov-oidc-scopes-input" placeholder="openid email profile" />
       </FormField>
       <FormField
         name="config.allowed_tenant_ids"
         label="Allowed tenant IDs (Microsoft only)"
         description="Comma-separated list of tenant IDs (the `tid` claim). REQUIRED when issuer is the Microsoft `common` endpoint."
       >
-        <Input placeholder="comma-separated UUIDs (leave blank for non-MS)" />
+        <Input data-testid="authprov-oidc-tenant-ids-input" placeholder="comma-separated UUIDs (leave blank for non-MS)" />
       </FormField>
       <FormField name="config.display_name" label="Button label">
-        <Input placeholder="Sign in with X" />
+        <Input data-testid="authprov-oidc-display-name-input" placeholder="Sign in with X" />
       </FormField>
     </>
   )
@@ -491,10 +494,11 @@ function OAuth2Fields() {
         label="Client ID"
         required
       >
-        <Input />
+        <Input data-testid="authprov-oauth2-client-id-input" />
       </FormField>
       <FormField name="config.client_secret" label="Client secret">
         <PasswordInput
+          data-testid="authprov-oauth2-client-secret-input"
           placeholder="••••••  (leave empty to keep existing)"
           autoComplete="new-password"
           showLabel="Show"
@@ -506,29 +510,29 @@ function OAuth2Fields() {
         label="Authorization URL"
         required
       >
-        <Input />
+        <Input data-testid="authprov-oauth2-authorization-url-input" />
       </FormField>
       <FormField
         name="config.token_url"
         label="Token URL"
         required
       >
-        <Input />
+        <Input data-testid="authprov-oauth2-token-url-input" />
       </FormField>
       <FormField
         name="config.userinfo_url"
         label="UserInfo URL"
       >
-        <Input />
+        <Input data-testid="authprov-oauth2-userinfo-url-input" />
       </FormField>
       <FormField
         name="config.scopes"
         label="Scopes"
       >
-        <Input placeholder="email profile" />
+        <Input data-testid="authprov-oauth2-scopes-input" placeholder="email profile" />
       </FormField>
       <FormField name="config.display_name" label="Button label">
-        <Input placeholder="Sign in with X" />
+        <Input data-testid="authprov-oauth2-display-name-input" placeholder="Sign in with X" />
       </FormField>
     </>
   )
@@ -542,21 +546,21 @@ function AppleFields() {
         label="Team ID"
         required
       >
-        <Input placeholder="10-char Apple Developer Team ID" />
+        <Input data-testid="authprov-apple-team-id-input" placeholder="10-char Apple Developer Team ID" />
       </FormField>
       <FormField
         name="config.services_id"
         label="Services ID"
         required
       >
-        <Input placeholder="The Apple-issued client identifier (Services ID)" />
+        <Input data-testid="authprov-apple-services-id-input" placeholder="The Apple-issued client identifier (Services ID)" />
       </FormField>
       <FormField
         name="config.key_id"
         label="Key ID"
         required
       >
-        <Input placeholder="10-char Key ID for the .p8 file" />
+        <Input data-testid="authprov-apple-key-id-input" placeholder="10-char Key ID for the .p8 file" />
       </FormField>
       <FormField
         name="config.private_key_path"
@@ -564,13 +568,13 @@ function AppleFields() {
         required
         description="Filesystem path to the AuthKey_<KEY_ID>.p8 file. The file itself stays on disk with proper permissions — it is not uploaded through the UI."
       >
-        <Input placeholder="/var/lib/ziee/apple/AuthKey_XXXXXXXXXX.p8" />
+        <Input data-testid="authprov-apple-private-key-path-input" placeholder="/var/lib/ziee/apple/AuthKey_XXXXXXXXXX.p8" />
       </FormField>
       <FormField
         name="config.scopes"
         label="Scopes"
       >
-        <Input placeholder="name email" />
+        <Input data-testid="authprov-apple-scopes-input" placeholder="name email" />
       </FormField>
     </>
   )

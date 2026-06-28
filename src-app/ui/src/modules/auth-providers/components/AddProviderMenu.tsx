@@ -34,12 +34,13 @@ export function AddProviderMenu({ onPick, existingNames, disabled }: Props) {
   const isDisabled = disabled || allTaken
 
   return (
-    <Dropdown items={items} onSelect={(key) => {
+    <Dropdown data-testid="authprov-add-dropdown" items={items} onSelect={(key) => {
       const item = available.find(t => t.key === key)
       if (item) onPick(item)
     }} disabled={isDisabled}>
       <Tooltip content="Add authentication provider">
         <Button
+          data-testid="authprov-add-button"
           variant="ghost"
           icon={<Plus />}
           disabled={isDisabled}

@@ -100,6 +100,7 @@ export function AuthProvidersListSection() {
   const renderRowActions = (row: AuthProviderResponse) => (
     <Can permission={Permissions.AuthProvidersManage}>
       <Switch
+        data-testid={`authprov-toggle-switch-${row.id}`}
         className="!mr-2"
         checked={row.enabled}
         loading={pendingToggleId === row.id}
@@ -107,6 +108,7 @@ export function AuthProvidersListSection() {
         aria-label={`Toggle ${row.name}`}
       />
       <Button
+        data-testid={`authprov-test-button-${row.id}`}
         variant="ghost"
         icon={<FlaskConical />}
         aria-label={`Test ${row.name}`}
@@ -116,6 +118,7 @@ export function AuthProvidersListSection() {
         Test
       </Button>
       <Button
+        data-testid={`authprov-edit-button-${row.id}`}
         variant="ghost"
         icon={<Pencil />}
         aria-label={`Edit ${row.name}`}
@@ -124,6 +127,7 @@ export function AuthProvidersListSection() {
         Edit
       </Button>
       <Confirm
+        data-testid={`authprov-delete-confirm-${row.id}`}
         title={`Delete ${row.name}?`}
         description="Linked users lose this sign-in method; their accounts remain."
         okText="Delete"
@@ -132,6 +136,7 @@ export function AuthProvidersListSection() {
         onConfirm={() => onDelete(row)}
       >
         <Button
+          data-testid={`authprov-delete-button-${row.id}`}
           variant="ghost"
           icon={<Trash2 />}
           aria-label={`Delete ${row.name}`}
@@ -145,6 +150,7 @@ export function AuthProvidersListSection() {
   return (
     <>
       <Card
+        data-testid="authprov-list-card"
         title="Configured providers"
         extra={
           <Can permission={Permissions.AuthProvidersManage}>
@@ -158,6 +164,7 @@ export function AuthProvidersListSection() {
         {error && (
           <Alert
             tone="error"
+            data-testid="authprov-list-error-alert"
             title={error}
             onClose={() => {}}
             closeLabel="Close"
@@ -171,6 +178,7 @@ export function AuthProvidersListSection() {
           </div>
         ) : providers.length === 0 ? (
           <Empty
+            data-testid="authprov-empty"
             description="No providers yet"
             image={<Lock className="text-4xl opacity-50" />}
           >
@@ -212,6 +220,7 @@ export function AuthProvidersListSection() {
                       {row.last_test_ok === false && (
                         <Alert
                           tone="error"
+                          data-testid={`authprov-test-failed-alert-${row.id}`}
                           className="!mt-2"
                           title={
                             row.last_test_at
