@@ -866,3 +866,67 @@ async fn test_hub_download_proceeds_when_repo_auth_configured() {
         "a download instance should have been created"
     );
 }
+
+// audit id all-0d1edf0f339b — concurrent (not sequential) download initiation.
+// uploads.rs spawns a background task per download; test_download_multiple_models
+// initiates two SEQUENTIALLY. This fires two initiations CONCURRENTLY and asserts
+// both succeed with DISTINCT download-instance ids — proving the per-download
+// spawn path has no shared-state race on concurrent initiation. (Real-HF tier,
+// like the sibling tests: needs HUGGINGFACE_API_KEY from tests/.env.test.)
+#[tokio::test]
+async fn test_concurrent_download_initiations_are_distinct() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "cc_downloader",
+        &[
+            "llm_models::create",
+            "llm_models::read",
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_repositories::read",
+            "llm_repositories::edit",
+        ],
+    )
+    .await;
+
+    let hf_repo = get_huggingface_repository(&server, &user.token, true).await;
+    let repo_id = hf_repo["id"].as_str().unwrap().to_string();
+    let provider = get_local_provider(&server, &user.token).await;
+    let provider_id = provider["id"].as_str().unwrap().to_string();
+
+    let initiate = |repo_path: &'static str, name: &'static str| {
+        let url = server.api_url("/llm-models/download");
+        let token = user.token.clone();
+        let body = json!({
+            "provider_id": provider_id,
+            "repository_id": repo_id,
+            "repository_path": repo_path,
+            "name": name,
+            "display_name": name,
+            "file_format": "safetensors",
+            "main_filename": "model.safetensors",
+            "source": { "type": "hub", "id": repo_path }
+        });
+        async move {
+            reqwest::Client::new()
+                .post(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&body)
+                .send()
+                .await
+                .unwrap()
+        }
+    };
+
+    // Fire BOTH initiations concurrently.
+    let (r1, r2) = tokio::join!(
+        initiate("hf-internal-testing/tiny-random-gpt2", "cc-dl-gpt2"),
+        initiate("hf-internal-testing/tiny-random-bert", "cc-dl-bert"),
+    );
+    assert_eq!(r1.status(), StatusCode::OK, "first concurrent initiation");
+    assert_eq!(r2.status(), StatusCode::OK, "second concurrent initiation");
+    let id1 = r1.json::<serde_json::Value>().await.unwrap()["id"].as_str().unwrap().to_string();
+    let id2 = r2.json::<serde_json::Value>().await.unwrap()["id"].as_str().unwrap().to_string();
+    assert_ne!(id1, id2, "concurrent initiations must yield distinct download instances");
+}
