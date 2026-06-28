@@ -1096,3 +1096,93 @@ async fn test_setup_admin_is_member_of_administrators_and_users_groups() {
         "admin must ALSO be in the Users group (default-resource access)"
     );
 }
+
+/// Account deactivation cuts off access to protected RESOURCE endpoints — not
+/// just the sync stream. The `RequirePermissions` extractor (permissions/
+/// extractors.rs) re-resolves `is_active` from the DB on EVERY request and
+/// returns 403 USER_INACTIVE the moment a user is disabled, even though their
+/// JWT is still cryptographically valid and unexpired. This proves the gate
+/// holds across two representative protected surfaces (chat conversations +
+/// memory) so a disabled account can't keep reading data it could a moment ago.
+#[tokio::test]
+async fn deactivated_user_is_refused_on_protected_resource_endpoints() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "deact_resource",
+        &["profile::read", "conversations::read", "memory::read"],
+    )
+    .await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "deact_resource_admin",
+        &["users::edit"],
+    )
+    .await;
+
+    let client = reqwest::Client::new();
+
+    // While ACTIVE: both resource endpoints are reachable with the user's token.
+    let convs_ok = client
+        .get(server.api_url("/conversations"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        convs_ok.status(),
+        200,
+        "an active user with conversations::read must list conversations"
+    );
+
+    let mem_ok = client
+        .get(server.api_url("/memories"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        mem_ok.status(),
+        200,
+        "an active user with memory::read must list memories"
+    );
+
+    // Admin deactivates the user.
+    let deact = client
+        .post(server.api_url(&format!("/users/{}", user.user_id)))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&serde_json::json!({ "is_active": false }))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        deact.status().is_success(),
+        "deactivation should succeed; got {}",
+        deact.status()
+    );
+
+    // Same still-valid token → BOTH endpoints now refuse via the is_active gate.
+    let convs_refused = client
+        .get(server.api_url("/conversations"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        convs_refused.status() == 401 || convs_refused.status() == 403,
+        "a deactivated user must be refused the conversations endpoint; got {}",
+        convs_refused.status()
+    );
+
+    let mem_refused = client
+        .get(server.api_url("/memories"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        mem_refused.status() == 401 || mem_refused.status() == 403,
+        "a deactivated user must be refused the memories endpoint; got {}",
+        mem_refused.status()
+    );
+}
