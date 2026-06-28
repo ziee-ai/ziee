@@ -29,7 +29,7 @@ use crate::core::config::Config;
 use crate::modules::file::models::File as FileEntity;
 use crate::modules::file::project_extension::framing::wrap_project_file_blocks;
 use crate::modules::file::project_extension::routes::project_files_router;
-use crate::modules::file::provider_routing::process_file_blocks;
+use crate::modules::file::provider_routing::process_file_blocks_with_file;
 use crate::modules::project::core::extension::{
     PROJECT_EXTENSIONS, ProjectExtension, ProjectExtensionEntry,
 };
@@ -97,27 +97,31 @@ impl ProjectExtension for FileProjectExtension {
             "file.project_extension: resolving knowledge files into ContentBlocks"
         );
 
-        // Batch-resolve filenames in ONE query (avoids an N+1 get_by_id per
-        // file). Defense-in-depth ownership is enforced inside
-        // process_file_blocks; here we only need the display name.
-        let names: std::collections::HashMap<Uuid, String> = Repos
+        // Batch-resolve the full file rows in ONE query (avoids an N+1
+        // get_by_id per file — both for the display name AND inside
+        // process_file_blocks, which now takes the prefetched row).
+        // Defense-in-depth ownership is enforced inside the per-file routing.
+        let files: std::collections::HashMap<Uuid, FileEntity> = Repos
             .file
             .get_by_ids(&file_ids)
             .await?
             .into_iter()
-            .map(|f: FileEntity| (f.id, f.filename))
+            .map(|f: FileEntity| (f.id, f))
             .collect();
 
         let mut blocks: Vec<ContentBlock> = Vec::new();
         for file_id in file_ids {
-            let filename = names
-                .get(&file_id)
-                .cloned()
-                .unwrap_or_else(|| format!("file-{file_id}"));
+            let Some(file) = files.get(&file_id) else {
+                // Row vanished between list_file_ids and the batch fetch
+                // (e.g. concurrent delete); skip rather than fail the batch.
+                tracing::debug!(file_id = %file_id, "project knowledge file no longer exists; skipping");
+                continue;
+            };
+            let filename = file.filename.clone();
 
-            let resolved = process_file_blocks(
+            let resolved = process_file_blocks_with_file(
                 &self.pool,
-                file_id,
+                file,
                 provider_id,
                 provider_type,
                 user_id,

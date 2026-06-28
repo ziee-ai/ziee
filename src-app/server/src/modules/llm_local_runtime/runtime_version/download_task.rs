@@ -238,17 +238,47 @@ fn spawn_runner(
     let platform_owned = platform.to_string();
     let arch_owned = arch.to_string();
     let backend_owned = backend.to_string();
+    let panic_task = task.clone();
     tokio::spawn(async move {
-        run_download(
-            runner_task,
-            binary_manager,
-            engine,
-            version_owned,
-            platform_owned,
-            arch_owned,
-            backend_owned,
-        )
-        .await;
+        // Run the download in an inner task so a panic inside
+        // `run_download` (or its progress callback) is observable via the
+        // JoinHandle instead of being silently swallowed by the runtime.
+        // Without this, a panic would leave the task stuck in
+        // `Downloading` forever and every SSE subscriber would hang.
+        let inner = tokio::spawn(async move {
+            run_download(
+                runner_task,
+                binary_manager,
+                engine,
+                version_owned,
+                platform_owned,
+                arch_owned,
+                backend_owned,
+            )
+            .await;
+        });
+        if let Err(join_err) = inner.await {
+            let msg = if join_err.is_panic() {
+                format!("engine download task panicked: {join_err}")
+            } else {
+                format!("engine download task aborted: {join_err}")
+            };
+            tracing::error!("{msg}");
+            // Reconcile terminal state so subscribers stop waiting. Only
+            // overwrite a still-in-flight status (a normal Completed/Failed
+            // result already reflects reality).
+            let mut guard = panic_task.state.lock().await;
+            if !matches!(
+                guard.status,
+                EngineDownloadStatus::Completed | EngineDownloadStatus::Failed
+            ) {
+                guard.status = EngineDownloadStatus::Failed;
+                guard.error = Some(msg.clone());
+                let _ = panic_task.events.send(SSEEngineDownloadEvent::Failed(
+                    SSEEngineDownloadFailedData { error: msg },
+                ));
+            }
+        }
     });
     task
 }

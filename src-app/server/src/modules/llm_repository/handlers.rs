@@ -302,14 +302,20 @@ pub async fn delete_repository(
     Extension(event_bus): Extension<Arc<EventBus>>,
     origin: SyncOrigin,
 ) -> ApiResult<StatusCode> {
-    // Get repository name before deletion for event
-    let repository_name = Repos.llm_repository
+    // Get repository name before deletion for event. Propagate a real DB
+    // error instead of masking it behind a synthetic "Unknown" name (which
+    // would emit a misleading event and hide the failure from logs).
+    let repository_name = Repos
+        .llm_repository
         .get_by_id(repository_id)
         .await
-        .ok()
-        .flatten()
-        .map(|r| r.name.clone())
-        .unwrap_or_else(|| "Unknown".to_string());
+        .map_err(|e| {
+            tracing::error!("Failed to fetch repository {} for delete: {}", repository_id, e);
+            AppError::internal_error("Database operation failed")
+        })?
+        .ok_or_else(|| AppError::not_found("Repository"))?
+        .name
+        .clone();
 
     match Repos.llm_repository.delete(repository_id).await {
         Ok(Ok(true)) => {

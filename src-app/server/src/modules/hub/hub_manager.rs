@@ -892,13 +892,34 @@ fn download_json(url: &str) -> Result<Vec<u8>, AppError> {
         .build()
         .map_err(|e| AppError::internal_error(format!("hub: http client: {}", e)))?;
 
-    let resp = client
-        .get(url)
-        .header("Accept", "application/json")
-        .send()
-        .map_err(|e| AppError::internal_error(format!("hub: GET {}: {}", url, e)))?
-        .error_for_status()
-        .map_err(|e| AppError::internal_error(format!("hub: GET {}: {}", url, e)))?;
+    // Retry transient failures (network/timeout, HTTP 5xx, 429) with
+    // exponential backoff so a single hiccup doesn't fail the hub refresh.
+    const MAX_ATTEMPTS: u32 = 3;
+    let mut attempt = 0;
+    let resp = loop {
+        attempt += 1;
+        let send_result = client
+            .get(url)
+            .header("Accept", "application/json")
+            .send();
+        let transient = match &send_result {
+            Ok(r) => r.status().is_server_error() || r.status().as_u16() == 429,
+            Err(_) => true,
+        };
+        if transient && attempt < MAX_ATTEMPTS {
+            let delay = std::time::Duration::from_millis(500 * 2u64.pow(attempt - 1));
+            tracing::warn!(
+                "hub: GET {} transient failure (attempt {}/{}); retrying in {:?}",
+                url, attempt, MAX_ATTEMPTS, delay
+            );
+            std::thread::sleep(delay);
+            continue;
+        }
+        break send_result
+            .map_err(|e| AppError::internal_error(format!("hub: GET {}: {}", url, e)))?
+            .error_for_status()
+            .map_err(|e| AppError::internal_error(format!("hub: GET {}: {}", url, e)))?;
+    };
 
     if let Some(len) = resp.content_length()
         && len > MAX_HUB_ARTIFACT_BYTES

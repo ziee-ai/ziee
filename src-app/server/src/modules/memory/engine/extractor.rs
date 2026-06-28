@@ -189,7 +189,68 @@ async fn run(
 
     let pool = Repos.memory.pool_clone();
 
-    // ── 6. Apply each op ───────────────────────────────────────────
+    // Atomic quota enforcement (closes the count-then-insert TOCTOU flagged in
+    // the pre-LLM soft-check above): take a per-user advisory lock on a
+    // dedicated connection so concurrent extractions for the SAME user
+    // serialize through the apply section, then RE-COUNT under the lock and
+    // bail if the quota is now exhausted. Two racing extractions can no longer
+    // both observe quota-1 and both insert. The lock is held only across the
+    // apply loop (not the LLM call), and same-user extraction concurrency is
+    // rare, so the serialization cost is negligible.
+    let mut lock_conn = match pool.acquire().await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!("memory.extract: could not acquire quota-lock connection: {e}");
+            return Ok(());
+        }
+    };
+    let lock_key = user_advisory_key(user_id);
+    if let Err(e) = sqlx::query("SELECT pg_advisory_lock($1)")
+        .bind(lock_key)
+        .execute(&mut *lock_conn)
+        .await
+    {
+        tracing::warn!("memory.extract: quota advisory lock failed: {e}");
+        return Ok(());
+    }
+
+    // Re-check the trailing-24h count now that we hold the lock.
+    let recount = sqlx::query_scalar!(
+        r#"
+        SELECT COUNT(*) as "count!"
+        FROM user_memories
+        WHERE user_id = $1
+          AND source = 'extraction'
+          AND created_at > NOW() - INTERVAL '24 hours'
+        "#,
+        user_id
+    )
+    .fetch_one(&pool)
+    .await;
+    let over_quota = match recount {
+        Ok(n) => n >= daily_quota,
+        Err(e) => {
+            tracing::warn!("memory.extract: quota recount failed: {e}");
+            let _ = sqlx::query("SELECT pg_advisory_unlock($1)")
+                .bind(lock_key)
+                .execute(&mut *lock_conn)
+                .await;
+            return Ok(());
+        }
+    };
+    if over_quota {
+        tracing::info!(
+            "memory.extract: user {} hit daily extraction quota under lock — skipping applies",
+            user_id
+        );
+        let _ = sqlx::query("SELECT pg_advisory_unlock($1)")
+            .bind(lock_key)
+            .execute(&mut *lock_conn)
+            .await;
+        return Ok(());
+    }
+
+    // ── 6. Apply each op (under the per-user advisory lock) ─────────
     for op in ops {
         let outcome = match op.op.to_ascii_uppercase().as_str() {
             "NOOP" => Ok(()),
@@ -227,7 +288,24 @@ async fn run(
         }
     }
 
+    // Release the per-user quota lock. The apply loop above swallows per-op
+    // errors (no early return), so this is always reached on the success path.
+    let _ = sqlx::query("SELECT pg_advisory_unlock($1)")
+        .bind(lock_key)
+        .execute(&mut *lock_conn)
+        .await;
+
     Ok(())
+}
+
+/// Stable 64-bit key derived from a user UUID for `pg_advisory_lock`. XORed
+/// with a fixed namespace constant so it won't collide with advisory keys a
+/// future subsystem might derive the same way from a UUID.
+fn user_advisory_key(user_id: Uuid) -> i64 {
+    const NS: i64 = 0x6D_65_6D_5F_71_74_61_00; // "mem_qta\0"
+    let b = user_id.as_bytes();
+    let raw = i64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]);
+    raw ^ NS
 }
 
 #[allow(clippy::too_many_arguments)]

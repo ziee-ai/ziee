@@ -262,8 +262,9 @@ pub async fn restart_model_instance(
         .start(model_id, &engine_type, &model_path, &engine_config)
         .await?;
 
-    // Create new database record
-    Repos
+    // Create new database record. Compensation: the engine is already
+    // running; if bookkeeping fails, kill it so we don't leak an orphan.
+    if let Err(e) = Repos
         .local_runtime
         .create_instance(
             model_id,
@@ -272,13 +273,22 @@ pub async fn restart_model_instance(
             &result.base_url,
             None,  // runtime_version_id: will be tracked properly in future iteration
         )
-        .await?;
+        .await
+    {
+        let _ = deployment.stop(model_id).await;
+        return Err(e.into());
+    }
 
     // Update status
-    Repos
+    if let Err(e) = Repos
         .local_runtime
         .update_instance_status(model_id, "running", None)
-        .await?;
+        .await
+    {
+        let _ = deployment.stop(model_id).await;
+        let _ = Repos.local_runtime.delete_instance(model_id).await;
+        return Err(e.into());
+    }
 
     // Get and return the new instance
     let instance = Repos
@@ -387,14 +397,25 @@ pub async fn swap_model_runtime_version(
         let result = deployment
             .start(model_id, &engine_type, &model_path, &engine_config)
             .await?;
-        Repos
+        // Compensation: kill the just-started engine if bookkeeping fails so
+        // the swap can't leave an orphaned, untracked process behind.
+        if let Err(e) = Repos
             .local_runtime
             .create_instance(model_id, provider_id, result.port, &result.base_url, None)
-            .await?;
-        Repos
+            .await
+        {
+            let _ = deployment.stop(model_id).await;
+            return Err(e.into());
+        }
+        if let Err(e) = Repos
             .local_runtime
             .update_instance_status(model_id, "running", None)
-            .await?;
+            .await
+        {
+            let _ = deployment.stop(model_id).await;
+            let _ = Repos.local_runtime.delete_instance(model_id).await;
+            return Err(e.into());
+        }
         restarted = true;
 
         event_bus.emit_async(

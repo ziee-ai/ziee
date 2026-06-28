@@ -59,13 +59,14 @@ impl AppModule for LlmModelModule {
     fn init(&mut self, ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
         self.pool = Some(ctx.db_pool.clone());
 
-        // Boot-time retention loop: prune terminal download_instances rows and
-        // evict stale transient git/LFS caches (mirrors mcp tool-call pruning).
+        // Boot-time retention/eviction loop: prunes terminal download_instances
+        // rows (>7d) and evicts stale git/LFS/engine cache entries (>30d,
+        // engine binaries still referenced by a runtime version are kept).
+        // Fire-and-forget, like the mcp tool-call prune loop.
         let prune_pool = (*ctx.db_pool).clone();
         tokio::spawn(async move {
-            prune::run_retention_loop(prune_pool).await;
+            prune::run_prune_loop(prune_pool).await;
         });
-
         Ok(())
     }
 

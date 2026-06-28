@@ -44,6 +44,21 @@ pub async fn process_file_blocks(
         .get_by_id(file_id)
         .await?
         .ok_or_else(|| AppError::not_found("File"))?;
+    process_file_blocks_with_file(pool, &file, provider_id, provider_type, user_id).await
+}
+
+/// Same as [`process_file_blocks`] but works against an already-fetched file
+/// row. Callers that resolve many files at once (e.g. a project's knowledge
+/// batch) prefetch via `get_by_ids` and call this to avoid an N+1 `get_by_id`
+/// per file. Ownership is still re-validated as defense in depth.
+pub async fn process_file_blocks_with_file(
+    pool: &PgPool,
+    file: &crate::modules::file::models::File,
+    provider_id: Uuid,
+    provider_type: &str,
+    user_id: Uuid,
+) -> Result<Vec<ContentBlock>, AppError> {
+    let file_id = file.id;
 
     if file.user_id != user_id {
         return Err(AppError::forbidden(
