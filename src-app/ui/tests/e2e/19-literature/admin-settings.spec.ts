@@ -357,4 +357,39 @@ test.describe('Literature search admin settings', () => {
     await expect(page.getByText('CORE saved')).toHaveCount(0)
     expect(state.lastConnectorPatch).toBeNull()
   })
+
+  // audit id bfae0a63e1633179 — the page's load-error branch
+  // (LitSearchSettingsPage.tsx:20-28, the error Alert) had no E2E scenario.
+  test('shows the error Alert when settings fail to load', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    // Settings GET fails → the store sets `error` → the page renders its Alert.
+    await page.route(/\/api\/lit-search\/settings$/, async (route, req) => {
+      if (req.method() === 'GET') {
+        return route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ error_code: 'INTERNAL', error: 'settings load exploded' }),
+        })
+      }
+      return route.continue()
+    })
+    // Keep the connector catalog GET well-formed so only the settings path errors.
+    await page.route(/\/api\/lit-search\/connectors$/, async (route, req) => {
+      if (req.method() === 'GET') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ connectors: defaultCatalog() }),
+        })
+      }
+      return route.continue()
+    })
+
+    await gotoLiterature(page, baseURL)
+    await expect(
+      page.getByText('Failed to load literature search settings'),
+    ).toBeVisible({ timeout: 10000 })
+  })
 })
