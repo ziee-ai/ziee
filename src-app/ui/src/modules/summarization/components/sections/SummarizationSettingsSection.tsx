@@ -84,9 +84,10 @@ export function SummarizationSettingsSection() {
 
   if (!canRead) {
     return (
-      <Card title="Summarization">
+      <Card title="Summarization" data-testid="summ-settings-noperm-card">
         <Alert
           tone="warning"
+          data-testid="summ-settings-noperm-alert"
           title="You don't have permission to view summarization settings."
         />
       </Card>
@@ -96,9 +97,10 @@ export function SummarizationSettingsSection() {
   // Audit lesson: render the error state, not a blank card.
   if (error && !settings) {
     return (
-      <Card title="Summarization">
+      <Card title="Summarization" data-testid="summ-settings-error-card">
         <Alert
           tone="error"
+          data-testid="summ-settings-error-alert"
           title="Failed to load summarization settings"
           description={error}
         />
@@ -166,8 +168,9 @@ export function SummarizationSettingsSection() {
   }
 
   return (
-    <Card title="Summarization">
+    <Card title="Summarization" data-testid="summ-settings-card">
       <Form
+        data-testid="summ-settings-form"
         name="summarization-admin-form"
         form={form}
         layout="horizontal"
@@ -180,7 +183,7 @@ export function SummarizationSettingsSection() {
           valuePropName="checked"
           description="When off, no conversation is summarized regardless of length. Per-conversation toggle can still force it on (off-default) or off (on-default)."
         >
-          <Switch aria-label="Enable summarization deployment-wide" />
+          <Switch data-testid="summ-enabled-switch" aria-label="Enable summarization deployment-wide" />
         </FormField>
 
         <FormField
@@ -189,6 +192,7 @@ export function SummarizationSettingsSection() {
           description="LLM used to condense old turns into a summary. Leave empty to use the conversation's own model (zero-config; works out of the box on any deployment)."
         >
           <Combobox
+            data-testid="summ-model-combobox"
             placeholder="Use the conversation's own model"
             searchPlaceholder="Search models"
             emptyText="No models found"
@@ -207,7 +211,7 @@ export function SummarizationSettingsSection() {
           description="Trigger threshold (estimated tokens, chars/4). Capped at 0.75× the chat model's context window so small-context local models summarize before they overflow."
           required
         >
-          <InputNumber min={500} max={1_000_000} step={500} className="w-[200px]" />
+          <InputNumber data-testid="summ-after-tokens-input" min={500} max={1_000_000} step={500} className="w-[200px]" />
         </FormField>
 
         <FormField
@@ -217,6 +221,7 @@ export function SummarizationSettingsSection() {
           required
         >
           <InputNumber
+            data-testid="summ-keep-recent-input"
             min={100}
             max={1_000_000}
             step={500}
@@ -229,7 +234,7 @@ export function SummarizationSettingsSection() {
           label="Full-summary prompt"
           description="Custom LLM prompt for the first summarization. Empty = use the compiled default. Must contain {transcript}."
         >
-          <Textarea autoSize={{ minRows: 2, maxRows: 6 }} />
+          <Textarea data-testid="summ-full-prompt-textarea" autoSize={{ minRows: 2, maxRows: 6 }} />
         </FormField>
 
         <FormField
@@ -237,14 +242,14 @@ export function SummarizationSettingsSection() {
           label="Incremental-summary prompt"
           description="Custom LLM prompt for incremental folds. Empty = use the compiled default. Must contain {previous_summary} AND {new_transcript}."
         >
-          <Textarea autoSize={{ minRows: 2, maxRows: 6 }} />
+          <Textarea data-testid="summ-incremental-prompt-textarea" autoSize={{ minRows: 2, maxRows: 6 }} />
         </FormField>
 
         {canManage && (
           <>
             <Separator className="!my-3" />
             <Flex justify="end">
-              <Button type="submit" loading={saving}>
+              <Button type="submit" data-testid="summ-save-button" loading={saving}>
                 Save
               </Button>
             </Flex>

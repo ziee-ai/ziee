@@ -132,11 +132,13 @@ export function SummarizationStatusPill() {
   return (
     <Tooltip content="Per-conversation summarization override">
       <Dropdown
+        data-testid="summ-mode-dropdown"
         items={items}
         onSelect={(key) => setRemote(key as Mode)}
         disabled={loading}
       >
         <Tag
+          data-testid="summ-mode-tag"
           tone={toneByMode[mode]}
           icon={
             mode === 'off' ? <EyeOff /> : <Shrink />

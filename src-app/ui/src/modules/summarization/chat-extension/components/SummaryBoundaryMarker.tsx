@@ -73,7 +73,7 @@ export function SummaryBoundaryMarker() {
         </Flex>
       </Separator>
       {expanded && (
-        <Card size="sm" className="mb-3">
+        <Card size="sm" data-testid="summ-boundary-card" className="mb-3">
           <Text
             type="secondary"
             className="whitespace-pre-wrap text-xs mb-2"
