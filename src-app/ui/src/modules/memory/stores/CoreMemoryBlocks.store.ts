@@ -80,6 +80,10 @@ export const useCoreMemoryBlocksStore = create<CoreMemoryBlocksStore>()(
       },
 
       upsert: async (input): Promise<CoreMemoryBlock> => {
+        set(s => {
+          s.loadingByAssistant[input.assistant_id] = true
+          s.error = null
+        })
         try {
           const block = await ApiClient.CoreMemory.upsert(input)
           set(s => {
@@ -93,12 +97,14 @@ export const useCoreMemoryBlocksStore = create<CoreMemoryBlocksStore>()(
               current.push(block)
             }
             s.blocksByAssistant[input.assistant_id] = current
+            s.loadingByAssistant[input.assistant_id] = false
           })
           return block
         } catch (error) {
           set(s => {
             s.error =
               error instanceof Error ? error.message : 'Save failed'
+            s.loadingByAssistant[input.assistant_id] = false
           })
           throw error
         }
