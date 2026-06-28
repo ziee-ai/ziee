@@ -3092,3 +3092,100 @@ async fn hub_install_assistant_then_available_for_chat() {
         "the installed hub assistant must be available (in the chat-usable assistant list)"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Install-from-nonexistent-hub-id 404 (audit r2-bae4741a21a7).
+//
+// `test_create_model_from_hub_invalid_hub_id` covers the MODEL install path's
+// catalog-miss 404, but the equivalent branches for the ASSISTANT and
+// MCP-SERVER install handlers (`create_assistant_from_hub` /
+// `create_mcp_server_from_hub`, both documented `404 "... not found"`) had no
+// test — an unknown `hub_id` that isn't in the seed catalog must surface a
+// clean 404, not a 500 / a partially-created row.
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_create_assistant_from_hub_nonexistent_hub_id_404() {
+    let server = crate::common::TestServer::start().await;
+
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &["hub::assistants::create", "hub::assistants::read"],
+    )
+    .await;
+
+    // A well-formed-but-unknown reverse-DNS hub id that is not in the seed
+    // catalog → the handler's manifest lookup must 404 (not 500), and nothing
+    // is created.
+    let url = server.api_url("/hub/assistants/create");
+    let request_body = serde_json::json!({
+        "hub_id": "io.github.test/nonexistent-hub-assistant",
+        "is_default": false,
+        "enabled": true
+    });
+
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        404,
+        "installing an assistant from a hub_id not in the catalog must 404"
+    );
+
+    // The catalog miss must not have created any assistant for the user.
+    let list = reqwest::Client::new()
+        .get(&server.api_url("/hub/assistants?lang=en"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+    let assistants: serde_json::Value = list.json().await.expect("parse hub assistants");
+    for a in assistants.as_array().unwrap() {
+        let created = a.get("created_ids").and_then(|v| v.as_array());
+        assert!(
+            created.is_none() || created.unwrap().is_empty(),
+            "no assistant should have been created by the failed install"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_create_mcp_server_from_hub_nonexistent_hub_id_404() {
+    let server = crate::common::TestServer::start().await;
+
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &["hub::mcp_servers::create", "hub::mcp_servers::read"],
+    )
+    .await;
+
+    let url = server.api_url("/hub/mcp-servers/create");
+    let request_body = serde_json::json!({
+        "hub_id": "io.github.test/nonexistent-hub-mcp-server",
+        "enabled": true
+    });
+
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        404,
+        "installing an MCP server from a hub_id not in the catalog must 404"
+    );
+}
