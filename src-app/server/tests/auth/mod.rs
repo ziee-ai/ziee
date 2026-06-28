@@ -911,3 +911,44 @@ async fn test_setup_admin_joins_administrators_and_users_groups() {
         );
     }
 }
+
+/// `ensure_unique_username` (SSO auto-provision) appends the lowest free numeric
+/// suffix when the base is taken, returns the base verbatim when free, and
+/// defaults an empty base to "user". Driven directly by initializing the
+/// in-process Repos against the test DB (same pattern as resource_link_test).
+#[tokio::test]
+async fn test_ensure_unique_username_collision_suffix_and_defaults() {
+    let server = crate::common::TestServer::start().await;
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    if !ziee::is_repos_initialized() {
+        ziee::init_repositories(pool.clone());
+    }
+
+    // Seed a collision: "ssobase" and "ssobase2" already exist (distinct emails
+    // so the email path is irrelevant — we exercise username uniqueness only).
+    for (name, email) in [("ssobase", "a@x.com"), ("ssobase2", "b@x.com")] {
+        sqlx::query("INSERT INTO users (id, username, email, is_active, is_admin, created_at, updated_at) VALUES (gen_random_uuid(), $1, $2, true, false, NOW(), NOW())")
+            .bind(name)
+            .bind(email)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+
+    // Taken base + taken base2 → next free is base3.
+    let got = ziee::ensure_unique_username("ssobase").await.expect("unique");
+    assert_eq!(got, "ssobase3", "lowest free numeric suffix");
+
+    // A free base is returned verbatim.
+    let free = format!("freebase_{}", &uuid::Uuid::new_v4().to_string()[..8]);
+    assert_eq!(ziee::ensure_unique_username(&free).await.unwrap(), free);
+
+    // Empty base defaults to "user" (or user2… if taken) — must be non-empty.
+    let defaulted = ziee::ensure_unique_username("   ").await.unwrap();
+    assert!(
+        defaulted == "user" || defaulted.starts_with("user"),
+        "empty base must default to a user-prefixed name, got {defaulted}"
+    );
+
+    pool.close().await;
+}

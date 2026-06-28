@@ -1347,7 +1347,8 @@ fn email_verified_from_auth_result(r: &AuthResult) -> bool {
 /// Append `2`, `3`, … to the username until we find one that's not
 /// taken. Up to 999 attempts before giving up — a hard cap rather
 /// than an infinite loop to avoid pathological cases.
-async fn ensure_unique_username(
+#[doc(hidden)] // pub for integration tests (auto-provision username collision)
+pub async fn ensure_unique_username(
     base: &str,
 ) -> Result<String, (StatusCode, AppError)> {
     let mut candidate = base.trim().to_string();

@@ -149,6 +149,10 @@ pub mod elicitation_mcp {
     pub use crate::modules::elicitation_mcp::elicitation_mcp_server_id;
     pub use crate::modules::elicitation_mcp::repository::ElicitationMcpRepository;
 }
+// Re-export the SSO auto-provision username-uniqueness helper for integration
+// tests (collision-suffix + empty-base default).
+#[doc(hidden)]
+pub use modules::auth::handlers::ensure_unique_username;
 // MCP repository for integration tests that need McpRepository::list_accessible.
 #[doc(hidden)]
 pub mod mcp {
