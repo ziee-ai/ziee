@@ -113,6 +113,18 @@ impl ChatExtension for SkillExtension {
                 content: vec![ContentBlock::Text { text: body }],
             },
         );
+
+        // Attach the built-in `skill_mcp` server so the model can actually call
+        // the `load_skill` / `read_skill_file` tools the listing tells it to
+        // use — but only for tool-capable models (a non-tool model can't call
+        // them). Mirrors the web_search / lit_search / citations flag contract;
+        // `auto_attach_builtin_ids` reads `ATTACH_FLAG`.
+        if crate::modules::file::available_files::model_supports_tools(&context.metadata).await {
+            context
+                .metadata
+                .insert(super::ATTACH_FLAG.to_string(), serde_json::json!("true"));
+        }
+
         Ok(BeforeLlmAction::Continue)
     }
 }

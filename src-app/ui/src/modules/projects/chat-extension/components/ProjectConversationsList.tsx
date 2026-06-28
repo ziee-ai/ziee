@@ -1,4 +1,4 @@
-import { App, Button, Empty, Popconfirm, Tooltip, Typography, theme } from 'antd'
+import { Alert, App, Button, Empty, Popconfirm, Tooltip, Typography, theme } from 'antd'
 import { MinusCircleOutlined } from '@ant-design/icons'
 import { useState } from 'react'
 import type { ConversationResponse } from '@/api-client/types'
@@ -30,6 +30,7 @@ export function ProjectConversationsList({
     conversationsLoading,
     conversationsLoadingMore,
     conversationsHasMore,
+    conversationsError,
   } = Stores.ProjectDetail
   const isSelectionMode = selectedIds.size > 0
 
@@ -38,6 +39,17 @@ export function ProjectConversationsList({
       <div className="flex justify-center py-8">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2"></div>
       </div>
+    )
+  }
+
+  if (conversationsError && conversations.length === 0) {
+    return (
+      <Alert
+        type="error"
+        showIcon
+        message="Failed to load conversations"
+        description={conversationsError}
+      />
     )
   }
 

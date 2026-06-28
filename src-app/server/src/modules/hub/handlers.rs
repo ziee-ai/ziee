@@ -664,7 +664,14 @@ pub async fn create_assistant_template_from_hub(
     {
         Ok(t) => t,
         Err(e) if e.status_code() == 409 => {
-            let _ = Repos.assistant.delete(assistant.id).await;
+            // Roll back the just-created assistant. Best-effort, but log a
+            // failure so an orphaned row isn't left behind silently.
+            if let Err(del_err) = Repos.assistant.delete(assistant.id).await {
+                tracing::warn!(
+                    "hub: failed to roll back assistant {} after 409 conflict: {del_err}",
+                    assistant.id
+                );
+            }
             event_bus
                 .emit(AssistantEvent::deleted(assistant.id, None))
                 .await;

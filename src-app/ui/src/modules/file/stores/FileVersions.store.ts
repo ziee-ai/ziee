@@ -106,13 +106,11 @@ export const useFileVersionsStore = create<FileVersionsStore>()(
               s.versionTextLoadingSet = ls
             })
             try {
-              const { getAuthToken } = await import('@/api-client/core')
-              const token = getAuthToken()
-              const res = await fetch(
-                `/api/files/${fileId}/versions/${version}/text`,
-                { headers: token ? { Authorization: `Bearer ${token}` } : {} },
-              )
-              const text = res.ok ? await res.text() : `[failed to load v${version}]`
+              const blob = await ApiClient.File.textVersion({
+                file_id: fileId,
+                version: String(version),
+              })
+              const text = await blob.text()
               set((s) => {
                 const m = new Map(s.versionTextCache)
                 m.set(key, text)

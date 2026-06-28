@@ -32,6 +32,7 @@ export function AssistantSelector({
   return (
     <Tooltip title="Select Assistant">
       <Select
+        aria-label="Select Assistant"
         value={selectedAssistantId}
         onChange={handleChange}
         options={options}

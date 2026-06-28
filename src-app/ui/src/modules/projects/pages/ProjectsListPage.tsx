@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { App, Button, Typography } from 'antd'
+import { App, Button, Spin, Typography } from 'antd'
 import {
   FolderAddOutlined,
   FolderOutlined,
@@ -89,10 +89,13 @@ export function ProjectsListPage() {
               </div>
             </div>
           </div>
+        ) : loading ? (
+          <div className="flex justify-center py-12 m-auto">
+            <Spin />
+          </div>
         ) : (
-          !loading && (
-            <div className="text-center py-12 m-auto">
-              <FolderOutlined className="text-6xl mb-4" />
+          <div className="text-center py-12 m-auto">
+            <FolderOutlined className="text-6xl mb-4" />
               <Title level={3} type="secondary">
                 No projects yet
               </Title>
@@ -110,7 +113,6 @@ export function ProjectsListPage() {
                 </Button>
               </Can>
             </div>
-          )
         )}
       </div>
 

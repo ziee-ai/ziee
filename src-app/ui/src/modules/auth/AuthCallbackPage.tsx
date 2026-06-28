@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Alert, Card, Layout, Typography } from 'antd'
 import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'
@@ -158,7 +158,7 @@ export const AuthCallbackPage: React.FC = () => {
               <>
                 <Title level={4}>Sign-in failed</Title>
                 <Alert type="error" title={error} showIcon className="my-3" />
-                <a href="/auth">Return to login</a>
+                <Link to="/auth">Return to login</Link>
               </>
             ) : (
               <Loading tip="Completing sign-in…" />

@@ -26,7 +26,7 @@ pub use types::*;
 // code_sandbox environments REST shim). Named so the public surface
 // stays explicit — bumping the whole `repository` / `permissions`
 // modules to `pub mod` would leak internals.
-pub use permissions::{McpServersAdminCreate, McpServersAdminRead};
+pub use permissions::McpServersAdminCreate;
 pub(crate) use repository::validate_transport_config;
 
 use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleContext, ModuleEntry};

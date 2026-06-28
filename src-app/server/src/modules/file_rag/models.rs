@@ -111,6 +111,8 @@ pub enum RetrievalMode {
     Hybrid,
     Vector,
     Fts,
+    /// No retrieval arm ran (empty scope / blank query, or both arms disabled).
+    None,
 }
 
 impl RetrievalMode {
@@ -119,6 +121,7 @@ impl RetrievalMode {
             RetrievalMode::Hybrid => "hybrid",
             RetrievalMode::Vector => "vector",
             RetrievalMode::Fts => "fts",
+            RetrievalMode::None => "none",
         }
     }
 }

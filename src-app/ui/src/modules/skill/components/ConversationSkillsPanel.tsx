@@ -1,4 +1,4 @@
-import { App, Empty, List, Spin, Switch, Typography } from 'antd'
+import { Alert, App, Empty, List, Spin, Switch, Typography } from 'antd'
 import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
 import { deriveHiddenSkills } from '@/modules/skill/stores/ConversationSkills.store'
@@ -21,6 +21,7 @@ export function ConversationSkillsPanel({
   const { skills } = Stores.Skill
   const available = Stores.ConversationSkills.available[conversationId]
   const loading = Stores.ConversationSkills.loading[conversationId]
+  const error = Stores.ConversationSkills.error
 
   useEffect(() => {
     Stores.ConversationSkills.loadAvailable(conversationId)
@@ -33,6 +34,14 @@ export function ConversationSkillsPanel({
 
   if (loading && !available) {
     return <Spin size="small" />
+  }
+
+  // A load failure leaves `available` undefined; surface it instead of falling
+  // through to a misleading empty panel. (hide/unhide errors set `error` too,
+  // but those paths always have `available` already loaded, so they don't hit
+  // this branch.)
+  if (error && !available) {
+    return <Alert type="error" showIcon message="Failed to load skills" description={error} />
   }
 
   const availableIds = new Set((available ?? []).map(s => s.id))

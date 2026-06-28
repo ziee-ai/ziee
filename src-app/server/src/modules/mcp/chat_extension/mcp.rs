@@ -162,6 +162,13 @@ fn auto_attach_builtin_ids(
     if flag(crate::modules::citations::chat_extension::ATTACH_FLAG) {
         ids.push(crate::modules::citations::citations_server_id());
     }
+    // `skill_mcp` attaches behind the flag set by the skill chat extension
+    // (`attach_skill_mcp`), gated on tool-capable + ≥1 available skill. Without
+    // this the injected skill listing tells the model to call `load_skill` but
+    // the tool is never present.
+    if flag(crate::modules::skill::chat_extension::ATTACH_FLAG) {
+        ids.push(crate::modules::skill_mcp::skill_mcp_server_id());
+    }
     // `ask_user` is always-on — the assistant may need to ask the user for input
     // in any conversation — but ONLY for tool-capable models: a model that can't
     // call tools can't call `ask_user`, and attaching it would run the full
@@ -232,6 +239,10 @@ fn is_builtin_server_id(id: Uuid) -> bool {
         // on the caller's own verified library and never invent data (fabricated
         // DOIs return not_found), so it is approval-bypassed like the others.
         || id == crate::modules::citations::citations_server_id()
+        // skill_mcp is approval-bypassed: `load_skill` / `read_skill_file` are
+        // read-only reads of skills already installed + available to the caller,
+        // auto-attached for tool-capable chats with ≥1 available skill.
+        || id == crate::modules::skill_mcp::skill_mcp_server_id()
 }
 
 ///

@@ -92,7 +92,7 @@ pub async fn semantic_search(
     if scope_ids.is_empty() || query.trim().is_empty() {
         return Ok(SearchResult {
             hits: Vec::new(),
-            mode: RetrievalMode::Fts,
+            mode: RetrievalMode::None,
             truncated: false,
         });
     }
@@ -160,7 +160,7 @@ pub async fn semantic_search(
             ),
             // Arm::None, plus the logically-impossible vector-arm-without-a-model
             // combos (plan_arm only returns Hybrid/Vector when has_vector is true).
-            _ => (Vec::new(), RetrievalMode::Fts),
+            _ => (Vec::new(), RetrievalMode::None),
         };
 
     let truncated = hits.len() as i64 > top_k;

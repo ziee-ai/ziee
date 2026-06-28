@@ -3,7 +3,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::common::AppError;
-use crate::modules::auth::providers::models::{OAuthSession, PendingAccountLink};
+use crate::modules::auth::providers::models::OAuthSession;
 use crate::modules::user::Group;
 
 /// Auth Repository

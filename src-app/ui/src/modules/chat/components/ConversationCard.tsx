@@ -95,7 +95,16 @@ export function ConversationCard({
   return (
     <Card
       key={conversation.id}
+      role="button"
+      tabIndex={0}
+      aria-label={conversation.title || 'Untitled Conversation'}
       onClick={handleCardClick}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          handleCardClick()
+        }
+      }}
       onMouseEnter={() => {
         if (!hoveredOnce) setHoveredOnce(true)
       }}

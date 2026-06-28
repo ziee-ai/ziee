@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Modal, Collapse, Switch, Tag, Typography, Empty, Checkbox, Select, Divider, Button, Space, InputNumber } from 'antd'
+import { App, Modal, Collapse, Switch, Tag, Typography, Empty, Checkbox, Select, Divider, Button, Space, InputNumber } from 'antd'
 import type { CollapseProps } from 'antd'
 import { ToolOutlined, DeleteOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
@@ -25,6 +25,7 @@ const { Text, Title } = Typography
  * - Visibility controlled via store (Stores.McpComposer.openConfigModal/closeConfigModal)
  */
 export function McpConfigModal() {
+  const { message } = App.useApp()
   const { servers } = Stores.McpServer  // Reactive access to MCP module store
   const mcpStore = Stores.McpComposer
   // Extract all store properties unconditionally at the top (store proxy uses hooks).
@@ -235,6 +236,9 @@ export function McpConfigModal() {
       console.log('[MCP Config Modal] Configuration saved successfully')
     } catch (error) {
       console.error('[MCP Config Modal] Failed to save configuration:', error)
+      message.error(
+        error instanceof Error ? error.message : 'Failed to save MCP configuration',
+      )
     } finally {
       setSaving(false)
     }

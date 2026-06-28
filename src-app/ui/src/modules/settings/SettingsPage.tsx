@@ -210,7 +210,12 @@ export default function SettingsPage() {
                 }}
                 trigger={['click']}
               >
-                <Button type="text" className={'mt-[2px]'}>
+                <Button
+                  type="text"
+                  className={'mt-[2px]'}
+                  aria-label="Select settings section"
+                  aria-haspopup="menu"
+                >
                   {getCurrentSectionInfo().icon} {getCurrentSectionInfo().label}{' '}
                   <IoIosArrowDown />
                 </Button>

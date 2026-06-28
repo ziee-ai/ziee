@@ -41,9 +41,10 @@ impl AssistantRepository {
         get_assistant(&self.pool, id).await
     }
 
-    /// Like `get` but returns the assistant regardless of `enabled`.
+    /// Get an assistant by ID regardless of `enabled` status.
     /// Used by owner-facing GET/DELETE management handlers so a user can
-    /// still view and delete an assistant they have disabled.
+    /// still view and delete an assistant they have disabled, and by
+    /// admin/template management — see [`get_assistant_any`].
     pub async fn get_any(&self, id: Uuid) -> Result<Option<Assistant>, AppError> {
         get_assistant_any(&self.pool, id).await
     }
@@ -222,6 +223,11 @@ pub async fn get_assistant(pool: &PgPool, id: Uuid) -> Result<Option<Assistant>,
 /// management handlers use this — the `enabled = true` filter would
 /// otherwise 404 a disabled assistant, leaving it impossible to view or
 /// delete. Ownership + template checks still gate access in the handler.
+/// Admin/template management paths also rely on this: the template list
+/// intentionally surfaces disabled templates, so the per-id get/update/delete
+/// handlers must be able to resolve them too (the `enabled = true` filter in
+/// [`get_assistant`] is for chat resolution, which must never pick a disabled
+/// assistant).
 pub async fn get_assistant_any(pool: &PgPool, id: Uuid) -> Result<Option<Assistant>, AppError> {
     let row = sqlx::query!(
         r#"SELECT id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, created_at, updated_at

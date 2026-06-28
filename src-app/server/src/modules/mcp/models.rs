@@ -164,7 +164,7 @@ pub struct HeaderView {
     pub is_secret: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 pub struct McpServer {
     pub id: Uuid,
     pub user_id: Option<Uuid>,
@@ -256,6 +256,44 @@ pub struct McpServer {
     // Metadata
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+// Manual Debug so the FULLY DECRYPTED `environment_variables` / `headers`
+// maps are never printed via `{:?}` (e.g. an accidental tracing::debug!).
+// The redacted public views (`*_entries`) are safe to show.
+// NOTE: keep field coverage in sync with the struct above.
+impl std::fmt::Debug for McpServer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("McpServer")
+            .field("id", &self.id)
+            .field("user_id", &self.user_id)
+            .field("name", &self.name)
+            .field("display_name", &self.display_name)
+            .field("description", &self.description)
+            .field("enabled", &self.enabled)
+            .field("is_system", &self.is_system)
+            .field("is_built_in", &self.is_built_in)
+            .field("transport_type", &self.transport_type)
+            .field("command", &self.command)
+            .field("args", &self.args)
+            .field("environment_variables", &"<redacted>")
+            .field("url", &self.url)
+            .field("headers", &"<redacted>")
+            .field("environment_variables_entries", &self.environment_variables_entries)
+            .field("headers_entries", &self.headers_entries)
+            .field("timeout_seconds", &self.timeout_seconds)
+            .field("supports_sampling", &self.supports_sampling)
+            .field("usage_mode", &self.usage_mode)
+            .field("max_concurrent_sessions", &self.max_concurrent_sessions)
+            .field("run_in_sandbox", &self.run_in_sandbox)
+            .field("sandbox_flavor", &self.sandbox_flavor)
+            .field("last_health_check_at", &self.last_health_check_at)
+            .field("last_health_check_status", &self.last_health_check_status)
+            .field("last_health_check_reason", &self.last_health_check_reason)
+            .field("created_at", &self.created_at)
+            .field("updated_at", &self.updated_at)
+            .finish()
+    }
 }
 
 fn default_health_status() -> String {

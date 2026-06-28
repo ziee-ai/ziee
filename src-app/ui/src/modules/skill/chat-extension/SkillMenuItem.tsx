@@ -42,6 +42,12 @@ export function SkillMenuItem() {
         onMouseLeave={e => {
           e.currentTarget.style.backgroundColor = 'transparent'
         }}
+        onFocus={e => {
+          e.currentTarget.style.backgroundColor = token.colorFillSecondary
+        }}
+        onBlur={e => {
+          e.currentTarget.style.backgroundColor = 'transparent'
+        }}
       >
         <ReadOutlined style={{ fontSize: 16 }} />
         <span style={{ fontSize: 14 }}>Skills in this chat</span>

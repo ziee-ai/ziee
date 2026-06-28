@@ -185,15 +185,25 @@ pub async fn create_user(
         // Assign user to default group (assigned_by is None for automatic
         // assignment). We don't fail user creation if this fails, but we log
         // it — a silently group-less user can be missing expected permissions.
-        if let Err(e) = Repos
+        match Repos
             .user
             .assign_to_group(user.id, default_group.id, None)
             .await
         {
-            tracing::warn!(
-                "user {}: default-group assignment failed: {e}",
+            // The group's member list changed → refresh admins viewing it
+            // (mirrors the explicit assign-to-group handler).
+            Ok(_) => sync_publish(
+                SyncEntity::Group,
+                SyncAction::Update,
+                default_group.id,
+                Audience::perm::<GroupsRead>(),
+                origin.0,
+            ),
+            // Ignore errors here to not fail user creation if group assignment fails.
+            Err(e) => tracing::warn!(
+                "create_user: default-group assignment failed for {}: {e}",
                 user.id
-            );
+            ),
         }
     }
 
@@ -475,8 +485,24 @@ pub async fn delete_user(
         );
     }
 
+    // Collect the user's skill bundle dirs BEFORE the delete — the skills row
+    // FK is `ON DELETE CASCADE`, so after `user.delete` the extracted_path
+    // values are gone and the on-disk dirs would be orphaned forever.
+    let skill_bundle_dirs = Repos
+        .skill
+        .list_owned_extracted_paths(user_id)
+        .await
+        .unwrap_or_default();
+
     // Delete user
     Repos.user.delete(user_id).await?;
+
+    // Best-effort cleanup of the now-orphaned skill bundle dirs on disk.
+    for dir in &skill_bundle_dirs {
+        if let Err(e) = std::fs::remove_dir_all(dir) {
+            tracing::warn!("delete_user: failed to remove skill bundle dir {}: {}", dir, e);
+        }
+    }
 
     // Emit deletion event for other modules to react
     event_bus.emit_async(UserEvent::deleted(user_id));

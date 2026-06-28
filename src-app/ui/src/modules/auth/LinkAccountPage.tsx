@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Alert,
   Button,
@@ -109,7 +109,7 @@ export const LinkAccountPage: React.FC = () => {
                 </Button>
               </Form.Item>
               <div className="text-center">
-                <a href="/auth">Cancel</a>
+                <Link to="/auth">Cancel</Link>
               </div>
             </Form>
           </Card>

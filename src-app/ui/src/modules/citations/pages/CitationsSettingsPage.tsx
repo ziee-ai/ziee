@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   DownloadOutlined,
   ImportOutlined,
@@ -33,10 +33,16 @@ function download(content: string, filename: string, mime: string) {
 
 export function CitationsSettingsPage() {
   const { message } = App.useApp()
-  const { entries, loading, importing, verifying } = Stores.Citations
+  const { entries, loading, importing, verifying, error } = Stores.Citations
   // Import / Delete require `citations::manage`; Verify-all + Export are `use`.
   const canManage = usePermission(Permissions.CitationsManage)
   const [importOpen, setImportOpen] = useState(false)
+
+  // Surface load-path failures (the store sets `error` on a failed fetch but
+  // nothing rendered it, so the list silently showed empty).
+  useEffect(() => {
+    if (error) message.error(error)
+  }, [error, message])
 
   const handleVerifyAll = async () => {
     try {

@@ -5,7 +5,6 @@
 // This module provides hardware information and real-time monitoring
 // including OS, CPU, Memory, and GPU information via REST and SSE APIs
 
-pub mod api;
 pub mod detection;
 pub mod handlers;
 pub mod monitoring;

@@ -4,7 +4,7 @@ use aide::axum::{
     ApiRouter,
     routing::{get_with, post_with, put_with},
 };
-use axum::routing::{get, post};
+use axum::routing::get;
 
 use super::handlers::*;
 

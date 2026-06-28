@@ -139,6 +139,22 @@ impl LocalDeployment {
         cmd.stdin(Stdio::null());
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
+        cmd.kill_on_drop(true);
+
+        // PR_SET_PDEATHSIG makes the engine subprocess die with the server even
+        // on SIGKILL/OOM, instead of orphaning a GPU-holding llama-server.
+        // Linux-only (copy of the bio_mcp / code_sandbox squashfuse path).
+        #[cfg(target_os = "linux")]
+        unsafe {
+            cmd.pre_exec(|| {
+                let r = libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM, 0, 0, 0);
+                if r == 0 {
+                    Ok(())
+                } else {
+                    Err(std::io::Error::last_os_error())
+                }
+            });
+        }
     }
 
     /// Parse a model's nested `engine_settings` (a `ModelEngineSettings`
@@ -645,10 +661,6 @@ impl Deployment for LocalDeployment {
         // 256-bit CSPRNG token (matches the proxy's PROXY_TOKEN), not
         // a 122-bit UUID — the bearer gates the engine's HTTP surface.
         let api_key = crate::modules::llm_local_runtime::proxy::generate_proxy_token();
-        INSTANCE_API_KEYS
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .insert(model_id, api_key.clone());
 
         // Build the engine argv from the model's typed engine_settings,
         // then assemble + harden the command.
@@ -677,6 +689,14 @@ impl Deployment for LocalDeployment {
         let mut child = cmd.spawn().map_err(|e| {
             AppError::internal_error(format!("Failed to spawn process: {}", e))
         })?;
+
+        // Register the per-instance bearer only after the spawn succeeds, so an
+        // argv-build or spawn failure above doesn't leave a stale token mapped
+        // for a model that isn't actually running.
+        INSTANCE_API_KEYS
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .insert(model_id, api_key.clone());
 
         let pid = child
             .id()

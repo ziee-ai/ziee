@@ -111,6 +111,9 @@ export function SkillHubCard({ item }: SkillHubCardProps) {
     <>
       <Card
         hoverable
+        role="button"
+        tabIndex={0}
+        aria-label={`View skill ${item.name}`}
         className="cursor-pointer h-full"
         role="button"
         tabIndex={0}

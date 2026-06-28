@@ -255,6 +255,34 @@ pub async fn delete_model(
     let provider_id = model.provider_id;
     let model_name = model.name.clone();
 
+    // Stop any running local runtime for this model BEFORE deleting the row /
+    // files, so the spawned engine process releases the model files cleanly and
+    // we don't orphan a process pointing at a deleted model. No-op when the
+    // model has no running instance (get_instance_by_model returns None).
+    if let Ok(Some(_inst)) = Repos.local_runtime.get_instance_by_model(model_id).await {
+        let deployment_manager = crate::modules::llm_local_runtime::get_deployment_manager();
+        if let Ok(deployment) = deployment_manager
+            .get_deployment(
+                &crate::modules::llm_local_runtime::models::DeploymentConfig::Local {
+                    binary_path: None,
+                },
+            )
+            .await
+        {
+            if let Err(e) = deployment.stop(model_id).await {
+                tracing::warn!(
+                    "delete_model: failed to stop running runtime for {}: {}",
+                    model_id,
+                    e
+                );
+            }
+        }
+        let _ = Repos
+            .local_runtime
+            .update_instance_status(model_id, "stopped", None)
+            .await;
+    }
+
     // Delete from database first
     let deleted = Repos.llm_model.delete(model_id).await?;
 

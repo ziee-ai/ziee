@@ -453,7 +453,7 @@ pub async fn get_template_assistant(
 ) -> ApiResult<Json<Assistant>> {
     let assistant = Repos
         .assistant
-        .get(id)
+        .get_any(id)
         .await?
         .ok_or_else(|| AppError::not_found("Assistant template"))?;
 
@@ -491,7 +491,7 @@ pub async fn update_template_assistant(
 
     let existing = Repos
         .assistant
-        .get(id)
+        .get_any(id)
         .await?
         .ok_or_else(|| AppError::not_found("Assistant template"))?;
 
@@ -536,7 +536,7 @@ pub async fn delete_template_assistant(
 ) -> ApiResult<()> {
     let existing = Repos
         .assistant
-        .get(id)
+        .get_any(id)
         .await?
         .ok_or_else(|| AppError::not_found("Assistant template"))?;
 

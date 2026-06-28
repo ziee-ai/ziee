@@ -13,6 +13,5 @@ pub mod repository;
 pub use approval::{
     ApprovalMode, ToolApprovalDecision,
 };
-pub use defaults::mcp_defaults_router;
 pub use extension::McpConfig;
 pub use repository::McpChatRepository;

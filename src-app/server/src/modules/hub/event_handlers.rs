@@ -8,6 +8,7 @@ use std::sync::Arc;
 use crate::common::AppError;
 use crate::core::events::{AppEvent, EventHandler};
 use crate::modules::assistant::events::AssistantEvent;
+use crate::modules::llm_model::events::LlmModelEvent;
 use crate::modules::mcp::events::McpServerEvent;
 
 /// Cleans up hub_entities records when tracked entities are deleted
@@ -62,6 +63,24 @@ impl EventHandler for CleanupHubEntitiesHandler {
 
                 if result.rows_affected() > 0 {
                     tracing::debug!("Deleted hub entity tracking for MCP server {}", server_id);
+                }
+
+                Ok(())
+            }
+            AppEvent::LlmModel(LlmModelEvent::Deleted { id, .. }) => {
+                tracing::info!("Cleaning up hub entities for deleted llm_model: {}", id);
+
+                // Delete hub_entities record if it exists
+                let result = sqlx::query!(
+                    "DELETE FROM hub_entities WHERE entity_type = 'llm_model' AND entity_id = $1",
+                    id
+                )
+                .execute(pool)
+                .await
+                .map_err(AppError::database_error)?;
+
+                if result.rows_affected() > 0 {
+                    tracing::debug!("Deleted hub entity tracking for llm_model {}", id);
                 }
 
                 Ok(())

@@ -9,6 +9,7 @@ import {
   Input,
   InputNumber,
   Select,
+  Spin,
   Switch,
   message,
 } from 'antd'
@@ -85,7 +86,15 @@ export function SummarizationSettingsSection() {
     )
   }
 
-  if (loading && !settings) return null
+  if (loading && !settings) {
+    return (
+      <Card title="Summarization">
+        <div className="flex justify-center py-4">
+          <Spin />
+        </div>
+      </Card>
+    )
+  }
   if (!settings) return null
 
   const handleSubmit = async (values: FormValues) => {

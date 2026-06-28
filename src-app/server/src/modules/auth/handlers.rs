@@ -136,10 +136,21 @@ pub async fn register(
     // Emit UserCreated event asynchronously
     event_bus.emit_async(UserEvent::created(user.clone()));
 
-    // Generate JWT tokens
-    let tokens = jwt_service
-        .generate_tokens(user.id, &user.username, &user.email, user.is_admin)
+    // Generate JWT tokens with a jti and register the refresh token in the
+    // whitelist so it can be revoked (e.g. by logout) — a jti-less token would
+    // bypass the whitelist check entirely.
+    let token_pair_with_jti = jwt_service
+        .generate_tokens_with_jti(user.id, &user.username, &user.email, user.is_admin)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    refresh_tokens::register(
+        Repos.pool(),
+        token_pair_with_jti.refresh_jti,
+        user.id,
+        token_pair_with_jti.refresh_expires_at,
+    )
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    let tokens = token_pair_with_jti.pair;
 
     Ok((StatusCode::CREATED, Json(AuthResponse { user, tokens })))
 }
@@ -251,10 +262,20 @@ pub async fn login(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-    // Generate JWT tokens
-    let tokens = jwt_service
-        .generate_tokens(user.id, &user.username, &user.email, user.is_admin)
+    // Generate JWT tokens with a jti and whitelist the refresh token so it can
+    // be revoked (logout) — a jti-less token bypasses the whitelist check.
+    let token_pair_with_jti = jwt_service
+        .generate_tokens_with_jti(user.id, &user.username, &user.email, user.is_admin)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    refresh_tokens::register(
+        Repos.pool(),
+        token_pair_with_jti.refresh_jti,
+        user.id,
+        token_pair_with_jti.refresh_expires_at,
+    )
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    let tokens = token_pair_with_jti.pair;
 
     Ok((StatusCode::OK, Json(AuthResponse { user, tokens })))
 }
@@ -379,10 +400,20 @@ async fn login_with_provider(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-    // Generate JWT tokens
-    let tokens = jwt_service
-        .generate_tokens(user.id, &user.username, &user.email, user.is_admin)
+    // Generate JWT tokens with a jti and whitelist the refresh token so it can
+    // be revoked (logout) — a jti-less token bypasses the whitelist check.
+    let token_pair_with_jti = jwt_service
+        .generate_tokens_with_jti(user.id, &user.username, &user.email, user.is_admin)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    refresh_tokens::register(
+        Repos.pool(),
+        token_pair_with_jti.refresh_jti,
+        user.id,
+        token_pair_with_jti.refresh_expires_at,
+    )
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    let tokens = token_pair_with_jti.pair;
 
     Ok((StatusCode::OK, Json(AuthResponse { user, tokens })))
 }
