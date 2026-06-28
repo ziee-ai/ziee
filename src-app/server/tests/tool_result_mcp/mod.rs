@@ -317,3 +317,80 @@ async fn get_tool_result_is_branch_agnostic() {
     );
     assert_eq!(body["result"]["structuredContent"]["tool_use_id"], "toolu_branch1");
 }
+
+// audit id all-53eae2bd53da — the JSON-RPC lifecycle (initialize / tools/list /
+// ping) of the tool_result_mcp endpoint was untested; only tools/call paths
+// were. These need no conversation header.
+#[tokio::test]
+async fn tool_result_mcp_jsonrpc_lifecycle() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "tr_lifecycle", &["mcp_servers::read"]).await;
+
+    // initialize
+    let init: Value = jsonrpc(&server, &user.token, None, "initialize", json!({}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(init["result"]["serverInfo"]["name"], "tool_result", "initialize: {init}");
+    assert!(init["result"]["protocolVersion"].is_string(), "initialize: {init}");
+
+    // tools/list exposes get_tool_result
+    let list: Value = jsonrpc(&server, &user.token, None, "tools/list", json!({}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let names: Vec<&str> = list["result"]["tools"]
+        .as_array()
+        .expect("tools array")
+        .iter()
+        .filter_map(|t| t["name"].as_str())
+        .collect();
+    assert!(names.contains(&"get_tool_result"), "tools/list: {names:?}");
+
+    // ping → {}
+    let ping: Value = jsonrpc(&server, &user.token, None, "ping", json!({}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(ping["error"].is_null(), "ping must succeed: {ping}");
+    assert_eq!(ping["result"], json!({}), "ping returns empty result: {ping}");
+}
+
+// audit id all-9961accefc1c — the endpoint is gated by McpServersRead; an
+// unauthenticated request must 401 and a user lacking mcp_servers::read must
+// 403. Neither was asserted.
+#[tokio::test]
+async fn tool_result_mcp_requires_auth_and_permission() {
+    let server = TestServer::start().await;
+
+    // No Authorization header → 401.
+    let unauth = reqwest::Client::new()
+        .post(server.api_url("/tool-result/mcp"))
+        .json(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {} }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unauth.status(), 401, "no token must be 401");
+
+    // A user WITHOUT mcp_servers::read (default group removed) → 403.
+    let noperm = crate::common::test_helpers::create_user_with_only_permissions(
+        &server,
+        "tr_noperm",
+        &["profile::read"],
+    )
+    .await;
+    let forbidden = jsonrpc(&server, &noperm.token, None, "tools/list", json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(forbidden.status(), 403, "missing mcp_servers::read must be 403");
+}
