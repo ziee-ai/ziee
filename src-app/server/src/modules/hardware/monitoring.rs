@@ -39,13 +39,6 @@ lazy_static::lazy_static! {
 /// where two threads could double-spawn).
 static MONITORING_ACTIVE: AtomicBool = AtomicBool::new(false);
 
-/// Result returned by `add_client`: either a fresh receiver, or `None`
-/// when the cap has been reached. Callers must convert `None` into an
-/// HTTP 429 / 503 response.
-pub struct AddClientResult {
-    pub receiver: tokio::sync::mpsc::UnboundedReceiver<Result<Event, axum::Error>>,
-}
-
 /// Add a new SSE client to the connection pool. Returns None when the
 /// global cap (MAX_SSE_CLIENTS) is already at capacity — the caller
 /// must surface that as a 429 / 503 to the client.
@@ -146,6 +139,7 @@ pub async fn start_hardware_monitoring() {
 /// Stop the hardware-monitoring background task on graceful shutdown.
 /// Clears the active flag; the spawned loop checks it each tick and exits.
 /// Idempotent — a no-op if monitoring isn't running.
+#[allow(dead_code)]
 pub fn stop_hardware_monitoring() {
     MONITORING_ACTIVE.store(false, Ordering::SeqCst);
 }

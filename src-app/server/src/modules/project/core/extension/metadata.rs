@@ -16,6 +16,7 @@
 /// - 40-59: Content extensions (knowledge kinds: files, urls, notes, etc.)
 /// - 60-79: Analytics/logging extensions
 /// - 80-99: Post-processing extensions
+#[allow(dead_code)]
 pub struct ProjectExtensionMetadata {
     /// Extension name (for logging and debugging).
     pub name: &'static str,

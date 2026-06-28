@@ -127,5 +127,6 @@ pub trait McpClient: Send + Sync {
     /// `request_id`. Transports that can't deliver it (stdio's rmcp wrapper)
     /// no-op. `request_id` is the JSON-RPC id the client assigned to the
     /// in-flight request.
+    #[allow(dead_code)]
     async fn cancel(&mut self, request_id: i64, reason: &str) -> Result<(), AppError>;
 }

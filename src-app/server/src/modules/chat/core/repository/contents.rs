@@ -82,40 +82,6 @@ pub async fn append_content(
     Ok(content)
 }
 
-/// Create a new content block with an explicit UUID (used when the ID must be pre-registered,
-/// e.g. elicitation rows where the registry stores the content_id before the row is inserted).
-pub async fn create_content_with_id(
-    pool: &PgPool,
-    id: Uuid,
-    message_id: Uuid,
-    content_type: &str,
-    initial_data: MessageContentData,
-    sequence_order: i32,
-) -> Result<MessageContent, AppError> {
-    let content_json =
-        serde_json::to_value(&initial_data).map_err(AppError::database_error)?;
-
-    let content = sqlx::query_as!(
-        MessageContent,
-        r#"
-        INSERT INTO message_contents (id, message_id, content_type, content, sequence_order)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, message_id, content_type, content, sequence_order,
-                  created_at as "created_at: _", updated_at as "updated_at: _"
-        "#,
-        id,
-        message_id,
-        content_type,
-        content_json,
-        sequence_order
-    )
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::database_error)?;
-
-    Ok(content)
-}
-
 /// Append a content block with a pre-registered UUID, computing the next
 /// `sequence_order` as `MAX+1` inside the INSERT. Id-preserving sibling of
 /// `append_content` for elicitation rows whose content id is registered before
