@@ -260,3 +260,60 @@ async fn structured_content_persists_on_block() {
         "structured_content must persist on the block: {block}"
     );
 }
+
+#[tokio::test]
+async fn get_tool_result_is_branch_agnostic() {
+    // Recall is conversation-scoped but branch-AGNOSTIC: a tool_result persisted
+    // on one branch must still be recallable after the conversation's
+    // active_branch_id is switched to a DIFFERENT (empty) branch.
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "tr_branch", &[]).await;
+    let (conv, _msg) = seed_tool_result(
+        &server,
+        &user.user_id,
+        "toolu_branch1",
+        "Result lives on the original branch only.",
+        None,
+    )
+    .await;
+
+    // Add a second, empty branch and make IT the active one.
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    let other_branch = Uuid::new_v4();
+    sqlx::query(
+        r#"INSERT INTO branches (id, conversation_id, parent_branch_id, created_from_message_id, created_at)
+           VALUES ($1, $2, NULL, NULL, NOW())"#,
+    )
+    .bind(other_branch)
+    .bind(conv)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE conversations SET active_branch_id = $1 WHERE id = $2")
+        .bind(other_branch)
+        .bind(conv)
+        .execute(&pool)
+        .await
+        .unwrap();
+    pool.close().await;
+
+    // The active branch now has NO tool_result, but recall must still find it.
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        Some(&conv.to_string()),
+        "tools/call",
+        json!({ "name": "get_tool_result", "arguments": { "tool_use_id": "toolu_branch1" } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: Value = res.json().await.unwrap();
+    let text = body["result"]["content"][0]["text"].as_str().unwrap_or("");
+    assert!(
+        text.contains("Result lives on the original branch only."),
+        "recall must be branch-agnostic (found on non-active branch): {text}"
+    );
+    assert_eq!(body["result"]["structuredContent"]["tool_use_id"], "toolu_branch1");
+}
