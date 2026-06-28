@@ -27,8 +27,6 @@
  *     transparent window — a separate, larger change.
  */
 
-import { theme } from 'antd'
-import tinycolor from 'tinycolor2'
 import { LeftSidebar as CoreLeftSidebar } from '@ziee/ui-core/modules/layouts/app-layout/components/LeftSidebar'
 import { useWindowMinSize } from '@ziee/ui-core/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { Stores } from '@/core/stores'
@@ -107,7 +105,6 @@ if (GLASS_ACTIVE && typeof document !== 'undefined') {
 // chrome painted, then the effect's appendChild stripped it.)
 
 export function LeftSidebar() {
-  const { token } = theme.useToken()
   const windowMinSize = useWindowMinSize()
   const { isSidebarCollapsed } = Stores.AppLayout
 
@@ -161,9 +158,7 @@ export function LeftSidebar() {
         // Alpha'd `colorBgContainer` (white) so the glass tint stays
         // brighter than the surrounding off-white surfaces. In dark
         // mode this picks up the dark container hue automatically.
-        backgroundColor: tinycolor(token.colorBgContainer)
-          .setAlpha(0.6)
-          .toRgbString(),
+        backgroundColor: 'color-mix(in srgb, var(--card) 60%, transparent)',
         backdropFilter: 'blur(30px) saturate(180%)',
         WebkitBackdropFilter: 'blur(30px) saturate(180%)',
         // All-sides 1px border via inset shadow (stays inside the
@@ -191,9 +186,9 @@ export function LeftSidebar() {
         // the slide tempo.
         boxShadow:
           isSidebarCollapsed || windowMinSize.xs
-            ? `inset 0 0 0 1px ${token.colorBorderSecondary}, ` +
+            ? `inset 0 0 0 1px var(--border), ` +
               'inset 0 1px 0 rgba(255, 255, 255, 0.30)'
-            : `inset 0 0 0 1px ${token.colorBorderSecondary}, ` +
+            : `inset 0 0 0 1px var(--border), ` +
               'inset 0 1px 0 rgba(255, 255, 255, 0.30), ' +
               // Softened drop shadow — was rgba(0,0,0,0.12). The
               // original carried more weight than the macOS floating

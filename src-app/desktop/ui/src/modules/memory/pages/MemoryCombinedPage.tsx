@@ -14,7 +14,7 @@
  * we stacked two whole pages).
  */
 
-import { Divider, Typography } from 'antd'
+import { Separator, Title } from '@/components/ui'
 import { SettingsPageContainer } from '@ziee/ui-core/modules/settings/components/SettingsPageContainer'
 
 // User sections (web: /settings/memory)
@@ -39,19 +39,19 @@ export function MemoryCombinedPage() {
       title="Memory"
       subtitle="Persistent memory the assistant keeps about you, plus deployment-wide configuration."
     >
-      <Typography.Title level={5} className="!mt-2 !mb-0">
+      <Title level={5} className="!mt-2 !mb-0">
         Your preferences
-      </Typography.Title>
+      </Title>
       <PreferencesSection />
       <MyMemoriesSection />
       <CoreMemorySection />
       <AuditLogSection />
 
-      <Divider className="!my-4" />
+      <Separator className="!my-4" />
 
-      <Typography.Title level={5} className="!mt-2 !mb-0">
+      <Title level={5} className="!mt-2 !mb-0">
         Administration
-      </Typography.Title>
+      </Title>
       <RebuildStatusSection />
       <MemorySection />
       <FullTextSearchSection />

@@ -13,7 +13,7 @@
 
 import { createModule, type AppModule } from '@ziee/ui-core'
 import { lazy } from 'react'
-import { BookOutlined } from '@ant-design/icons'
+import { Book } from 'lucide-react'
 import { SettingsLayoutDef } from '@ziee/ui-core/modules/settings/SettingsLayout'
 
 const MemoryCombinedPage = lazy(() =>
@@ -42,7 +42,7 @@ const memoryDesktopModule: AppModule = createModule({
     settingsUserPages: [
       {
         id: 'memory-desktop',
-        icon: <BookOutlined />,
+        icon: <Book />,
         label: 'Memory',
         path: 'memory-combined',
         // Same order as core's user-side Memory entry so the desktop
