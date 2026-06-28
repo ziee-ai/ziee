@@ -31,6 +31,8 @@ export type MenuProps = {
   collapsed?: boolean
   className?: string
   'aria-label': string
+  /** Test selector — forwarded onto <root>. Items derive `${testid}-item-${key}`. */
+  'data-testid'?: string
 } & KitStyleProps
 
 // Extract a plain-text accessible name from a label node (used when `collapsed` hides it).
@@ -38,12 +40,13 @@ function labelText(label: React.ReactNode): string | undefined {
   return typeof label === 'string' ? label : undefined
 }
 
-function Items({ items, selectedSet, onSelect, locked, collapsed }: {
+function Items({ items, selectedSet, onSelect, locked, collapsed, itemTestid }: {
   items: MenuItem[]
   selectedSet: Set<string>
   onSelect?: (k: string) => void
   locked: boolean
   collapsed: boolean
+  itemTestid?: (key: string) => string | undefined
 }) {
   return (
     <>
@@ -55,7 +58,7 @@ function Items({ items, selectedSet, onSelect, locked, collapsed }: {
               {/* group caption is decorative chrome — hidden in the collapsed rail. */}
               {!collapsed && <div className="px-3 py-1 text-xs font-medium text-muted-foreground">{it.label}</div>}
               <ul className="contents">
-                <Items items={it.children} selectedSet={selectedSet} onSelect={onSelect} locked={locked} collapsed={collapsed} />
+                <Items items={it.children} selectedSet={selectedSet} onSelect={onSelect} locked={locked} collapsed={collapsed} itemTestid={itemTestid} />
               </ul>
             </li>
           )
@@ -77,6 +80,7 @@ function Items({ items, selectedSet, onSelect, locked, collapsed }: {
             <button
               type="button"
               disabled={item.disabled || locked}
+              data-testid={itemTestid?.(item.key)}
               aria-current={selected ? 'page' : undefined}
               // collapsed hides the text → the label becomes the button's accessible name + tooltip.
               aria-label={collapsed ? name : undefined}
@@ -99,8 +103,12 @@ function Items({ items, selectedSet, onSelect, locked, collapsed }: {
   )
 }
 
-export function Menu({ items, selectedKey, selectedKeys, onSelect, mode = 'vertical', collapsed = false, className, style, 'aria-label': ariaLabel }: MenuProps) {
+export function Menu({ items, selectedKey, selectedKeys, onSelect, mode = 'vertical', collapsed = false, className, style, 'aria-label': ariaLabel, 'data-testid': testid }: MenuProps) {
   const s = useSurface({})
+  const itemTestid = React.useCallback(
+    (k: string) => (testid ? `${testid}-item-${k}` : undefined),
+    [testid],
+  )
   // Merge the single + multi selection inputs into one O(1) lookup set.
   const selectedSet = React.useMemo(() => {
     const set = new Set(selectedKeys ?? [])
@@ -108,9 +116,9 @@ export function Menu({ items, selectedKey, selectedKeys, onSelect, mode = 'verti
     return set
   }, [selectedKey, selectedKeys])
   return (
-    <nav aria-label={ariaLabel} style={style}>
+    <nav aria-label={ariaLabel} style={style} data-testid={testid}>
       <ul className={cn(mode === 'horizontal' ? 'flex items-center gap-1' : 'flex flex-col gap-0.5', className)}>
-        <Items items={items} selectedSet={selectedSet} onSelect={onSelect} locked={!!s.disabled} collapsed={collapsed} />
+        <Items items={items} selectedSet={selectedSet} onSelect={onSelect} locked={!!s.disabled} collapsed={collapsed} itemTestid={itemTestid} />
       </ul>
     </nav>
   )

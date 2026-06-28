@@ -28,6 +28,8 @@ export interface TableProps<T> {
   empty?: React.ReactNode
   className?: string
   onRowClick?: (record: T, index: number) => void
+  /** Test selector — forwarded onto <root>. Rows derive `${testid}-row-${rowKey}`. */
+  'data-testid'?: string
 }
 
 const alignCls = { left: 'text-left', center: 'text-center', right: 'text-right' } as const
@@ -40,13 +42,13 @@ function defaultCell(v: unknown): React.ReactNode {
   return v as React.ReactNode
 }
 
-export function Table<T>({ columns, dataSource, rowKey, loading, caption, empty, className, onRowClick }: TableProps<T>) {
+export function Table<T>({ columns, dataSource, rowKey, loading, caption, empty, className, onRowClick, 'data-testid': testid }: TableProps<T>) {
   const s = useSurface({})
   const busy = loading || s.loading
   const keyOf = (record: T, i: number) =>
     typeof rowKey === 'function' ? rowKey(record, i) : String((record as Record<string, unknown>)[rowKey])
   return (
-    <Base className={className}>
+    <Base className={className} data-testid={testid}>
       {caption != null && <TableCaption>{caption}</TableCaption>}
       <TableHeader>
         <TableRow>
@@ -74,6 +76,7 @@ export function Table<T>({ columns, dataSource, rowKey, loading, caption, empty,
           dataSource.map((record, i) => (
             <TableRow
               key={keyOf(record, i)}
+              data-testid={testid ? `${testid}-row-${keyOf(record, i)}` : undefined}
               // Keyboard-operable when clickable: focusable + Enter/Space activate. We keep the
               // native row semantics (no role override — role="button" on a <tr> is invalid ARIA
               // and breaks cell association).

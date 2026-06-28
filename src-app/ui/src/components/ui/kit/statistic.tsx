@@ -12,9 +12,11 @@ export type StatisticProps = {
   /** Intl locale grouping for numeric values (e.g. thousands separators). */
   groupSeparator?: boolean
   className?: string
+  /** Test selector — forwarded onto <root> (i18n-safe). */
+  'data-testid'?: string
   valueClassName?: string} & KitStyleProps
 
-export function Statistic({ title, value, precision, prefix, suffix, groupSeparator = true, className, valueClassName, style }: StatisticProps) {
+export function Statistic({ title, value, precision, prefix, suffix, groupSeparator = true, className, valueClassName, style, 'data-testid': testid }: StatisticProps) {
   let display: React.ReactNode = value
   if (typeof value === 'number') {
     display = precision != null
@@ -22,7 +24,7 @@ export function Statistic({ title, value, precision, prefix, suffix, groupSepara
       : value.toLocaleString(undefined, { useGrouping: groupSeparator })
   }
   return (
-    <div className={cn('flex flex-col gap-1', className)} style={style}>
+    <div className={cn('flex flex-col gap-1', className)} style={style} data-testid={testid}>
       <span className="text-sm text-muted-foreground">{title}</span>
       <span className={cn('flex items-baseline gap-1 text-2xl font-semibold tabular-nums', valueClassName)}>
         {prefix != null && <span className="text-base">{prefix}</span>}

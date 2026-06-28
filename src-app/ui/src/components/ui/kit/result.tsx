@@ -19,14 +19,16 @@ export interface ResultProps {
   icon?: React.ReactNode
   extra?: React.ReactNode
   className?: string
+  /** Test selector — forwarded onto <root> (i18n-safe). */
+  'data-testid'?: string
 }
 
-export function Result({ status = 'info', title, subtitle, icon, extra, className }: ResultProps) {
+export function Result({ status = 'info', title, subtitle, icon, extra, className, 'data-testid': testid }: ResultProps) {
   const semantic = codeAlias[status] ?? (status as 'success' | 'error' | 'warning' | 'info')
   const Icon = icons[semantic]
   const role = semantic === 'error' || semantic === 'warning' ? 'alert' : 'status'
   return (
-    <div role={role} className={cn('flex flex-col items-center gap-2 px-6 py-12 text-center', className)}>
+    <div role={role} className={cn('flex flex-col items-center gap-2 px-6 py-12 text-center', className)} data-testid={testid}>
       {icon ?? <Icon className={cn('size-12', colors[semantic])} aria-hidden />}
       <div className="text-lg font-semibold">{title}</div>
       {subtitle != null && <div className="max-w-md text-sm text-muted-foreground">{subtitle}</div>}

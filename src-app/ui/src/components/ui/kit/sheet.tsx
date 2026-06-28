@@ -18,6 +18,8 @@ type SheetBase = {
   maskClosable?: boolean
   className?: string
   children?: React.ReactNode
+  /** Test selector — forwarded onto the sheet content <root> (i18n-safe). */
+  'data-testid'?: string
 } & (
   // loading replaces the body with a spinner; its accessible name is REQUIRED then (i18n).
   | { loading?: false; loadingLabel?: never }
@@ -38,7 +40,7 @@ export type SheetProps =
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(Math.max(n, lo), hi)
 
-export function Sheet({ open, onOpenChange, title, description, footer, side = 'right', trigger, maskClosable = true, loading, loadingLabel, className, children, ...rest }: SheetProps) {
+export function Sheet({ open, onOpenChange, title, description, footer, side = 'right', trigger, maskClosable = true, loading, loadingLabel, className, children, 'data-testid': testid, ...rest }: SheetProps) {
   const resizable = (rest as { resizable?: boolean }).resizable
   const resizeLabel = (rest as { resizeLabel?: string }).resizeLabel
   const minSize = (rest as { minSize?: number }).minSize ?? 280
@@ -82,6 +84,7 @@ export function Sheet({ open, onOpenChange, title, description, footer, side = '
         style={resizable ? (horizontal ? { width: size } : { height: size }) : undefined}
         // maskClosable=false → backdrop click no longer dismisses (Escape still works).
         onPointerDownOutside={maskClosable ? undefined : (e) => e.preventDefault()}
+        data-testid={testid}
         {...(description == null ? { 'aria-describedby': undefined } : {})}
       >
         <SheetHeader>

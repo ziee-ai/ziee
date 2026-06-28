@@ -29,9 +29,11 @@ export interface ProgressProps {
   className?: string
   /** Required accessible name (no default — caller owns the string for i18n). */
   'aria-label': string
+  /** Test selector — forwarded onto <root> (i18n-safe). */
+  'data-testid'?: string
 }
 
-export function Progress({ value, tone = 'primary', size = 'default', shape = 'line', circleSize = 120, showInfo, format, className, 'aria-label': ariaLabel }: ProgressProps) {
+export function Progress({ value, tone = 'primary', size = 'default', shape = 'line', circleSize = 120, showInfo, format, className, 'aria-label': ariaLabel, 'data-testid': testid }: ProgressProps) {
   const v = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0))
   if (shape === 'circle') {
     const stroke = size === 'sm' ? 6 : 8
@@ -44,6 +46,7 @@ export function Progress({ value, tone = 'primary', size = 'default', shape = 'l
         className={cn('relative inline-flex items-center justify-center', className)}
         style={{ width: circleSize, height: circleSize }}
         role="progressbar" aria-label={ariaLabel} aria-valuenow={Math.round(v)} aria-valuemin={0} aria-valuemax={100}
+        data-testid={testid}
       >
         <svg width={circleSize} height={circleSize} className={cn('-rotate-90', strokeCls[tone])}>
           <circle cx={circleSize / 2} cy={circleSize / 2} r={r} fill="none" strokeWidth={stroke} className="stroke-muted" />
@@ -67,12 +70,13 @@ export function Progress({ value, tone = 'primary', size = 'default', shape = 'l
       value={v}
       aria-label={ariaLabel}
       aria-valuetext={`${Math.round(v)}%`}
+      data-testid={!showInfo && !format ? testid : undefined}
       className={cn(toneCls[tone], size === 'sm' && 'h-1.5', !showInfo && !format && className)}
     />
   )
   if (!showInfo && !format) return bar
   return (
-    <div className={cn('flex items-center gap-2', className)}>
+    <div className={cn('flex items-center gap-2', className)} data-testid={testid}>
       <div className="flex-1">{bar}</div>
       <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
         {format ? format(Math.round(v)) : `${Math.round(v)}%`}

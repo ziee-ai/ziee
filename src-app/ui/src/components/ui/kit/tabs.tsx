@@ -35,11 +35,13 @@ export interface TabsProps {
   addLabel?: string
   /** Accessible name for a tab's close affordance. Falls back to "Close <label>". */
   closeLabel?: (item: TabItem) => string
+  /** Test selector — forwarded onto <root>. Triggers derive `${testid}-tab-${key}`, panels `${testid}-panel-${key}`. */
+  'data-testid'?: string
 }
 
 export function Tabs({
   items, value, defaultValue, onValueChange, onTabClick, disabled, size, className,
-  editable, hideAdd, onEdit, onClose, addLabel, closeLabel,
+  editable, hideAdd, onEdit, onClose, addLabel, closeLabel, 'data-testid': testid,
 }: TabsProps) {
   // React to an ambient disabled surface (e.g. inside a disabled Form/Card).
   const s = useSurface({ disabled })
@@ -56,6 +58,7 @@ export function Tabs({
       defaultValue={value === undefined ? (defaultValue ?? items[0]?.key) : undefined}
       onValueChange={onValueChange}
       className={cn('w-full', className)}
+      data-testid={testid}
     >
       <TabsList>
         {items.map((t) => {
@@ -68,6 +71,7 @@ export function Tabs({
               <TabsTrigger
                 value={t.key}
                 disabled={t.disabled || s.disabled}
+                data-testid={testid ? `${testid}-tab-${t.key}` : undefined}
                 onClick={() => onTabClick?.(t.key)}
                 className={cn(size === 'sm' && 'px-2 py-1 text-xs', showClose && 'pr-7')}
               >
@@ -101,7 +105,7 @@ export function Tabs({
         )}
       </TabsList>
       {items.map((t) => (
-        <TabsContent key={t.key} value={t.key}>
+        <TabsContent key={t.key} value={t.key} data-testid={testid ? `${testid}-panel-${t.key}` : undefined}>
           {t.children}
         </TabsContent>
       ))}

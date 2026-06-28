@@ -3,11 +3,16 @@ import { type KitStyleProps } from './style-guard'
 import { cn } from '@/lib/utils'
 
 // legacy Layout: structural flex regions. Layout + Header/Sider/Content/Footer subcomponents.
-type Div = { children?: React.ReactNode; className?: string } & KitStyleProps
+type Div = {
+  children?: React.ReactNode
+  className?: string
+  /** Test selector — forwarded onto <root> (i18n-safe). */
+  'data-testid'?: string
+} & KitStyleProps
 
 function make(tag: 'header' | 'footer' | 'aside' | 'main' | 'div', base: string, display = 'Layout') {
-  const C = ({ children, className, style }: Div) =>
-    React.createElement(tag, { className: cn(base, className), style }, children)
+  const C = ({ children, className, style, 'data-testid': testid }: Div) =>
+    React.createElement(tag, { className: cn(base, className), style, 'data-testid': testid }, children)
   C.displayName = display
   return C
 }
@@ -16,8 +21,8 @@ export type LayoutProps = Div & {
   /** Lay children out in a row (e.g. Sider + Content) instead of a column. */
   hasSider?: boolean
 }
-function LayoutRoot({ children, className, style, hasSider }: LayoutProps) {
-  return <div className={cn('flex min-h-0 flex-1', hasSider ? 'flex-row' : 'flex-col', className)} style={style}>{children}</div>
+function LayoutRoot({ children, className, style, hasSider, 'data-testid': testid }: LayoutProps) {
+  return <div className={cn('flex min-h-0 flex-1', hasSider ? 'flex-row' : 'flex-col', className)} style={style} data-testid={testid}>{children}</div>
 }
 LayoutRoot.displayName = 'Layout'
 

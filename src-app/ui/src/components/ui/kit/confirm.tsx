@@ -25,11 +25,13 @@ export interface ConfirmProps {
   onOpenChange?: (open: boolean) => void
   /** The trigger element. Optional when driving the dialog via `open`/`onOpenChange`. */
   children?: React.ReactElement
+  /** Test selector — forwarded onto the dialog content <root> (i18n-safe). */
+  'data-testid'?: string
 }
 
 // Built on AlertDialog (modal + focus-trapped + focus-restoring), not a Popover — an
 // "are you sure?" prompt must trap focus and inert the background.
-export function Confirm({ title, description, okText, cancelText, danger, onConfirm, onCancel, okButtonProps, open, onOpenChange, children }: ConfirmProps) {
+export function Confirm({ title, description, okText, cancelText, danger, onConfirm, onCancel, okButtonProps, open, onOpenChange, children, 'data-testid': testid }: ConfirmProps) {
   // Controllable: caller may drive `open` (trigger-less) or let the trigger own it.
   const [isOpen, setOpen] = useControllableState<boolean>({
     value: open, defaultValue: false, onChange: onOpenChange,
@@ -51,7 +53,7 @@ export function Confirm({ title, description, okText, cancelText, danger, onConf
     <Root open={isOpen} onOpenChange={(o) => { setOpen(o); if (!o) onCancel?.() }}>
       {children != null && <AlertDialogTrigger asChild>{children}</AlertDialogTrigger>}
       {/* suppress Radix's missing-description warning when intentionally absent */}
-      <AlertDialogContent {...(description == null ? { 'aria-describedby': undefined } : {})}>
+      <AlertDialogContent data-testid={testid} {...(description == null ? { 'aria-describedby': undefined } : {})}>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           {description != null && <AlertDialogDescription>{description}</AlertDialogDescription>}

@@ -17,12 +17,14 @@ export type DescriptionsProps = {
   column?: number
   bordered?: boolean
   size?: 'sm' | 'default'
+  /** Test selector — forwarded onto <root> (i18n-safe). */
+  'data-testid'?: string
   className?: string} & KitStyleProps
 
-export function Descriptions({ items, title, column = 1, bordered, size = 'default', className, style }: DescriptionsProps) {
+export function Descriptions({ items, title, column = 1, bordered, size = 'default', className, style, 'data-testid': testid }: DescriptionsProps) {
   const pad = size === 'sm' ? 'px-3 py-1.5 text-xs' : 'px-4 py-2 text-sm'
   return (
-    <div className={cn('w-full', className)} style={style}>
+    <div className={cn('w-full', className)} style={style} data-testid={testid}>
       {title != null && <div className="mb-2 font-semibold">{title}</div>}
       <dl
         className={cn('grid', bordered && 'overflow-hidden rounded-md border')}

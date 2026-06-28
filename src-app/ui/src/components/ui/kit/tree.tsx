@@ -43,6 +43,8 @@ export type TreeProps = {
   itemHeight?: number
   className?: string
   'aria-label': string
+  /** Test selector — forwarded onto <root> (i18n-safe). */
+  'data-testid'?: string
 } & KitStyleProps
 
 interface FlatRow { node: TreeNode; level: number; parentKey?: string }
@@ -99,6 +101,7 @@ export function Tree({
   selectedKey, defaultSelectedKey, onSelect,
   checkable, checkedKeys, defaultCheckedKeys, onCheck, loadData,
   virtual, height = 320, itemHeight = 28, className, style, 'aria-label': ariaLabel,
+  'data-testid': testid,
 }: TreeProps) {
   const maps = React.useMemo(() => buildMaps(treeData), [treeData])
   // autoExpandParent is a ONE-SHOT seed: expand ancestors of the initial keys, then never widen
@@ -261,7 +264,7 @@ export function Tree({
 
   if (!virtual) {
     return (
-      <ul role="tree" aria-label={ariaLabel} aria-multiselectable={checkable || undefined} className={className} style={style} onKeyDown={onKeyDown}>
+      <ul role="tree" aria-label={ariaLabel} aria-multiselectable={checkable || undefined} className={className} style={style} onKeyDown={onKeyDown} data-testid={testid}>
         {rows.map((r) => rowEl(r))}
       </ul>
     )
@@ -276,6 +279,7 @@ export function Tree({
       onKeyDown={onKeyDown}
       className={cn('overflow-auto', className)}
       style={{ height, ...style }}
+      data-testid={testid}
     >
       <div role="none" style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
         {items.map((vi) => rowEl(rows[vi.index], { position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${vi.start}px)` }))}

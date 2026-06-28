@@ -10,11 +10,13 @@ export interface EmptyProps {
   /** Action(s) — e.g. a "Create" button. */
   children?: React.ReactNode
   className?: string
+  /** Test selector — forwarded onto <root> (i18n-safe). */
+  'data-testid'?: string
 }
 
-export function Empty({ title, description, icon, image, children, className }: EmptyProps) {
+export function Empty({ title, description, icon, image, children, className, 'data-testid': testid }: EmptyProps) {
   return (
-    <Base className={className}>
+    <Base className={className} data-testid={testid}>
       <EmptyHeader>
         {image != null
           ? <EmptyMedia variant="default" aria-hidden>{image}</EmptyMedia>

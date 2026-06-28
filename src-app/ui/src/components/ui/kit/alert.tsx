@@ -25,6 +25,8 @@ interface AlertCommon {
   icon?: React.ReactNode
   className?: string
   children?: React.ReactNode
+  /** Test selector — forwarded onto <root> (i18n-safe). */
+  'data-testid'?: string
 }
 // A dismissible alert MUST supply both onClose and an explicit closeLabel (no built-in
 // default — the caller owns the string so it can be translated).
@@ -32,13 +34,13 @@ export type AlertProps =
   | (AlertCommon & { onClose?: undefined; closeLabel?: never })
   | (AlertCommon & { onClose: () => void; closeLabel: string })
 
-export function Alert({ tone = 'info', title, description, icon, className, children, ...rest }: AlertProps) {
+export function Alert({ tone = 'info', title, description, icon, className, children, 'data-testid': testid, ...rest }: AlertProps) {
   const Icon = toneIcon[tone]
   const role = tone === 'error' || tone === 'warning' ? 'alert' : 'status'
   const onClose = (rest as { onClose?: () => void }).onClose
   const closeLabel = (rest as { closeLabel?: string }).closeLabel
   return (
-    <Base role={role} className={cn(toneCls[tone], onClose && 'pr-10', 'relative', className)}>
+    <Base role={role} className={cn(toneCls[tone], onClose && 'pr-10', 'relative', className)} data-testid={testid}>
       {icon != null ? <span aria-hidden>{icon}</span> : <Icon className="size-4" aria-hidden />}
       {title != null && <AlertTitle>{title}</AlertTitle>}
       {(description != null || children != null) && (

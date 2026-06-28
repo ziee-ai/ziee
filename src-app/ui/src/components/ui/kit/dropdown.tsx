@@ -32,13 +32,15 @@ export interface DropdownProps {
   onOpenChange?: (open: boolean) => void
   /** Initial open state when uncontrolled (legacy `defaultOpen`). */
   defaultOpen?: boolean
+  /** Test selector — forwarded onto the menu content <root>. Items derive `${testid}-item-${key}`. */
+  'data-testid'?: string
 }
 
-export function Dropdown({ items, children, side, align = 'end', disabled, onSelect, open, onOpenChange, defaultOpen }: DropdownProps) {
+export function Dropdown({ items, children, side, align = 'end', disabled, onSelect, open, onOpenChange, defaultOpen, 'data-testid': testid }: DropdownProps) {
   return (
     <Root open={open} onOpenChange={onOpenChange} defaultOpen={defaultOpen}>
       <DropdownMenuTrigger asChild disabled={disabled}>{children}</DropdownMenuTrigger>
-      <DropdownMenuContent side={side} align={align}>
+      <DropdownMenuContent side={side} align={align} data-testid={testid}>
         {items.map((it, i) =>
           'type' in it && it.type === 'divider' ? (
             <DropdownMenuSeparator key={`d${i}`} />
@@ -47,6 +49,7 @@ export function Dropdown({ items, children, side, align = 'end', disabled, onSel
           ) : (
             <DropdownMenuItem
               key={(it as { key: string }).key}
+              data-testid={testid ? `${testid}-item-${(it as { key: string }).key}` : undefined}
               disabled={(it as { disabled?: boolean }).disabled}
               onClick={() => {
                 ;(it as { onClick?: () => void }).onClick?.()
