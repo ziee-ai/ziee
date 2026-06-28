@@ -226,7 +226,7 @@ async fn import_workflow_inner(
     let content = match tokio::fs::read_to_string(&wf_path).await {
         Ok(c) => c,
         Err(e) => {
-            let _ = std::fs::remove_dir_all(&extraction.extracted_path);
+            let _ = tokio::fs::remove_dir_all(&extraction.extracted_path).await;
             return Err(AppError::bad_request(
                 "WORKFLOW_NO_ENTRY_POINT",
                 format!("bundle is missing workflow.yaml: {e}"),
@@ -237,21 +237,21 @@ async fn import_workflow_inner(
     let workflow_def = match validate::parse_workflow_yaml(&content) {
         Ok(d) => d,
         Err(e) => {
-            let _ = std::fs::remove_dir_all(&extraction.extracted_path);
+            let _ = tokio::fs::remove_dir_all(&extraction.extracted_path).await;
             return Err(e.into());
         }
     };
     if let Err(e) =
         validate::validate_for_install(&workflow_def, &extraction.extracted_path, true)
     {
-        let _ = std::fs::remove_dir_all(&extraction.extracted_path);
+        let _ = tokio::fs::remove_dir_all(&extraction.extracted_path).await;
         return Err(e.into());
     }
 
     // Reject if the computed MCP tool slug would overflow the 128-char
     // composed-name cap (slug body > 87 chars). Audit gap 4 / plan §4.
     if let Err(e) = crate::modules::workflow_mcp::tools::check_install_slug_len(&name) {
-        let _ = std::fs::remove_dir_all(&extraction.extracted_path);
+        let _ = tokio::fs::remove_dir_all(&extraction.extracted_path).await;
         return Err(e.into());
     }
 
@@ -304,7 +304,7 @@ async fn import_workflow_inner(
     let workflow = match repository::insert(Repos.pool(), create).await {
         Ok(w) => w,
         Err(e) => {
-            let _ = std::fs::remove_dir_all(&extraction.extracted_path);
+            let _ = tokio::fs::remove_dir_all(&extraction.extracted_path).await;
             return Err(e.into());
         }
     };
