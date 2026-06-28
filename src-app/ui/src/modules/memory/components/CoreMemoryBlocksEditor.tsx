@@ -1,22 +1,27 @@
 import { useEffect, useState } from 'react'
+import { z } from 'zod'
 import {
-  Typography,
+  Title,
+  Paragraph,
+  Text,
   Card,
   Input,
+  Textarea,
   Button,
-  Modal,
+  Dialog,
   Form,
-  InputNumber,
-  Popconfirm,
+  FormField,
+  useForm,
+  zodResolver,
+  Confirm,
   message,
   Space,
   Empty,
-} from 'antd'
+  InputNumber,
+} from '@/components/ui'
 import { DeleteOutlined, PlusOutlined, EditOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import type { CoreMemoryBlock } from '@/api-client/types'
-
-const { Title, Paragraph, Text } = Typography
 
 /**
  * Letta-style core-memory block editor for an assistant. Renders below
@@ -53,8 +58,7 @@ export function CoreMemoryBlocksEditor({
       }
       extra={
         <Button
-          type="primary"
-          size="small"
+          size="sm"
           icon={<PlusOutlined />}
           onClick={() => setCreating(true)}
         >
@@ -71,21 +75,17 @@ export function CoreMemoryBlocksEditor({
       </Paragraph>
 
       {blocks.length === 0 && !loading ? (
-        <Empty
-          description="No blocks yet"
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-        />
+        <Empty description="No blocks yet" />
       ) : (
         <div className="space-y-2">
           {blocks.map(b => (
-            <Card key={b.id} size="small">
+            <Card key={b.id} size="sm">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <Text strong>{b.block_label}</Text>
                   <Paragraph
                     type="secondary"
-                    className="!mt-1 !mb-0"
-                    ellipsis={{ rows: 2 }}
+                    className="!mt-1 !mb-0 line-clamp-2"
                   >
                     {b.content}
                   </Paragraph>
@@ -93,13 +93,14 @@ export function CoreMemoryBlocksEditor({
                 <Space>
                   <Button
                     icon={<EditOutlined />}
-                    size="small"
+                    size="sm"
                     onClick={() => setEditing(b)}
                   />
-                  <Popconfirm
+                  <Confirm
                     title="Delete this block?"
                     description={`The "${b.block_label}" block will be removed from this assistant's core memory.`}
                     okText="Delete"
+                    cancelText="Cancel"
                     okButtonProps={{ danger: true }}
                     onConfirm={async () => {
                       try {
@@ -119,11 +120,11 @@ export function CoreMemoryBlocksEditor({
                   >
                     <Button
                       icon={<DeleteOutlined />}
-                      size="small"
-                      danger
+                      size="sm"
+                      variant="destructive"
                       aria-label={`Delete block ${b.block_label}`}
                     />
-                  </Popconfirm>
+                  </Confirm>
                 </Space>
               </div>
             </Card>
@@ -146,6 +147,16 @@ export function CoreMemoryBlocksEditor({
   )
 }
 
+const blockSchema = z.object({
+  block_label: z
+    .string()
+    .min(1, 'Required')
+    .regex(/^[a-z0-9_-]{1,64}$/, '1-64 chars, lowercase letters, digits, _ or -'),
+  content: z.string().min(1, 'Required').max(50_000),
+  char_limit: z.number().min(1).max(50_000),
+})
+type BlockFormValues = z.infer<typeof blockSchema>
+
 function BlockFormModal({
   open,
   assistantId,
@@ -157,26 +168,21 @@ function BlockFormModal({
   existing?: CoreMemoryBlock
   onClose: () => void
 }) {
-  const [form] = Form.useForm<{
-    block_label: string
-    content: string
-    char_limit: number
-  }>()
+  const form = useForm<BlockFormValues>({
+    resolver: zodResolver(blockSchema),
+    defaultValues: { block_label: '', content: '', char_limit: 2000 },
+  })
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (open) {
-      form.setFieldsValue(
+      form.reset(
         existing ?? { block_label: '', content: '', char_limit: 2000 },
       )
     }
   }, [open, existing])
 
-  const handleSubmit = async (values: {
-    block_label: string
-    content: string
-    char_limit: number
-  }) => {
+  const handleSubmit = async (values: BlockFormValues) => {
     setSaving(true)
     try {
       await Stores.CoreMemoryBlocks.upsert({
@@ -195,51 +201,55 @@ function BlockFormModal({
   }
 
   return (
-    <Modal
+    <Dialog
       open={open}
+      onOpenChange={(v) => { if (!v) onClose() }}
       title={
         existing ? `Edit "${existing.block_label}"` : 'Add core memory block'
       }
-      onCancel={onClose}
-      confirmLoading={saving}
-      onOk={() => form.submit()}
-      okText={existing ? 'Save' : 'Add'}
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            loading={saving}
+            onClick={() => form.handleSubmit(handleSubmit)()}
+          >
+            {existing ? 'Save' : 'Add'}
+          </Button>
+        </>
+      }
     >
-      <Form form={form} layout="vertical" onFinish={handleSubmit}>
-        <Form.Item
+      <Form form={form} onSubmit={handleSubmit} layout="vertical">
+        <FormField
           name="block_label"
           label="Label"
-          rules={[
-            { required: true, message: 'Required' },
-            {
-              pattern: /^[a-z0-9_-]{1,64}$/,
-              message: '1-64 chars, lowercase letters, digits, _ or -',
-            },
-          ]}
+          required
         >
           <Input
             disabled={!!existing /* label is the natural key; can't rename */}
             placeholder="persona"
           />
-        </Form.Item>
-        <Form.Item
+        </FormField>
+        <FormField
           name="content"
           label="Content"
-          rules={[{ required: true, max: 50_000 }]}
+          required
         >
-          <Input.TextArea
+          <Textarea
             rows={6}
             placeholder="Always-in-context content. The assistant will see this prepended to every system prompt."
           />
-        </Form.Item>
-        <Form.Item
+        </FormField>
+        <FormField
           name="char_limit"
           label="Soft char limit"
-          extra="Advisory; the LLM may exceed when writing back. Used as a hint in the system prompt."
+          description="Advisory; the LLM may exceed when writing back. Used as a hint in the system prompt."
         >
           <InputNumber min={1} max={50_000} />
-        </Form.Item>
+        </FormField>
       </Form>
-    </Modal>
+    </Dialog>
   )
 }
