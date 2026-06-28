@@ -145,3 +145,82 @@ async fn run_with_mocks_on_published_workflow_is_rejected() {
         resp.text().await.unwrap_or_default()
     );
 }
+
+/// Fan-in DAG: a step with MORE THAN ONE `depends_on` (two upstream roots →
+/// one downstream join). The existing fixtures are all linear chains; this pins
+/// that the runner waits for BOTH upstreams before the join (the join's template
+/// references both outputs, so completion proves both resolved first).
+const FAN_IN_WORKFLOW_YAML: &str = r#"$schema: "/schemas/2026-06-12/workflow-definition.schema.json"
+inputs:
+  - name: topic
+    required: true
+steps:
+  - id: source_a
+    kind: llm
+    prompt: "Facts about {{ inputs.topic }} from source A. Return a JSON array."
+    output_format: json
+  - id: source_b
+    kind: llm
+    prompt: "Facts about {{ inputs.topic }} from source B. Return a JSON array."
+    output_format: json
+  - id: merge
+    kind: llm
+    prompt: |
+      Merge A={{ source_a.output | json }} and B={{ source_b.output | json }}.
+    depends_on: [source_a, source_b]
+outputs:
+  - name: merged
+    from: "{{ merge.output }}"
+    expose: full
+"#;
+
+#[tokio::test]
+async fn fan_in_dag_waits_for_all_upstreams_before_the_join_step() {
+    let server = plain_server().await;
+    let user = workflow_user(&server, "wf_fanin_user").await;
+
+    let wf = import_dev_workflow(&server, &user.token, "fan-in-merge", FAN_IN_WORKFLOW_YAML).await;
+    let wf_id = wf["id"].as_str().expect("workflow id").to_string();
+
+    let (_stub, conv_id) = stub_conversation(&server, &user.user_id, &user.token).await;
+
+    let run = run_workflow(
+        &server,
+        &user.token,
+        &wf_id,
+        json!({
+            "inputs": { "topic": "tardigrade biology" },
+            "conversation_id": conv_id.to_string(),
+            "mocks": {
+                "source_a": [{"fact": "A1"}, {"fact": "A2"}],
+                "source_b": [{"fact": "B1"}],
+                "merge": "FAN_IN_MERGE_MARKER both sources merged"
+            }
+        }),
+    )
+    .await;
+
+    let run_id = Uuid::parse_str(run["run_id"].as_str().expect("run_id")).unwrap();
+    let final_run = poll_run(&server, &user.token, run_id).await;
+    assert_eq!(
+        final_run["status"], "completed",
+        "the fan-in run must complete (both upstreams resolved before merge): {final_run}"
+    );
+
+    // All three steps recorded output — both upstreams AND the join.
+    let outputs = &final_run["step_outputs_json"];
+    for step in ["source_a", "source_b", "merge"] {
+        assert!(outputs.get(step).is_some(), "step '{step}' has output: {outputs}");
+    }
+
+    // The join step's output (which references BOTH upstreams) is readable.
+    let resp = reqwest::Client::new()
+        .get(server.api_url(&format!("/workflow-runs/{run_id}/output/merge")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("read merge output");
+    assert_eq!(resp.status(), 200);
+    let content = resp.text().await.expect("merge content");
+    assert!(content.contains("FAN_IN_MERGE_MARKER"), "join output present: {content}");
+}
