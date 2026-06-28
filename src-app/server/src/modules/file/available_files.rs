@@ -608,4 +608,45 @@ mod tests {
         let b = mk(Uuid::new_v4(), "x", Some("h2"), FileSource::Attachment);
         assert_eq!(dedup_by_checksum(vec![a, b]).len(), 2, "same name diff content stay distinct");
     }
+
+    /// `model_context_window` resolves the chat model's window from the curated
+    /// catalog when metadata carries `provider_type` + `model_name` (and no
+    /// `model_id`, so no DB lookup). This window is the INPUT to summarization's
+    /// fraction-of-window trigger override (`0.75 × window`); assert both the
+    /// resolved window and the derived override.
+    #[tokio::test]
+    async fn model_context_window_resolves_from_catalog_and_drives_075_override() {
+        use std::collections::HashMap;
+
+        let mut metadata: HashMap<String, serde_json::Value> = HashMap::new();
+        metadata.insert("provider_type".into(), serde_json::json!("openai"));
+        metadata.insert("model_name".into(), serde_json::json!("gpt-4o"));
+
+        let window = model_context_window(&metadata).await;
+        assert_eq!(
+            window,
+            Some(128000),
+            "gpt-4o window must resolve from the curated catalog"
+        );
+
+        // Mirror summarization::chat_extension::summarization.rs's override math.
+        let override_trigger = window.map(|w| (w as f64 * 0.75) as usize);
+        assert_eq!(
+            override_trigger,
+            Some(96000),
+            "fraction-of-window override must be 0.75 × the resolved window"
+        );
+    }
+
+    /// With neither a resolvable `model_id` nor a catalog-known
+    /// provider_type/model_name, the window is unknown → `None`, so no
+    /// fraction-of-window override is applied (the admin flat threshold stands).
+    #[tokio::test]
+    async fn model_context_window_unknown_model_is_none() {
+        use std::collections::HashMap;
+        let mut metadata: HashMap<String, serde_json::Value> = HashMap::new();
+        metadata.insert("provider_type".into(), serde_json::json!("openai"));
+        metadata.insert("model_name".into(), serde_json::json!("no-such-model-xyz"));
+        assert_eq!(model_context_window(&metadata).await, None);
+    }
 }
