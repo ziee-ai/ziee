@@ -1,4 +1,4 @@
-import { CSSProperties, useEffect, useRef } from 'react'
+import { CSSProperties, useLayoutEffect, useRef } from 'react'
 
 export const ResizeHandle = ({
   placement,
@@ -34,22 +34,25 @@ export const ResizeHandle = ({
 
   scale = scale ?? 1
 
-  useEffect(() => {
-    setTimeout(() => {
-      const refs = []
-      for (const parentLevel of parentLevels) {
-        let parent = ref.current?.parentElement
-        let level = 0
-        while (parent && level < parentLevel) {
-          parent = parent.parentElement
-          level++
-        }
-        if (!parent) continue
-        refs.push(parent)
+  // Resolve the parent element(s) the handle resizes. `useLayoutEffect` runs
+  // synchronously after the DOM is committed (including portal content, which
+  // mounts in the same commit), so `parentElement` is already available — no
+  // arbitrary setTimeout needed. parentRefs is only read on user interaction
+  // (the keyboard/drag handlers below), well after this resolves.
+  useLayoutEffect(() => {
+    const refs: HTMLElement[] = []
+    for (const parentLevel of parentLevels) {
+      let parent = ref.current?.parentElement ?? null
+      let level = 0
+      while (parent && level < parentLevel) {
+        parent = parent.parentElement
+        level++
       }
-      // @ts-ignore
-      parentRefs.current = refs
-    }, 1000) // hack to wait for the parent to be rendered when in a portal
+      if (!parent) continue
+      refs.push(parent)
+    }
+    parentRefs.current = refs
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const classNames = [
