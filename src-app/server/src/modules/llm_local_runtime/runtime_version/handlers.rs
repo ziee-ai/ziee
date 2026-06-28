@@ -474,21 +474,24 @@ pub async fn delete_runtime_version(
         })?;
     let mut effective_models = 0u32;
     for m in &local_models {
-        let resolved = match binary_manager
+        // Fail CLOSED: this is a delete-safety guard, so a DB error while
+        // resolving a model's effective version must NOT be silently treated as
+        // "not a dependent" (skipping it would undercount dependents and let an
+        // in-use version be deleted → orphaned dependents, the exact breakage
+        // this guard exists to prevent). Propagate the error as a 500 and abort
+        // the delete rather than guessing.
+        let resolved = binary_manager
             .select_runtime_version(Some(m.id), Some(m.provider_id), &version_record.engine)
             .await
-        {
-            Ok(v) => v,
-            Err(e) => {
-                // Skip this model on a transient lookup error (keep the loop
-                // resilient) but don't swallow it silently.
-                tracing::warn!(
-                    "runtime_version: select_runtime_version failed for model {}: {e}",
-                    m.id
-                );
-                None
-            }
-        };
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    AppError::internal_error(format!(
+                        "in-use guard: effective-version resolution failed for model {}: {e}",
+                        m.id
+                    )),
+                )
+            })?;
         if resolved.map(|v| v.id) == Some(version_id) {
             effective_models += 1;
         }
