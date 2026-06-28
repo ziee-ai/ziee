@@ -1046,3 +1046,93 @@ async fn test_message_assistant_attribution_persists_and_reads_back() {
     let res = get_attr(Uuid::new_v4()).await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 }
+
+// =====================================================
+// Template cloning on user creation (event_handlers.rs)
+// =====================================================
+
+/// CloneTemplateAssistantsHandler (fired async on UserEvent::Created) clones
+/// ONLY templates where `is_default && enabled` to each new user. A default+
+/// enabled template is cloned (as a non-template, non-default user assistant);
+/// a non-default template is NOT. We create both as admin BEFORE registering a
+/// fresh user, then poll that user's assistant list.
+#[tokio::test]
+async fn test_user_creation_clones_only_default_enabled_templates() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "tpl_clone_admin",
+        &["assistant_templates::create"],
+    )
+    .await;
+
+    let tag = &Uuid::new_v4().to_string()[..8];
+    let default_name = format!("CloneDefault-{tag}");
+    let nondefault_name = format!("CloneSkip-{tag}");
+    let client = reqwest::Client::new();
+    let mk_template = |name: String, is_default: bool| {
+        let client = client.clone();
+        let url = server.api_url("/assistant-templates");
+        let token = admin.token.clone();
+        async move {
+            let r = client
+                .post(url)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&json!({ "name": name, "is_default": is_default, "enabled": true }))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(r.status(), StatusCode::CREATED, "create template {name:?}");
+        }
+    };
+    mk_template(default_name.clone(), true).await;
+    mk_template(nondefault_name.clone(), false).await;
+
+    // Register a fresh user AFTER the templates exist → the async clone handler
+    // runs for this user.
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "tpl_clone_target",
+        &["assistants::read"],
+    )
+    .await;
+
+    // Poll the new user's assistant list until the cloned default appears.
+    let list_names = || {
+        let client = client.clone();
+        let url = server.api_url("/assistants");
+        let token = user.token.clone();
+        async move {
+            let body: serde_json::Value = client
+                .get(url)
+                .header("Authorization", format!("Bearer {token}"))
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            body["assistants"]
+                .as_array()
+                .map(|a| a.iter().filter_map(|x| x["name"].as_str().map(|s| s.to_string())).collect::<Vec<_>>())
+                .unwrap_or_default()
+        }
+    };
+
+    let mut names: Vec<String> = Vec::new();
+    for _ in 0..40 {
+        names = list_names().await;
+        if names.iter().any(|n| n == &default_name) {
+            break;
+        }
+        tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+    }
+    assert!(
+        names.iter().any(|n| n == &default_name),
+        "the default+enabled template must be cloned to the new user; got {names:?}"
+    );
+    assert!(
+        !names.iter().any(|n| n == &nondefault_name),
+        "the non-default template must NOT be cloned; got {names:?}"
+    );
+}
