@@ -668,3 +668,52 @@ async fn tools_call_wrong_typed_arg_errors_not_5xx() {
         "wrong-typed args must return a JSON-RPC error: {body}"
     );
 }
+
+/// `max_chars` clamping boundaries (handlers.rs:232 — `.clamp(1, 100_000)`).
+/// The clamp is an inline expression, only observable through the handler, so
+/// this seeds a content larger than the upper bound and drives `get_tool_result`
+/// with the boundary + out-of-range values, asserting `returned_chars` reflects
+/// the clamp (lower → 1, upper → 100_000) and that out-of-range values are
+/// clamped rather than erroring.
+#[tokio::test]
+async fn get_tool_result_clamps_max_chars_to_1_and_100000() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "tr_clamp", &[]).await;
+    // Bigger than the 100_000 upper clamp so the upper boundary is observable.
+    let big = "A".repeat(120_000);
+    let (conv, _msg) =
+        seed_tool_result(&server, &user.user_id, "toolu_clamp", &big, None).await;
+
+    // Helper: call get_tool_result with a given max_chars and return
+    // (returned_chars, has_more).
+    async fn returned(server: &TestServer, token: &str, conv: &str, max_chars: i64) -> (i64, bool) {
+        let res = jsonrpc(
+            server,
+            token,
+            Some(conv),
+            "tools/call",
+            json!({ "name": "get_tool_result",
+                    "arguments": { "tool_use_id": "toolu_clamp", "offset": 0, "max_chars": max_chars } }),
+        )
+        .send()
+        .await
+        .unwrap();
+        assert_eq!(res.status(), 200, "clamp call must succeed (max_chars={max_chars})");
+        let body: Value = res.json().await.unwrap();
+        let sc = &body["result"]["structuredContent"];
+        assert_eq!(sc["total_chars"], 120_000, "total preserved: {body}");
+        (sc["returned_chars"].as_i64().unwrap(), sc["has_more"].as_bool().unwrap())
+    }
+
+    // Lower boundary: max_chars=1 → exactly 1 char returned, more remains.
+    assert_eq!(returned(&server, &user.token, &conv.to_string(), 1).await, (1, true));
+    // Below the lower bound: max_chars=0 → clamped UP to 1 (not an empty page,
+    // not an error).
+    assert_eq!(returned(&server, &user.token, &conv.to_string(), 0).await, (1, true));
+    // Upper boundary: max_chars=100_000 → exactly the cap, more remains
+    // (120_000 total).
+    assert_eq!(returned(&server, &user.token, &conv.to_string(), 100_000).await, (100_000, true));
+    // Above the upper bound: max_chars=200_000 → clamped DOWN to 100_000 (no
+    // error, does not return all 120_000).
+    assert_eq!(returned(&server, &user.token, &conv.to_string(), 200_000).await, (100_000, true));
+}
