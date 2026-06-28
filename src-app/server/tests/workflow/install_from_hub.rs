@@ -14,6 +14,7 @@ use super::{
     FIXTURE_WORKFLOW_NAME, admin_and_refresh, install_fixture_workflow,
     server_with_workflow_catalog,
 };
+use crate::common::test_helpers::create_user_with_permissions;
 
 #[tokio::test]
 async fn user_install_creates_row_extract_and_tracking() {
@@ -125,5 +126,111 @@ async fn delete_removes_extracted_dir() {
     assert!(
         !std::path::Path::new(&extracted_path).exists(),
         "DELETE must remove the extracted dir at {extracted_path}"
+    );
+}
+
+/// SYSTEM install-from-hub (`POST /hub/workflows/create-system`, perm
+/// `workflows::manage_system`) — distinct from the multipart
+/// `/workflows/system/import` path that `system_endpoints.rs` covers. The
+/// hub path runs `build_workflow_create_from_hub("system", ..)` →
+/// `install_system_workflow_tx`, forcing scope=system + null owner and
+/// emitting the system-workflow sync event. A 201 proves the same
+/// download → sha256 → extract → workflow.yaml parse → Layer 1+2+3
+/// validate pipeline ran, then persisted at system scope.
+#[tokio::test]
+async fn system_install_from_hub_creates_system_scope() {
+    let (server, _mock) = server_with_workflow_catalog().await;
+    let admin = admin_and_refresh(&server).await; // has workflows::manage_system
+
+    let resp = reqwest::Client::new()
+        .post(server.api_url("/hub/workflows/create-system"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&serde_json::json!({ "hub_id": FIXTURE_WORKFLOW_NAME, "groups": [] }))
+        .send()
+        .await
+        .expect("system install-from-hub");
+    let status = resp.status();
+    let body: Json = resp.json().await.expect("parse system install body");
+    assert_eq!(
+        status, 201,
+        "system install-from-hub should 201; got {status}: {body}"
+    );
+
+    let wf = &body["workflow"];
+    assert_eq!(wf["name"], FIXTURE_WORKFLOW_NAME, "name persisted: {body}");
+    assert_eq!(
+        wf["scope"], "system",
+        "create-system forces scope=system: {body}"
+    );
+    assert!(
+        wf["owner_user_id"].is_null(),
+        "system-scope workflow has no owner: {body}"
+    );
+    assert_eq!(wf["is_dev"], false, "hub install is not is_dev: {body}");
+    // The same parse + compile pipeline as the user path runs at install.
+    assert_eq!(
+        wf["compiled_ir_json"]["step_count"], 3,
+        "IR captures the 3 steps of the fixture workflow: {body}"
+    );
+
+    // Hub tracking row stamped for the workflow entity.
+    let tracking = &body["hub_tracking"];
+    assert_eq!(tracking["entity_type"], "workflow", "tracking entity_type: {body}");
+    assert_eq!(tracking["hub_id"], FIXTURE_WORKFLOW_NAME, "tracking hub_id: {body}");
+
+    // The system workflow now appears in GET /workflows for the admin.
+    let list: Json = reqwest::Client::new()
+        .get(server.api_url("/workflows"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("list workflows")
+        .json()
+        .await
+        .expect("parse list");
+    let found = list["workflows"]
+        .as_array()
+        .expect("workflows array")
+        .iter()
+        .any(|w| w["name"] == FIXTURE_WORKFLOW_NAME && w["scope"] == "system");
+    assert!(
+        found,
+        "installed system workflow appears in GET /workflows: {list}"
+    );
+}
+
+/// The system hub-install endpoint is gated on `workflows::manage_system`.
+/// A user who can install a USER workflow (`workflows::install`) but lacks
+/// `manage_system` must be refused with 403 — and no system row is created.
+#[tokio::test]
+async fn system_install_from_hub_requires_manage_system() {
+    let (server, _mock) = server_with_workflow_catalog().await;
+    // Refresh the catalog as a full admin first so the manifest is active.
+    let _admin = admin_and_refresh(&server).await;
+
+    // A non-admin who can install user workflows but NOT manage_system.
+    let user = create_user_with_permissions(
+        &server,
+        "wf_hub_nonadmin",
+        &[
+            "hub::catalog::read",
+            "workflows::read",
+            "workflows::install",
+            "workflows::execute",
+        ],
+    )
+    .await;
+
+    let resp = reqwest::Client::new()
+        .post(server.api_url("/hub/workflows/create-system"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&serde_json::json!({ "hub_id": FIXTURE_WORKFLOW_NAME, "groups": [] }))
+        .send()
+        .await
+        .expect("system install-from-hub (non-admin)");
+    assert_eq!(
+        resp.status(),
+        403,
+        "system install without manage_system must 403"
     );
 }
