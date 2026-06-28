@@ -70,6 +70,38 @@ test.describe('Document RAG — admin settings surface', () => {
     await expect(page.getByText(/Embedding model/)).toBeVisible()
   })
 
+  test('chunking rejects overlap >= chunk size with a validation error', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    await page.goto(`${baseURL}/settings/file-rag-admin`)
+    await expect(page.getByText('Chunking', { exact: true })).toBeVisible()
+
+    const chunkingCard = page
+      .locator('.ant-card')
+      .filter({ hasText: 'Chunk size (characters)' })
+
+    // Set overlap to be >= chunk size — an invalid combination.
+    await page.getByRole('spinbutton', { name: /Chunk size/i }).fill('1000')
+    await page
+      .getByRole('spinbutton', { name: /Chunk overlap/i })
+      .fill('2000')
+    await chunkingCard.getByRole('button', { name: 'Save' }).click()
+
+    // The client-side guard surfaces an error toast + inline field errors and
+    // does NOT save.
+    await expect(
+      page.getByText('Overlap must be smaller than the chunk size.'),
+    ).toBeVisible()
+    await expect(
+      page.getByText('Must be smaller than the chunk size'),
+    ).toBeVisible()
+    await expect(page.getByText(/Chunking settings saved/)).toHaveCount(0)
+  })
+
   test('chunking settings save round-trips', async ({ page, testInfra }) => {
     const { baseURL, apiURL } = testInfra
     const adminToken = await getAdminToken(apiURL)
