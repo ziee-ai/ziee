@@ -990,3 +990,70 @@ async fn test_is_template_is_immutable_on_update() {
         .unwrap();
     assert_eq!(got["is_template"], false, "GET must also show is_template still false");
 }
+
+/// CONCURRENT default-assistant race (repository.rs clear-defaults + set
+/// transaction). The existing test_only_one_default_per_user is SEQUENTIAL; this
+/// fires two simultaneous "set as default" updates on two different assistants
+/// and asserts the invariant holds — EXACTLY ONE default remains, never two.
+#[tokio::test]
+async fn test_concurrent_set_default_yields_exactly_one() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "assistant_race",
+        &["assistants::create", "assistants::read", "assistants::edit"],
+    )
+    .await;
+
+    // Two non-default assistants.
+    let mk = |name: &str| {
+        let url = server.api_url("/assistants");
+        let token = user.token.clone();
+        let name = name.to_string();
+        async move {
+            let r = reqwest::Client::new()
+                .post(url)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&json!({ "name": name, "is_default": false }))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(r.status(), StatusCode::CREATED);
+            r.json::<serde_json::Value>().await.unwrap()["id"].as_str().unwrap().to_string()
+        }
+    };
+    let id1 = mk("Race A").await;
+    let id2 = mk("Race B").await;
+
+    // Concurrently set BOTH as default.
+    let set_default = |id: String| {
+        let url = server.api_url(&format!("/assistants/{id}"));
+        let token = user.token.clone();
+        async move {
+            reqwest::Client::new()
+                .put(url)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&json!({ "is_default": true }))
+                .send()
+                .await
+                .unwrap()
+                .status()
+        }
+    };
+    let (s1, s2) = tokio::join!(set_default(id1.clone()), set_default(id2.clone()));
+    assert!(s1.is_success() && s2.is_success(), "both updates should succeed: {s1} {s2}");
+
+    // Exactly one of the user's assistants is default — the race must not leave two.
+    let list: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url("/assistants?page=1&per_page=100"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let assistants = list["assistants"].as_array().or_else(|| list["items"].as_array()).expect("list array");
+    let default_count = assistants.iter().filter(|a| a["is_default"] == true).count();
+    assert_eq!(default_count, 1, "exactly one default must remain after the race; got {default_count}");
+}

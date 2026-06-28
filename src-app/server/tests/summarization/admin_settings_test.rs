@@ -423,3 +423,43 @@ async fn test_read_only_user_can_get_but_not_put() {
         "read perm alone must NOT allow PUT — manage perm required"
     );
 }
+
+/// SummarizationAdminSettings realtime-sync emission (handlers.rs:195-199). A
+/// settings update must publish a `summarization_admin_settings`/`update` frame
+/// to holders of `summarization::settings::read`, and a user WITHOUT that perm
+/// must stay silent (Audience::perm::<SummarizationSettingsRead>). No sync test
+/// existed for this module.
+#[tokio::test]
+async fn test_summarization_settings_update_emits_sync_to_admins_only() {
+    use crate::common::sync_probe::SyncProbe;
+    use std::time::Duration;
+
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "summ_sync_admin",
+        &["summarization::settings::read", "summarization::settings::manage"],
+    )
+    .await;
+    // A plain user (default group only) without summarization::settings::read.
+    let plain =
+        crate::common::test_helpers::create_user_with_permissions(&server, "summ_sync_plain", &[])
+            .await;
+
+    let mut admin_probe = SyncProbe::open(&server, &admin.token).await;
+    let mut plain_probe = SyncProbe::open(&server, &plain.token).await;
+
+    let res = reqwest::Client::new()
+        .put(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "summarize_after_tokens": 12345 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+
+    admin_probe
+        .expect_event("summarization_admin_settings", "update", Duration::from_secs(5))
+        .await;
+    plain_probe.expect_silence(Duration::from_secs(1)).await;
+}
