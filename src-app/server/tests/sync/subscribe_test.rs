@@ -217,3 +217,66 @@ async fn subscribe_stream_closes_when_jwt_expires_midstream() {
         "the SSE stream must close once the JWT exp deadline passes; it stayed open >30s"
     );
 }
+
+/// The subscribe handler enforces a PER-USER connection cap at connect time
+/// (`registry.rs` `PER_USER_MAX_CONNECTIONS` = 12 concurrent SSE streams per
+/// account): the (cap+1)th `GET /sync/subscribe` for the SAME user is refused
+/// with `429 SYNC_USER_LIMIT`. The registry unit test exercises `register()`
+/// directly; this proves the cap is surfaced through the real HTTP handler.
+/// The cap is keyed on this fresh user's id, so it is isolated from any other
+/// test's connections in the process-wide registry.
+#[tokio::test]
+async fn subscribe_refuses_excess_connections_for_one_user_with_429() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "sync_cap_user",
+        &["profile::read"],
+    )
+    .await;
+
+    let client = reqwest::Client::new();
+    // The per-user cap. Hold these responses ALIVE so their server-side
+    // connections stay registered (dropping a response closes the stream →
+    // ConnGuard unregisters). Each `send()` returns only after the handler has
+    // already run `register()`, so by the 12th success all 12 are registered.
+    const PER_USER_MAX: usize = 12;
+    let mut held = Vec::with_capacity(PER_USER_MAX);
+    for i in 0..PER_USER_MAX {
+        let res = client
+            .get(server.api_url("/sync/subscribe"))
+            .header("Authorization", format!("Bearer {}", user.token))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            res.status(),
+            200,
+            "sync connection #{} (under the per-user cap) must open",
+            i + 1
+        );
+        held.push(res);
+    }
+
+    // The (cap+1)th concurrent connection for the SAME user must be refused.
+    let overflow = client
+        .get(server.api_url("/sync/subscribe"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        overflow.status(),
+        429,
+        "the (cap+1)th concurrent sync stream for one user must be refused (SYNC_USER_LIMIT)"
+    );
+    let body = overflow.text().await.unwrap_or_default();
+    assert!(
+        body.contains("SYNC_USER_LIMIT") || body.contains("Too many open sync connections"),
+        "the 429 body should carry the SYNC_USER_LIMIT error, got: {body}"
+    );
+
+    // Drop the held responses → closes the 12 streams → ConnGuard unregisters
+    // each, leaving the process-wide registry clean for sibling tests.
+    drop(held);
+}
