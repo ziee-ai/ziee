@@ -7,6 +7,7 @@
 // path (R4/R5/R6 moved from `tests/memory/real_llm_test.rs`).
 
 mod admin_settings_test;
+mod debug_refresh_stub_test;
 mod migration_seed_test;
 mod per_conversation_mode_test;
 mod real_llm_helpers;
