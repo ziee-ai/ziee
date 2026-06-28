@@ -32,6 +32,11 @@ use super::download_task::{
 pub struct ListVersionsQuery {
     /// Filter by engine (optional)
     pub engine: Option<String>,
+    /// Page size (offset pagination). Defaults to DEFAULT_PAGE_SIZE,
+    /// clamped to [1, PAGINATION_MAX_PER_PAGE].
+    pub limit: Option<i64>,
+    /// Row offset (offset pagination). Defaults to 0.
+    pub offset: Option<i64>,
 }
 
 /// A backend artifact tag: starts with a lowercase letter, then `[a-z0-9.]`
@@ -78,8 +83,22 @@ pub async fn list_runtime_versions(
             .map_err(|e| AppError::internal_error(format!("Database error: {}", e)))?
     };
 
+    // Offset-paginate the response (round-4 pattern). Runtime versions are a
+    // small admin-curated set, so the repository fetch is already bounded
+    // (list_all caps at 200; list_by_engine is one engine's binaries); we
+    // slice here to give the endpoint a stable limit/offset contract.
+    let limit = params
+        .limit
+        .unwrap_or(crate::common::DEFAULT_PAGE_SIZE as i64)
+        .clamp(1, crate::common::PAGINATION_MAX_PER_PAGE as i64);
+    let offset = params.offset.unwrap_or(0).max(0);
     let response = RuntimeVersionListResponse {
-        versions: versions.into_iter().map(RuntimeVersionResponse::from).collect(),
+        versions: versions
+            .into_iter()
+            .skip(offset as usize)
+            .take(limit as usize)
+            .map(RuntimeVersionResponse::from)
+            .collect(),
     };
 
     Ok((StatusCode::OK, Json(response)))
