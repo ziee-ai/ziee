@@ -242,6 +242,70 @@ async fn test_incremental_prompt_validation_missing_placeholders() {
 }
 
 #[tokio::test]
+async fn test_prompt_length_cap_returns_400() {
+    // The validation chain caps each prompt override at MAX_PROMPT_LEN
+    // (32 KiB) — these templates are injected into every summarization
+    // LLM call, so an unbounded value is a cost/DoS vector. The existing
+    // prompt tests only exercise the *placeholder* branch; the length
+    // cap (handlers.rs `s.len() > MAX_PROMPT_LEN`) was uncovered. Build
+    // an over-cap string that STILL contains the required placeholders,
+    // so a rejection can only have come from the length check, not the
+    // placeholder check that runs after it.
+    let (server, admin) = admin_user("summ_prompt_len").await;
+
+    // 40 KiB of filler (> the 32 KiB cap) plus the required placeholder.
+    let oversized_full = format!("{} {{transcript}}", "x".repeat(40_000));
+    let full_res = reqwest::Client::new()
+        .put(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "full_summary_prompt": oversized_full }))
+        .send()
+        .await
+        .unwrap();
+    let status = full_res.status();
+    let body = full_res.text().await.unwrap_or_default();
+    assert_eq!(
+        status, 400,
+        "over-cap full_summary_prompt must return 400, got {status}: {body}"
+    );
+    assert!(
+        body.contains("32 KiB") || body.contains("limit"),
+        "error body should mention the size limit, got: {body}"
+    );
+
+    // Same for the incremental prompt — over-cap but carrying BOTH
+    // required placeholders, so only the length cap can reject it.
+    let oversized_inc = format!(
+        "{} {{previous_summary}} {{new_transcript}}",
+        "y".repeat(40_000)
+    );
+    let inc_res = reqwest::Client::new()
+        .put(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "incremental_summary_prompt": oversized_inc }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        inc_res.status(),
+        400,
+        "over-cap incremental_summary_prompt must return 400"
+    );
+
+    // Positive control: a valid (under-cap, placeholder-bearing) prompt
+    // still succeeds, proving the cap rejects size specifically and not
+    // the whole prompt-override path.
+    let ok_res = reqwest::Client::new()
+        .put(server.api_url("/summarization/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "full_summary_prompt": "Summarize: {transcript}" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(ok_res.status(), 200, "an under-cap prompt must still save");
+}
+
+#[tokio::test]
 async fn test_prompt_override_round_trip_and_clear() {
     let (server, admin) = admin_user("summ_prompt_clear").await;
 
