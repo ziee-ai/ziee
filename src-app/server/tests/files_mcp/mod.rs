@@ -876,3 +876,36 @@ async fn test_read_file_image_and_binary_types() {
         "binary file yields a graceful no-text note, got: {text}"
     );
 }
+
+/// Write tools require files::upload (gap 0df8d8c998de, handlers.rs:105-110,
+/// 188-197). A user holding only files::read (enough to reach the MCP server)
+/// but NOT files::upload must be refused when calling a write tool — create_file
+/// returns a PERMISSION_DENIED in-band error rather than mutating files.
+#[tokio::test]
+async fn test_write_tool_denied_without_files_upload_permission() {
+    let server = TestServer::start().await;
+    // read + conversations::create, but deliberately NO files::upload.
+    let user = create_user_with_permissions(
+        &server,
+        "files_mcp_readonly",
+        &["files::read", "conversations::create"],
+    )
+    .await;
+    let conv = Uuid::parse_str(&create_conversation(&server, &user).await).unwrap();
+
+    let body = call_tool(
+        &server,
+        &user,
+        conv,
+        "create_file",
+        json!({ "filename": "nope.md", "content": "# blocked\n" }),
+    )
+    .await;
+
+    assert!(body["error"].is_object(), "write without files::upload must error: {body}");
+    let msg = body["error"]["message"].as_str().unwrap_or("");
+    assert!(
+        msg.contains("files::upload") || msg.to_lowercase().contains("permission"),
+        "error must name the missing write permission: {body}"
+    );
+}

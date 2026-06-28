@@ -962,3 +962,73 @@ async fn test_user_cannot_create_template_via_assistants_endpoint() {
     // It is owned by the creating user (a real user assistant, not an ownerless template).
     assert!(body["created_by"].is_string());
 }
+
+/// Concurrent default-assistant setting (gap d2cbfe7cb8f2). Setting an
+/// assistant default runs a clear-others-then-set transaction
+/// (repository.rs:215-235 / update path). Two concurrent "make me default"
+/// PUTs must still converge to EXACTLY ONE default for the user (the
+/// clear-defaults UPDATE serializes them) — never zero, never two.
+#[tokio::test]
+async fn test_concurrent_set_default_assistant_leaves_exactly_one() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["assistants::create", "assistants::edit", "assistants::read"],
+    )
+    .await;
+
+    let mk = |name: &str| {
+        let url = server.api_url("/assistants");
+        let token = user.token.clone();
+        let name = name.to_string();
+        async move {
+            let r = reqwest::Client::new()
+                .post(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&json!({ "name": name, "instructions": "x" }))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(r.status(), StatusCode::CREATED);
+            let b: serde_json::Value = r.json().await.unwrap();
+            b["id"].as_str().unwrap().to_string()
+        }
+    };
+    let a_id = mk("Assistant A").await;
+    let b_id = mk("Assistant B").await;
+
+    let set_default = |id: String| {
+        let url = server.api_url(&format!("/assistants/{id}"));
+        let token = user.token.clone();
+        async move {
+            reqwest::Client::new()
+                .put(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .json(&json!({ "is_default": true }))
+                .send()
+                .await
+                .unwrap()
+                .status()
+        }
+    };
+    // Concurrently make BOTH default.
+    let (s1, s2) = tokio::join!(set_default(a_id.clone()), set_default(b_id.clone()));
+    assert_eq!(s1, StatusCode::OK);
+    assert_eq!(s2, StatusCode::OK);
+
+    // Exactly one of the user's assistants is the default.
+    let list = reqwest::Client::new()
+        .get(server.api_url("/assistants"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(list.status(), StatusCode::OK);
+    let body: serde_json::Value = list.json().await.unwrap();
+    let arr = body.as_array().cloned().unwrap_or_else(|| {
+        body["assistants"].as_array().cloned().expect("assistants array")
+    });
+    let defaults = arr.iter().filter(|a| a["is_default"] == json!(true)).count();
+    assert_eq!(defaults, 1, "exactly one default after concurrent set-default; got {defaults}");
+}

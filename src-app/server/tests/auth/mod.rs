@@ -965,3 +965,74 @@ async fn login_unknown_user_and_wrong_password_are_indistinguishable() {
         "wrong-password and unknown-user responses must be identical (no enumeration)"
     );
 }
+
+/// User disabled mid-session (gap 741e70537ae4): a user logs in (valid JWT),
+/// then an admin deactivates the account. The still-valid access token must NOT
+/// keep working — GET /auth/me re-checks is_active and returns 401
+/// ACCOUNT_DEACTIVATED (handlers.rs:581), the teardown signal the session-sync
+/// path relies on. (RequirePermissions enforces the same gate.)
+#[tokio::test]
+async fn deactivated_user_with_valid_jwt_is_rejected_at_me() {
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    // Admin who can toggle account status.
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "deact_admin",
+        &["users::create", "users::toggle_status"],
+    )
+    .await;
+
+    // Create + log in a victim, capturing a valid access token.
+    let victim = crate::common::test_helpers::create_test_user(
+        &server,
+        &admin.token,
+        "midsession_victim",
+        "password123",
+    )
+    .await;
+    let victim_id = victim["id"].as_str().expect("user id");
+    let login = client
+        .post(server.api_url("/auth/login"))
+        .json(&json!({ "username": "midsession_victim", "password": "password123" }))
+        .send()
+        .await
+        .expect("login");
+    assert_eq!(login.status(), 200);
+    let login_body: serde_json::Value = login.json().await.unwrap();
+    let victim_token = login_body["tokens"]["access_token"]
+        .as_str()
+        .or_else(|| login_body["access_token"].as_str())
+        .expect("access token")
+        .to_string();
+
+    // The token works BEFORE deactivation.
+    let me_ok = client
+        .get(server.api_url("/auth/me"))
+        .header("Authorization", format!("Bearer {victim_token}"))
+        .send()
+        .await
+        .expect("me before");
+    assert_eq!(me_ok.status(), 200, "valid JWT works before deactivation");
+
+    // Admin deactivates the victim (account stays, JWT still cryptographically valid).
+    let toggle = client
+        .post(server.api_url(&format!("/users/{victim_id}/toggle-active")))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("toggle-active");
+    assert_eq!(toggle.status(), 200);
+
+    // The SAME still-valid token is now rejected at /me.
+    let me_dead = client
+        .get(server.api_url("/auth/me"))
+        .header("Authorization", format!("Bearer {victim_token}"))
+        .send()
+        .await
+        .expect("me after");
+    assert_eq!(me_dead.status(), 401, "deactivated account must be 401 even with a valid JWT");
+    let body: serde_json::Value = me_dead.json().await.unwrap();
+    assert_eq!(body["error_code"], "ACCOUNT_DEACTIVATED");
+}

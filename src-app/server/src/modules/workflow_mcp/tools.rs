@@ -859,6 +859,42 @@ fn serialized_len(v: &Value) -> usize {
 mod tests {
     use super::*;
 
+    /// RunCancelOnDrop guard (gap d9ca0a172b93): when the awaiting tool-call
+    /// future is dropped (chat Stop) while ARMED, its Drop fires the synchronous
+    /// registry cancel — the same signal `POST /cancel` uses — so an in-flight
+    /// step's select! preempts. (A lazy pool stands in for the DB CAS half,
+    /// which is best-effort detached; the synchronous registry signal is the
+    /// behavior under test.)
+    #[tokio::test]
+    async fn armed_guard_cancels_run_on_drop() {
+        let run_id = uuid::Uuid::new_v4();
+        let handle = registry::register(run_id);
+        assert!(!handle.is_cancelled(), "fresh run is not cancelled");
+        let pool = sqlx::PgPool::connect_lazy("postgresql://invalid:0/none").expect("lazy pool");
+        {
+            let _g = RunCancelOnDrop { pool, run_id, armed: true };
+        } // drop here → synchronous registry::cancel(run_id)
+        assert!(
+            registry::get(run_id).map(|h| h.is_cancelled()).unwrap_or(false),
+            "dropping an armed guard must cancel the run via the registry"
+        );
+    }
+
+    /// `disarm()` (called on terminal status) must prevent the cancel: a normal
+    /// completion drops the guard WITHOUT signalling cancel.
+    #[tokio::test]
+    async fn disarmed_guard_does_not_cancel_run() {
+        let run_id = uuid::Uuid::new_v4();
+        let handle = registry::register(run_id);
+        let pool = sqlx::PgPool::connect_lazy("postgresql://invalid:0/none").expect("lazy pool");
+        let g = RunCancelOnDrop { pool, run_id, armed: true };
+        g.disarm(); // terminal-status path → consumes + drops without cancel
+        assert!(
+            !handle.is_cancelled(),
+            "a disarmed guard must NOT cancel the run on drop"
+        );
+    }
+
     #[test]
     fn slug_maps_separators_to_underscore() {
         assert_eq!(

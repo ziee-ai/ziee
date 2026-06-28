@@ -28,3 +28,18 @@ pub fn health_check_docs(op: TransformOperation) -> TransformOperation {
         .tag("health")
         .response::<200, Json<HealthResponse>>()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The health endpoint is an unauthenticated liveness probe: it must always
+    /// return 200 with `{"status":"ok"}` (no DB, no auth). Gap 6da0741c8b92 —
+    /// the health module had zero unit tests.
+    #[tokio::test]
+    async fn health_check_returns_ok_200() {
+        let (status, Json(body)) = health_check().await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body.status, "ok");
+    }
+}

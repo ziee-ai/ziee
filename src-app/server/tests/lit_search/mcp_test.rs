@@ -582,3 +582,61 @@ async fn test_select_included_partitions_decisions_via_http() {
     // p2 (exclude) + the object missing `decision` both count as excluded.
     assert_eq!(sc["excluded"], 2, "non-include decisions are excluded: {sc}");
 }
+
+/// Inverted year-range rejection (gap 6df0f4c323be, handlers.rs:172-179): a
+/// literature_search with year_from > year_to is rejected with a VALIDATION
+/// error (otherwise it would silently yield zero results). The check runs
+/// before the connector fan-out, so no mock upstream is needed.
+#[tokio::test]
+async fn test_inverted_year_range_is_rejected() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "ls_years", &["lit_search::use"]).await;
+    let res = jsonrpc(
+        &server,
+        &user.token,
+        "tools/call",
+        json!({
+            "name": "literature_search",
+            "arguments": { "query": "crispr", "year_from": 2024, "year_to": 2000 }
+        }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let msg = body["error"]["message"].as_str().unwrap_or("");
+    assert!(
+        msg.contains("year_from") && msg.contains("year_to"),
+        "inverted year range must be rejected naming both bounds: {body}"
+    );
+}
+
+/// A valid (non-inverted) equal year range passes the inversion guard (it must
+/// not reject from == to). Uses a mock Europe PMC so the call completes.
+#[tokio::test]
+async fn test_equal_year_range_passes_inversion_guard() {
+    let epmc = start_mock_europepmc().await;
+    let server = server_with_seams(vec![(
+        "LIT_SEARCH_EUROPEPMC_ENDPOINT".to_string(),
+        format!("{epmc}/search"),
+    )])
+    .await;
+    let admin = create_user_with_permissions(&server, "ls_years_ok", admin_perms()).await;
+    configure(&server, &admin.token, &["europepmc"]).await;
+    let res = jsonrpc(
+        &server,
+        &admin.token,
+        "tools/call",
+        json!({
+            "name": "literature_search",
+            "arguments": { "query": "crispr", "year_from": 2021, "year_to": 2021 }
+        }),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert!(body["error"].is_null(), "from==to must NOT be rejected: {body}");
+}
