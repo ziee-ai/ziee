@@ -69,6 +69,7 @@ export function RebuildStatusSection() {
     <>
       {embeddingInProgress && rebuildStatus && (
         <Card
+          data-testid="memory-rebuild-embedding-card"
           title={
             <Flex align="center" gap="small">
               <Spin size="sm" label="Re-embedding memories" />
@@ -87,7 +88,7 @@ export function RebuildStatusSection() {
             until this finishes; new memories created during the rebuild
             are picked up automatically.
           </p>
-          <Progress value={percent} aria-label="Rebuild progress" />
+          <Progress value={percent} aria-label="Rebuild progress" data-testid="memory-rebuild-embedding-progress" />
           <p className="text-xs text-secondary-foreground/70 mb-0">
             {rebuildStatus?.pending_count} memor
             {rebuildStatus?.pending_count === 1 ? 'y' : 'ies'} remaining.
@@ -96,6 +97,7 @@ export function RebuildStatusSection() {
       )}
       {ftsInProgress && (
         <Card
+          data-testid="memory-rebuild-fts-card"
           title={
             <Flex align="center" gap="small">
               <Spin size="sm" label="Rebuilding full-text search index" />
@@ -109,7 +111,7 @@ export function RebuildStatusSection() {
             Lexical retrieval continues to work using the prior column
             until the rebuild commits.
           </p>
-          <Progress value={0} aria-label="Rebuild progress" />
+          <Progress value={0} aria-label="Rebuild progress" data-testid="memory-rebuild-fts-progress" />
         </Card>
       )}
     </>

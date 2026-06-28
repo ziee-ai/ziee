@@ -49,6 +49,7 @@ export function CoreMemoryBlocksEditor({
 
   return (
     <Card
+      data-testid="memory-core-blocks-card"
       title={
         <Space>
           <Title level={5} className="!mb-0">
@@ -61,6 +62,7 @@ export function CoreMemoryBlocksEditor({
           size="sm"
           icon={<Plus />}
           onClick={() => setCreating(true)}
+          data-testid="memory-core-add-block-btn"
         >
           Add block
         </Button>
@@ -75,11 +77,11 @@ export function CoreMemoryBlocksEditor({
       </Paragraph>
 
       {blocks.length === 0 && !loading ? (
-        <Empty description="No blocks yet" />
+        <Empty description="No blocks yet" data-testid="memory-core-blocks-empty" />
       ) : (
         <div className="space-y-2">
           {blocks.map(b => (
-            <Card key={b.id} size="sm">
+            <Card key={b.id} size="sm" data-testid={`memory-core-block-card-${b.id}`}>
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <Text strong>{b.block_label}</Text>
@@ -95,9 +97,11 @@ export function CoreMemoryBlocksEditor({
                     icon={<Pencil />}
                     size="sm"
                     onClick={() => setEditing(b)}
+                    data-testid={`memory-core-block-edit-btn-${b.id}`}
                   />
                   <Confirm
                     title="Delete this block?"
+                    data-testid={`memory-core-block-delete-confirm-${b.id}`}
                     description={`The "${b.block_label}" block will be removed from this assistant's core memory.`}
                     okText="Delete"
                     cancelText="Cancel"
@@ -123,6 +127,7 @@ export function CoreMemoryBlocksEditor({
                       size="sm"
                       variant="destructive"
                       aria-label={`Delete block ${b.block_label}`}
+                      data-testid={`memory-core-block-delete-btn-${b.id}`}
                     />
                   </Confirm>
                 </Space>
@@ -202,6 +207,7 @@ function BlockFormModal({
 
   return (
     <Dialog
+      data-testid={existing ? 'memory-core-block-edit-dialog' : 'memory-core-block-create-dialog'}
       open={open}
       onOpenChange={(v) => { if (!v) onClose() }}
       title={
@@ -209,19 +215,20 @@ function BlockFormModal({
       }
       footer={
         <>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onClose} data-testid="memory-core-block-form-cancel-btn">
             Cancel
           </Button>
           <Button
             loading={saving}
             onClick={() => form.handleSubmit(handleSubmit)()}
+            data-testid="memory-core-block-form-submit-btn"
           >
             {existing ? 'Save' : 'Add'}
           </Button>
         </>
       }
     >
-      <Form form={form} onSubmit={handleSubmit} layout="vertical">
+      <Form form={form} onSubmit={handleSubmit} layout="vertical" data-testid="memory-core-block-form">
         <FormField
           name="block_label"
           label="Label"
@@ -230,6 +237,7 @@ function BlockFormModal({
           <Input
             disabled={!!existing /* label is the natural key; can't rename */}
             placeholder="persona"
+            data-testid="memory-core-block-label-input"
           />
         </FormField>
         <FormField
@@ -240,6 +248,7 @@ function BlockFormModal({
           <Textarea
             rows={6}
             placeholder="Always-in-context content. The assistant will see this prepended to every system prompt."
+            data-testid="memory-core-block-content-input"
           />
         </FormField>
         <FormField
@@ -247,7 +256,7 @@ function BlockFormModal({
           label="Soft char limit"
           description="Advisory; the LLM may exceed when writing back. Used as a hint in the system prompt."
         >
-          <InputNumber min={1} max={50_000} />
+          <InputNumber min={1} max={50_000} data-testid="memory-core-block-charlimit-input" />
         </FormField>
       </Form>
     </Dialog>

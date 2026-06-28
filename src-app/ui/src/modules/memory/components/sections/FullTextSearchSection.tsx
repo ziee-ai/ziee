@@ -117,10 +117,11 @@ export function FullTextSearchSection() {
 
   if (!canRead) {
     return (
-      <Card title="Full-text search">
+      <Card title="Full-text search" data-testid="memory-fts-card">
         <Alert
           tone="warning"
           title="You don't have permission to view memory admin settings."
+          data-testid="memory-fts-no-perm-alert"
         />
       </Card>
     )
@@ -207,12 +208,13 @@ export function FullTextSearchSection() {
 
   return (
     <>
-      <Card title="Full-text search">
+      <Card title="Full-text search" data-testid="memory-fts-card">
         {bothArmsOff && (
           <Alert
             tone="warning"
             className="!mb-4"
             title="Both recall arms are disabled."
+            data-testid="memory-fts-both-off-alert"
             description={
               <span>
                 New memories will still be extracted and stored (if
@@ -231,6 +233,7 @@ export function FullTextSearchSection() {
           labelWidth="42%"
           onSubmit={handleSubmit}
           disabled={!canManage}
+          data-testid="memory-fts-form"
         >
           <FormField
             name="fts_enabled"
@@ -238,7 +241,7 @@ export function FullTextSearchSection() {
             description="When off, retrieval skips the FTS arm. If no embedding model is configured, retrieval is disabled entirely."
             valuePropName="checked"
           >
-            <Switch aria-label="Enable full-text search retrieval" />
+            <Switch aria-label="Enable full-text search retrieval" data-testid="memory-fts-enabled-switch" />
           </FormField>
 
           <FormField
@@ -254,6 +257,7 @@ export function FullTextSearchSection() {
             }
           >
             <Select
+              data-testid="memory-fts-dictionary-select"
               options={DICTIONARY_OPTIONS}
               className="max-w-[480px]"
               disabled={!canManage || ftsRebuildStatus?.in_progress === true}
@@ -265,7 +269,7 @@ export function FullTextSearchSection() {
             label="RRF k"
             description="RRF blending constant for hybrid retrieval. Higher = more egalitarian; lower = lopsided toward each arm's top-ranked. 60 matches the original RRF paper."
           >
-            <InputNumber min={1} max={1000} className="w-40" />
+            <InputNumber min={1} max={1000} className="w-40" data-testid="memory-fts-rrf-input" />
           </FormField>
 
           <FormField
@@ -273,7 +277,7 @@ export function FullTextSearchSection() {
             label="Candidate multiplier"
             description="Hybrid retrieval pulls top-K × this many candidates from each arm before RRF fusion. Higher = more recall, more DB load. Ignored when hybrid is disabled."
           >
-            <InputNumber min={1} max={20} className="w-40" />
+            <InputNumber min={1} max={20} className="w-40" data-testid="memory-fts-candidate-input" />
           </FormField>
 
           <FormField
@@ -281,7 +285,7 @@ export function FullTextSearchSection() {
             label="Minimum ts_rank_cd"
             description="ts_rank_cd cutoff. 0 = no filter (default). Increase to drop weak lexical matches."
           >
-            <InputNumber min={0} max={1} step={0.05} className="w-40" />
+            <InputNumber min={0} max={1} step={0.05} className="w-40" data-testid="memory-fts-minrank-input" />
           </FormField>
 
           {canManage && (
@@ -291,6 +295,7 @@ export function FullTextSearchSection() {
                 <Button
                   type="submit"
                   loading={saving || triggeringFtsRebuild}
+                  data-testid="memory-fts-save-btn"
                   disabled={ftsRebuildStatus?.in_progress === true}
                   title={
                     ftsRebuildStatus?.in_progress
@@ -307,6 +312,7 @@ export function FullTextSearchSection() {
       </Card>
 
       <Dialog
+        data-testid="memory-fts-rebuild-dialog"
         open={pendingDictionary !== null}
         title="Rebuild the full-text search index?"
         onOpenChange={(open) => {
@@ -322,6 +328,7 @@ export function FullTextSearchSection() {
           <Flex justify="end" className="gap-2">
             <Button
               variant="outline"
+              data-testid="memory-fts-rebuild-cancel-btn"
               disabled={saving || triggeringFtsRebuild}
               onClick={() => {
                 // Block the cancel during in-flight rebuild: the server-side
@@ -339,6 +346,7 @@ export function FullTextSearchSection() {
             <Button
               loading={saving || triggeringFtsRebuild}
               onClick={handleRebuildConfirm}
+              data-testid="memory-fts-rebuild-confirm-btn"
             >
               Rebuild
             </Button>

@@ -50,10 +50,11 @@ export function ExtractionSection() {
 
   if (!canRead) {
     return (
-      <Card title="Extraction">
+      <Card title="Extraction" data-testid="memory-extraction-card">
         <Alert
           tone="warning"
           title="You don't have permission to view memory admin settings."
+          data-testid="memory-extraction-no-perm-alert"
         />
       </Card>
     )
@@ -76,13 +77,14 @@ export function ExtractionSection() {
   }
 
   return (
-    <Card title="Extraction">
+    <Card title="Extraction" data-testid="memory-extraction-card">
       <Form
         name="memory-admin-extraction-form"
         form={form}
         layout="horizontal"
         onSubmit={handleSubmit}
         disabled={!canManage}
+        data-testid="memory-extraction-form"
       >
         <FormField
           name="default_extraction_model_id"
@@ -90,6 +92,7 @@ export function ExtractionSection() {
           description="LLM used by the silent extraction pipeline. Users can override per-account. Cheap models (Haiku-class, Gemini Flash) are ideal here."
         >
           <Combobox
+            data-testid="memory-extraction-model-combobox"
             placeholder={
               !loadingModels && availableModels.length === 0
                 ? 'No chat-capable models — add one on the LLM Providers page'
@@ -110,7 +113,7 @@ export function ExtractionSection() {
           <>
             <Separator className="!my-3" />
             <Flex justify="end">
-              <Button type="submit" loading={saving}>
+              <Button type="submit" loading={saving} data-testid="memory-extraction-save-btn">
                 Save
               </Button>
             </Flex>

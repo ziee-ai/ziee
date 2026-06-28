@@ -100,6 +100,7 @@ export function MyMemoriesSection() {
   return (
     <Card
       title="My memories"
+      data-testid="memory-my-card"
       extra={
         canWrite ? (
           <Tooltip title="Add memory">
@@ -108,6 +109,7 @@ export function MyMemoriesSection() {
               icon={<Plus />}
               onClick={() => setCreating(true)}
               aria-label="Add memory"
+              data-testid="memory-add-btn"
             />
           </Tooltip>
         ) : null
@@ -134,12 +136,14 @@ export function MyMemoriesSection() {
           allowClear
           onChange={(e) => Stores.Memories.setSearchQuery(e.target.value)}
           className="min-w-[200px] flex-[1_1_240px] max-w-[360px]"
+          data-testid="memory-search-input"
         />
         <Select
           placeholder="Kind"
           value={kindFilter ?? undefined}
           onChange={(v) => Stores.Memories.setKindFilter(v ?? null)}
           className="flex-[0_1_160px] min-w-[120px]"
+          data-testid="memory-kind-filter"
           options={[
             { value: 'preference', label: 'Preference' },
             { value: 'fact', label: 'Fact' },
@@ -153,6 +157,7 @@ export function MyMemoriesSection() {
           value={sourceFilter ?? undefined}
           onChange={(v) => Stores.Memories.setSourceFilter(v ?? null)}
           className="flex-[0_1_160px] min-w-[120px]"
+          data-testid="memory-source-filter"
           options={[
             { value: 'manual', label: 'Manual' },
             { value: 'extraction', label: 'Auto-extracted' },
@@ -163,12 +168,13 @@ export function MyMemoriesSection() {
           * room; on narrow viewports they wrap to the next line
           * naturally. */}
         <div className="flex-1" />
-        <Dropdown items={exportMenu.items}>
-          <Button icon={<Download />}>Export</Button>
+        <Dropdown items={exportMenu.items} data-testid="memory-export-dropdown">
+          <Button icon={<Download />} data-testid="memory-export-btn">Export</Button>
         </Dropdown>
         {canWrite && (
           <Confirm
             title="Delete all memories?"
+            data-testid="memory-delete-all-confirm"
             description="This is permanent and cannot be undone."
             okText="Delete"
             cancelText="Cancel"
@@ -186,7 +192,7 @@ export function MyMemoriesSection() {
               }
             }}
           >
-            <Button variant="destructive">Delete all</Button>
+            <Button variant="destructive" data-testid="memory-delete-all-btn">Delete all</Button>
           </Confirm>
         )}
       </Flex>
@@ -196,7 +202,7 @@ export function MyMemoriesSection() {
           <Spin label="Loading" />
         </div>
       ) : filtered.length === 0 ? (
-        <Empty description="No memories yet" />
+        <Empty description="No memories yet" data-testid="memory-empty" />
       ) : (
         <Flex className="flex-col gap-4">
           <div>
@@ -217,10 +223,12 @@ export function MyMemoriesSection() {
                               icon={<Pencil />}
                               onClick={() => setEditing(row)}
                               aria-label="Edit memory"
+                              data-testid={`memory-row-edit-btn-${row.id}`}
                             />
                           </Tooltip>
                           <Confirm
                             title="Delete this memory?"
+                            data-testid={`memory-row-delete-confirm-${row.id}`}
                             okText="Delete"
                             cancelText="Cancel"
                             okButtonProps={{ danger: true }}
@@ -243,6 +251,7 @@ export function MyMemoriesSection() {
                                 size="sm"
                                 icon={<Trash2 />}
                                 aria-label={`Delete memory ${row.id}`}
+                                data-testid={`memory-row-delete-btn-${row.id}`}
                               />
                             </Tooltip>
                           </Confirm>
@@ -253,11 +262,12 @@ export function MyMemoriesSection() {
                     <Descriptions
                       size="sm"
                       column={4}
+                      data-testid={`memory-row-descriptions-${row.id}`}
                       items={[
                         {
                           key: 'kind',
                           label: 'Kind',
-                          children: <Tag className="!m-0">{row.kind}</Tag>,
+                          children: <Tag className="!m-0" data-testid={`memory-row-kind-tag-${row.id}`}>{row.kind}</Tag>,
                         },
                         {
                           key: 'source',
@@ -265,6 +275,7 @@ export function MyMemoriesSection() {
                           children: (
                             <Tag
                               className="!m-0"
+                              data-testid={`memory-row-source-tag-${row.id}`}
                               tone={
                                 row.source === 'manual'
                                   ? 'info'
@@ -311,6 +322,7 @@ export function MyMemoriesSection() {
           <Separator className="!my-3" />
           <Flex justify="end">
             <Pagination
+              data-testid="memory-pagination"
               current={storePage}
               total={totalMemories}
               pageSize={storePageSize}
@@ -449,7 +461,7 @@ function CreateMemoryDrawer({
       onClose={onClose}
       size={600}
       extra={
-        <Button loading={saving} onClick={() => void form.handleSubmit(handleSubmit)()}>
+        <Button loading={saving} onClick={() => void form.handleSubmit(handleSubmit)()} data-testid="memory-create-submit-btn">
           Add
         </Button>
       }
@@ -458,6 +470,7 @@ function CreateMemoryDrawer({
         form={form}
         layout="vertical"
         onSubmit={handleSubmit}
+        data-testid="memory-create-form"
       >
         <FormField
           name="content"
@@ -466,10 +479,12 @@ function CreateMemoryDrawer({
           <Textarea
             rows={4}
             placeholder="One sentence, third-person about you"
+            data-testid="memory-create-content-input"
           />
         </FormField>
         <FormField name="kind" label="Kind">
           <Select
+            data-testid="memory-create-kind-select"
             options={[
               { value: 'preference', label: 'Preference' },
               { value: 'fact', label: 'Fact' },
@@ -480,7 +495,7 @@ function CreateMemoryDrawer({
           />
         </FormField>
         <FormField name="importance" label="Importance (0-100)">
-          <InputNumber min={0} max={100} />
+          <InputNumber min={0} max={100} data-testid="memory-create-importance-input" />
         </FormField>
       </Form>
     </Drawer>
@@ -535,20 +550,21 @@ function EditMemoryDrawer({
       onClose={onClose}
       size={600}
       extra={
-        <Button loading={saving} onClick={() => void form.handleSubmit(handleSubmit)()}>
+        <Button loading={saving} onClick={() => void form.handleSubmit(handleSubmit)()} data-testid="memory-edit-submit-btn">
           Save
         </Button>
       }
     >
-      <Form form={form} layout="vertical" onSubmit={handleSubmit}>
+      <Form form={form} layout="vertical" onSubmit={handleSubmit} data-testid="memory-edit-form">
         <FormField
           name="content"
           label="Content"
         >
-          <Textarea rows={6} />
+          <Textarea rows={6} data-testid="memory-edit-content-input" />
         </FormField>
         <FormField name="kind" label="Kind">
           <Select
+            data-testid="memory-edit-kind-select"
             options={[
               { value: 'preference', label: 'Preference' },
               { value: 'fact', label: 'Fact' },
@@ -559,7 +575,7 @@ function EditMemoryDrawer({
           />
         </FormField>
         <FormField name="importance" label="Importance (0-100)">
-          <InputNumber min={0} max={100} />
+          <InputNumber min={0} max={100} data-testid="memory-edit-importance-input" />
         </FormField>
       </Form>
     </Drawer>

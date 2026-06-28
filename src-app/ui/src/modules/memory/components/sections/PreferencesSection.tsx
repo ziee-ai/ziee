@@ -72,7 +72,7 @@ export function PreferencesSection() {
 
   if (loading || !settings) {
     return (
-      <Card title="Preferences">
+      <Card title="Preferences" data-testid="memory-prefs-card">
         <div className="flex justify-center py-6">
           <Spin label="Loading" />
         </div>
@@ -103,9 +103,10 @@ export function PreferencesSection() {
           tone="warning"
           title="Memory is currently disabled by the administrator."
           description="Settings here will be saved but have no effect until the administrator enables memory."
+          data-testid="memory-prefs-admin-disabled-alert"
         />
       )}
-      <Card title="Preferences">
+      <Card title="Preferences" data-testid="memory-prefs-card">
         {/*
         Horizontal layout: label + description on the left, the
         control on the right. Compact enough that Switch /
@@ -117,6 +118,7 @@ export function PreferencesSection() {
         layout="horizontal"
         onSubmit={handleSubmit}
         disabled={!canWrite}
+        data-testid="memory-prefs-form"
       >
         <FormField
           name="extraction_enabled"
@@ -124,7 +126,7 @@ export function PreferencesSection() {
           valuePropName="checked"
           description="After each assistant reply, an LLM scans your turn for durable facts about you and stores them."
         >
-          <Switch />
+          <Switch data-testid="memory-prefs-extraction-switch" />
         </FormField>
         <FormField
           name="retrieval_enabled"
@@ -132,27 +134,28 @@ export function PreferencesSection() {
           valuePropName="checked"
           description="Before each LLM call, your latest message is embedded and the top-K most-similar memories are added to the system prompt."
         >
-          <Switch />
+          <Switch data-testid="memory-prefs-retrieval-switch" />
         </FormField>
         <FormField
           name="max_memories"
           label="Max memories stored"
           description="When this cap is reached the reaper soft-deletes the oldest."
         >
-          <InputNumber min={1} max={100000} className="w-40" />
+          <InputNumber min={1} max={100000} className="w-40" data-testid="memory-prefs-max-input" />
         </FormField>
         <FormField
           name="retention_days"
           label="Retention (days)"
           description="Empty = forever. Older memories are soft-deleted by the nightly reaper."
         >
-          <InputNumber min={1} max={3650} className="w-40" />
+          <InputNumber min={1} max={3650} className="w-40" data-testid="memory-prefs-retention-input" />
         </FormField>
         <Flex justify="end" className="-mt-2">
           <Button
             variant="outline"
             disabled={!canWrite}
             onClick={() => form.setValue('retention_days', null)}
+            data-testid="memory-prefs-forever-btn"
           >
             Forever
           </Button>
@@ -162,7 +165,7 @@ export function PreferencesSection() {
           <>
             <Separator className="!my-3" />
             <Flex justify="end">
-              <Button type="submit" loading={saving}>
+              <Button type="submit" loading={saving} data-testid="memory-prefs-save-btn">
                 Save
               </Button>
             </Flex>

@@ -18,7 +18,7 @@ export function AuditLogSection() {
   if (!canRead) return null
 
   return (
-    <Card title="Audit log">
+    <Card title="Audit log" data-testid="memory-audit-card">
       <Paragraph type="secondary" className="!mb-3 text-sm">
         Append-only record of every memory operation on your account.
         Use this to audit what the auto-extractor captured, what the
@@ -28,6 +28,7 @@ export function AuditLogSection() {
       <Space className="mb-4" align="center">
         <Text>Show last</Text>
         <InputNumber
+          data-testid="memory-audit-limit-input"
           min={1}
           max={500}
           value={limit}
@@ -43,9 +44,10 @@ export function AuditLogSection() {
           <Spin label="Loading" />
         </div>
       ) : entries.length === 0 ? (
-        <Empty description="No audit entries yet" />
+        <Empty description="No audit entries yet" data-testid="memory-audit-empty" />
       ) : (
         <Table<MemoryAuditEntry>
+          data-testid="memory-audit-table"
           dataSource={entries}
           rowKey="id"
           columns={[

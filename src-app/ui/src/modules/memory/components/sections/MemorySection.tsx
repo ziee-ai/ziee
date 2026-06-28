@@ -52,10 +52,11 @@ export function MemorySection() {
 
   if (!canRead) {
     return (
-      <Card title="Memory">
+      <Card title="Memory" data-testid="memory-admin-master-card">
         <Alert
           tone="warning"
           title="You don't have permission to view memory admin settings."
+          data-testid="memory-admin-no-perm-alert"
         />
       </Card>
     )
@@ -77,13 +78,14 @@ export function MemorySection() {
   }
 
   return (
-    <Card title="Memory">
+    <Card title="Memory" data-testid="memory-admin-master-card">
       <Form
         name="memory-admin-master-form"
         form={form}
         layout="horizontal"
         onSubmit={handleSubmit}
         disabled={!canManage}
+        data-testid="memory-admin-master-form"
       >
         <FormField
           name="enabled"
@@ -91,7 +93,7 @@ export function MemorySection() {
           description="When off, all memory hooks no-op silently. Per-user toggles are unaffected but have no effect until this is on."
           valuePropName="checked"
         >
-          <Switch aria-label="Enable memory deployment-wide" />
+          <Switch aria-label="Enable memory deployment-wide" data-testid="memory-admin-enabled-switch" />
         </FormField>
 
         <FormField
@@ -99,14 +101,14 @@ export function MemorySection() {
           label="Default top-K"
           description="How many memories to inject per turn. Shared across retrieval arms — the fused top-K is what's injected, whether the result came from full-text, semantic, or hybrid search. Users can override their own limit later."
         >
-          <InputNumber min={1} max={100} className="w-40" />
+          <InputNumber min={1} max={100} className="w-40" data-testid="memory-admin-topk-input" />
         </FormField>
 
         {canManage && (
           <>
             <Separator className="!my-3" />
             <Flex justify="end">
-              <Button type="submit" loading={saving}>
+              <Button type="submit" loading={saving} data-testid="memory-admin-master-save-btn">
                 Save
               </Button>
             </Flex>

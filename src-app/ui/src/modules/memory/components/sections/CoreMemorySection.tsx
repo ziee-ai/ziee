@@ -25,7 +25,7 @@ export function CoreMemorySection() {
   if (!canRead) return null
 
   return (
-    <Card title="Per-assistant core memory">
+    <Card title="Per-assistant core memory" data-testid="memory-core-card">
       <Paragraph type="secondary" className="!mb-3 text-sm">
         Core-memory blocks (Letta-style) are prepended to a specific
         assistant&rsquo;s system prompt on every turn. Use them for
@@ -39,9 +39,11 @@ export function CoreMemorySection() {
         ) : assistants.length === 0 ? (
           <Empty
             description="No assistants yet"
+            data-testid="memory-core-empty"
           />
         ) : (
           <Combobox
+            data-testid="memory-core-assistant-combobox"
             className="w-full"
             placeholder="Pick an assistant"
             value={assistantId ?? undefined}

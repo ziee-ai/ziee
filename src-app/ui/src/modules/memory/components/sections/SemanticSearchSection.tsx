@@ -73,10 +73,11 @@ export function SemanticSearchSection() {
 
   if (!canRead) {
     return (
-      <Card title="Semantic search">
+      <Card title="Semantic search" data-testid="memory-semantic-card">
         <Alert
           tone="warning"
           title="You don't have permission to view memory admin settings."
+          data-testid="memory-semantic-no-perm-alert"
         />
       </Card>
     )
@@ -149,12 +150,13 @@ export function SemanticSearchSection() {
 
   return (
     <>
-      <Card title="Semantic search">
+      <Card title="Semantic search" data-testid="memory-semantic-card">
         {noModelsAvailable && (
           <Alert
             tone="info"
             className="!mb-4"
             title="No embedding-capable models found."
+            data-testid="memory-semantic-no-models-alert"
             description={
               <span>
                 Add one from the LLM Providers page — either upload a
@@ -173,6 +175,7 @@ export function SemanticSearchSection() {
           layout="horizontal"
           onSubmit={handleSubmit}
           disabled={!canManage}
+          data-testid="memory-semantic-form"
         >
           <FormField
             name="semantic_enabled"
@@ -180,7 +183,7 @@ export function SemanticSearchSection() {
             description="When off, retrieval skips the vector arm regardless of whether an embedding model is configured. An effective vector recall additionally requires a model to be picked below."
             valuePropName="checked"
           >
-            <Switch aria-label="Enable semantic search retrieval" />
+            <Switch aria-label="Enable semantic search retrieval" data-testid="memory-semantic-enabled-switch" />
           </FormField>
 
           <FormField
@@ -189,6 +192,7 @@ export function SemanticSearchSection() {
             description={`The model used to compute vectors for retrieval and extraction. Switching dimension triggers a re-embed of all stored memories. Current vector dimension: ${settings.embedding_dimensions}`}
           >
             <Combobox
+              data-testid="memory-semantic-model-combobox"
               placeholder={
                 noModelsAvailable
                   ? 'No embedding-capable models'
@@ -211,7 +215,7 @@ export function SemanticSearchSection() {
             label="Cosine distance threshold"
             description="Memories with distance ≥ this value are filtered out of the vector arm. Lower = stricter (fewer false-positives, more misses)."
           >
-            <InputNumber min={0} max={2} step={0.05} className="w-[160px]" />
+            <InputNumber min={0} max={2} step={0.05} className="w-[160px]" data-testid="memory-semantic-cosine-input" />
           </FormField>
 
           <div className="flex flex-col gap-1">
@@ -221,6 +225,7 @@ export function SemanticSearchSection() {
               variant="outline"
               onClick={() => setReembedConfirmOpen(true)}
               disabled={!settings.embedding_model_id || !canManage}
+              data-testid="memory-semantic-reembed-btn"
             >
               Re-embed now
             </Button>
@@ -235,7 +240,7 @@ export function SemanticSearchSection() {
             <>
               <Separator className="!my-3" />
               <Flex justify="end">
-                <Button type="submit" loading={saving}>
+                <Button type="submit" loading={saving} data-testid="memory-semantic-save-btn">
                   Save
                 </Button>
               </Flex>
@@ -245,6 +250,7 @@ export function SemanticSearchSection() {
       </Card>
 
       <Dialog
+        data-testid="memory-semantic-reembed-dialog"
         open={reembedConfirmOpen}
         onOpenChange={(o) => {
           if (!o) setReembedConfirmOpen(false)
@@ -252,10 +258,10 @@ export function SemanticSearchSection() {
         title="Re-embed every memory?"
         footer={
           <Flex justify="end" className="gap-2">
-            <Button variant="outline" onClick={() => setReembedConfirmOpen(false)}>
+            <Button variant="outline" onClick={() => setReembedConfirmOpen(false)} data-testid="memory-semantic-reembed-cancel-btn">
               Cancel
             </Button>
-            <Button onClick={handleReembed}>Re-embed</Button>
+            <Button onClick={handleReembed} data-testid="memory-semantic-reembed-confirm-btn">Re-embed</Button>
           </Flex>
         }
       >
@@ -268,6 +274,7 @@ export function SemanticSearchSection() {
       </Dialog>
 
       <Dialog
+        data-testid="memory-semantic-swap-dialog"
         open={pendingSwap !== null}
         onOpenChange={(o) => {
           if (!o) setPendingSwap(null)
@@ -275,10 +282,11 @@ export function SemanticSearchSection() {
         title="Change the embedding model?"
         footer={
           <Flex justify="end" className="gap-2">
-            <Button variant="outline" onClick={() => setPendingSwap(null)}>
+            <Button variant="outline" onClick={() => setPendingSwap(null)} data-testid="memory-semantic-swap-cancel-btn">
               Keep current model
             </Button>
             <Button
+              data-testid="memory-semantic-swap-confirm-btn"
               onClick={async () => {
                 if (!pendingSwap) return
                 const captured = pendingSwap
