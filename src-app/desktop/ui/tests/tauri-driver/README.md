@@ -28,14 +28,17 @@ capability ACL, missing rust-embed assets, wrong `mainBinaryName`, etc.
    cargo install tauri-driver --locked
    ```
 
-3. **Install the platform WebDriver.**
-   - **macOS**: enable Safari's WebDriver:
+3. **Install the platform WebDriver.** Only the macOS step is needed to
+   run this harness today (it resolves the macOS bundle path — see the
+   macOS-only note above). The Linux/Windows entries are reference for a
+   future cross-platform port, NOT currently runnable.
+   - **macOS** (the only supported target): enable Safari's WebDriver:
      ```bash
      sudo safaridriver --enable
      ```
      (Tauri on macOS uses WebKit; `safaridriver` ships with macOS.)
-   - **Linux**: `apt install webkit2gtk-driver`.
-   - **Windows**: `Microsoft.WebDriver` (matching your Edge build).
+   - **Linux** (future port): `apt install webkit2gtk-driver`.
+   - **Windows** (future port): `Microsoft.WebDriver` (matching your Edge build).
 
 4. **selenium-webdriver** is already in `desktop/ui`'s
    `devDependencies` — `npm install` covers it.
@@ -71,9 +74,10 @@ Exit 0 = pass. Anything else = fail.
   does not run on Linux/Windows as-is. (On macOS no DISPLAY is needed
   for `safaridriver`; a Linux port would need X11/Wayland for
   `webkit2gtk-driver` plus the corresponding Linux bundle path.)
-- Display server: macOS needs no `DISPLAY` for `safaridriver`, but
-  Linux requires X11/Wayland for `webkit2gtk-driver`. (Setup above
-  covers macOS, Linux, and Windows WebDrivers.)
+- Display server (future Linux port): macOS needs no `DISPLAY` for
+  `safaridriver`; a Linux port would additionally require X11/Wayland
+  for `webkit2gtk-driver`. The Linux/Windows WebDriver install steps
+  above are reference-only until the cross-platform port lands.
 - No isolation: uses the user's real macOS data dir
   (`~/Library/Application Support/com.ziee.chat/`). Don't run while
   you have a real session open (port collision).
