@@ -833,3 +833,95 @@ async fn test_read_file_binary_returns_no_text_note() {
         "binary read must not leak a base64 data block; body={body}"
     );
 }
+
+/// convert_document real-path resource_link PERSISTENCE: render Markdown→PDF via
+/// the embedded pandoc+typst engine, save to the file store, and emit a
+/// resource_link pointing at the saved file. The existing convert_document test
+/// only covers the empty-markdown validation (returns before any render); this
+/// asserts the persistence contract the audit names — the emitted link is
+/// `is_saved=true` at `/api/files/{id}`, and that exact file is a DURABLE,
+/// retrievable store artifact (metadata + a downloadable real PDF), proving the
+/// link is a persisted file id, not a transient handle.
+#[tokio::test]
+async fn test_convert_document_emits_persisted_resource_link() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "files_mcp_convert_persist").await;
+    let conv_id = create_conversation(&server, &user).await;
+    let conv_uuid = Uuid::parse_str(&conv_id).unwrap();
+
+    let body = call_tool(
+        &server,
+        &user,
+        conv_uuid,
+        "convert_document",
+        json!({
+            "markdown": "# Persisted Report\n\nThis is a converted PDF body.\n",
+            "filename": "report.pdf",
+        }),
+    )
+    .await;
+    assert!(
+        body["error"].is_null(),
+        "convert_document should succeed (pandoc+typst are embedded); body={body}"
+    );
+
+    let sc = &body["result"]["structuredContent"];
+    let file_id = sc["file_id"]
+        .as_str()
+        .expect("convert_document returns structuredContent.file_id")
+        .to_string();
+
+    // The resource_link the model receives must reference the persisted file.
+    let link = &sc["content"][0];
+    assert_eq!(
+        link["type"], "resource_link",
+        "convert_document emits a resource_link block; sc={sc}"
+    );
+    assert_eq!(
+        link["is_saved"],
+        json!(true),
+        "the converted file is already saved (is_saved=true), so persist_links references rather than re-fetches it"
+    );
+    assert_eq!(
+        link["uri"].as_str().unwrap(),
+        format!("/api/files/{file_id}"),
+        "the link URI points at the persisted file id"
+    );
+    assert_eq!(link["name"].as_str().unwrap(), "report.pdf", "sanitized filename");
+    assert_eq!(
+        link["mimeType"].as_str().unwrap(),
+        "application/pdf",
+        "the saved artifact is a PDF"
+    );
+
+    // PERSISTENCE: the linked file is a real, retrievable store artifact (not a
+    // transient render). Metadata round-trips with the MCP provenance stamp...
+    let meta = reqwest::Client::new()
+        .get(server.api_url(&format!("/files/{file_id}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(meta.status(), 200, "GET /files/{{id}} for the converted file");
+    let meta_json: Value = meta.json().await.unwrap();
+    assert_eq!(
+        meta_json["created_by"], "mcp",
+        "convert_document stamps created_by=mcp; meta={meta_json}"
+    );
+    assert_eq!(meta_json["filename"], "report.pdf");
+
+    // ...and the bytes download as a genuinely-rendered PDF.
+    let dl = reqwest::Client::new()
+        .get(server.api_url(&format!("/files/{file_id}/download")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(dl.status(), 200, "the persisted converted PDF is downloadable");
+    let bytes = dl.bytes().await.unwrap();
+    assert!(
+        bytes.starts_with(b"%PDF"),
+        "the downloaded artifact is a real rendered PDF (magic %PDF); len={}",
+        bytes.len()
+    );
+}
