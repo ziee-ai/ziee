@@ -359,6 +359,61 @@ mod tests {
         assert!(!got(&mut rx_other), "non-holder must NOT receive");
     }
 
+    /// Build a ClientConn whose permission comes ONLY from group membership
+    /// (the user's direct `permissions` are empty).
+    fn conn_with_group(user_id: Uuid, group_perms: Vec<String>) -> (ClientConn, Rx) {
+        let (tx, rx) = tokio::sync::mpsc::channel(SYNC_CHANNEL_CAPACITY);
+        let group = Group {
+            id: Uuid::new_v4(),
+            name: "g".into(),
+            description: None,
+            permissions: group_perms,
+            is_system: false,
+            is_active: true,
+            is_default: false,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        let user = fake_user(user_id, false, vec![]);
+        let c = ClientConn {
+            user_id,
+            is_admin: false,
+            user,
+            groups: vec![group],
+            sender: tx,
+        };
+        (c, rx)
+    }
+
+    #[test]
+    fn group_scoped_audience_routes_by_group_membership() {
+        // The group-scoped user-view entities (UserMcpServer / UserLlmProvider /
+        // Group) deliver to perm holders — and the perm is typically granted via
+        // GROUP MEMBERSHIP, not the user's direct permissions. Assert the
+        // group-derived path of check_permission_union is honored for BOTH
+        // PermRule::All and PermRule::Any, while a member-less user is excluded.
+        let reg = empty_registry();
+        let (c_group, mut rx_group) =
+            conn_with_group(Uuid::new_v4(), vec!["users::read".into()]);
+        let (c_none, mut rx_none) = conn(fake_user(Uuid::new_v4(), false, vec![]));
+        reg.register(Uuid::new_v4(), c_group).unwrap();
+        reg.register(Uuid::new_v4(), c_none).unwrap();
+
+        // All-rule: the group grants the only required perm.
+        reg.deliver(Audience::Perm(PermRule::All(vec!["users::read"])), ev(), None);
+        assert!(got(&mut rx_group), "group-derived perm must receive (All)");
+        assert!(!got(&mut rx_none), "user with no group/perm must NOT receive");
+
+        // Any-rule: one of the alternatives is granted via the group.
+        reg.deliver(
+            Audience::Perm(PermRule::Any(vec!["users::read", "mcp::admin"])),
+            ev(),
+            None,
+        );
+        assert!(got(&mut rx_group), "group-derived perm must receive (Any)");
+        assert!(!got(&mut rx_none), "user with no group/perm must NOT receive (Any)");
+    }
+
     #[test]
     fn everyone_audience_reaches_all_connections() {
         let reg = empty_registry();
