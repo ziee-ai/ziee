@@ -938,3 +938,104 @@ async fn test_assign_user_already_in_group_is_noop() {
         .count();
     assert_eq!(count, 1, "double-assign must not duplicate the membership: {members}");
 }
+
+/// `delete_group` must refuse to delete a SYSTEM group (`is_system = true`,
+/// e.g. the seeded Administrators/Users groups) with 400 / SYSTEM_GROUP, while
+/// still allowing deletion of an ordinary group — the sibling of the
+/// `update_group` system-protection guard (groups.rs:259-261).
+#[tokio::test]
+async fn test_delete_group_system_group_protection() {
+    use crate::common::TEST_CONFIG;
+
+    let server = crate::common::TestServer::start().await;
+    let admin = helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["groups::create", "groups::delete", "groups::read"],
+    )
+    .await;
+
+    // Seed a SYSTEM group directly (is_system = true) — the API offers no way
+    // to create one, mirroring the seeded Administrators/Users groups.
+    let database_url = format!(
+        "postgresql://{}:{}@{}:{}/{}",
+        TEST_CONFIG.pg_username,
+        TEST_CONFIG.pg_password,
+        TEST_CONFIG.pg_bind_address,
+        TEST_CONFIG.pg_port,
+        server.database_name
+    );
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&database_url)
+        .await
+        .expect("Failed to connect to test database");
+
+    let sys_group_id = Uuid::new_v4();
+    let sys_group_name = format!("sys_del_{}", &sys_group_id.to_string()[..8]);
+    let perms: Vec<String> = vec!["users::read".to_string()];
+    sqlx::query(
+        "INSERT INTO groups (id, name, description, permissions, is_system, is_active, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, true, true, NOW(), NOW())",
+    )
+    .bind(sys_group_id)
+    .bind(&sys_group_name)
+    .bind("Protected system group")
+    .bind(&perms)
+    .execute(&pool)
+    .await
+    .expect("Failed to seed system group");
+    pool.close().await;
+
+    let client = reqwest::Client::new();
+
+    // Deleting the SYSTEM group is rejected with 400 / SYSTEM_GROUP.
+    let sys_url = server.api_url(&format!("/groups/{}", sys_group_id));
+    let response = client
+        .delete(&sys_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(
+        response.status(),
+        400,
+        "Deleting a system group must be rejected"
+    );
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(
+        body.get("error_code").and_then(|v| v.as_str()),
+        Some("SYSTEM_GROUP"),
+        "System group delete rejection must carry the SYSTEM_GROUP code"
+    );
+
+    // The system group still exists after the rejected delete.
+    let response = client
+        .get(&sys_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(
+        response.status(),
+        200,
+        "System group must survive the rejected delete"
+    );
+
+    // Positive control: an ordinary (non-system) group deletes fine (204),
+    // proving the guard is specific to system groups, not a blanket block.
+    let normal = helpers::create_test_group(&server, &admin.token, "deletable_normal").await;
+    let normal_id = normal["id"].as_str().expect("Should have group ID");
+    let normal_url = server.api_url(&format!("/groups/{}", normal_id));
+    let response = client
+        .delete(&normal_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(
+        response.status(),
+        204,
+        "An ordinary group must delete successfully"
+    );
+}
