@@ -1087,3 +1087,57 @@ async fn test_user_cannot_create_template_via_assistants_endpoint() {
     );
     assert_eq!(body["created_by"].is_null(), false, "a user assistant is owned by the creator");
 }
+
+/// Clone-on-signup SKIPS non-default templates: the UserCreated hook
+/// (event_handlers.rs:44-45) only clones templates where is_default && enabled.
+/// The existing clone test only asserts a DEFAULT template IS cloned; this also
+/// asserts a NON-DEFAULT template is NOT.
+#[tokio::test]
+async fn test_clone_on_signup_skips_non_default_templates() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin_skip_tmpl",
+        &["assistant_templates::create", "assistant_templates::set_default"],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    // A DEFAULT template (cloned) + a NON-DEFAULT template (must be skipped).
+    for (name, is_default) in [("Cloned Default Tmpl", true), ("Skipped NonDefault Tmpl", false)] {
+        let r = client
+            .post(server.api_url("/assistant-templates"))
+            .header("Authorization", format!("Bearer {}", admin.token))
+            .json(&json!({ "name": name, "instructions": "x", "is_default": is_default }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::CREATED, "create template {name}");
+    }
+
+    // New user → UserCreated → clone hook.
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "skip_tmpl_user",
+        &["assistants::read"],
+    )
+    .await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+
+    let body: serde_json::Value = client
+        .get(server.api_url("/assistants"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let names: Vec<&str> = body["assistants"].as_array().unwrap().iter().filter_map(|a| a["name"].as_str()).collect();
+
+    assert!(names.contains(&"Cloned Default Tmpl"), "the default template must be cloned; got {names:?}");
+    assert!(
+        !names.contains(&"Skipped NonDefault Tmpl"),
+        "a NON-default template must NOT be cloned on signup; got {names:?}"
+    );
+}

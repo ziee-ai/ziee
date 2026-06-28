@@ -799,3 +799,32 @@ async fn me_has_password_false_for_external_account() {
         "password_hash must never be exposed"
     );
 }
+
+/// ensure_unique_username's collision-retry loop (handlers.rs:1350-1382): a free
+/// base is returned as-is; a taken base derives base2, base3, … by probing the
+/// users table. (The 999-attempt exhaustion-→500 cap is the same loop's terminal;
+/// seeding 999 users is impractical, but the retry mechanism is what this drives.)
+#[tokio::test]
+async fn test_ensure_unique_username_collision_retry() {
+    let server = crate::common::TestServer::start().await;
+
+    // Free base → returned unchanged.
+    let fresh = ziee::auth_ensure_unique_username("brandnewbase")
+        .await
+        .expect("free base resolves");
+    assert_eq!(fresh, "brandnewbase");
+
+    // Register a user that OCCUPIES "collide" so the next derivation must bump.
+    crate::common::test_helpers::create_user_with_permissions(&server, "collide", &[]).await;
+    let bumped = ziee::auth_ensure_unique_username("collide")
+        .await
+        .expect("taken base resolves to a numbered variant");
+    assert_eq!(bumped, "collide2", "a taken base must derive base2");
+
+    // Occupy "collide2" too → must skip to "collide3".
+    crate::common::test_helpers::create_user_with_permissions(&server, "collide2", &[]).await;
+    let bumped3 = ziee::auth_ensure_unique_username("collide")
+        .await
+        .expect("resolves past the second collision");
+    assert_eq!(bumped3, "collide3", "base + base2 taken → base3");
+}

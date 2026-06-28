@@ -39,6 +39,9 @@ pub use modules::llm_provider_files::repository::get_provider_file_mapping as ll
 // Re-exported so the integration test can assert the REAL anti-injection guard
 // text in the extraction prompt (replacing a no-op stub).
 pub use modules::memory::engine::prompts::EXTRACTION_PROMPT as memory_extraction_prompt;
+// Re-exported so an integration test can drive the REAL OAuth username-collision
+// retry loop (base → base2 → base3 …) instead of going through the full OAuth flow.
+pub use modules::auth::handlers::ensure_unique_username as auth_ensure_unique_username;
 pub use modules::elicitation_mcp::elicitation_mcp_server_id;
 pub use modules::elicitation_mcp::repository::ElicitationMcpRepository;
 // Re-export the LLM repository connection-health entry points so the
