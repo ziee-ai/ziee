@@ -185,6 +185,13 @@ pub mod file_rag_ingest {
     pub use crate::modules::file_rag::ingest::reindex_file;
 }
 
+// Re-export the workflow_mcp await-terminal loop for the crashed-runner
+// (no-progress guard) integration test.
+#[doc(hidden)]
+pub mod workflow_mcp_internal {
+    pub use crate::modules::workflow_mcp::tools::await_terminal_for_test;
+}
+
 // Re-export the workflow run-status-machine surface for the Tier-2 status-
 // machine tests (D1–D5): the REAL `mark_status` CAS, the `mark_running` /
 // `cancel_cas` / `heartbeat` per-transition guards, the `persist_step_meta`
@@ -194,8 +201,9 @@ pub mod file_rag_ingest {
 pub mod workflow {
     pub use crate::modules::workflow::models::WorkflowRunStatus;
     pub use crate::modules::workflow::repository::{
-        cancel_cas, heartbeat, mark_running, mark_status, persist_step_meta,
+        cancel_cas, heartbeat, insert_run, mark_running, mark_status, persist_step_meta,
     };
+    pub use crate::modules::workflow::models::CreateWorkflowRun;
     // The run staging root, so a test can delete a run's on-disk logs to
     // exercise read_log's durable step_logs_json fallback (A7 GC recovery).
     pub use crate::modules::workflow::runner::workflow_workspace_root;

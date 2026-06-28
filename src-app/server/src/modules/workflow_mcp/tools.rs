@@ -424,6 +424,31 @@ impl Drop for RunCancelOnDrop {
 /// `updated_at` past the no-progress threshold therefore means the runner task
 /// is genuinely dead → fail fast, without false-killing a live run that's
 /// merely waiting (this is what keeps an unbounded run from hanging forever).
+/// Production no-progress limit (seconds). A debug-only env override
+/// (`WORKFLOW_MCP_NO_PROGRESS_SECS`) shortens it for the crashed-runner test;
+/// compiled out of release builds via `cfg!(debug_assertions)`.
+fn no_progress_limit_secs() -> i64 {
+    #[cfg(debug_assertions)]
+    if let Ok(v) = std::env::var("WORKFLOW_MCP_NO_PROGRESS_SECS") {
+        if let Ok(n) = v.parse::<i64>() {
+            if n > 0 {
+                return n;
+            }
+        }
+    }
+    5 * 60
+}
+
+/// Test-only access to the no-progress await loop (re-exported via
+/// `ziee::workflow_mcp_internal` for the crashed-runner integration test).
+#[doc(hidden)]
+pub async fn await_terminal_for_test(
+    pool: &sqlx::PgPool,
+    run_id: Uuid,
+) -> Result<WorkflowRun, AppError> {
+    await_terminal(pool, run_id).await
+}
+
 async fn await_terminal(pool: &sqlx::PgPool, run_id: Uuid) -> Result<WorkflowRun, AppError> {
     const POLL_INTERVAL: Duration = Duration::from_millis(500);
     // Slack added on top of the run's own wall-clock deadline: the runner's
@@ -432,8 +457,13 @@ async fn await_terminal(pool: &sqlx::PgPool, run_id: Uuid) -> Result<WorkflowRun
     // own watcher never fired.
     const CEILING_SLACK: Duration = Duration::from_secs(2 * 60);
     // No-progress kill: if `updated_at` doesn't advance for this long while
-    // the run is still non-terminal, treat the runner as crashed.
-    const NO_PROGRESS_LIMIT: chrono::Duration = chrono::Duration::minutes(5);
+    // the run is still non-terminal, treat the runner as crashed. The limit is
+    // 5 minutes in production; a debug-only env seam (compiled out of release
+    // via `cfg!(debug_assertions)`, mirroring `LLM_RUNTIME_REAPER_TICK_MS`) lets
+    // the crashed-runner integration test reproduce the kill in ~1s instead of
+    // 5 minutes.
+    let no_progress_secs = no_progress_limit_secs();
+    let no_progress_limit = chrono::Duration::seconds(no_progress_secs);
     let started = std::time::Instant::now();
     let mut last_updated_at: Option<chrono::DateTime<chrono::Utc>> = None;
     let mut last_progress_at = std::time::Instant::now();
@@ -452,13 +482,13 @@ async fn await_terminal(pool: &sqlx::PgPool, run_id: Uuid) -> Result<WorkflowRun
         // Fail fast on a stalled runner (M5). Compare against wall-clock age
         // of the LAST observed progress; a crashed task can't bump updated_at.
         let stalled_for = chrono::Utc::now().signed_duration_since(run.updated_at);
-        if stalled_for > NO_PROGRESS_LIMIT
-            && last_progress_at.elapsed() > Duration::from_secs(NO_PROGRESS_LIMIT.num_seconds() as u64)
+        if stalled_for > no_progress_limit
+            && last_progress_at.elapsed() > Duration::from_secs(no_progress_secs.max(0) as u64)
         {
             return Err(AppError::internal_error(format!(
-                "workflow_mcp: workflow run made no progress for over {} minutes \
+                "workflow_mcp: workflow run made no progress for over {} seconds \
                  (runner task appears to have crashed); failing the tool call",
-                NO_PROGRESS_LIMIT.num_minutes()
+                no_progress_secs
             )));
         }
         // Backstop ceiling tracks the run's LIVE timeout (settable mid-run).
