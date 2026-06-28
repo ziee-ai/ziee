@@ -4,6 +4,31 @@ use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
 use uuid::Uuid;
 
+/// Hard cap on the serialized size of an MCP server's `requestedSchema`.
+/// The schema is untrusted (comes from the remote MCP server) and is rendered
+/// into a form by the client, so an unbounded schema is a memory/DoS vector.
+pub const MAX_REQUESTED_SCHEMA_BYTES: usize = 1024 * 1024; // 1 MiB
+
+/// Bound an incoming elicitation `requestedSchema` to [`MAX_REQUESTED_SCHEMA_BYTES`].
+/// Oversized schemas are dropped (replaced with a minimal error schema) rather
+/// than forwarded to the client. Applied at every MCP ingress point that parses
+/// `requestedSchema`.
+pub fn cap_requested_schema(schema: serde_json::Value) -> serde_json::Value {
+    let len = serde_json::to_string(&schema).map(|s| s.len()).unwrap_or(0);
+    if len > MAX_REQUESTED_SCHEMA_BYTES {
+        tracing::warn!(
+            "elicitation requestedSchema is {len} bytes (> {MAX_REQUESTED_SCHEMA_BYTES} cap); dropping it"
+        );
+        serde_json::json!({
+            "type": "object",
+            "properties": {},
+            "x-ziee-error": "requested schema exceeded the 1 MiB limit and was dropped"
+        })
+    } else {
+        schema
+    }
+}
+
 /// The user's answer to an elicitation request.
 /// Stored in the in-memory registry and sent back to the MCP server as a JSON-RPC result.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

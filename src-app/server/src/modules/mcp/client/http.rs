@@ -707,7 +707,9 @@ async fn handle_get_stream_elicitation(
         .and_then(|m| m.as_str())
         .unwrap_or("")
         .to_string();
-    let requested_schema = params.get("requestedSchema").cloned().unwrap_or(Value::Null);
+    let requested_schema = crate::modules::mcp::elicitation::models::cap_requested_schema(
+        params.get("requestedSchema").cloned().unwrap_or(Value::Null),
+    );
 
     // POST a JSON-RPC result back to the server with the spec-required headers.
     let post_result = |result_value: Value| {
@@ -1853,7 +1855,9 @@ impl HttpMcpClient {
                                 let req_id = json.get("id").cloned().unwrap_or(Value::Null);
                                 let params = json.get("params").cloned().unwrap_or(Value::Null);
                                 let message = params.get("message").and_then(|m| m.as_str()).unwrap_or("").to_string();
-                                let requested_schema = params.get("requestedSchema").cloned().unwrap_or(Value::Null);
+                                let requested_schema = crate::modules::mcp::elicitation::models::cap_requested_schema(
+        params.get("requestedSchema").cloned().unwrap_or(Value::Null),
+    );
 
                                 tracing::info!(
                                     "[elicitation] received elicitation/create id={:?} from '{}'",
@@ -2247,7 +2251,9 @@ impl HttpMcpClient {
                                 let req_id = json.get("id").cloned().unwrap_or(Value::Null);
                                 let params = json.get("params").cloned().unwrap_or(Value::Null);
                                 let message = params.get("message").and_then(|m| m.as_str()).unwrap_or("").to_string();
-                                let requested_schema = params.get("requestedSchema").cloned().unwrap_or(Value::Null);
+                                let requested_schema = crate::modules::mcp::elicitation::models::cap_requested_schema(
+        params.get("requestedSchema").cloned().unwrap_or(Value::Null),
+    );
 
                                 tracing::info!(
                                     "[elicitation] received elicitation/create id={:?} from '{}'",

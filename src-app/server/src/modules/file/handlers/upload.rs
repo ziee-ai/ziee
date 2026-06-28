@@ -15,7 +15,10 @@ use crate::modules::permissions::extractors::RequirePermissions;
 use crate::modules::permissions::openapi::with_permission;
 use uuid::Uuid;
 
-const MAX_FILE_SIZE: usize = 100 * 1024 * 1024; // 100MB
+/// Per-file upload size cap (approved policy value). A single uploaded file
+/// larger than this is rejected with FILE_TOO_LARGE; the route-level body limit
+/// (200 MB) bounds the whole multipart request on top of this.
+const MAX_FILE_SIZE: usize = 50 * 1024 * 1024; // 50 MB
 
 /// Per-user storage quota for uploads. Closes 05-file F-16 (Medium). 10 GiB
 /// matches typical SaaS chat-attachment quotas. Exposed as a constant so

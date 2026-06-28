@@ -251,10 +251,12 @@ pub(crate) async fn run_ask_user_elicitation(
     if message.is_empty() {
         return ask_result("ask_user requires a non-empty 'message'.".to_string(), true);
     }
-    let requested_schema = input
-        .get("schema")
-        .cloned()
-        .unwrap_or_else(|| serde_json::json!({ "type": "object" }));
+    let requested_schema = crate::modules::mcp::elicitation::models::cap_requested_schema(
+        input
+            .get("schema")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({ "type": "object" })),
+    );
 
     // No interactive stream (e.g. the before_llm_call no-SSE path) → nobody to ask.
     let Some(sse_tx) = sse_tx else {
