@@ -15,6 +15,7 @@ mod bundle_security_http;
 mod hide_in_conversation;
 mod install_from_hub;
 mod listing_in_chat;
+mod real_llm;
 mod skill_mcp_load;
 mod sync_emit_test;
 
