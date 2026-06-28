@@ -160,4 +160,50 @@ test.describe('Auth providers — admin CRUD UI', () => {
     // Cleanup: close without saving.
     await page.getByRole('button', { name: /^Cancel$/ }).click()
   })
+
+  test('Generic OAuth 2 template renders OAuth2-specific config fields', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    await page.goto(`${baseURL}/settings/auth-providers`)
+
+    await page.getByRole('button', { name: ADD_PROVIDER }).click()
+    await page.getByRole('menuitem', { name: /Generic OAuth 2/i }).click()
+
+    await expect(
+      page.getByRole('button', { name: /^Create$/ }),
+    ).toBeVisible({ timeout: 10_000 })
+
+    // OAuth2Fields() are the discriminating fields (OIDC has Issuer URL
+    // instead). The three endpoint URLs + the button label are unique to it.
+    await expect(page.getByLabel('Authorization URL')).toBeVisible()
+    await expect(page.getByLabel('Token URL')).toBeVisible()
+    await expect(page.getByLabel('UserInfo URL')).toBeVisible()
+    await expect(page.getByLabel('Button label')).toBeVisible()
+    // It is NOT an OIDC provider, so there's no Issuer URL field.
+    await expect(page.getByLabel(/Issuer URL/i)).toHaveCount(0)
+
+    await page.getByRole('button', { name: /^Cancel$/ }).click()
+  })
+
+  test('editing the seeded Apple provider renders Apple-specific config fields', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    await page.goto(`${baseURL}/settings/auth-providers`)
+
+    // Apple is seeded (migration 47); open its edit drawer to reach AppleFields.
+    await page.getByRole('button', { name: 'Edit apple' }).click()
+
+    await expect(page.getByLabel('Team ID')).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByLabel('Services ID')).toBeVisible()
+    await expect(page.getByLabel('Key ID')).toBeVisible()
+    await expect(page.getByLabel('Private key path on disk')).toBeVisible()
+
+    await page.getByRole('button', { name: /^Cancel$/ }).click()
+  })
 })
