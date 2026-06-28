@@ -83,3 +83,35 @@ test('clicking Download on a disabled-repo model shows the disabled modal + open
   // NO download POST was fired.
   expect(getHits()).toBe(0)
 })
+
+test('the disabled-repo modal Cancel path dismisses without opening settings or downloading', async ({
+  page,
+  testInfra,
+}) => {
+  const { baseURL } = testInfra
+  const token = await getAdminToken(baseURL)
+  await disableHuggingFaceRepo(baseURL, token)
+
+  const getHits = await trackDownloadStartCount(page)
+
+  await loginAsAdmin(page, baseURL)
+  await navigateToHub(page, baseURL, 'models')
+  await waitForHubDataLoad(page)
+
+  const firstCard = (await getModelCards(page)).first()
+  await expect(firstCard).toBeVisible()
+  await firstCard.getByRole('button', { name: /download/i }).click()
+
+  const modal = page
+    .getByRole('dialog')
+    .filter({ hasText: 'Repository Disabled' })
+  await expect(modal).toBeVisible({ timeout: 10_000 })
+
+  // Cancel → the modal closes; the repository drawer is NOT opened.
+  await modal.getByRole('button', { name: 'Cancel' }).click()
+  await expect(modal).toBeHidden({ timeout: 10_000 })
+  await expect(page.locator('.ant-drawer.ant-drawer-open')).toHaveCount(0)
+
+  // Still no download POST.
+  expect(getHits()).toBe(0)
+})
