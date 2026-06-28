@@ -235,3 +235,106 @@ async fn send_with_assistant(
     let frames = probe.collect_until_terminal(conv_id, TURN_TIMEOUT).await;
     frames.iter().filter(|f| f.event_type == "content").count()
 }
+
+// audit id all-35422f643da3 — message→assistant attribution persistence. The
+// assistant chat-extension's after_user_message_created inserts into the
+// message_assistant join table (migration 75); GET /messages/{id}/assistant
+// reads it back (the FE edit-restore path). Send a turn WITH an assistant_id via
+// the deterministic stub model, then assert the attribution round-trips.
+#[tokio::test]
+async fn test_message_assistant_attribution_persists_and_is_readable() {
+    let (server, user, _stub, model_id) = setup("attribution_user").await;
+
+    // Create the assistant to attribute the message to.
+    let assistant_response = reqwest::Client::new()
+        .post(server.api_url("/assistants"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "name": "Attribution Assistant", "is_template": false, "enabled": true }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(assistant_response.status(), StatusCode::CREATED);
+    let assistant: serde_json::Value = assistant_response.json().await.unwrap();
+    let assistant_id = helpers::parse_uuid(&assistant["id"]);
+
+    let conversation = helpers::create_conversation(&server, &user.token, Some(model_id), None).await;
+    let conv_id = helpers::parse_uuid(&conversation["id"]);
+    let branch_id = helpers::parse_uuid(&conversation["active_branch_id"]);
+
+    // Send WITH the assistant_id (stub model → no real LLM).
+    let content = send_with_assistant(
+        &server, &user.token, conv_id, branch_id, model_id, Some(assistant_id), "Remember me",
+    )
+    .await;
+    assert!(content > 0, "assistant-driven turn should produce content");
+
+    // Find the persisted user message.
+    let messages: Vec<serde_json::Value> = reqwest::Client::new()
+        .get(server.api_url(&format!("/conversations/{}/messages", conv_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let user_msg_id = messages
+        .iter()
+        .find(|m| m["role"] == "user")
+        .and_then(|m| m["id"].as_str())
+        .expect("a persisted user message");
+
+    // GET /messages/{id}/assistant must return the attributed assistant_id —
+    // proving after_user_message_created wrote the message_assistant row.
+    let attr: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url(&format!("/messages/{}/assistant", user_msg_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        attr["assistant_id"].as_str(),
+        Some(assistant_id.to_string().as_str()),
+        "message_assistant attribution must persist + read back: {attr}"
+    );
+}
+
+// audit id all-2b2e8d0192dc — model enable/disable state gating in the DOWNSTREAM
+// CONSUMER (the chat-send path). Disabling a model must make the send path reject
+// it with MODEL_DISABLED (streaming.rs:61-66), not start a turn. The existing
+// enable/disable tests only assert the flag flips on the handler.
+#[tokio::test]
+async fn test_disabled_model_is_rejected_by_chat_send() {
+    let (server, user, _stub, model_id) = setup("disabled_model_user").await;
+
+    // Disable the model directly in the DB (the disable handler is covered by
+    // mod.rs::test_disable_model; here we exercise the consumer-side gate).
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    sqlx::query("UPDATE llm_models SET enabled = false WHERE id = $1")
+        .bind(model_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let conversation = helpers::create_conversation(&server, &user.token, Some(model_id), None).await;
+    let conv_id = helpers::parse_uuid(&conversation["id"]);
+    let branch_id = helpers::parse_uuid(&conversation["active_branch_id"]);
+
+    let response = helpers::send_message_simple(
+        &server, &user.token, conv_id, branch_id, model_id, "should be blocked",
+    )
+    .await;
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "sending with a disabled model must be rejected before generation"
+    );
+    let body: serde_json::Value = response.json().await.unwrap_or_default();
+    assert_eq!(
+        body["error_code"], "MODEL_DISABLED",
+        "downstream consumer must reject a disabled model with MODEL_DISABLED: {body}"
+    );
+}
