@@ -444,3 +444,80 @@ async fn test_sidecar_death_then_respawn_recovers() {
         "after the sidecar dies, the next call must respawn it and proxy 200"
     );
 }
+
+// audit id all-e6df8f2b85f6 — the bio chat-extension before_llm_call NEGATIVE
+// paths (bio.rs:43-87) were untested: it must NOT inject the untrusted-content
+// note (and must NOT flag attach) when (1) the model is not tool-capable, or
+// (2) bio is disabled. Driven deterministically through the real chat send path
+// with a capturing stub provider — neither negative path attaches bio, so no
+// sidecar spawn is triggered.
+
+// A distinctive substring of BIO_UNTRUSTED_NOTE.
+const BIO_NOTE_MARK: &str = "UNTRUSTED external data";
+
+async fn send_one_and_capture(
+    server: &crate::common::TestServer,
+    user: &crate::common::test_helpers::TestUser,
+    model_id: uuid::Uuid,
+    stub: &crate::common::stub_chat::StubChat,
+) -> String {
+    let conv = crate::chat::helpers::create_conversation(server, &user.token, Some(model_id), None).await;
+    let conv_id = crate::chat::helpers::parse_uuid(&conv["id"]);
+    let branch_id = crate::chat::helpers::parse_uuid(&conv["active_branch_id"]);
+    let events = crate::chat::helpers::send_body_and_collect_events(
+        server,
+        &user.token,
+        conv_id,
+        json!({ "model_id": model_id.to_string(), "branch_id": branch_id.to_string(), "content": "hello" }),
+        &[],
+    )
+    .await;
+    assert_eq!(
+        events.iter().filter(|e| e.event == "complete").count(),
+        1,
+        "turn should complete once"
+    );
+    stub.requests().last().expect("a provider request was recorded").all_text.clone()
+}
+
+#[tokio::test]
+async fn bio_note_not_injected_for_non_tool_capable_model_even_when_enabled() {
+    // bio ENABLED, but the model is NOT tool-capable → negative path 1.
+    let server = crate::common::TestServer::start_with_options(crate::common::TestServerOptions {
+        bio_mcp_enabled: true,
+        ..Default::default()
+    })
+    .await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "bio_neg1", &["*"]).await;
+    let stub = crate::common::stub_chat::StubChat::start().await;
+    let model_id = crate::common::stub_chat::register_stub_model(
+        &server, &user.token, &user.user_id, &stub.base_url, /*tools=*/ false, None,
+    )
+    .await;
+    let model_id = uuid::Uuid::parse_str(&model_id).unwrap();
+
+    let text = send_one_and_capture(&server, &user, model_id, &stub).await;
+    assert!(
+        !text.contains(BIO_NOTE_MARK),
+        "a non-tool-capable model must NOT receive the bio untrusted-content note"
+    );
+}
+
+#[tokio::test]
+async fn bio_note_not_injected_when_disabled_even_for_tool_capable_model() {
+    // bio DISABLED (default), model IS tool-capable → negative path 2.
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "bio_neg2", &["*"]).await;
+    let stub = crate::common::stub_chat::StubChat::start().await;
+    let model_id = crate::common::stub_chat::register_stub_model(
+        &server, &user.token, &user.user_id, &stub.base_url, /*tools=*/ true, None,
+    )
+    .await;
+    let model_id = uuid::Uuid::parse_str(&model_id).unwrap();
+
+    let text = send_one_and_capture(&server, &user, model_id, &stub).await;
+    assert!(
+        !text.contains(BIO_NOTE_MARK),
+        "with bio disabled, even a tool-capable model must NOT receive the bio note"
+    );
+}
