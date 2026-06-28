@@ -1296,3 +1296,75 @@ async fn test_update_group_prevents_self_escalation_on_custom_group() {
         res.status()
     );
 }
+
+// audit id all-ed7b3bfaa029 — a DEACTIVATED user must be denied across every
+// permission-gated subsystem. The RequirePermissions extractor rejects inactive
+// users with 403 USER_INACTIVE (permissions/extractors.rs:82-88), so once an
+// admin toggles a user off their token must fail on chat / files / memory
+// endpoints alike. No enforcement test existed.
+#[tokio::test]
+async fn test_deactivated_user_denied_across_subsystems() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "deact_admin",
+        &["users::read", "users::toggle_status"],
+    )
+    .await;
+    let victim = test_helpers::create_user_with_permissions(
+        &server,
+        "deact_victim",
+        &["conversations::create", "files::read", "memory::read", "memory::write"],
+    )
+    .await;
+    let bearer = format!("Bearer {}", victim.token);
+
+    // Sanity: while active the victim can hit a gated endpoint.
+    let pre = reqwest::Client::new()
+        .get(server.api_url("/files"))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(pre.status(), 200, "active user can list files");
+
+    // Admin deactivates the victim.
+    let toggle = reqwest::Client::new()
+        .post(server.api_url(&format!("/users/{}/toggle-active", victim.user_id)))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(toggle.status(), 200);
+    assert_eq!(toggle.json::<serde_json::Value>().await.unwrap()["is_active"], false);
+
+    // Every gated subsystem now rejects the victim's token with 403.
+    let client = reqwest::Client::new();
+    // chat
+    let chat = client
+        .post(server.api_url("/conversations"))
+        .header("Authorization", &bearer)
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(chat.status(), 403, "deactivated user must be denied chat");
+    // files
+    let files = client
+        .get(server.api_url("/files"))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(files.status(), 403, "deactivated user must be denied files");
+    // memory MCP
+    let mem = client
+        .post(server.api_url("/memories/mcp"))
+        .header("Authorization", &bearer)
+        .header("x-conversation-id", Uuid::new_v4().to_string())
+        .json(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {} }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(mem.status(), 403, "deactivated user must be denied memory MCP");
+}
