@@ -129,3 +129,30 @@ async fn dry_run_returns_per_step_cost_structure() {
     );
     assert!(body["total_est_tokens"].is_u64(), "total_est_tokens present: {body}");
 }
+
+// audit id all-e264e7d5a897 — the dev `POST /workflows/{id}/test` endpoint
+// (runs bundled <extracted_path>/tests/*.yaml fixtures) had no test. A dev-
+// imported workflow that ships NO fixtures must return a well-formed zero
+// summary (total/passed/failed/skipped = 0), not error. Also exercises the
+// ownership access gate via a real workflow id.
+#[tokio::test]
+async fn test_workflow_endpoint_returns_zero_summary_when_no_fixtures() {
+    let server = plain_server().await;
+    let user = workflow_user(&server, "wf_testep").await;
+    let wf = import_dev_workflow(&server, &user.token, "test-endpoint", FIXTURE_WORKFLOW_YAML).await;
+    let id = wf["id"].as_str().expect("workflow id");
+
+    let resp = reqwest::Client::new()
+        .post(server.api_url(&format!("/workflows/{id}/test")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({}))
+        .send()
+        .await
+        .expect("test endpoint");
+    assert_eq!(resp.status(), 200, "test endpoint should 200: {}", resp.text().await.unwrap_or_default());
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["total"], 0, "no bundled fixtures → total 0: {body}");
+    assert_eq!(body["passed"], 0);
+    assert_eq!(body["failed"], 0);
+    assert!(body["results"].as_array().unwrap().is_empty(), "results empty: {body}");
+}
