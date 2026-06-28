@@ -308,3 +308,53 @@ async fn elicit_schema_valid_response_delivers_and_resumes() {
         "run resumes + completes after the elicit reply: {final_run}"
     );
 }
+
+/// A FINITE elicit `timeout_ms` (not the durable `0`) is a wall-clock deadline:
+/// if the user never answers, the run terminates on its own after the timeout
+/// rather than parking forever. Complements resume.rs (timeout_ms:0 = durable
+/// park) and the happy-path answer tests.
+#[tokio::test]
+async fn elicit_finite_timeout_terminates_unanswered_run() {
+    const FINITE_TIMEOUT_YAML: &str = r#"$schema: "/schemas/2026-06-12/workflow-definition.schema.json"
+inputs:
+  - name: topic
+    required: true
+steps:
+  - id: confirm
+    kind: elicit
+    message: "Proceed with {{ inputs.topic }}?"
+    schema:
+      type: object
+      properties:
+        proceed:
+          type: boolean
+      required: [proceed]
+    timeout_ms: 1500
+outputs:
+  - name: decision
+    from: "{{ confirm.output }}"
+"#;
+    let server = plain_server().await;
+    let user = workflow_user(&server, "elicit_finite_timeout").await;
+    let wf = import_dev_workflow(&server, &user.token, "elicit-finite", FINITE_TIMEOUT_YAML).await;
+    let wf_id = wf["id"].as_str().expect("workflow id").to_string();
+    let (_stub, conv_id) = stub_conversation(&server, &user.user_id, &user.token).await;
+
+    let run = run_workflow(
+        &server,
+        &user.token,
+        &wf_id,
+        json!({ "inputs": { "topic": "x" }, "conversation_id": conv_id.to_string() }),
+    )
+    .await;
+    let run_id = Uuid::parse_str(run["run_id"].as_str().expect("run_id")).unwrap();
+
+    // Do NOT answer. The 1.5s deadline must drive the run to a terminal state
+    // on its own (poll_run waits up to 30s for termination).
+    let final_run = poll_run(&server, &user.token, run_id).await;
+    let status = final_run["status"].as_str().unwrap_or("");
+    assert!(
+        matches!(status, "failed" | "cancelled"),
+        "unanswered finite-timeout elicit must terminate (failed/cancelled), got '{status}': {final_run}"
+    );
+}
