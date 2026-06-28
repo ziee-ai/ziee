@@ -35,6 +35,12 @@ pub use modules::mcp::events::McpServerEvent;
 pub mod llm_repository_health {
     pub use crate::modules::llm_repository::connection_health::run_startup_health_check;
 }
+// Re-export the memory extraction prompt so integration tests can assert its
+// anti-injection / PII guards against the real runtime constant.
+#[doc(hidden)]
+pub mod memory_test_api {
+    pub use crate::modules::memory::engine::prompts::EXTRACTION_PROMPT;
+}
 pub use modules::chat::core::ai_provider::resolve_api_key_for_user;
 pub use common::{ApiResult, AppError};
 // Re-export the at-rest secret helpers so out-of-crate consumers
