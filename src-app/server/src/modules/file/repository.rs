@@ -147,6 +147,34 @@ impl FileRepository {
         Ok(file)
     }
 
+    /// Batch variant of [`get_by_id`] — resolve many files in one query (head
+    /// views). No ownership filter (callers that need it use
+    /// `get_by_ids_and_user`); used where ownership is enforced downstream.
+    pub async fn get_by_ids(&self, file_ids: &[Uuid]) -> Result<Vec<File>, AppError> {
+        let files = sqlx::query_as!(
+            File,
+            r#"
+            SELECT f.id, f.user_id, f.filename, f.file_size, f.mime_type, f.checksum,
+                   f.has_thumbnail, f.preview_page_count, f.text_page_count,
+                   f.processing_metadata as "processing_metadata!: _",
+                   f.created_by,
+                   f.created_at as "created_at: _",
+                   f.updated_at as "updated_at: _",
+                   fv.version, f.current_version_id as "current_version_id!",
+                   fv.blob_version_id
+            FROM files f
+            JOIN file_versions fv ON fv.id = f.current_version_id
+            WHERE f.id = ANY($1)
+            "#,
+            file_ids
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+
+        Ok(files)
+    }
+
     /// Get file by ID and verify user ownership. Returns the head view.
     pub async fn get_by_id_and_user(
         &self,

@@ -97,16 +97,22 @@ impl ProjectExtension for FileProjectExtension {
             "file.project_extension: resolving knowledge files into ContentBlocks"
         );
 
+        // Batch-resolve filenames in ONE query (avoids an N+1 get_by_id per
+        // file). Defense-in-depth ownership is enforced inside
+        // process_file_blocks; here we only need the display name.
+        let names: std::collections::HashMap<Uuid, String> = Repos
+            .file
+            .get_by_ids(&file_ids)
+            .await?
+            .into_iter()
+            .map(|f: FileEntity| (f.id, f.filename))
+            .collect();
+
         let mut blocks: Vec<ContentBlock> = Vec::new();
         for file_id in file_ids {
-            // Look up the filename so we can build a meaningful wrapper.
-            // Defense-in-depth ownership check happens inside
-            // process_file_blocks; we only need the filename here.
-            let filename = Repos
-                .file
-                .get_by_id(file_id)
-                .await?
-                .map(|f: FileEntity| f.filename)
+            let filename = names
+                .get(&file_id)
+                .cloned()
                 .unwrap_or_else(|| format!("file-{file_id}"));
 
             let resolved = process_file_blocks(
