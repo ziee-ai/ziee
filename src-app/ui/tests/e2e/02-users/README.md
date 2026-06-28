@@ -32,7 +32,11 @@ Comprehensive end-to-end tests for the user management module, covering users an
    - Validation for password length
    - Admin user protection
 
-4. **04-group-members.spec.ts** (9 tests)
+4. **03-permission-picker.spec.ts** (2 tests)
+   - Searchable permission picker: search → check → save round-trip
+   - Advanced entries (wildcard / unknown values) preserved verbatim across an edit
+
+5. **04-group-members.spec.ts** (9 tests)
    - View group members
    - Display member information
    - Empty state handling
@@ -52,6 +56,7 @@ Comprehensive end-to-end tests for the user management module, covering users an
 - ✅ User status management (active/inactive)
 - ✅ Password reset functionality
 - ✅ Group membership viewing
+- ✅ Searchable permission picker (round-trip + advanced-entry preservation)
 - ✅ Form validation
 - ✅ Error handling
 - ✅ Pagination
