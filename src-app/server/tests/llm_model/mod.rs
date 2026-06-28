@@ -714,6 +714,85 @@ async fn test_disable_model() {
 }
 
 #[tokio::test]
+async fn test_disable_model_gates_downstream_read_path() {
+    // The mutation response is not enough — a downstream consumer that re-reads
+    // the model (the GET endpoint + the list endpoint that the model picker is
+    // fed from) must observe enabled=false after a disable, and enabled=true
+    // again after re-enable. This guards against the disable not persisting to
+    // the consumer read path.
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "gate_downstream",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_models::edit",
+            "llm_providers::read",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let model = create_test_model(&server, &user.token).await;
+    let model_id = model["id"].as_str().unwrap();
+
+    let read_enabled = |id: String, token: String| {
+        let client = client.clone();
+        let url = server.api_url(&format!("/llm-models/{id}"));
+        async move {
+            let body: serde_json::Value = client
+                .get(url)
+                .header("Authorization", format!("Bearer {token}"))
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            body["enabled"].as_bool().unwrap()
+        }
+    };
+
+    // Enable, then confirm a fresh GET sees it enabled.
+    client
+        .post(server.api_url(&format!("/llm-models/{model_id}/enable")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert!(read_enabled(model_id.to_string(), user.token.clone()).await);
+
+    // Disable, then confirm the downstream read path reflects it.
+    client
+        .post(server.api_url(&format!("/llm-models/{model_id}/disable")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert!(!read_enabled(model_id.to_string(), user.token.clone()).await);
+
+    // The admin list endpoint still returns the model, now flagged disabled, so
+    // a downstream picker can filter it out by `enabled`.
+    let list: serde_json::Value = client
+        .get(server.api_url(&format!("/llm-models?provider_id={}", model["provider_id"].as_str().unwrap())))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let found = list["models"]
+        .as_array()
+        .or_else(|| list.as_array())
+        .unwrap()
+        .iter()
+        .find(|m| m["id"].as_str() == Some(model_id))
+        .expect("disabled model still listed for admins");
+    assert_eq!(found["enabled"], false);
+}
+
+#[tokio::test]
 async fn test_enable_model_not_found() {
     let server = crate::common::TestServer::start().await;
     let user = crate::common::test_helpers::create_user_with_permissions(
