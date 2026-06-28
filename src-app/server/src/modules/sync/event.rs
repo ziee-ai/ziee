@@ -88,6 +88,8 @@ pub enum SyncEntity {
     AssistantCoreMemory,
     /// Code-sandbox resource-limit settings (singleton).
     CodeSandboxSettings,
+    /// Code-sandbox rootfs version list changed (install/evict/delete).
+    CodeSandboxRootfsVersion,
     /// Hub catalog settings (singleton).
     HubSettings,
     /// Admin view of an authentication provider (Google/Microsoft/Apple/LDAP

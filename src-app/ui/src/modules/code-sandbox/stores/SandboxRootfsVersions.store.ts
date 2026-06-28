@@ -14,6 +14,9 @@ import type {
   SwapOutcome,
   VersionStatus,
 } from '@/api-client/types'
+import { Permissions } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
+import { Stores } from '@/core/stores'
 
 /**
  * Per-(version, arch, flavor, package) action state. Drives the
@@ -167,6 +170,26 @@ export const useSandboxRootfsVersionsStore = create<SandboxRootfsVersionsStore>(
           // resource-limits-only admin are harmless + backend-rejected.
           await get().loadStatus({ pruneFailed: true })
           void get().subscribeToInstallProgress()
+
+          // Cross-device sync: another admin installed/evicted/deleted a
+          // rootfs version. Refetch the list. Self-gated (unlike the
+          // mount-time load above, sync events fire after auth is
+          // populated, so the permission snapshot is reliable here).
+          const reload = () => {
+            if (!hasPermissionNow(Permissions.CodeSandboxEnvironmentsRead))
+              return
+            void get().loadStatus()
+          }
+          Stores.EventBus.on(
+            'sync:code_sandbox_rootfs_version',
+            reload,
+            'SandboxRootfsVersions',
+          )
+          Stores.EventBus.on(
+            'sync:reconnect',
+            reload,
+            'SandboxRootfsVersions',
+          )
         },
       },
 

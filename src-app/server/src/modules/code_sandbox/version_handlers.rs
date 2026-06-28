@@ -38,6 +38,9 @@ use crate::modules::code_sandbox::version_manager::{
 };
 use crate::modules::permissions::openapi::with_permission;
 use crate::modules::permissions::RequirePermissions;
+use crate::modules::sync::{
+    Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish,
+};
 
 // =====================================================================
 // Request shapes
@@ -429,6 +432,7 @@ pub fn set_pin_docs(
 
 pub async fn delete_version_handler(
     _auth: RequirePermissions<(CodeSandboxEnvironmentsManage,)>,
+    origin: SyncOrigin,
     axum::extract::Path(id): axum::extract::Path<Uuid>,
 ) -> ApiResult<Json<VersionStatus>> {
     let pool = live_pool()?;
@@ -436,6 +440,14 @@ pub async fn delete_version_handler(
         .await
         .map_err(map_version_err)?;
     let status = version_manager::status(&pool).await.map_err(map_version_err)?;
+    // Cross-device sync: the rootfs version list changed → admins refetch.
+    sync_publish(
+        SyncEntity::CodeSandboxRootfsVersion,
+        SyncAction::Delete,
+        id,
+        Audience::perm::<CodeSandboxEnvironmentsRead>(),
+        origin.0,
+    );
     Ok((StatusCode::OK, Json(status)))
 }
 
